@@ -232,7 +232,7 @@ export class OrganizationService {
       .then(({ data }) => Promise.resolve(data));
   }
 
-  static async fetchFakeOrganizationSuggestions(limit, offset) {
+  static async fetchFakeOrganizationSuggestions(limit, offset, query = {}) {
     const segments = [getSelectedProjectGroup().id];
 
     return authAxios
@@ -241,6 +241,7 @@ export class OrganizationService {
           segments,
           offset,
           limit,
+          ...query,
         },
       })
       .then(({ data }) => Promise.resolve(data));

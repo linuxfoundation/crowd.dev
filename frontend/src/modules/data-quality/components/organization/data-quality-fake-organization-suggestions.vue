@@ -53,7 +53,7 @@
 <script lang="ts" setup>
 import { OrganizationService } from '@/modules/organization/organization-service';
 import {
-  onMounted, ref, watch,
+  computed, onMounted, ref, watch,
 } from 'vue';
 import LfDataQualityFakeOrganizationSuggestionItem
   from '@/modules/data-quality/components/organization/data-quality-fake-organization-suggestion-item.vue';
@@ -80,10 +80,14 @@ const total = ref(0);
 const suggestions = ref<any[]>([]);
 const itemsLoading = ref<Record<string, boolean>>({});
 
+const segments = computed(() => [props.projectGroup]);
+
 const loadSuggestions = () => {
   loading.value = true;
 
-  OrganizationService.fetchFakeOrganizationSuggestions(limit.value, offset.value)
+  OrganizationService.fetchFakeOrganizationSuggestions(limit.value, offset.value, {
+    segments: segments.value,
+  })
     .then((res) => {
       total.value = +res.count;
       if (+res.offset > 0) {

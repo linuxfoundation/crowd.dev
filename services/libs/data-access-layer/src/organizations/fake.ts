@@ -68,7 +68,7 @@ export async function findFakeOrganizationSuggestions(
         o.logo,
         osa."activityCount"
       ${from}
-      ORDER BY osa."activityCount" DESC
+      ORDER BY osa."activityCount" DESC, fos."organizationId"
       LIMIT $(limit) OFFSET $(offset)
       `,
       params,
