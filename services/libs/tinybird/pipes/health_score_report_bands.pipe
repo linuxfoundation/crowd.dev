@@ -1,0 +1,33 @@
+DESCRIPTION >
+    - `health_score_report_bands.pipe` serves widget 01 "Health score bands" for the
+    Health Score report (IN-1286, part of epic IN-1276 Health Score Coverage).
+    - Returns one row per (`band`, `covered`) pair: how many tracked, scored projects fall into each
+    health-score band, split by whether they were scored in full (all three categories) or partially
+    (two categories).
+    - `band` — `healthLabel` value (`excellent`, `healthy`, `fair`, `concerning`, `critical`).
+    - `covered` — `coveredCategoryCount` (`3` = scored in full, `2` = partially scored).
+    - `projects` — count of tracked projects (`type = 'project'`) with a non-null Health Score v2
+    matching that band/coverage pair.
+    - Parameters:
+    - `scope`: Optional string, default `all`, values `all | lf | other` — filters by `isLF` when
+    `lf`/`other` is given; `all` applies no filter.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_bands_endpoint
+SQL >
+    %
+    SELECT healthLabel AS band, coveredCategoryCount AS covered, count() AS projects
+    FROM project_insights_copy_ds
+    WHERE
+        type = 'project' AND healthScoreV2 IS NOT NULL
+        {% if String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'lf' %} AND isLF = 1
+        {% elif String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'other' %} AND isLF = 0
+        {% end %}
+    GROUP BY band, covered
