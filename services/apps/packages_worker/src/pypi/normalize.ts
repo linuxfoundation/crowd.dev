@@ -1,3 +1,5 @@
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+
 import type { PyPiInfo, PyPiReleaseFile } from './types'
 
 const PURL_PYPI_PREFIX = 'pkg:pypi/'
@@ -225,7 +227,6 @@ export function classifyProjectUrls(
 
   // Candidates are ordered by trust, most trusted first, and all kept (not picked early) so
   // the caller can fall through past a top pick that fails canonicalization.
-  const REPO_HOST = /github\.com|gitlab\.com|bitbucket\.org/i
   // Every source-shaped field is kept, not just the first `??` winner, so a malformed alias
   // (e.g. Source: not-a-url) can't hide a later valid one from the resolver.
   const sourceUrlCandidates = [
@@ -235,7 +236,9 @@ export function classifyProjectUrls(
     findByKey(/^code$/i),
     entries.find(
       ([k, v]) =>
-        /source|repo|code|git/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
+        /source|repo|code|git/i.test(k) &&
+        !/bug|issue|tracker/i.test(k) &&
+        canonicalizeRepoUrl(v) !== null,
     )?.[1] ?? null,
   ].filter((v): v is string => v !== null)
   const seenSourceUrls = new Set<string>()
