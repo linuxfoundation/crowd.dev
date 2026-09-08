@@ -160,9 +160,8 @@ async function processPackage(
         declaredClearedFields.forEach((f) => changed.add(f))
       }
 
-      // repoUnknown means the only thing standing between "resolved" and "absent" is a
-      // transient rate limit — reconciling now would downgrade or delete a link that's
-      // still valid.
+      // repoUnknown: only a transient rate limit separates "resolved" from "absent" here —
+      // reconciling now would downgrade or delete a link that's still valid.
       if (!repoUnknown) {
         if (normalized.resolvedRepo) {
           const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(

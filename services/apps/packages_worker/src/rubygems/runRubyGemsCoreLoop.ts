@@ -121,9 +121,8 @@ async function processPackage(
       })
       pkgChanged.forEach((f) => changed.add(f))
 
-      // upsertPackage's COALESCE can't tell "no source_code_uri this refresh" from "unknown" —
-      // this registry fetch just succeeded, so declaredRepositoryUrl is authoritative; clear it
-      // explicitly when gone.
+      // upsertPackage's COALESCE can't distinguish a dropped source_code_uri from "unknown" —
+      // this registry fetch just succeeded, so clear declaredRepositoryUrl explicitly when gone.
       const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
         t,
         packageDbId.toString(),

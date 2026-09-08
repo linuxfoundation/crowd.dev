@@ -358,9 +358,8 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         pmChanged.forEach((f) => changed.add(f))
       }
 
-      // upsertPackage's COALESCE can't tell "POM dropped <scm><url>" from "unknown" — this
-      // path is a successful full POM extraction, so result.scmUrl is authoritative; clear
-      // declared_repository_url explicitly when it's gone.
+      // upsertPackage's COALESCE can't distinguish a dropped <scm><url> from "unknown" — this
+      // POM extraction succeeded, so clear declared_repository_url explicitly when it's gone.
       const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
         t,
         packageId.toString(),
