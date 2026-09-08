@@ -69,9 +69,9 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            status                  = e.status,
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
-           declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
-           -- repo_choice has exactly one unfiltered row per package_id, so rn.repository_url is
-           -- authoritative here — direct-assign (not COALESCE) to clear it when a package lost its repo.
+           -- The dump is authoritative for both fields — direct-assign (not COALESCE) so a
+           -- repository field or repo link dropped from the current dump actually clears here.
+           declared_repository_url = e.declared_repository_url,
            repository_url          = rn.repository_url,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
@@ -99,7 +99,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            ('packages.status',                  s.status                  IS DISTINCT FROM e.status),
            ('packages.description',             s.description             IS DISTINCT FROM COALESCE(e.description, s.description)),
            ('packages.homepage',                s.homepage                IS DISTINCT FROM COALESCE(e.homepage, s.homepage)),
-           ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM COALESCE(e.declared_repository_url, s.declared_repository_url)),
+           ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM e.declared_repository_url),
            ('packages.repository_url',          s.repository_url IS DISTINCT FROM rn.repository_url),
            ('packages.licenses',                s.licenses                IS DISTINCT FROM COALESCE(e.licenses, s.licenses)),
            ('packages.licenses_raw',            s.licenses_raw            IS DISTINCT FROM COALESCE(e.licenses_raw, s.licenses_raw)),

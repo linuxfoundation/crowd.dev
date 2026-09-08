@@ -225,10 +225,8 @@ export function classifyProjectUrls(
     findByKey(/^homepage$/i) ?? findByKey(/^home[\s-]*page$/i) ?? findByKey(/^home$/i)
   const homepage = blankToNull(homePage) ?? projectUrlsHomepage
 
-  // Candidates are ordered by trust, most trusted first, and all kept (not picked early) so
-  // the caller can fall through past a top pick that fails canonicalization.
-  // Every source-shaped field is kept, not just the first `??` winner, so a malformed alias
-  // (e.g. Source: not-a-url) can't hide a later valid one from the resolver.
+  // Ordered most trusted first, all kept so a bad top pick can fall through to a later one;
+  // the fuzzy match stays host-gated to preserve its historical strictness.
   const sourceUrlCandidates = [
     findByKey(/^source(\s*code)?$/i),
     findByKey(/^repository$/i),
@@ -239,7 +237,7 @@ export function classifyProjectUrls(
         ([k, v]) =>
           /source|repo|code|git/i.test(k) &&
           !/bug|issue|tracker/i.test(k) &&
-          canonicalizeRepoUrl(v) !== null,
+          (canonicalizeRepoUrl(v)?.host ?? 'other') !== 'other',
       )
       .map(([, v]) => v),
   ].filter((v): v is string => v !== null)
