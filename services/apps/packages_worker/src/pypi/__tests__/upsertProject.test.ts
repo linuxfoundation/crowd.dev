@@ -1,14 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  getOrCreateRepoByUrl,
-  removeDeclaredPackageRepo,
-  upsertNpmFundingLinks,
-  upsertPackageMaintainers,
-  upsertPackageRepo,
-  upsertPypiPackage,
-  upsertPypiVersions,
-} from '@crowd/data-access-layer/src/packages'
+import { getOrCreateRepoByUrl, upsertPypiPackage } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import type { PyPiProject } from '../types'
@@ -26,11 +18,6 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
 
 const mockUpsertPackage = vi.mocked(upsertPypiPackage)
 const mockGetOrCreateRepo = vi.mocked(getOrCreateRepoByUrl)
-const mockUpsertPackageRepo = vi.mocked(upsertPackageRepo)
-const mockRemoveDeclared = vi.mocked(removeDeclaredPackageRepo)
-const mockUpsertVersions = vi.mocked(upsertPypiVersions)
-const mockUpsertMaintainers = vi.mocked(upsertPackageMaintainers)
-const mockUpsertFunding = vi.mocked(upsertNpmFundingLinks)
 
 const qx = {
   tx: vi.fn((cb: (t: QueryExecutor) => Promise<void>) => cb(qx)),

@@ -245,7 +245,8 @@ export function classifyProjectUrls(
   // non-repositories, same as every other resolveManifestRepo caller. project_urls.Homepage
   // goes first so a non-repo info.home_page can't mask it.
   const rawHomePage = blankToNull(homePage)
-  if (projectUrlsHomepage) repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
+  if (projectUrlsHomepage)
+    repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
   if (rawHomePage && rawHomePage !== projectUrlsHomepage) {
     repositoryCandidates.push({ field: 'homepage', url: rawHomePage })
   }
