@@ -52,9 +52,8 @@ export async function persistPackagistPackageInfo(
   const changedFields: string[] = []
 
   await qx.tx(async (t) => {
-    // The version manifests carry the homepage, not this endpoint — peek at the currently
-    // stored homepage so a package that only declares a homepage still gets a link, without
-    // a second write once the stats row is updated below.
+    // The version manifests carry the homepage, not this endpoint — peek at the stored
+    // homepage so a homepage-only package still gets linked without a second write later.
     const storedHomepage = await getPackageHomepage(t, purl)
     const resolvedRepo = primaryRepo
       ? { repo: primaryRepo, signal: 'primary' as const }
@@ -116,11 +115,8 @@ export async function persistPackagistPackageInfo(
   return { found, changedFields, packageId, hasPrimaryRepo: !!primaryRepo }
 }
 
-// Phase 1 (dynamic endpoint) resolves the homepage-fallback repo from whatever homepage
-// is already stored, but the p2 endpoint (phase 2) is what actually carries a new/changed
-// homepage — see ingestOnePackagistMetadata. Called after phase 2 persists, so a package
-// with no declared repository field still gets linked to its homepage in the same run it's
-// first seen, instead of waiting for the next scheduled ingestion.
+// Phase 1 resolves the homepage-fallback repo from whatever's already stored; phase 2
+// (called after it persists — see ingestOnePackagistMetadata) carries the actual new homepage.
 export async function reconcilePackagistHomepageRepo(
   qx: QueryExecutor,
   purl: string,

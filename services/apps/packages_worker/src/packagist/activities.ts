@@ -209,9 +209,8 @@ export async function ingestOnePackagistMetadata(
         'packagist dependency targets not found in packages — edges skipped',
       )
     }
-    // Phase 1's homepage-fallback repo link used whatever homepage was already stored —
-    // for a new package, or one whose homepage just changed, that's stale/absent until
-    // this p2 write lands it. Reconcile now so the link doesn't wait for the next run.
+    // Must run after persistPackagistMetadata above — it just landed the homepage this
+    // fallback link depends on.
     if (!phase1.hasPrimaryRepo && phase1.packageId) {
       await reconcilePackagistHomepageRepo(
         qx,

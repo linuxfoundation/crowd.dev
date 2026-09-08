@@ -33,15 +33,15 @@ returned `signal` on the link. No writer computes a confidence value.
 
 ### Chains
 
-| Ecosystem | Chain |
-| --- | --- |
-| npm | `repository` → `homepage` → `bugs.url` |
-| pypi | Source/Code project URL → `Homepage` → bug tracker URL |
-| cargo | `repository` → `homepage` |
-| rubygems | `source_code_uri` → `homepage_uri` → `bug_tracker_uri` |
-| packagist | `support.source` → `homepage` |
-| nuget | `<repository>` → `projectUrl` |
-| maven | POM `<scm><url>` → POM `<url>` |
+| Ecosystem | Chain                                                  |
+| --------- | ------------------------------------------------------ |
+| npm       | `repository` → `homepage` → `bugs.url`                 |
+| pypi      | Source/Code project URL → `Homepage` → bug tracker URL |
+| cargo     | `repository` → `homepage`                              |
+| rubygems  | `source_code_uri` → `homepage_uri` → `bug_tracker_uri` |
+| packagist | `support.source` → `homepage`                          |
+| nuget     | `<repository>` → `projectUrl`                          |
+| maven     | POM `<scm><url>` → POM `<url>`                         |
 
 ### Host gate
 
@@ -82,7 +82,7 @@ almost always docs.rs, which the host gate rejects anyway.
 
 - **Pros**: no schema column; visible in one place.
 - **Cons**: reintroduces per-writer confidence literals, and the penalty could
-  not be retuned or audited afterwards — nothing records *why* a row scored
+  not be retuned or audited afterwards — nothing records _why_ a row scored
   lower.
 - **Why not**: ADR-0020 makes the stored score derivable from stored evidence;
   `signal` is that evidence.
@@ -103,8 +103,8 @@ almost always docs.rs, which the host gate rejects anyway.
   and the link is honestly labelled as weaker.
 - The fallback order and the host gate exist once, so adding an ecosystem means
   declaring a candidate list.
-- Per-run counters (`primary_field_hit`, `fallback_hit_by_field`, `no_signal`)
-  make the coverage uplift measurable against the pre-merge baseline.
+- `package_repos.signal` is directly queryable (`GROUP BY signal`) after merge, making
+  the primary-vs-secondary coverage split measurable against the pre-merge baseline.
 
 ### Negative
 
@@ -125,8 +125,9 @@ almost always docs.rs, which the host gate rejects anyway.
   penalty.
 - **Recognized-host gating rejects legitimate self-hosted repos found in a
   fallback field.** Accepted deliberately: an unrecognized host in a free-form
-  field carries no signal that it is a repository at all. Revisit if the
-  `no_signal` counters show a material self-hosted tail.
+  field carries no signal that it is a repository at all. Rejected candidates
+  aren't persisted anywhere, so revisiting this needs an ad hoc sample of
+  homepage/bug_tracker fields against unrecognized hosts, not a live counter.
 - **Coverage growth is hard to attribute after the fact.** Mitigation: record
   per-ecosystem `package_repos` row counts before merge, and compare against
-  the `fallback_hit_by_field` counters afterwards.
+  post-merge `signal = 'secondary'` counts from the same table.

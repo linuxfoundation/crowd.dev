@@ -1,22 +1,15 @@
--- Secondary manifest repository signal (CM-1393).
---
--- Extends the confidence scoring introduced in V1788307200 with the manifest field
--- that produced a declared link. A repo URL read from a fallback field (homepage,
--- bug_tracker) is weaker evidence than one read from the dedicated repository field,
--- so it lands one tier lower.
---
--- The column defaults to 'primary', so existing rows keep their current score until
--- the next enrichment pass writes a real signal or a rescore sweep runs.
+-- Secondary manifest repository signal (CM-1393): a declared link sourced from a
+-- fallback field (homepage/bug_tracker) scores one tier below a dedicated repository field.
 
 ALTER TABLE package_repos
-    ADD COLUMN IF NOT EXISTS signal text NOT NULL DEFAULT 'primary'
-        CHECK (signal IN ('primary', 'secondary'));
+    ADD COLUMN IF NOT EXISTS signal text NOT NULL DEFAULT 'primary';
 
--- Adding a parameter changes the signature, so the V1788307200 function is dropped
--- rather than replaced — CREATE OR REPLACE would leave both overloads callable.
-DROP FUNCTION IF EXISTS package_repo_confidence(
-    text, text, text, bool, bool, bool, text, bool, bigint
-);
+-- NOT VALID + separate VALIDATE so the existing-row scan takes the less disruptive
+-- validation lock instead of blocking registry writers under ADD COLUMN's stronger lock.
+ALTER TABLE package_repos
+    ADD CONSTRAINT package_repos_signal_check CHECK (signal IN ('primary', 'secondary')) NOT VALID;
+ALTER TABLE package_repos
+    VALIDATE CONSTRAINT package_repos_signal_check;
 
 CREATE OR REPLACE FUNCTION package_repo_confidence(
     p_source           text,
@@ -67,9 +60,8 @@ BEGIN
     END;
 
     IF p_disabled IS TRUE THEN
-        -- Scale proportionally so pre-disabled claim ordering is preserved across sources.
-        -- The offset uses a tighter modulo so max contribution (3*1000+999)*1e-9 ≈ 4e-6
-        -- stays below the 0.00016 minimum scaled tier gap and cannot invert source ordering.
+        -- Scale proportionally to preserve source ordering; the tighter modulo keeps the max
+        -- offset contribution (≈4e-6) below the 0.00016 minimum tier gap so it can't invert it.
         base := 0.05 + LEAST(base, 0.99) * 0.004;
         offset_units := source_priority::bigint * 1000 + COALESCE(p_repo_id, 0) % 1000;
     ELSE
@@ -87,14 +79,34 @@ BEGIN
 
         base := GREATEST(base, 0.05);
 
-        -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
-        -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
-        -- ORDER BY repo_id DESC as the canonical deterministic pick when confidence ties.
+        -- Tie-breaker: collisions only when two repo IDs for the same package are congruent
+        -- mod 1,000,000; BEST_REPO_LINK_JOIN's ORDER BY repo_id DESC then picks deterministically.
         offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
     END IF;
 
     RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
 END;
+$$;
+
+-- Compat overload for callers still on the pre-signal signature during a rolling deploy;
+-- delegates to the widened function as 'primary'. Drop in a later cleanup migration.
+CREATE OR REPLACE FUNCTION package_repo_confidence(
+    p_source           text,
+    p_ecosystem        text,
+    p_provenance       text,
+    p_archived         bool,
+    p_is_fork          bool,
+    p_disabled         bool,
+    p_host             text,
+    p_competing_github bool,
+    p_repo_id          bigint
+)
+RETURNS numeric(12, 9)
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT package_repo_confidence(
+        p_source, p_ecosystem, 'primary', p_provenance, p_archived,
+        p_is_fork, p_disabled, p_host, p_competing_github, p_repo_id
+    )
 $$;
 
 -- Replaced only to pass cur.signal through to the widened scoring function; the
@@ -127,9 +139,8 @@ BEGIN
                   FROM package_repos pr
                  WHERE pr.id > cursor_id
                    AND (p_repo_ids IS NULL OR pr.repo_id = ANY(p_repo_ids))
-                   -- deps_dev rows with NULL provenance were ingested before this column existed;
-                   -- skip them so the backfill does not downgrade SLSA/attestation links to 0.50.
-                   -- They will be rescored correctly once the next ingest populates provenance.
+                   -- deps_dev rows with NULL provenance predate this column; skip them so the
+                   -- backfill doesn't downgrade SLSA/attestation links — a later ingest fixes it.
                    AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
                  ORDER BY pr.id
                  LIMIT chunk_size

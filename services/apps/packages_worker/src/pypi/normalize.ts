@@ -223,10 +223,8 @@ export function classifyProjectUrls(
     findByKey(/^homepage$/i) ?? findByKey(/^home[\s-]*page$/i) ?? findByKey(/^home$/i)
   const homepage = blankToNull(homePage) ?? projectUrlsHomepage
 
-  // Candidates are ordered by trust, most trusted first — a project can declare a Source
-  // field AND a Homepage/Bug Tracker that also happen to point at a repo host. Keeping all
-  // of them (rather than picking one before validation) lets the caller fall through to the
-  // next candidate when the top pick fails canonicalization (malformed URL, unsupported path).
+  // Candidates are ordered by trust, most trusted first, and all kept (not picked early) so
+  // the caller can fall through past a top pick that fails canonicalization.
   const REPO_HOST = /github\.com|gitlab\.com|bitbucket\.org/i
   const sourceUrl =
     findByKey(/^source(\s*code)?$/i) ??
@@ -243,15 +241,13 @@ export function classifyProjectUrls(
 
   const repositoryCandidates: PypiRepoCandidate[] = []
   if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
-  // Checked against project_urls.Homepage specifically, not the resolved `homepage` above —
-  // a non-repository info.home_page (e.g. a docs site) takes precedence for `packages.homepage`
-  // but must not mask a repo-looking project_urls.Homepage as a repository candidate.
+  // Checked against project_urls.Homepage directly, not the resolved `homepage` above — a
+  // non-repo info.home_page must not mask a repo-looking project_urls.Homepage candidate.
   if (projectUrlsHomepage && REPO_HOST.test(projectUrlsHomepage)) {
     repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
   }
-  // Included even when a source URL is already a candidate: a malformed/unsupported source
-  // is dropped by the resolver at canonicalization time, not here, so the tracker must stay
-  // available as a fallback for the resolver to fall through to.
+  // Kept even with a source candidate already present — a malformed source is dropped at
+  // canonicalization, not here, so the tracker stays available for the resolver to fall to.
   if (trackerUrl) repositoryCandidates.push({ field: 'bug_tracker', url: trackerUrl })
 
   const seen = new Set<string>()

@@ -322,13 +322,8 @@ export async function setPackageRepositoryUrl(
   packageId: string,
   url: string | null,
 ): Promise<string[]> {
-  // repository_url is exported to Tinybird (ossPackages) via a ReplacingMergeTree versioned
-  // on last_synced_at — a same-version CDC row can lose to the existing one, so this write
-  // must advance it too, or the correction (including a clear) never reaches downstream
-  // consumers. See updateMavenRepositoryUrls in osspckgs/packages.ts for the same pattern.
-  // clock_timestamp() (not NOW()) — callers invoke this after their own package upsert has
-  // already stamped last_synced_at = NOW() in the same transaction; NOW() is transaction-stable
-  // and would tie with that earlier value, while clock_timestamp() advances per statement.
+  // last_synced_at must strictly advance — clock_timestamp(), not the same-tx NOW() the
+  // caller's upsert already used — or this CDC write loses the ReplacingMergeTree tie.
   const affected = await qx.result(
     `UPDATE packages SET repository_url = $(url), last_synced_at = clock_timestamp()
       WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,

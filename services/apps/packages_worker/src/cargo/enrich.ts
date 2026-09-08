@@ -70,10 +70,8 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
            declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
-           -- repo_choice has exactly one row per package_id in enrich_packages (a plain FROM,
-           -- never filtered), so rn.repository_url is authoritative for this run — direct-assign
-           -- it (not COALESCE) so a package that lost its repo in this dump has the denormalized
-           -- column cleared consistently with enrichRepos' unconditional package_repos prune.
+           -- repo_choice has exactly one unfiltered row per package_id, so rn.repository_url is
+           -- authoritative here — direct-assign (not COALESCE) to clear it when a package lost its repo.
            repository_url          = rn.repository_url,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
@@ -202,12 +200,8 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
     )
 
-    // Prunes cargo-owned declared links whose target changed since the last run: removals
-    // (NULL in this dump is authoritative — loadDump stages every crate every run), URL
-    // rewrites, and junk/unparseable values. An unchanged link is left alone so the upsert
-    // below's ON CONFLICT ... KEEP_HIGHEST_CONFLICT_UPDATE handles same-repo signal/confidence
-    // changes (e.g. a primary→secondary downgrade) without a delete+reinsert. Scoped to
-    // source = 'declared' so only cargo-owned rows are touched.
+    // Prunes declared links whose target changed (removed, rewritten, or unparseable); an
+    // unchanged link is left for the upsert's KEEP_HIGHEST_CONFLICT_UPDATE to handle in place.
     const pruneRow = await tx.selectOne(
       `WITH targets AS (
          SELECT rc.package_id, r.id AS repo_id
