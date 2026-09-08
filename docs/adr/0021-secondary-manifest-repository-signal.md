@@ -131,3 +131,13 @@ almost always docs.rs, which the host gate rejects anyway.
 - **Coverage growth is hard to attribute after the fact.** Mitigation: record
   per-ecosystem `package_repos` row counts before merge, and compare against
   post-merge `signal = 'secondary'` counts from the same table.
+- **Rows written by the pre-signal PyPI/NuGet fallback logic are backfilled as
+  `primary`, overstating their confidence until re-ingestion.** Accepted for
+  now: those packages get re-scored naturally on their next registry sync;
+  no separate backfill migration is planned.
+- **Maven's unchanged-version fast path (`runMavenEnrichmentLoop.ts`) skips
+  POM re-extraction, so a stable package already on the old writer never
+  gains a homepage-derived secondary link until it next changes version or a
+  forced full extraction runs.** Accepted: forcing full extraction for every
+  unchanged package on rollout would multiply POM-fetch volume; existing
+  packages backfill gradually as they publish new versions.
