@@ -226,21 +226,28 @@ export function classifyProjectUrls(
   // Candidates are ordered by trust, most trusted first, and all kept (not picked early) so
   // the caller can fall through past a top pick that fails canonicalization.
   const REPO_HOST = /github\.com|gitlab\.com|bitbucket\.org/i
-  const sourceUrl =
-    findByKey(/^source(\s*code)?$/i) ??
-    findByKey(/^repository$/i) ??
-    findByKey(/^repo$/i) ??
-    findByKey(/^code$/i) ??
+  // Every source-shaped field is kept, not just the first `??` winner, so a malformed alias
+  // (e.g. Source: not-a-url) can't hide a later valid one from the resolver.
+  const sourceUrlCandidates = [
+    findByKey(/^source(\s*code)?$/i),
+    findByKey(/^repository$/i),
+    findByKey(/^repo$/i),
+    findByKey(/^code$/i),
     entries.find(
       ([k, v]) =>
         /source|repo|code|git/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
-    )?.[1] ??
-    null
-  const trackerUrl =
-    entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && REPO_HOST.test(v))?.[1] ?? null
+    )?.[1] ?? null,
+  ].filter((v): v is string => v !== null)
+  const seenSourceUrls = new Set<string>()
+  const sourceUrls = sourceUrlCandidates.filter(
+    (url) => !seenSourceUrls.has(url) && seenSourceUrls.add(url),
+  )
+  // Passed raw per resolveManifestRepo convention — canonicalizeRepoUrl handles recognized-host
+  // forms like `github:foo/bar/issues`; prefiltering by hostname here would drop those.
+  const trackerUrl = entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && v)?.[1] ?? null
 
   const repositoryCandidates: PypiRepoCandidate[] = []
-  if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
+  for (const url of sourceUrls) repositoryCandidates.push({ field: 'source', url })
   // Passed through raw, untested, per resolveManifestRepo convention. project_urls.Homepage
   // goes first so a non-repo info.home_page can't mask it.
   const rawHomePage = blankToNull(homePage)

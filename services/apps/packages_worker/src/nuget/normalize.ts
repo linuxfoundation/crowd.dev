@@ -95,12 +95,12 @@ export function normalizeNuGetPackage(
     : [...allEntries].reverse()
   const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
   const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
-  const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
-  const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  // Passed as separate candidates so a non-repo search projectUrl can't mask
-  // a repo-looking catalog projectUrl at the host gate.
+  const declaredRepositoryUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl ?? null
+  // Passed as separate candidates so a non-repo search projectUrl, or a malformed
+  // fetched nuspec URL, can't mask a repo-looking catalog value at the host gate.
   const resolvedRepo = resolveManifestRepo([
-    { field: 'repository', url: nuspecRepoUrl },
+    { field: 'repository', url: fetchedNuspecRepoUrl, signal: 'primary' },
+    { field: 'repository', url: catalogRepoUrl, signal: 'primary' },
     { field: 'projectUrl', url: searchProjectUrl },
     { field: 'projectUrl', url: catalogProjectUrl },
   ])
