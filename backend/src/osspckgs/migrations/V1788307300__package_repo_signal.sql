@@ -148,7 +148,8 @@ BEGIN
             ),
             updated AS (
                 UPDATE package_repos pr
-                   SET confidence = s.confidence, verified_at = NOW()
+                   SET confidence = s.confidence,
+                       verified_at = GREATEST(clock_timestamp(), cur.verified_at + interval '1 millisecond')
                   FROM batch b
                   JOIN package_repos cur ON cur.id = b.id
                   JOIN packages p ON p.id = cur.package_id
