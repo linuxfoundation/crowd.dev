@@ -116,10 +116,11 @@ async function processPackage(
   }
 
   const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
-  // A rate-limited search only breaks resolution when nothing else resolved a repo — if a
-  // nuspec/catalog result won independently, the missing search projectUrl candidate never
-  // mattered.
-  const repoUnknown = nuspecRateLimited || (searchRateLimited && !normalized.resolvedRepo)
+  // A rate-limited search only breaks resolution when the missing search projectUrl could
+  // still have outranked the winner — only a primary (repository/nuspec) candidate proves
+  // it couldn't, since projectUrl-tier candidates are ordered right after it.
+  const repoUnknown =
+    nuspecRateLimited || (searchRateLimited && normalized.resolvedRepo?.signal !== 'primary')
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
