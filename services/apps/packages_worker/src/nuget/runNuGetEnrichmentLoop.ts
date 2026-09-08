@@ -9,6 +9,7 @@ import {
   recordNuGetDownloadSnapshot,
   removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
   setPackageRepositoryUrl,
   upsertMaintainer,
   upsertNuGetPackage,
@@ -124,9 +125,9 @@ async function processPackage(
         name: pkg.name,
         description: normalized.description,
         homepage: normalized.homepage,
-        declaredRepositoryUrl: normalized.declaredRepositoryUrl,
         // null on a rate-limited nuspec fetch — the DAL coalesces null to the stored value,
         // so an unknown nuspec-repo result can't be overwritten by a lower-trust fallback.
+        declaredRepositoryUrl: nuspecRateLimited ? null : normalized.declaredRepositoryUrl,
         repositoryUrl: nuspecRateLimited ? null : (normalized.resolvedRepo?.repo.url ?? null),
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
@@ -144,6 +145,15 @@ async function processPackage(
       // A rate-limited nuspec fetch means the nuspec-only repo candidate is unknown, not
       // absent — reconciling now would downgrade or delete a link that's still valid.
       if (!nuspecRateLimited) {
+        // upsertNuGetPackage's COALESCE can't tell "no declared repo this pass" from
+        // "unknown" — clear it explicitly so a dropped declaration doesn't stick around.
+        const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+          t,
+          packageDbId.toString(),
+          normalized.declaredRepositoryUrl,
+        )
+        declaredClearedFields.forEach((f) => changed.add(f))
+
         if (normalized.resolvedRepo) {
           const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
             t,

@@ -334,6 +334,23 @@ export async function setPackageRepositoryUrl(
   return affected > 0 ? ['packages.repository_url'] : []
 }
 
+export async function setPackageDeclaredRepositoryUrl(
+  qx: QueryExecutor,
+  packageId: string,
+  url: string | null,
+): Promise<string[]> {
+  // clock_timestamp() alone can tie last_synced_at at DateTime64(3) resolution — GREATEST
+  // with +1ms over the stored value guarantees a strictly newer CDC version regardless.
+  const affected = await qx.result(
+    `UPDATE packages
+        SET declared_repository_url = $(url),
+            last_synced_at = GREATEST(clock_timestamp(), last_synced_at + interval '1 millisecond')
+      WHERE id = $(packageId)::bigint AND declared_repository_url IS DISTINCT FROM $(url)`,
+    { url, packageId },
+  )
+  return affected > 0 ? ['packages.declared_repository_url'] : []
+}
+
 export async function getPackageHomepage(qx: QueryExecutor, purl: string): Promise<string | null> {
   const row = await qx.selectOneOrNone(`SELECT homepage FROM packages WHERE purl = $(purl)`, {
     purl,

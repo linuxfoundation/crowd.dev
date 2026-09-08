@@ -245,9 +245,14 @@ export function classifyProjectUrls(
   const sourceUrls = sourceUrlCandidates.filter(
     (url) => !seenSourceUrls.has(url) && seenSourceUrls.add(url),
   )
-  // Passed raw per resolveManifestRepo convention — canonicalizeRepoUrl handles recognized-host
-  // forms like `github:foo/bar/issues`; prefiltering by hostname here would drop those.
-  const trackerUrl = entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && v)?.[1] ?? null
+  // All matches kept, in original order, so a malformed tracker entry doesn't shadow a later
+  // usable one — passed raw per resolveManifestRepo convention, canonicalizeRepoUrl handles
+  // recognized-host forms like `github:foo/bar/issues`; prefiltering by hostname would drop those.
+  const seenTrackerUrls = new Set<string>()
+  const trackerUrls = entries
+    .filter(([k, v]) => /bug|issue|tracker/i.test(k) && v)
+    .map(([, v]) => v)
+    .filter((url) => !seenTrackerUrls.has(url) && seenTrackerUrls.add(url))
 
   const repositoryCandidates: PypiRepoCandidate[] = []
   for (const url of sourceUrls) repositoryCandidates.push({ field: 'source', url })
@@ -260,8 +265,8 @@ export function classifyProjectUrls(
     repositoryCandidates.push({ field: 'homepage', url: rawHomePage })
   }
   // Kept even with a source candidate already present — a malformed source is dropped at
-  // canonicalization, not here, so the tracker stays available for the resolver to fall to.
-  if (trackerUrl) repositoryCandidates.push({ field: 'bug_tracker', url: trackerUrl })
+  // canonicalization, not here, so a tracker stays available for the resolver to fall to.
+  for (const url of trackerUrls) repositoryCandidates.push({ field: 'bug_tracker', url })
 
   const seen = new Set<string>()
   const fundingLinks: PypiFundingLink[] = []
