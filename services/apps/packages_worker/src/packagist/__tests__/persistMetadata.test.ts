@@ -60,7 +60,11 @@ beforeEach(() => {
 // resolved to existing packages rows only.
 describe('persistPackagistMetadata', () => {
   it('upserts version rows (dev branches excluded), aggregates, and resolved dependency edges', async () => {
-    mockAggregates.mockResolvedValue({ id: '9', changedFields: ['packages.latest_version'] })
+    mockAggregates.mockResolvedValue({
+      id: '9',
+      changedFields: ['packages.latest_version'],
+      homepage: 'https://monolog.example.org',
+    })
     mockVersions.mockResolvedValue({
       changedFields: ['versions.number'],
       versionIds: [
@@ -133,7 +137,11 @@ describe('persistPackagistMetadata', () => {
   })
 
   it('skips and counts dependency targets that do not resolve to a packages row', async () => {
-    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockAggregates.mockResolvedValue({
+      id: '9',
+      changedFields: [],
+      homepage: 'https://monolog.example.org',
+    })
     mockVersions.mockResolvedValue({
       changedFields: [],
       versionIds: [
@@ -153,7 +161,7 @@ describe('persistPackagistMetadata', () => {
   })
 
   it('reconciles (deletes stale edges) even when a version now declares zero dependencies', async () => {
-    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockAggregates.mockResolvedValue({ id: '9', changedFields: [], homepage: null })
     mockVersions.mockResolvedValue({
       changedFields: [],
       versionIds: [{ number: '1.0.0', id: '20' }],
@@ -180,7 +188,7 @@ describe('persistPackagistMetadata', () => {
       found: false,
       changedFields: [],
       unresolvedDependencyTargets: 0,
-      homepage: 'https://monolog.example.org',
+      homepage: null,
     })
     expect(mockVersions).not.toHaveBeenCalled()
     expect(mockIds).not.toHaveBeenCalled()
@@ -189,7 +197,7 @@ describe('persistPackagistMetadata', () => {
   })
 
   it('handles a dev-branches-only package: aggregates written, no version or dependency writes', async () => {
-    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockAggregates.mockResolvedValue({ id: '9', changedFields: [], homepage: null })
 
     const result = await persistPackagistMetadata(qx, PURL, [
       { version: 'dev-main', version_normalized: 'dev-main' },
@@ -205,8 +213,30 @@ describe('persistPackagistMetadata', () => {
     expect(result.found).toBe(true)
   })
 
+  it('returns the effective persisted homepage, not the raw candidate, when COALESCE retains the old value', async () => {
+    // updatePackagistVersionAggregates COALESCEs homepage — an omitted p2 field (null
+    // candidate) does NOT clear a previously-stored homepage. The caller reconciles the
+    // secondary repo link from this result, so it must reflect what's actually on the row.
+    mockAggregates.mockResolvedValue({
+      id: '9',
+      changedFields: [],
+      homepage: 'https://old.example.org',
+    })
+    mockVersions.mockResolvedValue({ changedFields: [], versionIds: [] })
+
+    const result = await persistPackagistMetadata(qx, PURL, [
+      { version: '1.0.0', version_normalized: '1.0.0.0' },
+    ])
+
+    expect(result.homepage).toBe('https://old.example.org')
+  })
+
   it('strips NUL bytes from the homepage before writing (Postgres rejects them)', async () => {
-    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockAggregates.mockResolvedValue({
+      id: '9',
+      changedFields: [],
+      homepage: 'https://example.org',
+    })
     mockVersions.mockResolvedValue({ changedFields: [], versionIds: [] })
 
     await persistPackagistMetadata(qx, PURL, [

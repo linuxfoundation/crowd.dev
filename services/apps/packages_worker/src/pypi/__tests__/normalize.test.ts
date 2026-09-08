@@ -278,7 +278,7 @@ describe('classifyProjectUrls', () => {
     ])
   })
 
-  it('does not use bug tracker when an explicit repo key is present', () => {
+  it('keeps the bug tracker as a lower-priority fallback even when an explicit repo key is present', () => {
     const r = classifyProjectUrls(
       {
         Source: 'https://github.com/foo/bar',
@@ -286,7 +286,24 @@ describe('classifyProjectUrls', () => {
       },
       null,
     )
-    expect(r.repositoryCandidates).toEqual([{ field: 'source', url: 'https://github.com/foo/bar' }])
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'https://github.com/foo/bar' },
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
+  })
+
+  it('keeps the bug tracker as a fallback when the source URL is present but malformed', () => {
+    const r = classifyProjectUrls(
+      {
+        Source: 'not-a-url',
+        'Bug Tracker': 'https://github.com/foo/bar/issues',
+      },
+      null,
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'not-a-url' },
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
   })
 
   it('keeps the source candidate and a repo-looking homepage as a fallback', () => {

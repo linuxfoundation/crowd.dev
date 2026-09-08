@@ -248,7 +248,10 @@ export function classifyProjectUrls(
   if (homepage && REPO_HOST.test(homepage)) {
     repositoryCandidates.push({ field: 'homepage', url: homepage })
   }
-  if (trackerUrl && !sourceUrl) repositoryCandidates.push({ field: 'bug_tracker', url: trackerUrl })
+  // Included even when a source URL is already a candidate: a malformed/unsupported source
+  // is dropped by the resolver at canonicalization time, not here, so the tracker must stay
+  // available as a fallback for the resolver to fall through to.
+  if (trackerUrl) repositoryCandidates.push({ field: 'bug_tracker', url: trackerUrl })
 
   const seen = new Set<string>()
   const fundingLinks: PypiFundingLink[] = []

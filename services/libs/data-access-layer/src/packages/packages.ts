@@ -322,8 +322,12 @@ export async function setPackageRepositoryUrl(
   packageId: string,
   url: string | null,
 ): Promise<string[]> {
+  // repository_url is exported to Tinybird (ossPackages) via a ReplacingMergeTree versioned
+  // on last_synced_at — a same-version CDC row can lose to the existing one, so this write
+  // must advance it too, or the correction (including a clear) never reaches downstream
+  // consumers. See updateMavenRepositoryUrls in osspckgs/packages.ts for the same pattern.
   const affected = await qx.result(
-    `UPDATE packages SET repository_url = $(url)
+    `UPDATE packages SET repository_url = $(url), last_synced_at = NOW()
       WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,
     { url, packageId },
   )
@@ -350,9 +354,10 @@ export async function updatePackagistVersionAggregates(
   qx: QueryExecutor,
   purl: string,
   agg: PackagistVersionAggregates,
-): Promise<{ id: string; changedFields: string[] } | null> {
-  const row: { id: string; changed_fields: string[] } | undefined = await qx.selectOneOrNone(
-    `WITH old AS (
+): Promise<{ id: string; changedFields: string[]; homepage: string | null } | null> {
+  const row: { id: string; changed_fields: string[]; homepage: string | null } | undefined =
+    await qx.selectOneOrNone(
+      `WITH old AS (
        SELECT versions_count, latest_version, first_release_at, latest_release_at, licenses, homepage, ingestion_source
          FROM packages WHERE purl = $(purl) AND ecosystem = 'packagist'
      ),
@@ -370,7 +375,7 @@ export async function updatePackagistVersionAggregates(
        WHERE purl = $(purl) AND ecosystem = 'packagist'
        RETURNING id, versions_count, latest_version, first_release_at, latest_release_at, licenses, homepage, ingestion_source
      )
-     SELECT ins.id::text AS id,
+     SELECT ins.id::text AS id, ins.homepage,
             array_remove(ARRAY[
               CASE WHEN o.versions_count     IS DISTINCT FROM ins.versions_count     THEN 'packages.versions_count' END,
               CASE WHEN o.latest_version     IS DISTINCT FROM ins.latest_version     THEN 'packages.latest_version' END,
@@ -381,11 +386,11 @@ export async function updatePackagistVersionAggregates(
               CASE WHEN o.ingestion_source   IS DISTINCT FROM ins.ingestion_source   THEN 'packages.ingestion_source' END
             ], NULL) AS changed_fields
        FROM ins LEFT JOIN old o ON true`,
-    { purl, ...agg },
-  )
+      { purl, ...agg },
+    )
 
   if (!row) return null
-  return { id: row.id, changedFields: row.changed_fields }
+  return { id: row.id, changedFields: row.changed_fields, homepage: row.homepage }
 }
 
 export async function getPackagistPackageIdsByNames(

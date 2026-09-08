@@ -37,6 +37,7 @@ export async function persistPackagistMetadata(
     buildPackagistVersionRows(expanded)
 
   let found = false
+  let effectiveHomepage: string | null = null
   const changedFields: string[] = []
   let unresolvedDependencyTargets = 0
 
@@ -58,6 +59,7 @@ export async function persistPackagistMetadata(
     if (!agg) return
 
     found = true
+    effectiveHomepage = agg.homepage
     changedFields.push(...agg.changedFields)
 
     let versionIds: Array<{ number: string; id: string }> = []
@@ -119,5 +121,5 @@ export async function persistPackagistMetadata(
     await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
-  return { found, changedFields, unresolvedDependencyTargets, homepage }
+  return { found, changedFields, unresolvedDependencyTargets, homepage: effectiveHomepage }
 }
