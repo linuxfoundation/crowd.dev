@@ -10,6 +10,39 @@ type FakeOrganizationSuggestion = {
   activityCount: number
 }
 
+export async function fetchFakeOrganizationAnalysisCandidates(
+  qx: QueryExecutor,
+  limit: number,
+  afterOrganizationId?: string,
+): Promise<string[]> {
+  const rows = await qx.select(
+    `
+      SELECT DISTINCT o.id AS "organizationId"
+      FROM "organizationIdentities" oi
+      JOIN organizations o ON o.id = oi."organizationId"
+      WHERE oi.verified = true
+        AND oi.platform = 'email'
+        AND oi.type = 'primary-domain'
+        AND oi.source = 'email-domain'
+        AND o."deletedAt" IS NULL
+        AND o."createdAt" < now() - interval '1 day'
+        ${afterOrganizationId ? `AND o.id > $(afterOrganizationId)` : ''}
+        AND (
+          SELECT COUNT(*)
+          FROM "memberOrganizations" mo
+          JOIN members m ON m.id = mo."memberId" AND m."deletedAt" IS NULL
+          WHERE mo."organizationId" = o.id
+            AND mo."deletedAt" IS NULL
+        ) = 1
+      ORDER BY o.id
+      LIMIT $(limit)
+    `,
+    { limit, afterOrganizationId },
+  )
+
+  return rows.map((r) => r.organizationId)
+}
+
 export async function insertFakeOrganizationSuggestions(
   qx: QueryExecutor,
   organizationIds: string[],
