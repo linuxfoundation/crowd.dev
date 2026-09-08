@@ -256,7 +256,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
            ${KEEP_HIGHEST_CONFLICT_UPDATE}
-         RETURNING package_id, repo_id, source, signal, confidence
+         RETURNING package_id, repo_id, source, signal, confidence, ownership_match
        ),
        diff AS (
          SELECT ins.package_id, f.field
@@ -276,7 +276,10 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        )
        SELECT
          (SELECT COUNT(*) FROM ins)::int AS links,
-         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids`,
+         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'matched')::int AS declared_matched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'unmatched')::int AS declared_unmatched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'no_evidence')::int AS declared_no_evidence`,
       { source: REPO_LINK_SOURCE },
     )
 
@@ -286,7 +289,14 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
     ]
     await rescorePackageReposForPackages(tx, [...new Set(allAffectedPackageIds)])
 
-    return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
+    return {
+      repos: repoRow.repos,
+      links: linkRow.links,
+      pruned: pruneRow.pruned,
+      declared_matched: linkRow.declared_matched,
+      declared_unmatched: linkRow.declared_unmatched,
+      declared_no_evidence: linkRow.declared_no_evidence,
+    }
   })
 }
 

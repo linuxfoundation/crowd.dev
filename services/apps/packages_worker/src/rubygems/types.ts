@@ -1,6 +1,7 @@
+import { DeclaredOwnershipCounts } from '../utils/ownershipMatch'
 import { ResolvedManifestRepo } from '../utils/resolveManifestRepo'
 
-export interface BatchResult {
+export interface BatchResult extends DeclaredOwnershipCounts {
   processed: number
   skipped: number
   error: number

@@ -8,6 +8,7 @@ import {
   upsertPackageMaintainers,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
@@ -35,6 +36,7 @@ export async function persistPackagistPackageInfo(
   changedFields: string[]
   packageId: string | null
   hasPrimaryRepo: boolean
+  ownershipMatch: PackageRepoOwnershipMatch | null
 }> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
@@ -51,6 +53,7 @@ export async function persistPackagistPackageInfo(
   let found = false
   let packageId: string | null = null
   const changedFields: string[] = []
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
     // This endpoint carries no homepage — only needed as a fallback, peek at the one
@@ -86,14 +89,15 @@ export async function persistPackagistPackageInfo(
     // would leave a stale one dangling.
     if (resolvedRepo) {
       const repo = await getOrCreateRepoByUrl(t, resolvedRepo.repo.url, resolvedRepo.repo.host)
+      ownershipMatch = matchOwnership({
+        namespace: stats.name.split('/')[0] || null,
+        maintainers: stats.maintainers.map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+      })
       const linkChanged = await upsertPackageRepo(t, id, repo.id, {
         source: 'declared',
         signal: resolvedRepo.signal,
-        ownershipMatch: matchOwnership({
-          namespace: stats.name.split('/')[0] || null,
-          maintainers: stats.maintainers.map((m) => m.username),
-          repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
-        }),
+        ownershipMatch,
       })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
@@ -119,7 +123,7 @@ export async function persistPackagistPackageInfo(
     await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
-  return { found, changedFields, packageId, hasPrimaryRepo: !!primaryRepo }
+  return { found, changedFields, packageId, hasPrimaryRepo: !!primaryRepo, ownershipMatch }
 }
 
 // Phase 1 resolves the homepage-fallback repo from whatever's already stored; phase 2

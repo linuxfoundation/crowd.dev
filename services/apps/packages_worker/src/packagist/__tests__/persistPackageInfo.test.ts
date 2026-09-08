@@ -255,6 +255,7 @@ describe('persistPackagistPackageInfo', () => {
       changedFields: [],
       packageId: null,
       hasPrimaryRepo: true,
+      ownershipMatch: null,
     })
     expect(mockRepoGet).not.toHaveBeenCalled()
     expect(mockMaintainers).not.toHaveBeenCalled()

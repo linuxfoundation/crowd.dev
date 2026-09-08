@@ -10,6 +10,23 @@ export interface OwnershipEvidence {
   repoOwner: string | null
 }
 
+export interface DeclaredOwnershipCounts {
+  declared_matched: number
+  declared_unmatched: number
+  declared_no_evidence: number
+}
+
+export function emptyDeclaredOwnershipCounts(): DeclaredOwnershipCounts {
+  return { declared_matched: 0, declared_unmatched: 0, declared_no_evidence: 0 }
+}
+
+export function bumpDeclaredOwnershipCounts(
+  counts: DeclaredOwnershipCounts,
+  match: PackageRepoOwnershipMatch,
+): void {
+  counts[`declared_${match}`]++
+}
+
 const VANITY_SUFFIXES = ['-ai', '-io', '-team', '-labs', '-oss', '-dev']
 
 function normalizeIdentity(raw: string): string {

@@ -7,6 +7,7 @@ import {
   upsertPackageMaintainers,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
@@ -30,7 +31,7 @@ export async function upsertPackage(
   qx: QueryExecutor,
   packument: Packument,
   purl: string,
-): Promise<{ purl: string; changedFields: string[] }> {
+): Promise<{ purl: string; changedFields: string[]; ownershipMatch: PackageRepoOwnershipMatch | null }> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(packument)
@@ -58,6 +59,7 @@ export async function upsertPackage(
   const maintainers = collectMaintainers(packument)
 
   const changed = new Set<string>()
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
     const { id: pkgId, changedFields: pkgChanged } = await upsertNpmPackage(t, {
@@ -91,14 +93,16 @@ export async function upsertPackage(
       )
       repoChanged.forEach((f) => changed.add(f))
 
+      ownershipMatch = matchOwnership({
+        namespace,
+        maintainers: maintainers.filter((m) => m.role === 'maintainer').map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+      })
+
       const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
         source: 'declared',
         signal: resolvedRepo.signal,
-        ownershipMatch: matchOwnership({
-          namespace,
-          maintainers: maintainers.filter((m) => m.role === 'maintainer').map((m) => m.username),
-          repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
-        }),
+        ownershipMatch,
       })
       linkChanged.forEach((f) => changed.add(f))
 
@@ -133,7 +137,7 @@ export async function upsertPackage(
     }
   })
 
-  return { purl, changedFields: Array.from(changed) }
+  return { purl, changedFields: Array.from(changed), ownershipMatch }
 }
 
 function cleanKeywords(raw: unknown): string[] | null {

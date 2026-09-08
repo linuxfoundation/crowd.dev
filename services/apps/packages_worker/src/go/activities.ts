@@ -5,13 +5,19 @@ import {
   logAuditFieldChanges,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getGoConfig } from '../config'
 import { getPackagesDb } from '../db'
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
-import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
+import {
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+  repoOwnerFromCanonical,
+} from '../utils/ownershipMatch'
 
 import { fetchStatus } from './pkgGoDevClient'
 import { fetchLatest } from './proxyClient'
@@ -115,6 +121,7 @@ export async function enrichGoVersionsBatch(
   if (rows.length === 0) return null
 
   const { fetchTimeoutMs, proxyConcurrency } = getGoConfig()
+  const ownershipCounts = emptyDeclaredOwnershipCounts()
 
   const enrichOne = async (row: GoRow): Promise<void> => {
     Context.current().heartbeat(row.purl)
@@ -174,12 +181,15 @@ export async function enrichGoVersionsBatch(
         )
         changedFields.push(...repoChanged)
 
+        const ownershipMatch: PackageRepoOwnershipMatch = matchOwnership({
+          namespace: goModuleOwner(row.name),
+          repoOwner: goRepoOwner(repoToLink),
+        })
+        bumpDeclaredOwnershipCounts(ownershipCounts, ownershipMatch)
+
         const linkChanged = await upsertPackageRepo(t, row.id, repoId, {
           source: 'declared',
-          ownershipMatch: matchOwnership({
-            namespace: goModuleOwner(row.name),
-            repoOwner: goRepoOwner(repoToLink),
-          }),
+          ownershipMatch,
         })
         changedFields.push(...linkChanged)
       }
@@ -192,7 +202,10 @@ export async function enrichGoVersionsBatch(
     await Promise.all(rows.slice(i, i + proxyConcurrency).map(enrichOne))
   }
 
-  log.info({ count: rows.length, concurrency: proxyConcurrency }, 'Enriched go versions batch')
+  log.info(
+    { count: rows.length, concurrency: proxyConcurrency, ...ownershipCounts },
+    'Enriched go versions batch',
+  )
   return nextCursor
 }
 

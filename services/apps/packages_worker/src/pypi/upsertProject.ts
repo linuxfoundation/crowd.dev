@@ -7,7 +7,10 @@ import {
   upsertPypiPackage,
   upsertPypiVersions,
 } from '@crowd/data-access-layer/src/packages'
-import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/repoConfidence'
+import type {
+  PackageRepoOwnershipMatch,
+  PackageRepoSignal,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
@@ -28,7 +31,7 @@ export async function upsertProject(
   qx: QueryExecutor,
   project: PyPiProject,
   purl: string,
-): Promise<{ purl: string; changedFields: string[] }> {
+): Promise<{ purl: string; changedFields: string[]; ownershipMatch: PackageRepoOwnershipMatch | null }> {
   stripNullBytesDeep(project)
   const info = project.info
 
@@ -72,6 +75,7 @@ export async function upsertProject(
   )
 
   const changed = new Set<string>()
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
     const { id: pkgId, changedFields: pkgChanged } = await upsertPypiPackage(t, {
@@ -101,13 +105,15 @@ export async function upsertProject(
         repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
+      ownershipMatch = matchOwnership({
+        maintainers: maintainers.map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(repo),
+      })
+
       const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
         source: 'declared',
         signal: repoSignal,
-        ownershipMatch: matchOwnership({
-          maintainers: maintainers.map((m) => m.username),
-          repoOwner: repoOwnerFromCanonical(repo),
-        }),
+        ownershipMatch,
       })
       linkChanged.forEach((f) => changed.add(f))
 
@@ -134,5 +140,5 @@ export async function upsertProject(
     }
   })
 
-  return { purl, changedFields: Array.from(changed) }
+  return { purl, changedFields: Array.from(changed), ownershipMatch }
 }

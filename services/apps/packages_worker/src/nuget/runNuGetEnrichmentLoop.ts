@@ -16,10 +16,16 @@ import {
   upsertNuGetVersionsBatch,
   upsertPackageRepo,
 } from '@crowd/data-access-layer'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getNuGetConfig } from '../config'
-import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
+import {
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+  repoOwnerFromCanonical,
+} from '../utils/ownershipMatch'
 
 import { fetchNuspec, fetchRegistration, fetchSearch } from './client'
 import { normalizeNuGetPackage } from './normalize'
@@ -54,12 +60,17 @@ function nugetRegistryUrl(packageId: string): string {
 
 type PackageStatus = 'processed' | 'skipped' | 'error' | 'unchanged'
 
+interface ProcessPackageResult {
+  status: PackageStatus
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}
+
 async function processPackage(
   qx: QueryExecutor,
   pkg: PackageRow,
   config: NuGetConfig,
   today: string,
-): Promise<PackageStatus> {
+): Promise<ProcessPackageResult> {
   const packageId = pkg.name
 
   const [searchResult, registrationResult] = await Promise.all([
@@ -88,12 +99,12 @@ async function processPackage(
         ingestionSource: 'nuget_not_found',
       })
       log.warn({ purl: pkg.purl }, 'Package not found on NuGet registry — writing minimal record')
-      return 'skipped'
+      return { status: 'skipped', ownershipMatch: null }
     }
     if (registrationResult.kind === 'RATE_LIMIT') {
       log.warn({ purl: pkg.purl }, 'Rate limited by NuGet registry — will retry next pass')
       await markNuGetPackageError(qx, pkg.purl)
-      return 'error'
+      return { status: 'error', ownershipMatch: null }
     }
     throw new Error(
       `Transient error fetching registration for ${pkg.purl}: ${registrationResult.message}`,
@@ -122,6 +133,8 @@ async function processPackage(
   // it couldn't, since projectUrl-tier candidates are ordered right after it.
   const repoUnknown =
     nuspecRateLimited || (searchRateLimited && normalized.resolvedRepo?.signal !== 'primary')
+
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
@@ -173,13 +186,15 @@ async function processPackage(
           )
           repoChanged.forEach((f) => changed.add(f))
 
+          ownershipMatch = matchOwnership({
+            maintainers: [...normalized.owners, ...normalized.authors],
+            repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
+          })
+
           const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
             source: 'declared',
             signal: normalized.resolvedRepo.signal,
-            ownershipMatch: matchOwnership({
-              maintainers: [...normalized.owners, ...normalized.authors],
-              repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
-            }),
+            ownershipMatch,
           })
           linkChanged.forEach((f) => changed.add(f))
 
@@ -259,7 +274,7 @@ async function processPackage(
     }),
   )
 
-  return 'processed'
+  return { status: 'processed', ownershipMatch }
 }
 
 export async function processBatch(
@@ -272,11 +287,18 @@ export async function processBatch(
     isCritical: config.isCritical,
   })
 
-  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  if (packages.length === 0)
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0, ...emptyDeclaredOwnershipCounts() }
 
   log.info({ count: packages.length }, 'Batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const counts: BatchResult = {
+    processed: 0,
+    skipped: 0,
+    error: 0,
+    unchanged: 0,
+    ...emptyDeclaredOwnershipCounts(),
+  }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     const group = packages.slice(batchStart, batchStart + config.concurrency)
@@ -288,8 +310,9 @@ export async function processBatch(
     await Promise.all(
       group.map(async (pkg) => {
         try {
-          const status = await processPackage(qx, pkg, config, today)
+          const { status, ownershipMatch } = await processPackage(qx, pkg, config, today)
           counts[status]++
+          if (ownershipMatch) bumpDeclaredOwnershipCounts(counts, ownershipMatch)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
