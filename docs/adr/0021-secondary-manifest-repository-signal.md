@@ -119,10 +119,10 @@ almost always docs.rs, which the host gate rejects anyway.
 ### Risks
 
 - **A secondary link can outrank a genuine one when the declared field is
-  missing on the true repo but present on a fork.** Mitigation: ADR-0020's
-  fork and archived penalties, plus ADR-0022's ownership evidence, which
-  penalises the fork's owner mismatch far more heavily than the secondary
-  penalty.
+  missing on the true repo but present on a fork.** Currently mitigated only
+  by ADR-0020's fork and archived penalties. Ownership evidence that would
+  penalise the fork's owner mismatch far more heavily than the secondary
+  penalty is planned under CM-1394, not yet implemented.
 - **Recognized-host gating rejects legitimate self-hosted repos found in a
   fallback field.** Accepted deliberately: an unrecognized host in a free-form
   field carries no signal that it is a repository at all. Rejected candidates

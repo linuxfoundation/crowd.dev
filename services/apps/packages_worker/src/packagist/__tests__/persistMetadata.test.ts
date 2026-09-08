@@ -214,9 +214,8 @@ describe('persistPackagistMetadata', () => {
   })
 
   it('returns the effective persisted homepage, not the raw candidate, when COALESCE retains the old value', async () => {
-    // updatePackagistVersionAggregates COALESCEs homepage — an omitted p2 field (null
-    // candidate) does NOT clear a previously-stored homepage. The caller reconciles the
-    // secondary repo link from this result, so it must reflect what's actually on the row.
+    // COALESCE keeps the stored homepage when p2 omits it; the result must reflect
+    // the row's actual value, not the null candidate.
     mockAggregates.mockResolvedValue({
       id: '9',
       changedFields: [],

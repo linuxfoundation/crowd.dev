@@ -272,9 +272,8 @@ describe('persistPackagistPackageInfo', () => {
   })
 })
 
-// Phase 1 links a homepage-fallback repo from whatever homepage is already stored;
-// this reconciles it once phase 2 has persisted a fresh homepage for a package that
-// had none yet (a new package, or one whose homepage just changed).
+// Reconciles the homepage-fallback repo link after phase 2 persists a fresh
+// homepage, since phase 1 only linked from whatever was stored before it.
 describe('reconcilePackagistHomepageRepo', () => {
   beforeEach(() => {
     mockRepoGet.mockResolvedValue({ id: '55', changedFields: [] })
