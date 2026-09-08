@@ -21,6 +21,7 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/write-unit-tests` | Add or improve Vitest unit tests for business logic, DAL, or server modules |
 | `/write-api-e2e-tests` | Add or change Public API e2e / smoke / contract tests |
 | `/tb-quarantine-triage` | Investigate Tinybird quarantine failures, file IN Jira tickets, create fix worktrees |
+| `/tinybird`    | Update/push a Tinybird pipe or datasource, staging vs prod Tinybird workspace, `tb push`/`tb pull`  |
 
 ## Trigger Phrases
 
@@ -71,3 +72,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "Write API e2e tests", "add smoke tests", "Public API contract tests"
 - "Cover this endpoint end-to-end", "API regression test"
 - Any request for HTTP/API e2e coverage of Public API behaviour
+
+**`/tinybird`** — match any of these intents:
+- "Update a pipe", "push to Tinybird", "tb push", "tb pull"
+- "Change a datasource", "add a field to a Tinybird pipe"
+- "Staging vs prod Tinybird workspace", "deploy a Tinybird endpoint"
