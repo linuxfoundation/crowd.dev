@@ -1,0 +1,143 @@
+DESCRIPTION >
+    - `health_score_report_signal_availability.pipe` serves widgets 05 "Availability of each signal"
+    and 06 "Signal availability inside and outside the Linux Foundation" for the Health Score report
+    (IN-1290/IN-1291, part of epic IN-1276 Health Score Coverage). Widget 06 reuses this same pipe,
+    calling it twice with `scope=lf` and `scope=other`.
+    - Returns one row per Health Score v2 signal: what share of tracked repositories have a measured
+    value for that signal.
+    - `signal_key` — one of `busFactor, orgDiversity, responsiveness, openVuln, scorecard,
+    securityPractices, dependencyHealth, releaseCadence, commitActivity, issueResolution, prMerge`.
+    - `category_key` — one of `maintainerHealth, securitySupplyChain, developmentActivity`.
+    - `available_pct` — percent of tracked repos with a measured value for this signal.
+    - `repos_available` / `repos_tracked` — numerator / denominator behind `available_pct`.
+    - `commitActivity` has no `*Available` flag in `health_score_v2_signal_detail_ds` — it is
+    considered available when `commitsLast6m > 0 OR lastCommitAt IS NOT NULL` (real activity data
+    present), documented here rather than in the signal-detail pipe since this is a report-specific
+    "availability" framing, not a scoring rule.
+    - Parameters:
+    - `scope`: Optional string, default `all`, values `all | lf | other` — filters tracked repos by
+    the repo's resolved Linux Foundation association (`repositories.insightsProjectId` joined to
+    `insights_projects_populated_ds.isLF`); repos with no linked insights project resolve to `other`.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_signal_availability_tracked_repos
+SQL >
+    %
+    SELECT r.url AS url
+    FROM repositories AS r FINAL
+    LEFT JOIN insights_projects_populated_ds AS p ON p.id = r.insightsProjectId
+    WHERE
+        r.deletedAt IS NULL
+        AND r.excluded = false
+        {% if String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'lf' %} AND p.isLF = 1
+        {% elif String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'other' %} AND p.isLF = 0
+        {% end %}
+
+NODE health_score_report_signal_availability_endpoint
+SQL >
+    SELECT
+        'busFactor' AS signal_key,
+        'maintainerHealth' AS category_key,
+        countIf(sd.busFactorAvailable = 1) / count() * 100 AS available_pct,
+        countIf(sd.busFactorAvailable = 1) AS repos_available,
+        count() AS repos_tracked
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'orgDiversity',
+        'maintainerHealth',
+        countIf(sd.orgDiversityAvailable = 1) / count() * 100,
+        countIf(sd.orgDiversityAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'responsiveness',
+        'maintainerHealth',
+        countIf(sd.responsivenessAvailable = 1) / count() * 100,
+        countIf(sd.responsivenessAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'openVuln',
+        'securitySupplyChain',
+        countIf(sd.openVulnAvailable = 1) / count() * 100,
+        countIf(sd.openVulnAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'scorecard',
+        'securitySupplyChain',
+        countIf(sd.scorecardAvailable = 1) / count() * 100,
+        countIf(sd.scorecardAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'securityPractices',
+        'securitySupplyChain',
+        countIf(sd.securityPracticesAvailable = 1) / count() * 100,
+        countIf(sd.securityPracticesAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'dependencyHealth',
+        'securitySupplyChain',
+        countIf(sd.dependencyHealthAvailable = 1) / count() * 100,
+        countIf(sd.dependencyHealthAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'releaseCadence',
+        'developmentActivity',
+        countIf(sd.releaseCadenceAvailable = 1) / count() * 100,
+        countIf(sd.releaseCadenceAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'commitActivity',
+        'developmentActivity',
+        countIf(sd.commitsLast6m > 0 OR sd.lastCommitAt IS NOT NULL) / count() * 100,
+        countIf(sd.commitsLast6m > 0 OR sd.lastCommitAt IS NOT NULL),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'issueResolution',
+        'developmentActivity',
+        countIf(sd.issueResolutionAvailable = 1) / count() * 100,
+        countIf(sd.issueResolutionAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    UNION ALL
+    SELECT
+        'prMerge',
+        'developmentActivity',
+        countIf(sd.prMergeAvailable = 1) / count() * 100,
+        countIf(sd.prMergeAvailable = 1),
+        count()
+    FROM health_score_report_signal_availability_tracked_repos AS r
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    ORDER BY available_pct DESC
