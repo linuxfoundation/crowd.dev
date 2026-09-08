@@ -151,6 +151,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: ['packages.description'],
       packageId: '1',
       hasPrimaryRepo: false,
+      ownershipMatch: null,
     })
     mockPersistMetadata.mockResolvedValue({
       found: true,

@@ -18,7 +18,7 @@ export const STEWARD_DISPLAY_NAME_METADATA = `CASE
         ELSE sa.metadata
       END`
 
-// Ranking of a package's repo links. The uniqueness offset in confidence (V1788393601)
+// Ranking of a package's repo links. The uniqueness offset in confidence (V1788307200)
 // is not injective, so repo_id is what makes the order total. Mirrored in ossPackages_enriched.
 export function bestRepoLinkOrderBy(alias: string): string {
   return `ORDER BY ${alias}.confidence DESC, ${alias}.repo_id DESC`

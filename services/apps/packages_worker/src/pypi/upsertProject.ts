@@ -31,7 +31,11 @@ export async function upsertProject(
   qx: QueryExecutor,
   project: PyPiProject,
   purl: string,
-): Promise<{ purl: string; changedFields: string[]; ownershipMatch: PackageRepoOwnershipMatch | null }> {
+): Promise<{
+  purl: string
+  changedFields: string[]
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}> {
   stripNullBytesDeep(project)
   const info = project.info
 

@@ -31,7 +31,11 @@ export async function upsertPackage(
   qx: QueryExecutor,
   packument: Packument,
   purl: string,
-): Promise<{ purl: string; changedFields: string[]; ownershipMatch: PackageRepoOwnershipMatch | null }> {
+): Promise<{
+  purl: string
+  changedFields: string[]
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(packument)

@@ -107,7 +107,8 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // instead via competingGithubRepoExpr which reads the live package_repos table.
 const PKGREPOS_RESCORE_SQL = `
 UPDATE package_repos pr
-   SET confidence = s.confidence
+   SET confidence = s.confidence,
+       verified_at = GREATEST(clock_timestamp(), pr.verified_at + interval '1 millisecond')
   FROM packages p, repos r,
        LATERAL (
          SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))} AS confidence

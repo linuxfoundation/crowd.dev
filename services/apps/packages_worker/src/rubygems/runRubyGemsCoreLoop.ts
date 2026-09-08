@@ -153,8 +153,10 @@ async function processPackage(
         )
         repoChanged.forEach((f) => changed.add(f))
 
+        // Gem authors are free-text display names, not GitHub identity handles, so they
+        // can't be used as maintainer evidence — per ADR-0022, this loop stays no_evidence
+        // until owners are fetched in the critical loop.
         ownershipMatch = matchOwnership({
-          maintainers: normalized.authors,
           repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
         })
 

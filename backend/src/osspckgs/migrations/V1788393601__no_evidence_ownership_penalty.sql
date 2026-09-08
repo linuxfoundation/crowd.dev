@@ -7,6 +7,11 @@
 
 -- Adding a parameter changes the signature, so the V1788307300 function is dropped
 -- rather than replaced — CREATE OR REPLACE would leave both overloads callable.
+-- The 9-arg compat overload from V1788307300 depends on the 10-arg one below, so it
+-- must go first or the DROP FUNCTION on the 10-arg signature fails on that dependency.
+DROP FUNCTION IF EXISTS package_repo_confidence(
+    text, text, text, bool, bool, bool, text, bool, bigint
+);
 DROP FUNCTION IF EXISTS package_repo_confidence(
     text, text, text, text, bool, bool, bool, text, bool, bigint
 );
@@ -100,6 +105,30 @@ BEGIN
 END;
 $$;
 
+-- Compat overload for callers still on the pre-ownership-match signature during a rolling
+-- deploy; delegates to the widened function as 'no_evidence' (the safest default — it's the
+-- same penalty already applied to deps.dev links with no ownership evidence). Drop in a
+-- later cleanup migration once all writers emit the 11-arg call.
+CREATE OR REPLACE FUNCTION package_repo_confidence(
+    p_source           text,
+    p_ecosystem        text,
+    p_signal           text,
+    p_provenance       text,
+    p_archived         bool,
+    p_is_fork          bool,
+    p_disabled         bool,
+    p_host             text,
+    p_competing_github bool,
+    p_repo_id          bigint
+)
+RETURNS numeric(12, 9)
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT package_repo_confidence(
+        p_source, p_ecosystem, p_signal, 'no_evidence', p_provenance,
+        p_archived, p_is_fork, p_disabled, p_host, p_competing_github, p_repo_id
+    )
+$$;
+
 -- Replaced only to pass cur.ownership_match through to the widened scoring function;
 -- the chunking, locking and keyset paging are unchanged from V1788307300.
 CREATE OR REPLACE PROCEDURE rescore_package_repo_confidence(
@@ -140,7 +169,8 @@ BEGIN
             ),
             updated AS (
                 UPDATE package_repos pr
-                   SET confidence = s.confidence, verified_at = NOW()
+                   SET confidence = s.confidence,
+                       verified_at = GREATEST(clock_timestamp(), cur.verified_at + interval '1 millisecond')
                   FROM batch b
                   JOIN package_repos cur ON cur.id = b.id
                   JOIN packages p ON p.id = cur.package_id

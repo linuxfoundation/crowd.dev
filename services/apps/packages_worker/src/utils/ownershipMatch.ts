@@ -115,8 +115,8 @@ export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershi
   const candidates = [
     ...(evidence.namespace ? namespaceCandidates(evidence.namespace) : []),
     ...(evidence.maintainers ?? [])
-      .filter((m) => m && !/\S@\S/.test(m))
-      .map((m) => normalizeIdentity(m!)),
+      .filter((m): m is string => Boolean(m) && !/\S@\S/.test(m as string))
+      .map((m) => normalizeIdentity(m)),
   ].filter(Boolean)
 
   if (candidates.length === 0) return 'no_evidence'

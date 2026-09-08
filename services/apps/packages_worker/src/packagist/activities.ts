@@ -18,7 +18,6 @@ import type {
   PackagistMetadataCandidate,
   PackagistRunResult,
 } from '@crowd/data-access-layer/src/packages/packagistPackageState'
-import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import {
   createPackagistTransitiveRun,
   failPackagistTransitiveRun as failRunInLedger,
@@ -27,6 +26,7 @@ import {
   hasRecentDonePackagistTransitiveRun,
   markPackagistTransitiveRunMerging,
 } from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import {
   EmptyPackagistTransitiveCountsError,
   computePackagistTransitiveCounts,
@@ -432,10 +432,7 @@ export async function ingestPackagistMetadataBatch(
       ),
   )
 
-  log.info(
-    { count: candidates.length, ...ownershipCounts },
-    'Ingested Packagist metadata batch',
-  )
+  log.info({ count: candidates.length, ...ownershipCounts }, 'Ingested Packagist metadata batch')
 }
 
 export async function getPackagist30dBatch(
