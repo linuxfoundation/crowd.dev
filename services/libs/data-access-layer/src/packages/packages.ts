@@ -322,10 +322,13 @@ export async function setPackageRepositoryUrl(
   packageId: string,
   url: string | null,
 ): Promise<string[]> {
-  // last_synced_at must strictly advance — clock_timestamp(), not the same-tx NOW() the
-  // caller's upsert already used — or this CDC write loses the ReplacingMergeTree tie.
+  // last_synced_at must strictly advance past the caller's upsert, and clock_timestamp()
+  // alone can still tie it at DateTime64(3) resolution — GREATEST with +1ms over the
+  // stored value guarantees a strictly newer CDC version even on that collision.
   const affected = await qx.result(
-    `UPDATE packages SET repository_url = $(url), last_synced_at = clock_timestamp()
+    `UPDATE packages
+        SET repository_url = $(url),
+            last_synced_at = GREATEST(clock_timestamp(), last_synced_at + interval '1 millisecond')
       WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,
     { url, packageId },
   )
