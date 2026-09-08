@@ -21,10 +21,10 @@ source names) restricts which ones run; unset enables all of them.
 
 ### Current sources
 
-| Name                  | Folder                             | Description                                                                        |
-| --------------------- | ----------------------------------- | ----------------------------------------------------------------------------------- |
+| Name                   | Folder                              | Description                                                                                           |
+| ---------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `insights-discussions` | `src/sources/insights-discussions/` | Repo URLs mentioned in `linuxfoundation/insights` GitHub Discussions (`project-onboardings` category) |
-| `lf-criticality-score` | `src/sources/lf-criticality-score/` | LF Criticality Score API, paginated, ordered by score descending                    |
+| `lf-criticality-score` | `src/sources/lf-criticality-score/` | LF Criticality Score API, paginated, ordered by score descending                                      |
 
 ### Workflow
 
@@ -42,7 +42,7 @@ discoverProjects({ mode: 'incremental' | 'full' })
             whose repoUrl isn't already in projectCatalog → bulkInsertProjectCatalog
 ```
 
-Each source is capped independently at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default 20) *new*
+Each source is capped independently at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default 20) _new_
 projects per run — rows already present in `projectCatalog` don't count against the cap and
 aren't re-fetched, so every run brings in genuinely new candidates. Sources are processed in
 registry order (`insights-discussions`, then `lf-criticality-score`); once a source hits its
@@ -50,11 +50,11 @@ limit, `processDataset` stops consuming its stream early.
 
 ### Timeouts
 
-| Activity            | startToCloseTimeout | retries | notes                                  |
-| -------------------- | -------------------- | ------- | --------------------------------------- |
-| `listDatasets`        | 2 min                 | 3       |                                          |
-| `processDataset`      | 90 min                | 3       | heartbeat every 5 min                   |
-| Workflow execution    | 5 hours               | 3       | set on the schedule                     |
+| Activity           | startToCloseTimeout | retries | notes                 |
+| ------------------ | ------------------- | ------- | --------------------- |
+| `listDatasets`     | 2 min               | 3       |                       |
+| `processDataset`   | 90 min              | 3       | heartbeat every 5 min |
+| Workflow execution | 5 hours             | 3       | set on the schedule   |
 
 ### Schedule
 
