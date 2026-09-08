@@ -144,6 +144,10 @@ const dismiss = (suggestion: any) => {
 };
 
 const loadMore = () => {
+  if (loading.value || suggestions.value.length >= total.value) {
+    return;
+  }
+
   offset.value = suggestions.value.length;
   loadSuggestions();
 };
