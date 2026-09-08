@@ -5,23 +5,13 @@ import { Readable } from 'stream'
 import { timeout } from '@crowd/common'
 import { getServiceLogger } from '@crowd/logging'
 
+import { parseEnvInt } from '../../config'
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
 
 const log = getServiceLogger()
 
-const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
-
-function parseEnvInt(
-  value: string | undefined,
-  defaultValue: number,
-  min: number,
-  max: number,
-): number {
-  const parsed = parseInt(value ?? '', 10)
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
-}
 
 // Requests per second sent to the LF Criticality Score API (throttle between pages).
 const REQUESTS_PER_SECOND = parseEnvInt(
@@ -64,9 +54,12 @@ function getApiBaseUrl(): string {
   if (process.env.LF_CRITICALITY_SCORE_API_URL) {
     return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
   }
-  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST)
-    .trim()
-    .replace(/\/$/, '')
+  const host = process.env.LF_CRITICALITY_SCORE_API_HOST?.trim().replace(/\/$/, '')
+  if (!host) {
+    throw new Error(
+      'LF Criticality Score API host is not configured. Set LF_CRITICALITY_SCORE_API_URL or LF_CRITICALITY_SCORE_API_HOST.',
+    )
+  }
   const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
   const scheme = port === 443 ? 'https' : 'http'
   return `${scheme}://${host}:${port}`
