@@ -1,5 +1,6 @@
 export type PackageRepoSource = 'declared' | 'deps_dev' | 'heuristic' | 'manual'
 export type PackageRepoSignal = 'primary' | 'secondary'
+export type PackageRepoOwnershipMatch = 'matched' | 'unmatched' | 'no_evidence'
 export type PackageRepoConfidenceLabel = 'high' | 'medium' | 'low'
 
 export const CONFIDENCE_HIGH_THRESHOLD = 0.8
@@ -14,17 +15,20 @@ export function packageRepoConfidenceLabel(confidence: number): PackageRepoConfi
 export type PackageRepoLinkClaim = {
   source: PackageRepoSource
   signal?: PackageRepoSignal
+  ownershipMatch?: PackageRepoOwnershipMatch
   provenance?: string | null
 }
 
 export function packageRepoLinkClaimParams(claim: PackageRepoLinkClaim): {
   source: PackageRepoSource
   signal: PackageRepoSignal
+  ownershipMatch: PackageRepoOwnershipMatch
   provenance: string | null
 } {
   return {
     source: claim.source,
     signal: claim.signal ?? 'primary',
+    ownershipMatch: claim.ownershipMatch ?? 'no_evidence',
     provenance: claim.provenance ?? null,
   }
 }
@@ -45,6 +49,7 @@ export function competingGithubRepoExpr(packageIdExpr: string, repoIdExpr: strin
 export type PackageRepoClaimExprs = {
   source: string
   signal: string
+  ownershipMatch: string
   provenance: string
 }
 
@@ -53,6 +58,7 @@ export type PackageRepoClaimExprs = {
 export const CLAIM_FROM_PARAMS: PackageRepoClaimExprs = {
   source: '$(source)',
   signal: '$(signal)',
+  ownershipMatch: '$(ownershipMatch)',
   provenance: '$(provenance)',
 }
 
@@ -60,6 +66,7 @@ export function claimFromRow(alias: string): PackageRepoClaimExprs {
   return {
     source: `${alias}.source`,
     signal: `${alias}.signal`,
+    ownershipMatch: `${alias}.ownership_match`,
     provenance: `${alias}.provenance`,
   }
 }
@@ -71,6 +78,9 @@ export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUD
          signal           = CASE WHEN EXCLUDED.source = package_repos.source
                                    OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.signal ELSE package_repos.signal END,
+         ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source
+                                   OR EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
          provenance       = CASE WHEN EXCLUDED.source = package_repos.source
                                    OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.provenance ELSE package_repos.provenance END,
@@ -79,7 +89,7 @@ export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUD
                                  ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
          verified_at      = NOW()`
 
-// The only path that may produce a package_repos confidence value (V1788307300). The caller
+// The only path that may produce a package_repos confidence value (V1788393601). The caller
 // must have the package and repo rows joined — ecosystem and repo state are read off them.
 export function packageRepoConfidenceCall(
   packageAlias: string,
@@ -90,7 +100,7 @@ export function packageRepoConfidenceCall(
   const competing =
     competingGithubExpr ?? competingGithubRepoExpr(`${packageAlias}.id`, `${repoAlias}.id`)
   return `package_repo_confidence(
-        ${claim.source}, ${packageAlias}.ecosystem, ${claim.signal}, ${claim.provenance},
+        ${claim.source}, ${packageAlias}.ecosystem, ${claim.signal}, ${claim.ownershipMatch}, ${claim.provenance},
         ${repoAlias}.archived, ${repoAlias}.is_fork, ${repoAlias}.disabled, ${repoAlias}.host,
         ${competing},
         ${repoAlias}.id

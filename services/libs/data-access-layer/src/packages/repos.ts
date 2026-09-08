@@ -78,8 +78,14 @@ export async function removeDeclaredPackageRepo(
   return ['package_repos.repo_id']
 }
 
+// Confidence is never passed in — package_repo_confidence() (V1788393601) is the only
+// path that produces one. Callers describe the claim (source, which manifest field it
+// came from, what ownership evidence backs it) and the function scores it against the
+// package's ecosystem and the repo's current state.
+//
 // Conflict policy lives in KEEP_HIGHEST_CONFLICT_UPDATE: keep-highest across sources,
-// replace on a same-source refresh.
+// replace on a same-source refresh (so updated ownership evidence, e.g.
+// `no_evidence` → `unmatched`, is persisted).
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
@@ -100,9 +106,11 @@ export async function upsertPackageRepo(
      ),
      ins AS (
        INSERT INTO package_repos (
-         package_id, repo_id, source, signal, provenance, confidence, created_at
+         package_id, repo_id, source, signal, ownership_match, provenance,
+         confidence, created_at
        )
-       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal), $(provenance),
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal),
+              $(ownershipMatch), $(provenance),
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET

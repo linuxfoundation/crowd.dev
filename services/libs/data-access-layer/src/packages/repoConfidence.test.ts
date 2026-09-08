@@ -24,10 +24,11 @@ describe('packageRepoConfidenceLabel', () => {
 })
 
 describe('packageRepoLinkClaimParams', () => {
-  it('defaults provenance and signal for claims that carry neither', () => {
+  it('defaults the signals CM-1393 and CM-1394 have not started writing yet', () => {
     expect(packageRepoLinkClaimParams({ source: 'declared' })).toEqual({
       source: 'declared',
       signal: 'primary',
+      ownershipMatch: 'no_evidence',
       provenance: null,
     })
   })
@@ -37,11 +38,13 @@ describe('packageRepoLinkClaimParams', () => {
       packageRepoLinkClaimParams({
         source: 'deps_dev',
         signal: 'secondary',
+        ownershipMatch: 'matched',
         provenance: 'SLSA_ATTESTATION',
       }),
     ).toEqual({
       source: 'deps_dev',
       signal: 'secondary',
+      ownershipMatch: 'matched',
       provenance: 'SLSA_ATTESTATION',
     })
   })
@@ -53,6 +56,7 @@ describe('packageRepoConfidenceCall', () => {
     expect(sql).toContain('$(source)')
     expect(sql).toContain('$(signal)')
     expect(sql).toContain('$(provenance)')
+    expect(sql).toContain('$(ownershipMatch)')
     expect(sql).toContain('p.ecosystem')
     expect(sql).toContain('r.archived')
   })
@@ -61,10 +65,12 @@ describe('packageRepoConfidenceCall', () => {
     const sql = packageRepoConfidenceCall('p', 'r', {
       source: 'pr.source',
       signal: 'pr.signal',
+      ownershipMatch: 'pr.ownership_match',
       provenance: 'pr.provenance',
     })
     expect(sql).not.toContain('$(')
     expect(sql).toContain('pr.signal')
     expect(sql).toContain('pr.provenance')
+    expect(sql).toContain('pr.ownership_match')
   })
 })

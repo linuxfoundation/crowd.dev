@@ -5,7 +5,7 @@ import { getDbConnection } from '@crowd/database'
 import type { QueryExecutor } from '../queryExecutor'
 import { pgpQx } from '../queryExecutor'
 
-// Integration test: hits the running packages-db, where V1788307300 defines
+// Integration test: hits the running packages-db, where V1788393601 defines
 // package_repo_confidence. Skipped when the DB env vars are missing so unit-test runs
 // in CI stay green.
 const HAVE_DB =
@@ -19,6 +19,7 @@ type ScoreInput = {
   source: string
   ecosystem?: string
   signal?: string
+  ownershipMatch?: string
   provenance?: string | null
   archived?: boolean | null
   isFork?: boolean | null
@@ -45,12 +46,13 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
   async function score(input: ScoreInput): Promise<number> {
     const row = await qx.selectOne(
       `SELECT package_repo_confidence(
-         $(source), $(ecosystem), $(signal), $(provenance),
+         $(source), $(ecosystem), $(signal), $(ownershipMatch), $(provenance),
          $(archived), $(isFork), $(disabled), $(host), $(competingGithub), $(repoId)
        )::float8 AS score`,
       {
         ecosystem: 'npm',
         signal: 'primary',
+        ownershipMatch: 'matched',
         provenance: null,
         archived: null,
         isFork: null,
@@ -88,6 +90,22 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
     ).toBeCloseTo(0.9, 2)
   })
 
+  it('penalises unmatched or missing ownership evidence on declared links only', async () => {
+    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.75, 2)
+    expect(await score({ source: 'declared', ownershipMatch: 'unmatched' })).toBeCloseTo(0.6, 2)
+  })
+
+  it('leaves attested and manual links untouched by the declared-only adjustments', async () => {
+    expect(
+      await score({
+        source: 'deps_dev',
+        provenance: 'SLSA_ATTESTATION',
+        ownershipMatch: 'unmatched',
+      }),
+    ).toBeCloseTo(0.99, 2)
+    expect(await score({ source: 'manual', ownershipMatch: 'unmatched' })).toBeCloseTo(0.99, 2)
+  })
+
   it('stacks repo-state penalties and floors at 0.05', async () => {
     expect(await score({ source: 'declared', archived: true })).toBeCloseTo(0.65, 2)
     expect(await score({ source: 'declared', isFork: true })).toBeCloseTo(0.75, 2)
@@ -98,6 +116,7 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
         source: 'heuristic',
         archived: true,
         isFork: true,
+        ownershipMatch: 'unmatched',
       }),
     ).toBeCloseTo(0.05, 2)
   })
