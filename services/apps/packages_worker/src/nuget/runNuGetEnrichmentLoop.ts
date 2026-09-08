@@ -103,9 +103,14 @@ async function processPackage(
   const preliminary = normalizeNuGetPackage(packageId, searchItem, registrationResult)
 
   let nuspecXml: string | null = null
+  let nuspecRateLimited = false
   if (preliminary.latestVersion) {
     const nuspecResult = await fetchNuspec(packageId, preliminary.latestVersion)
-    nuspecXml = isNuGetFetchError(nuspecResult) ? null : nuspecResult
+    if (isNuGetFetchError(nuspecResult)) {
+      nuspecRateLimited = nuspecResult.kind === 'RATE_LIMIT'
+    } else {
+      nuspecXml = nuspecResult
+    }
   }
 
   const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
@@ -134,27 +139,31 @@ async function processPackage(
       })
       pkgChanged.forEach((f) => changed.add(f))
 
-      if (normalized.resolvedRepo) {
-        const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
-          t,
-          normalized.resolvedRepo.repo.url,
-          normalized.resolvedRepo.repo.host,
-        )
-        repoChanged.forEach((f) => changed.add(f))
+      // A rate-limited nuspec fetch means the nuspec-only repo candidate is unknown, not
+      // absent — reconciling now would downgrade or delete a link that's still valid.
+      if (!nuspecRateLimited) {
+        if (normalized.resolvedRepo) {
+          const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+            t,
+            normalized.resolvedRepo.repo.url,
+            normalized.resolvedRepo.repo.host,
+          )
+          repoChanged.forEach((f) => changed.add(f))
 
-        const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
-          source: 'declared',
-          signal: normalized.resolvedRepo.signal,
-        })
-        linkChanged.forEach((f) => changed.add(f))
+          const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
+            source: 'declared',
+            signal: normalized.resolvedRepo.signal,
+          })
+          linkChanged.forEach((f) => changed.add(f))
 
-        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
-        removedFields.forEach((f) => changed.add(f))
-      } else {
-        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
-        removedFields.forEach((f) => changed.add(f))
-        const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
-        clearedFields.forEach((f) => changed.add(f))
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
+          removedFields.forEach((f) => changed.add(f))
+        } else {
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
+          removedFields.forEach((f) => changed.add(f))
+          const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+          clearedFields.forEach((f) => changed.add(f))
+        }
       }
 
       if (normalized.versions.length > 0) {

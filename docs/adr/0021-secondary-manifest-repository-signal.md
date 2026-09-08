@@ -16,10 +16,10 @@ that left the canonical field empty while publishing the same repo URL in
 repo link at all — invisible to criticality, blast radius, and Insights.
 
 Simply widening each writer to accept any of those fields would trade
-under-coverage for wrong links: fallback fields are free-form, so
+under-coverage for wrong links — fallback fields are free-form, so
 `https://example.com/docs/getting-started` canonicalizes into a plausible
-`owner/repo` shape without being a repository. Fallback links also should not
-rank equally with a declared one.
+`owner/repo` shape without being a repository — and shouldn't rank equally
+with a declared one anyway.
 [ADR-0020](./0020-package-repo-confidence-scoring.md) already reserved the
 `signal` column and its −0.10 penalty for exactly this.
 
