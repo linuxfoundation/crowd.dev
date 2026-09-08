@@ -43,7 +43,10 @@ export async function upsertProject(
     info.project_urls,
     info.home_page,
   )
-  const declaredRepositoryUrl = repositoryCandidates[0]?.url ?? null
+  // Only the explicit `source` candidate counts as a declaration — homepage/bug_tracker
+  // are resolver-only fallbacks and must not surface as declaredRepositoryUrl.
+  const declaredRepositoryUrl =
+    repositoryCandidates.find((candidate) => candidate.field === 'source')?.url ?? null
   const resolvedRepo = resolveManifestRepo(
     repositoryCandidates.map((candidate) => ({
       field: candidate.field,

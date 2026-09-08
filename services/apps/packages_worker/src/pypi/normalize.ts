@@ -219,11 +219,9 @@ export function classifyProjectUrls(
   const findByKey = (re: RegExp): string | null =>
     entries.find(([k, v]) => re.test(k) && v)?.[1] ?? null
 
-  const homepage =
-    blankToNull(homePage) ??
-    findByKey(/^homepage$/i) ??
-    findByKey(/^home[\s-]*page$/i) ??
-    findByKey(/^home$/i)
+  const projectUrlsHomepage =
+    findByKey(/^homepage$/i) ?? findByKey(/^home[\s-]*page$/i) ?? findByKey(/^home$/i)
+  const homepage = blankToNull(homePage) ?? projectUrlsHomepage
 
   // Candidates are ordered by trust, most trusted first — a project can declare a Source
   // field AND a Homepage/Bug Tracker that also happen to point at a repo host. Keeping all
@@ -245,8 +243,11 @@ export function classifyProjectUrls(
 
   const repositoryCandidates: PypiRepoCandidate[] = []
   if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
-  if (homepage && REPO_HOST.test(homepage)) {
-    repositoryCandidates.push({ field: 'homepage', url: homepage })
+  // Checked against project_urls.Homepage specifically, not the resolved `homepage` above —
+  // a non-repository info.home_page (e.g. a docs site) takes precedence for `packages.homepage`
+  // but must not mask a repo-looking project_urls.Homepage as a repository candidate.
+  if (projectUrlsHomepage && REPO_HOST.test(projectUrlsHomepage)) {
+    repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
   }
   // Included even when a source URL is already a candidate: a malformed/unsupported source
   // is dropped by the resolver at canonicalization time, not here, so the tracker must stay

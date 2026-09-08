@@ -326,8 +326,11 @@ export async function setPackageRepositoryUrl(
   // on last_synced_at — a same-version CDC row can lose to the existing one, so this write
   // must advance it too, or the correction (including a clear) never reaches downstream
   // consumers. See updateMavenRepositoryUrls in osspckgs/packages.ts for the same pattern.
+  // clock_timestamp() (not NOW()) — callers invoke this after their own package upsert has
+  // already stamped last_synced_at = NOW() in the same transaction; NOW() is transaction-stable
+  // and would tie with that earlier value, while clock_timestamp() advances per statement.
   const affected = await qx.result(
-    `UPDATE packages SET repository_url = $(url), last_synced_at = NOW()
+    `UPDATE packages SET repository_url = $(url), last_synced_at = clock_timestamp()
       WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,
     { url, packageId },
   )
