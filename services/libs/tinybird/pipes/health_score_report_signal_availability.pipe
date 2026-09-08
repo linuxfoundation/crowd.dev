@@ -30,8 +30,7 @@ SQL >
     FROM repositories AS r FINAL
     LEFT JOIN insights_projects_populated_ds AS p ON p.id = r.insightsProjectId
     WHERE
-        r.deletedAt IS NULL
-        AND r.excluded = false
+        r.deletedAt IS NULL AND r.excluded = false
         {% if String(
             scope, 'all', description="Scope filter: all | lf | other", required=False
         ) == 'lf' %} AND p.isLF = 1
@@ -40,7 +39,7 @@ SQL >
         ) == 'other' %} AND p.isLF = 0
         {% end %}
 
-NODE health_score_report_signal_availability_endpoint
+NODE health_score_report_signal_availability_unsorted
 SQL >
     SELECT
         'busFactor' AS signal_key,
@@ -140,4 +139,7 @@ SQL >
         count()
     FROM health_score_report_signal_availability_tracked_repos AS r
     LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
-    ORDER BY available_pct DESC
+
+NODE health_score_report_signal_availability_endpoint
+SQL >
+    SELECT * FROM health_score_report_signal_availability_unsorted ORDER BY available_pct DESC
