@@ -54,10 +54,12 @@ export async function persistPackagistPackageInfo(
   await qx.tx(async (t) => {
     // The version manifests carry the homepage, not this endpoint — peek at the stored
     // homepage so a homepage-only package still gets linked without a second write later.
-    const storedHomepage = await getPackageHomepage(t, purl)
+    // Only needed when there's no primary repo to fall back from.
     const resolvedRepo = primaryRepo
       ? { repo: primaryRepo, signal: 'primary' as const }
-      : resolveManifestRepo([{ field: 'homepage', url: storedHomepage, signal: 'secondary' }])
+      : resolveManifestRepo([
+          { field: 'homepage', url: await getPackageHomepage(t, purl), signal: 'secondary' },
+        ])
 
     // Step 1: Update packages row
     const result = await updatePackagistPackageStats(t, {
