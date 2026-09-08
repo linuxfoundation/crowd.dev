@@ -245,9 +245,8 @@ export function classifyProjectUrls(
   const sourceUrls = sourceUrlCandidates.filter(
     (url) => !seenSourceUrls.has(url) && seenSourceUrls.add(url),
   )
-  // All matches kept, in original order, so a malformed tracker entry doesn't shadow a later
-  // usable one — passed raw per resolveManifestRepo convention, canonicalizeRepoUrl handles
-  // recognized-host forms like `github:foo/bar/issues`; prefiltering by hostname would drop those.
+  // All matches kept in order so a malformed tracker entry doesn't shadow a usable one — passed
+  // raw so canonicalizeRepoUrl can still resolve recognized-host forms like `github:foo/bar/issues`.
   const seenTrackerUrls = new Set<string>()
   const trackerUrls = entries
     .filter(([k, v]) => /bug|issue|tracker/i.test(k) && v)
