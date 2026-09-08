@@ -99,6 +99,7 @@ async function processPackage(
     )
   }
 
+  const searchRateLimited = isNuGetFetchError(searchResult) && searchResult.kind === 'RATE_LIMIT'
   const searchItem = isNuGetFetchError(searchResult) ? null : searchResult
 
   const preliminary = normalizeNuGetPackage(packageId, searchItem, registrationResult)
@@ -115,6 +116,10 @@ async function processPackage(
   }
 
   const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
+  // A rate-limited search only breaks resolution when nothing else resolved a repo — if a
+  // nuspec/catalog result won independently, the missing search projectUrl candidate never
+  // mattered.
+  const repoUnknown = nuspecRateLimited || (searchRateLimited && !normalized.resolvedRepo)
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
@@ -128,7 +133,7 @@ async function processPackage(
         // null on a rate-limited nuspec fetch — the DAL coalesces null to the stored value,
         // so an unknown nuspec-repo result can't be overwritten by a lower-trust fallback.
         declaredRepositoryUrl: nuspecRateLimited ? null : normalized.declaredRepositoryUrl,
-        repositoryUrl: nuspecRateLimited ? null : (normalized.resolvedRepo?.repo.url ?? null),
+        repositoryUrl: repoUnknown ? null : (normalized.resolvedRepo?.repo.url ?? null),
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         keywords: normalized.keywords,
@@ -153,7 +158,12 @@ async function processPackage(
           normalized.declaredRepositoryUrl,
         )
         declaredClearedFields.forEach((f) => changed.add(f))
+      }
 
+      // repoUnknown means the only thing standing between "resolved" and "absent" is a
+      // transient rate limit — reconciling now would downgrade or delete a link that's
+      // still valid.
+      if (!repoUnknown) {
         if (normalized.resolvedRepo) {
           const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
             t,

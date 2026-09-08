@@ -6,6 +6,7 @@ import {
   logAuditFieldChange,
   recordDownloadSnapshot,
   removeDeclaredPackageRepo,
+  setPackageDeclaredRepositoryUrl,
   setPackageRepositoryUrl,
   upsertPackage,
   upsertPackageRepo,
@@ -119,6 +120,16 @@ async function processPackage(
         ingestionSource: 'rubygems-registry',
       })
       pkgChanged.forEach((f) => changed.add(f))
+
+      // upsertPackage's COALESCE can't tell "no source_code_uri this refresh" from "unknown" —
+      // this registry fetch just succeeded, so declaredRepositoryUrl is authoritative; clear it
+      // explicitly when gone.
+      const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+        t,
+        packageDbId.toString(),
+        normalized.declaredRepositoryUrl,
+      )
+      declaredClearedFields.forEach((f) => changed.add(f))
 
       if (normalized.resolvedRepo) {
         const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(

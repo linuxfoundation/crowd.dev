@@ -6,6 +6,7 @@ import {
   logAuditFieldChange,
   removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
   setPackageRepositoryUrl,
   touchPackageSyncedAt,
   upsertMaintainer,
@@ -356,6 +357,16 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         const pmChanged = await replacePackageMaintainers(t, packageId, maintainerLinks)
         pmChanged.forEach((f) => changed.add(f))
       }
+
+      // upsertPackage's COALESCE can't tell "POM dropped <scm><url>" from "unknown" — this
+      // path is a successful full POM extraction, so result.scmUrl is authoritative; clear
+      // declared_repository_url explicitly when it's gone.
+      const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+        t,
+        packageId.toString(),
+        result.scmUrl,
+      )
+      declaredClearedFields.forEach((f) => changed.add(f))
 
       await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary')
 
