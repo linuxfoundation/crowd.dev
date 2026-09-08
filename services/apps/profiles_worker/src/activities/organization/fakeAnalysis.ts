@@ -30,30 +30,6 @@ import {
 
 import { svc } from '../../main'
 
-const SKIPPED_MEMBER_ATTRIBUTE_NAMES = new Set<string>([
-  MemberAttributeName.IS_BOT,
-  MemberAttributeName.IS_TEAM_MEMBER,
-  MemberAttributeName.IS_ORGANIZATION,
-  MemberAttributeName.AVATAR_URL,
-  MemberAttributeName.SOURCE_ID,
-  MemberAttributeName.SAMPLE,
-  MemberAttributeName.KARMA,
-  MemberAttributeName.SYNC_REMOTE,
-  MemberAttributeName.EMAILS,
-  MemberAttributeName.NAME,
-])
-
-const ROOT_ORG_ATTRIBUTE_NAMES = new Set([
-  'name',
-  'displayName',
-  'description',
-  'headline',
-  'industry',
-  'location',
-  'type',
-  'size',
-])
-
 export async function getOrganizationForFakeAnalysis(
   organizationId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -107,49 +83,47 @@ export async function getOrganizationForFakeAnalysis(
 
     const attributes = flattenMemberAttributes(member.attributes)
     if (attributes) {
-      payload.attributes = attributes
+      Object.assign(payload, attributes)
     }
 
     members.push(payload)
   }
 
-  const context: Record<string, unknown> = {
-    members,
-  }
+  const organization: Record<string, unknown> = {}
 
   if (org.displayName) {
-    context.displayName = org.displayName
+    organization.displayName = org.displayName
   }
   if (org.description) {
-    context.description = org.description
+    organization.description = org.description
   }
   if (org.headline) {
-    context.headline = org.headline
+    organization.headline = org.headline
   }
   if (org.industry) {
-    context.industry = org.industry
+    organization.industry = org.industry
   }
   if (org.location) {
-    context.location = org.location
+    organization.location = org.location
   }
   if (org.type) {
-    context.type = org.type
+    organization.type = org.type
   }
   if (org.size) {
-    context.size = org.size
+    organization.size = org.size
   }
 
   const compactOrgIdentities = toIdentityPayloads(identities)
   if (compactOrgIdentities.length > 0) {
-    context.identities = compactOrgIdentities
+    organization.identities = compactOrgIdentities
   }
 
   const attributes = flattenOrgAttributes(orgAttributes)
   if (attributes) {
-    context.attributes = attributes
+    organization.attributes = attributes
   }
 
-  return context
+  return { organization, members }
 }
 
 export async function markOrganizationAsFake(organizationId: string): Promise<void> {
@@ -230,7 +204,7 @@ function flattenMemberAttributes(attributes?: IAttributes): Record<string, strin
   const flattened: Record<string, string> = {}
 
   for (const [name, value] of Object.entries(attributes)) {
-    if (SKIPPED_MEMBER_ATTRIBUTE_NAMES.has(name)) {
+    if (name !== MemberAttributeName.BIO && name !== MemberAttributeName.WEBSITE_URL) {
       continue
     }
 
@@ -244,10 +218,21 @@ function flattenMemberAttributes(attributes?: IAttributes): Record<string, strin
 }
 
 function flattenOrgAttributes(attributes: IDbOrgAttribute[]): Record<string, string> | undefined {
+  const fields = new Set([
+    'name',
+    'displayName',
+    'description',
+    'headline',
+    'industry',
+    'location',
+    'type',
+    'size',
+  ])
+
   const flattened: Record<string, string> = {}
 
   for (const attribute of attributes) {
-    if (!attribute.default || !attribute.value || ROOT_ORG_ATTRIBUTE_NAMES.has(attribute.name)) {
+    if (!attribute.default || !attribute.value || fields.has(attribute.name)) {
       continue
     }
 

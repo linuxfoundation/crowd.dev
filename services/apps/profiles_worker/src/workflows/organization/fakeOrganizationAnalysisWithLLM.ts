@@ -31,7 +31,7 @@ export async function fakeOrganizationAnalysisWithLLM(
 
     HOW THIS ORG WAS CREATED
     - Ingest saw a verified member email, took the domain, created this organization, and linked that member.
-    - There is almost always exactly one member, and role.source is "email-domain". Every org you see here looks like that, so member count and role source are not signals.
+    - There is almost always exactly one member, and members[].role.source is "email-domain". Every org you see here looks like that, so member count and role source are not signals.
     - Public inboxes (gmail, outlook, …) are already excluded. A custom domain is not by itself a company.
     - description, headline, industry, location, and size are usually still empty because the org was just minted from a domain. That is also not a signal.
 
