@@ -39,10 +39,10 @@ export async function fakeOrganizationAnalysisWithLLM(
 
     Decide in this order:
     1. GENUINE — you recognize this as a real organization from the document or from knowledge you are sure of. Stop here.
-    2. FAKE — the domain is the linked member's name or personal brand, and you do not recognize this as a company.
+    2. FAKE — the domain label is the linked member's name, and you do not recognize this as a company.
       Compare the domain's registrable name (label before the TLD, ignoring hyphens, dots, digits) to the member's displayName: given name, family name, given+family, initials. Any language or script.
-      Only the domain label counts. The email local-part (before @) does not — every business owner uses their name in their email. A domain that is just that person's name or personal brand (.me, name.dev, firstlast.io) is the fake pattern. Use it.
-    3. UNSURE — the name relationship is weak or partial, or the domain looks like it could be a real one-person shop (consultancy, studio, or product name that is not just the person).
+      Only that domain-label vs displayName match counts. Do not use nicknames, usernames, email local-part (before @), or "this feels like a personal brand." Every business owner uses their name in their email and username. A domain that is just that person's name (.me, name.dev, firstlast.io) is the fake pattern. Use it.
+    3. UNSURE — the name relationship is weak, partial, or only via a nickname/username, or the domain looks like it could be a real one-person shop (consultancy, studio, or product name that is not just the person).
 
     OUTPUT FORMAT
     Return ONLY valid JSON. No code fences or extra text.
