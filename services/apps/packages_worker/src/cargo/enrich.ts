@@ -175,9 +175,8 @@ export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsR
   return { upserted: row.upserted }
 }
 
-// Writes only url + host — other repo fields belong to the GitHub enricher. Uses
-// repo_choice (built by normalizeRepos) so repos.url/package_repos always agree with
-// the canonical packages.repository_url — never the raw declared_repository_url.
+// Writes only url + host (other repo fields belong to the GitHub enricher), sourced from
+// repo_choice so repos/package_repos always agree with packages.repository_url, not the raw declared field.
 export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
   return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
