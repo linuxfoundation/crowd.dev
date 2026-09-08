@@ -140,7 +140,8 @@ function rescoreQuery(targetPredicate: string): string {
           FOR UPDATE
      )
      UPDATE package_repos pr
-        SET confidence = s.confidence, verified_at = NOW()
+        SET confidence = s.confidence,
+            verified_at = GREATEST(clock_timestamp(), pr.verified_at + interval '1 millisecond')
        FROM target t
        JOIN package_repos cur ON cur.id = t.id
        JOIN packages p ON p.id = cur.package_id

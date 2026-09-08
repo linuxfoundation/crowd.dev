@@ -93,14 +93,17 @@ export function normalizeNuGetPackage(
         ...(latestEntry ? [latestEntry] : []),
       ]
     : [...allEntries].reverse()
-  const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const catalogRepoUrls = entriesForRepo
+    .map((e) => e.repository?.url)
+    .filter((url): url is string => !!url)
+  const catalogRepoUrl = catalogRepoUrls[0] ?? null
   const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
   const declaredRepositoryUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl ?? null
-  // Passed as separate candidates so a non-repo search projectUrl, or a malformed
-  // fetched nuspec URL, can't mask a repo-looking catalog value at the host gate.
+  // Every catalog entry's url is passed through, not just the latest — a malformed one
+  // is dropped at canonicalization, so an older entry's valid url still gets tried.
   const resolvedRepo = resolveManifestRepo([
     { field: 'repository', url: fetchedNuspecRepoUrl, signal: 'primary' },
-    { field: 'repository', url: catalogRepoUrl, signal: 'primary' },
+    ...catalogRepoUrls.map((url) => ({ field: 'repository', url, signal: 'primary' as const })),
     { field: 'projectUrl', url: searchProjectUrl },
     { field: 'projectUrl', url: catalogProjectUrl },
   ])
