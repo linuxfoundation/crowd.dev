@@ -90,7 +90,7 @@ export async function upsertPackageRepo(
 
   const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
-       SELECT source, confidence FROM package_repos
+       SELECT source, signal, confidence FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
      scored AS (
@@ -107,12 +107,14 @@ export async function upsertPackageRepo(
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
          ${KEEP_HIGHEST_CONFLICT_UPDATE}
-       RETURNING source, confidence
+       RETURNING source, signal, confidence
      )
      SELECT array_remove(ARRAY[
        CASE WHEN o.source IS NULL                                         THEN 'package_repos.repo_id' END,
        CASE WHEN o.source IS NULL
               OR o.source           IS DISTINCT FROM ins.source           THEN 'package_repos.source' END,
+       CASE WHEN o.source IS NULL
+              OR o.signal           IS DISTINCT FROM ins.signal           THEN 'package_repos.signal' END,
        CASE WHEN o.source IS NULL
               OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
      ], NULL) AS changed_fields

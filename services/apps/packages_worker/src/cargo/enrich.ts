@@ -229,7 +229,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
 
     const linkRow = await tx.selectOne(
       `WITH old AS (
-         SELECT pr.package_id, pr.repo_id, pr.source, pr.confidence
+         SELECT pr.package_id, pr.repo_id, pr.source, pr.signal, pr.confidence
          FROM package_repos pr
          WHERE pr.package_id IN (
            SELECT package_id FROM ${STAGING_SCHEMA}.repo_choice WHERE repository_url IS NOT NULL
@@ -247,7 +247,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
            ${KEEP_HIGHEST_CONFLICT_UPDATE}
-         RETURNING package_id, repo_id, source, confidence
+         RETURNING package_id, repo_id, source, signal, confidence
        ),
        diff AS (
          SELECT ins.package_id, f.field
@@ -256,6 +256,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          CROSS JOIN LATERAL (VALUES
            ('package_repos.repo_id',    o.repo_id IS NULL),
            ('package_repos.source',     o.repo_id IS NULL OR o.source     IS DISTINCT FROM ins.source),
+           ('package_repos.signal',     o.repo_id IS NULL OR o.signal     IS DISTINCT FROM ins.signal),
            ('package_repos.confidence', o.repo_id IS NULL OR o.confidence IS DISTINCT FROM ins.confidence)
          ) AS f(field, changed)
          WHERE f.changed
