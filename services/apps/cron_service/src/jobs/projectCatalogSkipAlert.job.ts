@@ -11,14 +11,12 @@ import {
 
 import { IJobDefinition } from '../types'
 
-// evaluationReason is free text from the external evaluation API (non_onboard_reason,
-// verbatim) — it can change wording without a deploy on our side. Only these two
-// reasons are cross-checked against the DB: they're the ones that contradict a
-// verifiable fact (repo already ingested, project already flagged LF). The
-// "not mainly run on GitHub" reason relies on a weak same-org proxy that produced a
-// confirmed false alarm (gcc/gcc.git) — it stays logged below but isn't flagged.
+// evaluationReason is free-text from an external API and can change wording anytime;
+// only these two are DB-verifiable — the third ("not on GitHub") gave a false alarm on gcc/gcc.
 const ONBOARDED_REASON = 'project is already onboarded'
 const LF_REASON = 'project is already part of LF'
+
+const MAX_ROWS_PER_SECTION = 25
 
 interface ISkipRow {
   repoUrl: string
@@ -31,8 +29,10 @@ interface ISkipRow {
 
 const job: IJobDefinition = {
   name: 'project-catalog-skip-alert',
-  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(4, 30),
+  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 0),
   timeout: 10 * 60, // 10 minutes
+  // cron_service schedules jobs in Europe/Berlin while evaluation runs at 04:00 UTC —
+  // 08:00 Berlin stays safely after it (05:00-06:00 UTC) across both DST offsets.
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
     ctx.log.info('Running project-catalog-skip-alert job...')
@@ -45,9 +45,9 @@ const job: IJobDefinition = {
         SELECT
           pc."repoUrl", pc."evaluationReason" AS reason,
           lower(regexp_replace(regexp_replace(pc."repoUrl",
-            '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/+$', ''))      AS repo_path,
-          lower(regexp_replace(regexp_replace(pc."projectSlug",
-            '[^a-zA-Z0-9-]+', '-', 'g'), '^-|-$', '', 'g'))                   AS derived_slug
+            '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))     AS repo_path,
+          lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
+            '[^a-zA-Z0-9-]+', '-', 'g'), '-+', '-', 'g'), '^-|-$', '', 'g')) AS derived_slug
         FROM "projectCatalog" pc
         WHERE pc.action = 'skip'
           AND pc."evaluationResult" = 'false'
@@ -58,7 +58,7 @@ const job: IJobDefinition = {
         FROM (
           SELECT id, "insightsProjectId",
             lower(regexp_replace(regexp_replace(url,
-              '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/+$', ''))   AS repo_path
+              '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))  AS repo_path
           FROM public.repositories
           WHERE "deletedAt" IS NULL
         ) x
@@ -106,7 +106,11 @@ const job: IJobDefinition = {
     }
 
     for (const [reason, reasonRows] of byReason) {
-      const lines = reasonRows.map((row) => formatLine(row))
+      const visibleRows = reasonRows.slice(0, MAX_ROWS_PER_SECTION)
+      const lines = visibleRows.map((row) => formatLine(row))
+      if (reasonRows.length > visibleRows.length) {
+        lines.push(`… and ${reasonRows.length - visibleRows.length} more`)
+      }
       sections.push({
         title: `"${reason}" (${reasonRows.length})`,
         text: lines.join('\n'),
@@ -121,7 +125,7 @@ const job: IJobDefinition = {
     )
 
     ctx.log.info(
-      `Project catalog skip report sent: total=${rows.length}, flagged=${flagged.length}`,
+      `Project catalog skip report processed: total=${rows.length}, flagged=${flagged.length}`,
     )
   },
 }
