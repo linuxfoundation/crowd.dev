@@ -31,8 +31,6 @@ const job: IJobDefinition = {
   name: 'project-catalog-skip-alert',
   cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 0),
   timeout: 10 * 60, // 10 minutes
-  // cron_service schedules jobs in Europe/Berlin while evaluation runs at 04:00 UTC —
-  // 08:00 Berlin stays safely after it (05:00-06:00 UTC) across both DST offsets.
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
     ctx.log.info('Running project-catalog-skip-alert job...')
