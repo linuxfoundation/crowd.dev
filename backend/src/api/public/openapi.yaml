@@ -191,7 +191,9 @@ paths:
         '409':
           description: >
             Multiple member profiles matched, or the matched member holds a
-            verified LFID that is not among the supplied lfids.
+            verified LFID that is not among the supplied lfids. Distinguish the
+            two cases with error.context.reason (`multi-match` or
+            `foreign-lfid`).
           content:
             application/json:
               schema:
@@ -203,12 +205,21 @@ paths:
                     error:
                       code: CONFLICT
                       message: Multiple member profiles matched
+                      context:
+                        reason: multi-match
+                        memberIds:
+                          - 550e8400-e29b-41d4-a716-446655440000
+                          - 6ba7b810-9dad-11d1-80b4-00c04fd430c8
                 foreignLfid:
                   summary: Matched member holds a different LFID
                   value:
                     error:
                       code: CONFLICT
                       message: Member holds a different LFID
+                      context:
+                        reason: foreign-lfid
+                        lfids:
+                          - other-person-lfid
         '429':
           description: Per-client rate limit exceeded (200 req/min).
           headers:
@@ -1652,6 +1663,10 @@ components:
             message:
               type: string
               description: Human-readable error description.
+            context:
+              type: object
+              additionalProperties: true
+              description: Optional structured details for this error.
 
   responses:
     BadRequest:
