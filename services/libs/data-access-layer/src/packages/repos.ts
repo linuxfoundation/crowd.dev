@@ -78,8 +78,14 @@ export async function removeDeclaredPackageRepo(
   return ['package_repos.repo_id']
 }
 
+// Confidence is never passed in — package_repo_confidence() (V1788393601) is the only
+// path that produces one. Callers describe the claim (source, which manifest field it
+// came from, what ownership evidence backs it) and the function scores it against the
+// package's ecosystem and the repo's current state.
+//
 // Conflict policy lives in KEEP_HIGHEST_CONFLICT_UPDATE: keep-highest across sources,
-// replace on a same-source refresh.
+// replace on a same-source refresh (so updated ownership evidence, e.g.
+// `no_evidence` → `unmatched`, is persisted).
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
@@ -90,7 +96,7 @@ export async function upsertPackageRepo(
 
   const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
-       SELECT source, signal, confidence FROM package_repos
+       SELECT source, signal, ownership_match, confidence FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
      scored AS (
@@ -100,14 +106,16 @@ export async function upsertPackageRepo(
      ),
      ins AS (
        INSERT INTO package_repos (
-         package_id, repo_id, source, signal, provenance, confidence, created_at
+         package_id, repo_id, source, signal, ownership_match, provenance,
+         confidence, created_at
        )
-       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal), $(provenance),
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal),
+              $(ownershipMatch), $(provenance),
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
          ${KEEP_HIGHEST_CONFLICT_UPDATE}
-       RETURNING source, signal, confidence
+       RETURNING source, signal, ownership_match, confidence
      )
      SELECT array_remove(ARRAY[
        CASE WHEN o.source IS NULL                                         THEN 'package_repos.repo_id' END,
@@ -115,6 +123,8 @@ export async function upsertPackageRepo(
               OR o.source           IS DISTINCT FROM ins.source           THEN 'package_repos.source' END,
        CASE WHEN o.source IS NULL
               OR o.signal           IS DISTINCT FROM ins.signal           THEN 'package_repos.signal' END,
+       CASE WHEN o.source IS NULL
+              OR o.ownership_match  IS DISTINCT FROM ins.ownership_match  THEN 'package_repos.ownership_match' END,
        CASE WHEN o.source IS NULL
               OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
      ], NULL) AS changed_fields

@@ -23,6 +23,7 @@ const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest
 const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
   source: '$(source)',
   signal: 'rc.signal',
+  ownershipMatch: 'om.match',
   provenance: 'NULL',
 })
 
@@ -236,17 +237,26 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        ),
        ins AS (
          INSERT INTO package_repos (
-           package_id, repo_id, source, signal, provenance, confidence, created_at, verified_at
+           package_id, repo_id, source, signal, ownership_match, provenance,
+           confidence, created_at, verified_at
          )
-         SELECT rc.package_id, r.id, $(source), rc.signal, NULL,
+         SELECT rc.package_id, r.id, $(source), rc.signal, om.match, NULL,
                 s.confidence, NOW(), NOW()
          FROM ${STAGING_SCHEMA}.repo_choice rc
          JOIN repos r ON r.url = rc.repository_url
          JOIN packages p ON p.id = rc.package_id
+         CROSS JOIN LATERAL (
+           SELECT package_repo_owner_match(
+             rc.owner,
+             ARRAY(SELECT em.github_login
+                     FROM ${STAGING_SCHEMA}.enrich_maintainers em
+                    WHERE em.package_id = rc.package_id)
+           ) AS match
+         ) om
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
            ${KEEP_HIGHEST_CONFLICT_UPDATE}
-         RETURNING package_id, repo_id, source, signal, confidence
+         RETURNING package_id, repo_id, source, signal, confidence, ownership_match
        ),
        diff AS (
          SELECT ins.package_id, f.field
@@ -266,7 +276,10 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        )
        SELECT
          (SELECT COUNT(*) FROM ins)::int AS links,
-         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids`,
+         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'matched')::int AS declared_matched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'unmatched')::int AS declared_unmatched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'no_evidence')::int AS declared_no_evidence`,
       { source: REPO_LINK_SOURCE },
     )
 
@@ -276,7 +289,14 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
     ]
     await rescorePackageReposForPackages(tx, [...new Set(allAffectedPackageIds)])
 
-    return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
+    return {
+      repos: repoRow.repos,
+      links: linkRow.links,
+      pruned: pruneRow.pruned,
+      declared_matched: linkRow.declared_matched,
+      declared_unmatched: linkRow.declared_unmatched,
+      declared_no_evidence: linkRow.declared_no_evidence,
+    }
   })
 }
 

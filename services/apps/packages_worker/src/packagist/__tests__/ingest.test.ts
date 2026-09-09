@@ -109,6 +109,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: ['packages.description'],
       packageId: '1',
       hasPrimaryRepo: true,
+      ownershipMatch: null,
     })
     mockFetchP2.mockResolvedValue({
       minifiedVersions: minified,
@@ -150,6 +151,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: ['packages.description'],
       packageId: '1',
       hasPrimaryRepo: false,
+      ownershipMatch: null,
     })
     mockPersistMetadata.mockResolvedValue({
       found: true,
@@ -236,6 +238,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: [],
       packageId: '1',
       hasPrimaryRepo: true,
+      ownershipMatch: null,
     })
     mockFetchP2.mockResolvedValue({
       kind: 'NOT_FOUND',
@@ -268,6 +271,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: ['packages.description'],
       packageId: '1',
       hasPrimaryRepo: true,
+      ownershipMatch: null,
     })
     mockFetchP2.mockResolvedValue({
       kind: 'NOT_FOUND',
@@ -295,6 +299,7 @@ describe('ingestOnePackagistMetadata', () => {
       changedFields: ['packages.description'],
       packageId: '1',
       hasPrimaryRepo: true,
+      ownershipMatch: null,
     })
     mockFetchP2.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 502' } as never)
 

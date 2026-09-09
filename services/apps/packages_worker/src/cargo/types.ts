@@ -30,6 +30,9 @@ export interface EnrichReposResult {
   repos: number
   links: number
   pruned: number
+  declared_matched: number
+  declared_unmatched: number
+  declared_no_evidence: number
 }
 
 export interface EnrichMaintainersResult {

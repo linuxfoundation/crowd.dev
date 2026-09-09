@@ -11,7 +11,15 @@ import {
   upsertPackage,
   upsertPackageRepo,
 } from '@crowd/data-access-layer'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import { getServiceChildLogger } from '@crowd/logging'
+
+import {
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+  repoOwnerFromCanonical,
+} from '../utils/ownershipMatch'
 
 import { fetchGem } from './client'
 import { normalizeRubyGemsPackage } from './normalize'
@@ -61,12 +69,17 @@ type PackageStatus = 'processed' | 'skipped' | 'error' | 'unchanged'
 
 export type RubyGemsCoreConfig = { batchSize: number; concurrency: number }
 
+interface ProcessPackageResult {
+  status: PackageStatus
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}
+
 async function processPackage(
   qx: QueryExecutor,
   pkg: RubyGemsPackageToSync,
   today: string,
   signal?: AbortSignal,
-): Promise<PackageStatus> {
+): Promise<ProcessPackageResult> {
   const gemResult = await fetchGem(pkg.name, signal)
 
   if (isRubyGemsFetchError(gemResult)) {
@@ -89,16 +102,18 @@ async function processPackage(
         { purl: pkg.purl },
         'Package not found on RubyGems registry — writing minimal record',
       )
-      return 'skipped'
+      return { status: 'skipped', ownershipMatch: null }
     }
     if (gemResult.kind === 'RATE_LIMIT') {
       log.warn({ purl: pkg.purl }, 'Rate limited by RubyGems registry — will retry next pass')
-      return 'error'
+      return { status: 'error', ownershipMatch: null }
     }
     throw new Error(`Transient error fetching ${pkg.purl}: ${gemResult.message}`)
   }
 
   const normalized = normalizeRubyGemsPackage(gemResult)
+
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
@@ -138,9 +153,17 @@ async function processPackage(
         )
         repoChanged.forEach((f) => changed.add(f))
 
+        // Gem authors are free-text display names, not GitHub identity handles, so they
+        // can't be used as maintainer evidence — per ADR-0022, this loop stays no_evidence
+        // until owners are fetched in the critical loop.
+        ownershipMatch = matchOwnership({
+          repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
+        })
+
         const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
           source: 'declared',
           signal: normalized.resolvedRepo.signal,
+          ownershipMatch,
         })
         linkChanged.forEach((f) => changed.add(f))
 
@@ -169,7 +192,7 @@ async function processPackage(
     }),
   )
 
-  return 'processed'
+  return { status: 'processed', ownershipMatch }
 }
 
 export async function processBatch(
@@ -180,11 +203,18 @@ export async function processBatch(
 ): Promise<BatchResult> {
   const packages = await listRubyGemsPackagesToSync(qx, { limit: config.batchSize })
 
-  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  if (packages.length === 0)
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0, ...emptyDeclaredOwnershipCounts() }
 
   log.info({ count: packages.length }, 'Batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const counts: BatchResult = {
+    processed: 0,
+    skipped: 0,
+    error: 0,
+    unchanged: 0,
+    ...emptyDeclaredOwnershipCounts(),
+  }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     signal?.throwIfAborted()
@@ -193,8 +223,9 @@ export async function processBatch(
     await Promise.all(
       group.map(async (pkg) => {
         try {
-          const status = await processPackage(qx, pkg, today, signal)
+          const { status, ownershipMatch } = await processPackage(qx, pkg, today, signal)
           counts[status]++
+          if (ownershipMatch) bumpDeclaredOwnershipCounts(counts, ownershipMatch)
         } catch (err) {
           signal?.throwIfAborted()
           const message = err instanceof Error ? err.message : String(err)

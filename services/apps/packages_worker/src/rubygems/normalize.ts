@@ -20,6 +20,14 @@ function cleanLicenses(raw: (string | null)[] | null | undefined): string[] | nu
   return cleaned && cleaned.length > 0 ? cleaned : null
 }
 
+function parseAuthors(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a !== '')
+}
+
 export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRubyGemsPackage {
   const licenses = cleanLicenses(doc.licenses)
   const declaredRepositoryUrl = nonEmpty(doc.source_code_uri)
@@ -36,6 +44,7 @@ export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRu
     licensesRaw: licenses ? licenses.join(', ') : null,
     latestVersion: nonEmpty(doc.version),
     totalDownloads: doc.downloads ?? 0,
+    authors: parseAuthors(doc.authors),
   }
 }
 

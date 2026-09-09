@@ -1,3 +1,4 @@
+import { DeclaredOwnershipCounts } from '../utils/ownershipMatch'
 import { ResolvedManifestRepo } from '../utils/resolveManifestRepo'
 
 export interface NuGetConfig {
@@ -8,7 +9,7 @@ export interface NuGetConfig {
   userAgent: string | undefined
 }
 
-export interface BatchResult {
+export interface BatchResult extends DeclaredOwnershipCounts {
   processed: number
   skipped: number
   error: number
