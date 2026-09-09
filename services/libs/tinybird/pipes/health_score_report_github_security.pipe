@@ -1,0 +1,55 @@
+DESCRIPTION >
+    - `health_score_report_github_security.pipe` serves widget 08 "Security coverage on
+    GitHub-hosted repositories" for the Health Score report (IN-1293, part of epic IN-1276
+    Health Score Coverage).
+    - Returns one row per `isLF` value (0 = Other, 1 = Linux Foundation): a funnel of
+    GitHub-hosted tracked repos through increasingly narrow stages of security-relevant
+    scoring coverage.
+    - `isLF` — `1` for Linux Foundation repos, `0` for Other.
+    - `tracked` — GitHub-hosted tracked repos in this group (broadest stage).
+    - `health_published` — of those, how many have a published overall Health Score v2.
+    - `security_scored` — of those, how many have a scored Security & supply chain category.
+    - `scorecard_scanned` — of those, how many have an OpenSSF Scorecard signal available
+    (narrowest stage).
+    - Stages are monotonically decreasing per row: `tracked >= health_published >=
+    security_scored >= scorecard_scanned`.
+    - The endpoint node also carries an `lf_non_github` column (same value repeated on every
+    row) — LF-affiliated tracked repos NOT hosted on GitHub (Gerrit, GitLab, etc.) — for the
+    widget's footnote. Computed by a separate intermediate node and cross-joined in, since only
+    a pipe's last node is exposed as its endpoint. Reused by IN-1291's widget 06 legend.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_github_security_stages
+SQL >
+    SELECT
+        p.isLF AS isLF,
+        count() AS tracked,
+        countIf(rc.healthScoreV2 IS NOT NULL) AS health_published,
+        countIf(rc.securitySupplyChainScoreV2 IS NOT NULL) AS security_scored,
+        countIf(sd.scorecardAvailable = 1) AS scorecard_scanned
+    FROM repositories AS r FINAL
+    LEFT JOIN insights_projects_populated_ds AS p ON p.id = r.insightsProjectId
+    LEFT JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    LEFT JOIN health_score_v2_repo_copy_ds AS rc ON rc.repoUrl = r.url
+    WHERE
+        r.deletedAt IS NULL
+        AND r.excluded = false
+        AND r.url LIKE 'https://github.com/%'
+    GROUP BY isLF
+
+NODE health_score_report_github_security_lf_non_github
+SQL >
+    SELECT
+        countIf(p.isLF = 1 AND r.url NOT LIKE 'https://github.com/%') AS lf_non_github
+    FROM repositories AS r FINAL
+    LEFT JOIN insights_projects_populated_ds AS p ON p.id = r.insightsProjectId
+    WHERE r.deletedAt IS NULL AND r.excluded = false
+
+NODE health_score_report_github_security_endpoint
+SQL >
+    SELECT s.*, ln.lf_non_github AS lf_non_github
+    FROM health_score_report_github_security_stages AS s
+    CROSS JOIN health_score_report_github_security_lf_non_github AS ln
