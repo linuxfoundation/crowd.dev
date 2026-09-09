@@ -91,10 +91,7 @@ setImmediate(async () => {
 
     if (organizationIds.length > 0) {
       afterOrganizationId = organizationIds[organizationIds.length - 1]
-      log.info(
-        { afterOrganizationId, count: organizationIds.length },
-        'Batch processed!',
-      )
+      log.info({ afterOrganizationId, count: organizationIds.length }, 'Batch processed!')
     }
 
     if (testRun) {
