@@ -24,7 +24,7 @@ describe('packageRepoConfidenceLabel', () => {
 })
 
 describe('packageRepoLinkClaimParams', () => {
-  it('defaults the signals CM-1393 and CM-1394 have not started writing yet', () => {
+  it('defaults missing claim fields (signal, ownershipMatch, provenance)', () => {
     expect(packageRepoLinkClaimParams({ source: 'declared' })).toEqual({
       source: 'declared',
       signal: 'primary',
