@@ -7,7 +7,10 @@ import {
   logAuditFieldChange,
   markNuGetPackageError,
   recordNuGetDownloadSnapshot,
+  removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
+  setPackageRepositoryUrl,
   upsertMaintainer,
   upsertNuGetPackage,
   upsertNuGetVersionsBatch,
@@ -96,17 +99,28 @@ async function processPackage(
     )
   }
 
+  const searchRateLimited = isNuGetFetchError(searchResult) && searchResult.kind === 'RATE_LIMIT'
   const searchItem = isNuGetFetchError(searchResult) ? null : searchResult
 
   const preliminary = normalizeNuGetPackage(packageId, searchItem, registrationResult)
 
   let nuspecXml: string | null = null
+  let nuspecRateLimited = false
   if (preliminary.latestVersion) {
     const nuspecResult = await fetchNuspec(packageId, preliminary.latestVersion)
-    nuspecXml = isNuGetFetchError(nuspecResult) ? null : nuspecResult
+    if (isNuGetFetchError(nuspecResult)) {
+      nuspecRateLimited = nuspecResult.kind === 'RATE_LIMIT'
+    } else {
+      nuspecXml = nuspecResult
+    }
   }
 
   const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
+  // A rate-limited search only breaks resolution when the missing search projectUrl could
+  // still have outranked the winner — only a primary (repository/nuspec) candidate proves
+  // it couldn't, since projectUrl-tier candidates are ordered right after it.
+  const repoUnknown =
+    nuspecRateLimited || (searchRateLimited && normalized.resolvedRepo?.signal !== 'primary')
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
@@ -117,8 +131,10 @@ async function processPackage(
         name: pkg.name,
         description: normalized.description,
         homepage: normalized.homepage,
-        declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.repo?.url ?? null,
+        // null on a rate-limited nuspec fetch — the DAL coalesces null to the stored value,
+        // so an unknown nuspec-repo result can't be overwritten by a lower-trust fallback.
+        declaredRepositoryUrl: nuspecRateLimited ? null : normalized.declaredRepositoryUrl,
+        repositoryUrl: repoUnknown ? null : (normalized.resolvedRepo?.repo.url ?? null),
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         keywords: normalized.keywords,
@@ -132,18 +148,44 @@ async function processPackage(
       })
       pkgChanged.forEach((f) => changed.add(f))
 
-      if (normalized.repo) {
-        const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+      // A rate-limited nuspec fetch means the nuspec-only repo candidate is unknown, not
+      // absent — reconciling now would downgrade or delete a link that's still valid.
+      if (!nuspecRateLimited) {
+        // upsertNuGetPackage's COALESCE can't tell "no declared repo this pass" from
+        // "unknown" — clear it explicitly so a dropped declaration doesn't stick around.
+        const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
           t,
-          normalized.repo.url,
-          normalized.repo.host,
+          packageDbId.toString(),
+          normalized.declaredRepositoryUrl,
         )
-        repoChanged.forEach((f) => changed.add(f))
+        declaredClearedFields.forEach((f) => changed.add(f))
+      }
 
-        const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
-          source: 'declared',
-        })
-        linkChanged.forEach((f) => changed.add(f))
+      // repoUnknown: only a transient rate limit separates "resolved" from "absent" here —
+      // reconciling now would downgrade or delete a link that's still valid.
+      if (!repoUnknown) {
+        if (normalized.resolvedRepo) {
+          const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+            t,
+            normalized.resolvedRepo.repo.url,
+            normalized.resolvedRepo.repo.host,
+          )
+          repoChanged.forEach((f) => changed.add(f))
+
+          const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
+            source: 'declared',
+            signal: normalized.resolvedRepo.signal,
+          })
+          linkChanged.forEach((f) => changed.add(f))
+
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
+          removedFields.forEach((f) => changed.add(f))
+        } else {
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
+          removedFields.forEach((f) => changed.add(f))
+          const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+          clearedFields.forEach((f) => changed.add(f))
+        }
       }
 
       if (normalized.versions.length > 0) {

@@ -24,9 +24,10 @@ describe('packageRepoConfidenceLabel', () => {
 })
 
 describe('packageRepoLinkClaimParams', () => {
-  it('defaults provenance for sources that carry none', () => {
+  it('defaults provenance and signal for claims that carry neither', () => {
     expect(packageRepoLinkClaimParams({ source: 'declared' })).toEqual({
       source: 'declared',
+      signal: 'primary',
       provenance: null,
     })
   })
@@ -35,10 +36,12 @@ describe('packageRepoLinkClaimParams', () => {
     expect(
       packageRepoLinkClaimParams({
         source: 'deps_dev',
+        signal: 'secondary',
         provenance: 'SLSA_ATTESTATION',
       }),
     ).toEqual({
       source: 'deps_dev',
+      signal: 'secondary',
       provenance: 'SLSA_ATTESTATION',
     })
   })
@@ -48,6 +51,7 @@ describe('packageRepoConfidenceCall', () => {
   it('binds a new claim to parameters by default', () => {
     const sql = packageRepoConfidenceCall('p', 'r')
     expect(sql).toContain('$(source)')
+    expect(sql).toContain('$(signal)')
     expect(sql).toContain('$(provenance)')
     expect(sql).toContain('p.ecosystem')
     expect(sql).toContain('r.archived')
@@ -56,9 +60,11 @@ describe('packageRepoConfidenceCall', () => {
   it('reads a rescored claim off the stored row', () => {
     const sql = packageRepoConfidenceCall('p', 'r', {
       source: 'pr.source',
+      signal: 'pr.signal',
       provenance: 'pr.provenance',
     })
     expect(sql).not.toContain('$(')
+    expect(sql).toContain('pr.signal')
     expect(sql).toContain('pr.provenance')
   })
 })

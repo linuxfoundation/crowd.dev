@@ -5,6 +5,9 @@ import {
   listRubyGemsPackagesToSync,
   logAuditFieldChange,
   recordDownloadSnapshot,
+  removeDeclaredPackageRepo,
+  setPackageDeclaredRepositoryUrl,
+  setPackageRepositoryUrl,
   upsertPackage,
   upsertPackageRepo,
 } from '@crowd/data-access-layer'
@@ -109,7 +112,7 @@ async function processPackage(
         description: normalized.description,
         homepage: normalized.homepage,
         declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.repo?.url ?? null,
+        repositoryUrl: normalized.resolvedRepo?.repo.url ?? null,
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         latestVersion: normalized.latestVersion,
@@ -118,18 +121,36 @@ async function processPackage(
       })
       pkgChanged.forEach((f) => changed.add(f))
 
-      if (normalized.repo) {
+      // upsertPackage's COALESCE can't distinguish a dropped source_code_uri from "unknown" —
+      // this registry fetch just succeeded, so clear declaredRepositoryUrl explicitly when gone.
+      const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+        t,
+        packageDbId.toString(),
+        normalized.declaredRepositoryUrl,
+      )
+      declaredClearedFields.forEach((f) => changed.add(f))
+
+      if (normalized.resolvedRepo) {
         const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
           t,
-          normalized.repo.url,
-          normalized.repo.host,
+          normalized.resolvedRepo.repo.url,
+          normalized.resolvedRepo.repo.host,
         )
         repoChanged.forEach((f) => changed.add(f))
 
         const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
           source: 'declared',
+          signal: normalized.resolvedRepo.signal,
         })
         linkChanged.forEach((f) => changed.add(f))
+
+        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
+        removedFields.forEach((f) => changed.add(f))
+      } else {
+        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
+        removedFields.forEach((f) => changed.add(f))
+        const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+        clearedFields.forEach((f) => changed.add(f))
       }
 
       if (normalized.totalDownloads > 0) {

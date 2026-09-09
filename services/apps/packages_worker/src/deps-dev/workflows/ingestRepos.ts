@@ -111,10 +111,10 @@ WITH github_staged AS MATERIALIZED (
   WHERE r2.host = 'github'
 )
 INSERT INTO package_repos (
-  package_id, repo_id, source, provenance, confidence, verified_at, created_at
+  package_id, repo_id, source, signal, provenance, confidence, verified_at, created_at
 )
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', s.provenance,
+  p.id, r.id, 'deps_dev', 'primary', s.provenance,
   c.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
@@ -125,6 +125,7 @@ CROSS JOIN LATERAL (
     'r',
     {
       source: `'deps_dev'`,
+      signal: `'primary'`,
       provenance: 's.provenance',
     },
     `((r.host <> 'github' AND EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id)) OR ${competingGithubRepoExpr('p.id', 'r.id')})`,

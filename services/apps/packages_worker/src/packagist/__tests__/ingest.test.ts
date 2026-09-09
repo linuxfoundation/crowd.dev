@@ -25,7 +25,7 @@ import { fetchPackagistP2, fetchPackagistStats } from '../fetchPackage'
 import { fetchPackagistPackageList, parsePackagistPackageList } from '../listPackages'
 import { INGEST_MAX_ATTEMPTS } from '../retryPolicy'
 import { persistPackagistMetadata } from '../upsertMetadata'
-import { persistPackagistPackageInfo } from '../upsertPackageInfo'
+import { persistPackagistPackageInfo, reconcilePackagistHomepageRepo } from '../upsertPackageInfo'
 
 // Mock the heavy collaborators so we exercise the classification/retry/give-up logic.
 vi.mock('../fetchPackage', () => ({
@@ -33,7 +33,10 @@ vi.mock('../fetchPackage', () => ({
   fetchPackagistP2: vi.fn(),
   buildPackagistUserAgent: vi.fn(() => 'ua'),
 }))
-vi.mock('../upsertPackageInfo', () => ({ persistPackagistPackageInfo: vi.fn() }))
+vi.mock('../upsertPackageInfo', () => ({
+  persistPackagistPackageInfo: vi.fn(),
+  reconcilePackagistHomepageRepo: vi.fn().mockResolvedValue([]),
+}))
 vi.mock('../upsertMetadata', () => ({ persistPackagistMetadata: vi.fn() }))
 vi.mock('../downloads', () => ({
   monthlyWindowFor: vi.fn(),
@@ -61,6 +64,7 @@ const mockFetchStats = vi.mocked(fetchPackagistStats)
 const mockFetchP2 = vi.mocked(fetchPackagistP2)
 const mockExpand = vi.mocked(expandComposerMetadata)
 const mockPersistInfo = vi.mocked(persistPackagistPackageInfo)
+const mockReconcileHomepageRepo = vi.mocked(reconcilePackagistHomepageRepo)
 const mockPersistMetadata = vi.mocked(persistPackagistMetadata)
 const mockPersist30d = vi.mocked(persistPackagist30dWindow)
 const mockDaily = vi.mocked(insertDailyDownloads)
@@ -100,7 +104,12 @@ describe('ingestOnePackagistMetadata', () => {
 
   function happyMocks() {
     mockFetchStats.mockResolvedValue(statsJson as never)
-    mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
+    mockPersistInfo.mockResolvedValue({
+      found: true,
+      changedFields: ['packages.description'],
+      packageId: '1',
+      hasPrimaryRepo: true,
+    })
     mockFetchP2.mockResolvedValue({
       minifiedVersions: minified,
       lastModified: 'Wed, 01 Jul 2026 00:00:00 GMT',
@@ -110,6 +119,7 @@ describe('ingestOnePackagistMetadata', () => {
       found: true,
       changedFields: ['versions.number'],
       unresolvedDependencyTargets: 0,
+      homepage: null,
     })
   }
 
@@ -131,6 +141,39 @@ describe('ingestOnePackagistMetadata', () => {
       expect.objectContaining({ status: 'success', attempts: 1 }),
       { metadataLastModified: 'Wed, 01 Jul 2026 00:00:00 GMT' },
     )
+  })
+
+  it('reconciles the homepage-fallback repo from the fresh p2 homepage when phase 1 had no primary repo', async () => {
+    happyMocks()
+    mockPersistInfo.mockResolvedValue({
+      found: true,
+      changedFields: ['packages.description'],
+      packageId: '1',
+      hasPrimaryRepo: false,
+    })
+    mockPersistMetadata.mockResolvedValue({
+      found: true,
+      changedFields: ['versions.number'],
+      unresolvedDependencyTargets: 0,
+      homepage: 'https://github.com/monolog/monolog',
+    })
+
+    await ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
+
+    expect(mockReconcileHomepageRepo).toHaveBeenCalledWith(
+      qx,
+      PURL,
+      '1',
+      'https://github.com/monolog/monolog',
+    )
+  })
+
+  it('skips homepage reconciliation when phase 1 already resolved a primary repo', async () => {
+    happyMocks()
+
+    await ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
+
+    expect(mockReconcileHomepageRepo).not.toHaveBeenCalled()
   })
 
   it('records a p2 NOT_MODIFIED as success: info persisted, versions skipped', async () => {
@@ -188,7 +231,12 @@ describe('ingestOnePackagistMetadata', () => {
   it('gives up on a persistent p2 404 after fast retries and marks it scanned(error)', async () => {
     vi.useFakeTimers()
     mockFetchStats.mockResolvedValue(statsJson as never)
-    mockPersistInfo.mockResolvedValue({ found: true, changedFields: [] })
+    mockPersistInfo.mockResolvedValue({
+      found: true,
+      changedFields: [],
+      packageId: '1',
+      hasPrimaryRepo: true,
+    })
     mockFetchP2.mockResolvedValue({
       kind: 'NOT_FOUND',
       statusCode: 404,
@@ -215,7 +263,12 @@ describe('ingestOnePackagistMetadata', () => {
     // itself before the p2 fetch (which can throw) ever runs — see persistPackageInfo.test.ts
     vi.useFakeTimers()
     mockFetchStats.mockResolvedValue(statsJson as never)
-    mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
+    mockPersistInfo.mockResolvedValue({
+      found: true,
+      changedFields: ['packages.description'],
+      packageId: '1',
+      hasPrimaryRepo: true,
+    })
     mockFetchP2.mockResolvedValue({
       kind: 'NOT_FOUND',
       statusCode: 404,
@@ -237,7 +290,12 @@ describe('ingestOnePackagistMetadata', () => {
 
   it('throws on a transient p2 result without marking scanned, but phase 1 already persisted', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
-    mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
+    mockPersistInfo.mockResolvedValue({
+      found: true,
+      changedFields: ['packages.description'],
+      packageId: '1',
+      hasPrimaryRepo: true,
+    })
     mockFetchP2.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 502' } as never)
 
     await expect(ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)).rejects.toThrow()

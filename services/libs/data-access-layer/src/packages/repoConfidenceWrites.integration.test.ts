@@ -8,7 +8,7 @@ import { pgpQx } from '../queryExecutor'
 
 import { upsertPackageRepo } from './repos'
 
-// Integration test: hits the running packages-db, where V1788307200 defines
+// Integration test: hits the running packages-db, where V1788307300 defines
 // package_repo_confidence and rescore_package_repo_confidence. Skipped when the DB env
 // vars are missing so unit-test runs in CI stay green.
 const HAVE_DB =
@@ -22,6 +22,7 @@ const FIXTURE = `cm1306-writes-${process.pid}`
 
 type StoredLink = {
   source: string
+  signal: string
   provenance: string | null
   confidence: number
 }
@@ -34,7 +35,7 @@ describe.skipIf(!HAVE_DB)('package_repos write and rescore policy', () => {
 
   async function storedLink(repoId: string): Promise<StoredLink> {
     return qx.selectOne(
-      `SELECT source, provenance, confidence::float8 AS confidence
+      `SELECT source, signal, provenance, confidence::float8 AS confidence
          FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint`,
       { packageId, repoId },
@@ -145,6 +146,38 @@ describe.skipIf(!HAVE_DB)('package_repos write and rescore policy', () => {
       expect(link.confidence).toBeCloseTo(0.5, 2)
     })
 
+    it('downgrades the stored signal when the same source restates a weaker signal', async () => {
+      await upsertPackageRepo(qx, packageId, githubRepoId, {
+        source: 'declared',
+        signal: 'primary',
+      })
+      const before = await storedLink(githubRepoId)
+
+      await upsertPackageRepo(qx, packageId, githubRepoId, {
+        source: 'declared',
+        signal: 'secondary',
+      })
+
+      const after = await storedLink(githubRepoId)
+      expect(after.signal).toBe('secondary')
+      expect(before.confidence - after.confidence).toBeCloseTo(0.1, 2)
+    })
+
+    it('keeps the winning signal when a weaker source claims the same link', async () => {
+      await upsertPackageRepo(qx, packageId, githubRepoId, {
+        source: 'declared',
+        signal: 'primary',
+      })
+      await upsertPackageRepo(qx, packageId, githubRepoId, {
+        source: 'heuristic',
+        signal: 'secondary',
+      })
+
+      const link = await storedLink(githubRepoId)
+      expect(link.source).toBe('declared')
+      expect(link.signal).toBe('primary')
+    })
+
     it('leaves the stored confidence consistent with the stored source', async () => {
       await upsertPackageRepo(qx, packageId, githubRepoId, { source: 'manual' })
       await upsertPackageRepo(qx, packageId, githubRepoId, { source: 'heuristic' })
@@ -152,7 +185,7 @@ describe.skipIf(!HAVE_DB)('package_repos write and rescore policy', () => {
       const link = await storedLink(githubRepoId)
       const expected: { confidence: number } = await qx.selectOne(
         `SELECT package_repo_confidence(
-           pr.source, p.ecosystem, pr.provenance,
+           pr.source, p.ecosystem, pr.signal, pr.provenance,
            r.archived, r.is_fork, r.disabled, r.host, false, pr.repo_id
          )::float8 AS confidence
            FROM package_repos pr

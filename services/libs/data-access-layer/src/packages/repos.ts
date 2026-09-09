@@ -90,7 +90,7 @@ export async function upsertPackageRepo(
 
   const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
-       SELECT source, confidence FROM package_repos
+       SELECT source, signal, confidence FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
      scored AS (
@@ -100,19 +100,21 @@ export async function upsertPackageRepo(
      ),
      ins AS (
        INSERT INTO package_repos (
-         package_id, repo_id, source, provenance, confidence, created_at
+         package_id, repo_id, source, signal, provenance, confidence, created_at
        )
-       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(provenance),
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal), $(provenance),
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
          ${KEEP_HIGHEST_CONFLICT_UPDATE}
-       RETURNING source, confidence
+       RETURNING source, signal, confidence
      )
      SELECT array_remove(ARRAY[
        CASE WHEN o.source IS NULL                                         THEN 'package_repos.repo_id' END,
        CASE WHEN o.source IS NULL
               OR o.source           IS DISTINCT FROM ins.source           THEN 'package_repos.source' END,
+       CASE WHEN o.source IS NULL
+              OR o.signal           IS DISTINCT FROM ins.signal           THEN 'package_repos.signal' END,
        CASE WHEN o.source IS NULL
               OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
      ], NULL) AS changed_fields
@@ -138,7 +140,8 @@ function rescoreQuery(targetPredicate: string): string {
           FOR UPDATE
      )
      UPDATE package_repos pr
-        SET confidence = s.confidence, verified_at = NOW()
+        SET confidence = s.confidence,
+            verified_at = GREATEST(clock_timestamp(), pr.verified_at + interval '1 millisecond')
        FROM target t
        JOIN package_repos cur ON cur.id = t.id
        JOIN packages p ON p.id = cur.package_id
