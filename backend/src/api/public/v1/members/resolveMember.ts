@@ -38,7 +38,10 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
-    throw new ConflictError('Multiple member profiles matched', { memberIds })
+    throw new ConflictError('Multiple member profiles matched', {
+      reason: 'multi-match',
+      memberIds,
+    })
   }
 
   const memberId = memberIds[0]
@@ -52,15 +55,18 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
           identity.platform === PlatformType.LFID &&
           identity.type === MemberIdentityType.USERNAME,
       )
-      .map((identity) => identity.value.toLowerCase())
+      .map((identity) => identity.value)
 
     const suppliedLfids = new Set(lfids.map((lfid) => lfid.toLowerCase()))
-    const holdsSuppliedLfid = memberLfids.some((lfid) => suppliedLfids.has(lfid))
+    const holdsSuppliedLfid = memberLfids.some((lfid) => suppliedLfids.has(lfid.toLowerCase()))
 
     // Email can match a member that was never looked up by LFID. If that member
     // already has a different verified LFID, treat it as a conflict.
     if (memberLfids.length > 0 && !holdsSuppliedLfid) {
-      throw new ConflictError('Member holds a different LFID')
+      throw new ConflictError('Member holds a different LFID', {
+        reason: 'foreign-lfid',
+        lfids: memberLfids,
+      })
     }
   }
 
