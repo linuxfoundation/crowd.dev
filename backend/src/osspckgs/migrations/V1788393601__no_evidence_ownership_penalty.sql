@@ -106,9 +106,9 @@ END;
 $$;
 
 -- Compat overload for callers still on the pre-ownership-match signature during a rolling
--- deploy; delegates to the widened function as 'no_evidence' (the safest default — it's the
--- same penalty already applied to deps.dev links with no ownership evidence). Drop in a
--- later cleanup migration once all writers emit the 11-arg call.
+-- deploy; delegates to the widened function as 'no_evidence', the safest default since the
+-- ownership penalty only applies to p_source = 'declared' — every other source ignores it.
+-- Drop in a later cleanup migration once all writers emit the 11-arg call.
 CREATE OR REPLACE FUNCTION package_repo_confidence(
     p_source           text,
     p_ecosystem        text,
