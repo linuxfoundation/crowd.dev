@@ -29,6 +29,8 @@ interface ISkipRow {
 
 const job: IJobDefinition = {
   name: 'project-catalog-skip-alert',
+  // 08:00 Europe/Berlin (the scheduler's fixed tz) is 06:00-07:00 UTC, safely after
+  // the 04:00 UTC evaluation run regardless of DST — not a literal 30-min offset.
   cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 0),
   timeout: 10 * 60, // 10 minutes
   enabled: async () => IS_PROD_ENV,
@@ -41,7 +43,7 @@ const job: IJobDefinition = {
       `
       WITH skipped AS (
         SELECT
-          pc."repoUrl", pc."evaluationReason" AS reason,
+          pc."repoUrl", COALESCE(pc."evaluationReason", '(no reason provided)') AS reason,
           lower(regexp_replace(regexp_replace(pc."repoUrl",
             '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))     AS repo_path,
           lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
