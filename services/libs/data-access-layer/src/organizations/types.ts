@@ -121,6 +121,11 @@ export interface IQueryNumberOfNewOrganizations {
   platform?: string
 }
 
+export interface IFindOrCreateOrganizationResult {
+  id: string
+  created: boolean
+}
+
 export interface IQueryTimeseriesOfNewOrganizations {
   segmentIds?: string[]
   after: Date

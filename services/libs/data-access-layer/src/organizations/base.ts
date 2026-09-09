@@ -25,7 +25,7 @@ import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
 import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
-import { IDbOrganization, IDbOrganizationInput } from './types'
+import { IDbOrganization, IDbOrganizationInput, IFindOrCreateOrganizationResult } from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -530,7 +530,7 @@ export async function findOrCreateOrganization(
   data: IOrganization,
   integrationId?: string,
   throttleUpdatedAt = false,
-): Promise<string | undefined> {
+): Promise<IFindOrCreateOrganizationResult | undefined> {
   data.identities = data.identities ?? []
   let verifiedIdentities = data.identities.filter((i) => i.verified)
 
@@ -597,7 +597,7 @@ export async function findOrCreateOrganization(
       }
     }
 
-    let id
+    let id: string
 
     if (!existing && verifiedIdentities.length === 0) {
       log.debug(
@@ -736,7 +736,7 @@ export async function findOrCreateOrganization(
       }
     }
 
-    return id
+    return { id, created: !existing }
   } catch (err) {
     log.error(err, 'Error while upserting an organization!')
     throw err

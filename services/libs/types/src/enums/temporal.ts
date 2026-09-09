@@ -9,6 +9,7 @@ export enum TemporalWorkflowId {
   ORGANIZATIONS_CSV_EXPORTS = 'organizations-csv-exports',
 
   MEMBER_BOT_ANALYSIS_WITH_LLM = 'member-bot-analysis-with-llm',
+  FAKE_ORGANIZATION_ANALYSIS_WITH_LLM = 'fake-organization-analysis-with-llm',
   DELETE_ORPHAN_MEMBER = 'delete-orphan-member',
 
   BLAST_RADIUS_ANALYSIS = 'blast-radius-analysis',

@@ -189,15 +189,26 @@ paths:
                   code: NOT_FOUND
                   message: Member not found
         '409':
-          description: Multiple member profiles matched.
+          description: >
+            Multiple member profiles matched, or the matched member holds a
+            verified LFID that is not among the supplied lfids.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HttpError'
-              example:
-                error:
-                  code: CONFLICT
-                  message: Multiple member profiles matched
+              examples:
+                multipleMembers:
+                  summary: Multiple member profiles matched
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: Multiple member profiles matched
+                foreignLfid:
+                  summary: Matched member holds a different LFID
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: Member holds a different LFID
         '429':
           description: Per-client rate limit exceeded (200 req/min).
           headers:
