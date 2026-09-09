@@ -9,8 +9,5 @@ CREATE TABLE public."repositoryStarSnapshots" (
     UNIQUE ("repositoryId", "capturedAt")
 );
 
-CREATE INDEX ix_repositoryStarSnapshots_repositoryId
-    ON public."repositoryStarSnapshots" ("repositoryId");
-
 CREATE INDEX ix_repositoryStarSnapshots_updatedAt_id
     ON public."repositoryStarSnapshots" ("updatedAt", "id");
