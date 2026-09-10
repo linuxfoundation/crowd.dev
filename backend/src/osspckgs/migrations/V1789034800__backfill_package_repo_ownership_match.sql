@@ -100,7 +100,11 @@ BEGIN
                        CASE WHEN r.host = 'other' THEN NULL ELSE r.owner END AS repo_owner,
                        -- Most ecosystems pass every maintainer role to matchOwnership() (NuGet
                        -- authors, Maven developers, ...); npm/upsertPackage.ts filters to
-                       -- role='maintainer' only, so mirror that restriction here.
+                       -- role='maintainer' only, so mirror that restriction here. RubyGems is
+                       -- excluded entirely: runRubyGemsCoreLoop.ts re-syncs every gem daily and
+                       -- always calls matchOwnership() with no maintainer evidence (ADR-0022), so
+                       -- backfilling matched/unmatched here would just get reset to no_evidence
+                       -- on the next sync.
                        -- Email-shaped identities are rejected only when a non-whitespace char
                        -- appears on both sides of '@' (ownershipMatch.ts's /\S@\S/), matching
                        -- handles like '@vercel' still count.
@@ -110,6 +114,7 @@ BEGIN
                                 FROM package_maintainers pm
                                 JOIN maintainers m ON m.id = pm.maintainer_id
                                WHERE pm.package_id = cur.package_id
+                                 AND p.ecosystem <> 'rubygems'
                                  AND (p.ecosystem <> 'npm' OR pm.role = 'maintainer')
                                  AND m.username !~ '\S@\S'
                             ), ARRAY[]::text[]) AS owner_candidates
