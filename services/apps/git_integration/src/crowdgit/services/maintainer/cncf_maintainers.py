@@ -13,7 +13,10 @@ def is_cncf_repo(repo_url: str) -> bool:
         _, repo_name = parse_repo_url(repo_url)
     except Exception:
         return False
-    return repo_name.lower() == ".project"
+    repo_name = repo_name.lower()
+    if repo_name.endswith(".git"):
+        repo_name = repo_name[: -len(".git")]
+    return repo_name == ".project"
 
 
 def find_cncf_maintainers_file(repo_path: Path) -> Path | None:
