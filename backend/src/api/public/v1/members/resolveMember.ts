@@ -2,7 +2,11 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { ConflictError, NotFoundError } from '@crowd/common'
-import { fetchMemberIdentities, findMemberIdsByIdentities } from '@crowd/data-access-layer'
+import {
+  fetchMemberIdentities,
+  findMemberIdsByIdentities,
+  suggestMemberMerge,
+} from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
@@ -38,6 +42,28 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
+    const lfidMemberIds = await findMemberIdsByIdentities(
+      qx,
+      lfids.map((lfid) => ({
+        platform: PlatformType.LFID,
+        type: MemberIdentityType.USERNAME,
+        value: lfid,
+        verified: true,
+      })),
+    )
+    const primaryMemberId = lfidMemberIds[0] ?? memberIds[0]
+    const otherMemberIds = memberIds.filter((id) => id !== primaryMemberId)
+
+    if (otherMemberIds.length > 0) {
+      await suggestMemberMerge(
+        qx,
+        otherMemberIds.map((otherMemberId) => ({
+          members: [primaryMemberId, otherMemberId],
+          similarity: 0.95,
+        })),
+      )
+    }
+
     throw new ConflictError('Multiple member profiles matched', {
       reason: 'multi-match',
       memberIds,

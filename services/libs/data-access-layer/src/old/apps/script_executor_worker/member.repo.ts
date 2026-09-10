@@ -116,6 +116,7 @@ class MemberRepository {
       rows = await this.connection.query(
         `
         select 
+          array_agg(mi.id) as ids,
           array_agg(mi.platform) as platforms, 
           array_agg(mi.type) as types,
           array_agg(mi.verified) as verified,
