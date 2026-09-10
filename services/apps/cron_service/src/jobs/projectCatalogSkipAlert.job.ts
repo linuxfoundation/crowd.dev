@@ -25,13 +25,13 @@ const LF_REASON = 'project is already part of LF'
 const MAX_ROWS_PER_SECTION = 25
 
 const ACTION_LABELS: Record<ProjectCatalogAction, string> = {
-  auto: 'Auto',
+  auto: 'Discovered',
   evaluate: 'Evaluate',
   onboard: 'Onboard',
   onboarded: 'Onboarded',
   skip: 'Skipped',
   unsure: 'Unsure',
-  error: 'Errored',
+  error: 'Error',
 }
 
 interface ISkipRow {
@@ -62,16 +62,20 @@ const job: IJobDefinition = {
     }
 
     if (Object.keys(catalogCounts).length > 0) {
-      const totalsText = PROJECT_CATALOG_ACTIONS.map(
-        (action) => `${ACTION_LABELS[action]}: ${catalogCounts[action] ?? 0}`,
-      ).join('\n')
-
-      await sendSlackNotificationAsync(
-        SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
-        SlackPersona.SUMMARY_REPORTER,
-        'Project Catalog Totals',
-        totalsText,
+      const totalsText = PROJECT_CATALOG_ACTIONS.filter(
+        (action) => (catalogCounts[action] ?? 0) > 0,
       )
+        .map((action) => `${ACTION_LABELS[action]}: ${catalogCounts[action]}`)
+        .join('\n')
+
+      if (totalsText) {
+        await sendSlackNotificationAsync(
+          SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+          SlackPersona.SUMMARY_REPORTER,
+          'Project Catalog Totals',
+          totalsText,
+        )
+      }
     }
 
     const rows = await dbConnection.any<ISkipRow>(
