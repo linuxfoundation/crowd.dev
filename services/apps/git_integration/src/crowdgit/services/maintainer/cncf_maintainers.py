@@ -62,7 +62,9 @@ def parse_cncf_maintainers_yaml(content: str) -> list[MaintainerInfoItem] | None
         return None
 
     return [
-        MaintainerInfoItem(github_username=member, normalized_title="maintainer")
+        MaintainerInfoItem(
+            github_username=member, title="maintainer", normalized_title="maintainer"
+        )
         for member in members
         if isinstance(member, str)
     ]
