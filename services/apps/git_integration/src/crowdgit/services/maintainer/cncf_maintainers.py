@@ -58,13 +58,13 @@ def parse_cncf_maintainers_yaml(content: str) -> list[MaintainerInfoItem] | None
                 return None
             members.extend(team_members)
 
-    if not members:
+    string_members = [member for member in members if isinstance(member, str)]
+    if not string_members:
         return None
 
     return [
         MaintainerInfoItem(
             github_username=member, title="maintainer", normalized_title="maintainer"
         )
-        for member in members
-        if isinstance(member, str)
+        for member in string_members
     ]
