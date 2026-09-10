@@ -64,4 +64,5 @@ def parse_cncf_maintainers_yaml(content: str) -> list[MaintainerInfoItem] | None
     return [
         MaintainerInfoItem(github_username=member, normalized_title="maintainer")
         for member in members
+        if isinstance(member, str)
     ]
