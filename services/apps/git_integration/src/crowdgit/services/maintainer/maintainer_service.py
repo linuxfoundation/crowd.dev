@@ -801,8 +801,12 @@ class MaintainerService(BaseService):
         if is_cncf_repo(repo_url):
             cncf_file = find_cncf_maintainers_file(repo_path)
             if cncf_file:
-                content = await self._read_text_file(str(cncf_file))
-                cncf_maintainers = parse_cncf_maintainers_yaml(content)
+                try:
+                    content = await self._read_text_file(str(cncf_file))
+                    cncf_maintainers = parse_cncf_maintainers_yaml(content)
+                except Exception as e:
+                    self.logger.warning(f"CNCF maintainer file processing failed: {repr(e)}")
+                    cncf_maintainers = None
                 if cncf_maintainers:
                     return _attach_metadata(
                         MaintainerResult(
