@@ -38,8 +38,18 @@ export interface PyPiInfo {
   yanked?: boolean
 }
 
+// Per-version endpoint only; URL must be read here, never constructed (contains content hash).
+export interface PyPiUrlInfo {
+  packagetype: string
+  url: string
+  filename: string
+  size?: number
+  yanked?: boolean
+}
+
 export interface PyPiProject {
   info: PyPiInfo
   // version string -> array of distribution file objects (may be empty).
   releases?: Record<string, PyPiReleaseFile[]>
+  urls?: PyPiUrlInfo[]
 }

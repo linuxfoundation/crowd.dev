@@ -52,6 +52,7 @@ paths:
       summary: Create a member profile
       description: >
         Create a new member profile in CDP with one or more identities.
+        Returns 409 if an identity already exists on another member.
       tags:
         - Members
       security:
@@ -188,15 +189,64 @@ paths:
                   code: NOT_FOUND
                   message: Member not found
         '409':
-          description: Multiple member profiles matched.
+          description: >
+            Multiple member profiles matched, or the matched member holds a
+            verified LFID that is not among the supplied lfids. Distinguish the
+            two cases with error.context.reason (`multi-match` or
+            `foreign-lfid`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                multipleMembers:
+                  summary: Multiple member profiles matched
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: Multiple member profiles matched
+                      context:
+                        reason: multi-match
+                        memberIds:
+                          - 550e8400-e29b-41d4-a716-446655440000
+                          - 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+                foreignLfid:
+                  summary: Matched member holds a different LFID
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: Member holds a different LFID
+                      context:
+                        reason: foreign-lfid
+                        lfids:
+                          - other-person-lfid
+        '429':
+          description: Per-client rate limit exceeded (200 req/min).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+            RateLimit-Limit:
+              description: Allowed requests per window.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests remaining in current window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: UTC epoch seconds when the window resets.
+              schema:
+                type: integer
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HttpError'
               example:
                 error:
-                  code: CONFLICT
-                  message: Multiple member profiles matched
+                  code: RATE_LIMITED
+                  message: Too many requests, please try again later
 
   # ──────────────────────────────────────────────
   # Member Identities
@@ -238,8 +288,8 @@ paths:
       operationId: createMemberIdentity
       summary: Add a new identity
       description: >
-        Add a new identity to a member profile. Returns 409 if the identity
-        already exists on this member or is verified on another member.
+        Add a new identity to a member profile. Returns 200 if it already exists
+        on this member. Returns 409 if it already exists on another member.
       tags:
         - Member Identities
       security:
@@ -283,6 +333,7 @@ paths:
                   description: Whether the identity is verified.
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Required when `verified` is true. Identifier of who verified.
             example:
               value: johndoe
@@ -355,6 +406,7 @@ paths:
                     `true` to verify the identity, `false` to reject it.
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Identifier of who performed the verification.
             example:
               verified: true
@@ -600,6 +652,7 @@ paths:
                     `true` to verify, `false` to reject (soft-delete).
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Identifier of who performed the verification.
             example:
               verified: true
@@ -636,9 +689,26 @@ paths:
       parameters:
         - $ref: '#/components/parameters/MemberId'
         - $ref: '#/components/parameters/WorkExperienceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deletedBy
+              properties:
+                deletedBy:
+                  type: string
+                  minLength: 1
+                  description: Identifier of who performed the deletion.
+            example:
+              deletedBy: admin@lfx.dev
       responses:
         '204':
           description: Work experience deleted. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -745,7 +815,7 @@ paths:
                         description: End date, or null if currently active.
                 verifiedBy:
                   type: string
-                  maxLength: 255
+                  minLength: 1
                   description: Required when `affiliations` is non-empty.
             example:
               affiliations:
@@ -855,7 +925,6 @@ paths:
                 - name
                 - domain
                 - source
-                - logo
               properties:
                 name:
                   type: string
@@ -872,7 +941,7 @@ paths:
                 logo:
                   type: string
                   format: uri
-                  description: URL of the organization's logo.
+                  description: Optional URL of the organization's logo.
             example:
               name: Acme Corp
               domain: acme.com
@@ -1135,6 +1204,7 @@ components:
           description: Whether the identity is verified.
         verifiedBy:
           type: string
+          minLength: 1
           description: Required when `verified` is true. Identifier of who verified.
 
     MemberIdentity:
@@ -1329,6 +1399,7 @@ components:
           type: boolean
         verifiedBy:
           type: string
+          minLength: 1
           description: Identifier of who verified this work experience.
         source:
           type: string
@@ -1592,6 +1663,10 @@ components:
             message:
               type: string
               description: Human-readable error description.
+            context:
+              type: object
+              additionalProperties: true
+              description: Optional structured details for this error.
 
   responses:
     BadRequest:

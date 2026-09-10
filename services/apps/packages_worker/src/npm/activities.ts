@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity'
+import { ApplicationFailure, Context } from '@temporalio/activity'
 import { type Dispatcher, ProxyAgent } from 'undici'
 
 import {
@@ -11,6 +11,7 @@ import {
   getNpmPurlsDueForLast30dHistory,
   getNpmPurlsDueForLatest30d,
   getNpmPurlsForChangedNames,
+  getNpmPurlsScannedSince,
   getUnscannedNpmPurls,
   insertDailyDownloads,
   logAuditFieldChanges,
@@ -21,12 +22,14 @@ import {
   setNpmChangesLastSeq,
   upsertLast30dDownload,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
 import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
+import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
@@ -38,7 +41,7 @@ import {
 import { fetchPackument } from './fetchPackument'
 import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
 import { laneCount, proxyForLane } from './proxies'
-import { isFetchError } from './types'
+import { FetchErrorKind, isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 
 const log = getServiceChildLogger('npm')
@@ -97,33 +100,48 @@ export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
 }
 
 // 4xx errors get a few quick in-lane retries with a small linear backoff (1s, 2s),
-// then the package is given up on and marked scanned. 429/5xx/network errors are NOT
-// handled here — they throw and ride Temporal's exponential activity-retry instead.
+// then the package is given up on and marked scanned. 5xx/network errors throw and ride
+// Temporal's exponential activity-retry; 429s throw with the retry scheduled past the
+// server-stated Retry-After window instead.
 const INGEST_4XX_ATTEMPTS = 3
 const INGEST_4XX_BACKOFF_MS = 1000
 
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
 // packages row; the npm registry name (for the HTTP fetch) is derived from it.
 // `dispatcher` (when present) routes the fetch through this lane's proxy IP.
-async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatcher): Promise<void> {
+async function ingestOne(
+  qx: QueryExecutor,
+  purl: string,
+  dispatcher?: Dispatcher,
+): Promise<PackageRepoOwnershipMatch | null> {
   const name = npmNameFromPurl(purl)
 
   for (let attempt = 1; attempt <= INGEST_4XX_ATTEMPTS; attempt++) {
     const packumentResult = await fetchPackument(name, dispatcher)
 
     if (!isFetchError(packumentResult)) {
-      const { changedFields } = await upsertPackage(qx, packumentResult, purl)
+      const { changedFields, ownershipMatch } = await upsertPackage(qx, packumentResult, purl)
       await logAuditFieldChanges(qx, WORKER, purl, changedFields)
       await markNpmPackageScanned(qx, purl, { status: 'success', attempts: attempt })
-      return
+      return ownershipMatch
     }
 
-    // 429 / 5xx / network → bubble up so Temporal retries the activity with exponential backoff.
+    // 429 → fail the attempt, but schedule the retry past the server-stated penalty window
+    // (npm blocks for ~300s; the default 30/60/120s ladder always lands back inside it).
+    if (packumentResult.kind === FetchErrorKind.RATE_LIMIT) {
+      const delaySec = Math.min(Math.max(packumentResult.retryAfterSec ?? 300, 30), 3600) + 5
+      throw ApplicationFailure.create({
+        message: `Failed to fetch packument for ${name}: ${packumentResult.message}`,
+        nextRetryDelay: `${delaySec}s`,
+      })
+    }
+
+    // 5xx / network → bubble up so Temporal retries the activity with exponential backoff.
     // MALFORMED is permanent (a 200 body that isn't a packument — retrying won't change it),
     // so it takes the quick-retry-then-skip path below instead of poisoning the lane forever.
     if (
       !isClientError(packumentResult.statusCode, packumentResult.kind) &&
-      packumentResult.kind !== 'MALFORMED'
+      packumentResult.kind !== FetchErrorKind.MALFORMED
     ) {
       throw new Error(`Failed to fetch packument for ${name}: ${packumentResult.message}`)
     }
@@ -145,6 +163,7 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
       message: packumentResult.message,
     })
   }
+  return null
 }
 
 // Number of concurrent lanes shared by all npm workers: one per configured proxy IP
@@ -168,20 +187,39 @@ export async function ingestNpmPackageBatch(purls: string[], laneIndex: number):
   if (purls.length === 0) return
 
   const qx = await getPackagesDb()
+
+  // A retry replays the same purls array — drop what an earlier attempt already settled
+  // (scanned since first schedule), so the replay doesn't re-spend rate budget on re-downloads.
+  let pending = purls
+  const { attempt, scheduledTimestampMs } = Context.current().info
+  if (attempt > 1) {
+    const done = new Set(await getNpmPurlsScannedSince(qx, purls, new Date(scheduledTimestampMs)))
+    if (done.size > 0) pending = purls.filter((p) => !done.has(p))
+  }
+
   const proxy = proxyForLane(laneIndex)
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
 
+  const ownershipCounts = emptyDeclaredOwnershipCounts()
+
   try {
-    for (const purl of purls) {
+    for (const purl of pending) {
       await sleep(ingestSleepMs())
-      await ingestOne(qx, purl, dispatcher)
+      const ownershipMatch = await ingestOne(qx, purl, dispatcher)
+      if (ownershipMatch) bumpDeclaredOwnershipCounts(ownershipCounts, ownershipMatch)
     }
   } finally {
     await dispatcher?.close()
   }
 
   log.info(
-    { laneIndex, count: purls.length, exit: proxy?.host ?? 'direct' },
+    {
+      laneIndex,
+      count: pending.length,
+      skipped: purls.length - pending.length,
+      exit: proxy?.host ?? 'direct',
+      ...ownershipCounts,
+    },
     'Ingested npm package batch',
   )
 }

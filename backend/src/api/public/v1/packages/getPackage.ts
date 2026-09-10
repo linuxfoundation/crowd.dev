@@ -13,24 +13,11 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { repoMappingLabel, snakeToCamelKeys, toNullableNumber } from './mappers'
 import { purlQuerySchema } from './purl'
 import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type StewardshipStatus } from './types'
 
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
-
-function snakeToCamelKeys(obj: Record<string, unknown> | null): Record<string, unknown> | null {
-  if (obj === null) return null
-  return Object.fromEntries(
-    Object.entries(obj).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),
-  )
-}
-
-function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
-  if (confidence === null) return null
-  if (confidence >= 0.8) return 'High'
-  if (confidence >= 0.5) return 'Medium'
-  return 'Low'
-}
 
 export async function getPackage(req: Request, res: Response): Promise<void> {
   const { purl } = validateOrThrow(purlQuerySchema, req.query)
@@ -48,8 +35,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   ])
 
   const scorecardScore = pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null
-  const mappingConfidence =
-    pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
+  const mappingConfidence = toNullableNumber(pkg.repoMappingConfidence)
 
   const securityContacts =
     pkg.contactsLastRefreshed == null
@@ -130,7 +116,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     },
     provenance: {
       repositoryMapping: {
-        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? pkg.declaredRepositoryUrl ?? null,
+        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? null,
         mappingConfidence,
         mappingLabel: repoMappingLabel(mappingConfidence),
         lastCommitAt: pkg.repoLastCommitAt ? pkg.repoLastCommitAt.toISOString() : null,

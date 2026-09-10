@@ -2,16 +2,18 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { getProperDisplayName } from '@crowd/common'
+import { ConflictError, normalizeDisplayName } from '@crowd/common'
 import {
-  insertManyMemberIdentities,
+  findMemberIdByVerifiedIdentity,
+  findMembersByIdentities,
   createMember as insertMember,
-  optionsQx,
+  insertMemberIdentities,
 } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
@@ -25,7 +27,7 @@ const bodySchema = z.object({
           type: z.enum(MemberIdentityType),
           source: z.string().min(1),
           verified: z.boolean(),
-          verifiedBy: z.string().optional(),
+          verifiedBy: z.string().trim().min(1).optional(),
         })
         .refine((data) => !data.verified || data.verifiedBy, {
           message: 'verifiedBy is required when verified is true',
@@ -39,9 +41,30 @@ export async function createMember(req: Request, res: Response): Promise<void> {
   const { displayName, identities } = validateOrThrow(bodySchema, req.body)
   const qx = optionsQx(req)
 
-  const normalizedDisplayName = getProperDisplayName(displayName)
+  const normalizedDisplayName = normalizeDisplayName(displayName)
 
   const { dbMember, dbIdentities } = await qx.tx(async (tx) => {
+    // Unverified identities aren't unique in the db, so the same handle or
+    // email can sit on several members. Reject it here if someone else has it.
+    const unverified = identities.filter((identity) => !identity.verified)
+
+    if (unverified.length > 0) {
+      const owners = await findMembersByIdentities(tx, unverified)
+
+      const hit = unverified.find((identity) =>
+        owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+      )
+
+      if (hit) {
+        throw new ConflictError('Identity already exists on another member', {
+          conflictMemberId: owners.get(`${hit.platform}:${hit.type}:${hit.value.trim()}`),
+          platform: hit.platform,
+          value: hit.value,
+          type: hit.type,
+        })
+      }
+    }
+
     try {
       const dbMember = await insertMember(tx, {
         displayName: normalizedDisplayName,
@@ -52,12 +75,11 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         manuallyCreated: true,
       })
 
-      const dbIdentities = await insertManyMemberIdentities(
+      const dbIdentities = await insertMemberIdentities(
         tx,
         identities.map((identity) => ({
           ...identity,
           memberId: dbMember.id,
-          value: identity.value.trim().toLowerCase(),
         })),
         true,
         true,
@@ -65,6 +87,24 @@ export async function createMember(req: Request, res: Response): Promise<void> {
 
       return { dbMember, dbIdentities }
     } catch (error) {
+      // Only notify for a single identity because we can't tell which one conflicted in a batch.
+      if (identities.length === 1 && isMemberIdentityDbConflict(error)) {
+        const identity = identities[0]
+        const conflictMemberId = await findMemberIdByVerifiedIdentity(
+          qx,
+          identity.platform,
+          identity.value,
+          identity.type,
+        )
+
+        return rethrowDbConflict(error, {
+          ...(conflictMemberId ? { conflictMemberId } : {}),
+          platform: identity.platform,
+          value: identity.value,
+          type: identity.type,
+        })
+      }
+
       return rethrowDbConflict(error)
     }
   })

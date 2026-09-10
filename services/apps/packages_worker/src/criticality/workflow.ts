@@ -3,7 +3,7 @@ import { proxyActivities } from '@temporalio/workflow'
 import type * as critActivities from './activities'
 
 const { rankPackages } = proxyActivities<typeof critActivities>({
-  startToCloseTimeout: '30 minutes',
+  startToCloseTimeout: '90 minutes',
   retry: { maximumAttempts: 2 },
 })
 

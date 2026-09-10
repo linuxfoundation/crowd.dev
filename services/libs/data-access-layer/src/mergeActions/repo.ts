@@ -80,6 +80,29 @@ export async function findEntityMergeActions(
   return result
 }
 
+export async function findMergedPrimaryIds(
+  qx: QueryExecutor,
+  type: MergeActionType,
+  secondaryIds: string[],
+): Promise<Map<string, string>> {
+  if (!secondaryIds.length) {
+    return new Map()
+  }
+
+  const rows = await qx.select(
+    `
+      SELECT ma."secondaryId", ma."primaryId"
+      FROM "mergeActions" ma
+      WHERE ma.type = $(type)
+        AND ma.state = $(state)
+        AND ma."secondaryId" = ANY($(secondaryIds)::uuid[])
+    `,
+    { type, state: MergeActionState.MERGED, secondaryIds },
+  )
+
+  return new Map(rows.map((r) => [r.secondaryId, r.primaryId]))
+}
+
 export async function setMergeAction(
   qx: QueryExecutor,
   type: MergeActionType,

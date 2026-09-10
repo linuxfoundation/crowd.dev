@@ -49,19 +49,51 @@ SQL >
         health_score_security.securityCategoryPercentage as securityCategoryPercentage,
         health_score_security.securityPercentage as securityPercentage
     FROM health_score_copy_project_repo_deduplicated
-    LEFT JOIN health_score_active_contributors USING (segmentId)
-    LEFT JOIN health_score_contributor_dependency USING (segmentId)
-    LEFT JOIN health_score_organization_dependency USING (segmentId)
-    LEFT JOIN health_score_retention USING (segmentId)
-    LEFT JOIN health_score_stars USING (segmentId)
-    LEFT JOIN health_score_forks USING (segmentId)
-    LEFT JOIN health_score_issues_resolution USING (segmentId)
-    LEFT JOIN health_score_pull_requests USING (segmentId)
-    LEFT JOIN health_score_merge_lead_time USING (segmentId)
-    LEFT JOIN health_score_active_days USING (segmentId)
-    LEFT JOIN health_score_contributions_outside_work_hours USING (segmentId)
-    LEFT JOIN health_score_search_volume USING (id)
-    LEFT JOIN health_score_security USING (id)
+    LEFT JOIN
+        health_score_active_contributors
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_active_contributors.segmentId
+    LEFT JOIN
+        health_score_contributor_dependency
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_contributor_dependency.segmentId
+    LEFT JOIN
+        health_score_organization_dependency
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_organization_dependency.segmentId
+    LEFT JOIN
+        health_score_retention
+        ON health_score_copy_project_repo_deduplicated.segmentId = health_score_retention.segmentId
+    LEFT JOIN
+        health_score_stars
+        ON health_score_copy_project_repo_deduplicated.segmentId = health_score_stars.segmentId
+    LEFT JOIN
+        health_score_forks
+        ON health_score_copy_project_repo_deduplicated.segmentId = health_score_forks.segmentId
+    LEFT JOIN
+        health_score_issues_resolution
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_issues_resolution.segmentId
+    LEFT JOIN
+        health_score_pull_requests
+        ON health_score_copy_project_repo_deduplicated.segmentId = health_score_pull_requests.segmentId
+    LEFT JOIN
+        health_score_merge_lead_time
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_merge_lead_time.segmentId
+    LEFT JOIN
+        health_score_active_days
+        ON health_score_copy_project_repo_deduplicated.segmentId = health_score_active_days.segmentId
+    LEFT JOIN
+        health_score_contributions_outside_work_hours
+        ON health_score_copy_project_repo_deduplicated.segmentId
+        = health_score_contributions_outside_work_hours.segmentId
+    LEFT JOIN
+        health_score_search_volume
+        ON health_score_copy_project_repo_deduplicated.id = health_score_search_volume.id
+    LEFT JOIN
+        health_score_security
+        ON health_score_copy_project_repo_deduplicated.id = health_score_security.id
 
 NODE health_score_copy_result
 SQL >

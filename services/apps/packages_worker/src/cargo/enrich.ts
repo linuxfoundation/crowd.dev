@@ -1,4 +1,9 @@
-import { QueryExecutor } from '@crowd/data-access-layer'
+import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
+  QueryExecutor,
+  packageRepoConfidenceCall,
+  rescorePackageReposForPackages,
+} from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { STAGING_SCHEMA } from './loadDump'
@@ -15,7 +20,12 @@ const log = getServiceChildLogger('cargo-enrich')
 export const AUDIT_WORKER = 'cargo-registry'
 const INGESTION_SOURCE = 'cargo-registry'
 const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest-declared repo URLs
-const REPO_LINK_CONFIDENCE = 0.8
+const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
+  source: '$(source)',
+  signal: 'rc.signal',
+  ownershipMatch: 'om.match',
+  provenance: 'NULL',
+})
 
 // synchronous_commit off: skip WAL fsync on bulk writes — job is idempotent.
 const WORK_MEM = '512MB'
@@ -48,6 +58,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
     tx.selectOne(
       `WITH snap AS (
          SELECT p.id, p.status, p.description, p.homepage, p.declared_repository_url,
+                p.repository_url,
                 p.licenses, p.licenses_raw, p.keywords, p.versions_count, p.latest_version,
                 p.first_release_at, p.latest_release_at, p.dependent_count,
                 p.dependent_repos_count, p.downloads_last_30d
@@ -59,7 +70,10 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            status                  = e.status,
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
-           declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
+           -- The dump is authoritative for both fields — direct-assign (not COALESCE) so a
+           -- repository field or repo link dropped from the current dump actually clears here.
+           declared_repository_url = e.declared_repository_url,
+           repository_url          = rn.repository_url,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
            keywords                = COALESCE(e.keywords, p.keywords),
@@ -73,6 +87,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            ingestion_source        = $(ingestionSource),
            last_synced_at          = NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
+         LEFT JOIN ${STAGING_SCHEMA}.repo_choice rn ON rn.package_id = e.package_id
          WHERE p.id = e.package_id
          RETURNING p.id
        ),
@@ -80,11 +95,13 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
          SELECT s.id AS package_id, f.field
          FROM snap s
          JOIN ${STAGING_SCHEMA}.enrich_packages e ON e.package_id = s.id
+         LEFT JOIN ${STAGING_SCHEMA}.repo_choice rn ON rn.package_id = e.package_id
          CROSS JOIN LATERAL (VALUES
            ('packages.status',                  s.status                  IS DISTINCT FROM e.status),
            ('packages.description',             s.description             IS DISTINCT FROM COALESCE(e.description, s.description)),
            ('packages.homepage',                s.homepage                IS DISTINCT FROM COALESCE(e.homepage, s.homepage)),
-           ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM COALESCE(e.declared_repository_url, s.declared_repository_url)),
+           ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM e.declared_repository_url),
+           ('packages.repository_url',          s.repository_url IS DISTINCT FROM rn.repository_url),
            ('packages.licenses',                s.licenses                IS DISTINCT FROM COALESCE(e.licenses, s.licenses)),
            ('packages.licenses_raw',            s.licenses_raw            IS DISTINCT FROM COALESCE(e.licenses_raw, s.licenses_raw)),
            ('packages.keywords',                s.keywords                IS DISTINCT FROM COALESCE(e.keywords, s.keywords)),
@@ -159,55 +176,87 @@ export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsR
   return { upserted: row.upserted }
 }
 
-// Writes only url + host — other repo fields belong to the GitHub enricher.
+// Writes only url + host (other repo fields belong to the GitHub enricher), sourced from
+// repo_choice so repos/package_repos always agree with packages.repository_url, not the raw declared field.
 export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
   return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
       `WITH new_repos AS (
          INSERT INTO repos (url, host, updated_at)
-         SELECT DISTINCT e.declared_repository_url,
-           CASE
-             WHEN e.declared_repository_url ~* '://([^/]+\\.)?github\\.com(/|$)'    THEN 'github'
-             WHEN e.declared_repository_url ~* '://[^/]*gitlab'                     THEN 'gitlab'
-             WHEN e.declared_repository_url ~* '://([^/]+\\.)?bitbucket\\.org(/|$)' THEN 'bitbucket'
-             ELSE 'other'
-           END,
-           NOW()
-         FROM ${STAGING_SCHEMA}.enrich_packages e
-         WHERE e.declared_repository_url IS NOT NULL AND e.declared_repository_url LIKE 'http%'
+         SELECT DISTINCT rc.repository_url, rc.host, NOW()
+         FROM ${STAGING_SCHEMA}.repo_choice rc
+         WHERE rc.repository_url IS NOT NULL
          ON CONFLICT (url) DO NOTHING
          RETURNING url
        ),
        ins_audit AS (
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
-         SELECT e.package_id, f.field
-         FROM ${STAGING_SCHEMA}.enrich_packages e
-         JOIN new_repos nr ON nr.url = e.declared_repository_url
+         SELECT rc.package_id, f.field
+         FROM ${STAGING_SCHEMA}.repo_choice rc
+         JOIN new_repos nr ON nr.url = rc.repository_url
          CROSS JOIN LATERAL (VALUES ('repos.url'), ('repos.host')) AS f(field)
          RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
     )
 
+    // Prunes declared links whose target changed (removed, rewritten, or unparseable); an
+    // unchanged link is left for the upsert's KEEP_HIGHEST_CONFLICT_UPDATE to handle in place.
+    const pruneRow = await tx.selectOne(
+      `WITH targets AS (
+         SELECT rc.package_id, r.id AS repo_id
+         FROM ${STAGING_SCHEMA}.repo_choice rc
+         LEFT JOIN repos r ON r.url = rc.repository_url
+       ),
+       del AS (
+         DELETE FROM package_repos pr
+         USING targets t
+         WHERE pr.package_id = t.package_id
+           AND pr.source = $(source)
+           AND pr.repo_id IS DISTINCT FROM t.repo_id
+         RETURNING pr.package_id
+       ),
+       ins_audit AS (
+         INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
+         SELECT package_id, 'package_repos.repo_id' FROM del
+         RETURNING 1
+       )
+       SELECT
+         (SELECT COUNT(*) FROM del)::int AS pruned,
+         ARRAY(SELECT DISTINCT package_id::text FROM del) AS pruned_package_ids`,
+      { source: REPO_LINK_SOURCE },
+    )
+
     const linkRow = await tx.selectOne(
       `WITH old AS (
-         SELECT pr.package_id, pr.repo_id, pr.source, pr.confidence
+         SELECT pr.package_id, pr.repo_id, pr.source, pr.signal, pr.confidence
          FROM package_repos pr
          WHERE pr.package_id IN (
-           SELECT package_id FROM ${STAGING_SCHEMA}.enrich_packages WHERE declared_repository_url IS NOT NULL
+           SELECT package_id FROM ${STAGING_SCHEMA}.repo_choice WHERE repository_url IS NOT NULL
          )
        ),
        ins AS (
-         INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at, verified_at)
-         SELECT e.package_id, r.id, $(source), $(confidence), NOW(), NOW()
-         FROM ${STAGING_SCHEMA}.enrich_packages e
-         JOIN repos r ON r.url = e.declared_repository_url
-         WHERE e.declared_repository_url IS NOT NULL
+         INSERT INTO package_repos (
+           package_id, repo_id, source, signal, ownership_match, provenance,
+           confidence, created_at, verified_at
+         )
+         SELECT rc.package_id, r.id, $(source), rc.signal, om.match, NULL,
+                s.confidence, NOW(), NOW()
+         FROM ${STAGING_SCHEMA}.repo_choice rc
+         JOIN repos r ON r.url = rc.repository_url
+         JOIN packages p ON p.id = rc.package_id
+         CROSS JOIN LATERAL (
+           SELECT package_repo_owner_match(
+             rc.owner,
+             ARRAY(SELECT em.github_login
+                     FROM ${STAGING_SCHEMA}.enrich_maintainers em
+                    WHERE em.package_id = rc.package_id)
+           ) AS match
+         ) om
+         CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           source      = EXCLUDED.source,
-           confidence  = EXCLUDED.confidence,
-           verified_at = NOW()
-         RETURNING package_id, repo_id, source, confidence
+           ${KEEP_HIGHEST_CONFLICT_UPDATE}
+         RETURNING package_id, repo_id, source, signal, confidence, ownership_match
        ),
        diff AS (
          SELECT ins.package_id, f.field
@@ -216,6 +265,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          CROSS JOIN LATERAL (VALUES
            ('package_repos.repo_id',    o.repo_id IS NULL),
            ('package_repos.source',     o.repo_id IS NULL OR o.source     IS DISTINCT FROM ins.source),
+           ('package_repos.signal',     o.repo_id IS NULL OR o.signal     IS DISTINCT FROM ins.signal),
            ('package_repos.confidence', o.repo_id IS NULL OR o.confidence IS DISTINCT FROM ins.confidence)
          ) AS f(field, changed)
          WHERE f.changed
@@ -224,11 +274,29 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
          SELECT package_id, field FROM diff RETURNING 1
        )
-       SELECT (SELECT COUNT(*) FROM ins)::int AS links`,
-      { source: REPO_LINK_SOURCE, confidence: REPO_LINK_CONFIDENCE },
+       SELECT
+         (SELECT COUNT(*) FROM ins)::int AS links,
+         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'matched')::int AS declared_matched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'unmatched')::int AS declared_unmatched,
+         (SELECT COUNT(*) FROM ins WHERE ownership_match = 'no_evidence')::int AS declared_no_evidence`,
+      { source: REPO_LINK_SOURCE },
     )
 
-    return { repos: repoRow.repos, links: linkRow.links }
+    const allAffectedPackageIds = [
+      ...(pruneRow.pruned_package_ids ?? []),
+      ...(linkRow.package_ids ?? []),
+    ]
+    await rescorePackageReposForPackages(tx, [...new Set(allAffectedPackageIds)])
+
+    return {
+      repos: repoRow.repos,
+      links: linkRow.links,
+      pruned: pruneRow.pruned,
+      declared_matched: linkRow.declared_matched,
+      declared_unmatched: linkRow.declared_unmatched,
+      declared_no_evidence: linkRow.declared_no_evidence,
+    }
   })
 }
 

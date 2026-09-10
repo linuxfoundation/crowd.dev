@@ -5,11 +5,15 @@ import uniqby from 'lodash.uniqby'
 import {
   ApplicationError,
   DEFAULT_TENANT_ID,
+  getAttributeValue,
+  getCountry,
   getEarliestValidDate,
-  getProperDisplayName,
+  hasAttributeValue,
   isDomainExcluded,
-  isEmail,
   isObjectEmpty,
+  isSameMemberIdentity,
+  normalizeDisplayName,
+  normalizeMemberIdentities,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -18,7 +22,13 @@ import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
 } from '@crowd/common_services'
-import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
+import {
+  IFindOrCreateOrganizationResult,
+  QueryExecutor,
+  createMember,
+  dbStoreQx,
+  updateMember,
+} from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
   findMembersByIdentities,
@@ -53,6 +63,14 @@ import {
 import { IMemberCreateData, IMemberUpdateData } from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
+
+type OrgPromiseCache = Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>
+
+type EmailDomainOrganization = {
+  id: string
+  source: OrganizationSource
+  created: boolean
+}
 
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
@@ -132,30 +150,40 @@ export default class MemberService extends LoggerBase {
     identities: IMemberIdentity[],
     attemptMerge = true,
   ): Promise<string | void> {
-    // Deduplicate by (platform, value, type) — prefer verified=true when the same
-    // identity appears with both flags. Prevents uix_memberIdentities_memberId_platform_value_type
+    // Deduplicate by (platform, type, lower(value)) — prefer verified=true when the same
+    // identity appears with both flags. Prevents per-member unique identity index
     // from firing when a payload contains the same identity twice with different verified values.
-    const seen = new Map<string, IMemberIdentity>()
-    for (const id of identities) {
-      const key = `${id.platform}:${id.type}:${id.value.trim().toLowerCase()}`
-      const existing = seen.get(key)
-      if (!existing || (!existing.verified && id.verified)) {
-        seen.set(key, id)
-      }
+    const deduped = normalizeMemberIdentities(identities)
+
+    // Skip unverified rows another member already has (same as enrichment).
+    const unverified = deduped.filter((identity) => !identity.verified)
+    const owners =
+      unverified.length > 0
+        ? await findMembersByIdentities(this.pgQx, unverified, memberId)
+        : new Map<string, string>()
+
+    const toInsert = deduped.filter(
+      (identity) =>
+        identity.verified ||
+        !owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+    )
+
+    if (toInsert.length === 0) {
+      return
     }
-    const deduped = Array.from(seen.values())
 
     try {
-      await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
+      await this.memberRepo.insertIdentities(memberId, integrationId, toInsert, true)
     } catch (err) {
       if (
         !err?.constraint ||
-        err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
+        (err.constraint !== 'uix_memberIdentities_platform_value_type_verified' &&
+          err.constraint !== 'uix_memberIdentities_platform_type_lower_value_verified')
       ) {
         throw err
       }
 
-      const verifiedIncoming = deduped.filter((i) => i.verified)
+      const verifiedIncoming = toInsert.filter((i) => i.verified)
       if (verifiedIncoming.length === 0) throw err
 
       // Use the structured identities array to find the owner — avoids fragile Postgres
@@ -233,32 +261,23 @@ export default class MemberService extends LoggerBase {
       const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
       const freshIdentities = freshMap.get(survivingId) ?? []
 
-      // Match on (platform, value, type) only — per-member unique index excludes verified.
+      // Match on (platform, type, lower(value)) only — per-member unique index excludes verified.
       // Inserting an identity that already exists with a different verified flag would hit
-      // uix_memberIdentities_memberId_platform_value_type.
+      // the per-member unique identity index.
       const toInsert = incomingIdentities.filter(
-        (incoming) =>
-          !freshIdentities.some(
-            (existing) =>
-              existing.platform === incoming.platform &&
-              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
-              existing.type === incoming.type,
-          ),
+        (incoming) => !freshIdentities.some((existing) => isSameMemberIdentity(existing, incoming)),
       )
 
       // Promote verified=false → true for identities already on the surviving member
       // where the incoming payload asserts verified=true.
-      const toVerify = incomingIdentities.filter(
-        (incoming) =>
-          incoming.verified &&
-          freshIdentities.some(
-            (existing) =>
-              existing.platform === incoming.platform &&
-              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
-              existing.type === incoming.type &&
-              !existing.verified,
-          ),
-      )
+      const toVerify = incomingIdentities
+        .filter((incoming) => incoming.verified)
+        .flatMap((incoming) => {
+          const existing = freshIdentities.find(
+            (e) => isSameMemberIdentity(e, incoming) && !e.verified,
+          )
+          return existing ? [{ ...incoming, value: existing.value }] : []
+        })
 
       if (toVerify.length > 0) {
         await this.memberRepo.updateIdentities(survivingId, toVerify)
@@ -311,7 +330,7 @@ export default class MemberService extends LoggerBase {
     integrationId: string,
     data: IMemberCreateData,
     platform: PlatformType,
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
@@ -324,11 +343,7 @@ export default class MemberService extends LoggerBase {
             (identity, idx) =>
               !!identity.value &&
               data.identities.findIndex(
-                (j) =>
-                  j.platform === identity.platform &&
-                  j.value === identity.value &&
-                  j.type === identity.type &&
-                  j.verified === identity.verified,
+                (j) => isSameMemberIdentity(j, identity) && j.verified === identity.verified,
               ) === idx,
           )
 
@@ -350,6 +365,14 @@ export default class MemberService extends LoggerBase {
               'memberService -> create -> validateAttributes',
             )
 
+            if (!hasAttributeValue(attributes.country)) {
+              const location = getAttributeValue(attributes.location)
+              const country = getCountry(location)
+              if (country) {
+                attributes.country = Object.assign({}, attributes.country, { system: country })
+              }
+            }
+
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(attributes),
               this.log,
@@ -357,10 +380,11 @@ export default class MemberService extends LoggerBase {
             )
           }
 
-          // validate emails
-          data.identities = this.validateEmails(data.identities)
+          data.identities = normalizeMemberIdentities(data.identities, {
+            dropInvalidEmails: true,
+          })
 
-          data.displayName = getProperDisplayName(data.displayName)
+          data.displayName = normalizeDisplayName(data.displayName)
 
           // detect if the member is a bot
           const botDetection = this.botDetectionService.isMemberBot(
@@ -463,8 +487,8 @@ export default class MemberService extends LoggerBase {
             await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
-          const organizations = []
-          const orgService = new OrganizationService(this.store, this.log)
+          const organizations: IOrganizationIdSource[] = []
+          const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
               // Temp fix: skip the individual-noaccount.com placeholder org to avoid
@@ -478,7 +502,7 @@ export default class MemberService extends LoggerBase {
 
               const key = orgCacheKey(org)
               const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<string | undefined>
+              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
               if (cachedOrgPromise) {
                 orgIdPromise = cachedOrgPromise
               } else {
@@ -492,10 +516,10 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const orgId = await orgIdPromise
-              if (orgId) {
+              const result = await orgIdPromise
+              if (result) {
                 organizations.push({
-                  id: orgId,
+                  id: result.id,
                   source: org.source,
                 })
               }
@@ -509,8 +533,9 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.type === MemberIdentityType.EMAIL && i.verified,
           )
+          let fromEmailDomain: EmailDomainOrganization[] = []
           if (emailIdentities.length > 0) {
-            const orgs = await logExecutionTimeV2(
+            fromEmailDomain = await logExecutionTimeV2(
               () =>
                 this.assignOrganizationByEmailDomain(
                   integrationId,
@@ -523,8 +548,8 @@ export default class MemberService extends LoggerBase {
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
             )
-            if (orgs.length > 0) {
-              organizations.push(...orgs)
+            if (fromEmailDomain.length > 0) {
+              organizations.push(...fromEmailDomain)
             }
           }
 
@@ -552,6 +577,13 @@ export default class MemberService extends LoggerBase {
                 this.log,
                 'memberService -> create -> addToMember',
               )
+
+              const addedIds = new Set(orgsToAdd.map((org) => org.id))
+              for (const org of fromEmailDomain) {
+                if (org.created && addedIds.has(org.id)) {
+                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
+                }
+              }
             }
           }
 
@@ -574,7 +606,7 @@ export default class MemberService extends LoggerBase {
     original: IDbMember,
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     activityTimestamp?: string,
   ): Promise<string | void> {
     return logExecutionTimeV2(
@@ -597,21 +629,30 @@ export default class MemberService extends LoggerBase {
             )
           }
 
-          // prevent empty identity handles
-          data.identities = data.identities.filter((i) => i.value)
-
-          // validate emails
-          data.identities = this.validateEmails(data.identities)
+          data.identities = normalizeMemberIdentities(data.identities, {
+            dropInvalidEmails: true,
+          })
 
           // make sure displayName is proper
           if (data.displayName) {
-            data.displayName = getProperDisplayName(data.displayName)
+            data.displayName = normalizeDisplayName(data.displayName)
           }
 
           const toUpdate = this.mergeData(original, originalIdentities, data)
 
           if (toUpdate.attributes) {
             this.log.trace({ memberId: id }, 'Setting attribute default values!')
+
+            if (!hasAttributeValue(toUpdate.attributes.country)) {
+              const location = getAttributeValue(toUpdate.attributes.location)
+              const country = getCountry(location)
+              if (country) {
+                toUpdate.attributes.country = Object.assign({}, toUpdate.attributes.country, {
+                  system: country,
+                })
+              }
+            }
+
             toUpdate.attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(toUpdate.attributes),
               this.log,
@@ -707,8 +748,8 @@ export default class MemberService extends LoggerBase {
             return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
-          const organizations = []
-          const orgService = new OrganizationService(this.store, this.log)
+          const organizations: IOrganizationIdSource[] = []
+          const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
               // Temp fix: skip the individual-noaccount.com placeholder org to avoid
@@ -724,7 +765,7 @@ export default class MemberService extends LoggerBase {
 
               const key = orgCacheKey(org)
               const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<string | undefined>
+              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
               if (cachedOrgPromise) {
                 orgIdPromise = cachedOrgPromise
               } else {
@@ -738,10 +779,10 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const orgId = await orgIdPromise
-              if (orgId) {
+              const result = await orgIdPromise
+              if (result) {
                 organizations.push({
-                  id: orgId,
+                  id: result.id,
                   source: data.source,
                 })
               }
@@ -751,9 +792,10 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.verified && i.type === MemberIdentityType.EMAIL,
           )
+          let fromEmailDomain: EmailDomainOrganization[] = []
           if (emailIdentities.length > 0) {
             this.log.trace({ memberId: id }, 'Assigning organization by email domain!')
-            const orgs = await logExecutionTimeV2(
+            fromEmailDomain = await logExecutionTimeV2(
               () =>
                 this.assignOrganizationByEmailDomain(
                   integrationId,
@@ -766,8 +808,8 @@ export default class MemberService extends LoggerBase {
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
             )
-            if (orgs.length > 0) {
-              organizations.push(...orgs)
+            if (fromEmailDomain.length > 0) {
+              organizations.push(...fromEmailDomain)
             }
           }
 
@@ -797,6 +839,13 @@ export default class MemberService extends LoggerBase {
                 this.log,
                 'memberService -> update -> addToMember',
               )
+
+              const addedIds = new Set(orgsToAdd.map((org) => org.id))
+              for (const org of fromEmailDomain) {
+                if (org.created && addedIds.has(org.id)) {
+                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
+                }
+              }
             }
           }
 
@@ -814,13 +863,13 @@ export default class MemberService extends LoggerBase {
   public async assignOrganizationByEmailDomain(
     integrationId: string,
     emails: string[],
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
     activityTimestamp?: string,
     isBotMember = false,
-  ): Promise<IOrganizationIdSource[]> {
-    const orgService = new OrganizationService(this.store, this.log)
-    const organizations: IOrganizationIdSource[] = []
+  ): Promise<EmailDomainOrganization[]> {
+    const orgService = new OrganizationService(this.store, this.temporal, this.log)
+    const organizations: EmailDomainOrganization[] = []
     const emailDomains = new Set<string>()
 
     // Collect unique domains
@@ -857,7 +906,7 @@ export default class MemberService extends LoggerBase {
       }
       const key = orgCacheKey(org)
       const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-      let orgIdPromise: Promise<string | undefined>
+      let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
       if (cachedOrgPromise) {
         orgIdPromise = cachedOrgPromise
       } else {
@@ -871,15 +920,16 @@ export default class MemberService extends LoggerBase {
           orgIdPromise.catch(() => orgPromiseCache?.delete(key))
         }
       }
-      const orgId = await orgIdPromise
-      if (orgId) {
+      const result = await orgIdPromise
+      if (result) {
         organizations.push({
-          id: orgId,
+          id: result.id,
           source: orgSource,
+          created: result.created,
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+          await this.bufferMemberOrganizationActivityDates(memberId, result.id, activityTimestamp)
         }
       }
     }
@@ -963,31 +1013,6 @@ export default class MemberService extends LoggerBase {
     }
   }
 
-  private validateEmails(identities: IMemberIdentity[]): IMemberIdentity[] {
-    const toReturn: IMemberIdentity[] = []
-
-    for (const identity of identities) {
-      if (identity.type === MemberIdentityType.EMAIL) {
-        // check if email is valid and that the same email doesn't already exists in the array for the same platform
-        if (
-          isEmail(identity.value) &&
-          toReturn.find(
-            (i) =>
-              i.type === MemberIdentityType.EMAIL &&
-              i.value === identity.value &&
-              i.platform === identity.platform,
-          ) === undefined
-        ) {
-          toReturn.push({ ...identity, value: identity.value.toLowerCase() })
-        }
-      } else {
-        toReturn.push(identity)
-      }
-    }
-
-    return toReturn
-  }
-
   private mergeData(
     dbMember: IDbMember,
     dbIdentities: IMemberIdentity[],
@@ -1011,16 +1036,12 @@ export default class MemberService extends LoggerBase {
       const newIdentities: IMemberIdentity[] = []
       const toUpdate: IMemberIdentity[] = []
       for (const identity of member.identities) {
-        const dbIdentity = dbIdentities.find(
-          (t) =>
-            t.platform === identity.platform &&
-            t.value === identity.value &&
-            t.type === identity.type,
-        )
+        const dbIdentity = dbIdentities.find((t) => isSameMemberIdentity(t, identity))
         if (!dbIdentity) {
           newIdentities.push(identity)
         } else if (dbIdentity.verified !== identity.verified) {
-          toUpdate.push(identity)
+          // Keep stored preferred casing; updateIdentities matches on exact value.
+          toUpdate.push({ ...identity, value: dbIdentity.value })
         }
       }
 

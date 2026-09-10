@@ -6,5 +6,6 @@ export default [
   Platform.TWITTER,
   Platform.CRUNCHBASE,
   Platform.HUBSPOT,
+  Platform.MAILING_LIST,
   Platform.CUSTOM,
 ];

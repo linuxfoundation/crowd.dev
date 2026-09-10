@@ -1,4 +1,4 @@
-import { getProperDisplayName } from '@crowd/common'
+import { normalizeDisplayName } from '@crowd/common'
 import { SearchSyncWorkerEmitter } from '@crowd/common_services'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
@@ -41,7 +41,7 @@ setImmediate(async () => {
     fixableMembers = result.rows
 
     for (const member of fixableMembers) {
-      const displayName = getProperDisplayName(member.displayName)
+      const displayName = normalizeDisplayName(member.displayName)
       await updateMemberDisplayName(dbClient, member.id, displayName)
 
       searchSyncWorkerEmitter.triggerMemberSync(member.id, false)

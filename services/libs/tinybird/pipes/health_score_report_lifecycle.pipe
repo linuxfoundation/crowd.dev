@@ -1,0 +1,33 @@
+DESCRIPTION >
+    - `health_score_report_lifecycle.pipe` serves widget 02 "How projects are maintained" for the
+    Health Score report (IN-1287, part of epic IN-1276 Health Score Coverage).
+    - Returns one row per `lifecycleLabel` value: how many tracked projects fall into each
+    maintenance-lifecycle state, regardless of whether they have a Health Score v2 yet — the
+    denominator is all tracked projects in scope, not just scored ones.
+    - `label` — `lifecycleLabel` value (`active`, `stable`, `declining`, `inert`, `abandoned`,
+    `archived`), or `NULL` when the project has no linked package data to derive a lifecycle state
+    from (rendered by the client as "Unavailable").
+    - `projects` — count of tracked projects (`type = 'project'`) with that lifecycle label.
+    - Parameters:
+    - `scope`: Optional string, default `all`, values `all | lf | other` — filters by `isLF` when
+    `lf`/`other` is given; `all` applies no filter.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_lifecycle_endpoint
+SQL >
+    %
+    SELECT lifecycleLabel AS label, count() AS projects
+    FROM project_insights_copy_ds
+    WHERE
+        type = 'project'
+        {% if String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'lf' %} AND isLF = 1
+        {% elif String(
+            scope, 'all', description="Scope filter: all | lf | other", required=False
+        ) == 'other' %} AND isLF = 0
+        {% end %}
+    GROUP BY label

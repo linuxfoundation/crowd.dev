@@ -97,4 +97,14 @@ methodology. We chose exact over an HLL-sketch approximation, accepting the high
 - **Weekly trigger.** No new schedule — the `go`/`nuget` variants are already child workflows of
   `bootstrapOsspckgs`, which the existing `osspckgs-bootstrap-weekly` schedule runs incrementally.
 
+## Addendum: RUBYGEMS (2026-07-13)
+RubyGems is also absent from deps.dev's `Dependents` reverse index (verified via BQ 2026-07-13:
+`Dependents` contains only NPM/MAVEN/PYPI/CARGO) and has no resolved/transitive graph table, only
+the raw manifest `RubyGemsRequirementsLatest` — same shape as GO/NUGET. It was added as a third
+`isScript` closure variant (`dependent_counts_rubygems`), reusing this ADR's design unchanged:
+same semi-naive fixpoint, same `isScript` pipeline integration, same guard/monitor pattern. Corpus
+is NUGET-scale (1.7M pkgs / 4.5M runtime edges), so cost/runtime are expected to track NUGET, not
+GO. This ADR's title and body still say "GO/NUGET" for the original decision; treat this addendum
+as extending scope to a third ecosystem rather than superseding the analysis above.
+
 Related: ADR-0003 (deps BQ table selection — same root cause: GO/NUGET absent from the resolved-graph tables).

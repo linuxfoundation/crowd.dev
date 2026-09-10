@@ -1,5 +1,6 @@
 import {
   findObsoleteRepos,
+  getCurrentTimeMs,
   getOSPSBaselineInsights,
   initializeTokenInfos,
   saveOSPSBaselineInsightsToDB,
@@ -12,4 +13,5 @@ export {
   findObsoleteRepos,
   initializeTokenInfos,
   updateTokenInfos,
+  getCurrentTimeMs,
 }

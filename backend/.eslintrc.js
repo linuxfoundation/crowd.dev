@@ -47,6 +47,7 @@ module.exports = {
       },
       rules: {
         semi: ['error', 'never'],
+        'no-void': 'off',
         'prefer-destructuring': ['error', { object: false, array: false }],
         'no-param-reassign': 0,
         'no-underscore-dangle': 0,

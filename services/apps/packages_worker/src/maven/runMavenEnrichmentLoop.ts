@@ -1,19 +1,34 @@
 import {
   MavenPackageToSync,
   QueryExecutor,
+  listMavenCriticalPackagesById,
   listMavenPackagesToSync,
   logAuditFieldChange,
+  removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
+  setPackageRepositoryUrl,
   touchPackageSyncedAt,
   upsertMaintainer,
-  upsertMavenPackageRepo,
   upsertPackage,
+  upsertPackageRepo,
   upsertRepo,
   upsertVersionsBatch,
 } from '@crowd/data-access-layer'
+import type {
+  PackageRepoOwnershipMatch,
+  PackageRepoSignal,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
+import {
+  OwnershipEvidence,
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+} from '../utils/ownershipMatch'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
@@ -38,12 +53,20 @@ export interface BatchResult {
   skipped: number
   error: number
   unchanged: number
+  declared_matched: number
+  declared_unmatched: number
+  declared_no_evidence: number
+}
+
+function emptyBatchResult(): BatchResult {
+  return { processed: 0, skipped: 0, error: 0, unchanged: 0, ...emptyDeclaredOwnershipCounts() }
 }
 
 type CriticalStatus = 'processed' | 'skipped' | 'unchanged' | 'error'
 
 interface CriticalPackageResult {
   status: CriticalStatus
+  ownershipMatch: PackageRepoOwnershipMatch | null
 }
 
 // prettier-ignore
@@ -53,25 +76,39 @@ type PackageRow = MavenPackageToSync
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // prettier-ignore
-async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed: Set<string>): Promise<void> {
-  if (!repositoryUrl) return
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary', evidence?: Omit<OwnershipEvidence, 'repoOwner'>): Promise<PackageRepoOwnershipMatch | null> {
+  if (!repositoryUrl) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
+    return null
+  }
   const parsed = parseRepoUrl(repositoryUrl)
-  if (!parsed) return
+  if (!parsed) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
+    return null
+  }
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const repoChanged = await upsertMavenPackageRepo(qx, {
-    packageId,
-    repoId,
-    source: 'declared',
-    confidence: 0.8,
+  const ownershipMatch = matchOwnership({
+    ...evidence,
+    repoOwner: parsed.host === 'other' ? null : parsed.owner,
   })
-  repoChanged.forEach((f) => changed.add(f))
+  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal, ownershipMatch })
+  repoChanged.forEach((f) => changed?.add(f))
+  const removedFields = await removeDeclaredPackageRepo(qx, String(packageId), String(repoId))
+  removedFields.forEach((f) => changed?.add(f))
+  return ownershipMatch
 }
 
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
 // prettier-ignore
-async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn()
@@ -121,7 +158,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
 
   if (!groupId) {
     log.warn({ purl: pkg.purl }, 'Skipping: null namespace (groupId)')
-    return { status: 'skipped' }
+    return { status: 'skipped', ownershipMatch: null }
   }
 
   let baseUrl = resolveRegistryBaseUrl(groupId)
@@ -190,14 +227,14 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         dependentReposCount: pkg.dependentReposCount,
       })
       log.warn({ groupId, artifactId, baseUrl }, 'Not found in registry — writing minimal record')
-      return { status: 'skipped' }
+      return { status: 'skipped', ownershipMatch: null }
     }
     if (metadata.kind === 'RATE_LIMIT') {
       log.warn(
         { groupId, artifactId, status: metadata.status },
         'Rate limited — will retry next pass',
       )
-      return { status: 'error' }
+      return { status: 'error', ownershipMatch: null }
     }
     throw new Error(
       `Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`,
@@ -225,17 +262,18 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       dependentReposCount: pkg.dependentReposCount,
     })
     log.warn({ groupId, artifactId }, 'No release version in metadata — writing minimal record')
-    return { status: 'skipped' }
+    return { status: 'skipped', ownershipMatch: null }
   }
 
-  // Phase 2: skip full POM extraction when upstream version matches what we already have.
-  if (!forceFullExtraction && version === pkg.latestVersion) {
+  // Phase 2: skip full POM extraction only if this row was already Maven-enriched —
+  // a version match on a never-extracted row (fresh promotion, error, deps_dev) is coincidental.
+  if (!forceFullExtraction && version === pkg.latestVersion && pkg.ingestionSource === 'maven-registry') {
     await touchPackageSyncedAt(qx, pkg.purl, {
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
     log.debug({ groupId, artifactId, version }, 'Version unchanged — skipping POM extraction')
-    return { status: 'unchanged' }
+    return { status: 'unchanged', ownershipMatch: null }
   }
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
@@ -261,13 +299,19 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
-    return { status: 'error' }
+    return { status: 'error', ownershipMatch: null }
   }
 
-  const repositoryUrl = normalizeScmUrl(result.scmUrl)
+  const scmRepositoryUrl = normalizeScmUrl(result.scmUrl)
+  const fallbackRepo = scmRepositoryUrl
+    ? null
+    : resolveManifestRepo([{ field: 'url', url: result.homepageUrl, signal: 'secondary' }])
+  const repositoryUrl = scmRepositoryUrl ?? fallbackRepo?.repo.url ?? null
+
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await withDeadlockRetry(() =>
-    qx.tx(async (t) => {
+    qx.tx(async (t: QueryExecutor) => {
       const changed = new Set<string>()
 
       const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
@@ -338,7 +382,19 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         pmChanged.forEach((f) => changed.add(f))
       }
 
-      await writeRepoLink(t, packageId, repositoryUrl, changed)
+      // upsertPackage's COALESCE can't distinguish a dropped <scm><url> from "unknown" — this
+      // POM extraction succeeded, so clear declared_repository_url explicitly when it's gone.
+      const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+        t,
+        packageId.toString(),
+        result.scmUrl,
+      )
+      declaredClearedFields.forEach((f) => changed.add(f))
+
+      ownershipMatch = await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary', {
+        namespace: groupId,
+        maintainers: allPeople.map((p) => p.username),
+      })
 
       await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
 
@@ -357,7 +413,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
     }),
   )
 
-  return { status: 'processed' }
+  return { status: 'processed', ownershipMatch }
 }
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
@@ -377,7 +433,7 @@ export async function processBatch(qx: QueryExecutor, config: MavenConfig, isCri
 async function processPackages(qx: QueryExecutor, config: MavenConfig, packages: PackageRow[], isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
-  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  if (packages.length === 0) return emptyBatchResult()
 
   // Cluster the batch by namespace so artifacts sharing a parent POM are processed
   // adjacently — this is what makes the parent-POM cache effective. The criticality
@@ -393,7 +449,7 @@ async function processPackages(qx: QueryExecutor, config: MavenConfig, packages:
 
   log.info({ count: packages.length, isCritical }, 'Batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const counts = emptyBatchResult()
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += concurrency) {
     const group = packages.slice(batchStart, batchStart + concurrency)
@@ -413,6 +469,7 @@ async function processPackages(qx: QueryExecutor, config: MavenConfig, packages:
 
           const res = await processCriticalPackage(qx, pkg, forceFullExtraction)
           counts[res.status]++
+          if (res.ownershipMatch) bumpDeclaredOwnershipCounts(counts, res.ownershipMatch)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
@@ -440,12 +497,7 @@ async function processPackages(qx: QueryExecutor, config: MavenConfig, packages:
 // prettier-ignore
 async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, isShuttingDown: () => boolean): Promise<BatchResult> {
   const label = isCritical ? 'critical' : 'non-critical'
-  const total: BatchResult = {
-    processed: 0,
-    skipped: 0,
-    error: 0,
-    unchanged: 0,
-  }
+  const total: BatchResult = emptyBatchResult()
   let batchNum = 0
   const phaseStartedAt = Date.now()
 
@@ -466,6 +518,9 @@ async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: bool
     total.skipped += result.skipped
     total.error += result.error
     total.unchanged += result.unchanged
+    total.declared_matched += result.declared_matched
+    total.declared_unmatched += result.declared_unmatched
+    total.declared_no_evidence += result.declared_no_evidence
 
     log.info(
       {
@@ -475,6 +530,9 @@ async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: bool
         totalSkipped: total.skipped,
         totalUnchanged: total.unchanged,
         totalErrors: total.error,
+        declaredMatched: total.declared_matched,
+        declaredUnmatched: total.declared_unmatched,
+        declaredNoEvidence: total.declared_no_evidence,
         elapsedSec: Math.round((Date.now() - phaseStartedAt) / 1000),
       },
       'Batch done',
@@ -496,4 +554,70 @@ async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: bool
 // prettier-ignore
 export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
   return runPhase(qx, config, true, isShuttingDown)
+}
+
+/**
+ * Force full-refresh backfill: re-runs POM extraction over EVERY critical Maven
+ * row, ignoring the staleness window. Unlike runMavenCriticalBackfill (which
+ * drains listMavenPackagesToSync by predicate and cannot terminate with
+ * refreshDays=0 — the freshly-synced top rows re-qualify every batch), this pages
+ * strictly by `id > afterId`, so each row is processed exactly once and the scan
+ * always terminates. Every page runs with forceFullExtraction=true.
+ *
+ * Trade-off vs. the normal path: rows are visited in id order, not
+ * dependent_count order, so if interrupted the most-depended-on packages are not
+ * guaranteed to be done first. Restart re-scans from id 0 (idempotent upserts).
+ */
+// prettier-ignore
+export async function runMavenCriticalForceBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
+  const total: BatchResult = emptyBatchResult()
+  const startedAt = Date.now()
+  // Cursor kept as a string: id is a Postgres bigint, and Number() coercion would
+  // silently lose precision above 2^53, corrupting the cursor and skipping rows.
+  let afterId = '0'
+  let batchNum = 0
+
+  log.info('Force full-refresh started (all critical rows, keyset by id, ignoring refreshDays)')
+
+  while (!isShuttingDown()) {
+    const page = await listMavenCriticalPackagesById(qx, { afterId, limit: config.batchSize })
+    if (page.length === 0) break
+
+    // Capture the cursor before processPackages reorders the page in place (it
+    // clusters by namespace for the parent-POM cache). Rows come back id-ordered,
+    // so the max id is the last element — kept as a string to preserve bigint precision.
+    afterId = page[page.length - 1].id
+
+    const result = await processPackages(qx, config, page, true, true)
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.error += result.error
+    total.unchanged += result.unchanged
+    total.declared_matched += result.declared_matched
+    total.declared_unmatched += result.declared_unmatched
+    total.declared_no_evidence += result.declared_no_evidence
+
+    log.info(
+      {
+        batch: batchNum,
+        afterId,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalUnchanged: total.unchanged,
+        totalErrors: total.error,
+        declaredMatched: total.declared_matched,
+        declaredUnmatched: total.declared_unmatched,
+        declaredNoEvidence: total.declared_no_evidence,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+      },
+      'Force batch done',
+    )
+  }
+
+  log.info(
+    { ...total, durationSec: Math.round((Date.now() - startedAt) / 1000) },
+    'Force full-refresh complete',
+  )
+  return total
 }

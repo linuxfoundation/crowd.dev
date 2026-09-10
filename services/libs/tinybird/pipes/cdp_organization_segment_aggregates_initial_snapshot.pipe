@@ -12,8 +12,7 @@ SQL >
         avgState(score) AS avgContributorEngagement,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
-    FROM activityRelations_enriched_deduplicated_ds act
-    WHERE snapshotId = (SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_ds)
+    FROM activityRelations_enriched_deduplicated_bucket_union act
     GROUP BY segmentId, organizationId
 
 TYPE COPY

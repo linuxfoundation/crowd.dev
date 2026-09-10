@@ -15,16 +15,27 @@ import {
   fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
   findMemberById,
+  findOrgsByIds,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { findMergedPrimaryIds } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { Logger } from '@crowd/logging'
 import { REDIS_CONFIG, RedisCache, RedisClient, getRedisClient } from '@crowd/redis'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
-import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
+import {
+  IMemberOrganization,
+  MemberOrgDate,
+  MemberOrgStintChange,
+  MergeActionType,
+  OrganizationSource,
+} from '@crowd/types'
 
 import { IJobDefinition } from '../types'
+
+const MAX_FK_VIOLATION_RETRIES = 3
 
 const job: IJobDefinition = {
   name: 'infer-member-organization-stint-changes',
@@ -78,7 +89,19 @@ const job: IJobDefinition = {
             { withDeleted: true },
           )
 
-          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, orgDates)
+          const reconciledOrgDates = await reconcileOrganizationDates(
+            qx,
+            existingOrgs,
+            orgDates,
+            memberId,
+            ctx.log,
+          )
+
+          const changes = inferMemberOrganizationStintChanges(
+            memberId,
+            existingOrgs,
+            reconciledOrgDates,
+          )
 
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
@@ -101,9 +124,32 @@ const job: IJobDefinition = {
           memberId,
           rawMembers,
         )
+        await redis.del(fkViolationRetryKey(memberId))
 
         processed++
       } catch (err) {
+        if ((err as { code?: string })?.code === '23503') {
+          const constraint = (err as { constraint?: string })?.constraint
+          const retryKey = fkViolationRetryKey(memberId)
+          const retries = await redis.incr(retryKey)
+
+          if (retries >= MAX_FK_VIOLATION_RETRIES) {
+            ctx.log.error(
+              err,
+              { memberId, constraint, retries },
+              'Stint change repeatedly referenced a missing related record; purging poisoned queue entry.',
+            )
+            await purgeMember(redis, memberId)
+          } else {
+            ctx.log.warn(
+              err,
+              { memberId, constraint, retries },
+              'Stint change referenced a missing related record, will retry.',
+            )
+          }
+          continue
+        }
+
         ctx.log.error(err, { memberId }, 'Failed to process member stint inference.')
         throw err
       }
@@ -129,19 +175,78 @@ function parseSetMembers(members: string[]): MemberOrgDate[] {
   return results
 }
 
+// Merged orgs are rewritten to their primary id instead of dropped; only genuinely
+// deleted orgs are dropped, since those can never resolve to a valid target.
+async function reconcileOrganizationDates(
+  qx: QueryExecutor,
+  existingOrgs: IMemberOrganization[],
+  orgDates: MemberOrgDate[],
+  memberId: string,
+  log: Logger,
+): Promise<MemberOrgDate[]> {
+  const knownOrgIds = new Set(existingOrgs.map((o) => o.organizationId))
+  const orgIdsToVerify = [...new Set(orgDates.map((d) => d.organizationId))].filter(
+    (id) => !knownOrgIds.has(id),
+  )
+
+  if (orgIdsToVerify.length === 0) {
+    return orgDates
+  }
+
+  const existingOrgIds = new Set((await findOrgsByIds(qx, orgIdsToVerify)).map((o) => o.id))
+  const missingOrgIds = orgIdsToVerify.filter((id) => !existingOrgIds.has(id))
+
+  if (missingOrgIds.length === 0) {
+    return orgDates
+  }
+
+  const mergedPrimaryIds = await findMergedPrimaryIds(qx, MergeActionType.ORG, missingOrgIds)
+  const deletedOrgIds = new Set(missingOrgIds.filter((id) => !mergedPrimaryIds.has(id)))
+
+  if (deletedOrgIds.size > 0) {
+    log.warn(
+      { memberId, deletedOrgIds: [...deletedOrgIds] },
+      'Dropping queued stint dates for organizations that no longer exist.',
+    )
+  }
+
+  return orgDates
+    .filter((d) => !deletedOrgIds.has(d.organizationId))
+    .map((d) =>
+      mergedPrimaryIds.has(d.organizationId)
+        ? { ...d, organizationId: mergedPrimaryIds.get(d.organizationId) }
+        : d,
+    )
+}
+
 /**
  * Purges a member from the queue and their associated Redis entries.
  */
 async function purgeMember(redis: RedisClient, memberId: string): Promise<void> {
   const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+  const retryKey = fkViolationRetryKey(memberId)
 
-  await redis.multi().del(datesKey).sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId).exec()
+  await redis
+    .multi()
+    .del(datesKey)
+    .del(retryKey)
+    .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+    .exec()
+}
+
+function fkViolationRetryKey(memberId: string): string {
+  return `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:fk-violation-retries:${memberId}`
 }
 
 /**
  * Applies the stint changes to the database.
  */
 async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChange[]) {
+  const insertOrgIds = [
+    ...new Set(changes.filter((c) => c.type === 'insert').map((c) => c.organizationId)),
+  ]
+  const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(qx, insertOrgIds)
+
   for (const change of changes) {
     if (change.type === 'insert') {
       const memberOrganizationId = await createMemberOrganization(qx, change.memberId, {
@@ -150,10 +255,6 @@ async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChang
         dateEnd: change.dateEnd,
         source: OrganizationSource.EMAIL_DOMAIN,
       })
-
-      const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(qx, [
-        change.organizationId,
-      ])
 
       if (memberOrganizationId && orgAffiliationPolicies.get(change.organizationId)) {
         await changeMemberOrganizationAffiliationOverrides(qx, [

@@ -6,7 +6,10 @@ import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/s
 import telemetry from '@crowd/telemetry'
 
 export class ActivityMonitoringInterceptor implements ActivityInboundCallsInterceptor {
-  public constructor(private readonly ctx: Context) {}
+  public constructor(
+    private readonly ctx: Context,
+    private readonly alertChannel: SlackChannel = SlackChannel.CDP_ALERTS,
+  ) {}
   async execute(
     input: ActivityExecuteInput,
     next: Next<ActivityInboundCallsInterceptor, 'execute'>,
@@ -34,7 +37,7 @@ export class ActivityMonitoringInterceptor implements ActivityInboundCallsInterc
 
       // Fire and forget - don't await to avoid blocking the activity
       sendSlackNotificationAsync(
-        SlackChannel.CDP_ALERTS,
+        this.alertChannel,
         SlackPersona.WARNING_PROPAGATOR,
         'High Activity Retry Count',
         message,

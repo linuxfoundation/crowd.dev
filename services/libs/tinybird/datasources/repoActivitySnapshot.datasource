@@ -10,6 +10,7 @@ DESCRIPTION >
     - `prsOpenedLast12m`, `prsMergedLast12m`, `prsClosedUnmerged12m` are PR counts opened / merged / closed-without-merge in the trailing 12m (NULL if not computed).
     - `prMedianTimeToMergeHours` is the median hours from PR open to merge (NULL if no merged PRs in window).
     - `prMedianTimeToFirstResponseHours` is the median hours to first non-author response on a PR (NULL if no PRs or no responses in window).
+    - `externalPrsOpened12m`, `externalPrsMerged12m` are PR counts opened / merged in the trailing 12m by external contributors (authorAssociation not OWNER/MEMBER/COLLABORATOR); NULL until the enricher re-visits the repo.
     - `issuesOpenedLast12m`, `issuesClosedLast12m` are issue counts opened / closed in the trailing 12m (NULL if not computed).
     - `issuesOpenedLast6m`, `issuesOpenedPrior6m` are issues opened in the most recent 6m and the 6m before that (NULL if not computed).
     - `issuesOpenNow` is the current count of open issues (NULL if not computed).
@@ -28,6 +29,8 @@ SCHEMA >
     `prsClosedUnmerged12m` Nullable(Int32) `json:$.record.prs_closed_unmerged_12m`,
     `prMedianTimeToMergeHours` Nullable(Int32) `json:$.record.pr_median_time_to_merge_hours`,
     `prMedianTimeToFirstResponseHours` Nullable(Int32) `json:$.record.pr_median_time_to_first_response_hours`,
+    `externalPrsOpened12m` Nullable(Int32) `json:$.record.external_prs_opened_12m`,
+    `externalPrsMerged12m` Nullable(Int32) `json:$.record.external_prs_merged_12m`,
     `issuesOpenedLast12m` Nullable(Int32) `json:$.record.issues_opened_last_12m`,
     `issuesClosedLast12m` Nullable(Int32) `json:$.record.issues_closed_last_12m`,
     `issuesOpenedLast6m` Nullable(Int32) `json:$.record.issues_opened_last_6m`,

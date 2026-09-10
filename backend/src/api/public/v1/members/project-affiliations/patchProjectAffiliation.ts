@@ -2,20 +2,21 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberProjectSegments,
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
   findMemberById,
   insertMemberSegmentAffiliations,
-  optionsQx,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
@@ -39,7 +40,7 @@ const bodySchema = z
           message: 'dateEnd must be greater than or equal to dateStart',
         }),
     ),
-    verifiedBy: z.string().max(255).optional(),
+    verifiedBy: z.string().trim().min(1).optional(),
   })
   .refine((b) => b.affiliations.length === 0 || b.verifiedBy != null, {
     message: 'verifiedBy is required when affiliations is non-empty',
@@ -60,6 +61,17 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
   const [segment] = await fetchMemberProjectSegments(qx, memberId, projectId)
   if (!segment) {
     throw new NotFoundError('Project not found')
+  }
+
+  if (affiliations.length > 0) {
+    const policies = await fetchManyOrganizationAffiliationPolicies(
+      qx,
+      affiliations.map((a) => a.organizationId),
+    )
+
+    if ([...policies.values()].some((isBlocked) => isBlocked)) {
+      throw new BadRequestError('This organization does not allow affiliations')
+    }
   }
 
   const existingAffiliations = await fetchMemberSegmentAffiliationsForProject(
@@ -85,14 +97,16 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
         if (affiliations.length > 0) {
           await insertMemberSegmentAffiliations(
             tx,
-            memberId,
-            projectId,
             affiliations.map((a) => ({
+              memberId,
+              segmentId: projectId,
               organizationId: a.organizationId,
               dateStart: a.dateStart.toISOString(),
               dateEnd: a.dateEnd?.toISOString() ?? null,
+              verified: true,
               verifiedBy: verifiedBy!,
             })),
+            true,
           )
         }
       })

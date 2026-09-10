@@ -13,7 +13,7 @@ DESCRIPTION >
     - `count`: number of unique `activityId` per day, after filters.
     - Performance:
     - With ~1–2k rows/day and ≤30 days, `uniqExact` is typically fine. `uniqCombined` offers lower latency with negligible error for this scale.
-    - Filters are pushed into `PREWHERE` to minimize I/O (segment/time first).
+    - Filters push down into each bucket of the union via `WHERE` (segment/time first).
 
 TAGS "Activity metrics"
 
@@ -21,16 +21,13 @@ NODE daily_counts
 SQL >
     %
     SELECT toStartOfDay(timestamp) AS date, uniq(activityId) AS count
-    FROM
-        activityRelations_enriched_deduplicated_ds
-        PREWHERE
+    FROM activityRelations_enriched_deduplicated_bucket_union
+    WHERE
         "segmentId" IN {{ Array(segmentIds, 'String', required=True, description="Segment IDs") }}
         {% if defined(after) %} AND timestamp >= parseDateTimeBestEffort({{ String(after) }}) {% end %}
         {% if defined(before) %}
             AND timestamp <= parseDateTimeBestEffort({{ String(before) }})
         {% end %}
-    WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
         {% if defined(platform) %} AND platform = {{ String(platform) }} {% end %}
     GROUP BY date
     ORDER BY date ASC

@@ -11,10 +11,12 @@ from pydantic import ValidationError
 
 from crowdgit.database.crud import (
     fetch_member_organizations,
+    fetch_organizations,
     fetch_segment_affiliations,
     find_many_member_ids_by_identities,
     find_many_organization_ids_by_identities,
     get_repo_affiliation_registry,
+    insert_member_organization_affiliation_overrides,
     insert_member_organizations,
     insert_member_segment_affiliations,
     save_service_execution,
@@ -52,6 +54,7 @@ class AffiliationService(BaseService):
 
     MAX_CHUNK_SIZE = 5000
     MAX_CONCURRENT_CHUNKS = 3
+    MAX_FILE_SIZE_BYTES = 1_000_000
     FILE_PICKER_PREVIEW_MAX_CHARS = 400
     FILE_PICKER_BATCH_SIZE = 20
 
@@ -74,14 +77,19 @@ class AffiliationService(BaseService):
     )
 
     @staticmethod
-    async def read_text_file(file_path: str) -> str:
-        async with aiofiles.open(file_path, "rb") as f:
-            return safe_decode(await f.read())
-
-    @staticmethod
-    def compute_file_hash(content: str) -> str:
-        """SHA-256 hex digest of UTF-8 file content (not a Git blob SHA)."""
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    async def compute_file_hash_from_path(
+        file_path: str, *, retain_content: bool = False
+    ) -> tuple[bytes | None, str]:
+        """SHA-256 of raw file bytes. Set retain_content to decode and parse under the size limit."""
+        hasher = hashlib.sha256()
+        chunks: list[bytes] = []
+        async with aiofiles.open(file_path, "rb") as affiliation_file:
+            while file_chunk := await affiliation_file.read(1024 * 1024):
+                hasher.update(file_chunk)
+                if retain_content:
+                    chunks.append(file_chunk)
+        file_bytes = b"".join(chunks) if retain_content else None
+        return file_bytes, hasher.hexdigest()
 
     @classmethod
     def is_text_file_path(cls, relative_path: str) -> bool:
@@ -388,6 +396,30 @@ class AffiliationService(BaseService):
         except ValueError:
             return None
 
+    @staticmethod
+    def _sanitize_date_range(
+        date_start: date | None, date_end: date | None
+    ) -> tuple[date | None, date | None]:
+        if date_end is not None and (date_start is None or date_end < date_start):
+            return None, None
+        return date_start, date_end
+
+    def normalize_affiliation_dates(
+        self,
+        affiliations: list[AffiliationContributorEntry] | None,
+    ) -> list[AffiliationContributorEntry] | None:
+        if not affiliations:
+            return affiliations
+
+        for entry in affiliations:
+            for organization in entry.organizations:
+                organization.date_start, organization.date_end = self._sanitize_date_range(
+                    organization.date_start,
+                    organization.date_end,
+                )
+
+        return affiliations
+
     @classmethod
     def group_parse_rows(
         cls, rows: list[AffiliationParseRow]
@@ -593,6 +625,30 @@ class AffiliationService(BaseService):
             return True
         return date_start is not None and date_end is None
 
+    @staticmethod
+    def as_date(value: date | datetime | None) -> date | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        return value
+
+    @staticmethod
+    def dates_overlap(
+        start_a: date | None,
+        end_a: date | None,
+        start_b: date | None,
+        end_b: date | None,
+    ) -> bool:
+        # No dates means "still at this company / all time", so it overlaps every period.
+        if (start_a is None and end_a is None) or (start_b is None and end_b is None):
+            return True
+        left_start = start_a or date.min
+        left_end = end_a or date.max
+        right_start = start_b or date.min
+        right_end = end_b or date.max
+        return left_start <= right_end and left_end >= right_start
+
     def has_existing_stint(
         self,
         existing_rows: list[dict],
@@ -600,20 +656,21 @@ class AffiliationService(BaseService):
         date_start: date | None,
         date_end: date | None,
     ) -> bool:
-        """True when MO/MSA already has this stint or an open-ended row covers an undated insert."""
-        incoming_undated = date_start is None and date_end is None
+        """True when MO/MSA already has this stint, or an existing row already covers this period."""
+        incoming_start = self.as_date(date_start)
+        incoming_end = self.as_date(date_end)
+        incoming_undated = incoming_start is None and incoming_end is None
         for row in existing_rows:
             if str(row["organizationId"]) != organization_id:
                 continue
-            existing_start = row.get("dateStart")
-            existing_end = row.get("dateEnd")
-            if isinstance(existing_start, datetime):
-                existing_start = existing_start.date()
-            if isinstance(existing_end, datetime):
-                existing_end = existing_end.date()
-            if existing_start == date_start and existing_end == date_end:
+            existing_start = self.as_date(row.get("dateStart"))
+            existing_end = self.as_date(row.get("dateEnd"))
+            if existing_start == incoming_start and existing_end == incoming_end:
                 return True
             if incoming_undated and self.is_undated_or_open_ended(existing_start, existing_end):
+                return True
+            # An existing row for this org already covers this period — file inference defers to it.
+            if self.dates_overlap(existing_start, existing_end, incoming_start, incoming_end):
                 return True
         return False
 
@@ -625,17 +682,15 @@ class AffiliationService(BaseService):
         date_end: date | None,
     ) -> bool:
         """True when a soft-deleted stint should not be re-created from the file."""
-        incoming_undated = date_start is None and date_end is None
+        incoming_start = self.as_date(date_start)
+        incoming_end = self.as_date(date_end)
+        incoming_undated = incoming_start is None and incoming_end is None
         for row in deleted_rows:
             if str(row["organizationId"]) != organization_id:
                 continue
 
-            existing_start = row.get("dateStart")
-            existing_end = row.get("dateEnd")
-            if isinstance(existing_start, datetime):
-                existing_start = existing_start.date()
-            if isinstance(existing_end, datetime):
-                existing_end = existing_end.date()
+            existing_start = self.as_date(row.get("dateStart"))
+            existing_end = self.as_date(row.get("dateEnd"))
 
             if incoming_undated:
                 if existing_start is None and existing_end is None:
@@ -649,9 +704,9 @@ class AffiliationService(BaseService):
 
             min_date = date.min
             max_date = date.max
-            if (existing_start or min_date) <= (date_end or max_date) and (
+            if (existing_start or min_date) <= (incoming_end or max_date) and (
                 existing_end or max_date
-            ) >= (date_start or min_date):
+            ) >= (incoming_start or min_date):
                 return True
         return False
 
@@ -864,6 +919,16 @@ class AffiliationService(BaseService):
             else:
                 segment_affiliations_by_member.setdefault(member_id, []).append(row)
 
+        blocked_org_ids: set[str] = set()
+        if resolved_stints:
+            org_ids = list({organization_id for _, organization_id, _ in resolved_stints})
+            organizations = await fetch_organizations(org_ids)
+            blocked_org_ids = {
+                str(organization["id"])
+                for organization in organizations
+                if organization["isAffiliationBlocked"]
+            }
+
         mo_inserts: list[dict] = []
         msa_inserts: list[dict] = []
 
@@ -890,10 +955,14 @@ class AffiliationService(BaseService):
                     }
                 )
 
-            if not self.has_existing_stint(
-                existing_msas, organization_id, date_start, date_end
-            ) and not self.is_blocked_by_deleted_row(
-                deleted_msas, organization_id, date_start, date_end
+            if (
+                str(organization_id) not in blocked_org_ids
+                and not self.has_existing_stint(
+                    existing_msas, organization_id, date_start, date_end
+                )
+                and not self.is_blocked_by_deleted_row(
+                    deleted_msas, organization_id, date_start, date_end
+                )
             ):
                 msa_inserts.append(
                     {
@@ -905,7 +974,21 @@ class AffiliationService(BaseService):
                     }
                 )
 
-        await insert_member_organizations(mo_inserts)
+        created_member_organizations = await insert_member_organizations(mo_inserts)
+
+        if blocked_org_ids:
+            override_rows = [
+                {
+                    "member_id": mo["memberId"],
+                    "member_organization_id": mo["id"],
+                    "allow_affiliation": False,
+                }
+                for mo in created_member_organizations
+                if str(mo["organizationId"]) in blocked_org_ids
+            ]
+            if override_rows:
+                await insert_member_organization_affiliation_overrides(override_rows)
+
         await insert_member_segment_affiliations(msa_inserts)
 
     async def process_affiliations(
@@ -955,16 +1038,45 @@ class AffiliationService(BaseService):
                 raise AffiliationFileNotFoundError(ai_cost=ai_cost)
 
             file_path_on_disk = os.path.join(batch_info.repo_path, latest_file_path)
-            content = await self.read_text_file(file_path_on_disk)
-            file_hash = self.compute_file_hash(content)
-            latest_file_hash = file_hash
-
-            affiliations, parse_cost = await self.resolve_snapshot(
-                registry,
-                content,
-                file_hash,
-            )
+            file_size_bytes = await aiofiles.os.path.getsize(file_path_on_disk)
+            # Too big for llm — mark unusable and move on.
+            if file_size_bytes > self.MAX_FILE_SIZE_BYTES:
+                # Steady state: already gave up on this file; getsize is enough.
+                if (
+                    registry
+                    and registry.status == AffiliationRegistryStatus.UNUSABLE.value
+                    and registry.file_path == latest_file_path
+                    and registry.file_hash
+                ):
+                    file_hash = registry.file_hash
+                    latest_file_hash = file_hash
+                    affiliations = []
+                    parse_cost = 0.0
+                else:
+                    # First hit: hash it so the registry can mark it as unusable.
+                    _, file_hash = await self.compute_file_hash_from_path(file_path_on_disk)
+                    latest_file_hash = file_hash
+                    raise AffiliationAnalysisError(
+                        retain_file_hash=True,
+                        error_message=(
+                            f"Affiliation file {latest_file_path!r} is too large for LLM parsing "
+                            f"({file_size_bytes} bytes > {self.MAX_FILE_SIZE_BYTES} bytes)"
+                        ),
+                    )
+            else:
+                file_bytes, file_hash = await self.compute_file_hash_from_path(
+                    file_path_on_disk, retain_content=True
+                )
+                content = safe_decode(file_bytes)
+                latest_file_hash = file_hash
+                affiliations, parse_cost = await self.resolve_snapshot(
+                    registry,
+                    content,
+                    file_hash,
+                )
             ai_cost += parse_cost
+
+            affiliations = self.normalize_affiliation_dates(affiliations)
 
             if repository.parent_repo:
                 affiliations = await self.exclude_parent_repo_affiliations(

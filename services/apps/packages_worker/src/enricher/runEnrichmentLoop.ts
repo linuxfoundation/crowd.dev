@@ -7,9 +7,16 @@ import { fetchActivitySnapshot } from './fetchActivitySnapshot'
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
 import { GithubAppConfig, getInstallationToken } from './githubAppAuth'
 import { InstallationPool } from './installationPool'
-import { FetchError, LightRepoResult, RepoActivitySnapshot } from './types'
+import {
+  FetchError,
+  LightRepoResult,
+  RepoActivitySnapshot,
+  RepoWellKnownFilesUpdate,
+} from './types'
+import { updateCollaborationSignal } from './updateCollaborationSignal'
 import { bulkUpdateEnrichedRepos, markReposSkipped } from './updateEnrichedRepos'
 import { bulkUpsertRepoActivitySnapshot } from './updateRepoActivitySnapshot'
+import { bulkUpsertRepoWellKnownFiles } from './updateWellKnownFiles'
 
 const log = getServiceChildLogger('github-repos-enricher')
 
@@ -67,6 +74,7 @@ class WriteBuffer {
   private results: LightRepoResult[] = []
   private snapshots: RepoActivitySnapshot[] = []
   private skipUrls: string[] = []
+  private wellKnownFiles: RepoWellKnownFilesUpdate[] = []
   private lastFlushAt = Date.now()
   private flushing = false
   private flushFailures = 0
@@ -79,6 +87,10 @@ class WriteBuffer {
 
   addSnapshot(snapshot: RepoActivitySnapshot): void {
     this.snapshots.push(snapshot)
+  }
+
+  addWellKnownFiles(update: RepoWellKnownFilesUpdate): void {
+    this.wellKnownFiles.push(update)
   }
 
   addSkip(url: string): void {
@@ -94,22 +106,34 @@ class WriteBuffer {
     )
   }
 
-  private clearBatch(resultCount: number, snapshotCount: number, skipCount: number): void {
+  private clearBatch(
+    resultCount: number,
+    snapshotCount: number,
+    skipCount: number,
+    wellKnownFilesCount: number,
+  ): void {
     this.results.splice(0, resultCount)
     this.snapshots.splice(0, snapshotCount)
     this.skipUrls.splice(0, skipCount)
+    this.wellKnownFiles.splice(0, wellKnownFilesCount)
     this.flushFailures = 0
   }
 
   async flush(): Promise<number> {
     this.lastFlushAt = Date.now()
-    if (this.results.length === 0 && this.snapshots.length === 0 && this.skipUrls.length === 0) {
+    if (
+      this.results.length === 0 &&
+      this.snapshots.length === 0 &&
+      this.skipUrls.length === 0 &&
+      this.wellKnownFiles.length === 0
+    ) {
       return 0
     }
 
     const batch = [...this.results]
     const snapshotBatch = [...this.snapshots]
     const skips = [...this.skipUrls]
+    const wellKnownFilesBatch = [...this.wellKnownFiles]
     this.flushing = true
     try {
       // The snapshot upsert also updates repos rows — run in one transaction to avoid
@@ -118,8 +142,9 @@ class WriteBuffer {
         await bulkUpdateEnrichedRepos(tx, batch)
         await markReposSkipped(tx, skips)
         await bulkUpsertRepoActivitySnapshot(tx, snapshotBatch)
+        await bulkUpsertRepoWellKnownFiles(tx, wellKnownFilesBatch)
       })
-      this.clearBatch(batch.length, snapshotBatch.length, skips.length)
+      this.clearBatch(batch.length, snapshotBatch.length, skips.length, wellKnownFilesBatch.length)
       return batch.length
     } catch (err) {
       this.flushFailures++
@@ -139,7 +164,13 @@ class WriteBuffer {
           ? 'Flush failed repeatedly — dropping batch, repos will be re-enriched next sweep'
           : 'Flush failed — will retry on next cycle',
       )
-      if (dropBatch) this.clearBatch(batch.length, snapshotBatch.length, skips.length)
+      if (dropBatch)
+        this.clearBatch(
+          batch.length,
+          snapshotBatch.length,
+          skips.length,
+          wellKnownFilesBatch.length,
+        )
       return 0
     } finally {
       this.flushing = false
@@ -360,6 +391,11 @@ async function processRepo(row: RepoRow, ctx: WorkerContext): Promise<void> {
     if (outcome.kind === 'success') {
       metrics.totalFetched++
       writeBuffer.add(outcome.data)
+      writeBuffer.addWellKnownFiles({
+        repoId: row.id,
+        checkedAt: new Date().toISOString(),
+        files: outcome.data.wellKnownFiles,
+      })
       pool.parkIfBudgetLow(
         installationId,
         outcome.data.rateLimit?.remaining,
@@ -499,6 +535,17 @@ export async function runEnrichmentLoop(
       },
       `All repos processed — sleeping ${config.idleSleepSec}s`,
     )
+
+    try {
+      const updated = await updateCollaborationSignal(qx)
+      log.info({ updated }, 'Collaboration signal recomputed')
+    } catch (err) {
+      log.error(
+        { errMsg: (err as Error).message },
+        'Collaboration signal pass failed — will retry next sweep',
+      )
+    }
+
     await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
   }
 

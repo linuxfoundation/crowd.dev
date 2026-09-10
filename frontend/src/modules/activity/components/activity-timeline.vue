@@ -257,7 +257,7 @@ const props = defineProps({
 });
 
 const lsSegmentsStore = useLfSegmentsStore();
-const { projectGroups, selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 
 const enabledPlatforms: IdentityConfig[] = Object.values(lfIdentities);
 
@@ -274,16 +274,8 @@ const selectedSegment = ref(props.selectedSegment || null);
 
 const isMemberEntity = computed(() => props.entityType === 'member');
 
-const subprojects = computed(() => projectGroups.value.list.reduce((acc, projectGroup) => {
-  projectGroup.projects.forEach((project) => {
-    project.subprojects.forEach((subproject) => {
-      acc[subproject.id] = {
-        id: subproject.id,
-        name: subproject.name,
-      };
-    });
-  });
-
+const subprojects = computed(() => selectedProjectGroupSubprojects.value.reduce((acc, sp) => {
+  acc[sp.id] = { id: sp.id, name: sp.name };
   return acc;
 }, {}));
 
@@ -292,7 +284,7 @@ const segments = computed(() => {
     return (
       getSegmentsFromProjectGroup(selectedProjectGroup.value)?.map(
         (s) => subprojects.value[s],
-      ) || []
+      ).filter((s) => !!s) || []
     );
   }
   return (

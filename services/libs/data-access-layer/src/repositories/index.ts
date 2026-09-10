@@ -413,10 +413,9 @@ function getRepoSegmentLookupCache(redis: RedisClient, log: Logger): RedisCache 
 }
 
 /**
- * Find segment IDs for repositories by sourceIntegrationId and URL (no caching)
- * @param qx - Query executor
- * @param toFind - Array of { integrationId, url } to look up (integrationId = sourceIntegrationId)
- * @returns Array of { integrationId, url, segmentId } results
+ * Find segment IDs for repositories by URL (no caching).
+ * The repository URL is the authoritative key: segmentId in public.repositories
+ * is the project mapping and does not depend on which integration is ingesting.
  */
 async function findSegmentsForReposFromDb(
   qx: QueryExecutor,
@@ -426,41 +425,24 @@ async function findSegmentsForReposFromDb(
     return []
   }
 
-  const orConditions: string[] = []
-  const params: Record<string, string> = {}
+  const distinctUrls = Array.from(new Set(toFind.map((r) => r.url)))
 
-  let index = 0
-  for (const repo of toFind) {
-    const urlKey = `url_${index}`
-    const integrationKey = `integration_${index}`
-    index++
-
-    orConditions.push(`(url = $(${urlKey}) AND "sourceIntegrationId" = $(${integrationKey}))`)
-    params[urlKey] = repo.url
-    params[integrationKey] = repo.integrationId
-  }
-
-  const dbResults: { integrationId: string; url: string; segmentId: string }[] = await qx.select(
+  const dbResults: { url: string; segmentId: string }[] = await qx.select(
     `
-    SELECT "sourceIntegrationId" AS "integrationId", url, "segmentId"
+    SELECT url, "segmentId"
     FROM public.repositories
-    WHERE "deletedAt" IS NULL AND (${orConditions.join(' OR ')})
-    LIMIT ${toFind.length}
+    WHERE "deletedAt" IS NULL AND url IN ($(urls:csv))
     `,
-    params,
+    { urls: distinctUrls },
   )
 
-  // Build results with undefined for not found repos
-  return toFind.map((repo) => {
-    const found = dbResults.find(
-      (r) => r.integrationId === repo.integrationId && r.url === repo.url,
-    )
-    return {
-      integrationId: repo.integrationId,
-      url: repo.url,
-      segmentId: found?.segmentId,
-    }
-  })
+  const byUrl = new Map(dbResults.map((r) => [r.url, r.segmentId]))
+
+  return toFind.map((repo) => ({
+    integrationId: repo.integrationId,
+    url: repo.url,
+    segmentId: byUrl.get(repo.url),
+  }))
 }
 
 /**
@@ -511,8 +493,7 @@ export async function findSegmentsForRepos(
   for (const repo of toFind) {
     cachePromises.push(
       (async () => {
-        const key = `${repo.integrationId}:${repo.url}`
-        const cached = await cache.get(key)
+        const cached = await cache.get(repo.url)
         if (cached) {
           results.push({
             integrationId: repo.integrationId,
@@ -526,18 +507,14 @@ export async function findSegmentsForRepos(
 
   await Promise.all(cachePromises)
 
-  // Find repos that weren't in cache
-  const remainingRepos = toFind.filter(
-    (r) =>
-      results.find((e) => e.integrationId === r.integrationId && e.url === r.url) === undefined,
-  )
+  const remainingRepos = toFind.filter((r) => results.find((e) => e.url === r.url) === undefined)
 
   if (remainingRepos.length > 0) {
     const dbResults = await findSegmentsForReposFromDb(qx, remainingRepos)
 
     const setCachePromises: Promise<void>[] = []
     for (const result of dbResults) {
-      const key = `${result.integrationId}:${result.url}`
+      const key = result.url
       results.push(result)
 
       if (result.segmentId) {

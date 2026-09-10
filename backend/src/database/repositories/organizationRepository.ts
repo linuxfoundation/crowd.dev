@@ -8,15 +8,18 @@ import {
   organizationEditIdentitiesAction,
   organizationUpdateAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, RawQueryParser } from '@crowd/common'
+import { Error400, Error404, Error409, RawQueryParser, firstIdentityValue } from '@crowd/common'
 import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
+import {
+  insertOrganizationNoMerge,
+  removeOrganizationToMerge,
+} from '@crowd/data-access-layer/src/org_merge'
 import {
   IDbOrgAttribute,
   IDbOrganization,
   OrgIdentityField,
   OrganizationField,
-  addOrgIdentity,
   addOrgsToSegments,
   cleanUpOrgIdentities,
   cleanupForOganization,
@@ -27,13 +30,13 @@ import {
   findManyOrgAttributes,
   findOrgAttributes,
   findOrgById,
+  insertOrganizationIdentities,
   markOrgAttributeDefault,
   queryOrgIdentities,
   updateOrgIdentityVerifiedFlag,
   upsertOrgAttributes,
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
-import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   findSegmentById,
   getSegmentMergeSuggestionCounts,
@@ -49,6 +52,7 @@ import {
   SegmentData,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import {
   IFetchOrganizationMergeSuggestionArgs,
   SimilarityScoreRange,
@@ -76,6 +80,7 @@ class OrganizationRepository {
     ['founded', 'o."founded"'],
     ['headline', 'o."headline"'],
     ['location', 'o."location"'],
+    ['country', 'o."country"'],
     ['tags', 'o."tags"'],
     ['type', 'o."type"'],
     ['isTeamOrganization', 'o."isTeamOrganization"'],
@@ -116,7 +121,7 @@ class OrganizationRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     if (!data.displayName) {
-      data.displayName = data.identities[0].name
+      data.displayName = firstIdentityValue(data.identities)
     }
     const toInsert = {
       ...lodash.pick(data, [
@@ -243,6 +248,7 @@ class OrganizationRepository {
     'logo',
     'tags',
     'location',
+    'country',
     'employees',
     'revenueRange',
     'employeeChurnRate',
@@ -256,6 +262,7 @@ class OrganizationRepository {
     phoneNumbers: (a, b) => lodash.isEqual((a || []).sort(), (b || []).sort()),
     logo: (a, b) => a === b,
     location: (a, b) => a === b,
+    country: (a, b) => a === b,
     isTeamOrganization: (a, b) => a === b,
     isAffiliationBlocked: (a, b) => a === b,
     attributes: (a, b) => lodash.isEqual(a, b),
@@ -619,16 +626,22 @@ class OrganizationRepository {
   ): Promise<void> {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addOrgIdentity(qx, {
-      organizationId,
-      platform: identity.platform,
-      source: identity.source,
-      sourceId: identity.sourceId || null,
-      value: identity.value,
-      type: identity.type,
-      verified: identity.verified,
-      integrationId: identity.integrationId || null,
-    })
+    await insertOrganizationIdentities(
+      qx,
+      [
+        {
+          organizationId,
+          platform: identity.platform,
+          source: identity.source,
+          sourceId: identity.sourceId || null,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified,
+          integrationId: identity.integrationId || null,
+        },
+      ],
+      false,
+    )
   }
 
   static async getIdentities(
@@ -703,30 +716,9 @@ class OrganizationRepository {
     noMergeId: string,
     options: IRepositoryOptions,
   ): Promise<void> {
-    const seq = SequelizeRepository.getSequelize(options)
-    const transaction = SequelizeRepository.getTransaction(options)
+    const qx = SequelizeRepository.getQueryExecutor(options)
 
-    const query = `
-    insert into "organizationNoMerge" ("organizationId", "noMergeId", "createdAt", "updatedAt")
-    values
-    (:organizationId, :noMergeId, now(), now()),
-    (:noMergeId, :organizationId, now(), now())
-    on conflict do nothing;
-  `
-
-    try {
-      await seq.query(query, {
-        replacements: {
-          organizationId,
-          noMergeId,
-        },
-        type: QueryTypes.INSERT,
-        transaction,
-      })
-    } catch (error) {
-      options.log.error('Error adding organizations no merge!', error)
-      throw error
-    }
+    await insertOrganizationNoMerge(qx, organizationId, noMergeId)
   }
 
   static async removeToMerge(
@@ -734,27 +726,9 @@ class OrganizationRepository {
     toMergeId: string,
     options: IRepositoryOptions,
   ): Promise<void> {
-    const seq = SequelizeRepository.getSequelize(options)
-    const transaction = SequelizeRepository.getTransaction(options)
+    const qx = SequelizeRepository.getQueryExecutor(options)
 
-    const query = `
-    delete from "organizationToMerge"
-    where ("organizationId" = :organizationId and "toMergeId" = :toMergeId) or ("organizationId" = :toMergeId and "toMergeId" = :organizationId);
-  `
-
-    try {
-      await seq.query(query, {
-        replacements: {
-          organizationId,
-          toMergeId,
-        },
-        type: QueryTypes.DELETE,
-        transaction,
-      })
-    } catch (error) {
-      options.log.error('Error while removing organizations to merge!', error)
-      throw error
-    }
+    await removeOrganizationToMerge(qx, organizationId, toMergeId)
   }
 
   static async findNonExistingIds(ids: string[], options: IRepositoryOptions): Promise<string[]> {

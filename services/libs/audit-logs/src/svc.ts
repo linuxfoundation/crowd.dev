@@ -9,20 +9,39 @@ import { IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
 
 import { BuildActionFn } from './baseActions'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function convertRepositoryOptions(options: any): AuditLogRequestOptions {
-  const actor = options.actor ?? {
-    id: options.currentUser?.id,
-    type: ActorType.USER,
+export function buildAuditLogOptions(
+  options?: {
+    actor?: { id?: string | null; type?: ActorType }
+    currentUser?: { id?: string | null }
+    requestId?: string
+    userData?: { ip?: string; userAgent?: string }
+  } | null,
+): AuditLogRequestOptions | null {
+  const actorId = options?.actor?.id || options?.currentUser?.id
+
+  // If an actor ID is provided, use it.
+  if (actorId) {
+    return {
+      actorId,
+      actorType: options?.actor?.type ?? ActorType.USER,
+      requestId: options?.requestId ?? generateUUIDv1(),
+      ipAddress: options?.userData?.ip,
+      userAgent: options?.userData?.userAgent,
+    }
   }
 
-  return {
-    actorId: actor?.id,
-    actorType: actor?.type,
-    ipAddress: options.userData?.ip,
-    userAgent: options.userData?.userAgent,
-    requestId: options.requestId,
+  // This is the fallback for workers that don't have an actor ID.
+  if (process.env.CROWD_LF_AGENT_USER_ID) {
+    return {
+      actorId: process.env.CROWD_LF_AGENT_USER_ID,
+      actorType: ActorType.SERVICE,
+      requestId: options?.requestId ?? generateUUIDv1(),
+      ipAddress: options?.userData?.ip ?? '127.0.0.1',
+      userAgent: options?.userData?.userAgent ?? SERVICE,
+    }
   }
+
+  return null
 }
 
 async function captureChange(
@@ -59,18 +78,9 @@ export async function captureApiChange<T>(
 ): Promise<T> {
   let skip = skipAuditLog
 
-  let auditOptions: AuditLogRequestOptions
-  if (options) {
-    auditOptions = convertRepositoryOptions(options)
-  } else if (process.env.CROWD_LF_AGENT_USER_ID) {
-    auditOptions = {
-      actorId: process.env.CROWD_LF_AGENT_USER_ID,
-      actorType: ActorType.SERVICE,
-      requestId: generateUUIDv1(),
-      ipAddress: '127.0.0.1',
-      userAgent: SERVICE,
-    }
-  } else if (!IS_PROD_ENV) {
+  const auditOptions = buildAuditLogOptions(options)
+
+  if (!auditOptions && !IS_PROD_ENV) {
     skip = true
   }
 

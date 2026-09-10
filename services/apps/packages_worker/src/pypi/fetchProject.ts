@@ -24,16 +24,14 @@ export async function fetchProject(
   try {
     let res: Response
     try {
-      // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
-      const init: RequestInit & { dispatcher?: Dispatcher } = {
+      res = await fetch(url, {
         headers: {
           Accept: 'application/json',
           'User-Agent': USER_AGENT,
         },
         signal: abort.signal,
-      }
-      if (dispatcher) init.dispatcher = dispatcher
-      res = await fetch(url, init as RequestInit)
+        dispatcher,
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: String(err) }
     }

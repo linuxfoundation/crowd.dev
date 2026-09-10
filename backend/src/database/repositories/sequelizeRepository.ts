@@ -3,11 +3,7 @@ import { Sequelize, Transaction, UniqueConstraintError } from 'sequelize'
 
 import { Error400 } from '@crowd/common'
 import { DbConnection, getDbConnection } from '@crowd/data-access-layer/src/database'
-import {
-  QueryExecutor,
-  SequelizeQueryExecutor,
-  TransactionalSequelizeQueryExecutor,
-} from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { getOpensearchClient } from '@crowd/opensearch'
 import { getRedisClient } from '@crowd/redis'
@@ -23,6 +19,10 @@ import {
 } from '../../conf'
 import { IServiceOptions } from '../../services/IServiceOptions'
 import { databaseInit } from '../databaseConnection'
+import {
+  SequelizeQueryExecutor,
+  TransactionalSequelizeQueryExecutor,
+} from '../sequelizeQueryExecutor'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
 

@@ -14,10 +14,11 @@ import {
   changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
+  deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
+  fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
@@ -26,8 +27,9 @@ import type {
   MemberOrganizationDateRange,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -38,7 +40,7 @@ const bodySchema = z.object({
   organizationId: z.uuid(),
   jobTitle: z.string(),
   verified: z.boolean(),
-  verifiedBy: z.string(),
+  verifiedBy: z.string().trim().min(1),
   source: z.string(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
@@ -85,6 +87,21 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       let newMemberOrgId: string | undefined
 
       await qx.tx(async (tx) => {
+        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
+        // Hidden project-registry/email-domain rows for this company are shown as the same card.
+        // Drop them so the new UI job owns the dates the person just entered.
+        const overlappingIds = getOverlappingGroupedMemberOrganizations(
+          memberOrgs,
+          memberOrgData,
+        ).flatMap((row) => (row.id ? [row.id] : []))
+
+        if (overlappingIds.length > 0) {
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: overlappingIds,
+            skipMsaCleanup: true,
+          })
+        }
+
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)
 
         newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData)

@@ -1,0 +1,19 @@
+DESCRIPTION >
+    - Per-collection projects aggregate table — small, fast table with project counts and health scores.
+    - Built once daily by a single copy pipe (collection_insights_aggregate_projects_copy_pipe.pipe)
+    that scans only insights_projects_populated_ds (no activity tables, no joins to billions of rows).
+    - Runs daily at a fixed time after the contributor aggregates are ready.
+    - One row per collection slug, with:
+    - `collectionSlug`: The collection identifier (String).
+    - `projectCount`: Total number of onboarded projects in the collection (UInt64).
+    - `avgHealthScore`: Average health score across onboarded projects, rounded (Nullable Float64).
+    - `updatedAt`: Timestamp of the last update (DateTime).
+
+SCHEMA >
+    `collectionSlug` String,
+    `projectCount` UInt64,
+    `avgHealthScore` Nullable(Float64),
+    `updatedAt` DateTime
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY collectionSlug

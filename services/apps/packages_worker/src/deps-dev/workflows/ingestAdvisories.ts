@@ -1,8 +1,14 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ActivityFailure, ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 import { ADVISORIES_SQL, buildAdvisoryPackagesSql } from '../queries/advisoriesSql'
+import { packageNameSplitSql } from '../queries/pgIdentity'
 import { toSystemsFilter } from '../queries/systems'
+
+const { namespace: NAMESPACE_SPLIT_SQL, name: NAME_SPLIT_SQL } = packageNameSplitSql(
+  'r',
+  'package_name',
+)
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
@@ -25,6 +31,25 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 1 },
 })
 
+// bqExportToGcs throws ApplicationFailure.nonRetryable('BQ_CEILING_EXCEEDED') directly from
+// activity code, which the SDK surfaces here as ActivityFailure.cause. Rethrow as a workflow-level
+// ApplicationFailure carrying the job kind as a detail so bootstrapOsspckgs's unwrap (err.cause on
+// the resulting ChildWorkflowFailure) can match it, soft-fail, and alert on whichever export
+// actually breached — mirroring the DEPENDENT_COUNTS_GUARD / EDGE_SNAPSHOT_GUARD pattern there.
+// Applies to both exports below (review comment on CM-1362): a ceiling breach on either one must
+// be recognized, not just advisory_packages.
+async function exportWithCeilingGuard(input: Parameters<typeof bqExportToGcs>[0]) {
+  try {
+    return await bqExportToGcs(input)
+  } catch (err) {
+    const cause = err instanceof ActivityFailure ? err.cause : err
+    if (cause instanceof ApplicationFailure && cause.type === 'BQ_CEILING_EXCEEDED') {
+      throw ApplicationFailure.nonRetryable(cause.message, 'BQ_CEILING_EXCEEDED', input.jobKind)
+    }
+    throw err
+  }
+}
+
 const ADVISORIES_STAGING_TABLE = 'staging.osspckgs_advisories_raw'
 const ADVISORY_PACKAGES_STAGING_TABLE = 'staging.osspckgs_advisory_packages_raw'
 
@@ -42,16 +67,18 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_advisories_raw (
 )
 `
 
-const ADVISORY_PACKAGES_STAGING_DDL = `
-CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_advisory_packages_raw (
+// Two-statement DDL: DROP before CREATE so a deployed table with the old `purl` column doesn't
+// silently stick around under `CREATE ... IF NOT EXISTS`. Staging is TRUNCATED/recreated every run.
+const ADVISORY_PACKAGES_STAGING_DDL = [
+  `DROP TABLE IF EXISTS staging.osspckgs_advisory_packages_raw`,
+  `CREATE UNLOGGED TABLE staging.osspckgs_advisory_packages_raw (
   osv_id         text,
   ecosystem      text,
   package_name   text,
-  purl           text,
   range_raw      text,
   unaffected_raw text
-)
-`
+)`,
+]
 
 const ADVISORIES_MERGE_SQL = `
 INSERT INTO advisories (osv_id, source, source_url, summary, details, cvss, severity, aliases, published_at, created_at, updated_at)
@@ -63,7 +90,19 @@ FROM staging.osspckgs_advisories_raw
 ON CONFLICT (osv_id) DO NOTHING
 `
 
+// package_id is resolved here by reconstructing the same (ecosystem, namespace, name) identity
+// ingestPackages.ts writes into `packages` (packageNameSplitSql, shared by both), rather than by
+// a BQ-sourced purl (CM-1362 — the purl_map scan cost ~1.5 TB per run for a join key we already
+// had locally). COALESCE(p.namespace,'') mirrors the unique index expression verbatim, so this
+// stays an index lookup. Still a LEFT JOIN: package_id stays nullable, resolveMissingPackageIds
+// keeps its catch-up role for anything unresolved here.
 const ADVISORY_PACKAGES_MERGE_SQL = `
+WITH s AS (
+  SELECT r.osv_id, r.ecosystem, r.package_name,
+    ${NAMESPACE_SPLIT_SQL} AS namespace,
+    ${NAME_SPLIT_SQL} AS name
+  FROM staging.osspckgs_advisory_packages_raw r
+)
 INSERT INTO advisory_packages (advisory_id, package_id, ecosystem, package_name, created_at, updated_at)
 SELECT
   adv.id,
@@ -71,16 +110,37 @@ SELECT
   s.ecosystem,
   s.package_name,
   NOW(), NOW()
-FROM staging.osspckgs_advisory_packages_raw s
+FROM s
 JOIN advisories adv ON adv.osv_id = s.osv_id
-LEFT JOIN packages p ON p.purl = s.purl
+LEFT JOIN packages p
+  ON p.ecosystem = s.ecosystem
+ AND COALESCE(p.namespace, '') = COALESCE(s.namespace, '')
+ AND p.name = s.name
 ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 `
 
-// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist
+// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist.
+// Skips any advisory_package that already has a live OSV-owned range: OSV is the
+// source of truth over deps.dev for overlapping advisory_packages (ADR-0001
+// §advisory_affected_ranges delete/dedup strategy), and this merge runs on its own
+// BQ-driven schedule, independent of and potentially after an OSV sync — the
+// per-tuple ON CONFLICT below can't see that, since a NULL-bounds raw tuple has a
+// different key than OSV's structured tuple and would insert as a new live
+// duplicate. The NOT EXISTS guard makes the ownership rule package-level instead
+// of tuple-level, so deps.dev never adds a live row once OSV owns the package.
+// ON CONFLICT revives (not skips) a soft-deleted row occupying the same tuple —
+// typical after supersedeDepsDevRanges soft-deletes deps.dev rows on OSV takeover
+// and OSV later drops the package again — otherwise DO NOTHING would leave
+// staging's live data with no corresponding live row.
+// DISTINCT ON (ap.id) is required because DO UPDATE (unlike DO NOTHING) errors
+// with "ON CONFLICT DO UPDATE command cannot affect row a second time" if two
+// staging rows for the same package (e.g. multiple disjoint deps.dev ranges
+// under one advisory) hit the same conflict target within one statement — every
+// deps.dev row shares one key per advisory_package_id since introduced_version
+// etc. are always NULL here.
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
 INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
-SELECT
+SELECT DISTINCT ON (ap.id)
   ap.id,
   s.range_raw,
   s.unaffected_raw,
@@ -91,7 +151,39 @@ JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id
                           AND ap.ecosystem = s.ecosystem
                           AND ap.package_name = s.package_name
-ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
+WHERE NOT EXISTS (
+  SELECT 1 FROM advisory_affected_ranges live
+  WHERE live.advisory_package_id = ap.id
+    AND live.deleted_at IS NULL
+    AND live.range_raw IS NULL
+    AND live.unaffected_raw IS NULL
+)
+ORDER BY ap.id
+ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
+DO UPDATE SET
+  updated_at = NOW(),
+  deleted_at = NULL,
+  range_raw = EXCLUDED.range_raw,
+  unaffected_raw = EXCLUDED.unaffected_raw
+WHERE advisory_affected_ranges.deleted_at IS NOT NULL
+`
+
+// Runs as prepareSql (uncounted) ahead of ADVISORY_AFFECTED_RANGES_MERGE_SQL, in the
+// same transaction. Row-locks every advisory_packages this chunk will touch, in id
+// order, before the NOT EXISTS ownership check runs. OSV's upsertOne (services/apps/
+// packages_worker/src/osv/upsertAdvisory.ts) takes the matching per-row lock before it
+// writes advisory_affected_ranges for that advisory_package, so whichever transaction
+// (deps.dev chunk or OSV record) locks the row first now forces the other to wait and
+// see its committed writes — closing the race the two independently-scheduled write
+// paths would otherwise have on the ownership check (ADR-0001 §Write semantics).
+const ADVISORY_PACKAGES_LOCK_SQL = `
+SELECT ap.id
+FROM advisory_packages ap
+JOIN staging.osspckgs_advisory_packages_raw s
+  ON s.ecosystem = ap.ecosystem AND s.package_name = ap.package_name
+JOIN advisories adv ON adv.osv_id = s.osv_id AND adv.id = ap.advisory_id
+ORDER BY ap.id
+FOR UPDATE OF ap
 `
 
 const ADVISORIES_PG_COLUMNS = [
@@ -110,7 +202,6 @@ const ADVISORY_PACKAGES_PG_COLUMNS = [
   'osv_id',
   'ecosystem',
   'package_name',
-  'purl',
   'range_raw',
   'unaffected_raw',
 ]
@@ -129,7 +220,7 @@ export async function ingestAdvisories(opts: {
   const systems = toSystemsFilter(opts.ecosystems)
 
   // Step 1: advisories header rows
-  const advisoriesExport = await bqExportToGcs({
+  const advisoriesExport = await exportWithCeilingGuard({
     jobKind: 'advisories',
     sql: ADVISORIES_SQL,
     runId: opts.runId,
@@ -203,13 +294,15 @@ export async function ingestAdvisories(opts: {
   }
 
   // Step 2: advisory_packages + affected ranges (FK → advisories must exist first)
-  const pkgsExport = await bqExportToGcs({
+  const pkgsExport = await exportWithCeilingGuard({
     jobKind: 'advisory_packages',
     sql: buildAdvisoryPackagesSql(systems),
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 1500,
+    // No purl_map (CM-1362): measured actual scan is ~1.4 GB against AdvisoriesLatest; 50 GB
+    // keeps this a real regression gate instead of a ceiling that periodically needs raising.
+    maxBytesGb: 50,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
     ecosystems: opts.ecosystems,
@@ -259,6 +352,7 @@ export async function ingestAdvisories(opts: {
 
     const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgsExport.jobId,
+      prepareSql: ADVISORY_PACKAGES_LOCK_SQL,
       mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
       tableNames: ['advisory_packages', 'advisory_affected_ranges'],
       isFinal,

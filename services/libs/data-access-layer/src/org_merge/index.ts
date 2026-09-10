@@ -19,23 +19,62 @@ export async function findOrgNoMergeIds(
   return rows.map((row: { noMergeId: string }) => row.noMergeId)
 }
 
-export async function addOrgNoMerge(
+export async function removeOrganizationToMerge(
+  qx: QueryExecutor,
+  organizationId: string,
+  toMergeId: string,
+): Promise<void> {
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
+        DELETE FROM "organizationToMerge"
+        WHERE
+          ("organizationId" = $(organizationId) AND "toMergeId" = $(toMergeId))
+          OR
+          ("organizationId" = $(toMergeId) AND "toMergeId" = $(organizationId))
+      )
+      DELETE FROM "organizationToMergeRaw"
+      WHERE
+        ("organizationId" = $(organizationId) AND "toMergeId" = $(toMergeId))
+        OR
+        ("organizationId" = $(toMergeId) AND "toMergeId" = $(organizationId))
+    `,
+    { organizationId, toMergeId },
+  )
+}
+
+export async function removeOrganizationMergeSuggestions(
+  qx: QueryExecutor,
+  organizationId: string,
+): Promise<void> {
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
+        DELETE FROM "organizationToMerge"
+        WHERE "organizationId" = $(organizationId)
+           OR "toMergeId" = $(organizationId)
+      )
+      DELETE FROM "organizationToMergeRaw"
+      WHERE "organizationId" = $(organizationId)
+         OR "toMergeId" = $(organizationId)
+    `,
+    { organizationId },
+  )
+}
+
+export async function insertOrganizationNoMerge(
   qx: QueryExecutor,
   organizationId: string,
   noMergeId: string,
 ): Promise<void> {
-  const currentTime = new Date()
   await qx.result(
     `
       INSERT INTO "organizationNoMerge" ("organizationId", "noMergeId", "createdAt", "updatedAt")
-      VALUES ($(organizationId), $(noMergeId), $(createdAt), $(updatedAt))
-      on conflict ("organizationId", "noMergeId") do nothing
+      VALUES
+        ($(organizationId), $(noMergeId), NOW(), NOW()),
+        ($(noMergeId), $(organizationId), NOW(), NOW())
+      ON CONFLICT ("organizationId", "noMergeId") DO NOTHING
     `,
-    {
-      organizationId,
-      noMergeId,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    },
+    { organizationId, noMergeId },
   )
 }

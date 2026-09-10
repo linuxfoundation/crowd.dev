@@ -5,9 +5,11 @@ import {
   NuGetRegistrationIndex,
   NuGetRegistrationPage,
   NuGetSearchItem,
+  isNuGetFetchError,
 } from './types'
 
 const SERVICE_INDEX_URL = 'https://api.nuget.org/v3/index.json'
+const FLAT_CONTAINER_BASE_URL = 'https://api.nuget.org/v3-flatcontainer'
 
 interface ServiceIndexResource {
   '@id': string
@@ -25,7 +27,7 @@ interface ResolvedEndpoints {
 
 let cachedEndpoints: ResolvedEndpoints | null = null
 
-async function resolveEndpoints(): Promise<ResolvedEndpoints> {
+export async function resolveEndpoints(): Promise<ResolvedEndpoints> {
   if (cachedEndpoints) return cachedEndpoints
 
   const resp = await axios.get<ServiceIndex>(SERVICE_INDEX_URL, {
@@ -138,6 +140,43 @@ export async function fetchRegistration(
     }
 
     return index
+  } catch (err) {
+    const classified = classifyError(err)
+    if (classified) return classified
+    throw err
+  }
+}
+
+// Thin wrapper for callers (blast-radius intel) that only need the version strings,
+// not the full registration payload with per-version metadata.
+export async function fetchVersionList(packageId: string): Promise<string[] | NuGetFetchError> {
+  const registration = await fetchRegistration(packageId)
+  if (isNuGetFetchError(registration)) return registration
+
+  return registration.items.flatMap((page) =>
+    (page.items ?? []).map((leaf) => leaf.catalogEntry.version),
+  )
+}
+
+// The registration API never exposes the nuspec <repository> element — it must be read from the
+// raw nuspec XML, served by the flat-container endpoint.
+export async function fetchNuspec(
+  packageId: string,
+  version: string,
+): Promise<string | NuGetFetchError> {
+  const lowerId = packageId.toLowerCase()
+  const lowerVersion = version.toLowerCase()
+
+  try {
+    const resp = await axios.get<string>(
+      `${FLAT_CONTAINER_BASE_URL}/${lowerId}/${lowerVersion}/${lowerId}.nuspec`,
+      {
+        responseType: 'text',
+        transformResponse: (data) => data,
+        timeout: 15000,
+      },
+    )
+    return resp.data
   } catch (err) {
     const classified = classifyError(err)
     if (classified) return classified

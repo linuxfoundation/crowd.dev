@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import pick from 'lodash.pick'
 import uniqBy from 'lodash.uniqby'
 
-import { BadRequestError, DEFAULT_TENANT_ID, getProperDisplayName } from '@crowd/common'
+import { BadRequestError, DEFAULT_TENANT_ID, normalizeDisplayName } from '@crowd/common'
 import {
   MEMBER_MERGE_FIELDS,
   MemberField,
@@ -10,7 +10,6 @@ import {
   addMemberRole,
   changeMemberOrganizationAffiliationOverrides,
   createMember,
-  createMemberIdentity,
   deleteManyMemberIdentities,
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
@@ -18,10 +17,11 @@ import {
   findAlreadyExistingVerifiedIdentities,
   findMemberById,
   findNonExistingOrganizationIds,
+  insertMemberIdentities,
   removeMemberRole,
   updateMember,
 } from '@crowd/data-access-layer'
-import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -347,7 +347,7 @@ export async function prepareMemberUnmerge(
     throw new BadRequestError('Cannot unmerge: primary member must retain at least one identity')
   }
 
-  const secondaryDisplayName = getProperDisplayName(identity.value)
+  const secondaryDisplayName = normalizeDisplayName(identity.value)
   const secondaryAttributes: IAttributes = {}
 
   const botDetection = new BotDetectionService(logger).isMemberBot(
@@ -476,10 +476,15 @@ export async function unmergeMember(
   // Track roles deleted from primary (for filtering primary orgs)
   let rolesToDelete: IMemberRoleWithOrganization[] = []
 
-  // Create the secondary member
+  const displayName = secondary.displayName || secondary.identities[0]?.value
+
+  if (!displayName) {
+    throw new Error('Cannot unmerge: secondary member is missing a display name')
+  }
+
   const secondaryRow = await createMember(tx, {
     id: secondary.id,
-    displayName: secondary.displayName,
+    displayName: normalizeDisplayName(displayName),
     joinedAt: secondary.joinedAt,
     attributes: secondary.attributes,
     reach: secondary.reach,
@@ -502,17 +507,20 @@ export async function unmergeMember(
   )
 
   // Create identities for the secondary member
-  for (const i of secondaryIdentities) {
-    await createMemberIdentity(tx, {
-      memberId: secondaryId,
-      platform: i.platform,
-      type: i.type,
-      value: i.value,
-      sourceId: i.sourceId || null,
-      integrationId: i.integrationId || null,
-      verified: i.verified,
-      source: i.source,
-    })
+  if (secondaryIdentities.length > 0) {
+    await insertMemberIdentities(
+      tx,
+      secondaryIdentities.map((i) => ({
+        memberId: secondaryId,
+        platform: i.platform,
+        type: i.type,
+        value: i.value,
+        sourceId: i.sourceId || null,
+        integrationId: i.integrationId || null,
+        verified: i.verified,
+        source: i.source,
+      })),
+    )
   }
 
   // Move affiliations
@@ -622,7 +630,7 @@ export async function unmergeMember(
   }
 
   // Add primary and secondary to no merge so they don't get suggested again
-  await addMemberNoMerge(tx, memberId, secondaryId)
+  await insertMemberNoMerge(tx, memberId, secondaryId)
 
   await setMergeAction(tx, MergeActionType.MEMBER, memberId, secondaryId, {
     step: MergeActionStep.UNMERGE_SYNC_DONE,

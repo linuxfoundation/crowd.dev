@@ -1,12 +1,18 @@
 NODE insights_projects_populated_copy_collections_slugs
 DESCRIPTION >
-    Returns collection slugs per project
+    Returns collection slugs per project, for both curated (ssoUserId IS NULL) and
+    community (ssoUserId IS NOT NULL) collections. Community collections were previously
+    excluded here, which left their slugs out of collectionsSlugs and caused
+    collection_insights_aggregate to report 0 contributors / no health for them (IN-1195).
+    Downstream leaderboard/insightsProjects_filtered pipes only apply the collectionsSlugs
+    filter when an explicit collectionSlug param is passed, so including community slugs does
+    not change any un-scoped listing.
 
 SQL >
     SELECT cip.insightsProjectId, groupArray(c.slug) AS "collectionsSlugs"
     FROM collectionsInsightsProjects cip FINAL
     JOIN collections c FINAL ON c.id = cip.collectionId
-    WHERE isNull (c.deletedAt) AND isNull (c.ssoUserId) AND isNull (cip.deletedAt)
+    WHERE isNull (c.deletedAt) AND isNull (cip.deletedAt)
     GROUP BY cip.insightsProjectId
 
 NODE insights_projects_populated_copy_segment_id_mapping

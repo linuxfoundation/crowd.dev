@@ -1,0 +1,22 @@
+DESCRIPTION >
+    - `collection_buckets.pipe` resolves a curated collection's slug to its bucketId, mirroring
+    `project_buckets.pipe`'s role for segments.
+    - Bucket assignment is `cityHash64(collectionSlug) % 10` - collections_filtered already
+    restricts to curated collections (`ssoUserId IS NULL`), so non-curated collections never
+    resolve a bucket here.
+    - Unlike project bucketing, a project can belong to multiple curated collections, so a
+    project's activities may be duplicated into multiple collection buckets - this pipe only
+    resolves the bucket for a single collection slug, it does not describe the fan-out.
+
+NODE get_collection_bucket
+SQL >
+    %
+    SELECT cityHash64(slug) % 10 as bucketId
+    FROM collections_filtered
+    WHERE
+        slug
+        = {{
+            String(
+                collectionSlug, description="Collection slug to resolve bucketId for", required=True
+            )
+        }}

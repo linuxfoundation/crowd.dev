@@ -5,7 +5,8 @@ DESCRIPTION >
     - Uses `segments_filtered` for automatic project scoping and optional repository filtering.
     - Primary use case: powers package selection dropdown in the package downloads widget.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `search`: Optional string for searching package names or ecosystems (case-insensitive with wildcards)
     - `repos`: Optional array of repository URLs to filter packages by specific repositories (e.g., ['https://github.com/kubernetes/kubernetes'])
     - Response: `repo`, `name`, `ecosystem` (distinct packages matching the filters)
@@ -16,7 +17,10 @@ SQL >
     SELECT distinct p.repo, p.name, p.ecosystem
     FROM packageDownloads p
     where
-        p.insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% if defined(collectionSlug) %}
+            p.insightsProjectId IN (select insightsProjectId from segments_filtered_by_collection)
+        {% else %} p.insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% end %}
         {% if defined(search) %}
             AND (
                 p.name

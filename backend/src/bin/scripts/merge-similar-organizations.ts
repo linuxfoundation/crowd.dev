@@ -4,11 +4,11 @@ import * as fs from 'fs'
 import path from 'path'
 import { QueryTypes } from 'sequelize'
 
-import { optionsQx } from '@crowd/data-access-layer'
 import { addMergeAction, setMergeAction } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { MergeActionState, MergeActionType } from '@crowd/types'
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import getUserContext from '@/database/utils/getUserContext'
 import OrganizationService from '@/services/organizationService'
 import TenantService from '@/services/tenantService'

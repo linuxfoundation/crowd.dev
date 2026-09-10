@@ -32,4 +32,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE contributions_with_local_time_ds
 COPY_MODE replace
-COPY_SCHEDULE 33 * * * *
+COPY_SCHEDULE 44 4 * * *

@@ -1,5 +1,4 @@
 import type { Request, Response } from 'express'
-import { z } from 'zod'
 
 import { getPackagesByStewardshipPurls } from '@crowd/data-access-layer'
 
@@ -7,23 +6,10 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { normalizePurl } from './purl'
+import { normalizePurl, purlsBodySchema } from './purl'
 import type { StewardshipSummary } from './types'
 
-const MAX_PURLS = 100
-
-const bodySchema = z.object({
-  purls: z
-    .array(
-      z
-        .string()
-        .trim()
-        .min(1)
-        .refine((v) => v.startsWith('pkg:'), { message: 'each purl must start with pkg:' }),
-    )
-    .min(1)
-    .max(MAX_PURLS, `Maximum ${MAX_PURLS} purls per request`),
-})
+const bodySchema = purlsBodySchema()
 
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
   const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)

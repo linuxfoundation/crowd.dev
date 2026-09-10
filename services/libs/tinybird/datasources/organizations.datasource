@@ -5,6 +5,7 @@ DESCRIPTION >
     - `id` is the primary key identifier for the organization record.
     - `displayName` is the organization's primary name or brand.
     - `location` is the organization's headquarters or primary location (empty string if not provided).
+    - `country` is the organization's country inferred from location (empty string if not determined).
     - `logo` contains the URL to the organization's logo image (empty string if no logo).
     - `tags` is an array of labels or categories associated with the organization (empty array default).
     - `employees` is the number of employees in the organization (0 default if unknown).
@@ -20,6 +21,7 @@ SCHEMA >
     `id` String `json:$.record.id`,
     `displayName` String `json:$.record.displayName`,
     `location` String `json:$.record.location` DEFAULT '',
+    `country` String `json:$.record.country` DEFAULT '',
     `logo` String `json:$.record.logo` DEFAULT '',
     `tags` Array(String) `json:$.record.tags[:]` DEFAULT [],
     `employees` UInt32 `json:$.record.employees` DEFAULT 0,

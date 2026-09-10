@@ -5,6 +5,7 @@ import { Error400, dateIntersects, groupBy } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
 } from '@crowd/data-access-layer'
@@ -67,6 +68,18 @@ export default class MemberAffiliationsService extends LoggerBase {
     memberId: string,
     data: Partial<IMemberAffiliation>[],
   ): Promise<IMemberAffiliation[]> {
+    if (data?.length > 0) {
+      const qx = SequelizeRepository.getQueryExecutor(this.options)
+      const organizationIds = data
+        .map((a) => a.organizationId)
+        .filter((id): id is string => Boolean(id))
+      const policies = await fetchManyOrganizationAffiliationPolicies(qx, organizationIds)
+
+      if ([...policies.values()].some((isBlocked) => isBlocked)) {
+        throw new Error400(this.options.language, 'This organization does not allow affiliations')
+      }
+    }
+
     return MemberAffiliationsRepository.upsertMultiple(memberId, data, this.options)
   }
 

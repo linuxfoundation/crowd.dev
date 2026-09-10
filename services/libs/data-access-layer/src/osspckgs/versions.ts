@@ -39,15 +39,16 @@ export async function upsertVersionsBatch(
   const row: { changed_fields: string[] } = await qx.selectOne(
     `
     WITH old AS (
-      SELECT number, is_latest, is_prerelease, licenses
+      SELECT number, is_latest, is_prerelease, licenses, published_at
         FROM versions
        WHERE package_id = $(packageId)::bigint AND number = ANY($(numbers)::text[])
     ),
     ins AS (
-      INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, last_synced_at, created_at)
+      INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, published_at, last_synced_at, created_at)
       SELECT
         $(packageId)::bigint, t.ecosystem, t.namespace, t.name, t.number, t.is_latest, t.is_prerelease,
         CASE WHEN t.license IS NULL THEN NULL ELSE ARRAY[t.license] END,
+        t.published_at::timestamptz,
         NOW(), NOW()
       FROM UNNEST(
         $(ecosystems)::text[],
@@ -56,21 +57,24 @@ export async function upsertVersionsBatch(
         $(numbers)::text[],
         $(isLatests)::bool[],
         $(isPreleases)::bool[],
-        $(licenses)::text[]
-      ) AS t(ecosystem, namespace, name, number, is_latest, is_prerelease, license)
+        $(licenses)::text[],
+        $(publishedAts)::text[]
+      ) AS t(ecosystem, namespace, name, number, is_latest, is_prerelease, license, published_at)
       ON CONFLICT (package_id, number) DO UPDATE SET
         namespace      = COALESCE(EXCLUDED.namespace, versions.namespace),
         is_latest      = EXCLUDED.is_latest,
         is_prerelease  = EXCLUDED.is_prerelease,
         licenses       = COALESCE(EXCLUDED.licenses, versions.licenses),
+        published_at   = COALESCE(EXCLUDED.published_at, versions.published_at),
         last_synced_at = NOW()
-      RETURNING number, is_latest, is_prerelease, licenses
+      RETURNING number, is_latest, is_prerelease, licenses, published_at
     )
     SELECT array_remove(ARRAY[
       CASE WHEN bool_or(o.number IS NULL)                                          THEN 'versions.number' END,
       CASE WHEN bool_or(o.is_latest     IS DISTINCT FROM ins.is_latest)            THEN 'versions.is_latest' END,
       CASE WHEN bool_or(o.is_prerelease IS DISTINCT FROM ins.is_prerelease)        THEN 'versions.is_prerelease' END,
-      CASE WHEN bool_or(o.licenses      IS DISTINCT FROM ins.licenses)             THEN 'versions.licenses' END
+      CASE WHEN bool_or(o.licenses      IS DISTINCT FROM ins.licenses)             THEN 'versions.licenses' END,
+      CASE WHEN bool_or(o.published_at  IS DISTINCT FROM ins.published_at)         THEN 'versions.published_at' END
     ], NULL) AS changed_fields
     FROM ins LEFT JOIN old o ON o.number = ins.number
 `,
@@ -83,6 +87,7 @@ export async function upsertVersionsBatch(
       isLatests: versions.map((v) => v.isLatest),
       isPreleases: versions.map((v) => v.isPrerelease),
       licenses: versions.map((v) => v.license),
+      publishedAts: versions.map((v) => (v.publishedAt ? v.publishedAt.toISOString() : null)),
     },
   )
   return row.changed_fields

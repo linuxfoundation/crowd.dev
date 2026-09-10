@@ -1,0 +1,16 @@
+DESCRIPTION >
+    Precomputed all-time contribution counts per (organizationId, memberId) for the org
+    page contributors leaderboard. Rebuilt nightly by org_page_contributors_copy_pipe.
+    One row per (organizationId, memberId) pair (~2M rows total). Used by
+    org_page_contributors.pipe for cheap request-time lookups instead of scanning the
+    full activityRelations cleaned bucket union (~744M rows) per request.
+
+SCHEMA >
+    `organizationId` String,
+    `memberId` String,
+    `contributionCount` UInt64,
+    `computedAt` DateTime
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY organizationId, memberId
+ENGINE_VER computedAt

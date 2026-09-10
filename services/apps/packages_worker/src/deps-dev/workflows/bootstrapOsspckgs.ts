@@ -24,6 +24,11 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
   retry: { maximumAttempts: 3 },
 })
 
+const { notifyBqCeilingSkip } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
 type JobKind =
   | 'packages'
   | 'repos'
@@ -35,10 +40,12 @@ type JobKind =
   | 'dependent_counts'
   | 'dependent_counts_go'
   | 'dependent_counts_nuget'
+  | 'dependent_counts_rubygems'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
-// dependent_counts_go/_nuget read *RequirementsLatest (no partition history) → effectively unlimited.
+// dependent_counts_go/_nuget/_rubygems read *RequirementsLatest (no partition history) → effectively
+// unlimited.
 const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   packages: 1095,
   repos: 1095,
@@ -50,6 +57,7 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   dependent_counts: 1095,
   dependent_counts_go: 999_999,
   dependent_counts_nuget: 999_999,
+  dependent_counts_rubygems: 999_999,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
@@ -204,13 +212,14 @@ export async function bootstrapOsspckgs(opts: {
       }
     }
   }
-  // GO/NUGET reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
-  // NuGetRequirementsLatest), computed via the exact reverse transitive closure script. The manifests
+  // GO/NUGET/RUBYGEMS reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
+  // NuGetRequirementsLatest / RubyGemsRequirementsLatest), computed via the exact reverse transitive
+  // closure script. The manifests
   // are *Latest views (no resolution needed); `today` is the snapshot_at stamp AND the anchor for the
   // dependent_repos partition window (latest PackageVersionToProject snapshot within 60 days). Each
   // guards against its own history and merges a disjoint purl space, so an edge-snapshot corruption
   // that aborts `dependent_counts` never blocks these.
-  for (const variant of ['go', 'nuget'] as const) {
+  for (const variant of ['go', 'nuget', 'rubygems'] as const) {
     const kind = `dependent_counts_${variant}` as const
     if (!runs(kind)) continue
     try {
@@ -296,19 +305,37 @@ export async function bootstrapOsspckgs(opts: {
     }
   }
   if (runs('advisories') || runs('advisory_packages')) {
-    await executeChild(ingestAdvisories, {
-      args: [
-        {
-          runId,
-          syncMode: opts.mode,
-          today,
-          watermark: wm('advisories'),
-          ecosystems: opts.ecosystems,
-          reuseExports: opts.reuseExports,
-          exportName: opts.exportName,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestAdvisories, {
+        args: [
+          {
+            runId,
+            syncMode: opts.mode,
+            today,
+            watermark: wm('advisories'),
+            ecosystems: opts.ecosystems,
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the BQ byte-ceiling guard (CM-1362), mirroring the dependent_counts /
+      // package_dependencies handling above. advisories is the last data kind — letting a ceiling
+      // breach here propagate unhandled used to strand scorecard + ranking below for the whole
+      // run. All other errors (BQ timeout, DB failure, etc.) still propagate.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'BQ_CEILING_EXCEEDED') {
+        throw err
+      }
+      // Unlike checkDependentCountsGuard/checkEdgeSnapshotQuality, this failure happens before
+      // any ingest-job row is created, so there's no failed-job row for an operator to notice —
+      // alert explicitly or repeated skips go unnoticed (review comment on CM-1362).
+      // ingestAdvisories carries the failing export's jobKind as the failure detail ('advisories'
+      // or 'advisory_packages') so the alert names the export that actually breached.
+      const jobKind = typeof cause.details?.[0] === 'string' ? cause.details[0] : 'advisories'
+      await notifyBqCeilingSkip({ jobKind, message: cause.message })
+    }
   }
   if (runs('scorecard')) {
     await executeChild(ingestScorecard, {

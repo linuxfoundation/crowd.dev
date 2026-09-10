@@ -9,7 +9,11 @@ SQL >
 
 NODE repositories_populated_copy_contributor_org_counts
 DESCRIPTION >
-    Calculate contributor and organization counts per repository (channel)
+    Calculate contributor and organization counts per repository (channel).
+    Excludes 'star' and 'fork' activity: stargazers/forkers are engagement, not contributors,
+    and counting them inflated contributorCount massively for popular repos (e.g. OpenClaw showed
+    483K where the true contributor count is ~46K - 404K of those were stargazers). This mirrors
+    the "contributions only" semantics the widget pipes use via onlyContributions/activityTypes_filtered.
 
 SQL >
     SELECT
@@ -17,6 +21,7 @@ SQL >
         uniq(CASE WHEN memberId != '' THEN memberId ELSE NULL END) AS contributorCount,
         uniq(CASE WHEN organizationId != '' THEN organizationId ELSE NULL END) AS organizationCount
     FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE type NOT IN ('star', 'fork')
     GROUP BY channel
 
 NODE repositories_populated_copy_first_commit

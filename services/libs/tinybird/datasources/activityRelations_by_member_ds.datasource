@@ -1,0 +1,44 @@
+DESCRIPTION >
+    Member-sorted mirror of the enriched activityRelations buckets, serving the
+    member-feed fast path in `activities_relations_filtered` (single-member list/count
+    queries, the dominant traffic shape). Sorting by (memberId, timestamp) turns those
+    queries into a keyed range read instead of a segment+time scan of the bucket union
+    (measured: 213M -> 0.2M rows read for the heaviest member). Unpartitioned on
+    purpose: no query shape prunes by year and partitions only inflate part count.
+    Rebuilt nightly by `activityRelations_by_member_copy` (replace mode) from
+    `activityRelations_enriched_deduplicated_bucket_union`, so freshness matches the
+    nightly bucket snapshots.
+
+SCHEMA >
+    `activityId` String,
+    `conversationId` String,
+    `createdAt` DateTime64(3),
+    `updatedAt` DateTime64(3),
+    `memberId` String,
+    `objectMemberId` String,
+    `objectMemberUsername` String,
+    `organizationId` String,
+    `parentId` String,
+    `platform` LowCardinality(String),
+    `segmentId` String,
+    `username` String,
+    `sourceId` String,
+    `type` LowCardinality(String),
+    `timestamp` DateTime64(3),
+    `sourceParentId` String,
+    `channel` String,
+    `sentimentScore` Int8,
+    `gitInsertions` UInt32,
+    `gitDeletions` UInt32,
+    `score` Int8,
+    `isContribution` UInt8,
+    `pullRequestReviewState` LowCardinality(String),
+    `gitChangedLines` UInt64,
+    `gitChangedLinesBucket` String,
+    `organizationCountryCode` LowCardinality(String),
+    `organizationName` String,
+    `snapshotId` DateTime
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY tuple()
+ENGINE_SORTING_KEY memberId, timestamp

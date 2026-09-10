@@ -3,13 +3,14 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { getMavenConfig } from '../config'
 import { getPackagesDb } from '../db'
 
+import { MAVEN_GCS_MIRROR_BASE_URL } from './registry'
 import { BatchResult, processBatch } from './runMavenEnrichmentLoop'
 
 const log = getServiceChildLogger('maven-activity')
 
 export async function processMavenCriticalBatch(): Promise<BatchResult> {
   process.env.MAVEN_FETCHER_BASE_URL =
-    process.env.MAVEN_FETCHER_BASE_URL_INCREMENTAL ?? 'https://repo1.maven.org/maven2'
+    process.env.MAVEN_FETCHER_BASE_URL_INCREMENTAL ?? MAVEN_GCS_MIRROR_BASE_URL
 
   const config = getMavenConfig()
   const qx = await getPackagesDb()

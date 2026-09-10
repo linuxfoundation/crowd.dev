@@ -158,11 +158,11 @@ import LfButton from '@/ui-kit/button/Button.vue';
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
 
 const lsSegmentsStore = useLfSegmentsStore();
-const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 const integrations = ref([]);
 const fetchIntegrationTimer = ref(null);
 const loading = ref(true);
-const subProjects = ref([]);
+const subProjects = computed(() => selectedProjectGroupSubprojects.value);
 
 const route = useRoute();
 
@@ -251,21 +251,6 @@ watch(selectedProjectGroup, (updatedProjectGroup, previousProjectGroup) => {
   if (previousProjectGroup?.id !== updatedProjectGroup?.id) {
     loading.value = true;
     fetchIntegrations(updatedProjectGroup);
-  }
-
-  if (!updatedProjectGroup) {
-    subProjects.value = [];
-  } else {
-    subProjects.value = updatedProjectGroup.projects
-      .reduce((acc, project) => {
-        project.subprojects.forEach((subproject) => {
-          if (subproject) {
-            acc.push(subproject);
-          }
-        });
-
-        return acc;
-      }, []);
   }
 }, {
   deep: true,

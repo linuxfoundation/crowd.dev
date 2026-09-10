@@ -154,12 +154,10 @@ function findFallbackOrg(rows: IWorkExperienceResolution[]): IWorkExperienceReso
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
   if (primaryUndated) return primaryUndated
 
-  return (
-    rows
-      .filter((r) => !r.dateStart && !r.dateEnd)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      .at(0) ?? null
-  )
+  const undated = rows
+    .filter((r) => !r.dateStart && !r.dateEnd)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  return undated[0] ?? null
 }
 
 /**

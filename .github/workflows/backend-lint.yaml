@@ -7,6 +7,8 @@ on:
     paths:
       - 'backend/**'
       - 'services/**'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
 jobs:
   lint-format:
     runs-on: ubuntu-latest
@@ -17,15 +19,13 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+          runtime: node@24
+          cache: true
 
       - name: Check linting
         run: pnpm run lint
@@ -45,15 +45,13 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+          runtime: node@24
+          cache: true
 
       - name: Check library linting, format and typescript
         run: ./scripts/lint_libs.sh
@@ -77,7 +75,7 @@ jobs:
       - name: Check for Python file changes
         id: changes
         run: |
-          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -q "^services/apps/git_integration/.*\.py$"; then
+          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -qE "^services/apps/git_integration/.*(\.py|pyproject\.toml|uv\.lock)$"; then
             echo "python_changed=true" >> $GITHUB_OUTPUT
           else
             echo "python_changed=false" >> $GITHUB_OUTPUT
@@ -103,6 +101,53 @@ jobs:
         run: |
           uv run ruff check src/ --output-format=github
           uv run ruff format --check src/
+
+  lint-python-mailing-list-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./services/apps/mailing_list_integration
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Python file changes
+        id: changes
+        run: |
+          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -qE "^services/apps/mailing_list_integration/.*(\.py|pyproject\.toml|uv\.lock)$"; then
+            echo "python_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "python_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install uv
+        if: steps.changes.outputs.python_changed == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/apps/mailing_list_integration/uv.lock"
+
+      - name: Set up Python
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv sync --group dev --frozen
+
+      - name: Check Python linting and formatting
+        if: steps.changes.outputs.python_changed == 'true'
+        run: |
+          uv run ruff check src/ --output-format=github
+          uv run ruff format --check src/
+
+      - name: Run tests
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv run pytest src/test/ -v
 
       - name: Skip Python checks
         if: steps.changes.outputs.python_changed == 'false'

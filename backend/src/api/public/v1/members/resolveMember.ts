@@ -2,9 +2,14 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { ConflictError, NotFoundError } from '@crowd/common'
-import { findMemberIdsByIdentities, optionsQx } from '@crowd/data-access-layer'
+import {
+  fetchMemberIdentities,
+  findMemberIdsByIdentities,
+  suggestMemberMerge,
+} from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
@@ -37,10 +42,59 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
-    throw new ConflictError('Multiple member profiles matched', { memberIds })
+    const lfidMemberIds = await findMemberIdsByIdentities(
+      qx,
+      lfids.map((lfid) => ({
+        platform: PlatformType.LFID,
+        type: MemberIdentityType.USERNAME,
+        value: lfid,
+        verified: true,
+      })),
+    )
+    const primaryMemberId = lfidMemberIds[0] ?? memberIds[0]
+    const otherMemberIds = memberIds.filter((id) => id !== primaryMemberId)
+
+    if (otherMemberIds.length > 0) {
+      await suggestMemberMerge(
+        qx,
+        otherMemberIds.map((otherMemberId) => ({
+          members: [primaryMemberId, otherMemberId],
+          similarity: 0.95,
+        })),
+      )
+    }
+
+    throw new ConflictError('Multiple member profiles matched', {
+      reason: 'multi-match',
+      memberIds,
+    })
   }
 
   const memberId = memberIds[0]
+
+  if (emails?.length) {
+    const memberIdentities = await fetchMemberIdentities(qx, memberId)
+    const memberLfids = memberIdentities
+      .filter(
+        (identity) =>
+          identity.verified &&
+          identity.platform === PlatformType.LFID &&
+          identity.type === MemberIdentityType.USERNAME,
+      )
+      .map((identity) => identity.value)
+
+    const suppliedLfids = new Set(lfids.map((lfid) => lfid.toLowerCase()))
+    const holdsSuppliedLfid = memberLfids.some((lfid) => suppliedLfids.has(lfid.toLowerCase()))
+
+    // Email can match a member that was never looked up by LFID. If that member
+    // already has a different verified LFID, treat it as a conflict.
+    if (memberLfids.length > 0 && !holdsSuppliedLfid) {
+      throw new ConflictError('Member holds a different LFID', {
+        reason: 'foreign-lfid',
+        lfids: memberLfids,
+      })
+    }
+  }
 
   ok(res, { memberId })
 }

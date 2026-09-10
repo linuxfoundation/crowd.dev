@@ -3,22 +3,26 @@ import pick from 'lodash.pick'
 import moment from 'moment'
 
 import {
+  buildAuditLogOptions,
   captureApiChange,
   memberEditOrganizationsAction,
   memberMergeAction,
 } from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
+  Error404,
   Error409,
   calculateReach,
   getEarliestValidDate,
   getLongestDateRange,
   getMemberOrganizationSourceRank,
+  isSameMemberIdentity,
   mergeObjects,
   safeObjectMerge,
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
+  ActorType,
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
@@ -44,7 +48,7 @@ import {
   preferCompanyOverUniversityWhenOverlapping,
   updateMember,
 } from '@crowd/data-access-layer'
-import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { removeMemberMergeSuggestions } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -112,7 +116,7 @@ export class CommonMemberService extends LoggerBase {
           )
 
           for (const item of toDelete) {
-            await deleteMemberOrganizations(this.qx, memberId, [item.id])
+            await deleteMemberOrganizations(this.qx, memberId, { ids: [item.id] })
             ;(item as any).delete = true
           }
         }
@@ -315,6 +319,11 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
+    const audit = buildAuditLogOptions(options)
+
+    const actorId = audit?.actorId
+    const notifyUserId = audit?.actorType === ActorType.USER ? actorId : undefined
+
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
       filter: {
@@ -349,6 +358,10 @@ export class CommonMemberService extends LoggerBase {
         memberMergeAction(originalId, async (captureOldState, captureNewState) => {
           const original = await this.getMemberById(originalId)
           const toMerge = await this.getMemberById(toMergeId)
+
+          if (!original || !toMerge) {
+            throw new Error404(options?.language)
+          }
 
           captureOldState({
             primary: original,
@@ -386,19 +399,14 @@ export class CommonMemberService extends LoggerBase {
             MergeActionStep.MERGE_STARTED,
             MergeActionState.IN_PROGRESS,
             backup,
-            options?.currentUser?.id,
+            actorId,
           )
 
           await this.qx.tx(async (txQx) => {
             const identitiesToUpdate = []
             const identitiesToMove = []
             for (const identity of toMergeIdentities) {
-              const existing = originalIdentities.find(
-                (i) =>
-                  i.platform === identity.platform &&
-                  i.type === identity.type &&
-                  i.value === identity.value,
-              )
+              const existing = originalIdentities.find((i) => isSameMemberIdentity(i, identity))
 
               if (existing) {
                 // if it's not verified but it should be
@@ -432,8 +440,8 @@ export class CommonMemberService extends LoggerBase {
             // update members that belong to source organization to destination org
             await moveOrgsBetweenMembers(txQx, originalId, toMergeId)
 
-            // Remove toMerge from original member
-            await removeMemberToMerge(txQx, originalId, toMergeId)
+            // Drop leftover suggestions that still mention the secondary.
+            await removeMemberMergeSuggestions(txQx, toMergeId)
 
             const secondMemberSegments = await getMemberSegments(txQx, toMergeId)
 
@@ -469,13 +477,7 @@ export class CommonMemberService extends LoggerBase {
         retry: {
           maximumAttempts: 10,
         },
-        args: [
-          originalId,
-          toMergeId,
-          original.displayName,
-          toMerge.displayName,
-          options?.currentUser?.id,
-        ],
+        args: [originalId, toMergeId, original.displayName, toMerge.displayName, notifyUserId],
         searchAttributes: {
           TenantId: [DEFAULT_TENANT_ID],
         },
@@ -487,6 +489,10 @@ export class CommonMemberService extends LoggerBase {
       if (err.name === 'WorkflowExecutionAlreadyStartedError') {
         this.log.info({ originalId, toMergeId }, 'Temporal workflow already started!')
         return { status: 409, mergedId: originalId }
+      }
+
+      if (err instanceof Error404) {
+        throw err
       }
 
       this.log.error(err, 'Error while merging members!', { originalId, toMergeId })
@@ -512,6 +518,10 @@ export class CommonMemberService extends LoggerBase {
       MemberField.MANUALLY_CREATED,
       MemberField.MANUALLY_CHANGED_FIELDS,
     ])
+
+    if (!member) {
+      return null
+    }
 
     const affiliations = await findMemberAffiliations(this.qx, memberId)
 

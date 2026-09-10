@@ -44,25 +44,12 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
 
     const combinedOutput = `${stdout}\n${stderr}`
 
-    if (combinedOutput.includes('403')) {
-      svc.log.warn('Detected 403 error in privateer output!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token rate-limited',
-        type: 'Token403Error',
-      })
-    }
+    classifyTokenError(combinedOutput, 'privateer output')
   } catch (err) {
     svc.log.error(`Privateer run failed: ${err.message}`)
 
-    // check for 403 in captured output if available
     const output = `${err.stdout || ''}\n${err.stderr || ''}`
-    if (output.includes('403')) {
-      svc.log.warn('Detected 403 error in failed privateer output!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token rate-limited',
-        type: 'Token403Error',
-      })
-    }
+    classifyTokenError(output, 'failed privateer output')
     throw err
   }
 
@@ -196,6 +183,40 @@ export async function saveOSPSBaselineInsightsToRedis(
   await redisCache.set(key, JSON.stringify(insights), 60 * 60 * 24) // 1 day
 }
 
+function classifyTokenError(output: string, source: string): void {
+  const failedAtMs = Date.now()
+
+  if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
+    svc.log.warn(`Detected 401 error in ${source} - token invalid or expired!`)
+    throw ApplicationFailure.create({
+      message: 'GitHub token invalid or expired',
+      type: 'TokenAuthError',
+      nonRetryable: true,
+      details: [failedAtMs],
+    })
+  }
+
+  // Word-boundary match so unrelated numbers don't get misclassified as HTTP 429/403.
+  const has403 = /\b403\b/.test(output)
+  const has429 = /\b429\b/.test(output)
+  if (!has403 && !has429) return
+
+  // 429 is always rate-limit. 403 with rate-limit body is rate-limit. 403 without is a
+  // permission problem (SAML, missing scopes) — log it but don't throw; the child workflow's
+  // retry policy will exhaust retries and the repo will be deferred to the next scheduled run.
+  const isRateLimit = has429 || /rate limit|rate_limit|secondary rate/i.test(output)
+  if (isRateLimit) {
+    svc.log.warn(`Detected rate-limit in ${source} - token rate-limited!`)
+    throw ApplicationFailure.create({
+      message: 'GitHub token rate-limited',
+      type: 'Token403Error',
+      nonRetryable: true,
+      details: [failedAtMs],
+    })
+  }
+  svc.log.warn(`Detected 403 permission error in ${source} - token may lack access to this repo`)
+}
+
 function computeRunDuration(start: string | undefined, end: string | undefined): string {
   if (!start || !end) return ''
   const startMs = new Date(start).getTime()
@@ -258,13 +279,13 @@ async function runBinary(
         resolve({ stdout, stderr })
       } else {
         const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
-        const truncStdout = truncated(stdout)
-        const truncStderr = truncated(stderr)
+        // Attach full stdout/stderr so classifyTokenError sees rate-limit markers that may
+        // appear after the truncation cut. Message is still truncated for log readability.
         const err = Object.assign(
           new Error(
-            `Binary exited with code ${code}\nStderr:\n${truncStderr}\nStdout:\n${truncStdout}`,
+            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}\nStdout:\n${truncated(stdout)}`,
           ),
-          { stdout: truncStdout, stderr: truncStderr },
+          { stdout, stderr },
         )
         reject(err)
       }
@@ -276,20 +297,45 @@ export async function initializeTokenInfos(): Promise<ITokenInfo[]> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
 
   const tokenInfosInRedis = await redisCache.get('tokenInfos')
+  const cached: ITokenInfo[] = tokenInfosInRedis ? JSON.parse(tokenInfosInRedis) : []
+  const cachedByToken = new Map(cached.map((t) => [t.token, t]))
 
-  if (tokenInfosInRedis) {
-    return JSON.parse(tokenInfosInRedis)
-  }
+  // Env var is authoritative for pool membership so PAT rotation is picked up on next run:
+  // a new token in CROWD_GITHUB_PERSONAL_ACCESS_TOKENS joins the pool fresh, and a removed
+  // token drops out even if its cached entry is still in Redis.
+  const envTokens = process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',')
 
-  return process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',').map((token) => ({
-    token,
-    inUse: false,
-    lastUsed: new Date(),
-    isRateLimited: false,
-  }))
+  return envTokens.map((token) => {
+    const t = cachedByToken.get(token)
+    if (t) {
+      return {
+        ...t,
+        // Reset inUse — workflow processes may have crashed leaving stale in-use flags.
+        inUse: false,
+        // Backward compat: legacy entries have isRateLimited=true with no rateLimitedAt timestamp.
+        // Without a timestamp the 1-hour expiry can't apply and the token would be stuck forever.
+        // Clear stale rate-limits that lack a timestamp so they can be retried on this run.
+        isRateLimited: t.isRateLimited && !!t.rateLimitedAt,
+        rateLimitedAt: t.isRateLimited && t.rateLimitedAt ? t.rateLimitedAt : undefined,
+      }
+    }
+    return {
+      token,
+      inUse: false,
+      lastUsed: new Date(),
+      isRateLimited: false,
+    }
+  })
 }
 
 export async function updateTokenInfos(tokenInfos: ITokenInfo[]): Promise<void> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   await redisCache.set('tokenInfos', JSON.stringify(tokenInfos), 60 * 60 * 24) // 1 day
+}
+
+// Wall-clock time via activity — workflow code can't call Date.now() (determinism rule),
+// but rate-limit cooldowns need real elapsed time to expire mid-run rather than only at
+// the next continueAsNew batch boundary.
+export async function getCurrentTimeMs(): Promise<number> {
+  return Date.now()
 }

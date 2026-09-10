@@ -32,7 +32,7 @@ We currently support all our integrations for self-hosting. For each one of them
 
 #### <a name="requirements">Requirements</a>
 
-- [Node](https://nodejs.org/en) v20+
+- [Node](https://nodejs.org/en) v24+
 - [Docker](https://docs.docker.com/get-docker/) and [docker-compose](https://docs.docker.com/compose/install/)
 
 #### <a name="getting_started">Getting started</a>

@@ -16,16 +16,26 @@ const JSON_FORMAT = new BunyanFormat({
 })
 
 let serviceLoggerInstance: Logger
-export const getServiceLogger = (): Logger => {
-  if (serviceLoggerInstance) return serviceLoggerInstance
 
-  const options = {
-    name: SERVICE,
-    level: LOG_LEVEL as Bunyan.LogLevel,
-    stream: IS_DEV_ENV || IS_TEST_ENV || SERVICE === 'script' ? PRETTY_FORMAT : JSON_FORMAT,
+export function getServiceLogger(): Logger {
+  if (serviceLoggerInstance !== undefined) {
+    return serviceLoggerInstance
   }
 
-  serviceLoggerInstance = Bunyan.createLogger(options as unknown as Bunyan.LoggerOptions)
+  const usePrettyLogs = IS_DEV_ENV || IS_TEST_ENV || SERVICE === 'script'
+
+  const options: Bunyan.LoggerOptions = {
+    name: SERVICE,
+    level: LOG_LEVEL as Bunyan.LogLevel,
+    stream: usePrettyLogs ? PRETTY_FORMAT : JSON_FORMAT,
+    serializers: {
+      ...Bunyan.stdSerializers,
+      error: Bunyan.stdSerializers.err,
+    },
+  }
+
+  serviceLoggerInstance = Bunyan.createLogger(options)
+
   if (!IS_DEV_ENV && !IS_TEST_ENV) {
     delete serviceLoggerInstance.fields.hostname
   }

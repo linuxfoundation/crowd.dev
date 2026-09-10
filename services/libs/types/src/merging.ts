@@ -48,7 +48,7 @@ export interface IMemberUnmergeBackup {
   username: IMemberUsername
   attributes: IAttributes
   identities: IMemberIdentity[]
-  displayName: string
+  displayName?: string
   affiliations: IMemberAffiliationMergeBackup[]
   manuallyCreated: boolean
   manuallyChangedFields: string[]
@@ -62,7 +62,7 @@ export interface IMemberUnmergePreviewResult {
   joinedAt: string
   username: IMemberUsername
   attributes: IAttributes
-  displayName: string
+  displayName?: string | null
   affiliations: IMemberAffiliationMergeBackup[]
   contributions: IMemberContribution[]
   manuallyCreated: boolean

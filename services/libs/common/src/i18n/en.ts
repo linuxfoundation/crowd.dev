@@ -182,7 +182,11 @@ const en = {
       invalidCredentials: 'Invalid email or password',
       invalid2FA: 'Invalid Two-factor authentication code',
     },
+    mailingList: {
+      alreadyConnected: 'The following mailing lists are already connected to another project: {0}',
+    },
     alreadyExists: '{0}',
+    alreadyOnboarded: 'Repo {0} is already onboarded or onboarding is in progress.',
     organization: {
       unmerge: {
         errors: {

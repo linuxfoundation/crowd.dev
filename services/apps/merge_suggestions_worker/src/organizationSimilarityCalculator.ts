@@ -20,6 +20,21 @@ class OrganizationSimilarityCalculator {
 
     let similarPrimaryIdentity: IOrganizationIdentity = null
 
+    const sameDisplayName =
+      Boolean(primaryOrganization.displayName) &&
+      Boolean(similarOrganization.displayName) &&
+      primaryOrganization.displayName.toLowerCase() ===
+        similarOrganization.displayName.toLowerCase()
+
+    // Organizations can have multiple usernames on one platform; don't let that clash
+    // veto a shared verified primary-domain and same displayName.
+    if (
+      sameDisplayName &&
+      this.hasSharedVerifiedPrimaryDomain(primaryOrganization, similarOrganization)
+    ) {
+      return 0.85
+    }
+
     if (this.hasClashingOrganizationIdentities(primaryOrganization, similarOrganization)) {
       return this.LOW_CONFIDENCE_SCORE
     }
@@ -42,7 +57,7 @@ class OrganizationSimilarityCalculator {
       }
 
       // check displayName match
-      if (similarOrganization.displayName === primaryOrganization.displayName) {
+      if (sameDisplayName) {
         return this.decideSimilarityUsingAdditionalChecks(primaryOrganization, similarOrganization)
       }
 
@@ -115,6 +130,26 @@ class OrganizationSimilarityCalculator {
 
   static bumpConfidenceScore(confidenceScore: number, bump: number): number {
     return Math.min(1, confidenceScore + bump)
+  }
+
+  static hasSharedVerifiedPrimaryDomain(
+    organization: IOrganizationFullAggregatesOpensearch,
+    similarOrganization: IOrganizationFullAggregatesOpensearch,
+  ): boolean {
+    const primaryDomains = organization.identities
+      .filter((i) => i.verified && i.type === OrganizationIdentityType.PRIMARY_DOMAIN)
+      .map((i) => i.value.toLowerCase())
+
+    if (primaryDomains.length === 0) {
+      return false
+    }
+
+    return similarOrganization.identities.some(
+      (i) =>
+        i.verified &&
+        i.type === OrganizationIdentityType.PRIMARY_DOMAIN &&
+        primaryDomains.includes(i.value.toLowerCase()),
+    )
   }
 
   static hasClashingOrganizationIdentities(

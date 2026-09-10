@@ -1,41 +1,34 @@
 ARG NODE_VERSION=24
-ARG PNPM_VERSION=10.15.0
 ARG PNPM_CACHE_DIR=/tmp/archived-repositories-cronjob-pnpm-cache
 
 ## Builder stage
 FROM node:${NODE_VERSION}-alpine AS builder
-ARG PNPM_VERSION
 ARG PNPM_CACHE_DIR
 
-RUN npm install -g corepack@latest && \
-    corepack enable pnpm && \
-    corepack prepare pnpm@${PNPM_VERSION} --activate
-
 WORKDIR /build
+ENV pnpm_config_store_dir=${PNPM_CACHE_DIR}
 
-# Only copy the necessary files to avoid invalidating the Docker layer cache if one of the other files changes (source
-# code changes much more often than dependencies)
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare --activate
 
 # Pre-fetch dependencies and use a Docker cache mount for pnpm to speed up subsequent builds
-RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} pnpm config set store-dir ${PNPM_CACHE_DIR} && \
+RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} \
     pnpm fetch --frozen-lockfile
 
 COPY ./ /build
 
-RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} pnpm config set store-dir ${PNPM_CACHE_DIR} && \
-    pnpm install --frozen-lockfile --ignore-workspace && \
+RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} \
+    pnpm install --frozen-lockfile && \
     pnpm build
 
 # Clean install of production dependencies only
-RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} pnpm config set store-dir ${PNPM_CACHE_DIR} && \
+RUN --mount=type=cache,id=pnpm,target=${PNPM_CACHE_DIR} \
     rm -rf node_modules && \
-    pnpm install --prod --frozen-lockfile --ignore-workspace
+    pnpm install --prod --frozen-lockfile
 
 
 ## Runner stage
 FROM node:${NODE_VERSION}-alpine AS runner
-ARG PNPM_VERSION
 WORKDIR /app
 
 # Add non-root user

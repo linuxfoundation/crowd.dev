@@ -1,13 +1,14 @@
 #!/usr/bin/env tsx
 
 /**
- * Trigger rank_packages() on demand.
+ * Trigger rank_packages_chunked() on demand.
  *
  * Usage (from services/apps/packages_worker):
  *   pnpm run:impact
  *   pnpm run:impact --cutoff 0.90
  *   pnpm run:impact --ecosystems npm,go
  *   pnpm run:impact --cutoff 0.85 --ecosystems npm
+ *   pnpm run:impact --chunk 5000
  */
 import { getPackagesDb } from '../db'
 
@@ -31,24 +32,26 @@ function parseListArg(flag: string): string[] | null {
 }
 
 const cutoff = parseArg('--cutoff', 0.9)
+const chunk = parseArg('--chunk', 25000)
 const ecosystems = parseListArg('--ecosystems')
 
 async function main() {
-  console.log(`Running rank_packages()`)
+  console.log(`Running rank_packages_chunked()`)
   console.log(`  cutoff    : ${cutoff}`)
+  console.log(`  chunk     : ${chunk}`)
   console.log(`  ecosystems: ${ecosystems ? ecosystems.join(', ') : 'all'}\n`)
 
   const qx = await getPackagesDb()
   const t = Date.now()
 
-  const [result] = await qx.select(`SELECT * FROM rank_packages($/cutoff/, $/ecosystems/)`, {
-    cutoff,
-    ecosystems,
-  })
+  const [result] = await qx.select(
+    `CALL rank_packages_chunked($/cutoff/, $/ecosystems/, $/chunk/, 0)`,
+    { cutoff, ecosystems, chunk },
+  )
 
   const elapsed = ((Date.now() - t) / 1000).toFixed(1)
   console.log(`Done in ${elapsed}s`)
-  console.log(`  processed_rows: ${result.processed_rows?.toLocaleString()}`)
+  console.log(`  applied_rows: ${result.applied_rows?.toLocaleString()}`)
 
   process.exit(0)
 }

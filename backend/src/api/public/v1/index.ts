@@ -13,6 +13,7 @@ import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { akritesRouter } from './akrites'
+import { akritesExternalRouter } from './akrites-external'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
 import { osspreyRouter } from './ossprey'
@@ -42,6 +43,7 @@ export function v1Router(): Router {
   router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
 
   router.use('/akrites', oauth2Middleware(AUTH0_CONFIG), akritesRouter())
+  router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
 
   router.use(() => {
     throw new NotFoundError()

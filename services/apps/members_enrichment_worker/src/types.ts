@@ -22,8 +22,8 @@ import { IMemberEnrichmentDataSerp } from './sources/serp/types'
 export interface IEnrichmentSourceInput {
   memberId: string
   github?: IMemberIdentity
-  linkedin?: IMemberIdentity
-  email?: IMemberIdentity
+  linkedin: IMemberIdentity[]
+  emails: IMemberIdentity[]
   website?: string
   location?: string
   displayName?: string
@@ -117,6 +117,7 @@ export type IMemberEnrichmentAttributeSettings = {
 
 export interface IProcessMemberSourcesArgs {
   memberId: string
+  activityCount: number
   sources: MemberEnrichmentSource[]
 }
 

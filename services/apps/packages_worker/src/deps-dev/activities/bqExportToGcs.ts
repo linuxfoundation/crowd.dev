@@ -1,3 +1,5 @@
+import { ApplicationFailure } from '@temporalio/client'
+
 import {
   OsspckgsJobKind,
   OsspckgsSyncMode,
@@ -224,8 +226,11 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
       'BQ dry-run complete',
     )
     if (dryRunBytes > ceiling) {
-      throw new Error(
+      // Non-retryable: the dry-run byte count is deterministic for a given query, so retrying
+      // (the caller's default maximumAttempts: 3) just repeats the same failed dry-run 3 times.
+      throw ApplicationFailure.nonRetryable(
         `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,
+        'BQ_CEILING_EXCEEDED',
       )
     }
   }

@@ -1,6 +1,7 @@
 import {
   DEFAULT_TENANT_ID,
   UnrepeatableError,
+  generateOrganizationNameVariants,
   generateUUIDv1,
   normalizeHostname,
 } from '@crowd/common'
@@ -12,17 +13,19 @@ import {
   IOrganizationIdentity,
   IQueryTimeseriesParams,
   ITimeseriesDatapoint,
+  OrganizationDbInsert,
+  OrganizationDbRow,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-import { findLfSegmentByName } from '../segments'
-import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
+import { findManyLfSegmentsByNames } from '../segments'
+import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
-import { addOrgIdentity, upsertOrgIdentities } from './identities'
-import { IDbOrganization, IDbOrganizationInput } from './types'
+import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
+import { IDbOrganization, IDbOrganizationInput, IFindOrCreateOrganizationResult } from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -37,6 +40,7 @@ const ORG_SELECT_COLUMNS = [
   'revenueRange',
   'importHash',
   'location',
+  'country',
   'isTeamOrganization',
   'isAffiliationBlocked',
   'type',
@@ -128,24 +132,26 @@ export async function findOrgsByIds(
   return results
 }
 
-export async function findOrganizationsByName(
+export async function findManyOrganizationsByNames(
   qx: QueryExecutor,
-  name: string,
-  options: { limit?: number } = {},
+  names: string[],
 ): Promise<IDbOrganization[]> {
-  const { limit } = options
+  const normalized = names
+    .map((name) => name?.trim().toLowerCase())
+    .filter((name): name is string => Boolean(name))
+
+  if (normalized.length === 0) {
+    return []
+  }
 
   return qx.select(
     `
       select ${prepareSelectColumns(ORG_SELECT_COLUMNS, 'o')}
       from organizations o
-      where lower(trim(o."displayName")) = lower(trim($(name)))
-      ${limit !== undefined ? 'limit $(limit)' : ''}
+      where o."deletedAt" is null
+        and trim(lower(o."displayName")) in ($(names:csv))
     `,
-    {
-      name,
-      limit,
-    },
+    { names: normalized },
   )
 }
 
@@ -363,6 +369,81 @@ export async function insertOrganization(
   return id
 }
 
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<OrganizationDbRow[]>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<OrganizationDbRow[] | number> {
+  if (organizations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const ts = new Date()
+
+  const query = prepareBulkInsert(
+    'organizations',
+    [
+      'id',
+      'displayName',
+      'description',
+      'logo',
+      'tags',
+      'employees',
+      'revenueRange',
+      'importHash',
+      'location',
+      'country',
+      'isTeamOrganization',
+      'isAffiliationBlocked',
+      'type',
+      'size',
+      'headline',
+      'industry',
+      'founded',
+      'employeeChurnRate',
+      'employeeGrowthRate',
+      'manuallyCreated',
+      'createdById',
+      'updatedById',
+      'tenantId',
+      'createdAt',
+      'updatedAt',
+    ],
+    organizations.map((o) => ({
+      ...o,
+      id: o.id ?? generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      createdAt: ts,
+      updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      isTeamOrganization: o.isTeamOrganization ?? false,
+      isAffiliationBlocked: o.isAffiliationBlocked ?? false,
+      manuallyCreated: o.manuallyCreated ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
+}
+
 export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
@@ -449,7 +530,7 @@ export async function findOrCreateOrganization(
   data: IOrganization,
   integrationId?: string,
   throttleUpdatedAt = false,
-): Promise<string | undefined> {
+): Promise<IFindOrCreateOrganizationResult | undefined> {
   data.identities = data.identities ?? []
   let verifiedIdentities = data.identities.filter((i) => i.verified)
 
@@ -506,9 +587,9 @@ export async function findOrCreateOrganization(
 
     if (!existing) {
       const organizations = await logExecutionTimeV2(
-        async () => findOrganizationsByName(qe, data.displayName, { limit: 1 }),
+        async () => findManyOrganizationsByNames(qe, [data.displayName]),
         log,
-        'organizationService -> findOrCreateOrganization -> findOrganizationsByName',
+        'organizationService -> findOrCreateOrganization -> findManyOrganizationsByNames',
       )
 
       if (organizations.length > 0) {
@@ -516,7 +597,7 @@ export async function findOrCreateOrganization(
       }
     }
 
-    let id
+    let id: string
 
     if (!existing && verifiedIdentities.length === 0) {
       log.debug(
@@ -585,6 +666,7 @@ export async function findOrCreateOrganization(
         tags: data.tags,
         employees: data.employees,
         location: data.location,
+        country: data.country,
         type: data.type,
         size: data.size,
         headline: data.headline,
@@ -594,8 +676,11 @@ export async function findOrCreateOrganization(
 
       // Block organization affiliation if a segment (project, subproject, or project group)
       // has the same name as the organization when creating one.
-      const lfSegment = await findLfSegmentByName(qe, displayName)
-      if (lfSegment) {
+      const lfSegments = await findManyLfSegmentsByNames(
+        qe,
+        generateOrganizationNameVariants(displayName),
+      )
+      if (lfSegments.length > 0) {
         payload.isAffiliationBlocked = true
       }
 
@@ -628,27 +713,30 @@ export async function findOrCreateOrganization(
       }
 
       // create identities
-      for (const i of data.identities) {
-        // add the identity
+      if (data.identities.length > 0) {
         await logExecutionTimeV2(
-          async () =>
-            addOrgIdentity(qe, {
-              organizationId: id,
-              platform: i.platform,
-              type: i.type,
-              value: i.value,
-              verified: i.verified,
-              sourceId: i.sourceId,
-              integrationId,
-              source: i.source,
-            }),
+          () =>
+            insertOrganizationIdentities(
+              qe,
+              data.identities.map((i) => ({
+                organizationId: id,
+                platform: i.platform,
+                type: i.type,
+                value: i.value,
+                verified: i.verified,
+                sourceId: i.sourceId,
+                integrationId,
+                source: i.source,
+              })),
+              false,
+            ),
           log,
-          'organizationService -> findOrCreateOrganization -> addOrgIdentity',
+          'organizationService -> findOrCreateOrganization -> insertOrganizationIdentities',
         )
       }
     }
 
-    return id
+    return { id, created: !existing }
   } catch (err) {
     log.error(err, 'Error while upserting an organization!')
     throw err
@@ -675,6 +763,7 @@ export enum OrganizationField {
   EMPLOYEES = 'employees',
   REVENUE_RANGE = 'revenueRange',
   LOCATION = 'location',
+  COUNTRY = 'country',
   IS_TEAM_ORGANIZATION = 'isTeamOrganization',
   IS_AFFILIATION_BLOCKED = 'isAffiliationBlocked',
   TYPE = 'type',

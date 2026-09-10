@@ -25,6 +25,7 @@ export type MavenPackageToSync = Pick<
 > & {
   purl: string
   latestVersion: string | null
+  ingestionSource: string | null
 }
 
 // ingestion_source values this worker writes once it has attempted a package
@@ -67,7 +68,8 @@ export async function listMavenPackagesToSync(
         p.name,
         p.dependent_count          AS "dependentPackagesCount",
         p.dependent_repos_count    AS "dependentReposCount",
-        p.latest_version           AS "latestVersion"
+        p.latest_version           AS "latestVersion",
+        p.ingestion_source         AS "ingestionSource"
       FROM packages p
       WHERE
         p.ecosystem = 'maven'
@@ -97,7 +99,8 @@ export async function listMavenPackagesToSync(
       pu.name,
       pu.dependent_count          AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
-      p.latest_version            AS "latestVersion"
+      p.latest_version            AS "latestVersion",
+      p.ingestion_source          AS "ingestionSource"
     FROM packages_universe pu
     LEFT JOIN packages p ON p.purl = pu.purl
     WHERE
@@ -118,12 +121,140 @@ export async function listMavenPackagesToSync(
   )
 }
 
+/**
+ * Keyset-paginated scan of every critical Maven package, independent of the
+ * staleness window. Unlike `listMavenPackagesToSync` — which drains by predicate
+ * (a row leaves the set once it is fresh) and therefore cannot terminate with
+ * refreshDays=0 — this pages strictly by `id > afterId`, so each row is visited
+ * exactly once and the scan always terminates. Used by the `--force` full-refresh
+ * backfill to re-run POM extraction over the entire critical set regardless of
+ * last_synced_at / ingestion_source.
+ */
+export async function listMavenCriticalPackagesById(
+  qx: QueryExecutor,
+  options: { afterId: string; limit: number },
+): Promise<MavenPackageToSync[]> {
+  return qx.select(
+    `
+    SELECT
+      p.id,
+      p.purl,
+      p.namespace,
+      p.name,
+      p.dependent_count          AS "dependentPackagesCount",
+      p.dependent_repos_count    AS "dependentReposCount",
+      p.latest_version           AS "latestVersion",
+      p.ingestion_source         AS "ingestionSource"
+    FROM packages p
+    WHERE p.ecosystem = 'maven'
+      AND p.is_critical
+      AND p.namespace IS NOT NULL
+      AND p.id > $(afterId)::bigint
+    ORDER BY p.id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
+// ─── repository_url backfill ──────────────────────────────────────────────────
+
+export type MavenRepoUrlRow = {
+  id: number
+  declaredRepositoryUrl: string | null
+  repositoryUrl: string | null
+  homepage: string | null
+}
+
+/**
+ * Keyset-paginated scan of Maven rows that carry a declared repository value.
+ * The backfill recomputes repository_url *from* declared_repository_url, so rows
+ * with no declared value are skipped: there is nothing to recompute from, and a
+ * null declaration must never be used to clear an existing repository_url that a
+ * different source may have set.
+ * Used to re-run the normalizer over stored data without re-fetching POMs.
+ *
+ * `criticalOnly` restricts the scan to is_critical rows (index-backed by the
+ * partial index on is_critical) — used for a fast, consumer-facing first pass.
+ */
+export async function listMavenPackagesForRepoUrlRecompute(
+  qx: QueryExecutor,
+  options: { afterId: number; limit: number; criticalOnly?: boolean },
+): Promise<MavenRepoUrlRow[]> {
+  return qx.select(
+    `
+    SELECT
+      id,
+      declared_repository_url AS "declaredRepositoryUrl",
+      repository_url          AS "repositoryUrl",
+      homepage
+    FROM packages
+    WHERE ecosystem = 'maven'
+      ${options.criticalOnly ? 'AND is_critical' : ''}
+      AND id > $(afterId)
+      AND declared_repository_url IS NOT NULL
+    ORDER BY id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
+/**
+ * Applies a batch of recomputed repository_url values via direct UPDATE — the
+ * only way to clear a stale value, since the enrichment upsert COALESCEs and
+ * cannot write NULL. Splits clears (→ NULL) from sets to avoid NULLs inside a
+ * text[] array literal.
+ *
+ * Both branches also bump last_synced_at. repository_url is exported to Tinybird
+ * (ossPackages datasource) via a ReplacingMergeTree whose ENGINE_VER is
+ * last_synced_at; without advancing it, a same-version CDC row may lose to the
+ * older one and the correction would never reach downstream consumers. The
+ * trade-off is that these rows look freshly synced to the enrichment freshness
+ * window (listMavenPackagesToSync/refreshDays) and are re-enriched slightly
+ * later — acceptable, since the recomputed value is already current.
+ */
+export async function updateMavenRepositoryUrls(
+  qx: QueryExecutor,
+  updates: { id: number; repositoryUrl: string | null }[],
+): Promise<void> {
+  if (updates.length === 0) return
+
+  const toClear = updates.filter((u) => u.repositoryUrl === null).map((u) => u.id)
+  const toSet = updates.filter(
+    (u): u is { id: number; repositoryUrl: string } => u.repositoryUrl !== null,
+  )
+
+  if (toClear.length > 0) {
+    await qx.result(
+      `UPDATE packages SET repository_url = NULL, last_synced_at = NOW()
+       WHERE id = ANY($(ids)::bigint[]) AND repository_url IS NOT NULL`,
+      { ids: toClear },
+    )
+  }
+
+  if (toSet.length > 0) {
+    await qx.result(
+      `
+      UPDATE packages p
+      SET repository_url = v.repository_url, last_synced_at = NOW()
+      FROM (
+        SELECT unnest($(ids)::bigint[]) AS id,
+               unnest($(urls)::text[])  AS repository_url
+      ) v
+      WHERE p.id = v.id
+        AND p.repository_url IS DISTINCT FROM v.repository_url
+      `,
+      { ids: toSet.map((u) => u.id), urls: toSet.map((u) => u.repositoryUrl) },
+    )
+  }
+}
+
 // ─── packages touch ───────────────────────────────────────────────────────────
 
 /**
- * Bumps last_synced_at without re-fetching POM data.
- * Used when the upstream version is unchanged — avoids a full extraction pass
- * while keeping the staleness timer fresh and syncing latest universe metrics.
+ * Bumps last_synced_at (+ ingestion_source) without re-fetching POM data.
+ * Caller must only use this on rows already Maven-enriched — see processCriticalPackage.
  */
 export async function touchPackageSyncedAt(
   qx: QueryExecutor,
@@ -137,12 +268,14 @@ export async function touchPackageSyncedAt(
     `
     UPDATE packages SET
       last_synced_at           = NOW(),
+      ingestion_source         = $(ingestionSource),
       dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
       dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count)
     WHERE purl = $(purl)
     `,
     {
       purl,
+      ingestionSource: MAVEN_WORKER_OUTCOMES[0],
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
     },
