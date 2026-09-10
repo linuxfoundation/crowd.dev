@@ -98,16 +98,20 @@ BEGIN
                 -- 'unmatched'. Mirror that here instead of trusting repos.owner for them.
                 SELECT b.id,
                        CASE WHEN r.host = 'other' THEN NULL ELSE r.owner END AS repo_owner,
-                       -- All roles carry ownership evidence at ingest: matchOwnership() call sites
-                       -- pass every maintainer regardless of role (e.g. NuGet authors, Maven
-                       -- developers), filtering out only email-shaped identities.
+                       -- Most ecosystems pass every maintainer role to matchOwnership() (NuGet
+                       -- authors, Maven developers, ...); npm/upsertPackage.ts filters to
+                       -- role='maintainer' only, so mirror that restriction here.
+                       -- Email-shaped identities are rejected only when a non-whitespace char
+                       -- appears on both sides of '@' (ownershipMatch.ts's /\S@\S/), matching
+                       -- handles like '@vercel' still count.
                        package_repo_namespace_candidates(p.namespace)
                          || COALESCE(ARRAY(
                               SELECT m.username
                                 FROM package_maintainers pm
                                 JOIN maintainers m ON m.id = pm.maintainer_id
                                WHERE pm.package_id = cur.package_id
-                                 AND m.username NOT LIKE '%@%'
+                                 AND (p.ecosystem <> 'npm' OR pm.role = 'maintainer')
+                                 AND m.username !~ '\S@\S'
                             ), ARRAY[]::text[]) AS owner_candidates
                   FROM batch b
                   JOIN package_repos cur ON cur.id = b.id
