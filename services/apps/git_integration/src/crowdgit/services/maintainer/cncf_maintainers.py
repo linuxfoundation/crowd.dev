@@ -51,6 +51,8 @@ def parse_cncf_maintainers_yaml(content: str) -> list[MaintainerInfoItem] | None
         for team in teams:
             if not isinstance(team, dict):
                 return None
+            if "emeritus" in str(team.get("name", "")).lower():
+                continue
             team_members = team.get("members")
             if not isinstance(team_members, list):
                 return None
