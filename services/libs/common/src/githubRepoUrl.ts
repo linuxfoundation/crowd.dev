@@ -1,10 +1,6 @@
-export interface ICanonicalRepoUrl {
-  url: string
-  host: string
-  isGithub: boolean
-  owner: string | null
-  repo: string | null
-}
+export type ICanonicalRepoUrl =
+  | { url: string; host: string; isGithub: true; owner: string; repo: string }
+  | { url: string; host: string; isGithub: false; owner: null; repo: null }
 
 const GITHUB_HOST = 'github.com'
 
@@ -26,8 +22,11 @@ const GITHUB_NON_REPO_OWNERS = new Set([
 function toParsableUrl(raw: string): string {
   const trimmed = raw.trim()
   const sshRewritten = trimmed
-    .replace(/^git@github\.com:/, 'https://github.com/')
+    // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@github.com:owner/repo.git —
+    // left alone when followed by digits/ (an actual port, e.g. ssh://git@github.com:2222/owner/repo.git).
+    .replace(/^ssh:\/\/git@github\.com:(?!\d+(?:\/|$))/, 'https://github.com/')
     .replace(/^ssh:\/\/git@github\.com\//, 'https://github.com/')
+    .replace(/^git@github\.com:/, 'https://github.com/')
 
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(sshRewritten)
     ? sshRewritten
@@ -64,13 +63,16 @@ export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalR
   }
 
   if (host === GITHUB_HOST) {
+    // Deep links (/tree/<branch>, /blob/<branch>/<path>, /pull/<n>, ...) still
+    // unambiguously reference the repo at the first two segments — take those
+    // instead of rejecting, matching how the rest of the repo already treats them.
     const segments = path.split('/')
-    if (segments.length !== 2 || !segments[0] || !segments[1]) {
+    if (segments.length < 2 || !segments[0] || !segments[1]) {
       return null
     }
 
     const owner = segments[0].toLowerCase()
-    const repo = segments[1].toLowerCase()
+    const repo = segments[1].toLowerCase().replace(/\.git$/i, '')
     if (GITHUB_NON_REPO_OWNERS.has(owner)) {
       return null
     }
