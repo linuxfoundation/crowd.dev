@@ -7,6 +7,7 @@
           <span>Issue type: </span>
           <span v-if="selectedType === 'merge-suggestions'" class="font-normal">Merge suggestions</span>
           <span v-else-if="selectedType === 'bot-suggestions'" class="font-normal">Bot suggestions</span>
+          <span v-else-if="selectedType === 'fake-suggestions'" class="font-normal">Fake organization suggestions</span>
           <span v-else class="font-normal">{{ dataIssueTypes[selectedType]?.label || 'Select issue type' }}</span>
         </div>
       </lf-button>
@@ -20,11 +21,13 @@
         Merge suggestions
       </lf-dropdown-item>
       <lf-dropdown-item
-        :selected="selectedType === 'bot-suggestions'"
+        v-for="type in suggestionTypes"
+        :key="type"
+        :selected="selectedType === type"
         class="!text-small"
-        @click="selectedType = 'bot-suggestions'"
+        @click="selectedType = type"
       >
-        Bot suggestions
+        {{ suggestionTypeLabels[type] }}
       </lf-dropdown-item>
       <section
         v-for="(section, si) in props.config"
@@ -61,16 +64,24 @@
 
 <script lang="ts" setup>
 import LfButton from '@/ui-kit/button/Button.vue';
-import { computed } from 'vue';
+import { computed, withDefaults } from 'vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import { DataIssueTypeMenu, dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const props = defineProps<{
+const suggestionTypeLabels: Record<string, string> = {
+  'bot-suggestions': 'Bot suggestions',
+  'fake-suggestions': 'Fake organization suggestions',
+};
+
+const props = withDefaults(defineProps<{
   modelValue: string;
   config: DataIssueTypeMenu[]
-}>();
+  suggestionTypes?: string[]
+}>(), {
+  suggestionTypes: () => ['bot-suggestions'],
+});
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 

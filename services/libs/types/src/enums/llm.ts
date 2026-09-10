@@ -16,4 +16,5 @@ export enum LlmQueryType {
   REPO_COLLECTIONS = 'repo_collections',
   MEMBER_BOT_VALIDATION = 'member_bot_validation',
   SELECT_MOST_RELEVANT_DOMAIN = 'select_most_relevant_domain',
+  FAKE_ORGANIZATION_ANALYSIS = 'fake_organization_analysis',
 }

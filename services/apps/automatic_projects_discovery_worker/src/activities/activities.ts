@@ -1,18 +1,24 @@
 import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
-import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
+import {
+  bulkInsertProjectCatalog,
+  findExistingProjectCatalogRepoUrls,
+} from '@crowd/data-access-layer'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
+import { DISCOVERY_NEW_PROJECTS_LIMIT } from '../config'
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'
 
 const log = getServiceLogger()
 
-const BATCH_SIZE = 5000
+// Matches the LF Criticality Score API's page size, so the stream can stop after one page
+// once a chunk satisfies the cap, instead of always fetching several pages upfront.
+const CANDIDATE_CHUNK_SIZE = 100
 
 export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()
@@ -72,11 +78,40 @@ export async function processDataset(
     })
   }
 
-  let batch: IDbProjectCatalogCreate[] = []
-  let totalProcessed = 0
-  let totalSkipped = 0
-  let batchNumber = 0
+  const accepted: IDbProjectCatalogCreate[] = []
+  const acceptedRepoUrls = new Set<string>()
+  let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
+  let totalSkipped = 0
+
+  async function acceptNewRows(candidates: IDbProjectCatalogCreate[]): Promise<void> {
+    const seenInChunk = new Set<string>()
+    const unseen = candidates.filter(
+      (c) =>
+        !acceptedRepoUrls.has(c.repoUrl) &&
+        !seenInChunk.has(c.repoUrl) &&
+        seenInChunk.add(c.repoUrl),
+    )
+    if (unseen.length === 0) {
+      return
+    }
+
+    const existingRepoUrls = await findExistingProjectCatalogRepoUrls(
+      qx,
+      unseen.map((c) => c.repoUrl),
+    )
+
+    for (const candidate of unseen) {
+      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        break
+      }
+      if (existingRepoUrls.has(candidate.repoUrl)) {
+        continue
+      }
+      accepted.push(candidate)
+      acceptedRepoUrls.add(candidate.repoUrl)
+    }
+  }
 
   for await (const rawRow of records) {
     totalRows++
@@ -87,7 +122,7 @@ export async function processDataset(
       continue
     }
 
-    batch.push({
+    chunk.push({
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
@@ -96,27 +131,34 @@ export async function processDataset(
       lfCriticalityScore: parsed.lfCriticalityScore,
     })
 
-    if (batch.length >= BATCH_SIZE) {
-      batchNumber++
+    if (chunk.length >= CANDIDATE_CHUNK_SIZE) {
+      await acceptNewRows(chunk)
+      chunk = []
 
-      await bulkUpsertProjectCatalog(qx, batch)
-      totalProcessed += batch.length
-      batch = []
+      Context.current().heartbeat({ totalRows, accepted: accepted.length })
 
-      Context.current().heartbeat({ totalProcessed, batchNumber })
-      log.info({ totalProcessed, batchNumber, datasetId: dataset.id }, 'Batch upserted.')
+      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        log.info(
+          { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
+          'Discovery limit reached, stopping stream.',
+        )
+        break
+      }
     }
   }
 
-  // Flush remaining rows that didn't fill a complete batch
-  if (batch.length > 0) {
-    batchNumber++
-    log.info(
-      { sourceName, datasetId: dataset.id, batchSize: batch.length },
-      'Flushing final batch...',
-    )
-    await bulkUpsertProjectCatalog(qx, batch)
-    totalProcessed += batch.length
+  // Flush a final partial chunk, unless the limit was already hit above.
+  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+    await acceptNewRows(chunk)
+  }
+
+  records.destroy()
+  if (stream !== records) {
+    stream.destroy()
+  }
+
+  if (accepted.length > 0) {
+    await bulkInsertProjectCatalog(qx, accepted)
   }
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -126,9 +168,8 @@ export async function processDataset(
       sourceName,
       datasetId: dataset.id,
       totalRows,
-      totalProcessed,
       totalSkipped,
-      totalBatches: batchNumber,
+      totalAccepted: accepted.length,
       elapsedSeconds,
     },
     'Dataset processing complete.',

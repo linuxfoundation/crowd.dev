@@ -22,12 +22,14 @@ import {
   setNpmChangesLastSeq,
   upsertLast30dDownload,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
 import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
+import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
@@ -107,17 +109,21 @@ const INGEST_4XX_BACKOFF_MS = 1000
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
 // packages row; the npm registry name (for the HTTP fetch) is derived from it.
 // `dispatcher` (when present) routes the fetch through this lane's proxy IP.
-async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatcher): Promise<void> {
+async function ingestOne(
+  qx: QueryExecutor,
+  purl: string,
+  dispatcher?: Dispatcher,
+): Promise<PackageRepoOwnershipMatch | null> {
   const name = npmNameFromPurl(purl)
 
   for (let attempt = 1; attempt <= INGEST_4XX_ATTEMPTS; attempt++) {
     const packumentResult = await fetchPackument(name, dispatcher)
 
     if (!isFetchError(packumentResult)) {
-      const { changedFields } = await upsertPackage(qx, packumentResult, purl)
+      const { changedFields, ownershipMatch } = await upsertPackage(qx, packumentResult, purl)
       await logAuditFieldChanges(qx, WORKER, purl, changedFields)
       await markNpmPackageScanned(qx, purl, { status: 'success', attempts: attempt })
-      return
+      return ownershipMatch
     }
 
     // 429 → fail the attempt, but schedule the retry past the server-stated penalty window
@@ -157,6 +163,7 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
       message: packumentResult.message,
     })
   }
+  return null
 }
 
 // Number of concurrent lanes shared by all npm workers: one per configured proxy IP
@@ -193,10 +200,13 @@ export async function ingestNpmPackageBatch(purls: string[], laneIndex: number):
   const proxy = proxyForLane(laneIndex)
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
 
+  const ownershipCounts = emptyDeclaredOwnershipCounts()
+
   try {
     for (const purl of pending) {
       await sleep(ingestSleepMs())
-      await ingestOne(qx, purl, dispatcher)
+      const ownershipMatch = await ingestOne(qx, purl, dispatcher)
+      if (ownershipMatch) bumpDeclaredOwnershipCounts(ownershipCounts, ownershipMatch)
     }
   } finally {
     await dispatcher?.close()
@@ -208,6 +218,7 @@ export async function ingestNpmPackageBatch(purls: string[], laneIndex: number):
       count: pending.length,
       skipped: purls.length - pending.length,
       exit: proxy?.host ?? 'direct',
+      ...ownershipCounts,
     },
     'Ingested npm package batch',
   )

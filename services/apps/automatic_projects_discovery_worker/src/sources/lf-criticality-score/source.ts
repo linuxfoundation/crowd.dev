@@ -5,23 +5,13 @@ import { Readable } from 'stream'
 import { timeout } from '@crowd/common'
 import { getServiceLogger } from '@crowd/logging'
 
+import { parseEnvInt } from '../../config'
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
 
 const log = getServiceLogger()
 
-const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
-
-function parseEnvInt(
-  value: string | undefined,
-  defaultValue: number,
-  min: number,
-  max: number,
-): number {
-  const parsed = parseInt(value ?? '', 10)
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
-}
 
 // Requests per second sent to the LF Criticality Score API (throttle between pages).
 const REQUESTS_PER_SECOND = parseEnvInt(
@@ -64,9 +54,12 @@ function getApiBaseUrl(): string {
   if (process.env.LF_CRITICALITY_SCORE_API_URL) {
     return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
   }
-  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST)
-    .trim()
-    .replace(/\/$/, '')
+  const host = process.env.LF_CRITICALITY_SCORE_API_HOST?.trim().replace(/\/$/, '')
+  if (!host) {
+    throw new Error(
+      'LF Criticality Score API host is not configured. Set LF_CRITICALITY_SCORE_API_URL or LF_CRITICALITY_SCORE_API_HOST.',
+    )
+  }
   const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
   const scheme = port === 443 ? 'https' : 'http'
   return `${scheme}://${host}:${port}`
@@ -85,10 +78,14 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
+// Bounds a single request so a hung connection doesn't block the activity's heartbeat
+// for the full Temporal heartbeatTimeout (5 min) while the socket stays open.
+const REQUEST_TIMEOUT_MS = 30_000
+
 function httpGet(url: string): Promise<HttpGetResult> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
-    const req = client.get(url, (res) => {
+    const req = client.get(url, { timeout: REQUEST_TIMEOUT_MS }, (res) => {
       const statusCode = res.statusCode ?? 0
       const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
       const chunks: Uint8Array[] = []
@@ -98,6 +95,9 @@ function httpGet(url: string): Promise<HttpGetResult> {
       )
       res.on('error', reject)
     })
+    req.on('timeout', () =>
+      req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
+    )
     req.on('error', reject)
     req.end()
   })

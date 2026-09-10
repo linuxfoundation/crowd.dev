@@ -132,6 +132,26 @@ export async function findProjectCatalogPendingOnboarding(
   )
 }
 
+export async function findExistingProjectCatalogRepoUrls(
+  qx: QueryExecutor,
+  repoUrls: string[],
+): Promise<Set<string>> {
+  if (repoUrls.length === 0) {
+    return new Set()
+  }
+
+  const rows: { repoUrl: string }[] = await qx.select(
+    `
+    SELECT "repoUrl"
+    FROM "projectCatalog"
+    WHERE "repoUrl" = ANY($(repoUrls)::text[])
+    `,
+    { repoUrls },
+  )
+
+  return new Set(rows.map((row) => row.repoUrl))
+}
+
 export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
   const result = await qx.selectOne(
     `
@@ -413,71 +433,6 @@ export async function upsertProjectCatalogManualAction(
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     data,
-  )
-}
-
-export async function bulkUpsertProjectCatalog(
-  qx: QueryExecutor,
-  items: IDbProjectCatalogCreate[],
-): Promise<void> {
-  if (items.length === 0) {
-    return
-  }
-
-  const values = items.map((item) => ({
-    projectSlug: item.projectSlug,
-    repoName: item.repoName,
-    repoUrl: item.repoUrl,
-    source: item.source ?? null,
-    action: item.action ?? 'auto',
-    lfCriticalityScore: item.lfCriticalityScore ?? null,
-  }))
-
-  await qx.result(
-    `
-    INSERT INTO "projectCatalog" (
-      "projectSlug",
-      "repoName",
-      "repoUrl",
-      "source",
-      "action",
-      "lfCriticalityScore",
-      "createdAt",
-      "updatedAt",
-      "syncedAt"
-    )
-    SELECT
-      v."projectSlug",
-      v."repoName",
-      v."repoUrl",
-      v."source",
-      v."action",
-      v."lfCriticalityScore"::double precision,
-      NOW(),
-      NOW(),
-      NOW()
-    FROM jsonb_to_recordset($(values)::jsonb) AS v(
-      "projectSlug" text,
-      "repoName" text,
-      "repoUrl" text,
-      "source" text,
-      "action" text,
-      "lfCriticalityScore" double precision
-    )
-    ON CONFLICT ("repoUrl") DO UPDATE SET
-      "projectSlug" = EXCLUDED."projectSlug",
-      "repoName" = EXCLUDED."repoName",
-      "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
-      "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
-        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
-        ELSE "projectCatalog"."action"
-      END,
-      "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
-      "updatedAt" = NOW(),
-      "syncedAt" = NOW()
-    `,
-    { values: JSON.stringify(values) },
   )
 }
 

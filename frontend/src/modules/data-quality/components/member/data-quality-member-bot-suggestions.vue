@@ -46,7 +46,7 @@
 <script lang="ts" setup>
 import { MemberService } from '@/modules/member/member-service';
 import {
-  onMounted, ref, watch,
+  computed, onMounted, ref, watch,
 } from 'vue';
 import LfDataQualityMemberBotSuggestionItem
   from '@/modules/data-quality/components/member/data-quality-member-bot-suggestion-item.vue';
@@ -70,10 +70,14 @@ const total = ref(0);
 const botSuggestions = ref<any[]>([]);
 const itemsLoading = ref<any>({});
 
+const segments = computed(() => [props.projectGroup]);
+
 const loadBotSuggestions = () => {
   loading.value = true;
 
-  MemberService.fetchBotSuggestions(limit.value, offset.value)
+  MemberService.fetchBotSuggestions(limit.value, offset.value, {
+    segments: segments.value,
+  })
     .then((res) => {
       total.value = +res.count;
       const rows = res.rows.filter((s: any) => s.confidence > 0);
@@ -107,6 +111,10 @@ const markAsBot = (suggestion: any, bot = true) => {
 };
 
 const loadMore = () => {
+  if (loading.value || botSuggestions.value.length >= total.value) {
+    return;
+  }
+
   offset.value = botSuggestions.value.length;
   loadBotSuggestions();
 };

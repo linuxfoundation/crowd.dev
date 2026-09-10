@@ -96,11 +96,5 @@ export type IDbRepoUpsert = {
   name: string | null
 }
 
-// ─── package_repos ────────────────────────────────────────────────────────────
-
-export type IDbPackageRepoUpsert = {
-  packageId: number
-  repoId: number
-  source: 'declared' | 'deps_dev' | 'heuristic' | 'manual'
-  confidence: number
-}
+// package_repos claim types live in packages/repoConfidence.ts, next to the scoring
+// function they feed.

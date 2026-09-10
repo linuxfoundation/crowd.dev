@@ -11,3 +11,9 @@ export interface IOrganizationSyncOptions {
   doSync: boolean
   withAggs: boolean
 }
+
+export interface FakeOrganizationAnalysisInput {
+  organizationId: string
+}
+
+export type FakeOrganizationVerdict = 'fake' | 'genuine' | 'unsure'

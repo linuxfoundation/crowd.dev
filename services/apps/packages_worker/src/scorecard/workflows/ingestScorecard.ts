@@ -102,7 +102,7 @@ const SCORECARD_CHECKS_MERGE_SQL = `
 INSERT INTO repo_scorecard_checks (repo_id, check_name, score, reason)
 SELECT r.id,
        s.check_name,
-       NULLIF(s.check_score, -1)::numeric(3,1),
+       NULLIF(s.check_score, -1)::real,
        s.check_reason
 FROM (
   SELECT DISTINCT ON (repo_url, check_name) repo_url, check_name, check_score, check_reason

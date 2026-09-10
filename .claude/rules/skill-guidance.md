@@ -20,6 +20,7 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/packages-worker-add-entrypoint` | Scaffold a new sibling worker inside packages_worker (npm, OSV, scorecard, etc.) |
 | `/write-unit-tests` | Add or improve Vitest unit tests for business logic, DAL, or server modules |
 | `/write-api-e2e-tests` | Add or change Public API e2e / smoke / contract tests |
+| `/tb-quarantine-triage` | Investigate Tinybird quarantine failures, file IN Jira tickets, create fix worktrees |
 
 ## Trigger Phrases
 

@@ -1,8 +1,8 @@
 NODE health_score_v2_select_fields
 SQL >
-    -- EXPORT_SCHEDULE @on-demand (disabled on purpose): pushed inert per product's request,
-    -- only fireable on-demand via `tb pipe sink run` until external-stakeholder communication
-    -- is confirmed. Replace @on-demand with a cron expression to activate the recurring export.
+    -- Live and scheduled: EXPORT_SCHEDULE below runs this daily at 03:35 UTC,
+    -- after project_insights_copy_ds's 03:00 refresh and the impact breakdown's
+    -- 02:40 refresh (see project_insights_impact_breakdown_copy.pipe).
     --
     -- Joins in the Health breakdown (maintainerHealthScoreV2/securitySupplyChainScoreV2/
     -- developmentActivityScoreV2, already columns on project_insights_copy_ds) and the
@@ -22,6 +22,8 @@ SQL >
         p.maintainerHealthScoreV2 AS maintainerHealthScoreV2,
         p.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
         p.developmentActivityScoreV2 AS developmentActivityScoreV2,
+        p.coveredCategoryCount AS coveredCategoryCount,
+        p.healthMaxScore AS healthMaxScore,
         i.directDependents AS directDependents,
         i.directDependentsTopPct AS directDependentsTopPct,
         i.directDependentsBand AS directDependentsBand,
@@ -39,7 +41,7 @@ SQL >
 TYPE SINK
 EXPORT_SERVICE kafka
 EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
-EXPORT_SCHEDULE 35 0 * * *
+EXPORT_SCHEDULE 35 3 * * *
 EXPORT_FORMAT csv
 EXPORT_STRATEGY @new
 EXPORT_KAFKA_TOPIC health_score_v2_sink

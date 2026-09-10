@@ -87,7 +87,7 @@ SQL >
         max(pk.transitiveDependentCount) AS transitiveDependents,
         sum(pk.downloadsLast30d) AS downloads,
         max(toFloat64OrNull(pk.centralityScore)) AS centrality,
-        max(pk.sonatypePopularityScore) AS sonatypePopularityScore
+        max(toFloat64OrNull(pk.sonatypePopularityScore)) AS sonatypePopularityScore
     FROM insightsProjects ip FINAL
     LEFT JOIN
         repositories rep FINAL

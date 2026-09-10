@@ -11,6 +11,8 @@ import {
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
+
 import { fetchOwners, fetchVersions } from './client'
 import {
   normalizeRubyGemsOwners,
@@ -156,12 +158,25 @@ export async function processBatch(
   })
 
   if (packages.length === 0) {
-    return { processed: 0, skipped: 0, error: 0, unchanged: 0, lastId: null }
+    return {
+      processed: 0,
+      skipped: 0,
+      error: 0,
+      unchanged: 0,
+      ...emptyDeclaredOwnershipCounts(),
+      lastId: null,
+    }
   }
 
   log.info({ count: packages.length, afterId }, 'Critical batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const counts: BatchResult = {
+    processed: 0,
+    skipped: 0,
+    error: 0,
+    unchanged: 0,
+    ...emptyDeclaredOwnershipCounts(),
+  }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     signal?.throwIfAborted()

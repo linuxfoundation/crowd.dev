@@ -31,7 +31,7 @@ export async function createOrganization(req: Request, res: Response): Promise<v
   const organizationId = await qx.tx(async (tx) => {
     const orgSource = OrganizationAttributeSource.LFX_SERVE
 
-    const organizationId = await findOrCreateOrganization(tx, orgSource, {
+    const result = await findOrCreateOrganization(tx, orgSource, {
       displayName: name,
       logo,
       identities: [
@@ -45,9 +45,11 @@ export async function createOrganization(req: Request, res: Response): Promise<v
       ],
     })
 
-    if (!organizationId) {
+    if (!result) {
       throw new InternalError('Failed to create organization')
     }
+
+    const organizationId = result.id
 
     await captureApiChange(
       req,
