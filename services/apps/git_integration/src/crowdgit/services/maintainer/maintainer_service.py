@@ -39,6 +39,11 @@ from crowdgit.models.maintainer_info import (
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.llm.bedrock import invoke_bedrock
+from crowdgit.services.maintainer.cncf_maintainers import (
+    find_cncf_maintainers_file,
+    is_cncf_repo,
+    parse_cncf_maintainers_yaml,
+)
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
@@ -790,6 +795,21 @@ class MaintainerService(BaseService):
             result.candidate_files = candidate_files
             result.ai_suggested_file = ai_suggested_file
             return result
+
+        # Step 0: CNCF .project repos are authoritative via maintainers.yaml, re-checked
+        # every run so the pipeline self-corrects if it previously locked onto another file
+        if is_cncf_repo(repo_url):
+            cncf_file = find_cncf_maintainers_file(repo_path)
+            if cncf_file:
+                content = await self._read_text_file(str(cncf_file))
+                cncf_maintainers = parse_cncf_maintainers_yaml(content)
+                if cncf_maintainers:
+                    return _attach_metadata(
+                        MaintainerResult(
+                            maintainer_file=cncf_file.name,
+                            maintainer_info=cncf_maintainers,
+                        )
+                    )
 
         # Step 1: Try the previously saved maintainer file
         if saved_maintainer_file:
