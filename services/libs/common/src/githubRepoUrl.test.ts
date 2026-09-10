@@ -43,9 +43,9 @@ describe('canonicalizeRepoUrl', () => {
   })
 
   it('drops query string and hash fragment', () => {
-    expect(canonicalizeRepoUrl('https://github.com/torvalds/linux?tab=readme-ov-file#L10')?.url).toBe(
-      'https://github.com/torvalds/linux',
-    )
+    expect(
+      canonicalizeRepoUrl('https://github.com/torvalds/linux?tab=readme-ov-file#L10')?.url,
+    ).toBe('https://github.com/torvalds/linux')
   })
 
   it('rewrites git@github.com: SSH URLs', () => {
