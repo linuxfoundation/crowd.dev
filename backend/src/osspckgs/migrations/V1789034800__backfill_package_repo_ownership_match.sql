@@ -38,20 +38,25 @@ LANGUAGE sql IMMUTABLE AS $$
             SELECT s FROM unnest(regexp_split_to_array(COALESCE(p_namespace, ''), '[./]')) AS s
              WHERE s <> ''
         ) AS all_segs
-    ),
-    scoped AS (
-        SELECT CASE
-            WHEN array_length(all_segs, 1) IS NULL OR array_length(all_segs, 1) = 1 THEN all_segs
-            WHEN package_repo_owner_key(all_segs[1]) = ANY(package_repo_structural_segments())
-                THEN all_segs[2 : array_length(all_segs, 1)]
-            ELSE all_segs
-        END AS kept
-        FROM segs
     )
-    SELECT COALESCE(ARRAY(
-        SELECT seg FROM unnest((SELECT kept FROM scoped)) AS seg
-         WHERE NOT (package_repo_owner_key(seg) = ANY(package_repo_structural_segments()))
-    ), ARRAY[]::text[]);
+    -- Single-segment namespaces pass through unfiltered, even a structural word
+    -- (e.g. npm scope `@github`) — namespaceCandidates() only applies the
+    -- structural-segment filter once there's more than one segment to scope.
+    SELECT CASE
+        WHEN array_length(all_segs, 1) IS NULL THEN ARRAY[]::text[]
+        WHEN array_length(all_segs, 1) = 1 THEN all_segs
+        ELSE COALESCE(ARRAY(
+            SELECT seg
+              FROM unnest(
+                       CASE WHEN package_repo_owner_key(all_segs[1]) = ANY(package_repo_structural_segments())
+                           THEN all_segs[2 : array_length(all_segs, 1)]
+                           ELSE all_segs
+                       END
+                   ) AS seg
+             WHERE NOT (package_repo_owner_key(seg) = ANY(package_repo_structural_segments()))
+        ), ARRAY[]::text[])
+    END
+    FROM segs;
 $$;
 
 CREATE OR REPLACE PROCEDURE backfill_package_repo_ownership_match(
@@ -93,13 +98,15 @@ BEGIN
                 -- 'unmatched'. Mirror that here instead of trusting repos.owner for them.
                 SELECT b.id,
                        CASE WHEN r.host = 'other' THEN NULL ELSE r.owner END AS repo_owner,
+                       -- All roles carry ownership evidence at ingest: matchOwnership() call sites
+                       -- pass every maintainer regardless of role (e.g. NuGet authors, Maven
+                       -- developers), filtering out only email-shaped identities.
                        package_repo_namespace_candidates(p.namespace)
                          || COALESCE(ARRAY(
                               SELECT m.username
                                 FROM package_maintainers pm
                                 JOIN maintainers m ON m.id = pm.maintainer_id
                                WHERE pm.package_id = cur.package_id
-                                 AND pm.role = 'maintainer'
                                  AND m.username NOT LIKE '%@%'
                             ), ARRAY[]::text[]) AS owner_candidates
                   FROM batch b

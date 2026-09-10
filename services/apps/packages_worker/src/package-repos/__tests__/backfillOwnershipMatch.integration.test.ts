@@ -46,7 +46,7 @@ const FIXTURES: Record<string, PackageFixture & RepoFixture> = {
     ecosystem: 'maven',
     namespace: 'org.apache.tamaya.ext.examples',
     name: 'tamaya-examples',
-    repoOwner: 'apache',
+    repoOwner: 'unrelatedvendor',
     source: 'declared',
   },
   maintainerMatch: {
@@ -54,7 +54,7 @@ const FIXTURES: Record<string, PackageFixture & RepoFixture> = {
     namespace: null,
     name: 'acme-tool',
     maintainers: ['seldaek'],
-    repoOwner: 'Seldaek',
+    repoOwner: `${FIXTURE_TAG}-seldaek`,
     source: 'declared',
   },
   nonDeclaredSkipped: {
