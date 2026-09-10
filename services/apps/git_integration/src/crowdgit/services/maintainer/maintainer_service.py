@@ -796,8 +796,8 @@ class MaintainerService(BaseService):
             result.ai_suggested_file = ai_suggested_file
             return result
 
-        # Step 0: CNCF .project repos are authoritative via maintainers.yaml, re-checked
-        # every run so the pipeline self-corrects if it previously locked onto another file
+        # Runs before the saved-file shortcut so a repo already locked
+        # onto another file self-corrects.
         if is_cncf_repo(repo_url):
             cncf_file = find_cncf_maintainers_file(repo_path)
             if cncf_file:
