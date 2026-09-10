@@ -1,4 +1,4 @@
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import {
   NormalizedRubyGemsOwner,
@@ -20,6 +20,14 @@ function cleanLicenses(raw: (string | null)[] | null | undefined): string[] | nu
   return cleaned && cleaned.length > 0 ? cleaned : null
 }
 
+function parseAuthors(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a !== '')
+}
+
 export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRubyGemsPackage {
   const licenses = cleanLicenses(doc.licenses)
   const declaredRepositoryUrl = nonEmpty(doc.source_code_uri)
@@ -27,11 +35,16 @@ export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRu
     description: nonEmpty(doc.info),
     homepage: nonEmpty(doc.homepage_uri),
     declaredRepositoryUrl,
-    repo: declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null,
+    resolvedRepo: resolveManifestRepo([
+      { field: 'source_code_uri', url: declaredRepositoryUrl },
+      { field: 'homepage_uri', url: doc.homepage_uri },
+      { field: 'bug_tracker_uri', url: doc.bug_tracker_uri },
+    ]),
     licenses,
     licensesRaw: licenses ? licenses.join(', ') : null,
     latestVersion: nonEmpty(doc.version),
     totalDownloads: doc.downloads ?? 0,
+    authors: parseAuthors(doc.authors),
   }
 }
 

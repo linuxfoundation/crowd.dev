@@ -1,6 +1,7 @@
-import { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+import { DeclaredOwnershipCounts } from '../utils/ownershipMatch'
+import { ResolvedManifestRepo } from '../utils/resolveManifestRepo'
 
-export interface BatchResult {
+export interface BatchResult extends DeclaredOwnershipCounts {
   processed: number
   skipped: number
   error: number
@@ -25,8 +26,10 @@ export interface RubyGemsGemResponse {
   info?: string | null
   homepage_uri?: string | null
   source_code_uri?: string | null
+  bug_tracker_uri?: string | null
   licenses?: string[] | null
   downloads?: number
+  authors?: string | null
 }
 
 export interface RubyGemsVersionItem {
@@ -46,11 +49,12 @@ export interface NormalizedRubyGemsPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
-  repo: CanonicalRepo | null
+  resolvedRepo: ResolvedManifestRepo | null
   licenses: string[] | null
   licensesRaw: string | null
   latestVersion: string | null
   totalDownloads: number
+  authors: string[]
 }
 
 export interface NormalizedRubyGemsVersion {

@@ -1,3 +1,5 @@
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+
 import type { PyPiInfo, PyPiReleaseFile } from './types'
 
 const PURL_PYPI_PREFIX = 'pkg:pypi/'
@@ -184,6 +186,8 @@ export function collectPypiMaintainers(info: PyPiInfo): PypiPerson[] {
   return [...map.values()]
 }
 
+export type PypiRepositoryField = 'source' | 'homepage' | 'bug_tracker'
+
 export interface PypiFundingLink {
   type: string
   url: string
@@ -198,12 +202,17 @@ function inferFundingType(url: string): string {
   return 'other'
 }
 
+export interface PypiRepoCandidate {
+  field: PypiRepositoryField
+  url: string
+}
+
 export function classifyProjectUrls(
   projectUrls: Record<string, string> | null | undefined,
   homePage: string | null | undefined,
 ): {
   homepage: string | null
-  declaredRepositoryUrl: string | null
+  repositoryCandidates: PypiRepoCandidate[]
   fundingLinks: PypiFundingLink[]
 } {
   const entries = Object.entries(projectUrls ?? {}).map(
@@ -212,24 +221,51 @@ export function classifyProjectUrls(
   const findByKey = (re: RegExp): string | null =>
     entries.find(([k, v]) => re.test(k) && v)?.[1] ?? null
 
-  const homepage =
-    blankToNull(homePage) ??
-    findByKey(/^homepage$/i) ??
-    findByKey(/^home[\s-]*page$/i) ??
-    findByKey(/^home$/i)
+  const projectUrlsHomepage =
+    findByKey(/^homepage$/i) ?? findByKey(/^home[\s-]*page$/i) ?? findByKey(/^home$/i)
+  const homepage = blankToNull(homePage) ?? projectUrlsHomepage
 
-  const REPO_HOST = /github\.com|gitlab\.com|bitbucket\.org/i
-  let declaredRepositoryUrl =
-    findByKey(/^source(\s*code)?$/i) ??
-    findByKey(/^repository$/i) ??
-    findByKey(/^repo$/i) ??
-    findByKey(/^code$/i) ??
-    entries.find(([k, v]) => /source|repo|code|git/i.test(k) && REPO_HOST.test(v))?.[1] ??
-    null
-  // Many projects only declare a Homepage that is itself the repo.
-  if (!declaredRepositoryUrl && homepage && REPO_HOST.test(homepage)) {
-    declaredRepositoryUrl = homepage
+  // Ordered most trusted first, all kept so a bad top pick can fall through to a later one;
+  // the fuzzy match stays host-gated to preserve its historical strictness.
+  const sourceUrlCandidates = [
+    findByKey(/^source(\s*code)?$/i),
+    findByKey(/^repository$/i),
+    findByKey(/^repo$/i),
+    findByKey(/^code$/i),
+    ...entries
+      .filter(
+        ([k, v]) =>
+          /source|repo|code|git/i.test(k) &&
+          !/bug|issue|tracker/i.test(k) &&
+          (canonicalizeRepoUrl(v)?.host ?? 'other') !== 'other',
+      )
+      .map(([, v]) => v),
+  ].filter((v): v is string => v !== null)
+  const seenSourceUrls = new Set<string>()
+  const sourceUrls = sourceUrlCandidates.filter(
+    (url) => !seenSourceUrls.has(url) && seenSourceUrls.add(url),
+  )
+  // All matches kept in order so a malformed tracker entry doesn't shadow a usable one — passed
+  // raw so canonicalizeRepoUrl can still resolve recognized-host forms like `github:foo/bar/issues`.
+  const seenTrackerUrls = new Set<string>()
+  const trackerUrls = entries
+    .filter(([k, v]) => /bug|issue|tracker/i.test(k) && v)
+    .map(([, v]) => v)
+    .filter((url) => !seenTrackerUrls.has(url) && seenTrackerUrls.add(url))
+
+  const repositoryCandidates: PypiRepoCandidate[] = []
+  for (const url of sourceUrls) repositoryCandidates.push({ field: 'source', url })
+  // Passed through raw, untested, per resolveManifestRepo convention. project_urls.Homepage
+  // goes first so a non-repo info.home_page can't mask it.
+  const rawHomePage = blankToNull(homePage)
+  if (projectUrlsHomepage)
+    repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
+  if (rawHomePage && rawHomePage !== projectUrlsHomepage) {
+    repositoryCandidates.push({ field: 'homepage', url: rawHomePage })
   }
+  // Kept even with a source candidate already present — a malformed source is dropped at
+  // canonicalization, not here, so a tracker stays available for the resolver to fall to.
+  for (const url of trackerUrls) repositoryCandidates.push({ field: 'bug_tracker', url })
 
   const seen = new Set<string>()
   const fundingLinks: PypiFundingLink[] = []
@@ -239,7 +275,7 @@ export function classifyProjectUrls(
     fundingLinks.push({ type: inferFundingType(v), url: v })
   }
 
-  return { homepage, declaredRepositoryUrl, fundingLinks }
+  return { homepage, repositoryCandidates, fundingLinks }
 }
 
 export function parseKeywords(raw: string | null | undefined): string[] {

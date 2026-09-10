@@ -26,6 +26,7 @@ import {
   hasRecentDonePackagistTransitiveRun,
   markPackagistTransitiveRunMerging,
 } from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import {
   EmptyPackagistTransitiveCountsError,
   computePackagistTransitiveCounts,
@@ -40,6 +41,7 @@ import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 import { getPackagesDb } from '../db'
 import { mapWithConcurrency } from '../utils/concurrency'
 import { isClientError } from '../utils/isClientError'
+import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 
 import { persistPackagist30dWindow } from './downloads'
 import { expandComposerMetadata } from './expandMetadata'
@@ -49,7 +51,7 @@ import { normalizePackagistStats, packagistNameFromPurl } from './normalize'
 import { INGEST_MAX_ATTEMPTS, TRANSITIVE_PREPARE_MAX_ATTEMPTS } from './retryPolicy'
 import { FetchError, isFetchError, isP2NotModified } from './types'
 import { persistPackagistMetadata } from './upsertMetadata'
-import { persistPackagistPackageInfo } from './upsertPackageInfo'
+import { persistPackagistPackageInfo, reconcilePackagistHomepageRepo } from './upsertPackageInfo'
 
 const log = getServiceChildLogger('packagist')
 
@@ -147,7 +149,7 @@ export async function ingestOnePackagistMetadata(
   // This batch activity's own scheduledTimestampMs (stable across Temporal retries),
   // passed through to every give-up write below — see MarkMetadataScannedOptions.notBefore.
   scheduledAt: string,
-): Promise<void> {
+): Promise<PackageRepoOwnershipMatch | null> {
   const name = packagistNameFromPurl(candidate.purl)
 
   // Phase 1: dynamic endpoint
@@ -168,14 +170,15 @@ export async function ingestOnePackagistMetadata(
         notBefore: scheduledAt,
       },
     )
-    return
+    return null
   }
 
   const stats = normalizePackagistStats(info.value.package)
   // persistPackagistPackageInfo audits its own writes atomically, inside the same
   // transaction — phase 1 is committed-and-audited before the p2 fetch (which can
   // throw) ever runs.
-  await persistPackagistPackageInfo(qx, candidate.purl, stats)
+  const phase1 = await persistPackagistPackageInfo(qx, candidate.purl, stats)
+  const { ownershipMatch } = phase1
 
   // Phase 2: p2 endpoint
   const p2 = await fetchWithFastRetry(
@@ -194,7 +197,7 @@ export async function ingestOnePackagistMetadata(
       bumpLastRunAt: false,
       notBefore: scheduledAt,
     })
-    return
+    return ownershipMatch
   }
 
   let lastModified: string | null = null
@@ -209,6 +212,16 @@ export async function ingestOnePackagistMetadata(
         'packagist dependency targets not found in packages — edges skipped',
       )
     }
+    // Must run after persistPackagistMetadata above — it just landed the homepage this
+    // fallback link depends on.
+    if (!phase1.hasPrimaryRepo && phase1.packageId) {
+      await reconcilePackagistHomepageRepo(
+        qx,
+        candidate.purl,
+        phase1.packageId,
+        persistResult.homepage,
+      )
+    }
     lastModified = p2.value.lastModified
   }
 
@@ -220,6 +233,8 @@ export async function ingestOnePackagistMetadata(
       metadataLastModified: lastModified,
     },
   )
+
+  return ownershipMatch
 }
 
 // The monthly downloads-30d lane: dynamic fetch, one window row per purl per month.
@@ -384,6 +399,8 @@ export async function ingestPackagistMetadataBatch(
   // Stable across every Temporal retry of this same batch — see notBefore below.
   const scheduledAt = new Date(Context.current().info.scheduledTimestampMs).toISOString()
 
+  const ownershipCounts = emptyDeclaredOwnershipCounts()
+
   // The merged lane starts every ingest with a DYNAMIC-endpoint fetch, so it is
   // bounded by that endpoint's 10-concurrent limit — not p2's 20. Running hotter
   // gets connections reset by packagist.org ("fetch failed").
@@ -391,7 +408,10 @@ export async function ingestPackagistMetadataBatch(
     candidates,
     attempt,
     statsConcurrency(),
-    (candidate) => ingestOnePackagistMetadata(qx, candidate, scheduledAt),
+    async (candidate) => {
+      const ownershipMatch = await ingestOnePackagistMetadata(qx, candidate, scheduledAt)
+      if (ownershipMatch) bumpDeclaredOwnershipCounts(ownershipCounts, ownershipMatch)
+    },
     (candidate, err) =>
       markPackagistMetadataScanned(
         qx,
@@ -412,7 +432,7 @@ export async function ingestPackagistMetadataBatch(
       ),
   )
 
-  log.info({ count: candidates.length }, 'Ingested Packagist metadata batch')
+  log.info({ count: candidates.length, ...ownershipCounts }, 'Ingested Packagist metadata batch')
 }
 
 export async function getPackagist30dBatch(

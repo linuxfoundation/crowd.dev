@@ -2,7 +2,7 @@
 
 /**
  * Recompute package_repos.confidence with package_repo_confidence()
- * (see V1788307200). Used for the initial backfill; the recurring sweep runs as the
+ * (see V1788307300). Used for the initial backfill; the recurring sweep runs as the
  * package-repo-confidence-sweep-daily Temporal schedule.
  *
  * Usage:

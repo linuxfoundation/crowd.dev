@@ -24,9 +24,11 @@ describe('packageRepoConfidenceLabel', () => {
 })
 
 describe('packageRepoLinkClaimParams', () => {
-  it('defaults provenance for sources that carry none', () => {
+  it('defaults missing claim fields (signal, ownershipMatch, provenance)', () => {
     expect(packageRepoLinkClaimParams({ source: 'declared' })).toEqual({
       source: 'declared',
+      signal: 'primary',
+      ownershipMatch: 'no_evidence',
       provenance: null,
     })
   })
@@ -35,10 +37,14 @@ describe('packageRepoLinkClaimParams', () => {
     expect(
       packageRepoLinkClaimParams({
         source: 'deps_dev',
+        signal: 'secondary',
+        ownershipMatch: 'matched',
         provenance: 'SLSA_ATTESTATION',
       }),
     ).toEqual({
       source: 'deps_dev',
+      signal: 'secondary',
+      ownershipMatch: 'matched',
       provenance: 'SLSA_ATTESTATION',
     })
   })
@@ -48,7 +54,9 @@ describe('packageRepoConfidenceCall', () => {
   it('binds a new claim to parameters by default', () => {
     const sql = packageRepoConfidenceCall('p', 'r')
     expect(sql).toContain('$(source)')
+    expect(sql).toContain('$(signal)')
     expect(sql).toContain('$(provenance)')
+    expect(sql).toContain('$(ownershipMatch)')
     expect(sql).toContain('p.ecosystem')
     expect(sql).toContain('r.archived')
   })
@@ -56,9 +64,13 @@ describe('packageRepoConfidenceCall', () => {
   it('reads a rescored claim off the stored row', () => {
     const sql = packageRepoConfidenceCall('p', 'r', {
       source: 'pr.source',
+      signal: 'pr.signal',
+      ownershipMatch: 'pr.ownership_match',
       provenance: 'pr.provenance',
     })
     expect(sql).not.toContain('$(')
+    expect(sql).toContain('pr.signal')
     expect(sql).toContain('pr.provenance')
+    expect(sql).toContain('pr.ownership_match')
   })
 })
