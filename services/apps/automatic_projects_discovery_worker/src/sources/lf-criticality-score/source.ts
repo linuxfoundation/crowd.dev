@@ -2,7 +2,8 @@ import http from 'http'
 import https from 'https'
 import { Readable } from 'stream'
 
-import { timeout } from '@crowd/common'
+import { canonicalizeRepoUrl, timeout } from '@crowd/common'
+import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { parseEnvInt } from '../../config'
@@ -230,25 +231,22 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
-    const repoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
-    if (!repoUrl) {
+    const rawRepoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
+    if (!rawRepoUrl) {
       return null
     }
 
-    let repoName = ''
-    let projectSlug = ''
-
-    try {
-      const urlPath = new URL(repoUrl).pathname.replace(/^\//, '').replace(/\/$/, '')
-      projectSlug = urlPath
-      repoName = urlPath.split('/').pop() || ''
-    } catch {
-      const parts = repoUrl.replace(/\/$/, '').split('/')
-      projectSlug = parts.slice(-2).join('/')
-      repoName = parts.pop() || ''
+    // Canonicalize the repoUrl itself; non-GitHub hosts are kept (not rejected) —
+    // the evaluation pre-check needs them to skip deterministically.
+    const canonical = canonicalizeRepoUrl(rawRepoUrl)
+    if (!canonical) {
+      return null
     }
 
-    if (!projectSlug || !repoName) {
+    // repoName/projectSlug are derived from the original (case-preserving) URL:
+    // they feed the LFX display name, and lowercasing would mangle names like "CMake".
+    const identity = deriveProjectIdentityFromRepoUrl(rawRepoUrl)
+    if (!identity) {
       return null
     }
 
@@ -256,9 +254,9 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const lfCriticalityScore = typeof score === 'number' ? score : parseFloat(score as string)
 
     return {
-      projectSlug,
-      repoName,
-      repoUrl,
+      projectSlug: identity.projectSlug,
+      repoName: identity.repoName,
+      repoUrl: canonical.url,
       lfCriticalityScore: Number.isNaN(lfCriticalityScore) ? undefined : lfCriticalityScore,
     }
   }

@@ -1,3 +1,5 @@
+import { githubRepoPath } from '@crowd/common'
+
 import { IOnboardingInput, IOnboardingResult } from './types'
 
 const LF_OSS_INDEX_PROJECT_GROUP_SLUG = 'lf-oss-index'
@@ -32,18 +34,13 @@ export function deriveProjectSlug(projectSlug: string): string {
 }
 
 export function parseGithubUrl(repoUrl: string): { owner: string; repo: string } {
-  const url = new URL(repoUrl.replace('git@github.com:', 'https://github.com/'))
-  const pathParts = url.pathname
-    .replace(/^\//, '')
-    .replace(/\/$/, '')
-    .replace(/\.git$/, '')
-    .split('/')
-
-  if (url.hostname !== 'github.com' || pathParts.length !== 2 || !pathParts[0] || !pathParts[1]) {
+  const path = githubRepoPath(repoUrl)
+  if (!path) {
     throw new Error(`Invalid GitHub URL format: ${repoUrl}`)
   }
 
-  return { owner: pathParts[0], repo: pathParts[1] }
+  const [owner, repo] = path.split('/')
+  return { owner, repo }
 }
 
 export function buildGithubIntegrationPayload(params: {
