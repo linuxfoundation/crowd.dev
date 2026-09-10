@@ -60,6 +60,18 @@ describe('canonicalizeRepoUrl', () => {
     )
   })
 
+  it('rewrites scp-style ssh://git@github.com:<owner>/<repo> URLs', () => {
+    expect(canonicalizeRepoUrl('ssh://git@github.com:torvalds/linux.git')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('keeps ssh://git@github.com:<port>/... URLs with an explicit port intact', () => {
+    expect(canonicalizeRepoUrl('ssh://git@github.com:2222/torvalds/linux.git')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
   it('adds a missing scheme', () => {
     expect(canonicalizeRepoUrl('github.com/torvalds/linux')?.url).toBe(
       'https://github.com/torvalds/linux',
@@ -76,8 +88,22 @@ describe('canonicalizeRepoUrl', () => {
     expect(canonicalizeRepoUrl('https://github.com/torvalds')).toBeNull()
   })
 
-  it('rejects a github.com URL with more than two path segments', () => {
-    expect(canonicalizeRepoUrl('https://github.com/torvalds/linux/tree/main')).toBeNull()
+  it('canonicalizes a deep link (/tree/<branch>) to the repo root', () => {
+    expect(canonicalizeRepoUrl('https://github.com/torvalds/linux/tree/main')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('canonicalizes a deep link (/blob/<branch>/<path>) to the repo root', () => {
+    expect(canonicalizeRepoUrl('https://github.com/torvalds/linux/blob/main/README')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('strips a .git suffix on the repo segment of a deep link', () => {
+    expect(canonicalizeRepoUrl('https://github.com/torvalds/linux.git/tree/main')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
   })
 
   it('rejects reserved GitHub product owners', () => {
