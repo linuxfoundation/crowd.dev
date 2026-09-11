@@ -31,6 +31,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0022](./0022-package-repo-ownership-evidence.md)          | Ownership evidence for package→repo links                                                            | accepted | 2026-09-01 |
 | [ADR-0023](./0023-cncf-maintainers-yaml-self-correction.md)    | CNCF `maintainers.yaml` as authoritative, self-correcting source                                     | accepted | 2026-09-10 |
 | [ADR-0024](./0024-critical-projects-onboarding-pipeline.md)    | Critical projects onboarding pipeline — discovery, evaluation, onboarding                             | accepted | 2026-09-11 |
+| [ADR-0025](./0025-subproject-member-merge-suggestions.md)      | Subproject member merge suggestions                                                                  | accepted | 2026-09-11 |
 
 ## Why ADRs?
 
