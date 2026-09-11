@@ -1,4 +1,5 @@
 import {
+  fetchAndSaveStarSnapshot,
   findObsoleteRepos,
   getCurrentTimeMs,
   getOSPSBaselineInsights,
@@ -14,4 +15,5 @@ export {
   initializeTokenInfos,
   updateTokenInfos,
   getCurrentTimeMs,
+  fetchAndSaveStarSnapshot,
 }
