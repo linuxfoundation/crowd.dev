@@ -27,13 +27,16 @@ interface RepoFixture {
   repoOwner: string
   source: string
   host?: string
+  repoUrlOverride?: string
 }
 
 // declared package_repos rows, all left on the migration default 'no_evidence',
 // covering: namespace match via reverse-DNS segmentation, maintainer-only match,
-// no evidence lining up, a non-'declared' source that the backfill must skip, and
-// a host='other' repo whose owner column is a URL-parsing artifact (e.g. 'repos'
-// from an apache svn/gitbox path) rather than a real owner.
+// no evidence lining up, a non-'declared' source that the backfill must skip, a
+// host='other' repo whose owner column is a URL-parsing artifact (e.g. 'repos'
+// from an apache svn/gitbox path) rather than a real owner, and Go's divergent
+// module-path-based ownership evidence (package_repo_go_repo_owner /
+// package_repo_go_module_owner).
 const FIXTURES: Record<string, PackageFixture & RepoFixture> = {
   namespaceMatch: {
     ecosystem: 'maven',
@@ -71,6 +74,29 @@ const FIXTURES: Record<string, PackageFixture & RepoFixture> = {
     repoOwner: 'repos',
     source: 'declared',
     host: 'other',
+  },
+  goOtherHostVcsMatch: {
+    ecosystem: 'go',
+    namespace: null,
+    name: `codeberg.org/${FIXTURE_TAG}-goowner/gomodule`,
+    repoOwner: `${FIXTURE_TAG}-goowner`,
+    source: 'declared',
+    host: 'other',
+    repoUrlOverride: `https://codeberg.org/${FIXTURE_TAG}-goowner/gomodule`,
+  },
+  goStandardHostMatch: {
+    ecosystem: 'go',
+    namespace: null,
+    name: `github.com/${FIXTURE_TAG}-ghowner/gomodule2`,
+    repoOwner: `${FIXTURE_TAG}-ghowner`,
+    source: 'declared',
+  },
+  goVanityModuleNoMatch: {
+    ecosystem: 'go',
+    namespace: null,
+    name: 'k8s.io/client-go',
+    repoOwner: `${FIXTURE_TAG}-vanityowner`,
+    source: 'declared',
   },
 }
 
@@ -113,9 +139,10 @@ async function insertFixture(
   // The backfill parses owner from the URL path (package_repo_owner_from_url), not the
   // stored owner column, so repoOwner must appear in the URL for host != 'other'.
   const repoUrl =
-    host === 'github'
+    f.repoUrlOverride ??
+    (host === 'github'
       ? `https://github.com/${f.repoOwner}/${FIXTURE_TAG}-${key}`
-      : `https://svn.apache.org/${FIXTURE_TAG}/${key}`
+      : `https://svn.apache.org/${FIXTURE_TAG}/${key}`)
   const repo = await qx.selectOne(
     `
     INSERT INTO repos (url, host, owner, name)
@@ -207,5 +234,17 @@ describe.skipIf(!HAVE_DB)('backfillAllPackageRepoOwnershipMatch — real package
 
   it('does not trust repos.owner for host=other rows (URL-parsing artifact, not a real owner)', async () => {
     expect(await ownershipMatchFor(qx, ids.otherHostOwnerArtifact)).toBe('no_evidence')
+  })
+
+  it('matches Go repos on host=other VCS forges (codeberg) via URL-path owner extraction', async () => {
+    expect(await ownershipMatchFor(qx, ids.goOtherHostVcsMatch)).toBe('matched')
+  })
+
+  it('matches Go repos on a standard host via module-path owner extraction', async () => {
+    expect(await ownershipMatchFor(qx, ids.goStandardHostMatch)).toBe('matched')
+  })
+
+  it('reports no evidence for a Go vanity import path not rooted at a known VCS host', async () => {
+    expect(await ownershipMatchFor(qx, ids.goVanityModuleNoMatch)).toBe('no_evidence')
   })
 })
