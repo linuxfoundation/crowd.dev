@@ -119,3 +119,24 @@ export interface OpenSearchQueryClauseBuilder<T> {
   builder: (match: T) => Record<string, unknown>
   filter?: Record<string, unknown>[]
 }
+
+export interface IProcessGenerateSubprojectMemberMergeSuggestionsArgs {
+  subprojectId: string
+}
+
+export interface ISubprojectMember {
+  id: string
+  displayName: string
+  activityCount: number
+  identities: {
+    platform: string
+    type: string
+    value: string
+    verified: boolean
+  }[]
+}
+
+export interface ISubprojectMemberMergePair {
+  primary: ISubprojectMember
+  other: ISubprojectMember
+}
