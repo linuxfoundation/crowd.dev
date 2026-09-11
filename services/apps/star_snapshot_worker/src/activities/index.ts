@@ -12,12 +12,26 @@ import { svc } from '../main'
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 const FETCH_TIMEOUT_MS = 30_000
+const MAX_ALIAS_ATTEMPTS = 3
+const ALIAS_RETRY_DELAY_MS = 2_000
 
 const NON_RETRYABLE_GRAPHQL_ERROR_TYPES = new Set(['NOT_FOUND', 'FORBIDDEN', 'INSUFFICIENT_SCOPES'])
 
+interface GraphqlAliasError {
+  type?: string
+  message?: string
+}
+
 interface BatchGraphqlResponse {
   data?: Record<string, { stargazerCount: number } | null>
-  errors?: Array<{ type?: string; message?: string; path?: Array<string | number> }>
+  errors?: Array<GraphqlAliasError & { path?: Array<string | number> }>
+}
+
+function isRetryableAliasError(error?: GraphqlAliasError): boolean {
+  if (error?.message?.toLowerCase().includes('rate limit')) {
+    return true
+  }
+  return !error?.type || !NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(error.type)
 }
 
 export interface RepoStarFetchResult {
@@ -74,38 +88,15 @@ export function parseGithubRepoUrl(url: string): { owner: string; name: string }
   return { owner: pathParts[0], name: pathParts[1] }
 }
 
-export async function fetchAndSaveStarSnapshotBatch(
-  repos: IRepoForStarSnapshot[],
-  capturedAt: string,
-): Promise<RepoStarFetchResult[]> {
-  const parsed: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }> = []
-  const unparseableResults: RepoStarFetchResult[] = []
-
-  for (const repo of repos) {
-    try {
-      const { owner, name } = parseGithubRepoUrl(repo.repoUrl)
-      parsed.push({ repo, owner, name })
-    } catch (error) {
-      unparseableResults.push({
-        repositoryId: repo.repositoryId,
-        repoUrl: repo.repoUrl,
-        error: (error as Error).message,
-      })
-    }
-  }
-
-  if (parsed.length === 0) {
-    return unparseableResults
-  }
-
-  const { query, variables } = buildBatchQuery(parsed)
-
+async function queryStargazerCounts(
+  entries: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }>,
+): Promise<BatchGraphqlResponse> {
+  const { query, variables } = buildBatchQuery(entries)
   const token = await getGithubInstallationToken()
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
-  let json: BatchGraphqlResponse
   try {
     const response = await fetch(GITHUB_GRAPHQL_URL, {
       method: 'POST',
@@ -136,57 +127,135 @@ export async function fetchAndSaveStarSnapshotBatch(
       throw new Error(`GitHub API error ${response.status} fetching stargazer counts`)
     }
 
-    json = (await response.json()) as BatchGraphqlResponse
+    return (await response.json()) as BatchGraphqlResponse
   } finally {
     clearTimeout(timeoutId)
   }
+}
 
-  const topLevelError = json.errors?.find((error) => !error.path?.length)
-  if (topLevelError) {
-    const message = `GraphQL error fetching stargazer counts: ${topLevelError.message ?? 'unknown error'}`
-    if (topLevelError.message?.toLowerCase().includes('rate limit')) {
-      throw new Error(message)
+// Retries only the aliases that failed transiently, up to MAX_ALIAS_ATTEMPTS, so an
+// activity-level rejection (which would discard every already-persisted result) is only
+// ever raised on the first attempt, before anything in this batch has succeeded.
+async function fetchStargazerCounts(
+  entries: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }>,
+): Promise<RepoStarFetchResult[]> {
+  const results: RepoStarFetchResult[] = []
+  let pending = entries
+
+  for (let attempt = 1; attempt <= MAX_ALIAS_ATTEMPTS && pending.length > 0; attempt++) {
+    let json: BatchGraphqlResponse
+    try {
+      json = await queryStargazerCounts(pending)
+    } catch (error) {
+      if (attempt === 1) {
+        throw error
+      }
+      for (const entry of pending) {
+        results.push({
+          repositoryId: entry.repo.repositoryId,
+          repoUrl: entry.repo.repoUrl,
+          error: (error as Error).message,
+        })
+      }
+      pending = []
+      break
     }
-    throw new Error(message)
+
+    const topLevelError = json.errors?.find((error) => !error.path?.length)
+    if (topLevelError) {
+      const message = `GraphQL error fetching stargazer counts: ${topLevelError.message ?? 'unknown error'}`
+      if (attempt === 1) {
+        throw new Error(message)
+      }
+      for (const entry of pending) {
+        results.push({
+          repositoryId: entry.repo.repositoryId,
+          repoUrl: entry.repo.repoUrl,
+          error: message,
+        })
+      }
+      pending = []
+      break
+    }
+
+    const errorsByAlias = new Map<string, GraphqlAliasError>()
+    for (const error of json.errors ?? []) {
+      const alias = error.path?.[0]
+      if (typeof alias === 'string') {
+        errorsByAlias.set(alias, error)
+      }
+    }
+
+    const stillPending: typeof pending = []
+
+    pending.forEach((entry, i) => {
+      const alias = `r${i}`
+      const starCount = json.data?.[alias]?.stargazerCount
+
+      if (starCount !== undefined && starCount !== null) {
+        results.push({
+          repositoryId: entry.repo.repositoryId,
+          repoUrl: entry.repo.repoUrl,
+          starCount,
+        })
+        return
+      }
+
+      const error = errorsByAlias.get(alias)
+      const message = error?.message ?? 'No repository data returned'
+
+      if (attempt < MAX_ALIAS_ATTEMPTS && isRetryableAliasError(error)) {
+        stillPending.push(entry)
+        return
+      }
+
+      results.push({
+        repositoryId: entry.repo.repositoryId,
+        repoUrl: entry.repo.repoUrl,
+        error: message,
+      })
+    })
+
+    pending = stillPending
+    if (pending.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, ALIAS_RETRY_DELAY_MS * attempt))
+    }
   }
 
-  const errorsByAlias = new Map<string, { type?: string; message?: string }>()
-  for (const error of json.errors ?? []) {
-    const alias = error.path?.[0]
-    if (typeof alias === 'string') {
-      errorsByAlias.set(alias, error)
+  return results
+}
+
+export async function fetchAndSaveStarSnapshotBatch(
+  repos: IRepoForStarSnapshot[],
+  capturedAt: string,
+): Promise<RepoStarFetchResult[]> {
+  const parsed: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }> = []
+  const unparseableResults: RepoStarFetchResult[] = []
+
+  for (const repo of repos) {
+    try {
+      const { owner, name } = parseGithubRepoUrl(repo.repoUrl)
+      parsed.push({ repo, owner, name })
+    } catch (error) {
+      unparseableResults.push({
+        repositoryId: repo.repositoryId,
+        repoUrl: repo.repoUrl,
+        error: (error as Error).message,
+      })
     }
   }
 
-  let retryableFailure: string | undefined
+  if (parsed.length === 0) {
+    return unparseableResults
+  }
 
-  const results: RepoStarFetchResult[] = parsed.map((entry, i) => {
-    const alias = `r${i}`
-    const starCount = json.data?.[alias]?.stargazerCount
-
-    if (starCount !== undefined && starCount !== null) {
-      return { repositoryId: entry.repo.repositoryId, repoUrl: entry.repo.repoUrl, starCount }
-    }
-
-    const error = errorsByAlias.get(alias)
-    const errorType = error?.type
-    const message = error?.message ?? 'No repository data returned'
-    if (errorType && !NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(errorType)) {
-      retryableFailure = `GraphQL error fetching stargazer count for ${entry.repo.repoUrl}: ${message}`
-    }
-
-    return { repositoryId: entry.repo.repositoryId, repoUrl: entry.repo.repoUrl, error: message }
-  })
+  const results = await fetchStargazerCounts(parsed)
 
   const qx = pgpQx(svc.postgres.writer.connection())
   for (const result of results) {
     if (result.starCount !== undefined) {
       await upsertStarSnapshot(qx, result.repositoryId, result.starCount, capturedAt)
     }
-  }
-
-  if (retryableFailure) {
-    throw new Error(retryableFailure)
   }
 
   return [...results, ...unparseableResults]
