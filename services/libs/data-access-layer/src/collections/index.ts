@@ -196,6 +196,20 @@ export async function queryInsightsProjects<T extends InsightsProjectField>(
   return queryTable(qx, 'insightsProjects', Object.values(InsightsProjectField), opts)
 }
 
+export async function findInsightsProjectBySlugIncludingDeleted<T extends InsightsProjectField>(
+  qx: QueryExecutor,
+  slug: string,
+  fields: T[],
+): Promise<QueryResult<T> | null> {
+  const rows = await queryTable(qx, 'insightsProjects', Object.values(InsightsProjectField), {
+    fields,
+    filter: { slug: { eq: slug } },
+    limit: 1,
+  })
+
+  return rows.length > 0 ? rows[0] : null
+}
+
 export async function createInsightsProject(
   qx: QueryExecutor,
   insightProject: Partial<IInsightsProject>,
