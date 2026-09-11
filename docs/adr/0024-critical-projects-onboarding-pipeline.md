@@ -52,11 +52,15 @@ flowchart LR
 ### The `projectCatalog` state machine
 
 States (`PROJECT_CATALOG_ACTIONS`, `services/libs/data-access-layer/src/project-catalog/types.ts:1-9`):
-`auto → evaluate → onboard | skip | unsure`, and `onboard → onboarded | error`. `action` is a
+`auto → evaluate → onboard | skip | unsure`, `onboard → onboarded | error`, and — for the
+soft-deleted-slug case in onboarding step 4 below — `onboard → skip` too. `action` is a
 plain `VARCHAR(16)` and `source` a plain `VARCHAR(64)` — neither has a database `CHECK`
 constraint, the enum lives only in TypeScript. That is also why adding `source = 'manual'`
 later required no migration. The sole idempotency anchor is the unique index
-`uix_projectCatalog_repoUrl`; every writer upserts with `ON CONFLICT ("repoUrl")`.
+`uix_projectCatalog_repoUrl`: discovery's insert is the only writer that actually upserts against
+it (`ON CONFLICT ("repoUrl") DO NOTHING`/`DO UPDATE`); evaluation and onboarding never insert —
+they run guarded `UPDATE`s scoped to the row's current `action` instead (see below), with the
+onboarding segment lookup in step 1 as the equivalent safeguard against redoing work.
 
 Schema evolved across `V1770653666__add-automatic_projects_discovery-tables.sql` (creation),
 `V1778749030__refactor-projects-catalog.sql` (`source`, `action`, `evaluatedAt`, `onboardedAt`),
@@ -102,8 +106,11 @@ Each promoted project is sent to an external AI evaluation service
 reasoning kept in `evaluationReason`. This is a third-party dependency outside CDP and outside
 the LF Criticality Score service — its availability and correctness are out of this ADR's
 control. The finalize write is guarded by
-`WHERE action = 'evaluate' AND evaluatedAt IS NULL` on the writer connection, so a concurrent
-manual override always wins.
+`WHERE action = 'evaluate' AND evaluatedAt IS NULL` on the writer connection: a concurrent
+manual override that changes the action away from `evaluate` (to `onboard`, or back to `auto`)
+wins, since the guard no longer matches. An override that re-posts `action: 'evaluate'` does
+not — it resets `evaluatedAt` to `NULL` but leaves the row matching the same guard, so an
+in-flight finalize can still overwrite it.
 
 ### Stage 3 — Onboarding (`automatic_onboarding_worker`)
 
@@ -129,9 +136,12 @@ in order:
 
 Each backend call has a 30‑second timeout, each GitHub call a 10‑second timeout. A failure at
 step 4 leaves a recoverable partial side effect: the segment created in step 1 stays in place
-without a GitHub integration, the project is marked `action = 'error'`, and a retry (the next
-scheduled run, or a manual `POST /project-catalog` with `action: 'onboard'`) picks up from
-there — step 1 finds the existing segment instead of recreating it, so retries are safe.
+without a GitHub integration, and the project is marked `action = 'error'`
+(`markProjectCatalogOnboardingFailed`). `findProjectCatalogPendingOnboarding` only selects
+`action = 'onboard'`, so this is **not** retried automatically by the next scheduled run —
+recovery needs a manual `POST /project-catalog` with `action: 'onboard'`, which requeues the row
+and clears `onboardingError`. Once requeued, the retry itself is safe: step 1 finds the existing
+segment instead of recreating it.
 
 The workflow loops sequentially with a try/catch per project; a terminal failure calls
 `markProjectOnboardingFailed` (`action = 'error'`, `onboardingError` set) inside its own
@@ -149,25 +159,31 @@ right pattern, not a shortcut to revisit.
 ### The numbers: 20 projects a day, by design
 
 - Discovery caps new projects at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default **20**) **per
-  source, per run** (`src/config.ts:11-16`); rows the source returns that already exist in
-  `projectCatalog` don't count against the cap. With both sources enabled, one discovery run
-  can add up to 40 new rows in `action = 'auto'`.
+  source, per `processDataset` call** (`src/config.ts:11-16`); rows the source returns that
+  already exist in `projectCatalog` don't count against the cap. The scheduled workflow always
+  runs in `incremental` mode, processing exactly one dataset per source, so in practice this is
+  20 per source per day — up to 40 new rows in `action = 'auto'` with both sources enabled. A
+  manually triggered `full` run instead processes every dataset for a source, and can add up to
+  `datasets × 20` rows for that source.
 - Evaluation caps the `evaluate` queue at `evaluateLimit: 20` and processes `batchSize: 20` per
   run — this is the real bottleneck of the chain, since it's the stage that decides onboard vs
   skip.
 - Onboarding processes `batchSize: 20` per run.
 
-The evaluation and onboarding caps are matched on purpose: at most 20 projects a day are decided
-on and onboarded, moving through both stages in the same run (04:00 → 08:00 UTC). Discovery
-feeding in up to 40/day is not a contradiction — any excess simply waits in `action = 'auto'`
-and is drained over the following days, in source-priority order. This is a deliberate
-observation window, not a technical ceiling — without a human gate, a bad decision at any stage
-becomes a real public project or a real skipped one, and 20/day at the decision point is the
-volume the team can still watch closely via the daily Slack report while confidence in the AI
-evaluation and discovery sources builds up. Raising it later means adjusting the relevant
-per-stage limit, not the architecture. (The `evaluateProjects` workflow's own defaults are 50/50
-when triggered manually with no arguments from the Temporal UI — the schedule itself always
-passes 20/20.)
+The evaluation and onboarding caps are matched on purpose, but that doesn't guarantee a same-day
+flow end to end: onboarding's queue (`findProjectCatalogPendingOnboarding`) is ordered
+independently — source priority, then criticality score, then age — so a backlog of older
+`onboard` rows can consume today's 20 slots before projects evaluated earlier that same day get
+to them. What the caps do guarantee is throughput: at most 20 projects a day are decided on, and
+at most 20 a day are onboarded. Discovery feeding in up to 40/day is not a contradiction — any
+excess simply waits in `action = 'auto'` and is drained over the following days, in
+source-priority order. This is a deliberate observation window, not a technical ceiling —
+without a human gate, a bad decision at any stage becomes a real public project or a real
+skipped one, and 20/day at the decision point is the volume the team can still watch closely via
+the daily Slack report while confidence in the AI evaluation and discovery sources builds up.
+Raising it later means adjusting the relevant per-stage limit, not the architecture. (The
+`evaluateProjects` workflow's own defaults are 50/50 when triggered manually with no arguments
+from the Temporal UI — the schedule itself always passes 20/20.)
 
 ### Manual override: `POST /project-catalog`
 
@@ -198,17 +214,25 @@ placement alone.
 
 Keys are generated manually via the service's CLI, prefixed `lfcs_`, and stored **only as a
 scrypt hash** with `read`/`write` scopes; the plaintext is shown once and never committed to the
-repo. On the CDP side, `LF_CRITICALITY_SCORE_API_KEY` is sent as `Authorization: Bearer`, and
-401/403 responses are treated as non-retryable (#4597, CM-1406). The service's own internal
-cron (which calls `/jobs/orchestrate` in-process) bypasses this auth by construction — it never
-goes over HTTP — which is accepted as intentional, not a gap to close.
+repo. On the CDP side, `LF_CRITICALITY_SCORE_API_KEY` is sent as `Authorization: Bearer`, and a
+401/403 response skips the source's own local backoff loop (used for network errors, 429, and
+5xx) and fails immediately (#4597, CM-1406) — but that failure still propagates up to the
+`processDataset` activity, which Temporal retries per its own policy (3 attempts), so a bad key
+costs three wasted attempts before that source's discovery run fails, not one. The service's own
+internal cron (which calls `/jobs/orchestrate` in-process) bypasses this auth by construction —
+it never goes over HTTP — which is accepted as intentional, not a gap to close.
 
 ### Observability
 
 `services/apps/cron_service/src/jobs/projectCatalogSkipAlert.job.ts` posts a daily Slack report
-(17:00 UTC, production only) with per-`action` catalog totals and a breakdown of the day's
-skips, flagging cases where the AI's stated reason contradicts the database (e.g. "already
-onboarded" for a project CDP has no record of) (#4589, #4606).
+(17:00 in `cron_service`'s scheduling timezone, `Europe/Berlin` — every job in that service runs
+on that clock, not UTC — production only) with per-`action` catalog totals and a breakdown of
+the day's skips, flagging cases where the AI's stated reason contradicts the database (e.g.
+"already onboarded" for a project CDP has no record of) (#4589, #4606). The skip breakdown query
+filters `WHERE action = 'skip' AND evaluationResult = 'false'`, so it only covers evaluation-time
+skips; the onboarding-time skip for a soft-deleted slug (Stage 3 above) sets `skipReason` without
+touching `evaluationResult`, so it's counted in the catalog totals above but not in this
+per-reason breakdown.
 
 ## Alternatives Considered
 
