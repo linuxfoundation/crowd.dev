@@ -44,9 +44,9 @@ export async function fetchAndSaveStarSnapshot(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
-  let response: Response
+  let json: StargazerCountGraphqlResponse
   try {
-    response = await fetch(GITHUB_GRAPHQL_URL, {
+    const response = await fetch(GITHUB_GRAPHQL_URL, {
       method: 'POST',
       headers: {
         Authorization: `bearer ${token}`,
@@ -55,33 +55,33 @@ export async function fetchAndSaveStarSnapshot(
       body: JSON.stringify({ query: STARGAZER_COUNT_QUERY, variables: { owner, name } }),
       signal: controller.signal,
     })
+
+    if (response.status === 401) {
+      throw ApplicationFailure.nonRetryable(
+        `GitHub auth failure (401) fetching stargazer count for ${repoUrl}`,
+        'AUTH_ERROR',
+      )
+    }
+
+    if (response.status === 403) {
+      const body = await response.text()
+      if (body.toLowerCase().includes('rate limit')) {
+        throw new Error(`GitHub rate limit hit fetching stargazer count for ${repoUrl}`)
+      }
+      throw ApplicationFailure.nonRetryable(
+        `GitHub auth failure (403) fetching stargazer count for ${repoUrl}`,
+        'AUTH_ERROR',
+      )
+    }
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error ${response.status} fetching stargazer count for ${repoUrl}`)
+    }
+
+    json = (await response.json()) as StargazerCountGraphqlResponse
   } finally {
     clearTimeout(timeoutId)
   }
-
-  if (response.status === 401) {
-    throw ApplicationFailure.nonRetryable(
-      `GitHub auth failure (401) fetching stargazer count for ${repoUrl}`,
-      'AUTH_ERROR',
-    )
-  }
-
-  if (response.status === 403) {
-    const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
-      throw new Error(`GitHub rate limit hit fetching stargazer count for ${repoUrl}`)
-    }
-    throw ApplicationFailure.nonRetryable(
-      `GitHub auth failure (403) fetching stargazer count for ${repoUrl}`,
-      'AUTH_ERROR',
-    )
-  }
-
-  if (!response.ok) {
-    throw new Error(`GitHub API error ${response.status} fetching stargazer count for ${repoUrl}`)
-  }
-
-  const json = (await response.json()) as StargazerCountGraphqlResponse
 
   if (json.errors?.length) {
     const [error] = json.errors
