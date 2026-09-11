@@ -6,6 +6,7 @@ import { QueryExecutor } from '../queryExecutor'
 export async function findReposForStarSnapshot(
   qx: QueryExecutor,
   limit: number | null = null,
+  afterUrl: string | null = null,
 ): Promise<IRepoForStarSnapshot[]> {
   const repos: IRepoForStarSnapshot[] = await qx.select(
     `
@@ -16,10 +17,11 @@ export async function findReposForStarSnapshot(
       where r."deletedAt" is null
         and r."excluded" = false
         and r.url like 'https://github.com%'
+        and ($(afterUrl)::text is null or r.url > $(afterUrl))
       order by r.url asc
       limit $(limit)
     `,
-    { limit },
+    { limit, afterUrl },
   )
 
   return repos || []

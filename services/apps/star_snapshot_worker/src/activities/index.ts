@@ -78,7 +78,26 @@ export async function fetchAndSaveStarSnapshotBatch(
   repos: IRepoForStarSnapshot[],
   capturedAt: string,
 ): Promise<RepoStarFetchResult[]> {
-  const parsed = repos.map((repo) => ({ repo, ...parseGithubRepoUrl(repo.repoUrl) }))
+  const parsed: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }> = []
+  const unparseableResults: RepoStarFetchResult[] = []
+
+  for (const repo of repos) {
+    try {
+      const { owner, name } = parseGithubRepoUrl(repo.repoUrl)
+      parsed.push({ repo, owner, name })
+    } catch (error) {
+      unparseableResults.push({
+        repositoryId: repo.repositoryId,
+        repoUrl: repo.repoUrl,
+        error: (error as Error).message,
+      })
+    }
+  }
+
+  if (parsed.length === 0) {
+    return unparseableResults
+  }
+
   const { query, variables } = buildBatchQuery(parsed)
 
   const token = await getGithubInstallationToken()
@@ -139,6 +158,8 @@ export async function fetchAndSaveStarSnapshotBatch(
     }
   }
 
+  let retryableFailure: string | undefined
+
   const results: RepoStarFetchResult[] = parsed.map((entry, i) => {
     const alias = `r${i}`
     const starCount = json.data?.[alias]?.stargazerCount
@@ -151,9 +172,7 @@ export async function fetchAndSaveStarSnapshotBatch(
     const errorType = error?.type
     const message = error?.message ?? 'No repository data returned'
     if (errorType && !NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(errorType)) {
-      throw new Error(
-        `GraphQL error fetching stargazer count for ${entry.repo.repoUrl}: ${message}`,
-      )
+      retryableFailure = `GraphQL error fetching stargazer count for ${entry.repo.repoUrl}: ${message}`
     }
 
     return { repositoryId: entry.repo.repositoryId, repoUrl: entry.repo.repoUrl, error: message }
@@ -166,10 +185,17 @@ export async function fetchAndSaveStarSnapshotBatch(
     }
   }
 
-  return results
+  if (retryableFailure) {
+    throw new Error(retryableFailure)
+  }
+
+  return [...results, ...unparseableResults]
 }
 
-export async function findReposForStarSnapshot(limit?: number): Promise<IRepoForStarSnapshot[]> {
+export async function findReposForStarSnapshot(
+  limit?: number,
+  afterUrl?: string,
+): Promise<IRepoForStarSnapshot[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
-  return findReposForStarSnapshotQx(qx, limit)
+  return findReposForStarSnapshotQx(qx, limit, afterUrl)
 }

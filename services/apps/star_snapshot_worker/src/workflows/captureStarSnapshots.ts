@@ -1,4 +1,4 @@
-import { log, proxyActivities, workflowInfo } from '@temporalio/workflow'
+import { continueAsNew, log, proxyActivities, workflowInfo } from '@temporalio/workflow'
 
 import * as activities from '../activities'
 
@@ -11,18 +11,27 @@ const { findReposForStarSnapshot, fetchAndSaveStarSnapshotBatch } = proxyActivit
 
 const GRAPHQL_BATCH_SIZE = 100
 const CONCURRENCY = 5
+const PAGE_SIZE = 2_000
 
-export async function captureStarSnapshots(): Promise<void> {
-  const capturedAt = workflowInfo().startTime.toISOString()
-  const repos = await findReposForStarSnapshot()
+export interface ICaptureStarSnapshotsArgs {
+  capturedAt?: string
+  afterUrl?: string
+  totalSoFar?: number
+  succeededSoFar?: number
+  failedSoFar?: number
+}
+
+export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {}): Promise<void> {
+  const capturedAt = args.capturedAt ?? workflowInfo().startTime.toISOString()
+  const repos = await findReposForStarSnapshot(PAGE_SIZE, args.afterUrl)
 
   const batches: (typeof repos)[] = []
   for (let i = 0; i < repos.length; i += GRAPHQL_BATCH_SIZE) {
     batches.push(repos.slice(i, i + GRAPHQL_BATCH_SIZE))
   }
 
-  let succeeded = 0
-  let failed = 0
+  let succeeded = args.succeededSoFar ?? 0
+  let failed = args.failedSoFar ?? 0
 
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const window = batches.slice(i, i + CONCURRENCY)
@@ -54,5 +63,18 @@ export async function captureStarSnapshots(): Promise<void> {
     }
   }
 
-  log.info('captureStarSnapshots complete', { total: repos.length, succeeded, failed })
+  const total = (args.totalSoFar ?? 0) + repos.length
+
+  if (repos.length === PAGE_SIZE) {
+    await continueAsNew<typeof captureStarSnapshots>({
+      capturedAt,
+      afterUrl: repos[repos.length - 1].repoUrl,
+      totalSoFar: total,
+      succeededSoFar: succeeded,
+      failedSoFar: failed,
+    })
+    return
+  }
+
+  log.info('captureStarSnapshots complete', { total, succeeded, failed })
 }
