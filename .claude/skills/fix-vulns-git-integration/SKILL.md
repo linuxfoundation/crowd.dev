@@ -89,9 +89,11 @@ gh api 'repos/linuxfoundation/crowd.dev/dependabot/alerts?state=open&per_page=10
 
 Filter to the three in-scope manifests and the selected severities. Dedupe by
 (package, manifest) with the package name lowercased — alerts mix casings
-(`GitPython` vs `gitpython`). Keep every GHSA but plan one fix per package —
-the target version is the highest `first_patched_version` across its alerts;
-alerts with no patched version are `needs-human` immediately.
+(`GitPython` vs `gitpython`). Keep every GHSA but plan one fix per
+(package, manifest) pair — the same package can be vulnerable in both Go
+modules at different versions and each go.mod needs its own bump; the target
+version is the highest `first_patched_version` across that pair's alerts.
+Alerts with no patched version are `needs-human` immediately.
 
 Before triaging a package, check main's current lockfile/go.mod: if the
 installed version already satisfies the patched version, the alert is stale
@@ -99,9 +101,14 @@ installed version already satisfies the patched version, the alert is stale
 it in the report.
 
 ```bash
-gh pr list --repo linuxfoundation/crowd.dev --author app/dependabot --state open \
-  --limit 100 --json number,title,headRefName,url
+gh api 'repos/linuxfoundation/crowd.dev/pulls?state=open&per_page=100' --paginate \
+  -q '.[] | select(.head.ref | startswith("dependabot/"))
+      | {number, title, headRefName: .head.ref, headSha: .head.sha, url: .html_url}'
 ```
+
+(`gh pr list` truncates at its `--limit`; paginate so old git_integration PRs
+— often the stalest — are never missed and mistaken for "no PR". Record each
+PR's `headSha`: it is the revision validation applies to.)
 
 Match PRs to packages via `headRefName` (patterns:
 `dependabot/uv/services/apps/git_integration/<pkg>-<ver>`,
@@ -145,34 +152,57 @@ candidate PR merge its head into it
 (`git fetch origin <headRefName> && git merge FETCH_HEAD --no-edit`) —
 Dependabot branches are often weeks behind and validating the stale base
 tests the wrong code; the combined merge also catches cross-bump conflicts
-that per-PR validation misses. On merge conflict, drop that PR from the
-combined branch, mark it `needs-human` ("PR needs rebase"), and continue.
-Run the full validation suite once on the combined state; if it fails,
-bisect by re-validating PRs individually (still merged with main). Then
-return to the original branch and delete the throwaway branch. Never push
-local commits to any PR branch — local merges are validation-only.
+that per-PR validation misses. On merge conflict, don't write the PR off:
+drop it from the combined branch and validate it individually against main
+instead — two pip PRs both rewrite `uv.lock`, so a conflict between PRs is
+expected and meaningless; only a PR that also conflicts with main alone is
+`needs-human` ("PR needs rebase"). Run the full validation suite once on the
+combined state; if it fails, bisect by re-validating PRs individually (still
+merged with main). Then return to the original branch and delete the
+throwaway branch. Never push local commits to any PR branch — local merges
+are validation-only.
 
-For PRs that end up in the safe tier: first re-check the PR is still open
-(`gh pr view <n> --json state` — a teammate may have merged it mid-run),
-then make it one click from merge by updating the branch server-side:
-`gh api -X PUT repos/linuxfoundation/crowd.dev/pulls/<n>/update-branch`
+A combined green validates the PRs as a set. That is what the Slack message
+must present: "safe to merge together". If reviewers may cherry-pick only
+some of them, either validate those individually first or say in the message
+that the batch was validated jointly.
+
+For PRs that end up in the safe tier: re-check the PR is still open and its
+head is still the revision that was validated
+(`gh pr view <n> --json state,headRefOid` — a teammate may have merged it,
+or Dependabot may have force-pushed a new revision mid-run; if the head SHA
+changed, revalidate before calling it safe). Then make it one click from
+merge by updating the branch server-side:
+`gh api -X PUT repos/linuxfoundation/crowd.dev/pulls/<n>/update-branch -f expected_head_sha=<validated sha>`
 (equivalent to the "Update branch" button; a 422 "head ref does not exist"
-usually means the PR was just merged — re-check its state).
+usually means the PR was just merged, and a 422 mentioning the expected head
+SHA means the head moved — re-check state and revalidate).
 
 **No PR** (typical for transitive pip deps — Dependabot often only alerts):
 apply the fix on a new branch off main:
 
-- pip transitive: `uv lock --upgrade-package '<pkg>'` (add
-  `--upgrade-package '<pkg>==<target>'` if it overshoots into a major).
+- pip transitive: `uv lock --upgrade-package '<pkg>==<target>'` — pin to the
+  reviewed target; classification (changelog review) only covered versions up
+  to it.
 - pip direct: bump the constraint in `pyproject.toml`
   (`uv add '<pkg>>=<target>'`), then `uv lock`.
-- go: `go get <pkg>@v<target> && go mod tidy` in the module dir.
+- go (no host toolchain — run in the image the Dockerfile pins):
 
-Verify the vulnerable version is gone from the lockfile/go.mod, then validate.
+  ```bash
+  docker run --rm -v "$PWD":/w -w /w golang:1.25-alpine \
+    sh -c 'go get <pkg>@v<target> && go mod tidy'
+  ```
+
+Verify the resolved version in the lockfile/go.mod is exactly the reviewed
+target — if the resolver landed on anything newer, re-run Phase 2
+classification against that version before treating the fix as safe.
 
 **Validation suite**
 
-- Python: `uv sync --group dev`, `uv run ruff check src/`, and
+- Python: `uv sync --frozen --group dev` (frozen so validation never rewrites
+  the branch's committed `uv.lock` — an inconsistent lockfile must fail, not
+  be silently regenerated before the image build), `uv run ruff check src/`,
+  and
   `uv run pytest src/test/ -v` — skip/ignore tests that require live repos,
   credentials, or network (anything reading `TEST_REPO_NAME`/env creds);
   collect-only first (`--collect-only`) to see what's runnable. Add
@@ -199,11 +229,15 @@ never let one failure abort the rest, never leave a half-applied fix in the
 tree.
 
 **Ship local fixes**: one branch per run, `chore/git-integration-vuln-bumps`
-(suffix with date if taken), one commit per package
-(`chore(deps): bump <pkg> from <old> to <new> in git_integration`), push and
-open a PR titled `chore(deps): git_integration vulnerability bumps` whose
-body lists GHSA/CVE per package and the validation evidence. Do not enable
-auto-merge.
+(suffix with date if taken), one commit per package following the repo's
+commit workflow — `git commit --signoff -S` (DCO + signing are required, the
+Probot DCO check blocks unsigned commits) with message
+`chore(deps): bump <pkg> from <old> to <new> in git_integration (CM-XXX)`.
+Ask the user for the JIRA key; if there is none, omit it from commits and
+open the PR as a **draft** (the title lint skips drafts) titled
+`chore(deps): git_integration vulnerability bumps`, otherwise a normal PR
+with `(CM-XXX)` in the title. The PR body lists GHSA/CVE per package and the
+validation evidence. Do not enable auto-merge.
 
 ## Phase 4 — Slack review summary
 
