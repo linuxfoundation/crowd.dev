@@ -133,9 +133,8 @@ async function queryStargazerCounts(
   }
 }
 
-// Retries only the aliases that failed transiently, up to MAX_ALIAS_ATTEMPTS, so an
-// activity-level rejection (which would discard every already-persisted result) is only
-// ever raised on the first attempt, before anything in this batch has succeeded.
+// Retries only failed aliases, up to MAX_ALIAS_ATTEMPTS, before rejecting; a query rejects
+// only on the first attempt, before any alias in this call has been fetched or persisted.
 async function fetchStargazerCounts(
   entries: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }>,
 ): Promise<RepoStarFetchResult[]> {

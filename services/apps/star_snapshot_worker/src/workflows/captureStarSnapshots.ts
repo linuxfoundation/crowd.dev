@@ -32,6 +32,7 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   let succeeded = args.succeededSoFar ?? 0
   let failed = args.failedSoFar ?? 0
+  let rejectedBatches = 0
 
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const window = batches.slice(i, i + CONCURRENCY)
@@ -41,6 +42,7 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
     for (const [idx, result] of results.entries()) {
       if (result.status === 'rejected') {
+        rejectedBatches++
         failed += window[idx].length
         log.warn('Failed to capture star snapshot batch', {
           repoCount: window[idx].length,
@@ -64,6 +66,12 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
   }
 
   const total = (args.totalSoFar ?? 0) + repos.length
+
+  if (rejectedBatches > 0) {
+    throw new Error(
+      `${rejectedBatches} of ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
+    )
+  }
 
   if (repos.length === PAGE_SIZE) {
     await continueAsNew<typeof captureStarSnapshots>({
