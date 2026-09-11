@@ -6,6 +6,9 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { svc } from '../main'
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
+const FETCH_TIMEOUT_MS = 30_000
+
+const NON_RETRYABLE_GRAPHQL_ERROR_TYPES = new Set(['NOT_FOUND', 'FORBIDDEN', 'INSUFFICIENT_SCOPES'])
 
 const STARGAZER_COUNT_QUERY = `
   query($owner: String!, $name: String!) {
@@ -25,7 +28,7 @@ interface StargazerCountGraphqlResponse {
 export function parseGithubRepoUrl(url: string): { owner: string; name: string } {
   const match = url.match(/https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
   if (!match) {
-    throw new Error(`Cannot parse GitHub URL: ${url}`)
+    throw ApplicationFailure.nonRetryable(`Cannot parse GitHub URL: ${url}`, 'INVALID_URL')
   }
   return { owner: match[1], name: match[2] }
 }
@@ -34,17 +37,27 @@ export async function fetchAndSaveStarSnapshot(
   repoUrl: string,
   repositoryId: string,
   token: string,
+  capturedAt: string,
 ): Promise<void> {
   const { owner, name } = parseGithubRepoUrl(repoUrl)
 
-  const response = await fetch(GITHUB_GRAPHQL_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query: STARGAZER_COUNT_QUERY, variables: { owner, name } }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  let response: Response
+  try {
+    response = await fetch(GITHUB_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: STARGAZER_COUNT_QUERY, variables: { owner, name } }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (response.status === 401) {
     throw ApplicationFailure.nonRetryable(
@@ -71,16 +84,19 @@ export async function fetchAndSaveStarSnapshot(
   const json = (await response.json()) as StargazerCountGraphqlResponse
 
   if (json.errors?.length) {
-    throw new Error(
-      `GraphQL error fetching stargazer count for ${repoUrl}: ${json.errors[0].message ?? 'unknown error'}`,
-    )
+    const [error] = json.errors
+    const message = `GraphQL error fetching stargazer count for ${repoUrl}: ${error.message ?? 'unknown error'}`
+    if (error.type && NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(error.type)) {
+      throw ApplicationFailure.nonRetryable(message, error.type)
+    }
+    throw new Error(message)
   }
 
   const starCount = json.data?.repository?.stargazerCount
   if (starCount === undefined || starCount === null) {
-    throw new Error(`No repository data returned for ${repoUrl}`)
+    throw ApplicationFailure.nonRetryable(`No repository data returned for ${repoUrl}`, 'NOT_FOUND')
   }
 
   const qx = pgpQx(svc.postgres.writer.connection())
-  await upsertStarSnapshot(qx, repositoryId, starCount, new Date().toISOString())
+  await upsertStarSnapshot(qx, repositoryId, starCount, capturedAt)
 }
