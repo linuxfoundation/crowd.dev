@@ -118,24 +118,23 @@ BEGIN
                        -- excluded entirely: runRubyGemsCoreLoop.ts re-syncs every gem daily and
                        -- always calls matchOwnership() with no maintainer evidence (ADR-0022), so
                        -- backfilling matched/unmatched here would just get reset to no_evidence
-                       -- on the next sync.
+                       -- on the next sync. Maven is excluded too: upsertMaintainer falls back to
+                       -- email/displayName in the username column when a person has no real
+                       -- username (runMavenEnrichmentLoop.ts), and the DB has no way to tell that
+                       -- fallback apart from a real <id> that happens to equal the email/display
+                       -- name — value-equality heuristics misclassify real usernames, and a false
+                       -- 'unmatched' costs more (-0.25) than a lost 'matched' would gain.
                        -- Email-shaped identities are rejected only when a non-whitespace char
                        -- appears on both sides of '@' (ownershipMatch.ts's /\S@\S/), matching
-                       -- handles like '@vercel' still count. Maven's upsertMaintainer falls back
-                       -- to email/displayName in the username column when a person has no real
-                       -- username (runMavenEnrichmentLoop.ts), but only passes real usernames to
-                       -- matchOwnership() — exclude rows where username is that fallback value.
+                       -- handles like '@vercel' still count.
                        package_repo_namespace_candidates(p.namespace)
                          || COALESCE(ARRAY(
                               SELECT m.username
                                 FROM package_maintainers pm
                                 JOIN maintainers m ON m.id = pm.maintainer_id
                                WHERE pm.package_id = cur.package_id
-                                 AND p.ecosystem <> 'rubygems'
+                                 AND p.ecosystem NOT IN ('rubygems', 'maven')
                                  AND (p.ecosystem <> 'npm' OR pm.role = 'maintainer')
-                                 AND (p.ecosystem <> 'maven'
-                                      OR (m.username IS DISTINCT FROM m.email
-                                          AND m.username IS DISTINCT FROM m.display_name))
                                  AND m.username !~ '\S@\S'
                             ), ARRAY[]::text[]) AS owner_candidates
                   FROM batch b
