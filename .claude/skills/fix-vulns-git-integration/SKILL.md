@@ -113,9 +113,13 @@ PR's `headSha`: it is the revision validation applies to.)
 Match PRs to packages via `headRefName` (patterns:
 `dependabot/uv/services/apps/git_integration/<pkg>-<ver>`,
 `dependabot/go_modules/services/apps/git_integration/src/crowdgit/services/<module>/<pkg>-<ver>`).
-A package may have a PR whose version is older than the needed patched
-version — note that; the PR still counts as "exists" but the gap goes in the
-report.
+Read the version each PR actually resolves from its diff (go.mod / uv.lock),
+not from the branch name alone. A PR resolving below the required patched
+version can never be `safe` — the alert would stay open; it still counts as
+"exists" but goes in the report as a gap. A PR resolving above the advisory's
+minimum shifts the review window: Phase 2 classification and changelog review
+must cover current → the PR's resolved version, not just the advisory
+minimum.
 
 ## Phase 2 — Classify each package
 
@@ -176,7 +180,14 @@ merge by updating the branch server-side:
 `gh api -X PUT repos/linuxfoundation/crowd.dev/pulls/<n>/update-branch -f expected_head_sha=<validated sha>`
 (equivalent to the "Update branch" button; a 422 "head ref does not exist"
 usually means the PR was just merged, and a 422 mentioning the expected head
-SHA means the head moved — re-check state and revalidate).
+SHA means the head moved — re-check state and revalidate). The update creates
+a new head: a merge of the validated SHA with main. That is the same state
+validated locally **only if main has not advanced since the validation
+fetch** — record main's SHA when creating the throwaway branch, and compare
+it against `origin/main` right before calling update-branch; if main moved,
+re-merge and revalidate first. The Slack message must reference the
+validated head SHA and note that the branch was then updated with that same
+main.
 
 **No PR** (typical for transitive pip deps — Dependabot often only alerts):
 apply the fix on a new branch off main:
@@ -233,10 +244,13 @@ tree.
 commit workflow — `git commit --signoff -S` (DCO + signing are required, the
 Probot DCO check blocks unsigned commits) with message
 `chore(deps): bump <pkg> from <old> to <new> in git_integration (CM-XXX)`.
-Ask the user for the JIRA key; if there is none, omit it from commits and
-open the PR as a **draft** (the title lint skips drafts) titled
-`chore(deps): git_integration vulnerability bumps`, otherwise a normal PR
-with `(CM-XXX)` in the title. The PR body lists GHSA/CVE per package and the
+Ask the user for the JIRA key — the commit workflow requires a `CM` ticket
+even for untracked work, so if none exists ask the user to create one. With
+a key, open the PR titled
+`chore(deps): git_integration vulnerability bumps (CM-XXX)`. Without one
+(user declines, or non-interactive run), push the branch but do **not** open
+the PR — report it as "branch pushed, PR pending JIRA ticket"; never open a
+draft to sidestep the title lint. The PR body lists GHSA/CVE per package and the
 validation evidence. Do not enable auto-merge.
 
 ## Phase 4 — Slack review summary
