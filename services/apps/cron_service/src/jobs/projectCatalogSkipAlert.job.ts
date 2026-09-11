@@ -3,6 +3,12 @@ import CronTime from 'cron-time-generator'
 import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
+  PROJECT_CATALOG_ACTIONS,
+  ProjectCatalogAction,
+  countProjectCatalogByActions,
+} from '@crowd/data-access-layer/src/project-catalog'
+import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import {
   SlackChannel,
   SlackMessageSection,
   SlackPersona,
@@ -18,6 +24,16 @@ const LF_REASON = 'project is already part of LF'
 
 const MAX_ROWS_PER_SECTION = 25
 
+const ACTION_LABELS: Record<ProjectCatalogAction, string> = {
+  auto: 'Discovered',
+  evaluate: 'Evaluate',
+  onboard: 'Onboard',
+  onboarded: 'Onboarded',
+  skip: 'Skipped',
+  unsure: 'Unsure',
+  error: 'Error',
+}
+
 interface ISkipRow {
   repoUrl: string
   reason: string
@@ -29,15 +45,38 @@ interface ISkipRow {
 
 const job: IJobDefinition = {
   name: 'project-catalog-skip-alert',
-  // 08:00 Europe/Berlin (the scheduler's fixed tz) is 06:00-07:00 UTC, safely after
-  // the 04:00 UTC evaluation run regardless of DST — not a literal 30-min offset.
-  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 0),
+  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(17, 0),
   timeout: 10 * 60, // 10 minutes
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
     ctx.log.info('Running project-catalog-skip-alert job...')
 
     const dbConnection = await getDbConnection(READ_DB_CONFIG(), 3, 0)
+
+    let catalogCounts: Partial<Record<ProjectCatalogAction, number>> = {}
+
+    try {
+      catalogCounts = await countProjectCatalogByActions(pgpQx(dbConnection))
+    } catch (err) {
+      ctx.log.warn(err, 'Failed to fetch project catalog totals, omitting them from the report')
+    }
+
+    if (Object.keys(catalogCounts).length > 0) {
+      const totalsText = PROJECT_CATALOG_ACTIONS.filter(
+        (action) => (catalogCounts[action] ?? 0) > 0,
+      )
+        .map((action) => `${ACTION_LABELS[action]}: ${catalogCounts[action]}`)
+        .join('\n')
+
+      if (totalsText) {
+        await sendSlackNotificationAsync(
+          SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+          SlackPersona.SUMMARY_REPORTER,
+          'Project Catalog Totals',
+          totalsText,
+        )
+      }
+    }
 
     const rows = await dbConnection.any<ISkipRow>(
       `
@@ -86,15 +125,12 @@ const job: IJobDefinition = {
 
     const flagged = rows.filter((row) => row.suspicious)
     const persona =
-      flagged.length > 0 ? SlackPersona.WARNING_PROPAGATOR : SlackPersona.INFO_NOTIFIER
+      flagged.length > 0 ? SlackPersona.WARNING_PROPAGATOR : SlackPersona.METRICS_REPORTER
 
     const sections: SlackMessageSection[] = [
       {
-        title: 'Project Catalog Skip Summary',
-        text: [
-          `*Total skipped today:* ${rows.length}`,
-          `*Flagged as contradicting the DB:* ${flagged.length}`,
-        ].join('\n'),
+        title: '',
+        text: [`Total: ${rows.length}`, `Contradicting: ${flagged.length}`].join('\n'),
       },
     ]
 
@@ -112,27 +148,27 @@ const job: IJobDefinition = {
         lines.push(`… and ${reasonRows.length - visibleRows.length} more`)
       }
       sections.push({
-        title: `"${reason}" (${reasonRows.length})`,
-        text: lines.join('\n'),
+        title: `Reason: "${reason}"`,
+        text: [`Total: ${reasonRows.length}`, ...lines].join('\n'),
       })
     }
 
     await sendSlackNotificationAsync(
       SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
       persona,
-      'Project Catalog Skip Report',
+      'Daily metrics for skipped projects',
       sections,
     )
 
     ctx.log.info(
-      `Project catalog skip report processed: total=${rows.length}, flagged=${flagged.length}`,
+      `Project catalog skip report processed: total=${rows.length}, flagged=${flagged.length}, catalog=${JSON.stringify(catalogCounts)}`,
     )
   },
 }
 
 function formatLine(row: ISkipRow): string {
   if (!row.suspicious) {
-    return `• ${row.repoUrl}`
+    return row.repoUrl
   }
 
   const reasoning =
