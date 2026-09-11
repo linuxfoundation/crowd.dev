@@ -125,11 +125,16 @@ minimum.
 
 Determine for every in-scope package:
 
-- **direct vs transitive** — pip: listed in `pyproject.toml` dependencies or
-  only in `uv.lock`; go: in the module's `go.mod` require block without
-  `// indirect`.
-- **bump size** — patch/minor vs major (current version from `uv.lock` /
-  `go.mod`, target = patched version).
+- **direct vs transitive** — pip: direct if listed anywhere in
+  `pyproject.toml` — `[project.dependencies]` **or** `[dependency-groups]`
+  (dev deps are still direct); transitive only if it appears solely in
+  `uv.lock`. go: direct if required without `// indirect`, whether inside a
+  `require (...)` block or a standalone single-line `require`.
+- **bump size** — patch/minor vs major, measured from the current version
+  (`uv.lock` / `go.mod`) to the version the fix actually lands: the PR's
+  resolved version when a PR exists, else the advisory's patched version. A
+  PR that lands on a major is a major bump — never safe — regardless of how
+  small the advisory's minimum patched version is.
 - **usage surface** — grep `services/apps/git_integration/src/crowdgit` for
   imports/usage of the package. For >3 packages, fan out one Explore agent
   per package in parallel; each must return positive evidence, not absence
@@ -183,9 +188,11 @@ usually means the PR was just merged, and a 422 mentioning the expected head
 SHA means the head moved — re-check state and revalidate). The update creates
 a new head: a merge of the validated SHA with main. That is the same state
 validated locally **only if main has not advanced since the validation
-fetch** — record main's SHA when creating the throwaway branch, and compare
-it against `origin/main` right before calling update-branch; if main moved,
-re-merge and revalidate first. The Slack message must reference the
+fetch** — record main's SHA when creating the throwaway branch, then right
+before calling update-branch run `git fetch origin main` (fetching only the
+PR head does not refresh `origin/main`, and without this fetch the
+comparison always trivially matches) and compare the recorded SHA against
+the fresh `origin/main`; if main moved, re-merge and revalidate first. The Slack message must reference the
 validated head SHA and note that the branch was then updated with that same
 main.
 
