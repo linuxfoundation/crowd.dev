@@ -57,10 +57,7 @@ export async function fetchAndSaveStarSnapshot(
     })
 
     if (response.status === 401) {
-      throw ApplicationFailure.nonRetryable(
-        `GitHub auth failure (401) fetching stargazer count for ${repoUrl}`,
-        'AUTH_ERROR',
-      )
+      throw new Error(`GitHub auth failure (401) fetching stargazer count for ${repoUrl}`)
     }
 
     if (response.status === 403) {
