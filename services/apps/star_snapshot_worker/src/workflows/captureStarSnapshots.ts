@@ -1,4 +1,10 @@
-import { continueAsNew, log, proxyActivities, workflowInfo } from '@temporalio/workflow'
+import {
+  ApplicationFailure,
+  continueAsNew,
+  log,
+  proxyActivities,
+  workflowInfo,
+} from '@temporalio/workflow'
 
 import * as activities from '../activities'
 
@@ -68,9 +74,13 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
   const total = (args.totalSoFar ?? 0) + repos.length
 
   if (rejectedBatches > 0) {
-    throw new Error(
-      `${rejectedBatches} of ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
-    )
+    // A plain thrown Error only fails the workflow task (the worker replays and retries
+    // forever); ApplicationFailure is required to fail the execution so the schedule's
+    // retry policy actually engages.
+    throw ApplicationFailure.create({
+      message: `${rejectedBatches} of ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
+      type: 'StarSnapshotBatchFailure',
+    })
   }
 
   if (repos.length === PAGE_SIZE) {
