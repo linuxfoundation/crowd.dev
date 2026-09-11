@@ -802,8 +802,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.2
       js-yaml:
-        specifier: ^4.1.0
-        version: 4.1.1
+        specifier: ^4.3.2
+        version: 4.3.2
       p-queue:
         specifier: ^8.1.0
         version: 8.1.0
@@ -1570,8 +1570,8 @@ importers:
         specifier: ^5.8.0
         version: 5.8.0
       js-yaml:
-        specifier: ^4.1.1
-        version: 4.1.1
+        specifier: ^4.3.2
+        version: 4.3.2
       jsonwebtoken:
         specifier: ^9.0.0
         version: 9.0.3
@@ -1988,8 +1988,8 @@ importers:
         specifier: 'catalog:'
         version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       js-yaml:
-        specifier: ^4.1.1
-        version: 4.1.1
+        specifier: ^4.3.2
+        version: 4.3.2
       moment:
         specifier: ~2.29.4
         version: 2.29.4
@@ -8525,12 +8525,12 @@ packages:
     resolution: {integrity: sha512-PMSmkqxr106Xa156c2M265Z+FTrPl+oxd/rgOQy2tijQeK5TxQ43psO1ZCwhVOSdnn+RzkzlRz/eY4BgJBYVpg==}
     hasBin: true
 
-  js-yaml@4.1.1:
-    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
-    hasBin: true
-
   js-yaml@4.3.1:
     resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
+    hasBin: true
+
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
   jsesc@2.5.2:
@@ -19003,11 +19003,11 @@ snapshots:
       argparse: 1.0.10
       esprima: 4.0.1
 
-  js-yaml@4.1.1:
+  js-yaml@4.3.1:
     dependencies:
       argparse: 2.0.1
 
-  js-yaml@4.3.1:
+  js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
 
