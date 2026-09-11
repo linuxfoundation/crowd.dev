@@ -5,16 +5,14 @@ import { QueryExecutor } from '../queryExecutor'
 
 export async function findReposForStarSnapshot(
   qx: QueryExecutor,
-  limit = 1000,
+  limit: number | null = null,
 ): Promise<IRepoForStarSnapshot[]> {
   const repos: IRepoForStarSnapshot[] = await qx.select(
     `
       select
           r.id as "repositoryId",
-          r.url as "repoUrl",
-          nm."connectionId" as "connectionId"
+          r.url as "repoUrl"
       from public.repositories r
-      join integration.nango_mapping nm on nm."repositoryId" = r.id
       where r."deletedAt" is null
         and r."excluded" = false
         and r.url like 'https://github.com%'

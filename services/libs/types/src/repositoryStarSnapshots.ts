@@ -8,5 +8,4 @@ export interface IRepositoryStarSnapshot {
 export interface IRepoForStarSnapshot {
   repositoryId: string
   repoUrl: string
-  connectionId: string
 }

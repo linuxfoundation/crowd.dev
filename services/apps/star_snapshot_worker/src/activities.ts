@@ -1,7 +1,3 @@
-import {
-  fetchAndSaveStarSnapshot,
-  findReposForStarSnapshot,
-  getGithubTokenForConnection,
-} from './activities/index'
+import { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot } from './activities/index'
 
-export { fetchAndSaveStarSnapshot, findReposForStarSnapshot, getGithubTokenForConnection }
+export { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot }

@@ -2033,15 +2033,12 @@ importers:
       '@crowd/archetype-worker':
         specifier: workspace:*
         version: link:../../archetypes/worker
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../../libs/common_services
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
-      '@crowd/logging':
-        specifier: workspace:*
-        version: link:../../libs/logging
-      '@crowd/nango':
-        specifier: workspace:*
-        version: link:../../libs/nango
       '@crowd/types':
         specifier: workspace:*
         version: link:../../libs/types
