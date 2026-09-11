@@ -11,7 +11,6 @@ import {
   findEvaluationSuite,
   findObsoleteReposQx,
   findSuiteControlEvaluation,
-  upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { RedisCache } from '@crowd/redis'
@@ -339,75 +338,4 @@ export async function updateTokenInfos(tokenInfos: ITokenInfo[]): Promise<void> 
 // the next continueAsNew batch boundary.
 export async function getCurrentTimeMs(): Promise<number> {
   return Date.now()
-}
-
-const STARGAZER_COUNT_QUERY = `
-  query($owner: String!, $name: String!) {
-    repository(owner: $owner, name: $name) {
-      stargazerCount
-    }
-  }
-`
-
-interface StargazerCountGraphqlResponse {
-  data?: {
-    repository: { stargazerCount: number } | null
-  }
-  errors?: Array<{ message?: string }>
-}
-
-function parseGithubRepoUrl(url: string): { owner: string; name: string } {
-  const match = url.match(/https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
-  if (!match) {
-    throw new Error(`Cannot parse GitHub URL: ${url}`)
-  }
-  return { owner: match[1], name: match[2] }
-}
-
-export async function fetchAndSaveStarSnapshot(
-  repoUrl: string,
-  repositoryId: string,
-  token: string,
-): Promise<void> {
-  const { owner, name } = parseGithubRepoUrl(repoUrl)
-
-  const response = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: {
-      Authorization: `bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query: STARGAZER_COUNT_QUERY, variables: { owner, name } }),
-  })
-
-  const bodyText = await response.text()
-  const source = `stargazer count fetch for ${repoUrl}`
-
-  if (!response.ok) {
-    classifyTokenError(bodyText, source)
-    throw new Error(
-      `Failed to fetch stargazer count for ${repoUrl}: ${response.status} ${bodyText}`,
-    )
-  }
-
-  const json = JSON.parse(bodyText) as StargazerCountGraphqlResponse
-
-  if (json.errors?.length) {
-    classifyTokenError(bodyText, source)
-    throw new Error(
-      `GraphQL error fetching stargazer count for ${repoUrl}: ${json.errors[0].message}`,
-    )
-  }
-
-  if (!json.data?.repository) {
-    throw new Error(`No repository data returned for ${repoUrl}`)
-  }
-
-  const qx = pgpQx(svc.postgres.writer.connection())
-  await upsertStarSnapshot(
-    qx,
-    repositoryId,
-    json.data.repository.stargazerCount,
-    new Date().toISOString(),
-  )
 }
