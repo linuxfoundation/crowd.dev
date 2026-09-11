@@ -66,6 +66,16 @@ scope: mention the count in the final report, do nothing else with them.
    should go to (free text via "Other" is fine). Default severities:
    critical + high.
 
+**Non-interactive invocation**: only when the invocation itself explicitly
+passes both parameters (e.g.
+`/fix-vulns-git-integration non-interactive severities=critical,high channel=#my-channel`),
+skip the questions and use them; the Slack summary is then the run's output
+and is sent without interactive approval. Every other gate still holds: no
+merging, no deploys, and if a summary covering the same findings was already
+posted, post nothing. This skill ships with no schedule and no default
+channel — anyone who wants periodic runs sets up their own scheduler passing
+their own parameters.
+
 ## Phase 1 — Fetch alerts and Dependabot PRs
 
 ```bash
