@@ -4,3 +4,9 @@ export interface IRepositoryStarSnapshot {
   starCount: number
   capturedAt: string
 }
+
+export interface IRepoForStarSnapshot {
+  repositoryId: string
+  repoUrl: string
+  connectionId: string
+}

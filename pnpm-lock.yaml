@@ -2036,6 +2036,15 @@ importers:
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../../libs/logging
+      '@crowd/nango':
+        specifier: workspace:*
+        version: link:../../libs/nango
+      '@crowd/types':
+        specifier: workspace:*
+        version: link:../../libs/types
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.17.2

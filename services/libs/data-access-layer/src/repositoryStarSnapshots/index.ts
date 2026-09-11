@@ -1,7 +1,31 @@
 import { generateUUIDv4 } from '@crowd/common'
-import { IRepositoryStarSnapshot } from '@crowd/types'
+import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+
+export async function findReposForStarSnapshot(
+  qx: QueryExecutor,
+  limit = 1000,
+): Promise<IRepoForStarSnapshot[]> {
+  const repos: IRepoForStarSnapshot[] = await qx.select(
+    `
+      select
+          r.id as "repositoryId",
+          r.url as "repoUrl",
+          nm."connectionId" as "connectionId"
+      from public.repositories r
+      join integration.nango_mapping nm on nm."repositoryId" = r.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+      order by r.url asc
+      limit $(limit)
+    `,
+    { limit },
+  )
+
+  return repos || []
+}
 
 export async function upsertStarSnapshot(
   qx: QueryExecutor,

@@ -1,7 +1,12 @@
 import { ApplicationFailure } from '@temporalio/client'
 
-import { upsertStarSnapshot } from '@crowd/data-access-layer'
+import {
+  findReposForStarSnapshot as findReposForStarSnapshotQx,
+  upsertStarSnapshot,
+} from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { NangoIntegration, getNangoConnectionData, initNangoCloudClient } from '@crowd/nango'
+import { IRepoForStarSnapshot } from '@crowd/types'
 
 import { svc } from '../main'
 
@@ -117,4 +122,24 @@ export async function fetchAndSaveStarSnapshot(
 
   const qx = pgpQx(svc.postgres.writer.connection())
   await upsertStarSnapshot(qx, repositoryId, starCount, capturedAt)
+}
+
+export async function findReposForStarSnapshot(limit?: number): Promise<IRepoForStarSnapshot[]> {
+  const qx = pgpQx(svc.postgres.reader.connection())
+  return findReposForStarSnapshotQx(qx, limit)
+}
+
+export async function getGithubTokenForConnection(connectionId: string): Promise<string> {
+  await initNangoCloudClient()
+
+  const connection = await getNangoConnectionData(NangoIntegration.GITHUB, connectionId)
+
+  if (connection.credentials.type !== 'APP') {
+    throw ApplicationFailure.nonRetryable(
+      `Unexpected Nango credential type '${connection.credentials.type}' for connection ${connectionId}`,
+      'UNEXPECTED_CREDENTIAL_TYPE',
+    )
+  }
+
+  return connection.credentials.access_token
 }

@@ -1,6 +1,8 @@
 import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
 
+import { scheduleCaptureStarSnapshots } from './schedules/scheduleCaptureStarSnapshots'
+
 const config: Config = {
   envvars: [],
   producer: {
@@ -27,5 +29,7 @@ export const svc = new ServiceWorker(config, options)
 
 setImmediate(async () => {
   await svc.init()
+
+  await scheduleCaptureStarSnapshots()
   await svc.start()
 })
