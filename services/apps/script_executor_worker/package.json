@@ -32,7 +32,7 @@
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
-    "csv-parse": "^5.5.6",
+    "csv-parse": "^7.0.2",
     "moment": "~2.29.4",
     "tsx": "catalog:",
     "typescript": "catalog:"
