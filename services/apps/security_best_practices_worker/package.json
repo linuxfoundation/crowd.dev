@@ -24,7 +24,7 @@
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.2",
     "moment": "~2.29.4",
     "tsx": "catalog:",
     "typescript": "catalog:"
