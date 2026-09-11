@@ -347,3 +347,8 @@ export async function suggestMemberMerge(
     )
   })
 }
+
+export {
+  fetchRecentlyOnboardedSubprojects,
+  fetchSubprojectMemberMergePairs,
+} from './subprojectSuggestions'
