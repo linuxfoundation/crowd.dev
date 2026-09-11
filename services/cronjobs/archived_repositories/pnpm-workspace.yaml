@@ -1,0 +1,6 @@
+packages:
+  - '.'
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false

@@ -3,14 +3,16 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.572.0",
@@ -26,7 +28,7 @@
     "@crowd/types": "workspace:*",
     "@octokit/request": "^5.6.3",
     "@octokit/rest": "^22.0.0",
-    "axios": "^1.19.0",
+    "axios": "catalog:",
     "jsonwebtoken": "^9.0.0",
     "lodash.isequal": "^4.5.0",
     "lodash.pick": "~4.4.0",

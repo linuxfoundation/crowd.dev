@@ -1,9 +1,8 @@
 FROM node:24-alpine as builder
 
 WORKDIR /usr/crowd/app
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate && apk add --update --no-cache python3 build-base && ln -sf python3 /usr/bin/python &&  python3 -m venv .venv && source .venv/bin/activate && python3 -m ensurepip && pip3 install --no-cache --upgrade pip setuptools
-
-COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+COPY ./package.json ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare --activate && apk add --update --no-cache python3 build-base && ln -sf python3 /usr/bin/python &&  python3 -m venv .venv && source .venv/bin/activate && python3 -m ensurepip && pip3 install --no-cache --upgrade pip setuptools
 RUN pnpm fetch
 
 COPY ./backend ./backend
@@ -13,7 +12,9 @@ RUN pnpm i --frozen-lockfile
 FROM node:24-alpine as runner
 
 WORKDIR /usr/crowd/app
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+ENV pnpm_config_verify_deps_before_run=false
+COPY ./package.json ./
+RUN corepack enable && corepack prepare --activate
 
 COPY --from=builder /usr/crowd/app/node_modules ./node_modules
 COPY --from=builder /usr/crowd/app/services/libs ./services/libs

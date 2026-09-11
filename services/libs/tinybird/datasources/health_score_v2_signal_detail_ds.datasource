@@ -9,8 +9,8 @@ DESCRIPTION >
     `orgDiversityScore`, `orgDiversityAvailable`, `orgCount`, `responsivenessScore`,
     `responsivenessAvailable`, `medianPrResponseS`, `medianIssueResponseS`, `isGerrit`, `isExcluded`
     — see `health_score_v2_maintainer_ds` for definitions.
-    - Security signals: `openVulnScore`, `openCriticals`, `openHighs`, `openModerates`,
-    `scorecardScorePts`, `scorecardAvailable`, `scorecardScore`, `securityPracticesScore`,
+    - Security signals: `openVulnScore`, `openVulnAvailable`, `openCriticals`, `openHighs`, `openModerates`,
+    `openUnknowns`, `scorecardScorePts`, `scorecardAvailable`, `scorecardScore`, `securityPracticesScore`,
     `securityPracticesAvailable`, `securityPolicyEnabled`, `branchProtectionEnabled`,
     `branchProtectionRequiredReviews`, `branchProtectionRequiresStatusChecks`,
     `branchProtectionAllowsForcePush`, `dependencyHealthScore`, `dependencyHealthAvailable`,
@@ -39,9 +39,11 @@ SCHEMA >
     `isGerrit` Nullable(UInt8),
     `isExcluded` Nullable(UInt8),
     `openVulnScore` Nullable(UInt8),
+    `openVulnAvailable` Nullable(UInt8),
     `openCriticals` Nullable(UInt64),
     `openHighs` Nullable(UInt64),
     `openModerates` Nullable(UInt64),
+    `openUnknowns` Nullable(UInt64),
     `scorecardScorePts` Nullable(UInt8),
     `scorecardAvailable` Nullable(UInt8),
     `scorecardScore` Nullable(String),

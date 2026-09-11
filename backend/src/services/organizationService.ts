@@ -32,6 +32,7 @@ import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src
 import {
   OrganizationField,
   addOrgsToSegments,
+  deleteFakeOrganizationSuggestion,
   findOrgAttributes,
   findOrgById,
   upsertOrgIdentities,
@@ -1104,6 +1105,10 @@ export default class OrganizationService extends LoggerBase {
           await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
         }
         recalculateAffiliations = true
+      }
+
+      if (data.isAffiliationBlocked === true) {
+        await deleteFakeOrganizationSuggestion(qx, record.id)
       }
 
       await SequelizeRepository.commitTransaction(tx)

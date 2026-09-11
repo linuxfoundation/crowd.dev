@@ -5,23 +5,13 @@ import { Readable } from 'stream'
 import { timeout } from '@crowd/common'
 import { getServiceLogger } from '@crowd/logging'
 
+import { parseEnvInt } from '../../config'
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
 
 const log = getServiceLogger()
 
-const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
-
-function parseEnvInt(
-  value: string | undefined,
-  defaultValue: number,
-  min: number,
-  max: number,
-): number {
-  const parsed = parseInt(value ?? '', 10)
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
-}
 
 // Requests per second sent to the LF Criticality Score API (throttle between pages).
 const REQUESTS_PER_SECOND = parseEnvInt(
@@ -64,12 +54,25 @@ function getApiBaseUrl(): string {
   if (process.env.LF_CRITICALITY_SCORE_API_URL) {
     return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
   }
-  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST)
-    .trim()
-    .replace(/\/$/, '')
+  const host = process.env.LF_CRITICALITY_SCORE_API_HOST?.trim().replace(/\/$/, '')
+  if (!host) {
+    throw new Error(
+      'LF Criticality Score API host is not configured. Set LF_CRITICALITY_SCORE_API_URL or LF_CRITICALITY_SCORE_API_HOST.',
+    )
+  }
   const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
   const scheme = port === 443 ? 'https' : 'http'
   return `${scheme}://${host}:${port}`
+}
+
+function getApiKey(): string {
+  const key = process.env.LF_CRITICALITY_SCORE_API_KEY?.trim()
+  if (!key) {
+    throw new Error(
+      'LF Criticality Score API key is not configured. Set LF_CRITICALITY_SCORE_API_KEY.',
+    )
+  }
+  return key
 }
 
 interface HttpGetResult {
@@ -85,10 +88,14 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
-function httpGet(url: string): Promise<HttpGetResult> {
+// Bounds a single request so a hung connection doesn't block the activity's heartbeat
+// for the full Temporal heartbeatTimeout (5 min) while the socket stays open.
+const REQUEST_TIMEOUT_MS = 30_000
+
+function httpGet(url: string, headers: Record<string, string>): Promise<HttpGetResult> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
-    const req = client.get(url, (res) => {
+    const req = client.get(url, { headers, timeout: REQUEST_TIMEOUT_MS }, (res) => {
       const statusCode = res.statusCode ?? 0
       const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
       const chunks: Uint8Array[] = []
@@ -98,6 +105,9 @@ function httpGet(url: string): Promise<HttpGetResult> {
       )
       res.on('error', reject)
     })
+    req.on('timeout', () =>
+      req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
+    )
     req.on('error', reject)
     req.end()
   })
@@ -105,18 +115,20 @@ function httpGet(url: string): Promise<HttpGetResult> {
 
 async function fetchPage(
   baseUrl: string,
+  apiKey: string,
   page: number,
   scoredAfter?: string,
 ): Promise<LfApiResponse> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) })
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
+  const headers = { Authorization: `Bearer ${apiKey}` }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let result: HttpGetResult | null = null
 
     try {
-      result = await httpGet(url)
+      result = await httpGet(url, headers)
     } catch (networkErr) {
       if (attempt === MAX_ATTEMPTS - 1) {
         throw new Error(`LF Criticality Score API network error for ${url}: ${networkErr}`)
@@ -138,6 +150,12 @@ async function fetchPage(
       } catch (err) {
         throw new Error(`Failed to parse LF Criticality Score API response: ${err}`)
       }
+    }
+
+    if (statusCode === 401 || statusCode === 403) {
+      throw new Error(
+        `LF Criticality Score API returned status ${statusCode} for ${url}. Check LF_CRITICALITY_SCORE_API_KEY.`,
+      )
     }
 
     const isRetryable = statusCode === 429 || statusCode >= 500
@@ -164,6 +182,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
 
   async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
+    getApiKey()
     const today = new Date().toISOString().slice(0, 10)
     const { scoredAfter } = options ?? {}
 
@@ -182,6 +201,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
 
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
     const baseUrl = getApiBaseUrl()
+    const apiKey = getApiKey()
     const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
 
     log.info(
@@ -192,7 +212,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const throttleIntervalMs = Math.round(1000 / REQUESTS_PER_SECOND)
 
     async function* pages() {
-      const firstPage = await fetchPage(baseUrl, 1, scoredAfter)
+      const firstPage = await fetchPage(baseUrl, apiKey, 1, scoredAfter)
       const { totalPages } = firstPage
 
       log.info(
@@ -211,7 +231,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
           { datasetId: dataset.id, page, totalPages },
           'LF Criticality Score: fetching page...',
         )
-        const response = await fetchPage(baseUrl, page, scoredAfter)
+        const response = await fetchPage(baseUrl, apiKey, page, scoredAfter)
 
         for (const row of response.data) {
           yield row

@@ -410,8 +410,10 @@ suite_member_work_experiences() {
   check "PUT update Globex title" 200 '.jobTitle == "Senior Software Engineer"'
 
   api v1 GET "/members/${PERSON_ID}/work-experiences"
-  check "GET shows updated title" 200 \
-    ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Senior Software Engineer\""
+  check "GET shows updated title and submitted dates" 200 \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Senior Software Engineer\"" \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .endDate | startswith(\"2022-06-01\")" \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .source | test(\"email-domain\") | not"
 
   api v1 PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:true, verifiedBy:$by}')"
@@ -458,6 +460,40 @@ suite_member_work_experiences() {
 
   api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET empty after delete" 200 '.workExperiences | length == 0'
+
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
+    --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
+      organizationId: $org,
+      jobTitle: "hidden row",
+      verified: false,
+      verifiedBy: $by,
+      source: "email-domain",
+      startDate: "2019-01-01T00:00:00.000Z",
+      endDate: "2024-01-01T00:00:00.000Z"
+    }')"
+  check "POST create hidden Globex email-domain row first" 201
+
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
+    --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
+      organizationId: $org,
+      jobTitle: "Platform Architect",
+      verified: false,
+      verifiedBy: $by,
+      source: "lfxOne",
+      startDate: "2020-01-01T00:00:00.000Z",
+      endDate: "2022-06-01T00:00:00.000Z"
+    }')"
+  check "POST create authoritative Globex stint drops hidden row" 201 \
+    '.jobTitle == "Platform Architect"' \
+    '.endDate | startswith("2022-06-01")' \
+    '.source | test("email-domain") | not'
+
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
+  check "GET shows submitted dates and no hidden source" 200 \
+    '.workExperiences | length == 1' \
+    ".workExperiences[0].jobTitle == \"Platform Architect\"" \
+    '.workExperiences[0].endDate | startswith("2022-06-01")' \
+    '.workExperiences[0].source | test("email-domain") | not'
 }
 
 # ── /members/:id/maintainer-roles ────────────────────────────────────────────

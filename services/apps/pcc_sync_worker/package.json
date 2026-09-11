@@ -7,9 +7,9 @@
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker LOG_LEVEL=debug tsx src/index.ts",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "trigger-export": "SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
     "trigger-export:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
@@ -26,12 +26,14 @@
     "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",
     "@crowd/temporal": "workspace:*",
-    "@temporalio/client": "~1.17.2",
-    "@temporalio/workflow": "~1.17.2",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3"
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

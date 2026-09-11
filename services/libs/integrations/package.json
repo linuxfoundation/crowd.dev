@@ -3,16 +3,18 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/he": "^1.2.0",
-    "@types/node": "^24.13.3",
+    "@types/node": "catalog:",
     "@types/sanitize-html": "^2.9.0",
-    "typescript": "^5.6.3"
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -23,7 +25,7 @@
     "@gitbeaker/rest": "^43.5.0",
     "@octokit/auth-app": "^4.0.13",
     "@octokit/graphql": "^5.0.6",
-    "axios": "^1.19.0",
+    "axios": "catalog:",
     "he": "^1.2.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",

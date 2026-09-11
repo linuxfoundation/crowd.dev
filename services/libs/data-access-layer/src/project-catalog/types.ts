@@ -1,4 +1,16 @@
-export type ProjectCatalogAction = 'auto' | 'evaluate' | 'onboard' | 'skip' | 'unsure'
+export const PROJECT_CATALOG_ACTIONS = [
+  'auto',
+  'evaluate',
+  'onboard',
+  'onboarded',
+  'skip',
+  'unsure',
+  'error',
+] as const
+
+export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
+
+export type ProjectCatalogActionCounts = Record<ProjectCatalogAction, number>
 
 export interface IDbProjectCatalog {
   id: string
@@ -12,6 +24,8 @@ export interface IDbProjectCatalog {
   evaluationReason: string | null
   evaluatedAt: string | null
   onboardedAt: string | null
+  onboardingError: string | null
+  skipReason: string | null
   syncedAt: string | null
   createdAt: string | null
   updatedAt: string | null
@@ -27,17 +41,27 @@ type ProjectCatalogWritable = Pick<
   | 'lfCriticalityScore'
   | 'evaluationResult'
   | 'evaluationReason'
+  | 'onboardingError'
+  | 'skipReason'
 >
 
 export type IDbProjectCatalogCreate = Omit<
   ProjectCatalogWritable,
-  'source' | 'action' | 'lfCriticalityScore' | 'evaluationResult' | 'evaluationReason'
+  | 'source'
+  | 'action'
+  | 'lfCriticalityScore'
+  | 'evaluationResult'
+  | 'evaluationReason'
+  | 'onboardingError'
+  | 'skipReason'
 > & {
   source?: string | null
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
   evaluationResult?: string | null
   evaluationReason?: string | null
+  onboardingError?: string | null
+  skipReason?: string | null
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {

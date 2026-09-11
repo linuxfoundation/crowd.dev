@@ -3,7 +3,7 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import axios from 'axios'
 import { performance } from 'perf_hooks'
 
-import { IS_LLM_ENABLED } from '@crowd/common'
+import { Error404, IS_LLM_ENABLED } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import { pgpQx } from '@crowd/data-access-layer'
 import { ITenant } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker//types'
@@ -110,6 +110,14 @@ export async function mergeMembers(
   try {
     await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
+    if (error instanceof Error404) {
+      svc.log.info(
+        { primaryMemberId, secondaryMemberId },
+        'Skipping merge, member no longer exists',
+      )
+      return
+    }
+
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
   }

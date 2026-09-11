@@ -15,6 +15,7 @@ export interface IFindMemberMergeActionReplacement {
 }
 
 export interface IFindMemberIdentitiesGroupedByPlatformResult {
+  ids: string[]
   platforms: string[]
   types: string[]
   verified: boolean[]

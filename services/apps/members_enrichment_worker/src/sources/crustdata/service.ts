@@ -262,35 +262,87 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   private async getDataUsingWorkEmails(
     emails: string[],
   ): Promise<IMemberEnrichmentDataCrustdata[] | null> {
-    const response = await this.requestEnrich('/person/enrich', {
-      business_emails: emails,
-      fields: PROFILE_FIELDS,
-    })
+    let remaining = emails
 
-    const profiles: IMemberEnrichmentDataCrustdata[] = []
-    const matchedOns: string[] = []
+    // CrustData rejects the entire request when even one business email is invalid.
+    // Remove the rejected emails and retry until the request succeeds or nothing remains.
+    while (remaining.length > 0) {
+      let response: IMemberEnrichmentCrustdataEnrichResponse | null
 
-    for (const result of response || []) {
-      const personData = result.matches?.[0]?.person_data
-      if (!personData || !result.matched_on) {
+      try {
+        response = await this.requestEnrich('/person/enrich', {
+          business_emails: remaining,
+          fields: PROFILE_FIELDS,
+        })
+      } catch (error) {
+        if (!axios.isAxiosError(error) || error.response?.status !== 400) {
+          throw error
+        }
+
+        const crustdataError = (
+          error.response.data as { error?: { type?: string; message?: string } }
+        )?.error
+
+        if (crustdataError?.type !== 'invalid_request') {
+          throw error
+        }
+
+        const match = crustdataError.message?.match(/^Invalid business emails:\s*(.+)$/i)
+
+        if (!match) {
+          throw error
+        }
+
+        // The API returns all invalid emails as a comma-separated list in the error message.
+        // Exclude them so valid emails can still be enriched on the next attempt.
+        const rejectedEmails = new Set(
+          match[1]
+            .split(',')
+            .map((email) => email.trim().toLowerCase())
+            .filter(Boolean),
+        )
+
+        const next = remaining.filter((email) => !rejectedEmails.has(email.toLowerCase()))
+        if (next.length === remaining.length) {
+          throw error
+        }
+
+        remaining = next
+
+        if (remaining.length === 0) {
+          return null
+        }
+
         continue
       }
 
-      matchedOns.push(result.matched_on)
-      profiles.push({
-        ...personData,
-        metadata: {
-          repeatedTimesInDifferentSources: 1,
-          isFromVerifiedSource: true,
-        },
-      })
-    }
+      const profiles: IMemberEnrichmentDataCrustdata[] = []
+      const matchedOns: string[] = []
 
-    if (profiles.length === 0) {
-      return null
-    }
+      for (const result of response || []) {
+        const personData = result.matches?.[0]?.person_data
 
-    return this.withContact(profiles, matchedOns, 'email')
+        if (!personData || !result.matched_on) {
+          continue
+        }
+
+        matchedOns.push(result.matched_on)
+
+        profiles.push({
+          ...personData,
+          metadata: {
+            repeatedTimesInDifferentSources: 1,
+            isFromVerifiedSource: true,
+          },
+        })
+      }
+
+      if (profiles.length === 0) {
+        return null
+      }
+
+      return this.withContact(profiles, matchedOns, 'email')
+    }
   }
 
   private async withContact(

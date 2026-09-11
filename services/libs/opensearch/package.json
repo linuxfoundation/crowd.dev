@@ -3,14 +3,16 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write .",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write .",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -22,7 +24,7 @@
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
     "@opensearch-project/opensearch": "^2.11.0",
-    "axios": "^1.19.0",
+    "axios": "catalog:",
     "lodash.merge": "^4.6.2"
   }
 }

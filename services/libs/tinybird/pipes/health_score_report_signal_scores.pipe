@@ -1,0 +1,160 @@
+DESCRIPTION >
+    - `health_score_report_signal_scores.pipe` serves widget 03 "Where the strongest
+    repositories pull ahead" for the Health Score report (IN-1288, part of epic IN-1276
+    Health Score Coverage).
+    - Returns one row per signal (all 11 catalogued signals): the 80th-percentile ("top 20% of
+    repositories") and median ("typical repository") score, each expressed as a percent of
+    the signal's max points.
+    - Only repos where that signal's availability flag is `1` are counted — a repo with no
+    measured value for a signal doesn't drag its percentile/median down. `commitActivity` has
+    no `*Available` flag in `health_score_v2_signal_detail_ds` — same rule as
+    `health_score_report_signal_availability`: available when `commitsLast6m > 0 OR
+    lastCommitAt IS NOT NULL`.
+    - `signal_key` / `category_key` — same catalogue keys as `health_score_report_signal_availability`.
+    - `p80_pct` — `quantileExact(0.8)(score) / max_pts * 100`.
+    - `median_pct` — `median(score) / max_pts * 100`.
+    - `repos` — count of repos with that signal available (the denominator behind both percentiles).
+    - `max_pts` — the signal's max points, the same literal divisor used in `p80_pct`/`median_pct`.
+    - No parameters — this pipe is not scope-filtered.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_signal_scores_tracked_repos
+SQL >
+    SELECT url FROM repositories FINAL WHERE deletedAt IS NULL AND excluded = false
+
+NODE health_score_report_signal_scores_endpoint
+SQL >
+    SELECT
+        'busFactor' AS signal_key,
+        'maintainerHealth' AS category_key,
+        quantileExact(0.8)
+        (sd.busFactorScore) / 18 * 100 AS p80_pct,
+        median(sd.busFactorScore) / 18 * 100 AS median_pct,
+        count() AS repos,
+        18 AS max_pts
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.busFactorAvailable = 1
+    UNION ALL
+    SELECT
+        'orgDiversity',
+        'maintainerHealth',
+        quantileExact(0.8)
+        (sd.orgDiversityScore) / 7 * 100,
+        median(sd.orgDiversityScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.orgDiversityAvailable = 1
+    UNION ALL
+    SELECT
+        'responsiveness',
+        'maintainerHealth',
+        quantileExact(0.8)
+        (sd.responsivenessScore) / 15 * 100,
+        median(sd.responsivenessScore) / 15 * 100,
+        count(),
+        15
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.responsivenessAvailable = 1
+    UNION ALL
+    SELECT
+        'openVuln',
+        'securitySupplyChain',
+        quantileExact(0.8)
+        (sd.openVulnScore) / 10 * 100,
+        median(sd.openVulnScore) / 10 * 100,
+        count(),
+        10
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.openVulnAvailable = 1
+    UNION ALL
+    SELECT
+        'scorecard',
+        'securitySupplyChain',
+        quantileExact(0.8)
+        (sd.scorecardScorePts) / 7 * 100,
+        median(sd.scorecardScorePts) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.scorecardAvailable = 1
+    UNION ALL
+    SELECT
+        'securityPractices',
+        'securitySupplyChain',
+        quantileExact(0.8)
+        (sd.securityPracticesScore) / 7 * 100,
+        median(sd.securityPracticesScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.securityPracticesAvailable = 1
+    UNION ALL
+    SELECT
+        'dependencyHealth',
+        'securitySupplyChain',
+        quantileExact(0.8)
+        (sd.dependencyHealthScore) / 5 * 100,
+        median(sd.dependencyHealthScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.dependencyHealthAvailable = 1
+    UNION ALL
+    SELECT
+        'releaseCadence',
+        'developmentActivity',
+        quantileExact(0.8)
+        (sd.releaseCadenceScore) / 8 * 100,
+        median(sd.releaseCadenceScore) / 8 * 100,
+        count(),
+        8
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.releaseCadenceAvailable = 1
+    UNION ALL
+    SELECT
+        'commitActivity',
+        'developmentActivity',
+        quantileExact(0.8)
+        (sd.commitActivityScore) / 5 * 100,
+        median(sd.commitActivityScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.commitsLast6m > 0 OR sd.lastCommitAt IS NOT NULL
+    UNION ALL
+    SELECT
+        'issueResolution',
+        'developmentActivity',
+        quantileExact(0.8)
+        (sd.issueResolutionScore) / 7 * 100,
+        median(sd.issueResolutionScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.issueResolutionAvailable = 1
+    UNION ALL
+    SELECT
+        'prMerge',
+        'developmentActivity',
+        quantileExact(0.8)
+        (sd.prMergeScore) / 5 * 100,
+        median(sd.prMergeScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.prMergeAvailable = 1

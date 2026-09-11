@@ -7,9 +7,9 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=exports SERVICE=exports-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,17 +26,19 @@
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
     "@sendgrid/mail": "~8.1.0",
-    "@temporalio/workflow": "~1.17.2",
+    "@temporalio/workflow": "catalog:",
     "aws-sdk": "2.814.0",
     "json2csv": "^5.0.7",
     "lodash.pick": "~4.4.0",
     "moment": "~2.30.1",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "catalog:",
     "@types/uuid": "~9.0.6",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

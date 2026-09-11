@@ -1,9 +1,9 @@
 import axios from 'axios'
 
+import { Error404 } from '@crowd/common'
 import { CommonMemberService, signalMemberUpdate } from '@crowd/common_services'
 import { pgpQx } from '@crowd/data-access-layer'
 import {
-  IMemberIdentity,
   IMemberUnmergeBackup,
   IMemberUnmergePreviewResult,
   IUnmergeBackup,
@@ -22,6 +22,14 @@ export async function mergeMembers(
   try {
     await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
+    if (error instanceof Error404) {
+      svc.log.info(
+        { primaryMemberId, secondaryMemberId },
+        'Skipping merge, member no longer exists',
+      )
+      return
+    }
+
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
   }
@@ -53,7 +61,7 @@ export async function unmergeMembers(
 
 export async function unmergeMembersPreview(
   memberId: string,
-  memberIdentity: IMemberIdentity,
+  identityId: string,
 ): Promise<IUnmergePreviewResult<IMemberUnmergePreviewResult>> {
   const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${memberId}/unmerge/preview`
   const requestOptions = {
@@ -63,9 +71,7 @@ export async function unmergeMembersPreview(
       'Content-Type': 'application/json',
     },
     data: {
-      platform: memberIdentity.platform,
-      value: memberIdentity.value,
-      type: memberIdentity.type,
+      identityId,
     },
   }
 

@@ -1,8 +1,8 @@
 import {
+  finalizeProjectCatalogEvaluation,
   findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
   promoteProjectsToEvaluate,
-  updateProjectCatalog,
 } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -66,14 +66,21 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
     source: project.source,
   })
 
-  await updateProjectCatalog(qx, project.id, {
+  const updated = await finalizeProjectCatalogEvaluation(qx, project.id, {
     action: result.outcome,
     evaluationResult: result.evaluationResult,
     evaluationReason: result.evaluationReason,
-    evaluatedAt: new Date().toISOString(),
   })
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
+
+  if (!updated) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, elapsedSeconds },
+      'Project was moved out of evaluate by a manual request while evaluating, discarding result.',
+    )
+    return
+  }
 
   log.info(
     {

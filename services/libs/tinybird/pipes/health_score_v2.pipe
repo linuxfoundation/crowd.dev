@@ -10,11 +10,10 @@ DESCRIPTION >
     were being re-scanned once per category, and the 6-node version's runtime grew from ~13min to
     20-28+ minutes across repeated runs even with an equivalent-cost SQL change (see git history).
     This node now does a single cheap LEFT JOIN over 5 small pre-computed tables instead.
-    - Applies spec Layer 2 graceful degradation across categories: healthScoreV2 = SUM(available
-    category subtotals) * (100 / SUM(available category max weights)) — each category datasource
-    already carries NULL when its own coverage fell below 40% (Layer 1, done per-category pipe).
-    If all three categories are unavailable, healthScoreV2 itself becomes NULL, per spec, rather
-    than a fabricated 0. Impact stays NULL (not defaulted to 0) when the repo has no packages.
+    - Layer 2: healthScoreV2 = SUM(measured subtotals) + SUM(missing_max × population_median_rate),
+    where each prior is quantileExactOrNull(0.5) over measured-only rows in the category *_ds tables
+    (population_priors NODE). NULL when fewer than 2 categories available (IN-1248). Impact stays NULL
+    when the repo has no packages.
     - lifecycleLabelV2 passes through health_score_v2_lifecycle_ds unmodified (2026-07-24,
     IN-1196) — previously wrapped in `coalesce(l.lifecycleLabelV2, 'active')`, which silently
     converted the upstream pipe's genuine "no usable signal" NULL back into a fabricated 'active'
@@ -22,6 +21,34 @@ DESCRIPTION >
     zero actual join-misses (every repo has a matching lifecycle row), so the coalesce was never
     serving its ostensible "missing row" fallback purpose in practice — it was only erasing real
     NULLs.
+
+NODE population_priors
+SQL >
+    SELECT
+        coalesce(
+            (
+                SELECT quantileExactOrNull(0.5)(maintainerHealthScoreV2 / 40.0)
+                FROM health_score_v2_maintainer_ds
+                WHERE maintainerHealthScoreV2 IS NOT NULL
+            ),
+            0.0
+        ) AS priorMaintainerRate,
+        coalesce(
+            (
+                SELECT quantileExactOrNull(0.5)(securitySupplyChainScoreV2 / 35.0)
+                FROM health_score_v2_security_ds
+                WHERE securitySupplyChainScoreV2 IS NOT NULL
+            ),
+            0.0
+        ) AS priorSecurityRate,
+        coalesce(
+            (
+                SELECT quantileExactOrNull(0.5)(developmentActivityScoreV2 / 25.0)
+                FROM health_score_v2_development_ds
+                WHERE developmentActivityScoreV2 IS NOT NULL
+            ),
+            0.0
+        ) AS priorDevelopmentRate
 
 NODE health_score_v2_results
 SQL >
@@ -31,10 +58,19 @@ SQL >
         securitySupplyChainScoreV2,
         developmentActivityScoreV2,
         if(
-            coveredCategoryWeight = 0,
+            coveredCategoryCount < 2,
             NULL,
             toNullable(
-                toUInt8(round(least(100.0, availableCategorySum * (100.0 / coveredCategoryWeight))))
+                toUInt8(
+                    round(
+                        least(
+                            100.0,
+                            coalesce(maintainerHealthScoreV2, 40 * priorMaintainerRate)
+                            + coalesce(securitySupplyChainScoreV2, 35 * priorSecurityRate)
+                            + coalesce(developmentActivityScoreV2, 25 * priorDevelopmentRate)
+                        )
+                    )
+                )
             )
         ) AS healthScoreV2,
         lifecycleLabelV2,
@@ -50,15 +86,10 @@ SQL >
                 s.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
                 d.developmentActivityScoreV2 AS developmentActivityScoreV2,
                 (
-                    coalesce(m.maintainerHealthScoreV2, 0)
-                    + coalesce(s.securitySupplyChainScoreV2, 0)
-                    + coalesce(d.developmentActivityScoreV2, 0)
-                ) AS availableCategorySum,
-                (
-                    if(m.maintainerHealthScoreV2 IS NOT NULL, 40, 0)
-                    + if(s.securitySupplyChainScoreV2 IS NOT NULL, 35, 0)
-                    + if(d.developmentActivityScoreV2 IS NOT NULL, 25, 0)
-                ) AS coveredCategoryWeight,
+                    if(m.maintainerHealthScoreV2 IS NOT NULL, 1, 0)
+                    + if(s.securitySupplyChainScoreV2 IS NOT NULL, 1, 0)
+                    + if(d.developmentActivityScoreV2 IS NOT NULL, 1, 0)
+                ) AS coveredCategoryCount,
                 l.lifecycleLabelV2 AS lifecycleLabelV2,
                 i.impactScoreRaw AS impactScoreRaw
             FROM
@@ -73,6 +104,7 @@ SQL >
             LEFT JOIN health_score_v2_lifecycle_ds AS l ON l.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_impact_ds AS i ON i.repoUrl = base.repoUrl
         )
+    CROSS JOIN population_priors
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_repo_copy_ds
