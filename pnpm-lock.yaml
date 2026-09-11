@@ -256,8 +256,8 @@ importers:
         specifier: ^4.1.1
         version: 4.2.0
       csv-parse:
-        specifier: ^5.5.6
-        version: 5.5.6
+        specifier: ^7.0.2
+        version: 7.0.2
       dotenv:
         specifier: 8.2.0
         version: 8.2.0
@@ -567,8 +567,8 @@ importers:
         specifier: 'catalog:'
         version: 1.17.2
       csv-parse:
-        specifier: ^5.5.6
-        version: 5.5.6
+        specifier: ^7.0.2
+        version: 7.0.2
       tsx:
         specifier: 'catalog:'
         version: 4.23.12
@@ -1820,8 +1820,8 @@ importers:
         specifier: 'catalog:'
         version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       csv-parse:
-        specifier: ^5.5.6
-        version: 5.5.6
+        specifier: ^7.0.2
+        version: 7.0.2
       moment:
         specifier: ~2.29.4
         version: 2.29.4
@@ -6922,8 +6922,8 @@ packages:
     resolution: {integrity: sha512-HTUrgRJ7r4dsZKU6GjmpfRK1O76h97Z8MfS1G0FozR+oF2kG6Vfe8JE6zwrkbxigziPHinCJ+gCPjA9EaBDtRw==}
     engines: {node: '>= 6'}
 
-  csv-parse@5.5.6:
-    resolution: {integrity: sha512-uNpm30m/AGSkLxxy7d9yRXpJQFrZzVWLFBkS+6ngPcZkw/5k3L/jjFuj7tVnEpRn+QgmiXr21nDlhCiUK4ij2A==}
+  csv-parse@7.0.2:
+    resolution: {integrity: sha512-uKZghv9UmPkMVLYy//KZ9HFAIJsl7wkhoEdIL0+rhuSY9pZQlhaeGEDPIe+/w7eh81MOql8Q/9+inAGWG6ZHYA==}
 
   d@1.0.2:
     resolution: {integrity: sha512-MOqHvMWF9/9MX6nza0KgvFH4HpMU0EF5uUDXqX/BtxtU8NfB0QzRtJ8Oe/6SuS4kbhyzVJwjd97EA4PKrzJ8bw==}
@@ -16934,7 +16934,7 @@ snapshots:
 
   css-what@6.1.0: {}
 
-  csv-parse@5.5.6: {}
+  csv-parse@7.0.2: {}
 
   d@1.0.2:
     dependencies:
