@@ -17,11 +17,12 @@ on the caps and the observability built around the pipeline, not on a reviewer.
 ## Decision
 
 Three independent Temporal workers run daily on staggered schedules, all keyed off the
-`projectCatalog` table as the single shared state machine, each capped at 20 projects per run
-so the team can watch pipeline output closely before raising the volume. A manual API lets any
-project be injected into any stage out of band, with implicit priority over the automatic
-batch. The external LF Criticality Score service, one of the discovery sources, is now
-protected by a manually-issued, hashed API key.
+`projectCatalog` table as the single shared state machine. Discovery caps each of its sources at
+20 new projects per run; evaluation and onboarding each cap their own run at 20 projects — all
+deliberately conservative so the team can watch pipeline output closely before raising the
+volume. A manual API lets any project be injected into any stage out of band, with implicit
+priority over the automatic batch. The external LF Criticality Score service, one of the
+discovery sources, is now protected by a manually-issued, hashed API key.
 
 ```mermaid
 flowchart LR
@@ -126,10 +127,11 @@ in order:
    `forkedFrom`, and avatar collected above, mapping the repo URL to the new segment id — this
    is what actually starts data ingestion for the project going forward.
 
-Each backend call has a 30‑second timeout, each GitHub call a 10‑second timeout. Any failure at
-any step aborts that project's onboarding and is caught by the workflow (see below); nothing is
-onboarded partially — the segment can exist without the GitHub integration retried later, since
-step 1 finds it again instead of recreating it.
+Each backend call has a 30‑second timeout, each GitHub call a 10‑second timeout. A failure at
+step 4 leaves a recoverable partial side effect: the segment created in step 1 stays in place
+without a GitHub integration, the project is marked `action = 'error'`, and a retry (the next
+scheduled run, or a manual `POST /project-catalog` with `action: 'onboard'`) picks up from
+there — step 1 finds the existing segment instead of recreating it, so retries are safe.
 
 The workflow loops sequentially with a try/catch per project; a terminal failure calls
 `markProjectOnboardingFailed` (`action = 'error'`, `onboardingError` set) inside its own
@@ -146,20 +148,26 @@ right pattern, not a shortcut to revisit.
 
 ### The numbers: 20 projects a day, by design
 
-- Discovery caps new projects at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default **20**, per
-  source, per run — `src/config.ts:11-16`); rows the source returns that already exist in
-  `projectCatalog` don't count against the cap.
-- Evaluation caps the `evaluate` queue at `evaluateLimit: 20` and processes `batchSize: 20`.
-- Onboarding processes `batchSize: 20`.
+- Discovery caps new projects at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default **20**) **per
+  source, per run** (`src/config.ts:11-16`); rows the source returns that already exist in
+  `projectCatalog` don't count against the cap. With both sources enabled, one discovery run
+  can add up to 40 new rows in `action = 'auto'`.
+- Evaluation caps the `evaluate` queue at `evaluateLimit: 20` and processes `batchSize: 20` per
+  run — this is the real bottleneck of the chain, since it's the stage that decides onboard vs
+  skip.
+- Onboarding processes `batchSize: 20` per run.
 
-The three caps are matched on purpose: a cohort of at most 20 projects moves through the whole
-chain in the same day (00:00 → 04:00 → 08:00 UTC). This is a deliberate observation window, not
-a technical ceiling — without a human gate, a bad decision at any stage becomes a real public
-project or a real skipped one, and 20/day is the volume the team can still watch closely via
-the daily Slack report while confidence in the AI evaluation and discovery sources builds up.
-Raising it later is a change to three constants, not to the architecture. (The `evaluateProjects`
-workflow's own defaults are 50/50 when triggered manually with no arguments from the Temporal
-UI — the schedule itself always passes 20/20.)
+The evaluation and onboarding caps are matched on purpose: at most 20 projects a day are decided
+on and onboarded, moving through both stages in the same run (04:00 → 08:00 UTC). Discovery
+feeding in up to 40/day is not a contradiction — any excess simply waits in `action = 'auto'`
+and is drained over the following days, in source-priority order. This is a deliberate
+observation window, not a technical ceiling — without a human gate, a bad decision at any stage
+becomes a real public project or a real skipped one, and 20/day at the decision point is the
+volume the team can still watch closely via the daily Slack report while confidence in the AI
+evaluation and discovery sources builds up. Raising it later means adjusting the relevant
+per-stage limit, not the architecture. (The `evaluateProjects` workflow's own defaults are 50/50
+when triggered manually with no arguments from the Temporal UI — the schedule itself always
+passes 20/20.)
 
 ### Manual override: `POST /project-catalog`
 
@@ -247,7 +255,8 @@ onboarded" for a project CDP has no record of) (#4589, #4606).
   pipeline.
 - The manual API covers both "evaluate this now" and "the AI got it wrong, onboard it anyway"
   without separate code paths.
-- Throughput is tunable via three constants, without touching the architecture.
+- Throughput is tunable per stage (discovery's env limit, evaluation's `evaluateLimit`/
+  `batchSize`, onboarding's `batchSize`), without touching the architecture.
 
 ### Negative
 
