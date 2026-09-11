@@ -30,6 +30,39 @@ LANGUAGE sql IMMUTABLE AS $$
     END;
 $$;
 
+-- Mirrors go/activities.ts goRepoOwner(): canonicalizeRepoUrl classifies codeberg.org,
+-- gitea.com and git.sr.ht as host='other' (unknown forges, same as every other ecosystem),
+-- but Go's own ingest still treats them as VCS hosts and extracts the owner from the URL
+-- path directly. Only Go does this — every other ecosystem's 'other' hosts stay ownerless.
+CREATE OR REPLACE FUNCTION package_repo_go_repo_owner(p_host text, p_url text)
+RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN p_host <> 'other' THEN package_repo_owner_from_url(p_host, p_url)
+        WHEN p_url ~* '^https?://(codeberg\.org|gitea\.com|git\.sr\.ht)/'
+            THEN NULLIF((regexp_split_to_array(regexp_replace(p_url, '^https?://[^/]+/', ''), '/'))[1], '')
+        ELSE NULL
+    END;
+$$;
+
+-- Mirrors go/activities.ts goModuleOwner(): Go has no packages.namespace (that column stays
+-- NULL for this ecosystem) — online ingest instead derives the owner from the module path
+-- itself (packages.name), and only when it's rooted at a real VCS host, since vanity import
+-- paths (k8s.io/client-go, gopkg.in/yaml.v2) name the package, not the owner.
+CREATE OR REPLACE FUNCTION package_repo_go_module_owner(p_name text)
+RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN array_length(regexp_split_to_array(p_name, '/'), 1) >= 2
+             AND lower((regexp_split_to_array(p_name, '/'))[1]) = ANY (ARRAY[
+                 'github.com', 'gitlab.com', 'bitbucket.org',
+                 'codeberg.org', 'gitea.com', 'git.sr.ht'
+             ])
+        THEN NULLIF((regexp_split_to_array(p_name, '/'))[2], '')
+        ELSE NULL
+    END;
+$$;
+
 -- Mirrors ownershipMatch.ts STRUCTURAL_SEGMENTS. Keep both lists in sync.
 CREATE OR REPLACE FUNCTION package_repo_structural_segments()
 RETURNS text[]
@@ -109,9 +142,15 @@ BEGIN
             ),
             candidates AS (
                 -- Owner parsed straight from the URL (package_repo_owner_from_url), not the stored
-                -- repos.owner column — see that function's comment for why.
+                -- repos.owner column — see that function's comment for why. Go uses its own
+                -- extraction (package_repo_go_repo_owner): its ingest still resolves owners on
+                -- codeberg.org/gitea.com/git.sr.ht even though canonicalizeRepoUrl.ts classifies
+                -- them as host='other' for every ecosystem.
                 SELECT b.id,
-                       package_repo_owner_from_url(r.host, r.url) AS repo_owner,
+                       CASE WHEN p.ecosystem = 'go'
+                            THEN package_repo_go_repo_owner(r.host, r.url)
+                            ELSE package_repo_owner_from_url(r.host, r.url)
+                       END AS repo_owner,
                        -- Most ecosystems pass every maintainer role to matchOwnership() (NuGet
                        -- authors, Maven developers, ...); npm/upsertPackage.ts filters to
                        -- role='maintainer' only, so mirror that restriction here. RubyGems is
@@ -123,17 +162,23 @@ BEGIN
                        -- username (runMavenEnrichmentLoop.ts), and the DB has no way to tell that
                        -- fallback apart from a real <id> that happens to equal the email/display
                        -- name — value-equality heuristics misclassify real usernames, and a false
-                       -- 'unmatched' costs more (-0.25) than a lost 'matched' would gain.
+                       -- 'unmatched' costs more (-0.25) than a lost 'matched' would gain. Go is
+                       -- excluded too: go/activities.ts never passes maintainer evidence to
+                       -- matchOwnership() at all, using packages.name (the module path) instead —
+                       -- see package_repo_go_module_owner below.
                        -- Email-shaped identities are rejected only when a non-whitespace char
                        -- appears on both sides of '@' (ownershipMatch.ts's /\S@\S/), matching
                        -- handles like '@vercel' still count.
-                       package_repo_namespace_candidates(p.namespace)
+                       (CASE WHEN p.ecosystem = 'go'
+                             THEN ARRAY[package_repo_go_module_owner(p.name)]
+                             ELSE package_repo_namespace_candidates(p.namespace)
+                        END)
                          || COALESCE(ARRAY(
                               SELECT m.username
                                 FROM package_maintainers pm
                                 JOIN maintainers m ON m.id = pm.maintainer_id
                                WHERE pm.package_id = cur.package_id
-                                 AND p.ecosystem NOT IN ('rubygems', 'maven')
+                                 AND p.ecosystem NOT IN ('rubygems', 'maven', 'go')
                                  AND (p.ecosystem <> 'npm' OR pm.role = 'maintainer')
                                  AND m.username !~ '\S@\S'
                             ), ARRAY[]::text[]) AS owner_candidates
