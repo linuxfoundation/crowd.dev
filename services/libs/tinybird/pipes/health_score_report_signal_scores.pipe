@@ -70,7 +70,7 @@ SQL >
         (sd.openVulnScore) / 10 * 100,
         median(sd.openVulnScore) / 10 * 100,
         count(),
-        12
+        10
     FROM health_score_report_signal_scores_tracked_repos AS r
     JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
     WHERE sd.openVulnAvailable = 1
@@ -82,7 +82,7 @@ SQL >
         (sd.scorecardScorePts) / 7 * 100,
         median(sd.scorecardScorePts) / 7 * 100,
         count(),
-        8
+        7
     FROM health_score_report_signal_scores_tracked_repos AS r
     JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
     WHERE sd.scorecardAvailable = 1
@@ -94,7 +94,7 @@ SQL >
         (sd.securityPracticesScore) / 7 * 100,
         median(sd.securityPracticesScore) / 7 * 100,
         count(),
-        8
+        7
     FROM health_score_report_signal_scores_tracked_repos AS r
     JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
     WHERE sd.securityPracticesAvailable = 1
@@ -106,7 +106,7 @@ SQL >
         (sd.dependencyHealthScore) / 5 * 100,
         median(sd.dependencyHealthScore) / 5 * 100,
         count(),
-        7
+        5
     FROM health_score_report_signal_scores_tracked_repos AS r
     JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
     WHERE sd.dependencyHealthAvailable = 1
