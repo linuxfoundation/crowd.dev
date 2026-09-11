@@ -68,7 +68,7 @@ function buildContentBlocks(content: string | SlackMessageSection[]): SlackBlock
 
   const blocks: SlackBlock[] = []
   for (const section of content) {
-    const fullText = `*${section.title}*\n${section.text}`
+    const fullText = section.title ? `*${section.title}*\n${section.text}` : section.text
     for (const block of splitIntoSectionBlocks(fullText)) {
       blocks.push(block)
     }
