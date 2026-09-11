@@ -86,6 +86,9 @@ export async function fetchAndSaveStarSnapshot(
   if (json.errors?.length) {
     const [error] = json.errors
     const message = `GraphQL error fetching stargazer count for ${repoUrl}: ${error.message ?? 'unknown error'}`
+    if (error.message?.toLowerCase().includes('rate limit')) {
+      throw new Error(message)
+    }
     if (error.type && NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(error.type)) {
       throw ApplicationFailure.nonRetryable(message, error.type)
     }
