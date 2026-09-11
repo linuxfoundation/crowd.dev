@@ -21,7 +21,7 @@
     "@crowd/logging": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
-    "axios": "^1.6.8",
+    "axios": "catalog:",
     "jsonwebtoken": "^9.0.0",
     "zod": "^3.22.0"
   }
