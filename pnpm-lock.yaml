@@ -2039,6 +2039,9 @@ importers:
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.17.2
+      '@temporalio/workflow':
+        specifier: 'catalog:'
+        version: 1.17.2
       tsx:
         specifier: 'catalog:'
         version: 4.23.12

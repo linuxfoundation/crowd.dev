@@ -46,9 +46,20 @@ export async function fetchAndSaveStarSnapshot(
     body: JSON.stringify({ query: STARGAZER_COUNT_QUERY, variables: { owner, name } }),
   })
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     throw ApplicationFailure.nonRetryable(
-      `GitHub auth failure (${response.status}) fetching stargazer count for ${repoUrl}`,
+      `GitHub auth failure (401) fetching stargazer count for ${repoUrl}`,
+      'AUTH_ERROR',
+    )
+  }
+
+  if (response.status === 403) {
+    const body = await response.text()
+    if (body.toLowerCase().includes('rate limit')) {
+      throw new Error(`GitHub rate limit hit fetching stargazer count for ${repoUrl}`)
+    }
+    throw ApplicationFailure.nonRetryable(
+      `GitHub auth failure (403) fetching stargazer count for ${repoUrl}`,
       'AUTH_ERROR',
     )
   }
