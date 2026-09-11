@@ -14,6 +14,20 @@
 -- matchOwnership() by design and are left alone. Follows the chunked-procedure shape
 -- of rescore_package_repo_confidence (V1788307300).
 
+-- Mirrors ownershipMatch.ts repoOwnerFromCanonical(): the first path segment after the
+-- host, parsed straight from the URL. getOrCreateRepoByUrl() never populates repos.owner
+-- at ingest (a later GitHub-only enricher does), so trusting that column here would leave
+-- npm/pypi/packagist/nuget/go/cargo rows — and all gitlab/bitbucket rows, never enriched —
+-- wrongly stuck on no_evidence. host='other' has no reliable owner segment, same as ingest.
+CREATE OR REPLACE FUNCTION package_repo_owner_from_url(p_host text, p_url text)
+RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN p_host = 'other' OR p_url IS NULL THEN NULL
+        ELSE NULLIF((regexp_split_to_array(regexp_replace(p_url, '^https?://[^/]+/', ''), '/'))[1], '')
+    END;
+$$;
+
 -- Mirrors ownershipMatch.ts STRUCTURAL_SEGMENTS. Keep both lists in sync.
 CREATE OR REPLACE FUNCTION package_repo_structural_segments()
 RETURNS text[]
@@ -92,12 +106,10 @@ BEGIN
                    FOR UPDATE
             ),
             candidates AS (
-                -- host='other' repo URLs (svn/gitbox/apache-style, not github/gitlab/bitbucket)
-                -- don't carry a reliable owner segment; repoOwnerFromCanonical() in ownershipMatch.ts
-                -- returns NULL for these at ingest time so they resolve to no_evidence, never a false
-                -- 'unmatched'. Mirror that here instead of trusting repos.owner for them.
+                -- Owner parsed straight from the URL (package_repo_owner_from_url), not the stored
+                -- repos.owner column — see that function's comment for why.
                 SELECT b.id,
-                       CASE WHEN r.host = 'other' THEN NULL ELSE r.owner END AS repo_owner,
+                       package_repo_owner_from_url(r.host, r.url) AS repo_owner,
                        -- Most ecosystems pass every maintainer role to matchOwnership() (NuGet
                        -- authors, Maven developers, ...); npm/upsertPackage.ts filters to
                        -- role='maintainer' only, so mirror that restriction here. RubyGems is

@@ -110,9 +110,11 @@ async function insertFixture(
   )
 
   const host = f.host ?? 'github'
+  // The backfill parses owner from the URL path (package_repo_owner_from_url), not the
+  // stored owner column, so repoOwner must appear in the URL for host != 'other'.
   const repoUrl =
     host === 'github'
-      ? `https://github.com/${FIXTURE_TAG}/${key}`
+      ? `https://github.com/${f.repoOwner}/${FIXTURE_TAG}-${key}`
       : `https://svn.apache.org/${FIXTURE_TAG}/${key}`
   const repo = await qx.selectOne(
     `
