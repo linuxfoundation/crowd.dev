@@ -10,6 +10,8 @@ export const PROJECT_CATALOG_ACTIONS = [
 
 export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
 
+export type ProjectCatalogActionCounts = Record<ProjectCatalogAction, number>
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string

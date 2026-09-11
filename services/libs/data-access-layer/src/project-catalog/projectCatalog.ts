@@ -5,7 +5,9 @@ import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,
   IDbProjectCatalogUpdate,
+  PROJECT_CATALOG_ACTIONS,
   ProjectCatalogAction,
+  ProjectCatalogActionCounts,
 } from './types'
 
 const PROJECT_CATALOG_COLUMNS = [
@@ -160,6 +162,30 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
     `,
   )
   return parseInt(result.count, 10)
+}
+
+export async function countProjectCatalogByActions(
+  qx: QueryExecutor,
+): Promise<ProjectCatalogActionCounts> {
+  const rows: { action: ProjectCatalogAction; count: number }[] = await qx.select(
+    `
+    SELECT action, COUNT(*)::int AS count
+    FROM "projectCatalog"
+    GROUP BY action
+    `,
+  )
+
+  const counts = Object.fromEntries(
+    PROJECT_CATALOG_ACTIONS.map((action) => [action, 0]),
+  ) as ProjectCatalogActionCounts
+
+  for (const row of rows) {
+    if (row.action in counts) {
+      counts[row.action] = row.count
+    }
+  }
+
+  return counts
 }
 
 export async function countProjectCatalogByAction(
