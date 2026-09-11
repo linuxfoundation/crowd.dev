@@ -18,12 +18,14 @@
 -- host, parsed straight from the URL. getOrCreateRepoByUrl() never populates repos.owner
 -- at ingest (a later GitHub-only enricher does), so trusting that column here would leave
 -- npm/pypi/packagist/nuget/go/cargo rows — and all gitlab/bitbucket rows, never enriched —
--- wrongly stuck on no_evidence. host='other' has no reliable owner segment, same as ingest.
+-- wrongly stuck on no_evidence. host='other'/'svn'/'gerrit' have no reliable owner segment
+-- (maven/normalize.ts stores these with owner=null; their path's first segment is a fixed
+-- forge artifact like 'repos' or 'gerrit', not an owner), same as ingest.
 CREATE OR REPLACE FUNCTION package_repo_owner_from_url(p_host text, p_url text)
 RETURNS text
 LANGUAGE sql IMMUTABLE AS $$
     SELECT CASE
-        WHEN p_host = 'other' OR p_url IS NULL THEN NULL
+        WHEN p_host IN ('other', 'svn', 'gerrit') OR p_url IS NULL THEN NULL
         ELSE NULLIF((regexp_split_to_array(regexp_replace(p_url, '^https?://[^/]+/', ''), '/'))[1], '')
     END;
 $$;
@@ -119,7 +121,10 @@ BEGIN
                        -- on the next sync.
                        -- Email-shaped identities are rejected only when a non-whitespace char
                        -- appears on both sides of '@' (ownershipMatch.ts's /\S@\S/), matching
-                       -- handles like '@vercel' still count.
+                       -- handles like '@vercel' still count. Maven's upsertMaintainer falls back
+                       -- to email/displayName in the username column when a person has no real
+                       -- username (runMavenEnrichmentLoop.ts), but only passes real usernames to
+                       -- matchOwnership() — exclude rows where username is that fallback value.
                        package_repo_namespace_candidates(p.namespace)
                          || COALESCE(ARRAY(
                               SELECT m.username
@@ -128,6 +133,9 @@ BEGIN
                                WHERE pm.package_id = cur.package_id
                                  AND p.ecosystem <> 'rubygems'
                                  AND (p.ecosystem <> 'npm' OR pm.role = 'maintainer')
+                                 AND (p.ecosystem <> 'maven'
+                                      OR (m.username IS DISTINCT FROM m.email
+                                          AND m.username IS DISTINCT FROM m.display_name))
                                  AND m.username !~ '\S@\S'
                             ), ARRAY[]::text[]) AS owner_candidates
                   FROM batch b
