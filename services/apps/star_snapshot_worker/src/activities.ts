@@ -1,3 +1,3 @@
-import { fetchAndSaveStarSnapshot } from './activities/index'
+import { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot } from './activities/index'
 
-export { fetchAndSaveStarSnapshot }
+export { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot }
