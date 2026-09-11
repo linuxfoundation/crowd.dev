@@ -29,7 +29,7 @@
     "he": "^1.2.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",
-    "sanitize-html": "^2.10.0",
+    "sanitize-html": "^2.17.7",
     "verify-github-webhook": "^1.0.1"
   }
 }
