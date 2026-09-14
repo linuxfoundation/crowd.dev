@@ -9,6 +9,20 @@ DESCRIPTION >
 
 TAGS "Repository URLs", "Gerrit", "Health Score v2"
 
+NODE repos_channels_copy_deduplicated
+DESCRIPTION >
+    One canonical row per case-insensitive URL, keeping the most recently
+    updated of any case-only-duplicate `repositories` rows.
+
+SQL >
+    SELECT
+        argMax(url, updatedAt) AS url,
+        argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
+        argMax(excluded, updatedAt) AS excluded
+    FROM repositories FINAL
+    WHERE deletedAt IS NULL
+    GROUP BY lower(url)
+
 NODE repos_channels_copy_calc
 SQL >
     SELECT
@@ -16,9 +30,8 @@ SQL >
         r.url AS channel,
         (i.platform = 'gerrit') AS isGerrit,
         r.excluded AS isExcluded
-    FROM repositories r FINAL
+    FROM repos_channels_copy_deduplicated r
     LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE r.deletedAt IS NULL
     UNION ALL
     SELECT
         r.url AS repoUrl,
@@ -38,9 +51,9 @@ SQL >
         END AS channel,
         1 AS isGerrit,
         r.excluded AS isExcluded
-    FROM repositories r FINAL
+    FROM repos_channels_copy_deduplicated r
     INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
+    WHERE i.platform = 'gerrit'
 
 TYPE COPY
 TARGET_DATASOURCE repos_channels_ds

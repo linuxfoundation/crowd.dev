@@ -10,6 +10,23 @@ DESCRIPTION >
 
 TAGS "Repository URLs", "Gerrit"
 
+NODE repos_to_channels_deduplicated
+DESCRIPTION >
+    One canonical row per case-insensitive URL, keeping the most recently
+    updated of any case-only-duplicate `repositories` rows.
+
+SQL >
+    SELECT
+        argMax(url, updatedAt) AS url,
+        argMax(segmentId, updatedAt) AS segmentId,
+        argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
+        argMax(insightsProjectId, updatedAt) AS insightsProjectId,
+        argMax(enabled, updatedAt) AS enabled,
+        argMax(excluded, updatedAt) AS excluded
+    FROM repositories FINAL
+    WHERE isNull (deletedAt)
+    GROUP BY lower(url)
+
 NODE repos_to_expand
 DESCRIPTION >
     Get repository URLs to expand from repos param, or default to all enabled repositories
@@ -24,10 +41,10 @@ SQL >
             '' AS segmentId
     {% else %}
         SELECT r.url AS url, r.segmentId AS segmentId
-        FROM repositories r FINAL
+        FROM repos_to_channels_deduplicated r
         INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
         WHERE
-            isNull (r.deletedAt) AND r.enabled = true AND isNull (i.deletedAt) AND i.enabled = 1
+            r.enabled = true AND isNull (i.deletedAt) AND i.enabled = 1
             {% if defined(excluded) and excluded %} AND r.excluded = true
             {% end %}
     {% end %}
@@ -38,12 +55,11 @@ DESCRIPTION >
 
 SQL >
     SELECT r.url AS url, r.segmentId AS segmentId
-    FROM repositories r FINAL
+    FROM repos_to_channels_deduplicated r
     JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
     INNER JOIN insightsProjects p FINAL ON r.insightsProjectId = p.id
     WHERE
         i.platform = 'gerrit'
-        AND isNull (r.deletedAt)
         AND r.enabled = true
         AND isNull (p.deletedAt)
         AND p.enabled = 1
