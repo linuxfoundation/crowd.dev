@@ -59,6 +59,26 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
   },
 }
 
+// Looks up modelId against LLM_MODEL_PRICING_MAP's enum values by their string
+// value, so it also works for a model id read from an external API response
+// rather than an LlmModelType constant. Returns null (not 0) for an unknown
+// model id, so a pricing gap is visible instead of silently costing nothing.
+export function estimateLlmCostUsd(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+): number | null {
+  const pricing = LLM_MODEL_PRICING_MAP[modelId as LlmModelType]
+  if (!pricing) {
+    return null
+  }
+
+  return (
+    (inputTokens / 1000) * pricing.costPer1000InputTokens +
+    (outputTokens / 1000) * pricing.costPer1000OutputTokens
+  )
+}
+
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
