@@ -35,14 +35,14 @@ describe('finishPipelineRun', () => {
         calls: 20,
         inputTokens: 21713,
         outputTokens: 907,
-        costUsd: 0.078753,
+        costUsd: 0.078744,
         seconds: 20.36,
         models: {
           'us.anthropic.claude-sonnet-4-20250514-v1:0': {
             calls: 20,
             inputTokens: 21713,
             outputTokens: 907,
-            costUsd: 0.078753,
+            costUsd: 0.078744,
           },
         },
       },
@@ -56,13 +56,13 @@ describe('finishPipelineRun', () => {
     expect(finished?.failed).toBe(2)
     expect(finished?.evaluatorCalls).toBe(20)
     expect(finished?.evaluatorInputTokens).toBe(21713)
-    expect(Number(finished?.evaluatorCostUsd)).toBeCloseTo(0.078753, 6)
+    expect(Number(finished?.evaluatorCostUsd)).toBeCloseTo(0.078744, 6)
     expect(finished?.evaluatorModels).toEqual({
       'us.anthropic.claude-sonnet-4-20250514-v1:0': {
         calls: 20,
         inputTokens: 21713,
         outputTokens: 907,
-        costUsd: 0.078753,
+        costUsd: 0.078744,
       },
     })
   })

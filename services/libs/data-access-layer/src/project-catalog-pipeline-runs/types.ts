@@ -6,6 +6,10 @@ export const PIPELINE_RUN_STATUSES = ['running', 'completed', 'failed'] as const
 
 export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number]
 
+export const PIPELINE_RUN_TERMINAL_STATUSES = ['completed', 'failed'] as const
+
+export type PipelineRunTerminalStatus = (typeof PIPELINE_RUN_TERMINAL_STATUSES)[number]
+
 export interface IPipelineRunEvaluatorModelUsage {
   calls: number
   inputTokens: number
@@ -55,7 +59,7 @@ export interface IPipelineRunEvaluatorUsage {
 }
 
 export interface IPipelineRunFinish {
-  status: PipelineRunStatus
+  status: PipelineRunTerminalStatus
   totalCandidates?: number | null
   succeeded?: number | null
   failed?: number | null

@@ -1,7 +1,12 @@
 import { QueryExecutor } from '../queryExecutor'
-import { prepareSelectColumns } from '../utils'
 
-import { IDbPipelineRun, IPipelineRunFilter, IPipelineRunFinish, IPipelineRunStart } from './types'
+import {
+  IDbPipelineRun,
+  IPipelineRunFilter,
+  IPipelineRunFinish,
+  IPipelineRunStart,
+  PipelineRunStage,
+} from './types'
 
 const PIPELINE_RUN_COLUMNS = [
   'id',
@@ -29,6 +34,15 @@ const PIPELINE_RUN_COLUMNS = [
   'updatedAt',
 ]
 
+// evaluatorInputTokens/evaluatorOutputTokens are BIGINT: the shared pg connection
+// only registers type parsers for numeric/int4, so BIGINT comes back as a string
+// unless cast to numeric here (see services/libs/database/src/connection.ts).
+const BIGINT_COLUMNS = new Set(['evaluatorInputTokens', 'evaluatorOutputTokens'])
+
+const PIPELINE_RUN_RETURNING_COLUMNS = PIPELINE_RUN_COLUMNS.map((c) =>
+  BIGINT_COLUMNS.has(c) ? `"${c}"::numeric AS "${c}"` : `"${c}"`,
+).join(',\n')
+
 export async function startPipelineRun(
   qx: QueryExecutor,
   data: IPipelineRunStart,
@@ -51,7 +65,7 @@ export async function startPipelineRun(
       NOW(),
       NOW()
     )
-    RETURNING ${prepareSelectColumns(PIPELINE_RUN_COLUMNS)}
+    RETURNING ${PIPELINE_RUN_RETURNING_COLUMNS}
     `,
     {
       stage: data.stage,
@@ -92,7 +106,7 @@ export async function finishPipelineRun(
       "elapsedSeconds" = EXTRACT(EPOCH FROM (NOW() - "startedAt")),
       "updatedAt" = NOW()
     WHERE id = $(id) AND "finishedAt" IS NULL
-    RETURNING ${prepareSelectColumns(PIPELINE_RUN_COLUMNS)}
+    RETURNING ${PIPELINE_RUN_RETURNING_COLUMNS}
     `,
     {
       id,
@@ -116,11 +130,11 @@ export async function finishPipelineRun(
 
 export async function findLatestPipelineRun(
   qx: QueryExecutor,
-  stage: string,
+  stage: PipelineRunStage,
 ): Promise<IDbPipelineRun | null> {
   return qx.selectOneOrNone(
     `
-    SELECT ${prepareSelectColumns(PIPELINE_RUN_COLUMNS)}
+    SELECT ${PIPELINE_RUN_RETURNING_COLUMNS}
     FROM "projectCatalogPipelineRuns"
     WHERE "stage" = $(stage)
     ORDER BY "startedAt" DESC
@@ -138,7 +152,7 @@ export async function findPipelineRuns(
 
   return qx.select(
     `
-    SELECT ${prepareSelectColumns(PIPELINE_RUN_COLUMNS)}
+    SELECT ${PIPELINE_RUN_RETURNING_COLUMNS}
     FROM "projectCatalogPipelineRuns"
     WHERE ($(stage)::text IS NULL OR "stage" = $(stage))
       AND ($(from)::timestamptz IS NULL OR "startedAt" >= $(from))
