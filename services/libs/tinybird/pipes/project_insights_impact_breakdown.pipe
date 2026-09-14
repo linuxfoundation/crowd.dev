@@ -39,7 +39,10 @@ SQL >
         downloadsBand,
         centrality,
         centralityTopPct,
-        centralityBand
+        centralityBand,
+        sonatypePopularityScore,
+        sonatypePopularityScoreTopPct,
+        sonatypePopularityScoreBand
     FROM project_insights_impact_breakdown_ds
     WHERE
         1 = 1

@@ -1,3 +1,4 @@
+import { rescorePackageReposForRepoState } from '@crowd/data-access-layer/src/packages'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { LightRepoResult } from './types'
@@ -8,37 +9,8 @@ export async function bulkUpdateEnrichedRepos(
 ): Promise<void> {
   if (rows.length === 0) return
 
-  // Single round-trip: unpack rows from JSON, update all in one query.
-  // NULLIF handles empty strings from JSON serialisation of null timestamps.
-  // Nullable columns (stars, forks, etc.) stay null when GitHub returns nothing.
-  await qx.result(
-    `
-    UPDATE repos AS r
-    SET
-      description      = v.description,
-      primary_language = v.primary_language,
-      topics           = v.topics,
-      stars            = v.stars::int,
-      forks            = v.forks::int,
-      watchers         = v.watchers::int,
-      open_issues      = v.open_issues::int,
-      last_commit_at          = NULLIF(v.last_commit_at, '')::timestamptz,
-      archived                = v.archived::bool,
-      disabled                = v.disabled::bool,
-      is_fork                 = v.is_fork::bool,
-      security_policy_enabled = v.security_policy_enabled::bool,
-      security_file_enabled   = v.security_file_enabled::bool,
-      branch_protection_enabled                = v.branch_protection_enabled::bool,
-      branch_protection_required_reviews       = v.branch_protection_required_reviews::int,
-      branch_protection_requires_status_checks = v.branch_protection_requires_status_checks::bool,
-      branch_protection_allows_force_push      = v.branch_protection_allows_force_push::bool,
-      host             = COALESCE(r.host,       v.host),
-      owner            = COALESCE(r.owner,      v.owner),
-      name             = COALESCE(r.name,       v.name),
-      created_at       = COALESCE(r.created_at, NULLIF(v.created_at, '')::timestamptz),
-      last_synced_at   = NOW(),
-      updated_at       = NOW()
-    FROM (
+  const updated = await qx.select(
+    `WITH v AS (
       SELECT
         j->>'url'                                             AS url,
         j->>'description'                                     AS description,
@@ -63,10 +35,57 @@ export async function bulkUpdateEnrichedRepos(
         j->>'name'                                            AS name,
         j->>'createdAt'                                       AS created_at
       FROM jsonb_array_elements($1::jsonb) j
-    ) v
-    WHERE r.url = v.url
-    `,
+    ),
+    before AS (
+      SELECT r.id, r.archived, r.disabled, r.is_fork, r.host
+      FROM repos r
+      JOIN v ON r.url = v.url
+    ),
+    updated AS (
+      UPDATE repos AS r
+      SET
+        description      = v.description,
+        primary_language = v.primary_language,
+        topics           = v.topics,
+        stars            = v.stars::int,
+        forks            = v.forks::int,
+        watchers         = v.watchers::int,
+        open_issues      = v.open_issues::int,
+        last_commit_at          = NULLIF(v.last_commit_at, '')::timestamptz,
+        archived                = v.archived::bool,
+        disabled                = v.disabled::bool,
+        is_fork                 = v.is_fork::bool,
+        security_policy_enabled = v.security_policy_enabled::bool,
+        security_file_enabled   = v.security_file_enabled::bool,
+        branch_protection_enabled                = v.branch_protection_enabled::bool,
+        branch_protection_required_reviews       = v.branch_protection_required_reviews::int,
+        branch_protection_requires_status_checks = v.branch_protection_requires_status_checks::bool,
+        branch_protection_allows_force_push      = v.branch_protection_allows_force_push::bool,
+        host             = COALESCE(r.host,       v.host),
+        owner            = COALESCE(r.owner,      v.owner),
+        name             = COALESCE(r.name,       v.name),
+        created_at       = COALESCE(r.created_at, NULLIF(v.created_at, '')::timestamptz),
+        last_synced_at   = NOW(),
+        updated_at       = NOW()
+      FROM v
+      WHERE r.url = v.url
+      RETURNING r.id, r.archived, r.disabled, r.is_fork, r.host
+    )
+    SELECT u.id::text AS id, (b.host IS DISTINCT FROM u.host) AS host_changed
+    FROM updated u
+    JOIN before b ON b.id = u.id
+    WHERE b.archived IS DISTINCT FROM u.archived
+       OR b.disabled IS DISTINCT FROM u.disabled
+       OR b.is_fork  IS DISTINCT FROM u.is_fork
+       OR b.host     IS DISTINCT FROM u.host`,
     [JSON.stringify(rows)],
+  )
+
+  const changed = updated as { id: string; host_changed: boolean }[]
+  await rescorePackageReposForRepoState(
+    qx,
+    changed.map((r) => r.id),
+    changed.filter((r) => r.host_changed).map((r) => r.id),
   )
 }
 

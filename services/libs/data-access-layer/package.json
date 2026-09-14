@@ -3,9 +3,9 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -27,14 +27,16 @@
     "lodash.max": "^4.0.1",
     "lodash.min": "^4.0.1",
     "moment": "~2.29.4",
-    "pg-promise": "^11.4.3",
+    "pg-promise": "catalog:",
     "pg-query-stream": "^4.7.0",
     "uuid": "^9.0.1",
     "validator": "^13.7.0"
   },
   "devDependencies": {
     "@crowd/test-kit": "workspace:*",
-    "@types/node": "^24.13.3",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

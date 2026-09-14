@@ -28,7 +28,7 @@ THROTTLE_BASE_DELAY = 10  # seconds
 
 
 async def invoke_bedrock(
-    instruction, pydantic_model: type[T], replacements=None, max_tokens=65000, temperature=0
+    instruction, pydantic_model: type[T], replacements=None, max_tokens=64000, temperature=0
 ) -> BedrockResponse[T]:
     session = aioboto3.Session(
         aws_access_key_id=CROWD_AWS_BEDROCK_ACCESS_KEY_ID,

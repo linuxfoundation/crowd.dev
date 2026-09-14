@@ -7,9 +7,9 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=profiles SERVICE=profiles-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,16 +20,18 @@
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/opensearch": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@temporalio/client": "~1.17.2",
-    "@temporalio/workflow": "~1.17.2",
-    "axios": "^1.19.0",
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "axios": "catalog:",
     "lodash.mergewith": "^4.6.2",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "catalog:",
     "@types/uuid": "~9.0.6",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

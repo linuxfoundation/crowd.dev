@@ -63,6 +63,7 @@ export interface IMemberOrganization {
   verified?: boolean
   verifiedBy?: string
   deletedAt?: string
+  deletedBy?: string
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }

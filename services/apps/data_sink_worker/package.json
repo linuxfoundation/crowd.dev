@@ -7,9 +7,9 @@
     "start:debug": "SERVICE=data-sink-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9233 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:restart-failed-results": "SERVICE=script tsx src/bin/restart-failed-results.ts",
     "script:restart-all-failed-results": "SERVICE=script tsx src/bin/restart-all-failed-results.ts",
@@ -35,17 +35,19 @@
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
     "@types/config": "^3.3.0",
-    "@types/node": "^24.13.3",
-    "config": "^3.3.12",
+    "@types/node": "catalog:",
+    "config": "catalog:",
     "crowd-sentiment": "^1.1.7",
     "lodash.isequal": "^4.5.0",
     "lodash.mergewith": "^4.6.2",
     "lodash.uniqby": "^4.7.0",
     "moment-timezone": "^0.5.34",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

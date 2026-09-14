@@ -1,21 +1,25 @@
 import {
   getOrCreateRepoByUrl,
+  removeDeclaredPackageRepo,
   upsertNpmFundingLinks,
   upsertNpmPackage,
   upsertNpmVersions,
   upsertPackageMaintainers,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
   collectMaintainers,
-  extractRepo,
   isPrerelease,
   normalizeLicenses,
+  npmRepositoryField,
   parseNpmName,
+  resolveNpmRepo,
   versionLicense,
 } from './normalize'
 import type { FundingEntry, Packument } from './types'
@@ -27,7 +31,11 @@ export async function upsertPackage(
   qx: QueryExecutor,
   packument: Packument,
   purl: string,
-): Promise<{ purl: string; changedFields: string[] }> {
+): Promise<{
+  purl: string
+  changedFields: string[]
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(packument)
@@ -36,9 +44,9 @@ export async function upsertPackage(
   const { namespace, name } = parseNpmName(raw)
   const licenses = normalizeLicenses(packument)
   const licensesRaw = typeof packument.license === 'string' ? packument.license : null
-  const declaredRepositoryUrl = rawRepoUrl(packument)
-  const repo = extractRepo(packument)
-  const repositoryUrl = repo?.url ?? null
+  const declaredRepositoryUrl = npmRepositoryField(packument)
+  const resolvedRepo = resolveNpmRepo(packument)
+  const repositoryUrl = resolvedRepo?.repo.url ?? null
   const versionEntries = Object.entries(packument.versions)
   const time = packument.time ?? {}
   const latestVersion = packument['dist-tags']?.latest ?? null
@@ -55,6 +63,7 @@ export async function upsertPackage(
   const maintainers = collectMaintainers(packument)
 
   const changed = new Set<string>()
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
     const { id: pkgId, changedFields: pkgChanged } = await upsertNpmPackage(t, {
@@ -69,7 +78,7 @@ export async function upsertPackage(
       repositoryUrl,
       licenses: licenses.length ? licenses : null,
       licensesRaw,
-      keywords: packument.keywords?.length ? packument.keywords : null,
+      keywords: cleanKeywords(packument.keywords),
       distLatest: packument['dist-tags']?.latest ?? null,
       distNext: packument['dist-tags']?.next ?? null,
       distBeta: packument['dist-tags']?.beta ?? null,
@@ -80,16 +89,32 @@ export async function upsertPackage(
     })
     pkgChanged.forEach((f) => changed.add(f))
 
-    if (repo) {
+    if (resolvedRepo) {
       const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
         t,
-        repo.url,
-        repo.host,
+        resolvedRepo.repo.url,
+        resolvedRepo.repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
 
-      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, 'declared', 0.8)
+      ownershipMatch = matchOwnership({
+        namespace,
+        maintainers: maintainers.filter((m) => m.role === 'maintainer').map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+      })
+
+      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
+        source: 'declared',
+        signal: resolvedRepo.signal,
+        ownershipMatch,
+      })
       linkChanged.forEach((f) => changed.add(f))
+
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId, repoId)
+      removedFields.forEach((f) => changed.add(f))
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId)
+      removedFields.forEach((f) => changed.add(f))
     }
 
     const verChanged = await upsertNpmVersions(
@@ -116,13 +141,13 @@ export async function upsertPackage(
     }
   })
 
-  return { purl, changedFields: Array.from(changed) }
+  return { purl, changedFields: Array.from(changed), ownershipMatch }
 }
 
-function rawRepoUrl(packument: Packument): string | null {
-  const repo = packument.repository
-  if (!repo) return null
-  return typeof repo === 'string' ? repo || null : repo.url || null
+function cleanKeywords(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  const cleaned = raw.filter((k): k is string => typeof k === 'string' && k.trim() !== '')
+  return cleaned.length > 0 ? cleaned : null
 }
 
 function extractFundingLinks(

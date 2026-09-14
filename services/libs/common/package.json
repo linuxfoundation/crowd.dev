@@ -3,19 +3,21 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",
-    "@types/node": "^24.13.3",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   },
   "dependencies": {
     "@crowd/types": "workspace:*",
-    "config": "^3.3.12",
+    "config": "catalog:",
     "i18n-iso-countries": "^7.14.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.get": "~4.4.2",

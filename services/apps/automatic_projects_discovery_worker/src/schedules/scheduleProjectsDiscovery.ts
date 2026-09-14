@@ -15,14 +15,14 @@ export const scheduleProjectsDiscovery = async () => {
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
-        catchupWindow: '1 minute',
+        catchupWindow: '1 hour',
       },
       action: {
         type: 'startWorkflow',
         workflowType: discoverProjects,
         taskQueue: 'automatic-projects-discovery',
         args: [{ mode: 'incremental' as const }],
-        workflowExecutionTimeout: '2 hours',
+        workflowExecutionTimeout: '5 hours',
         retry: {
           initialInterval: '15 seconds',
           backoffCoefficient: 2,

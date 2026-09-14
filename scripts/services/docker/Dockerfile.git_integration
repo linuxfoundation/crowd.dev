@@ -1,5 +1,5 @@
 # Base image for both stages
-FROM python:3.13.5-slim-bullseye AS base
+FROM python:3.13.5-slim-bookworm AS base
 
 # Go builder stage: build the software-value binary and install scc
 FROM golang:1.25-alpine AS go-builder
@@ -84,7 +84,7 @@ RUN apt-get update && apt-get install -y \
     git \
     ripgrep \
     ruby \
-    libgit2-1.1 \
+    libgit2-1.5 \
     ruby-dev \
     build-essential \
     libgit2-dev \

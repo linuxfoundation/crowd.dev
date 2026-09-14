@@ -6,7 +6,14 @@ import {
   organizationMergeAction,
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import {
+  Error400,
+  Error404,
+  Error409,
+  generateOrganizationNameVariants,
+  mergeObjects,
+  normalizeHostname,
+} from '@crowd/common'
 import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
@@ -25,13 +32,14 @@ import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src
 import {
   OrganizationField,
   addOrgsToSegments,
+  deleteFakeOrganizationSuggestion,
   findOrgAttributes,
   findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
 import {
   decrementOrganizationMergeSuggestionCounts,
-  findLfSegmentByName,
+  findManyLfSegmentsByNames,
   getOrganizationsCommonProjectGroupSegmentIds,
 } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
@@ -927,8 +935,11 @@ export default class OrganizationService extends LoggerBase {
         if (data.displayName) {
           // Block organization affiliation if a LF segment (project, subproject, or project group)
           // has the same name as the organization when creating one.
-          const lfSegment = await findLfSegmentByName(qx, data.displayName)
-          if (lfSegment) {
+          const lfSegments = await findManyLfSegmentsByNames(
+            qx,
+            generateOrganizationNameVariants(data.displayName),
+          )
+          if (lfSegments.length > 0) {
             this.log.info(
               { displayName: data.displayName },
               'Found segment with the same name as the organization, blocking affiliation!',
@@ -1094,6 +1105,10 @@ export default class OrganizationService extends LoggerBase {
           await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
         }
         recalculateAffiliations = true
+      }
+
+      if (data.isAffiliationBlocked === true) {
+        await deleteFakeOrganizationSuggestion(qx, record.id)
       }
 
       await SequelizeRepository.commitTransaction(tx)

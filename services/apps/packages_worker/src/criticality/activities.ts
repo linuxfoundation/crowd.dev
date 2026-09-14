@@ -3,7 +3,7 @@ import { Context } from '@temporalio/activity'
 import { createIngestJob, findPendingJobByKind, markJobStatus } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { getPackagesDb } from '../db'
+import { getPackagesDb, getPackagesDbConnection } from '../db'
 
 import { buildGraph, computePageRank } from './graph'
 import { loadDirectEdges, mergeCentralityScores } from './queries'
@@ -65,7 +65,7 @@ export async function criticalityComputePageRank(
   return { ecosystem, nodeCount: graph.N, edgeCount, iterations, durationMs: Date.now() - start }
 }
 
-export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: number }> {
+export async function rankPackages(): Promise<{ appliedRows: number }> {
   const qx = await getPackagesDb()
 
   // On retry, a pending row from the prior attempt may already exist — reuse it.
@@ -75,15 +75,24 @@ export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: 
     (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {
     await markJobStatus(qx, jobId, 'merging')
-    const [result] = await qx.select(`SELECT * FROM rank_packages()`)
-    const scoredRows = Number(result.scored_rows ?? 0)
-    const rankedRows = Number(result.ranked_rows ?? 0)
+    // Dedicated connection, killed in `finally` so the procedure's advisory lock
+    // always releases, even mid-run — a recycled pooled connection would keep it held.
+    const db = await getPackagesDbConnection()
+    const conn = await db.connect()
+    let result
+    try {
+      await conn.none(`SET statement_timeout = '75min'`)
+      ;[result] = await conn.query(`CALL rank_packages_chunked(0.90, NULL, 25000, 0)`)
+    } finally {
+      conn.done(true)
+    }
+    const appliedRows = Number(result.applied_rows ?? 0)
     await markJobStatus(qx, jobId, 'done', {
-      rowCountPg: scoredRows,
-      tableRowCounts: { scored: scoredRows, ranked: rankedRows },
+      rowCountPg: appliedRows,
+      tableRowCounts: { applied: appliedRows },
       finishedAt: new Date(),
     })
-    return { scoredRows, rankedRows }
+    return { appliedRows }
   } catch (err) {
     await markJobStatus(qx, jobId, 'failed', {
       errorMessage: (err as Error).message,

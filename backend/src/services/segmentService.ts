@@ -1,9 +1,9 @@
 import { Transaction } from 'sequelize'
 
-import { Error400, validateNonLfSlug } from '@crowd/common'
+import { Error400, generateOrganizationNameVariants, validateNonLfSlug } from '@crowd/common'
 import {
   QueryExecutor,
-  findOrganizationsByName,
+  findManyOrganizationsByNames,
   updateOrganization,
 } from '@crowd/data-access-layer'
 import { ICreateInsightsProject, findBySlug } from '@crowd/data-access-layer/src/collections'
@@ -727,7 +727,10 @@ export default class SegmentService extends LoggerBase {
     })
 
     // Check if there is an existing organization with segment name
-    const organizations = await findOrganizationsByName(qx, segmentName)
+    const organizations = await findManyOrganizationsByNames(
+      qx,
+      generateOrganizationNameVariants(segmentName),
+    )
 
     if (organizations.length === 0) {
       return []

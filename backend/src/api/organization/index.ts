@@ -6,6 +6,14 @@ export default (app) => {
   app.put(`/organization/:id`, safeWrap(require('./organizationUpdate').default))
   app.delete(`/organization`, safeWrap(require('./organizationDestroy').default))
   app.post(`/organization/autocomplete`, safeWrap(require('./organizationAutocomplete').default))
+  app.get(
+    `/organization/fake-suggestions`,
+    safeWrap(require('./organizationFakeSuggestionsList').default),
+  )
+  app.delete(
+    `/organization/:organizationId/fake-suggestion`,
+    safeWrap(require('./organizationFakeSuggestionDismiss').default),
+  )
   app.get(`/organization/:id`, safeWrap(require('./organizationFind').default))
 
   app.put(`/organization/:organizationId/merge`, safeWrap(require('./organizationMerge').default))

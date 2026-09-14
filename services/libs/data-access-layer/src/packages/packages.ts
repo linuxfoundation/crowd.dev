@@ -270,7 +270,11 @@ export interface PackagistStatsUpdateInput {
 export async function updatePackagistPackageStats(
   qx: QueryExecutor,
   input: PackagistStatsUpdateInput,
-): Promise<{ id: string; isCritical: boolean; changedFields: string[] } | null> {
+): Promise<{
+  id: string
+  isCritical: boolean
+  changedFields: string[]
+} | null> {
   const row: { id: string; is_critical: boolean; changed_fields: string[] } | undefined =
     await qx.selectOneOrNone(
       `WITH old AS (
@@ -288,8 +292,8 @@ export async function updatePackagistPackageStats(
            dependent_count           = COALESCE($(dependentCount), dependent_count),
            last_synced_at            = NOW()
          WHERE purl = $(purl) AND ecosystem = 'packagist'
-         RETURNING id, is_critical, description, declared_repository_url, repository_url, status,
-                   total_downloads, dependent_count, ingestion_source
+         RETURNING id, is_critical, description, declared_repository_url, repository_url,
+                   status, total_downloads, dependent_count, ingestion_source
        )
        SELECT ins.id::text AS id, ins.is_critical,
               array_remove(ARRAY[
@@ -306,7 +310,52 @@ export async function updatePackagistPackageStats(
     )
 
   if (!row) return null
-  return { id: row.id, isCritical: row.is_critical, changedFields: row.changed_fields }
+  return {
+    id: row.id,
+    isCritical: row.is_critical,
+    changedFields: row.changed_fields,
+  }
+}
+
+export async function setPackageRepositoryUrl(
+  qx: QueryExecutor,
+  packageId: string,
+  url: string | null,
+): Promise<string[]> {
+  // clock_timestamp() alone can tie last_synced_at at DateTime64(3) resolution — GREATEST
+  // with +1ms over the stored value guarantees a strictly newer CDC version regardless.
+  const affected = await qx.result(
+    `UPDATE packages
+        SET repository_url = $(url),
+            last_synced_at = GREATEST(clock_timestamp(), last_synced_at + interval '1 millisecond')
+      WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,
+    { url, packageId },
+  )
+  return affected > 0 ? ['packages.repository_url'] : []
+}
+
+export async function setPackageDeclaredRepositoryUrl(
+  qx: QueryExecutor,
+  packageId: string,
+  url: string | null,
+): Promise<string[]> {
+  // clock_timestamp() alone can tie last_synced_at at DateTime64(3) resolution — GREATEST
+  // with +1ms over the stored value guarantees a strictly newer CDC version regardless.
+  const affected = await qx.result(
+    `UPDATE packages
+        SET declared_repository_url = $(url),
+            last_synced_at = GREATEST(clock_timestamp(), last_synced_at + interval '1 millisecond')
+      WHERE id = $(packageId)::bigint AND declared_repository_url IS DISTINCT FROM $(url)`,
+    { url, packageId },
+  )
+  return affected > 0 ? ['packages.declared_repository_url'] : []
+}
+
+export async function getPackageHomepage(qx: QueryExecutor, purl: string): Promise<string | null> {
+  const row = await qx.selectOneOrNone(`SELECT homepage FROM packages WHERE purl = $(purl)`, {
+    purl,
+  })
+  return row?.homepage ?? null
 }
 
 export interface PackagistVersionAggregates {
@@ -322,9 +371,10 @@ export async function updatePackagistVersionAggregates(
   qx: QueryExecutor,
   purl: string,
   agg: PackagistVersionAggregates,
-): Promise<{ id: string; changedFields: string[] } | null> {
-  const row: { id: string; changed_fields: string[] } | undefined = await qx.selectOneOrNone(
-    `WITH old AS (
+): Promise<{ id: string; changedFields: string[]; homepage: string | null } | null> {
+  const row: { id: string; changed_fields: string[]; homepage: string | null } | undefined =
+    await qx.selectOneOrNone(
+      `WITH old AS (
        SELECT versions_count, latest_version, first_release_at, latest_release_at, licenses, homepage, ingestion_source
          FROM packages WHERE purl = $(purl) AND ecosystem = 'packagist'
      ),
@@ -342,7 +392,7 @@ export async function updatePackagistVersionAggregates(
        WHERE purl = $(purl) AND ecosystem = 'packagist'
        RETURNING id, versions_count, latest_version, first_release_at, latest_release_at, licenses, homepage, ingestion_source
      )
-     SELECT ins.id::text AS id,
+     SELECT ins.id::text AS id, ins.homepage,
             array_remove(ARRAY[
               CASE WHEN o.versions_count     IS DISTINCT FROM ins.versions_count     THEN 'packages.versions_count' END,
               CASE WHEN o.latest_version     IS DISTINCT FROM ins.latest_version     THEN 'packages.latest_version' END,
@@ -353,11 +403,11 @@ export async function updatePackagistVersionAggregates(
               CASE WHEN o.ingestion_source   IS DISTINCT FROM ins.ingestion_source   THEN 'packages.ingestion_source' END
             ], NULL) AS changed_fields
        FROM ins LEFT JOIN old o ON true`,
-    { purl, ...agg },
-  )
+      { purl, ...agg },
+    )
 
   if (!row) return null
-  return { id: row.id, changedFields: row.changed_fields }
+  return { id: row.id, changedFields: row.changed_fields, homepage: row.homepage }
 }
 
 export async function getPackagistPackageIdsByNames(

@@ -8,9 +8,9 @@
     "./faker": "./src/faker.ts"
   },
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,11 +20,13 @@
     "@crowd/integrations": "workspace:*",
     "@crowd/types": "workspace:*",
     "@faker-js/faker": "^9.9.0",
-    "pg-promise": "^11.4.3"
+    "pg-promise": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
-    "typescript": "^5.6.3",
-    "vitest": "4.1.7"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "4.1.7",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

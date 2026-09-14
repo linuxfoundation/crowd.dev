@@ -7,9 +7,9 @@
     "start:debug": "SERVICE=integration-stream-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9231 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:process-stream": "SERVICE=script tsx src/bin/process-stream.ts",
     "script:process-webhook": "SERVICE=script tsx src/bin/process-webhook.ts",
@@ -30,13 +30,15 @@
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
-    "config": "^3.3.12",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3"
+    "config": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",
-    "@types/node": "^24.13.3",
-    "nodemon": "^2.0.22"
+    "@types/node": "catalog:",
+    "nodemon": "^2.0.22",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }

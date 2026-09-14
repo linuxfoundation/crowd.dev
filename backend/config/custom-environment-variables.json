@@ -67,9 +67,6 @@
       "region": "CROWD_COMPREHEND_AWS_REGION"
     }
   },
-  "clearbit": {
-    "apiKey": "CROWD_CLEARBIT_API_KEY"
-  },
   "sendgrid": {
     "key": "CROWD_SENDGRID_KEY",
     "emailFrom": "CROWD_SENDGRID_EMAIL_FROM",

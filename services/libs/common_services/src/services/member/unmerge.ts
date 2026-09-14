@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import pick from 'lodash.pick'
 import uniqBy from 'lodash.uniqby'
 
-import { BadRequestError, DEFAULT_TENANT_ID, getProperDisplayName } from '@crowd/common'
+import { BadRequestError, DEFAULT_TENANT_ID, normalizeDisplayName } from '@crowd/common'
 import {
   MEMBER_MERGE_FIELDS,
   MemberField,
@@ -347,7 +347,7 @@ export async function prepareMemberUnmerge(
     throw new BadRequestError('Cannot unmerge: primary member must retain at least one identity')
   }
 
-  const secondaryDisplayName = getProperDisplayName(identity.value)
+  const secondaryDisplayName = normalizeDisplayName(identity.value)
   const secondaryAttributes: IAttributes = {}
 
   const botDetection = new BotDetectionService(logger).isMemberBot(
@@ -476,10 +476,15 @@ export async function unmergeMember(
   // Track roles deleted from primary (for filtering primary orgs)
   let rolesToDelete: IMemberRoleWithOrganization[] = []
 
-  // Create the secondary member
+  const displayName = secondary.displayName || secondary.identities[0]?.value
+
+  if (!displayName) {
+    throw new Error('Cannot unmerge: secondary member is missing a display name')
+  }
+
   const secondaryRow = await createMember(tx, {
     id: secondary.id,
-    displayName: secondary.displayName,
+    displayName: normalizeDisplayName(displayName),
     joinedAt: secondary.joinedAt,
     attributes: secondary.attributes,
     reach: secondary.reach,

@@ -2,9 +2,8 @@ import validator from 'validator'
 
 import { disposableEmailDomains, emailSafeKnownBots, noreplyEmailProviders } from './constants'
 
-export const isValidEmail = (value: string): boolean => {
-  return validator.isEmail(value)
-}
+export const isValidEmail: typeof validator.isEmail = (value, options) =>
+  validator.isEmail(value, options)
 
 /**
  * Extracts username from a GitHub noreply email.

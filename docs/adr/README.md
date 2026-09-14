@@ -25,6 +25,12 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0016](./0016-akrites-cdp-public-api-authentication.md)    | Akrites → CDP public API authentication                                                              | proposed | 2026-07-22 |
 | [ADR-0017](./0017-blast-radius-pipeline-architecture.md)       | Blast radius analysis pipeline — multi-ecosystem architecture                                        | accepted | 2026-08-11 |
 | [ADR-0018](./0018-per-client-rate-limiting-members-resolve.md) | Per-client rate limiting for `POST /members/resolve` using in-memory store                           | accepted | 2026-08-12 |
+| [ADR-0019](./0019-docker-builder-runner-libc.md)               | Same libc in Docker builder and runner                                                               | accepted | 2026-08-27 |
+| [ADR-0020](./0020-package-repo-confidence-scoring.md)          | Deterministic package→repo confidence scoring                                                        | accepted | 2026-09-01 |
+| [ADR-0021](./0021-secondary-manifest-repository-signal.md)     | Secondary manifest repository signal                                                                 | accepted | 2026-09-01 |
+| [ADR-0022](./0022-package-repo-ownership-evidence.md)          | Ownership evidence for package→repo links                                                            | accepted | 2026-09-01 |
+| [ADR-0023](./0023-cncf-maintainers-yaml-self-correction.md)    | CNCF `maintainers.yaml` as authoritative, self-correcting source                                     | accepted | 2026-09-10 |
+| [ADR-0024](./0024-critical-projects-onboarding-pipeline.md)    | Critical projects onboarding pipeline — discovery, evaluation, onboarding                             | accepted | 2026-09-11 |
 
 ## Why ADRs?
 

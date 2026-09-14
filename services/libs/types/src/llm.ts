@@ -132,6 +132,14 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
       temperature: 0,
     },
   },
+  [LlmQueryType.FAKE_ORGANIZATION_ANALYSIS]: {
+    modelId: LlmModelType.CLAUDE_SONNET_4,
+    arguments: {
+      max_tokens: 2000,
+      anthropic_version: 'bedrock-2023-05-31',
+      temperature: 0,
+    },
+  },
 }
 
 export interface LlmIdentity {

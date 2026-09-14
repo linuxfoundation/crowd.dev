@@ -20,7 +20,6 @@ import {
   IOrganizationOpensearch,
   OpenSearchIndex,
   OrganizationIdentityType,
-  OrganizationMergeSuggestionTable,
 } from '@crowd/types'
 
 import { svc } from '../main'
@@ -391,14 +390,14 @@ export async function getOrganizationMergeSuggestions(
 
 export async function addOrganizationToMerge(
   suggestions: IOrganizationMergeSuggestion[],
-  table: OrganizationMergeSuggestionTable,
+  similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length > 0) {
     const organizationMergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
       svc.postgres.writer.connection(),
       svc.log,
     )
-    await organizationMergeSuggestionsRepo.addToMerge(suggestions, table)
+    await organizationMergeSuggestionsRepo.addToMerge(suggestions, similarityThreshold)
   }
 }
 

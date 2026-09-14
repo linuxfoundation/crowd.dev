@@ -94,7 +94,10 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
         } else {
           // Unverifying removes the grouped work experience from both visible and hidden rows.
           // This is a human decision, so deletedBy is set — enrichment must never recreate it.
-          await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete, true, verifiedBy)
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: memberOrgIdsToDelete,
+            deletedBy: verifiedBy,
+          })
         }
       })
 

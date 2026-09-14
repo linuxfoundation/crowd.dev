@@ -17,6 +17,7 @@ import {
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
+  bestRepoLinkOrderBy,
 } from './sqlFragments'
 
 // Re-exported so existing callers (e.g. the akrites-external contacts mapper and
@@ -340,7 +341,7 @@ export async function getPackageStatusCounts(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
+      ${bestRepoLinkOrderBy('pr')}
       LIMIT 1
     ) r_sc ON true
     ${where}
@@ -521,7 +522,7 @@ export async function listPackagesForApi(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
+      ${bestRepoLinkOrderBy('pr')}
       LIMIT 1
     ) r_sc ON true`
 
@@ -722,7 +723,7 @@ export async function getPackageDetailByPurl(
       s.origin AS "stewardshipOrigin",
       s.version AS "stewardshipVersion",
       s.opened_at AS "stewardshipOpenedAt",
-      -- best repo link (highest confidence, prefer declared)
+      -- best repo link (highest confidence)
       r.url AS "repoUrl",
       pr.confidence AS "repoMappingConfidence",
       r.last_commit_at AS "repoLastCommitAt",
@@ -850,7 +851,7 @@ export async function getPackageDetailsByPurls(
       p.repository_url AS "repositoryUrl",
       ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
       ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
-      -- best repo link (highest confidence, prefer declared) — same join shape as getPackageDetailByPurl
+      -- best repo link (highest confidence) — same join shape as getPackageDetailByPurl
       r.url AS "resolvedRepositoryUrl",
       pr.confidence AS "repoMappingConfidence",
       r.last_commit_at AS "repoLastCommitAt",
@@ -976,7 +977,7 @@ export async function listPackagesForScatter(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
+      ${bestRepoLinkOrderBy('pr')}
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
@@ -1181,8 +1182,8 @@ export interface ReportingProtocolRow {
 }
 
 // Resolve a package's assembled reporting protocol via its best repo link, using the
-// same canonical pick as getPackageDetailByPurl (confidence DESC, declared source
-// preferred) so the protocol matches the repo surfaced everywhere else. Returns null
+// same canonical pick as getPackageDetailByPurl (confidence DESC) so the protocol
+// matches the repo surfaced everywhere else. Returns null
 // when the purl is unknown or its best repo has no assembled protocol row.
 export async function getReportingProtocolByPurl(
   qx: QueryExecutor,
@@ -1203,7 +1204,7 @@ export async function getReportingProtocolByPurl(
       SELECT pr2.repo_id
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
+      ${bestRepoLinkOrderBy('pr2')}
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
@@ -1235,7 +1236,7 @@ export async function getReportingProtocolsByPurls(
       SELECT pr2.repo_id
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
+      ${bestRepoLinkOrderBy('pr2')}
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id

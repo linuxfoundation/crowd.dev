@@ -20,6 +20,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/packages-worker-add-entrypoint` | Scaffold a new sibling worker inside packages_worker (npm, OSV, scorecard, etc.) |
 | `/write-unit-tests` | Add or improve Vitest unit tests for business logic, DAL, or server modules |
 | `/write-api-e2e-tests` | Add or change Public API e2e / smoke / contract tests |
+| `/fix-vulns-git-integration` | Triage Dependabot alerts and validate dependency bumps for the git_integration worker |
+| `/tb-quarantine-triage` | Investigate Tinybird quarantine failures, file IN Jira tickets, create fix worktrees |
 
 ## Trigger Phrases
 
@@ -70,3 +72,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "Write API e2e tests", "add smoke tests", "Public API contract tests"
 - "Cover this endpoint end-to-end", "API regression test"
 - Any request for HTTP/API e2e coverage of Public API behaviour
+
+**`/fix-vulns-git-integration`** — match any of these intents:
+- "Fix vulns", "bump deps", "dependabot triage", "security alerts"
+- "Are the git-integration deps vulnerable?", "review dependabot PRs"
+- Any request about vulnerabilities or dependency bumps in `git_integration`

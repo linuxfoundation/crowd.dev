@@ -7,11 +7,12 @@ import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
 import {
   Error400,
   calculateReach,
+  firstIdentityValue,
   getAttributeValue,
   getCountry,
-  getProperDisplayName,
   hasAttributeValue,
   isDomainExcluded,
+  normalizeDisplayName,
 } from '@crowd/common'
 import {
   CommonMemberService,
@@ -279,7 +280,7 @@ export default class MemberService extends LoggerBase {
     }
 
     if (!data.displayName) {
-      data.displayName = getProperDisplayName(data.username[data.platform][0].username)
+      data.displayName = normalizeDisplayName(firstIdentityValue(data.username[data.platform]))
     }
 
     if (!(data.platform in data.username)) {
@@ -815,7 +816,7 @@ export default class MemberService extends LoggerBase {
       transaction = repoOptions.transaction
 
       if (data.displayName) {
-        data.displayName = getProperDisplayName(data.displayName)
+        data.displayName = normalizeDisplayName(data.displayName)
       }
 
       if (data.attributes) {

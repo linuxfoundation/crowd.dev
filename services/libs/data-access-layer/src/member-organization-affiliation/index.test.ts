@@ -542,7 +542,7 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
       },
     ])
 
-    await deleteMemberOrganizations(qx, member.id, [deletedMo.id])
+    await deleteMemberOrganizations(qx, member.id, { ids: [deletedMo.id] })
 
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
     const orgIds = baseItems(timeline).map((item) => item.organizationId)
