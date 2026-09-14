@@ -200,7 +200,7 @@ SQL >
                                 (
                                     SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
                                     FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                                    INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+                                    INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
                                     WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
@@ -217,7 +217,7 @@ SQL >
                                 ch.repoUrl AS repoUrl,
                                 count(DISTINCT ar.memberId) AS observedActorsCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
                             WHERE
                                 ar.timestamp > now() - INTERVAL 12 MONTH
                                 AND ar.memberId != ''
@@ -238,7 +238,7 @@ SQL >
                         (
                             SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.organizationId) AS orgCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
                             WHERE ar.timestamp > now() - INTERVAL 12 MONTH AND ar.organizationId != ''
                             GROUP BY ch.repoUrl
                         ) AS od
@@ -250,7 +250,7 @@ SQL >
                                 quantile(0.5)
                                 (pra.reviewedInSeconds) AS medianPrResponseS
                             FROM pull_requests_analyzed pra
-                            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(pra.channel) = lower(ch.channel)
                             WHERE
                                 pra.openedAt > now() - INTERVAL 12 MONTH
                                 AND pra.reviewedInSeconds IS NOT NULL
@@ -264,7 +264,7 @@ SQL >
                                 quantile(0.5)
                                 (ia.respondedInSeconds) AS medianIssueResponseS
                             FROM issues_analyzed ia
-                            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(ia.channel) = lower(ch.channel)
                             WHERE
                                 ia.openedAt > now() - INTERVAL 12 MONTH
                                 AND ia.respondedInSeconds IS NOT NULL

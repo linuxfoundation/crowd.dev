@@ -203,7 +203,7 @@ SQL >
                                 ch.repoUrl AS repoUrl,
                                 countIf(ar.timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
                             WHERE ar.type = 'authored-commit'
                             GROUP BY ch.repoUrl
                         ) AS c
@@ -219,7 +219,7 @@ SQL >
                                     ia.closedInSeconds, ia.closedAt > now() - INTERVAL 12 MONTH
                                 ) AS medianCloseS
                             FROM issues_analyzed ia
-                            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(ia.channel) = lower(ch.channel)
                             WHERE ia.openedAt > now() - INTERVAL 12 MONTH
                             GROUP BY ch.repoUrl
                         ) AS ist
@@ -237,7 +237,7 @@ SQL >
                                     pra.mergedInSeconds, pra.mergedAt > now() - INTERVAL 12 MONTH
                                 ) AS medianMergeS
                             FROM pull_requests_analyzed pra
-                            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON lower(pra.channel) = lower(ch.channel)
                             WHERE pra.openedAt > now() - INTERVAL 12 MONTH
                             GROUP BY ch.repoUrl
                         ) AS prs
