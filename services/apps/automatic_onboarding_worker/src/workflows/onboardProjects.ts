@@ -39,7 +39,9 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
 
   log.info('onboardProjects workflow started.')
 
-  const pipelineRunId = await pipelineRunActivities.startOnboardingPipelineRun(workflowId, runId)
+  const pipelineRunId = await CancellationScope.nonCancellable(() =>
+    pipelineRunActivities.startOnboardingPipelineRun(workflowId, runId),
+  )
 
   let totalCandidates = 0
   let succeeded = 0
@@ -60,12 +62,13 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
 
         try {
           const outcome = await onboardActivities.onboardAndUpdateProject(project)
-          if (outcome === 'skipped') {
-            skipped++
-          } else if (outcome === 'catalog-changed') {
-            racedOut++
-          } else {
+          if (outcome === 'onboarded') {
             succeeded++
+          } else {
+            skipped++
+            if (outcome === 'catalog-changed') {
+              racedOut++
+            }
           }
         } catch (err) {
           if (isCancellation(err)) {
