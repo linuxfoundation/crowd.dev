@@ -74,9 +74,8 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
   const total = (args.totalSoFar ?? 0) + repos.length
 
   if (rejectedBatches > 0) {
-    // A plain thrown Error only fails the workflow task (the worker replays and retries
-    // forever); ApplicationFailure is required to fail the execution so the schedule's
-    // retry policy actually engages.
+    // A plain Error only fails the workflow task (infinite replay); ApplicationFailure
+    // is required to fail the execution so the schedule's retry policy engages.
     throw ApplicationFailure.create({
       message: `${rejectedBatches} of ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
       type: 'StarSnapshotBatchFailure',
