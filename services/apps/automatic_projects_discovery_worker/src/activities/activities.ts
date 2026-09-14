@@ -4,7 +4,10 @@ import { parse } from 'csv-parse'
 import {
   bulkInsertProjectCatalog,
   findExistingProjectCatalogRepoUrls,
+  finishPipelineRun,
+  startPipelineRun,
 } from '@crowd/data-access-layer'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -36,10 +39,16 @@ export async function listDatasets(sourceName: string): Promise<IDatasetDescript
   return datasets
 }
 
+export interface IProcessDatasetResult {
+  totalRows: number
+  totalSkipped: number
+  totalAccepted: number
+}
+
 export async function processDataset(
   sourceName: string,
   dataset: IDatasetDescriptor,
-): Promise<void> {
+): Promise<IProcessDatasetResult> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -174,4 +183,30 @@ export async function processDataset(
     },
     'Dataset processing complete.',
   )
+
+  return {
+    totalRows,
+    totalSkipped,
+    totalAccepted: accepted.length,
+  }
+}
+
+export async function startDiscoveryPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'discovery', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishDiscoveryPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }
