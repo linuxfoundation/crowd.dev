@@ -53,6 +53,10 @@ DESCRIPTION >
     "not applicable" framing per spec is about the project's overall data availability, not a single
     repo's classification.
     - `lastCommitAt`: `max()` — the most recent commit across the project's repos.
+    - Repos joined from a deduplicated subquery over `repositories` (IN-1307), not the raw table —
+    one canonical row per case-insensitive URL, same dedup as `repos_channels_copy.pipe` — so a
+    case-only-duplicate repo contributes exactly one row to the project rollup instead of one
+    matched + one unmatched (all-NULL) row.
     - Schedule: `55 2 * * *`, moved post-review (epipav) from the original `35 2 * * *` — see
     `health_score_v2_signal_detail.pipe`'s DESCRIPTION for the production-data-backed rationale
     (real job-log analysis, not a guess). `health_score_v2_signal_detail.pipe` (populates the source
@@ -142,7 +146,16 @@ SQL >
         ) AS busFactorScoreActivityWeightedMean
     FROM insightsProjects ip FINAL
     LEFT JOIN
-        repositories rep FINAL
+        (
+            SELECT
+                argMax(url, updatedAt) AS url,
+                argMax(insightsProjectId, updatedAt) AS insightsProjectId,
+                argMax(enabled, updatedAt) AS enabled,
+                argMax(excluded, updatedAt) AS excluded
+            FROM repositories FINAL
+            WHERE deletedAt IS NULL
+            GROUP BY lower(url)
+        ) AS rep
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false

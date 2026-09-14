@@ -21,6 +21,8 @@ DESCRIPTION >
     zero actual join-misses (every repo has a matching lifecycle row), so the coalesce was never
     serving its ostensible "missing row" fallback purpose in practice — it was only erasing real
     NULLs.
+    - `health_score_v2_results`'s base repo list is sourced from `repos_channels_ds` (IN-1307), not
+    raw `repositories`, so case-only-duplicate repo rows resolve to a single canonical `repoUrl`.
 
 NODE population_priors
 SQL >
@@ -92,12 +94,7 @@ SQL >
                 ) AS coveredCategoryCount,
                 l.lifecycleLabelV2 AS lifecycleLabelV2,
                 i.impactScoreRaw AS impactScoreRaw
-            FROM
-                (
-                    SELECT DISTINCT url AS repoUrl
-                    FROM repositories FINAL
-                    WHERE deletedAt IS NULL AND excluded = false
-                ) AS base
+            FROM (SELECT DISTINCT repoUrl FROM repos_channels_ds WHERE isExcluded = false) AS base
             LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl
