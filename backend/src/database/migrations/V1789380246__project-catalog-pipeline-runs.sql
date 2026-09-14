@@ -1,6 +1,4 @@
--- Per-run outcome ledger for the critical projects onboarding pipeline's three
--- independent stages (discovery, evaluation, onboarding). Each worker writes its
--- own row at the end of its own run — no shared run id across stages.
+-- One row per stage per run; no run id is shared across the three pipeline stages.
 CREATE TABLE public."projectCatalogPipelineRuns" (
     "id"                    UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
     "stage"                 TEXT NOT NULL CHECK ("stage" IN ('discovery', 'evaluation', 'onboarding')),
@@ -29,3 +27,8 @@ CREATE TABLE public."projectCatalogPipelineRuns" (
 
 CREATE INDEX "ix_projectCatalogPipelineRuns_stage_startedAt"
     ON public."projectCatalogPipelineRuns" ("stage", "startedAt" DESC);
+
+-- Lets the DAL upsert on (stage, temporalRunId) so a retried activity can't double-write a run.
+CREATE UNIQUE INDEX "ux_projectCatalogPipelineRuns_stage_temporalRunId"
+    ON public."projectCatalogPipelineRuns" ("stage", "temporalRunId")
+    WHERE "temporalRunId" IS NOT NULL;
