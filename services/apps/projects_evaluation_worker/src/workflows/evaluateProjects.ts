@@ -64,11 +64,28 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
 
   const pipelineRunId = await pipelineRunActivities.startEvaluationPipelineRun(workflowId, runId)
 
+  let totalCandidates = 0
   let succeeded = 0
   let failed = 0
   let skipped = 0
   let evaluatorSeconds = 0
   const evaluatorModels: Record<string, IPipelineRunEvaluatorModelUsage> = {}
+
+  const buildEvaluatorSummary = () => {
+    const modelUsages = Object.values(evaluatorModels)
+    return modelUsages.length > 0
+      ? {
+          calls: modelUsages.reduce((sum, usage) => sum + usage.calls, 0),
+          inputTokens: modelUsages.reduce((sum, usage) => sum + usage.inputTokens, 0),
+          outputTokens: modelUsages.reduce((sum, usage) => sum + usage.outputTokens, 0),
+          costUsd: modelUsages.some((usage) => usage.costUsd === null)
+            ? null
+            : modelUsages.reduce((sum, usage) => sum + (usage.costUsd as number), 0),
+          seconds: evaluatorSeconds,
+          models: evaluatorModels,
+        }
+      : null
+  }
 
   try {
     // Step 1: promote 'auto' projects to 'evaluate' according to priority config.
@@ -76,6 +93,7 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
 
     // Step 2: fetch the evaluation queue (includes any leftovers from prior runs).
     const projects = await fetchActivities.fetchPendingProjects(batchSize)
+    totalCandidates = projects.length
 
     if (projects.length > 0) {
       log.info(`Evaluating ${projects.length} project(s) (batch size: ${batchSize}).`)
@@ -124,36 +142,23 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
       log.info('No projects pending evaluation. Nothing to do.')
     }
 
-    const modelUsages = Object.values(evaluatorModels)
-    const evaluator =
-      modelUsages.length > 0
-        ? {
-            calls: modelUsages.reduce((sum, usage) => sum + usage.calls, 0),
-            inputTokens: modelUsages.reduce((sum, usage) => sum + usage.inputTokens, 0),
-            outputTokens: modelUsages.reduce((sum, usage) => sum + usage.outputTokens, 0),
-            costUsd: modelUsages.some((usage) => usage.costUsd === null)
-              ? null
-              : modelUsages.reduce((sum, usage) => sum + (usage.costUsd as number), 0),
-            seconds: evaluatorSeconds,
-            models: evaluatorModels,
-          }
-        : null
-
     await pipelineRunActivities.finishEvaluationPipelineRun(pipelineRunId, {
       status: 'completed',
-      totalCandidates: projects.length,
+      totalCandidates,
       succeeded,
       failed,
       skipped,
-      evaluator,
+      evaluator: buildEvaluatorSummary(),
     })
   } catch (err) {
     await CancellationScope.nonCancellable(() =>
       pipelineRunActivities.finishEvaluationPipelineRun(pipelineRunId, {
         status: 'failed',
+        totalCandidates,
         succeeded,
         failed,
         skipped,
+        evaluator: buildEvaluatorSummary(),
         errorMessage: String(err),
       }),
     )
