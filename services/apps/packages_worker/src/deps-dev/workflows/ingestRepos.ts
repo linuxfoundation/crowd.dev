@@ -107,7 +107,7 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // instead via competingGithubRepoExpr which reads the live package_repos table.
 const PKGREPOS_RESCORE_SQL = `
 UPDATE package_repos pr
-   SET confidence = ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))},
+   SET confidence = ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), 'TRUE')},
        verified_at = GREATEST(clock_timestamp(), pr.verified_at + interval '1 millisecond')
   FROM packages p, repos r
  WHERE p.id = pr.package_id
@@ -115,7 +115,7 @@ UPDATE package_repos pr
    AND COALESCE(r.host, '') <> 'github'
    AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
    AND ${competingGithubRepoExpr('p.id', 'r.id')}
-   AND ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))} IS DISTINCT FROM pr.confidence
+   AND ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), 'TRUE')} IS DISTINCT FROM pr.confidence
 `
 
 const PKGREPOS_MERGE_SQL = `
