@@ -20,4 +20,4 @@ COPY --from=builder /usr/crowd/app/node_modules ./node_modules
 COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json
 COPY --from=builder /usr/crowd/app/services/libs ./services/libs
 COPY --from=builder /usr/crowd/app/services/archetypes/ ./services/archetypes
-COPY --from=builder /usr/crowd/app/services/apps/connectors_worker/ ./services/apps/connectors_worker
+COPY --from=builder /usr/crowd/app/services/apps/star_snapshot_worker/ ./services/apps/star_snapshot_worker
