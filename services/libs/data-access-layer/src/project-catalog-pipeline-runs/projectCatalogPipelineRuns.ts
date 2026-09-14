@@ -158,7 +158,7 @@ export async function findPipelineRuns(
     WHERE ($(stage)::text IS NULL OR "stage" = $(stage))
       AND ($(from)::timestamptz IS NULL OR "startedAt" >= $(from))
       AND ($(to)::timestamptz IS NULL OR "startedAt" <= $(to))
-    ORDER BY "startedAt" DESC
+    ORDER BY "startedAt" DESC, "id" DESC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
