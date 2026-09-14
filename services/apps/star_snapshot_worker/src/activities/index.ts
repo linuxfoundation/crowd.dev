@@ -149,6 +149,10 @@ async function fetchStargazerCounts(
       if (attempt === 1) {
         throw error
       }
+      if (attempt < MAX_ALIAS_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, ALIAS_RETRY_DELAY_MS * attempt))
+        continue
+      }
       for (const entry of pending) {
         results.push({
           repositoryId: entry.repo.repositoryId,
@@ -165,6 +169,10 @@ async function fetchStargazerCounts(
       const message = `GraphQL error fetching stargazer counts: ${topLevelError.message ?? 'unknown error'}`
       if (attempt === 1) {
         throw new Error(message)
+      }
+      if (attempt < MAX_ALIAS_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, ALIAS_RETRY_DELAY_MS * attempt))
+        continue
       }
       for (const entry of pending) {
         results.push({
