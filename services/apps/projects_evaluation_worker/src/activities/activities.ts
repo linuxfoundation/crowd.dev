@@ -2,15 +2,19 @@ import {
   finalizeProjectCatalogEvaluation,
   findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
+  finishPipelineRun,
   promoteProjectsToEvaluate,
+  startPipelineRun,
 } from '@crowd/data-access-layer'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
-import { IPriorityConfig } from '../types'
+import { IEvaluationActivityResult, IPriorityConfig } from '../types'
 
 const log = getServiceLogger()
 
@@ -40,7 +44,9 @@ export async function fetchPendingProjects(batchSize: number): Promise<IDbProjec
   return projects
 }
 
-export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Promise<void> {
+export async function evaluateAndUpdateProject(
+  project: IDbProjectCatalog,
+): Promise<IEvaluationActivityResult | null> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -52,7 +58,7 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
       { id: project.id, repoUrl: project.repoUrl, evaluatedAt: fresh.evaluatedAt },
       'Project already evaluated, skipping API call.',
     )
-    return
+    return null
   }
 
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting evaluation.')
@@ -79,7 +85,7 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
       { id: project.id, repoUrl: project.repoUrl, elapsedSeconds },
       'Project was moved out of evaluate by a manual request while evaluating, discarding result.',
     )
-    return
+    return null
   }
 
   log.info(
@@ -93,4 +99,46 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
     },
     'Evaluation complete.',
   )
+
+  if (!result.metrics) {
+    return {
+      outcome: result.outcome,
+      model: null,
+      inputTokens: null,
+      outputTokens: null,
+      costUsd: null,
+      seconds: null,
+    }
+  }
+
+  const { model, inputTokens, outputTokens, seconds } = result.metrics
+
+  return {
+    outcome: result.outcome,
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: estimateLlmCostUsd(model, inputTokens, outputTokens),
+    seconds,
+  }
+}
+
+export async function startEvaluationPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'evaluation', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishEvaluationPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }

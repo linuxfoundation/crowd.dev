@@ -12,8 +12,16 @@ export interface IEvaluationInput {
 // Evaluation can only resolve to 'onboard', 'skip', or 'unsure' — never back to 'evaluate' or 'auto'.
 export type EvaluationOutcome = Extract<ProjectCatalogAction, 'onboard' | 'skip' | 'unsure'>
 
+export interface IEvaluationMetrics {
+  model: string
+  inputTokens: number
+  outputTokens: number
+  seconds: number
+}
+
 export interface IEvaluationResult {
   outcome: EvaluationOutcome
   evaluationResult: string
   evaluationReason: string | null
+  metrics: IEvaluationMetrics | null
 }

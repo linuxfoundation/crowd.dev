@@ -1,8 +1,14 @@
-import { IEvaluationInput, IEvaluationResult } from './types'
+import { IEvaluationInput, IEvaluationMetrics, IEvaluationResult } from './types'
 
 interface IApiResponseContent {
   onboard: boolean
   non_onboard_reason?: string
+}
+
+interface IApiResponseMetrics {
+  input_tokens: number
+  output_tokens: number
+  duration: number
 }
 
 export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluationResult> {
@@ -16,6 +22,7 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       evaluationResult: 'error',
       evaluationReason:
         'Missing API configuration: CROWD_PROJECT_EVALUATION_API_ENDPOINT, CROWD_PROJECT_EVALUATION_API_USER_ID, or CROWD_PROJECT_EVALUATION_API_SECRET',
+      metrics: null,
     }
   }
 
@@ -40,6 +47,7 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason: `API request failed: ${message}`,
+      metrics: null,
     }
   }
 
@@ -48,6 +56,7 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason: `API returned HTTP ${response.status}: ${response.statusText}`,
+      metrics: null,
     }
   }
 
@@ -60,6 +69,7 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason: `Failed to parse API response: ${message}`,
+      metrics: null,
     }
   }
 
@@ -73,6 +83,7 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason: `Unexpected API response shape: ${JSON.stringify(responseBody)}`,
+      metrics: null,
     }
   }
 
@@ -82,5 +93,25 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
     outcome: onboard ? 'onboard' : 'skip',
     evaluationResult: String(onboard),
     evaluationReason: non_onboard_reason ?? null,
+    metrics: parseMetrics(responseBody),
   }
+}
+
+function parseMetrics(responseBody: unknown): IEvaluationMetrics | null {
+  const { model, metrics } = (responseBody ?? {}) as { model?: unknown; metrics?: unknown }
+
+  if (
+    typeof model !== 'string' ||
+    !metrics ||
+    typeof metrics !== 'object' ||
+    typeof (metrics as IApiResponseMetrics).input_tokens !== 'number' ||
+    typeof (metrics as IApiResponseMetrics).output_tokens !== 'number' ||
+    typeof (metrics as IApiResponseMetrics).duration !== 'number'
+  ) {
+    return null
+  }
+
+  const { input_tokens, output_tokens, duration } = metrics as IApiResponseMetrics
+
+  return { model, inputTokens: input_tokens, outputTokens: output_tokens, seconds: duration }
 }
