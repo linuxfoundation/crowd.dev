@@ -10,6 +10,8 @@ SQL >
         repoUrl in (select arrayJoin(repositories) from segments_filtered)
         AND v.repoUrl NOT IN (SELECT url FROM repositories FINAL WHERE archived = true)
         AND v.status != 'RESOLVED'
-        {% if defined(repos) %} AND lower(repoUrl) IN (SELECT lower(channel) FROM repos_to_channels) {% end %}
+        {% if defined(repos) %}
+            AND lower(repoUrl) IN (SELECT lower(channel) FROM repos_to_channels)
+        {% end %}
     GROUP BY v.packageEcosystem
     ORDER BY count DESC
