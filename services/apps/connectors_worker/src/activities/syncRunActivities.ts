@@ -17,6 +17,7 @@ import {
   recordRunFailure,
   recordRunPartial,
   recordRunSuccess,
+  recordShadowRecords,
 } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
@@ -74,11 +75,16 @@ export async function executeSync(unitId: string): Promise<void> {
     emittedCount: emitter?.emittedCount() ?? 0,
     requestCount: http?.requestCount() ?? 0,
     complete: null as boolean | null,
+    emitEnabled: unit.emitEnabled,
     ...fields,
   })
 
   log.info(
-    { event: 'sync_run_started', consecutiveFailures: unit.consecutiveFailures },
+    {
+      event: 'sync_run_started',
+      consecutiveFailures: unit.consecutiveFailures,
+      emitEnabled: unit.emitEnabled,
+    },
     'sync run started',
   )
 
@@ -119,6 +125,7 @@ export async function executeSync(unitId: string): Promise<void> {
     emitter = createEmit({
       publishResult: streamRepo.publishExternalResult.bind(streamRepo),
       sinkEmitter: svc.dataSinkWorkerEmitter,
+      recordShadow: (records) => recordShadowRecords(qx, unit.id, records),
       unit,
       segmentId: integration.segmentId,
       schema: sync.schema,
