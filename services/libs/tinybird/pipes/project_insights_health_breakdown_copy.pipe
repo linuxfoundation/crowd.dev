@@ -6,7 +6,7 @@ DESCRIPTION >
     Mirrors `project_insights_impact_breakdown_copy.pipe`'s overall structure (single rollup NODE,
     `TYPE COPY`, scheduled after its upstream dependency).
     - Join path: `repositories` (project's own repos, filtered `enabled = true AND excluded = false`)
-    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.url`) — same population filter
+    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.canonicalUrl`) — same population filter
     and join shape as `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node.
     - Aggregation per column, chosen per column type (not one rule for all columns), per the IN-1212
     content-spec execution plan:
@@ -148,7 +148,7 @@ SQL >
     LEFT JOIN
         (
             SELECT
-                argMax(url, updatedAt) AS url,
+                argMax(url, updatedAt) AS canonicalUrl,
                 argMax(insightsProjectId, updatedAt) AS insightsProjectId,
                 argMax(enabled, updatedAt) AS enabled,
                 argMax(excluded, updatedAt) AS excluded
@@ -159,7 +159,7 @@ SQL >
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false
-    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
+    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.canonicalUrl
     GROUP BY ip.id, ip.slug
 
 TYPE COPY
