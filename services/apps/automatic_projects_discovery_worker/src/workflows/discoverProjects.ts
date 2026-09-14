@@ -61,9 +61,7 @@ export async function discoverProjects(
       }
 
       // allDatasets is sorted newest-first.
-      // Incremental: process only the latest snapshot.
-      // Full: process newest-first too, since processDataset only inserts repoUrls
-      // not already in projectCatalog — the first dataset to see a repoUrl wins.
+      // Incremental: process only the latest snapshot. Full: process newest-first too, since processDataset only inserts repoUrls
       const datasets = mode === 'incremental' ? [allDatasets[0]] : allDatasets
 
       log.info(
