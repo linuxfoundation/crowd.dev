@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import {
   NormalizedNuGetPackage,
@@ -39,17 +39,6 @@ export function parseNuspecRepositoryUrl(nuspecXml: string): string | null {
     return typeof url === 'string' && url.trim() !== '' ? url.trim() : null
   } catch {
     return null
-  }
-}
-
-const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
-
-function isScmUrl(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    return SCM_HOSTS.some((h) => new URL(url).hostname.endsWith(h))
-  } catch {
-    return false
   }
 }
 
@@ -92,10 +81,11 @@ export function normalizeNuGetPackage(
   const description =
     searchResult?.description || searchResult?.summary || latestListedEntry?.description || null
 
-  const homepage = searchResult?.projectUrl || latestListedEntry?.projectUrl || null
+  const searchProjectUrl = searchResult?.projectUrl || null
+  const catalogProjectUrl = latestListedEntry?.projectUrl || null
+  const homepage = searchProjectUrl || catalogProjectUrl
 
   // Scan all entries (prefer latest listed, then any) for a nuspec <repository> url.
-  // Fall back to a SCM-shaped projectUrl/homepage when no nuspec repository is present.
   const entriesForRepo = latestListedEntry
     ? [
         latestListedEntry,
@@ -103,13 +93,20 @@ export function normalizeNuGetPackage(
         ...(latestEntry ? [latestEntry] : []),
       ]
     : [...allEntries].reverse()
-  const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const catalogRepoUrls = entriesForRepo
+    .map((e) => e.repository?.url)
+    .filter((url): url is string => !!url)
+  const catalogRepoUrl = catalogRepoUrls[0] ?? null
   const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
-  const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
-  const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  const repo =
-    (nuspecRepoUrl ? canonicalizeRepoUrl(nuspecRepoUrl) : null) ??
-    (isScmUrl(homepage) ? canonicalizeRepoUrl(homepage) : null)
+  const declaredRepositoryUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl ?? null
+  // Every catalog entry's url is passed through, not just the latest — a malformed one
+  // is dropped at canonicalization, so an older entry's valid url still gets tried.
+  const resolvedRepo = resolveManifestRepo([
+    { field: 'repository', url: fetchedNuspecRepoUrl, signal: 'primary' },
+    ...catalogRepoUrls.map((url) => ({ field: 'repository', url, signal: 'primary' as const })),
+    { field: 'projectUrl', url: searchProjectUrl },
+    { field: 'projectUrl', url: catalogProjectUrl },
+  ])
 
   const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
@@ -164,7 +161,7 @@ export function normalizeNuGetPackage(
     description,
     homepage: homepage || null,
     declaredRepositoryUrl,
-    repo,
+    resolvedRepo,
     licenses,
     licensesRaw,
     keywords,

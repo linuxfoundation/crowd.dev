@@ -1,14 +1,19 @@
 import {
   getOrCreateRepoByUrl,
+  getPackageHomepage,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import type { NormalizedPackagistStats } from './types'
@@ -26,29 +31,45 @@ export async function persistPackagistPackageInfo(
   qx: QueryExecutor,
   purl: string,
   stats: NormalizedPackagistStats,
-): Promise<{ found: boolean; changedFields: string[] }> {
+): Promise<{
+  found: boolean
+  changedFields: string[]
+  packageId: string | null
+  hasPrimaryRepo: boolean
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(stats)
 
-  const canonical = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
   // Packagist's repository field is free-form/author-supplied. canonicalizeRepoUrl's
   // 'other' bucket also matches non-repo URLs (wikis, issue trackers, registry pages)
   // that happen to have 2+ path segments, so only trust the verified SCM hosts here —
   // github.com/gitlab.com/bitbucket.org — rather than the shared utility's default,
   // which other callers (npm/maven/cargo) rely on staying permissive.
-  const trustedRepo = canonical && canonical.host !== 'other' ? canonical : null
+  const declared = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
+  const primaryRepo = declared && declared.host !== 'other' ? declared : null
 
   let found = false
+  let packageId: string | null = null
   const changedFields: string[] = []
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
+    // This endpoint carries no homepage — only needed as a fallback, peek at the one
+    // already stored by the version-manifest write path.
+    const resolvedRepo = primaryRepo
+      ? { repo: primaryRepo, signal: 'primary' as const }
+      : resolveManifestRepo([
+          { field: 'homepage', url: await getPackageHomepage(t, purl), signal: 'secondary' },
+        ])
+
     // Step 1: Update packages row
     const result = await updatePackagistPackageStats(t, {
       purl,
       description: stats.description,
       declaredRepositoryUrl: stats.repositoryUrl,
-      repositoryUrl: trustedRepo?.url ?? null,
+      repositoryUrl: resolvedRepo?.repo.url ?? null,
       status: stats.status,
       totalDownloads: stats.downloadsTotal,
       dependentCount: stats.dependents,
@@ -58,6 +79,7 @@ export async function persistPackagistPackageInfo(
 
     found = true
     const { id, isCritical } = result
+    packageId = id
     changedFields.push(...result.changedFields)
 
     // When there's no trusted repo (removed from the manifest, or no longer
@@ -65,9 +87,18 @@ export async function persistPackagistPackageInfo(
     // previously-declared link that no longer applies — package_repos' unique key is
     // (package_id, repo_id), not (package_id, source), so upserting the new link alone
     // would leave a stale one dangling.
-    if (trustedRepo) {
-      const repo = await getOrCreateRepoByUrl(t, trustedRepo.url, trustedRepo.host)
-      const linkChanged = await upsertPackageRepo(t, id, repo.id, { source: 'declared' })
+    if (resolvedRepo) {
+      const repo = await getOrCreateRepoByUrl(t, resolvedRepo.repo.url, resolvedRepo.repo.host)
+      ownershipMatch = matchOwnership({
+        namespace: stats.name.split('/')[0] || null,
+        maintainers: stats.maintainers.map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+      })
+      const linkChanged = await upsertPackageRepo(t, id, repo.id, {
+        source: 'declared',
+        signal: resolvedRepo.signal,
+        ownershipMatch,
+      })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
     } else {
@@ -92,5 +123,36 @@ export async function persistPackagistPackageInfo(
     await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
-  return { found, changedFields }
+  return { found, changedFields, packageId, hasPrimaryRepo: !!primaryRepo, ownershipMatch }
+}
+
+// Phase 1 resolves the homepage-fallback repo from whatever's already stored; phase 2
+// (called after it persists — see ingestOnePackagistMetadata) carries the actual new homepage.
+export async function reconcilePackagistHomepageRepo(
+  qx: QueryExecutor,
+  purl: string,
+  packageId: string,
+  homepage: string | null,
+): Promise<string[]> {
+  const resolved = resolveManifestRepo([{ field: 'homepage', url: homepage, signal: 'secondary' }])
+  const changedFields: string[] = []
+
+  await qx.tx(async (t) => {
+    changedFields.push(...(await setPackageRepositoryUrl(t, packageId, resolved?.repo.url ?? null)))
+    if (resolved) {
+      const repo = await getOrCreateRepoByUrl(t, resolved.repo.url, resolved.repo.host)
+      const linkChanged = await upsertPackageRepo(t, packageId, repo.id, {
+        source: 'declared',
+        signal: 'secondary',
+      })
+      const removedFields = await removeDeclaredPackageRepo(t, packageId, repo.id)
+      changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, packageId)
+      changedFields.push(...removedFields)
+    }
+    await logAuditFieldChanges(t, WORKER, purl, changedFields)
+  })
+
+  return changedFields
 }

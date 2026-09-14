@@ -10,6 +10,7 @@ import {
   findMemberIdentitiesByValue,
   findMemberIdentityConflict,
   insertMemberIdentities,
+  suggestMemberMerge,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
@@ -143,31 +144,45 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
           return { identity: result, alreadyExisted: existed }
         })
       } catch (error) {
-        if (!isMemberIdentityDbConflict(error)) {
-          throw error
-        }
-
-        const existing = await findMemberIdentitiesByValue(qx, memberId, data.value, {
-          type: data.type,
-        })
-        const exactMatch = existing.find((row) => row.platform === data.platform)
-
-        // Rolled back unique error. 200 if this member already has what they
-        // asked for; asked to verify but still unverified is a failed verify (409).
-        if (exactMatch && (!data.verified || exactMatch.verified)) {
-          outcome = { identity: exactMatch, alreadyExisted: true }
-        } else {
-          const conflictMemberId = await findMemberIdByVerifiedIdentity(
-            qx,
-            data.platform,
-            data.value,
-            data.type,
-          )
-
-          rethrowDbConflict(error, {
-            ...conflictContext,
-            ...(conflictMemberId ? { conflictMemberId } : {}),
+        if (isMemberIdentityDbConflict(error)) {
+          const existing = await findMemberIdentitiesByValue(qx, memberId, data.value, {
+            type: data.type,
           })
+          const exactMatch = existing.find((row) => row.platform === data.platform)
+
+          // Rolled back unique error. 200 if this member already has what they
+          // asked for; asked to verify but still unverified is a failed verify (409).
+          if (exactMatch && (!data.verified || exactMatch.verified)) {
+            outcome = { identity: exactMatch, alreadyExisted: true }
+          } else {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              data.platform,
+              data.value,
+              data.type,
+            )
+
+            if (conflictMemberId) {
+              await suggestMemberMerge(qx, [
+                { members: [memberId, conflictMemberId], similarity: 0.95 },
+              ])
+            }
+
+            rethrowDbConflict(error, {
+              ...conflictContext,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
+            })
+          }
+        } else if (error instanceof ConflictError) {
+          const conflictMemberId = error.context?.conflictMemberId
+          if (typeof conflictMemberId === 'string') {
+            await suggestMemberMerge(qx, [
+              { members: [memberId, conflictMemberId], similarity: 0.95 },
+            ])
+          }
+          throw error
+        } else {
+          throw error
         }
       }
 

@@ -1,5 +1,4 @@
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
-import type { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+import { ResolvedManifestRepo, resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import type { Packument } from './types'
 
@@ -70,12 +69,24 @@ function dedup(arr: string[]): string[] {
   return [...new Set(arr)]
 }
 
-export function extractRepo(packument: Packument): CanonicalRepo | null {
+export function npmRepositoryField(packument: Packument): string | null {
   const repo = packument.repository
   if (!repo) return null
-  const raw = typeof repo === 'string' ? repo : repo.url
-  if (!raw) return null
-  return canonicalizeRepoUrl(raw)
+  return (typeof repo === 'string' ? repo : repo.url) || null
+}
+
+function npmBugsUrl(packument: Packument): string | null {
+  const bugs = packument.bugs
+  if (!bugs) return null
+  return (typeof bugs === 'string' ? bugs : bugs.url) || null
+}
+
+export function resolveNpmRepo(packument: Packument): ResolvedManifestRepo | null {
+  return resolveManifestRepo([
+    { field: 'repository', url: npmRepositoryField(packument) },
+    { field: 'homepage', url: packument.homepage },
+    { field: 'bugs.url', url: npmBugsUrl(packument) },
+  ])
 }
 
 export function collectMaintainers(packument: Packument): Array<{

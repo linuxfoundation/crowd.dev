@@ -1,0 +1,53 @@
+version: '3.1'
+
+x-env-args: &env-args
+  DOCKER_BUILDKIT: 1
+  NODE_ENV: docker
+  SERVICE: star-snapshot-worker
+  CROWD_TEMPORAL_TASKQUEUE: star-snapshot
+  SHELL: /bin/sh
+
+services:
+  star-snapshot-worker:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.star_snapshot_worker
+    command: 'pnpm run start'
+    working_dir: /usr/crowd/app/services/apps/star_snapshot_worker
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    restart: always
+    networks:
+      - crowd-bridge
+
+  star-snapshot-worker-dev:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.star_snapshot_worker
+    command: 'pnpm run dev'
+    working_dir: /usr/crowd/app/services/apps/star_snapshot_worker
+    # user: '${USER_ID}:${GROUP_ID}'
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    hostname: star-snapshot-worker
+    networks:
+      - crowd-bridge
+    volumes:
+      - ../../services/libs/common_services/src:/usr/crowd/app/services/libs/common_services/src
+      - ../../services/libs/data-access-layer/src:/usr/crowd/app/services/libs/data-access-layer/src
+      - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
+      - ../../services/apps/star_snapshot_worker/src:/usr/crowd/app/services/apps/star_snapshot_worker/src
+
+networks:
+  crowd-bridge:
+    external: true

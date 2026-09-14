@@ -472,7 +472,7 @@ export async function updateMemberUsingSquashedPayload(
         try {
           // Keep the org write in a savepoint: if this identity is already verified
           // on another org, we can recover without aborting the member update transaction.
-          orgId = await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload))
+          orgId = (await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload)))?.id
         } catch (error) {
           const constraint = 'uix_organizationIdentities_plat_val_typ_tenantId_verified'
           const dbError = error as { constraint?: string; detail?: string }
@@ -535,12 +535,14 @@ export async function updateMemberUsingSquashedPayload(
               ),
           )
 
-          orgId = await qx.tx((trnx) =>
-            findOrCreateOrganization(trnx, orgSource, {
-              ...orgPayload,
-              identities: retryIdentities,
-            }),
-          )
+          orgId = (
+            await qx.tx((trnx) =>
+              findOrCreateOrganization(trnx, orgSource, {
+                ...orgPayload,
+                identities: retryIdentities,
+              }),
+            )
+          )?.id
 
           if (orgId) {
             const mergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(

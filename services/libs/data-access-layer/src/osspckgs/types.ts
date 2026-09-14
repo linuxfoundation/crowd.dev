@@ -95,3 +95,6 @@ export type IDbRepoUpsert = {
   owner: string | null
   name: string | null
 }
+
+// package_repos claim types live in packages/repoConfidence.ts, next to the scoring
+// function they feed.

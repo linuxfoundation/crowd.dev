@@ -6,7 +6,7 @@ import {
   memberUnmergeAction,
   memberVerifyIdentityAction,
 } from '@crowd/audit-logs'
-import { InternalError, NotFoundError } from '@crowd/common'
+import { ConflictError, InternalError, NotFoundError } from '@crowd/common'
 import {
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
@@ -20,6 +20,7 @@ import {
   findMemberIdByVerifiedIdentity,
   findMemberIdentityById,
   queryActivityRelations,
+  suggestMemberMerge,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import {
@@ -86,61 +87,73 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     memberVerifyIdentityAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(identity)
 
-      await qx.tx(async (tx) => {
-        try {
-          updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
-            verified,
-            verifiedBy,
-          })
-        } catch (error) {
-          if (verified && isMemberIdentityDbConflict(error)) {
-            const conflictMemberId = await findMemberIdByVerifiedIdentity(
-              qx,
-              identity.platform,
-              identity.value,
-              identity.type,
-            )
-
-            rethrowDbConflict(error, {
-              memberId,
-              ...(conflictMemberId ? { conflictMemberId } : {}),
-              platform: identity.platform,
-              value: identity.value,
-              type: identity.type,
+      try {
+        await qx.tx(async (tx) => {
+          try {
+            updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
+              verified,
+              verifiedBy,
             })
+          } catch (error) {
+            if (verified && isMemberIdentityDbConflict(error)) {
+              const conflictMemberId = await findMemberIdByVerifiedIdentity(
+                qx,
+                identity.platform,
+                identity.value,
+                identity.type,
+              )
+
+              rethrowDbConflict(error, {
+                memberId,
+                ...(conflictMemberId ? { conflictMemberId } : {}),
+                platform: identity.platform,
+                value: identity.value,
+                type: identity.type,
+              })
+            }
+
+            throw error
           }
 
-          throw error
-        }
+          if (!updatedIdentity) {
+            throw new InternalError('Failed to update member identity')
+          }
 
-        if (!updatedIdentity) {
-          throw new InternalError('Failed to update member identity')
-        }
+          if (!verified) {
+            const { count } = await queryActivityRelations(tx, {
+              filter: {
+                and: [
+                  {
+                    memberId: { eq: memberId },
+                    username: { eq: identity.value },
+                    platform: { eq: identity.platform },
+                  },
+                ],
+              },
+              limit: 1,
+              countOnly: true,
+            })
 
-        if (!verified) {
-          const { count } = await queryActivityRelations(tx, {
-            filter: {
-              and: [
-                {
-                  memberId: { eq: memberId },
-                  username: { eq: identity.value },
-                  platform: { eq: identity.platform },
-                },
-              ],
-            },
-            limit: 1,
-            countOnly: true,
-          })
-
-          if (count === 0) {
-            await deleteMemberIdentity(tx, memberId, identityId)
-          } else {
-            const preview = await prepareMemberUnmerge(tx, memberId, identityId, false)
-            const result = await unmergeMember(tx, memberId, preview, req.actor.id)
-            unmerge = { preview, result }
+            if (count === 0) {
+              await deleteMemberIdentity(tx, memberId, identityId)
+            } else {
+              const preview = await prepareMemberUnmerge(tx, memberId, identityId, false)
+              const result = await unmergeMember(tx, memberId, preview, req.actor.id)
+              unmerge = { preview, result }
+            }
+          }
+        })
+      } catch (error) {
+        if (error instanceof ConflictError) {
+          const conflictMemberId = error.context?.conflictMemberId
+          if (typeof conflictMemberId === 'string') {
+            await suggestMemberMerge(qx, [
+              { members: [memberId, conflictMemberId], similarity: 0.95 },
+            ])
           }
         }
-      })
+        throw error
+      }
 
       captureNewState(updatedIdentity)
     }),

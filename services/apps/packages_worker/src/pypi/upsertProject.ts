@@ -1,14 +1,20 @@
 import {
   getOrCreateRepoByUrl,
+  removeDeclaredPackageRepo,
   upsertNpmFundingLinks,
   upsertPackageMaintainers,
   upsertPackageRepo,
   upsertPypiPackage,
   upsertPypiVersions,
 } from '@crowd/data-access-layer/src/packages'
+import type {
+  PackageRepoOwnershipMatch,
+  PackageRepoSignal,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
@@ -25,7 +31,11 @@ export async function upsertProject(
   qx: QueryExecutor,
   project: PyPiProject,
   purl: string,
-): Promise<{ purl: string; changedFields: string[] }> {
+): Promise<{
+  purl: string
+  changedFields: string[]
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}> {
   stripNullBytesDeep(project)
   const info = project.info
 
@@ -37,11 +47,23 @@ export async function upsertProject(
     `https://pypi.org/project/${pypiName}/`
   const description = info.summary?.trim() ? info.summary.trim() : null
 
-  const { homepage, declaredRepositoryUrl, fundingLinks } = classifyProjectUrls(
+  const { homepage, repositoryCandidates, fundingLinks } = classifyProjectUrls(
     info.project_urls,
     info.home_page,
   )
-  const repo = declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null
+  // Only the explicit `source` candidate counts as a declaration — homepage/bug_tracker
+  // are resolver-only fallbacks and must not surface as declaredRepositoryUrl.
+  const declaredRepositoryUrl =
+    repositoryCandidates.find((candidate) => candidate.field === 'source')?.url ?? null
+  const resolvedRepo = resolveManifestRepo(
+    repositoryCandidates.map((candidate) => ({
+      field: candidate.field,
+      url: candidate.url,
+      signal: candidate.field === 'source' ? 'primary' : 'secondary',
+    })),
+  )
+  const repo = resolvedRepo?.repo ?? null
+  const repoSignal: PackageRepoSignal = resolvedRepo?.signal ?? 'primary'
   const { licenses, licensesRaw } = resolvePypiLicenses(info)
   const keywords = parseKeywords(info.keywords)
   const maintainers = collectPypiMaintainers(info)
@@ -57,6 +79,7 @@ export async function upsertProject(
   )
 
   const changed = new Set<string>()
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
 
   await qx.tx(async (t) => {
     const { id: pkgId, changedFields: pkgChanged } = await upsertPypiPackage(t, {
@@ -86,8 +109,23 @@ export async function upsertProject(
         repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
-      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, { source: 'declared' })
+      ownershipMatch = matchOwnership({
+        maintainers: maintainers.map((m) => m.username),
+        repoOwner: repoOwnerFromCanonical(repo),
+      })
+
+      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
+        source: 'declared',
+        signal: repoSignal,
+        ownershipMatch,
+      })
       linkChanged.forEach((f) => changed.add(f))
+
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId, repoId)
+      removedFields.forEach((f) => changed.add(f))
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId)
+      removedFields.forEach((f) => changed.add(f))
     }
 
     if (versionRows.length > 0) {
@@ -106,5 +144,5 @@ export async function upsertProject(
     }
   })
 
-  return { purl, changedFields: Array.from(changed) }
+  return { purl, changedFields: Array.from(changed), ownershipMatch }
 }

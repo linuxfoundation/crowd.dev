@@ -2,9 +2,17 @@
 import uniqBy from 'lodash.uniqby'
 
 import { parseGitHubNoreplyEmail, parseGitLabNoreplyEmail } from '@crowd/common'
-import { insertMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import {
+  findMemberMergeSuggestionsLastGeneratedAt,
+  findRawMemberMergeSuggestions,
+  getMemberNoMerge,
+  getMembersForLlmMergeSuggestions,
+  insertMemberNoMerge,
+  removeMemberToMerge,
+  touchMemberMergeSuggestionsLastGeneratedAt,
+  upsertMemberMergeSuggestions,
+} from '@crowd/data-access-layer/src/member_merge'
 import { MemberField, queryMembers } from '@crowd/data-access-layer/src/members'
-import MemberMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/memberMergeSuggestions.repo'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { buildFullMemberForMergeSuggestions } from '@crowd/opensearch'
 import {
@@ -43,11 +51,6 @@ export async function getMemberMergeSuggestions(
   member: IMemberBaseForMergeSuggestions,
 ): Promise<IMemberMergeSuggestion[]> {
   const mergeSuggestions: IMemberMergeSuggestion[] = []
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-
   const qx = pgpQx(svc.postgres.reader.connection())
   const fullMember = await buildFullMemberForMergeSuggestions(qx, member)
 
@@ -62,7 +65,9 @@ export async function getMemberMergeSuggestions(
   }
 
   // Get members that should not be merged
-  const noMergeIds = await memberMergeSuggestionsRepo.findNoMergeIds(member.id)
+  const noMergeIds = (await getMemberNoMerge(qx, [member.id])).map((row) =>
+    row.memberId === member.id ? row.noMergeId : row.memberId,
+  )
   const excludeIds = [fullMember.id]
   if (noMergeIds && noMergeIds.length > 0) {
     excludeIds.push(...noMergeIds)
@@ -381,30 +386,21 @@ export async function addMemberToMerge(
   similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length > 0) {
-    const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-      svc.postgres.writer.connection(),
-      svc.log,
-    )
-    await memberMergeSuggestionsRepo.addToMerge(suggestions, similarityThreshold)
+    const qx = pgpQx(svc.postgres.writer.connection())
+    await upsertMemberMergeSuggestions(qx, suggestions, similarityThreshold)
   }
 }
 
 export async function findTenantsLatestMemberSuggestionGeneratedAt(
   tenantId: string,
-): Promise<string> {
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  return memberMergeSuggestionsRepo.findTenantsLatestMemberSuggestionGeneratedAt(tenantId)
+): Promise<string | null> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  return findMemberMergeSuggestionsLastGeneratedAt(qx, tenantId)
 }
 
 export async function updateMemberMergeSuggestionsLastGeneratedAt(tenantId: string): Promise<void> {
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  await memberMergeSuggestionsRepo.updateMemberMergeSuggestionsLastGeneratedAt(tenantId)
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await touchMemberMergeSuggestionsLastGeneratedAt(qx, tenantId)
 }
 
 export async function getMembers(
@@ -443,11 +439,8 @@ export async function getMembers(
 export async function getMembersForLLMConsumption(
   memberIds: string[],
 ): Promise<ILLMConsumableMember[]> {
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  const [primaryMember, secondaryMember] = await memberMergeSuggestionsRepo.getMembers(memberIds)
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const [primaryMember, secondaryMember] = await getMembersForLlmMergeSuggestions(qx, memberIds)
 
   const result: ILLMConsumableMember[] = []
 
@@ -490,11 +483,8 @@ export async function getRawMemberMergeSuggestions(
   similarityFilter: ISimilarityFilter,
   limit: number,
 ): Promise<string[][]> {
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  return memberMergeSuggestionsRepo.getRawMemberSuggestions(similarityFilter, limit)
+  const qx = pgpQx(svc.postgres.writer.connection())
+  return findRawMemberMergeSuggestions(qx, similarityFilter, limit)
 }
 
 export async function removeMemberMergePair(suggestion: string[]): Promise<void> {

@@ -4,7 +4,6 @@ import { Error404 } from '@crowd/common'
 import { CommonMemberService, signalMemberUpdate } from '@crowd/common_services'
 import { pgpQx } from '@crowd/data-access-layer'
 import {
-  IMemberIdentity,
   IMemberUnmergeBackup,
   IMemberUnmergePreviewResult,
   IUnmergeBackup,
@@ -62,7 +61,7 @@ export async function unmergeMembers(
 
 export async function unmergeMembersPreview(
   memberId: string,
-  memberIdentity: IMemberIdentity,
+  identityId: string,
 ): Promise<IUnmergePreviewResult<IMemberUnmergePreviewResult>> {
   const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${memberId}/unmerge/preview`
   const requestOptions = {
@@ -72,9 +71,7 @@ export async function unmergeMembersPreview(
       'Content-Type': 'application/json',
     },
     data: {
-      platform: memberIdentity.platform,
-      value: memberIdentity.value,
-      type: memberIdentity.type,
+      identityId,
     },
   }
 

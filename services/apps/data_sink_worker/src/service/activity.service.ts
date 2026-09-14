@@ -20,6 +20,7 @@ import {
 } from '@crowd/common'
 import { CommonMemberService, SearchSyncWorkerEmitter } from '@crowd/common_services'
 import {
+  IFindOrCreateOrganizationResult,
   createOrUpdateRelations,
   findIdentitiesForMembers,
   findMembersByIdentities,
@@ -1162,7 +1163,7 @@ export default class ActivityService extends LoggerBase {
     // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
     // unique org per batch. Concurrent member creates that reference the same org await the
     // same promise instead of firing redundant DB round trips.
-    const orgPromiseCache = new Map<string, Promise<string | undefined>>()
+    const orgPromiseCache = new Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>()
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(

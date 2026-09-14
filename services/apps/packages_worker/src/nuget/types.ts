@@ -1,4 +1,5 @@
-import { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+import { DeclaredOwnershipCounts } from '../utils/ownershipMatch'
+import { ResolvedManifestRepo } from '../utils/resolveManifestRepo'
 
 export interface NuGetConfig {
   batchSize: number
@@ -8,7 +9,7 @@ export interface NuGetConfig {
   userAgent: string | undefined
 }
 
-export interface BatchResult {
+export interface BatchResult extends DeclaredOwnershipCounts {
   processed: number
   skipped: number
   error: number
@@ -75,7 +76,7 @@ export interface NormalizedNuGetPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
-  repo: CanonicalRepo | null
+  resolvedRepo: ResolvedManifestRepo | null
   licenses: string[] | null
   licensesRaw: string | null
   keywords: string[] | null

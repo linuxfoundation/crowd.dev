@@ -6,12 +6,14 @@ import {
   logAuditFieldChanges,
   markPypiPackageScanned,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
 import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
+import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 
 import { fetchProject } from './fetchProject'
 import { pypiNameFromPurl } from './normalize'
@@ -71,17 +73,17 @@ export async function ingestOne(
   qx: QueryExecutor,
   purl: string,
   dispatcher?: Dispatcher,
-): Promise<void> {
+): Promise<PackageRepoOwnershipMatch | null> {
   const name = pypiNameFromPurl(purl)
 
   for (let attempt = 1; attempt <= INGEST_4XX_ATTEMPTS; attempt++) {
     const result = await fetchProject(name, dispatcher)
 
     if (!isFetchError(result)) {
-      const { changedFields } = await upsertProject(qx, result, purl)
+      const { changedFields, ownershipMatch } = await upsertProject(qx, result, purl)
       await logAuditFieldChanges(qx, WORKER, purl, changedFields)
       await markPypiPackageScanned(qx, purl, { status: 'success', attempts: attempt })
-      return
+      return ownershipMatch
     }
 
     if (!isClientError(result.statusCode, result.kind) && result.kind !== 'MALFORMED') {
@@ -104,6 +106,7 @@ export async function ingestOne(
       message: result.message,
     })
   }
+  return null
 }
 
 // Process purls sequentially. On a transient throw, rethrow so Temporal retries the whole
@@ -166,14 +169,19 @@ export async function ingestPypiPackageBatch(purls: string[]): Promise<void> {
   const attempt = Context.current().info.attempt
 
   const agents = pypiProxyPool().map((p) => new ProxyAgent(proxyUrl(p)))
+  const ownershipCounts = emptyDeclaredOwnershipCounts()
   try {
     await ingestPurlsWithGiveUp(qx, purls, attempt, async (purl, i) => {
       await sleep(ingestSleepMs())
       const dispatcher = agents.length ? agents[i % agents.length] : undefined
-      await ingestOne(qx, purl, dispatcher)
+      const ownershipMatch = await ingestOne(qx, purl, dispatcher)
+      if (ownershipMatch) bumpDeclaredOwnershipCounts(ownershipCounts, ownershipMatch)
     })
   } finally {
     await Promise.all(agents.map((a) => a.close()))
   }
-  log.info({ count: purls.length, proxied: agents.length }, 'Ingested PyPI package batch')
+  log.info(
+    { count: purls.length, proxied: agents.length, ...ownershipCounts },
+    'Ingested PyPI package batch',
+  )
 }

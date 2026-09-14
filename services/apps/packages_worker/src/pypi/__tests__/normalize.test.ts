@@ -246,7 +246,10 @@ describe('classifyProjectUrls', () => {
       null,
     )
     expect(r.homepage).toBe('https://flask.palletsprojects.com/')
-    expect(r.declaredRepositoryUrl).toBe('https://github.com/pallets/flask/')
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'https://github.com/pallets/flask/' },
+      { field: 'homepage', url: 'https://flask.palletsprojects.com/' },
+    ])
     expect(r.fundingLinks).toEqual([{ type: 'other', url: 'https://palletsprojects.com/donate' }])
   })
 
@@ -257,7 +260,83 @@ describe('classifyProjectUrls', () => {
 
   it('falls back to a repo-looking homepage when no explicit repo key', () => {
     const r = classifyProjectUrls({ Homepage: 'https://github.com/psf/requests' }, null)
-    expect(r.declaredRepositoryUrl).toBe('https://github.com/psf/requests')
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'homepage', url: 'https://github.com/psf/requests' },
+    ])
+  })
+
+  it('falls back to a repo-looking info.home_page when project_urls has no matching Homepage', () => {
+    const r = classifyProjectUrls({}, 'https://github.com/psf/requests')
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'homepage', url: 'https://github.com/psf/requests' },
+    ])
+  })
+
+  it('orders a repo-looking project_urls.Homepage before a non-repo info.home_page', () => {
+    const r = classifyProjectUrls(
+      { Homepage: 'https://github.com/psf/requests' },
+      'https://primary.example',
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'homepage', url: 'https://github.com/psf/requests' },
+      { field: 'homepage', url: 'https://primary.example' },
+    ])
+  })
+
+  it('falls back to bug tracker URL when no explicit repo or homepage repo', () => {
+    const r = classifyProjectUrls({ 'Bug Tracker': 'https://github.com/foo/bar/issues' }, null)
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
+  })
+
+  it('does not classify GitHub Issues URL as source via the git heuristic', () => {
+    const r = classifyProjectUrls({ 'GitHub Issues': 'https://github.com/foo/bar/issues' }, null)
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
+  })
+
+  it('keeps the bug tracker as a lower-priority fallback even when an explicit repo key is present', () => {
+    const r = classifyProjectUrls(
+      {
+        Source: 'https://github.com/foo/bar',
+        'Bug Tracker': 'https://github.com/foo/bar/issues',
+      },
+      null,
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'https://github.com/foo/bar' },
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
+  })
+
+  it('keeps the bug tracker as a fallback when the source URL is present but malformed', () => {
+    const r = classifyProjectUrls(
+      {
+        Source: 'not-a-url',
+        'Bug Tracker': 'https://github.com/foo/bar/issues',
+      },
+      null,
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'not-a-url' },
+      { field: 'bug_tracker', url: 'https://github.com/foo/bar/issues' },
+    ])
+  })
+
+  it('keeps the source candidate and a repo-looking homepage as a fallback', () => {
+    const r = classifyProjectUrls(
+      {
+        Source: 'https://github.com/foo/bar',
+        Homepage: 'https://gitlab.com/foo/bar',
+      },
+      null,
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'source', url: 'https://github.com/foo/bar' },
+      { field: 'homepage', url: 'https://gitlab.com/foo/bar' },
+    ])
   })
 
   it('infers funding type from the host', () => {
@@ -276,7 +355,11 @@ describe('classifyProjectUrls', () => {
 
   it('returns nulls/empties when there are no urls', () => {
     const r = classifyProjectUrls(null, null)
-    expect(r).toEqual({ homepage: null, declaredRepositoryUrl: null, fundingLinks: [] })
+    expect(r).toEqual({
+      homepage: null,
+      repositoryCandidates: [],
+      fundingLinks: [],
+    })
   })
 })
 

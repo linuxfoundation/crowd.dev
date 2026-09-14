@@ -33,6 +33,7 @@
     "script:fix-duplicate-members": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/fix-duplicate-members.ts",
     "script:fix-members-activities-after-unaffilation": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/fix-members-activities-after-unaffilation.ts",
     "script:process-bot-members": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/process-bot-members.ts",
+    "script:process-fake-organizations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/process-fake-organizations.ts",
     "script:backfill-email-domain-member-organization-dates": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/backfill-email-domain-member-organization-dates.ts",
     "script:onboard-default-tenant": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/onboard-default-tenant.ts",
     "script:onboard-default-tenant:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run script:onboard-default-tenant",

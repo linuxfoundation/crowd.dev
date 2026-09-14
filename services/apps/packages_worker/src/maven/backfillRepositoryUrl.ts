@@ -4,8 +4,11 @@ import {
   rescorePackageReposForPackages,
   updateMavenRepositoryUrls,
 } from '@crowd/data-access-layer'
+import { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
+
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import { normalizeScmUrl } from './extract'
 import { withDeadlockRetry, writeRepoLink } from './runMavenEnrichmentLoop'
@@ -24,9 +27,11 @@ export type RepoUrlBackfillTotals = {
 
 /**
  * Recomputes `repository_url` for every Maven row directly from the stored
- * `declared_repository_url`, applying the current `normalizeScmUrl`. No POMs are
- * fetched — the raw SCM value is already in the DB. Fills recoverable NULLs
- * (Gap B) and clears non-repository values (Gap C) via direct UPDATE.
+ * `declared_repository_url`, applying the current `normalizeScmUrl` — falling back to
+ * the stored `homepage` as a secondary signal when the declared value doesn't
+ * canonicalize, same as the enrichment loop. No POMs are fetched — the raw values are
+ * already in the DB. Fills recoverable NULLs (Gap B) and clears non-repository values
+ * with no usable fallback (Gap C) via direct UPDATE.
  *
  * Link tables: package_repos is kept consistent with the recomputed
  * repository_url. For rows that had a value and now change (rewrites) or are
@@ -79,10 +84,17 @@ export async function backfillMavenRepositoryUrls(
     // Rows that had a link and now change/clear — their stale 'declared' link is pruned.
     const pruneTargets: number[] = []
     // Rows that gained a canonical URL — their repo link is (re)written after the update.
-    const linkTargets: { id: number; repositoryUrl: string }[] = []
+    const linkTargets: { id: number; repositoryUrl: string; signal: PackageRepoSignal }[] = []
     for (const row of rows) {
       totals.scanned++
-      const desired = normalizeScmUrl(row.declaredRepositoryUrl)
+      const scmRepositoryUrl = normalizeScmUrl(row.declaredRepositoryUrl)
+      // A non-canonical declared value falls back to homepage, same as the enrichment
+      // loop — otherwise this recompute wipes a homepage-derived secondary link on a
+      // rerun (the stored declared_repository_url alone can't tell "unknown" from "invalid").
+      const fallbackRepo = scmRepositoryUrl
+        ? null
+        : resolveManifestRepo([{ field: 'url', url: row.homepage, signal: 'secondary' }])
+      const desired = scmRepositoryUrl ?? fallbackRepo?.repo.url ?? null
       if (desired === row.repositoryUrl) {
         totals.unchanged++
         continue
@@ -93,7 +105,13 @@ export async function backfillMavenRepositoryUrls(
       updates.push({ id: row.id, repositoryUrl: desired })
       // A 'declared' link only exists when the row already had a value.
       if (row.repositoryUrl !== null) pruneTargets.push(row.id)
-      if (desired !== null) linkTargets.push({ id: row.id, repositoryUrl: desired })
+      if (desired !== null) {
+        linkTargets.push({
+          id: row.id,
+          repositoryUrl: desired,
+          signal: fallbackRepo ? 'secondary' : 'primary',
+        })
+      }
     }
 
     if (updates.length > 0 && !dryRun) {
@@ -109,7 +127,7 @@ export async function backfillMavenRepositoryUrls(
           await deleteMavenPackageRepoLinks(t, pruneTargets)
           await rescorePackageReposForPackages(t, pruneTargets.map(String))
           for (const target of linkTargets) {
-            await writeRepoLink(t, target.id, target.repositoryUrl)
+            await writeRepoLink(t, target.id, target.repositoryUrl, undefined, target.signal)
           }
         }),
       )

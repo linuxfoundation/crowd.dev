@@ -16,6 +16,7 @@ export interface Packument {
   license?: string | { type: string; url?: string }
   licenses?: Array<{ type: string; url?: string }>
   repository?: string | { type?: string; url: string; directory?: string }
+  bugs?: string | { url?: string; email?: string }
   author?: string | { name: string; email?: string; url?: string }
   maintainers?: Array<{ name: string; email?: string }>
   'dist-tags': Record<string, string>
