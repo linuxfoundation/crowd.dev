@@ -11,11 +11,12 @@ NODE repo_health_score_retention_current_quarter
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT channel, groupUniqArray(memberId) AS currentQuarterMembers
+        SELECT lower(channel) AS channel, groupUniqArray(memberId) AS currentQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
-            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND lower(channel)
+            = lower({{ String(repoUrl, description="Repository URL", required=False) }})
             AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
@@ -36,7 +37,7 @@ SQL >
             {% end %}
         GROUP BY channel
     {% else %}
-        SELECT channel, groupUniqArray(memberId) AS currentQuarterMembers
+        SELECT lower(channel) AS channel, groupUniqArray(memberId) AS currentQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
@@ -51,11 +52,12 @@ NODE repo_health_score_retention_previous_quarter
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT channel, groupUniqArray(memberId) AS previousQuarterMembers
+        SELECT lower(channel) AS channel, groupUniqArray(memberId) AS previousQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
-            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND lower(channel)
+            = lower({{ String(repoUrl, description="Repository URL", required=False) }})
             AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
@@ -77,7 +79,7 @@ SQL >
             {% end %}
         GROUP BY channel
     {% else %}
-        SELECT channel, groupUniqArray(memberId) AS previousQuarterMembers
+        SELECT lower(channel) AS channel, groupUniqArray(memberId) AS previousQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''

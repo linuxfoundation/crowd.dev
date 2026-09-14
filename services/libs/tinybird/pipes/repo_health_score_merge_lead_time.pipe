@@ -13,10 +13,11 @@ NODE repo_health_score_merge_lead_time_score
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
+        SELECT
+            lower(channel) AS channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
         FROM pull_requests_analyzed
         WHERE
-            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            lower(channel) = lower({{ String(repoUrl, description="Repository URL", required=False) }})
             AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND openedAt
@@ -27,7 +28,8 @@ SQL >
             {% end %}
         GROUP BY channel
     {% else %}
-        SELECT channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
+        SELECT
+            lower(channel) AS channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
         FROM pull_requests_analyzed
         WHERE
             openedAt >= toStartOfDay(now() - toIntervalDay(365))

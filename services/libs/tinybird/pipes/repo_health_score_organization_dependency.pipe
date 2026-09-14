@@ -12,12 +12,13 @@ NODE repo_health_score_organization_dependency_count
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT channel, organizationId, count() AS contributionCount
+        SELECT lower(channel) AS channel, organizationId, count() AS contributionCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             organizationId != ''
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
-            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND lower(channel)
+            = lower({{ String(repoUrl, description="Repository URL", required=False) }})
             AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND timestamp
@@ -29,7 +30,7 @@ SQL >
             {% end %}
         GROUP BY channel, organizationId
     {% else %}
-        SELECT channel, organizationId, count() AS contributionCount
+        SELECT lower(channel) AS channel, organizationId, count() AS contributionCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             organizationId != ''
