@@ -11,4 +11,4 @@ SQL >
     WHERE
         repoUrl in (select arrayJoin(repositories) from segments_filtered)
         AND v.repoUrl NOT IN (SELECT url FROM repositories FINAL WHERE archived = true)
-        {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
+        {% if defined(repos) %} AND lower(repoUrl) IN (SELECT lower(channel) FROM repos_to_channels) {% end %}
