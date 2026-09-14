@@ -16,16 +16,20 @@ DESCRIPTION >
     updated of any case-only-duplicate `repositories` rows.
 
 SQL >
-    SELECT
-        argMax(url, updatedAt) AS url,
-        argMax(segmentId, updatedAt) AS segmentId,
-        argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
-        argMax(insightsProjectId, updatedAt) AS insightsProjectId,
-        argMax(enabled, updatedAt) AS enabled,
-        argMax(excluded, updatedAt) AS excluded
-    FROM repositories FINAL
-    WHERE isNull (deletedAt)
-    GROUP BY lower(url)
+    SELECT canonicalUrl AS url, segmentId, sourceIntegrationId, insightsProjectId, enabled, excluded
+    FROM
+        (
+            SELECT
+                argMax(url, updatedAt) AS canonicalUrl,
+                argMax(segmentId, updatedAt) AS segmentId,
+                argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
+                argMax(insightsProjectId, updatedAt) AS insightsProjectId,
+                argMax(enabled, updatedAt) AS enabled,
+                argMax(excluded, updatedAt) AS excluded
+            FROM repositories FINAL
+            WHERE isNull (deletedAt)
+            GROUP BY lower(url)
+        )
 
 NODE repos_to_expand
 DESCRIPTION >

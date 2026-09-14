@@ -30,7 +30,9 @@ SQL >
     {% else %}
         SELECT channel, count() AS forks
         FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE type = 'fork' AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+        WHERE
+            type = 'fork'
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
         GROUP BY channel
     {% end %}
 

@@ -200,7 +200,8 @@ SQL >
                                 (
                                     SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
                                     FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                                    INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
+                                    INNER JOIN
+                                        repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
                                     WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId

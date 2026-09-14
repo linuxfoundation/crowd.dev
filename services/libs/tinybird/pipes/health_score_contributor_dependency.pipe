@@ -9,7 +9,9 @@ SQL >
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             AND segmentId = (SELECT segmentId FROM segments_filtered)
             AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
-            {% if defined(repos) %} AND lower(channel) IN (SELECT lower(channel) FROM repos_to_channels) {% end %}
+            {% if defined(repos) %}
+                AND lower(channel) IN (SELECT lower(channel) FROM repos_to_channels)
+            {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}

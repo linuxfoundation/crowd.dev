@@ -15,13 +15,17 @@ DESCRIPTION >
     updated of any case-only-duplicate `repositories` rows.
 
 SQL >
-    SELECT
-        argMax(url, updatedAt) AS url,
-        argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
-        argMax(excluded, updatedAt) AS excluded
-    FROM repositories FINAL
-    WHERE deletedAt IS NULL
-    GROUP BY lower(url)
+    SELECT canonicalUrl AS url, sourceIntegrationId, excluded
+    FROM
+        (
+            SELECT
+                argMax(url, updatedAt) AS canonicalUrl,
+                argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
+                argMax(excluded, updatedAt) AS excluded
+            FROM repositories FINAL
+            WHERE deletedAt IS NULL
+            GROUP BY lower(url)
+        )
 
 NODE repos_channels_copy_calc
 SQL >
