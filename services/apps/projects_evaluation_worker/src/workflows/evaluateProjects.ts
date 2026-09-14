@@ -1,4 +1,10 @@
-import { log, proxyActivities, workflowInfo } from '@temporalio/workflow'
+import {
+  CancellationScope,
+  isCancellation,
+  log,
+  proxyActivities,
+  workflowInfo,
+} from '@temporalio/workflow'
 
 import type { IPipelineRunEvaluatorModelUsage } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 
@@ -23,7 +29,6 @@ const evaluateActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 2 },
 })
 
-// Quick DB writes — bookkeeping for the run itself.
 const pipelineRunActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
@@ -84,22 +89,27 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
 
           if (result === null) {
             skipped++
-          } else {
+          } else if (result.applied) {
             succeeded++
+          } else {
+            skipped++
+          }
 
-            if (result.model && result.inputTokens !== null && result.outputTokens !== null) {
-              evaluatorSeconds += result.seconds ?? 0
-              recordEvaluatorUsage(
-                evaluatorModels,
-                result.model,
-                result.inputTokens,
-                result.outputTokens,
-                result.costUsd,
-              )
-            }
+          if (result?.model && result.inputTokens !== null && result.outputTokens !== null) {
+            evaluatorSeconds += result.seconds ?? 0
+            recordEvaluatorUsage(
+              evaluatorModels,
+              result.model,
+              result.inputTokens,
+              result.outputTokens,
+              result.costUsd,
+            )
           }
         } catch (err) {
-          // Log and continue — a single failure should not abort the whole batch.
+          if (isCancellation(err)) {
+            throw err
+          }
+
           failed++
           log.error(
             `Evaluation failed for project id=${project.id} repoUrl=${project.repoUrl}: ${String(err)}`,
@@ -121,10 +131,9 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
             calls: modelUsages.reduce((sum, usage) => sum + usage.calls, 0),
             inputTokens: modelUsages.reduce((sum, usage) => sum + usage.inputTokens, 0),
             outputTokens: modelUsages.reduce((sum, usage) => sum + usage.outputTokens, 0),
-            costUsd: modelUsages.reduce(
-              (sum, usage) => (usage.costUsd === null ? sum : (sum ?? 0) + usage.costUsd),
-              null as number | null,
-            ),
+            costUsd: modelUsages.some((usage) => usage.costUsd === null)
+              ? null
+              : modelUsages.reduce((sum, usage) => sum + (usage.costUsd as number), 0),
             seconds: evaluatorSeconds,
             models: evaluatorModels,
           }
@@ -139,13 +148,15 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
       evaluator,
     })
   } catch (err) {
-    await pipelineRunActivities.finishEvaluationPipelineRun(pipelineRunId, {
-      status: 'failed',
-      succeeded,
-      failed,
-      skipped,
-      errorMessage: String(err),
-    })
+    await CancellationScope.nonCancellable(() =>
+      pipelineRunActivities.finishEvaluationPipelineRun(pipelineRunId, {
+        status: 'failed',
+        succeeded,
+        failed,
+        skipped,
+        errorMessage: String(err),
+      }),
+    )
     throw err
   }
 }

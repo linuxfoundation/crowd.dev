@@ -83,25 +83,25 @@ export async function evaluateAndUpdateProject(
   if (!updated) {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, elapsedSeconds },
-      'Project was moved out of evaluate by a manual request while evaluating, discarding result.',
+      'Project was moved out of evaluate by a manual request while evaluating, discarding DB update.',
     )
-    return null
+  } else {
+    log.info(
+      {
+        id: project.id,
+        repoUrl: project.repoUrl,
+        outcome: result.outcome,
+        evaluationResult: result.evaluationResult,
+        evaluationReason: result.evaluationReason,
+        elapsedSeconds,
+      },
+      'Evaluation complete.',
+    )
   }
-
-  log.info(
-    {
-      id: project.id,
-      repoUrl: project.repoUrl,
-      outcome: result.outcome,
-      evaluationResult: result.evaluationResult,
-      evaluationReason: result.evaluationReason,
-      elapsedSeconds,
-    },
-    'Evaluation complete.',
-  )
 
   if (!result.metrics) {
     return {
+      applied: Boolean(updated),
       outcome: result.outcome,
       model: null,
       inputTokens: null,
@@ -114,6 +114,7 @@ export async function evaluateAndUpdateProject(
   const { model, inputTokens, outputTokens, seconds } = result.metrics
 
   return {
+    applied: Boolean(updated),
     outcome: result.outcome,
     model,
     inputTokens,

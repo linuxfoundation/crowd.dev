@@ -16,8 +16,9 @@ export interface IEvaluateProjectsInput {
 }
 
 // Returned by evaluateAndUpdateProject so the workflow can aggregate cost/token usage.
-// null when the API was never called (already evaluated, or raced out on update).
+// null when the API was never called (project already evaluated).
 export interface IEvaluationActivityResult {
+  applied: boolean
   outcome: EvaluationOutcome
   model: string | null
   inputTokens: number | null
