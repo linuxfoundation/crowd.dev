@@ -1183,7 +1183,7 @@ while test $# -gt 0; do
         exit
         ;;
     service-restart-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker" "star-snapshot-worker")
         DEV=1
         kill_all_containers
         service_start
