@@ -2,7 +2,7 @@
 import * as lodash from 'lodash'
 
 import { captureApiChange, memberEditProfileAction } from '@crowd/audit-logs'
-import { Error404 } from '@crowd/common'
+import { Error404, getAttributeValue, getCountry, hasAttributeValue } from '@crowd/common'
 import {
   deleteMemberBotSuggestion,
   deleteMemberNoBot,
@@ -74,6 +74,18 @@ export default class MemberAttributesService extends LoggerBase {
               const fieldName = `attributes.${key}`
               if (!updatedManuallyChangedFields.includes(fieldName)) {
                 updatedManuallyChangedFields.push(fieldName)
+              }
+            }
+          }
+
+          if (!hasAttributeValue(data.country)) {
+            const location = getAttributeValue(data.location)
+            const country = getCountry(location)
+            if (country) {
+              data.country = {
+                ...data.country,
+                system: country,
+                default: country,
               }
             }
           }

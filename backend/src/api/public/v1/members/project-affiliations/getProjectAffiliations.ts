@@ -9,9 +9,9 @@ import {
   fetchMemberWorkExperienceAffiliations,
   findMaintainerRoles,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 

@@ -1,34 +1,72 @@
-import { proxyActivities } from '@temporalio/workflow'
+import {
+  condition,
+  continueAsNew,
+  defineSignal,
+  proxyActivities,
+  setHandler,
+  workflowInfo,
+} from '@temporalio/workflow'
 
 import * as activities from '../../activities'
 import { MemberUpdateInput } from '../../types/member'
 
-// Configure timeouts and retry policies to update a member in the database.
-const { updateMemberAffiliations, syncOrganization, syncMember } = proxyActivities<
-  typeof activities
->({
+const { syncOrganization, syncMember } = proxyActivities<typeof activities>({
   startToCloseTimeout: '60 minutes',
 })
 
-/*
-memberUpdate is a Temporal workflow that:
-  - [Activity]: Update all affiliations for a given member in the database.
-  - [Activity]: Sync member and memberOrganizations to OpenSearch if specified.
-*/
-export async function memberUpdate(input: MemberUpdateInput): Promise<void> {
-  const memberId = input.member.id
-  try {
+const { updateMemberAffiliations } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '3 hours',
+})
+
+export const refreshAffiliationsSignal = defineSignal<[MemberUpdateInput]>('refreshAffiliations')
+
+/**
+ * Per-member workflow that serializes async member operations (affiliations, sync, etc).
+ * Concurrent signals are coalesced into one follow-up pass instead of racing.
+ */
+export async function memberUpdate(input?: MemberUpdateInput): Promise<void> {
+  let queued: MemberUpdateInput | null = input ?? null
+
+  setHandler(refreshAffiliationsSignal, (next: MemberUpdateInput) => {
+    if (!queued) {
+      queued = next
+    } else {
+      queued = {
+        member: queued.member,
+        memberOrganizationIds: [
+          ...new Set([
+            ...(queued.memberOrganizationIds || []),
+            ...(next.memberOrganizationIds || []),
+          ]),
+        ],
+        syncToOpensearch: queued.syncToOpensearch || next.syncToOpensearch,
+      }
+    }
+  })
+
+  if (!queued) {
+    // signalWithStart starts with no args, so wait for the first signal to arrive
+    const received = await condition(() => queued !== null, '5 minutes')
+    if (!received) return
+  }
+
+  while (queued) {
+    const pending = queued
+    // Clear before awaiting so new signals accumulate into the next pass
+    queued = null
+
+    const memberId = pending.member.id
     await updateMemberAffiliations(memberId)
-    if (input.syncToOpensearch) {
-      // sync member
+    if (pending.syncToOpensearch) {
       await syncMember(memberId)
-      // sync all member organizations
-      const organizationIds = input.memberOrganizationIds || []
-      for (const orgId of organizationIds) {
+      for (const orgId of pending.memberOrganizationIds || []) {
         await syncOrganization(orgId)
       }
     }
-  } catch (err) {
-    throw new Error(err)
+
+    if (workflowInfo().continueAsNewSuggested && queued) {
+      await continueAsNew<typeof memberUpdate>(queued)
+      return
+    }
   }
 }

@@ -4,10 +4,10 @@ import { z } from 'zod'
 import {
   findMembersByGithubHandles,
   findVerifiedEmailsByMemberIds,
-  optionsQx,
   resolveAffiliationsByMemberIds,
 } from '@crowd/data-access-layer'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 

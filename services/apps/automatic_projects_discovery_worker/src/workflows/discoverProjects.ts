@@ -7,9 +7,10 @@ const listActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
-// processDataset is long-running (10-20 min for ~119MB / ~750K rows).
+// processDataset is long-running: ~119MB / ~750K rows + inter-page throttle can exceed 60 min.
 const processActivities = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30 minutes',
+  startToCloseTimeout: '90 minutes',
+  heartbeatTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
 })
 
@@ -30,8 +31,9 @@ export async function discoverProjects(
 
     // allDatasets is sorted newest-first.
     // Incremental: process only the latest snapshot.
-    // Full: process oldest-first so the newest data wins the final upsert.
-    const datasets = mode === 'incremental' ? [allDatasets[0]] : [...allDatasets].reverse()
+    // Full: process newest-first too, since processDataset only inserts repoUrls
+    // not already in projectCatalog — the first dataset to see a repoUrl wins.
+    const datasets = mode === 'incremental' ? [allDatasets[0]] : allDatasets
 
     log.info(
       `source=${sourceName} mode=${mode}, ${datasets.length}/${allDatasets.length} datasets to process.`,

@@ -16,7 +16,16 @@ import {
   calculateProjectMemberAggregates,
   getSegmentHierarchy,
 } from './activities/member/memberAggregates'
-import { syncMember, updateMemberAffiliations } from './activities/member/memberUpdate'
+import {
+  syncMember,
+  triggerMemberAffiliationsRefresh,
+  updateMemberAffiliations,
+} from './activities/member/memberUpdate'
+import {
+  createFakeOrganizationSuggestion,
+  getOrganizationForFakeAnalysis,
+  markOrganizationAsFake,
+} from './activities/organization/fakeAnalysis'
 import {
   calculateProjectGroupOrganizationAggregates,
   calculateProjectOrganizationAggregates,
@@ -28,9 +37,13 @@ import {
 
 export {
   updateMemberAffiliations,
+  triggerMemberAffiliationsRefresh,
   syncMember,
   syncOrganization,
   findMembersInOrganization,
+  getOrganizationForFakeAnalysis,
+  markOrganizationAsFake,
+  createFakeOrganizationSuggestion,
   // Member aggregates
   getSegmentHierarchy,
   calculateProjectMemberAggregates,

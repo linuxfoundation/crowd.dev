@@ -3,28 +3,35 @@ import pick from 'lodash.pick'
 import moment from 'moment'
 
 import {
+  buildAuditLogOptions,
   captureApiChange,
   memberEditOrganizationsAction,
   memberMergeAction,
 } from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
+  Error404,
   Error409,
   calculateReach,
   getEarliestValidDate,
   getLongestDateRange,
+  getMemberOrganizationSourceRank,
+  isSameMemberIdentity,
   mergeObjects,
   safeObjectMerge,
+  sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
+  ActorType,
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
+  fetchManyOrganizationVerifiedPrimaryDomains,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
   findIdentitiesForMembers,
@@ -38,10 +45,14 @@ import {
   moveAffiliationsBetweenMembers,
   moveIdentitiesBetweenMembers,
   moveOrgsBetweenMembers,
+  preferCompanyOverUniversityWhenOverlapping,
   updateMember,
 } from '@crowd/data-access-layer'
-import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { removeMemberMergeSuggestions } from '@crowd/data-access-layer/src/member_merge'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -49,14 +60,13 @@ import {
 } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
-import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
-  MergeActionState,
-  MergeActionStep,
-  MergeActionType,
-  TemporalWorkflowId,
-} from '@crowd/types'
+  decrementMemberMergeSuggestionCounts,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
+import { Logger, LoggerBase } from '@crowd/logging'
+import { Client as TemporalClient } from '@crowd/temporal'
+import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -106,30 +116,31 @@ export class CommonMemberService extends LoggerBase {
           )
 
           for (const item of toDelete) {
-            await deleteMemberOrganizations(this.qx, memberId, [item.id])
+            await deleteMemberOrganizations(this.qx, memberId, { ids: [item.id] })
             ;(item as any).delete = true
           }
         }
 
         for (const item of organizations) {
           const org = typeof item === 'string' ? { id: item } : item
+          const dates = sanitizeMemberOrganizationDateRange(org.startDate, org.endDate, true)
 
           // we don't need to touch exactly same existing work experiences
           if (
             !originalOrgs.some(
               (w) =>
-                w.organizationId === item.id &&
-                w.title === (item.title || null) &&
-                w.dateStart === (item.startDate || null) &&
-                w.dateEnd === (item.endDate || null),
+                w.organizationId === org.id &&
+                w.title === (org.title || null) &&
+                w.dateStart === dates.dateStart &&
+                w.dateEnd === dates.dateEnd,
             )
           ) {
             const newOrg = {
               memberId,
               organizationId: org.id,
               title: org.title,
-              dateStart: org.startDate,
-              dateEnd: org.endDate,
+              dateStart: dates.dateStart,
+              dateEnd: dates.dateEnd,
               source: org.source,
             }
 
@@ -139,13 +150,16 @@ export class CommonMemberService extends LoggerBase {
               org.id,
               org.source,
               org.title,
-              org.startDate,
-              org.endDate,
+              dates.dateStart as string | null,
+              dates.dateEnd as string | null,
             )
 
-            const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)
+            const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(
+              this.qx,
+              [org.id],
+            )
 
-            if (newMemberOrgId && isAffiliationBlocked) {
+            if (newMemberOrgId && orgAffiliationPolicyById.get(org.id)) {
               await changeMemberOrganizationAffiliationOverrides(this.qx, [
                 {
                   memberId,
@@ -153,6 +167,10 @@ export class CommonMemberService extends LoggerBase {
                   allowAffiliation: false,
                 },
               ])
+              await deleteMemberSegmentAffiliations(this.qx, {
+                memberId,
+                organizationId: org.id,
+              })
             }
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])
@@ -169,7 +187,9 @@ export class CommonMemberService extends LoggerBase {
     memberId: string,
     segmentId: string,
     timestamp: string,
+    affiliationEmailDomain?: string,
   ): Promise<string | null> {
+    // 1. Manual Segment Affiliations always take absolute priority
     const manualAffiliation = await findMemberManualAffiliation(
       this.qx,
       memberId,
@@ -180,11 +200,42 @@ export class CommonMemberService extends LoggerBase {
       return manualAffiliation.organizationId
     }
 
-    const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
-    if (currentEmployments.length > 0) {
-      return this.decidePrimaryOrganizationId(currentEmployments)
+    // 2. When the activity carries an org email domain, match member orgs by verified primary domain
+    if (affiliationEmailDomain) {
+      const domainEmployments = await findMemberWorkExperience(
+        this.qx,
+        memberId,
+        timestamp,
+        affiliationEmailDomain,
+      )
+
+      if (domainEmployments.length > 0) {
+        return this.decidePrimaryOrganizationId(domainEmployments)
+      }
     }
 
+    // 3. Date matching: work history active at this timestamp
+    const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
+    if (currentEmployments.length > 0) {
+      let employments = currentEmployments
+
+      if (employments.length > 1) {
+        const organizationIds = [...new Set(employments.map((row) => row.organizationId))]
+
+        const memberOrgDomains = await fetchManyOrganizationVerifiedPrimaryDomains(
+          this.qx,
+          organizationIds,
+        )
+
+        // Also applies when step 2 found a domain but no matching member organization yet
+        // (e.g. ingest before stint inference).
+        employments = preferCompanyOverUniversityWhenOverlapping(employments, memberOrgDomains)
+      }
+
+      return this.decidePrimaryOrganizationId(employments)
+    }
+
+    // 4. Fallback: Most recent experiences with missing/unknown dates
     const mostRecentUnknownDatedOrgs = await findMostRecentUnknownDatedOrganizations(
       this.qx,
       memberId,
@@ -194,6 +245,7 @@ export class CommonMemberService extends LoggerBase {
       return this.decidePrimaryOrganizationId(mostRecentUnknownDatedOrgs)
     }
 
+    // 5. Last Resort: Any historical undated organization tied to the member
     const allUnkownDAtedOrgs = await findAllUnkownDatedOrganizations(this.qx, memberId)
     if (allUnkownDAtedOrgs.length > 0) {
       return this.decidePrimaryOrganizationId(allUnkownDAtedOrgs)
@@ -217,50 +269,40 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
+      let bestRank = 4
+      let highestPrioritySourceExperiences: IWorkExperienceData[] = []
+
+      for (const exp of experiences) {
+        const rank = getMemberOrganizationSourceRank(exp.source)
+        if (rank < bestRank) {
+          bestRank = rank
+          highestPrioritySourceExperiences = [exp]
+        } else if (rank === bestRank) {
+          highestPrioritySourceExperiences.push(exp)
+        }
+      }
+
+      // Keep only candidates from the highest-priority source tier
+      if (highestPrioritySourceExperiences.length === 1) {
+        return highestPrioritySourceExperiences[0].organizationId
+      }
+
       // decide based on the member count in the organizations
       const memberCounts = await findMemberCountEstimateOfOrganizations(
         this.qx,
-        experiences.map((e) => e.organizationId),
+        highestPrioritySourceExperiences.map((e) => e.organizationId),
       )
 
-      if (memberCounts[0].memberCount > memberCounts[1].memberCount) {
+      // memberCounts is sorted desc by memberCount — pick the winner if it's strictly highest
+      if (memberCounts?.length >= 2 && memberCounts[0].memberCount > memberCounts[1].memberCount) {
         return memberCounts[0].organizationId
-      } else if (memberCounts[0].memberCount < memberCounts[1].memberCount) {
-        return memberCounts[1].organizationId
       }
 
-      // if there's a draw in the member count, use the one with the longer period
-      return getLongestDateRange(experiences).organizationId
+      // tie or no data — fall back to longest date range
+      return getLongestDateRange(highestPrioritySourceExperiences).organizationId
     }
 
     return null
-  }
-
-  public async startAffiliationRecalculation(
-    memberId: string,
-    organizationIds: string[],
-    syncToOpensearch = false,
-  ): Promise<void> {
-    await this.temporal.workflow.start('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-          memberOrganizationIds: organizationIds,
-          syncToOpensearch,
-        },
-      ],
-      searchAttributes: {
-        TenantId: [DEFAULT_TENANT_ID],
-      },
-    })
   }
 
   public async merge(
@@ -276,6 +318,11 @@ export class CommonMemberService extends LoggerBase {
         mergedId: originalId,
       }
     }
+
+    const audit = buildAuditLogOptions(options)
+
+    const actorId = audit?.actorId
+    const notifyUserId = audit?.actorType === ActorType.USER ? actorId : undefined
 
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
@@ -311,6 +358,10 @@ export class CommonMemberService extends LoggerBase {
         memberMergeAction(originalId, async (captureOldState, captureNewState) => {
           const original = await this.getMemberById(originalId)
           const toMerge = await this.getMemberById(toMergeId)
+
+          if (!original || !toMerge) {
+            throw new Error404(options?.language)
+          }
 
           captureOldState({
             primary: original,
@@ -348,19 +399,14 @@ export class CommonMemberService extends LoggerBase {
             MergeActionStep.MERGE_STARTED,
             MergeActionState.IN_PROGRESS,
             backup,
-            options?.currentUser?.id,
+            actorId,
           )
 
           await this.qx.tx(async (txQx) => {
             const identitiesToUpdate = []
             const identitiesToMove = []
             for (const identity of toMergeIdentities) {
-              const existing = originalIdentities.find(
-                (i) =>
-                  i.platform === identity.platform &&
-                  i.type === identity.type &&
-                  i.value === identity.value,
-              )
+              const existing = originalIdentities.find((i) => isSameMemberIdentity(i, identity))
 
               if (existing) {
                 // if it's not verified but it should be
@@ -394,8 +440,8 @@ export class CommonMemberService extends LoggerBase {
             // update members that belong to source organization to destination org
             await moveOrgsBetweenMembers(txQx, originalId, toMergeId)
 
-            // Remove toMerge from original member
-            await removeMemberToMerge(txQx, originalId, toMergeId)
+            // Drop leftover suggestions that still mention the secondary.
+            await removeMemberMergeSuggestions(txQx, toMergeId)
 
             const secondMemberSegments = await getMemberSegments(txQx, toMergeId)
 
@@ -416,19 +462,22 @@ export class CommonMemberService extends LoggerBase {
         }),
       )
 
+      const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
+
       await this.temporal.workflow.start('finishMemberMerging', {
         taskQueue: 'entity-merging',
         workflowId: `finishMemberMerging/${originalId}/${toMergeId}`,
         retry: {
           maximumAttempts: 10,
         },
-        args: [
-          originalId,
-          toMergeId,
-          original.displayName,
-          toMerge.displayName,
-          options?.currentUser?.id,
-        ],
+        args: [originalId, toMergeId, original.displayName, toMerge.displayName, notifyUserId],
         searchAttributes: {
           TenantId: [DEFAULT_TENANT_ID],
         },
@@ -440,6 +489,10 @@ export class CommonMemberService extends LoggerBase {
       if (err.name === 'WorkflowExecutionAlreadyStartedError') {
         this.log.info({ originalId, toMergeId }, 'Temporal workflow already started!')
         return { status: 409, mergedId: originalId }
+      }
+
+      if (err instanceof Error404) {
+        throw err
       }
 
       this.log.error(err, 'Error while merging members!', { originalId, toMergeId })
@@ -465,6 +518,10 @@ export class CommonMemberService extends LoggerBase {
       MemberField.MANUALLY_CREATED,
       MemberField.MANUALLY_CHANGED_FIELDS,
     ])
+
+    if (!member) {
+      return null
+    }
 
     const affiliations = await findMemberAffiliations(this.qx, memberId)
 

@@ -4,12 +4,22 @@ import moment from 'moment-timezone'
 import validator from 'validator'
 
 import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
-import { Error400, calculateReach, getProperDisplayName, isDomainExcluded } from '@crowd/common'
+import {
+  Error400,
+  calculateReach,
+  firstIdentityValue,
+  getAttributeValue,
+  getCountry,
+  hasAttributeValue,
+  isDomainExcluded,
+  normalizeDisplayName,
+} from '@crowd/common'
 import {
   CommonMemberService,
   getGithubInstallationToken,
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
+  signalMemberUpdate,
   startMemberUnmergeWorkflow,
   unmergeMember,
 } from '@crowd/common_services'
@@ -20,8 +30,12 @@ import {
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
-import { QueryExecutor, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import {
+  decrementMemberMergeSuggestionCounts,
+  fetchManySegments,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import {
   IMemberIdentity,
@@ -36,13 +50,14 @@ import {
   SyncMode,
 } from '@crowd/types'
 
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+
 import MemberAttributeSettingsRepository from '../database/repositories/memberAttributeSettingsRepository'
 import MemberRepository from '../database/repositories/memberRepository'
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import {
   BasicMemberIdentity,
-  IMemberMergeSuggestion,
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
 import telemetryTrack from '../segment/telemetryTrack'
@@ -265,7 +280,7 @@ export default class MemberService extends LoggerBase {
     }
 
     if (!data.displayName) {
-      data.displayName = getProperDisplayName(data.username[data.platform][0].username)
+      data.displayName = normalizeDisplayName(firstIdentityValue(data.username[data.platform]))
     }
 
     if (!(data.platform in data.username)) {
@@ -440,6 +455,17 @@ export default class MemberService extends LoggerBase {
         const toUpdate = CommonMemberService.membersMerge(existing, data)
 
         if (toUpdate.attributes) {
+          if (!hasAttributeValue(toUpdate.attributes.country)) {
+            const location = getAttributeValue(toUpdate.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              toUpdate.attributes.country = {
+                ...toUpdate.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           toUpdate.attributes = await this.setAttributesDefaultValues(toUpdate.attributes)
         }
 
@@ -453,6 +479,17 @@ export default class MemberService extends LoggerBase {
         // It is important to call it with doPopulateRelations=false
         // because otherwise the performance is greatly decreased in integrations
         if (data.attributes) {
+          if (!hasAttributeValue(data.attributes.country)) {
+            const location = getAttributeValue(data.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              data.attributes.country = {
+                ...data.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           data.attributes = await this.setAttributesDefaultValues(data.attributes)
         }
 
@@ -723,32 +760,6 @@ export default class MemberService extends LoggerBase {
   }
 
   /**
-   * Given two members, add them to the toMerge fields of each other.
-   * It will also update the tenant's toMerge list, removing any entry that contains
-   * the pair.
-   * @returns Success/Error message
-   */
-  async addToMerge(suggestions: IMemberMergeSuggestion[]) {
-    const transaction = await SequelizeRepository.createTransaction(this.options)
-    try {
-      const searchSyncService = new SearchSyncService(this.options)
-
-      await MemberRepository.addToMerge(suggestions, { ...this.options, transaction })
-      await SequelizeRepository.commitTransaction(transaction)
-
-      for (const suggestion of suggestions) {
-        await searchSyncService.triggerMemberSync(suggestion.members[0])
-        await searchSyncService.triggerMemberSync(suggestion.members[1])
-      }
-      return { status: 200 }
-    } catch (error) {
-      await SequelizeRepository.rollbackTransaction(transaction)
-      this.log.error(error, 'Error while adding members to merge')
-      throw error
-    }
-  }
-
-  /**
    * Given two members, add them to the noMerge fields of each other.
    * @param memberOneId ID of the first member
    * @param memberTwoId ID of the second member
@@ -756,33 +767,32 @@ export default class MemberService extends LoggerBase {
    */
   async addToNoMerge(memberOneId, memberTwoId) {
     const transaction = await SequelizeRepository.createTransaction(this.options)
+    const txOptions = { ...this.options, transaction }
 
     try {
-      await MemberRepository.addNoMerge(memberOneId, memberTwoId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.addNoMerge(memberTwoId, memberOneId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.removeToMerge(memberOneId, memberTwoId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.removeToMerge(memberTwoId, memberOneId, {
-        ...this.options,
-        transaction,
-      })
+      await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
+
+      // Removes from either order of the pair
+      await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
-
-      return { status: 200 }
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
 
       throw error
     }
+
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(qx, [
+      memberOneId,
+      memberTwoId,
+    ])
+
+    // Precomputed per-project-group counts are only refreshed by cron every few hours.
+    // Decrement here so no-merge from the UI is reflected immediately.
+    await decrementMemberMergeSuggestionCounts(qx, projectGroupSegmentIds)
+
+    return { status: 200 }
   }
 
   async update(
@@ -806,7 +816,21 @@ export default class MemberService extends LoggerBase {
       transaction = repoOptions.transaction
 
       if (data.displayName) {
-        data.displayName = getProperDisplayName(data.displayName)
+        data.displayName = normalizeDisplayName(data.displayName)
+      }
+
+      if (data.attributes) {
+        if (!hasAttributeValue(data.attributes.country)) {
+          const location = getAttributeValue(data.attributes.location)
+          const country = getCountry(location)
+          if (country) {
+            data.attributes.country = {
+              ...data.attributes.country,
+              system: country,
+              default: data.attributes.country?.default ?? country,
+            }
+          }
+        }
       }
 
       const record = await MemberRepository.update(id, data, repoOptions, {
@@ -819,16 +843,10 @@ export default class MemberService extends LoggerBase {
       // Pass invalidateCache from options to control whether to clear list caches
       await invalidateMemberQueryCache(this.options.redis, [id], invalidateCache)
 
-      const commonMemberService = new CommonMemberService(
-        optionsQx(this.options),
-        this.options.temporal,
-        this.options.log,
-      )
-      await commonMemberService.startAffiliationRecalculation(
-        id,
-        (data.organizations || []).map((o) => o.id),
+      await signalMemberUpdate(this.options.temporal, id, {
+        memberOrganizationIds: (data.organizations || []).map((o) => o.id),
         syncToOpensearch,
-      )
+      })
 
       return record
     } catch (error) {
@@ -946,7 +964,7 @@ export default class MemberService extends LoggerBase {
 
   async findAllAutocomplete(data) {
     const qx = optionsQx(this.options)
-    const bgQx = optionsQx({ ...this.options, transaction: null })
+    const bgQx = optionsBgQx(this.options)
 
     return queryMembersAdvanced(qx, bgQx, this.options.redis, {
       filter: data.filter,
@@ -972,7 +990,7 @@ export default class MemberService extends LoggerBase {
     }
 
     const qx = optionsQx(this.options)
-    const bgQx = optionsQx({ ...this.options, transaction: null })
+    const bgQx = optionsBgQx(this.options)
 
     return queryMembersAdvanced(qx, bgQx, this.options.redis, {
       ...data,

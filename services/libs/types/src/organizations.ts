@@ -38,6 +38,7 @@ export interface IOrganization {
   employees?: number
   revenueRange?: IOrganizationRevenueRange
   location?: string
+  country?: string
   type?: string
   size?: string
   industry?: string
@@ -52,8 +53,8 @@ export interface IOrganization {
 export interface IMemberOrganization {
   id?: string
   title?: string
-  dateStart: Date | string
-  dateEnd: Date | string
+  dateStart: Date | string | null
+  dateEnd: Date | string | null
   memberId: string
   organizationId: string
   updatedAt?: string
@@ -62,9 +63,14 @@ export interface IMemberOrganization {
   verified?: boolean
   verifiedBy?: string
   deletedAt?: string
+  deletedBy?: string
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
+
+export type MemberOrganizationDateRange = Pick<IMemberOrganization, 'dateStart' | 'dateEnd'>
+
+export type MemberOrganizationDateInput = Date | string | null | undefined
 
 type MemberOrganizationEditableFields = Pick<
   IMemberOrganization,
@@ -90,7 +96,24 @@ export interface IRenderFriendlyMemberOrganization {
 export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationName: string
   organizationLogo: string
+  organizationDomains?: string[]
 }
+
+export interface MemberOrgDate {
+  organizationId: string
+  date: string // YYYY-MM-DD
+}
+
+interface MemberOrgStintChangeBase {
+  memberId: string
+  organizationId: string
+  dateStart: string
+  dateEnd: string
+}
+
+export type MemberOrgStintChange =
+  | ({ type: 'insert' } & MemberOrgStintChangeBase)
+  | ({ type: 'update'; id: string } & MemberOrgStintChangeBase)
 
 export interface IExecutiveChange {
   joined_date?: string
@@ -119,17 +142,6 @@ export interface IOrganizationSyncRemoteData {
   syncFrom: string
   metaData: string
   lastSyncedAt?: string
-}
-
-export interface NewOrganizationIdentity {
-  organizationId: string
-  platform: string
-  value: string
-  type: OrganizationIdentityType
-  verified: boolean
-  source: string
-  sourceId?: string | null
-  integrationId?: string | null
 }
 
 export interface IOrganizationIdentity {

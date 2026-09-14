@@ -1,8 +1,8 @@
 import { OrganizationField, queryOrgs } from '@crowd/data-access-layer'
 import {
-  deleteMemberAffiliations,
+  deleteMemberSegmentAffiliations,
   fetchMemberAffiliations,
-  insertMemberAffiliations,
+  insertMemberSegmentAffiliations,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
 import { IMemberAffiliation, IOrganization, SegmentData } from '@crowd/types'
@@ -86,11 +86,20 @@ class MemberAffiliationsRepository {
       const qx = SequelizeRepository.getQueryExecutor(txOptions)
 
       // Delete all member affiliations
-      await deleteMemberAffiliations(qx, memberId)
+      await deleteMemberSegmentAffiliations(qx, { memberId })
 
       if (data?.length > 0) {
-        //  Insert multiple member affiliations
-        await insertMemberAffiliations(qx, memberId, data)
+        await insertMemberSegmentAffiliations(
+          qx,
+          data.map((item) => ({
+            memberId,
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart || null,
+            dateEnd: item.dateEnd || null,
+          })),
+          true,
+        )
       }
 
       await SequelizeRepository.commitTransaction(transaction)

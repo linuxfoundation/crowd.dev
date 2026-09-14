@@ -43,47 +43,50 @@ export async function enrichMember(
   // skip enrichment if member no longer exists
   if (!member) return
 
-  let changeInEnrichmentSourceData = false
+  // Fetch caches for all sources upfront to avoid redundant DB round-trips.
+  const caches = await findMemberEnrichmentCache(sources, input.id)
 
-  for (const source of sources) {
-    // find if there's already saved enrichment data in source
-    const caches = await findMemberEnrichmentCache([source], input.id)
-    const cache = caches.find((c) => c.source === source)
+  // Fetch all sources in parallel so one slow or rate-limited source doesn't block the rest.
+  // The workflow fails fast, but source activities already in flight may still update cache.
+  const sourceResults = await Promise.all(
+    sources.map(async (source): Promise<boolean> => {
+      const cache = caches.find((c) => c.source === source)
 
-    // cache is obsolete when it's not found or cache.updatedAt is older than cacheObsoleteAfterSeconds
-    if (await isCacheObsolete(source, cache)) {
-      const enrichmentInput: IEnrichmentSourceInput = await getEnrichmentInput(input)
+      // cache is obsolete when it's not found or cache.updatedAt is older than cacheObsoleteAfterSeconds
+      if (await isCacheObsolete(source, cache)) {
+        const enrichmentInput: IEnrichmentSourceInput = await getEnrichmentInput(input)
 
-      if (!(await hasRemainingCredits(source))) {
-        // no credits remaining, throw error to fail the workflow
-        throw ApplicationFailure.create({
-          message: `No credits remaining for source ${source}`,
-          type: 'MEMBER_ENRICHMENT_NO_CREDITS',
-          nonRetryable: true,
-        })
-      }
-
-      const data = await getEnrichmentData(source, enrichmentInput)
-
-      if (!cache) {
-        await insertMemberEnrichmentCache(source, input.id, data)
-        if (data) {
-          changeInEnrichmentSourceData = true
+        if (!(await hasRemainingCredits(source))) {
+          // no credits remaining, throw error to fail the workflow
+          throw ApplicationFailure.create({
+            message: `No credits remaining for source ${source}`,
+            type: 'MEMBER_ENRICHMENT_NO_CREDITS',
+            nonRetryable: true,
+          })
         }
-      } else if (data === null && cache.data !== null) {
-        await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
-      } else if (sourceHasDifferentDataComparedToCache(cache, data)) {
-        await updateMemberEnrichmentCache(source, input.id, data)
-        changeInEnrichmentSourceData = true
-      } else {
-        // data is same as cache, only update cache.updatedAt
-        await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
-      }
-    }
-  }
 
-  if (changeInEnrichmentSourceData && input.activityCount > 100) {
-    // Member enrichment data has been updated, use squasher again!
+        const data = await getEnrichmentData(source, enrichmentInput)
+
+        if (!cache) {
+          await insertMemberEnrichmentCache(source, input.id, data)
+          return !!data
+        } else if (data === null && cache.data !== null) {
+          await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
+        } else if (sourceHasDifferentDataComparedToCache(cache, data)) {
+          await updateMemberEnrichmentCache(source, input.id, data)
+          return true
+        } else {
+          // data is same as cache, only update cache.updatedAt
+          await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
+        }
+      }
+      return false
+    }),
+  )
+
+  const changeInEnrichmentSourceData = sourceResults.some(Boolean)
+
+  if (changeInEnrichmentSourceData) {
     await executeChild(processMemberSources, {
       workflowId: 'member-enrichment/' + input.id + '/processMemberSources',
       cancellationType: ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED,
@@ -98,6 +101,7 @@ export async function enrichMember(
       args: [
         {
           memberId: input.id,
+          activityCount: input.activityCount ?? 0,
           sources,
         },
       ],

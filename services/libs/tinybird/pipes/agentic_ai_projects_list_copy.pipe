@@ -13,6 +13,7 @@ SQL >
         AND isNull (cr.deletedAt)
         AND isNull (r.deletedAt)
         AND r.enabled = true
+        AND r.insightsProjectId != ''
 
 NODE ai_projects
 SQL >
@@ -99,18 +100,44 @@ NODE ai_package_metrics
 SQL >
     SELECT
         insightsProjectId,
-        argMax(downloadsCount, date) AS downloads,
-        toInt64(argMax(downloadsCount, date)) - toInt64(
-            argMaxIf(downloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
-        ) AS downloads30d,
-        argMax(dockerDownloadsCount, date) AS dockerPulls,
-        toInt64(argMax(dockerDownloadsCount, date)) - toInt64(
-            argMaxIf(dockerDownloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
-        ) AS dockerPulls30d,
-        max(dependentReposCount) AS dependentRepos,
-        max(dependentPackagesCount) AS dependentPackages
-    FROM packageDownloads FINAL
-    WHERE insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
+        sum(downloads) AS downloads,
+        sum(downloads30d) AS downloads30d,
+        sum(dockerPulls) AS dockerPulls,
+        sum(dockerPulls30d) AS dockerPulls30d,
+        max(dependentRepos) AS dependentRepos,
+        max(dependentPackages) AS dependentPackages
+    FROM
+        (
+            SELECT
+                insightsProjectId,
+                argMax(downloadsCount, date) AS downloads,
+                toInt64(argMax(downloadsCount, date)) - toInt64(
+                    argMaxIf(downloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+                ) AS downloads30d,
+                argMax(dockerDownloadsCount, date) AS dockerPulls,
+                toInt64(argMax(dockerDownloadsCount, date)) - toInt64(
+                    argMaxIf(dockerDownloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+                ) AS dockerPulls30d,
+                max(dependentReposCount) AS dependentRepos,
+                max(dependentPackagesCount) AS dependentPackages
+            FROM
+                (
+                    SELECT
+                        insightsProjectId,
+                        date,
+                        ecosystem,
+                        repo,
+                        name,
+                        argMax(downloadsCount, updatedAt) AS downloadsCount,
+                        argMax(dockerDownloadsCount, updatedAt) AS dockerDownloadsCount,
+                        argMax(dependentReposCount, updatedAt) AS dependentReposCount,
+                        argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
+                    FROM packageDownloads
+                    WHERE insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
+                    GROUP BY insightsProjectId, date, ecosystem, repo, name
+                )
+            GROUP BY insightsProjectId, ecosystem, repo, name
+        )
     GROUP BY insightsProjectId
 
 NODE pr_metrics
@@ -177,7 +204,7 @@ SQL >
         ) AS vulnerabilities30d
     FROM vulnerabilities v FINAL
     JOIN repositories r FINAL ON v.repoUrl = r.url
-    WHERE v.repoUrl IN (SELECT url FROM ai_repos)
+    WHERE v.repoUrl IN (SELECT url FROM ai_repos) AND r.archived = false
     GROUP BY r.insightsProjectId
 
 NODE final_join

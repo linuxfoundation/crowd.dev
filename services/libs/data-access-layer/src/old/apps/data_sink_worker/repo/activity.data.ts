@@ -1,4 +1,3 @@
-import { DbColumnSet, DbInstance } from '@crowd/database'
 import { ISentimentAnalysisResult, PlatformType } from '@crowd/types'
 
 export interface IDbActivity {
@@ -98,47 +97,6 @@ export interface IActivityRelationUpdateById {
   objectMemberUsername?: string
 }
 
-let insertActivityColumnSet: DbColumnSet
-export const getInsertActivityColumnSet = (instance: DbInstance): DbColumnSet => {
-  if (insertActivityColumnSet) {
-    return insertActivityColumnSet
-  }
-
-  insertActivityColumnSet = new instance.helpers.ColumnSet(
-    [
-      'id',
-      'type',
-      'timestamp',
-      'platform',
-      'score',
-      'sourceId',
-      'sourceParentId',
-      'tenantId',
-      'segmentId',
-      'memberId',
-      'username',
-      'objectMemberId',
-      'objectMemberUsername',
-      'sentiment',
-      'attributes',
-      'body',
-      'title',
-      'channel',
-      'url',
-      'createdAt',
-      'updatedAt',
-      'organizationId',
-    ],
-    {
-      table: {
-        table: 'activities',
-      },
-    },
-  )
-
-  return insertActivityColumnSet
-}
-
 export interface IDbActivityUpdateData {
   type: string
   score: number
@@ -165,40 +123,4 @@ export interface IDbActivityUpdateData {
   updatedAt?: string
   createdAt?: string
   tenantId?: string
-}
-
-let updateActivityColumnSet: DbColumnSet
-export const getUpdateActivityColumnSet = (instance: DbInstance): DbColumnSet => {
-  if (updateActivityColumnSet) {
-    return updateActivityColumnSet
-  }
-
-  updateActivityColumnSet = new instance.helpers.ColumnSet(
-    [
-      'type',
-      'score',
-      'sourceId',
-      'sourceParentId',
-      'memberId',
-      'username',
-      'objectMemberId',
-      'objectMemberUsername',
-      'sentiment',
-      'attributes',
-      'body',
-      'title',
-      'channel',
-      'url',
-      'updatedAt',
-      'organizationId',
-      'platform',
-    ],
-    {
-      table: {
-        table: 'activities',
-      },
-    },
-  )
-
-  return updateActivityColumnSet
 }

@@ -1,0 +1,24 @@
+DESCRIPTION >
+    - `health_score_report_category_coverage.pipe` serves widget 04 "Repositories we can
+    score, by category" for the Health Score report (IN-1289, part of epic IN-1276 Health
+    Score Coverage).
+    - Three bars: Maintainer health, Development activity, Security & supply chain — each the
+    count (and, in the UI, percent) of tracked repositories with a non-null category score.
+    - `repos_tracked` is the shared denominator for all three bars and must equal the
+    "Repositories tracked" KPI for the same day.
+    - No parameters — this pipe is not scope-filtered.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_category_coverage_endpoint
+SQL >
+    SELECT
+        countIf(rc.maintainerHealthScoreV2 IS NOT NULL) AS maintainer_health_scored,
+        countIf(rc.developmentActivityScoreV2 IS NOT NULL) AS development_activity_scored,
+        countIf(rc.securitySupplyChainScoreV2 IS NOT NULL) AS security_supply_chain_scored,
+        count() AS repos_tracked
+    FROM repositories AS r FINAL
+    LEFT JOIN health_score_v2_repo_copy_ds AS rc ON rc.repoUrl = r.url
+    WHERE r.deletedAt IS NULL AND r.excluded = false

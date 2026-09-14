@@ -3,19 +3,24 @@ import { z } from 'zod'
 
 import { captureApiChange, memberVerifyWorkExperienceAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import { IMemberOrganization } from '@crowd/types'
+import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import {
+  getOverlappingGroupedMemberOrganizations,
+  groupMemberOrganizations,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -25,7 +30,7 @@ const paramsSchema = z.object({
 
 const bodySchema = z.object({
   verified: z.boolean(),
-  verifiedBy: z.string(),
+  verifiedBy: z.string().trim().min(1),
 })
 
 export async function verifyMemberWorkExperience(req: Request, res: Response): Promise<void> {
@@ -40,12 +45,31 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-  const memberOrg = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === workExperienceId)
+  const memberOrgs = await fetchMemberOrganizations(qx, memberId)
+  const memberOrg = memberOrgs.find((mo) => mo.id === workExperienceId)
 
   if (!memberOrg) {
     throw new NotFoundError('Work experience not found')
   }
+
+  // Stash org fields for response fallback when reject soft-deletes the row.
+  const memberOrgsWithOrgDataBeforeChange = verified
+    ? []
+    : ((
+        await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+          withDomains: true,
+        })
+      ).get(memberId) ?? [])
+
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
+
+  const overlappingRowsWithIds = overlappingGroupedRows.filter(
+    (row): row is typeof row & { id: string } => !!row.id,
+  )
+
+  const memberOrgIdsToDelete = [workExperienceId, ...overlappingRowsWithIds.map((row) => row.id)]
+
+  const verifiedUpdate = { verified, verifiedBy }
 
   let updatedMemberOrg: IMemberOrganization | undefined
 
@@ -56,21 +80,54 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
       await qx.tx(async (tx) => {
         if (verified) {
-          updatedMemberOrg = await updateMemberOrganization(tx, memberId, workExperienceId, {
-            verified,
-            verifiedBy,
-          })
-        } else {
-          await deleteMemberOrganizations(tx, memberId, [workExperienceId], true)
+          // Verification status belongs to the grouped work experience, not just the visible row
+          updatedMemberOrg = await updateMemberOrganization(
+            tx,
+            memberId,
+            workExperienceId,
+            verifiedUpdate,
+          )
 
-          const service = new CommonMemberService(tx, req.temporal, req.log)
-          await service.startAffiliationRecalculation(memberId, [memberOrg.organizationId])
+          for (const overlappingRow of overlappingRowsWithIds) {
+            await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
+          }
+        } else {
+          // Unverifying removes the grouped work experience from both visible and hidden rows.
+          // This is a human decision, so deletedBy is set — enrichment must never recreate it.
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: memberOrgIdsToDelete,
+            deletedBy: verifiedBy,
+          })
         }
       })
 
-      captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
+      // Signal after commit so the workflow sees persisted changes
+      if (!verified) {
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: [memberOrg.organizationId],
+        })
+      }
+
+      captureNewState(updatedMemberOrg ?? { ...memberOrg, ...verifiedUpdate })
     }),
   )
 
-  ok(res, toMemberWorkExperience({ ...memberOrg, ...updatedMemberOrg }))
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const groupedMemberOrgs = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
+  const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
+
+  const fallbackMo = groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId)
+
+  const responseMo: IMemberRoleWithOrganization =
+    groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
+    (fallbackMo ? { ...fallbackMo, ...verifiedUpdate } : undefined)
+
+  if (!responseMo) {
+    throw new NotFoundError('Work experience not found')
+  }
+
+  ok(res, toMemberWorkExperience(responseMo))
 }

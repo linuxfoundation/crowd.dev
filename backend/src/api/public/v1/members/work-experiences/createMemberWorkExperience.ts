@@ -2,22 +2,34 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  sanitizeMemberOrganizationDateRange,
+} from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
+  deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
+  fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
-import type { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import type {
+  IMemberOrganization,
+  IMemberRoleWithOrganization,
+  MemberOrganizationDateRange,
+} from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -28,7 +40,7 @@ const bodySchema = z.object({
   organizationId: z.uuid(),
   jobTitle: z.string(),
   verified: z.boolean(),
-  verifiedBy: z.string(),
+  verifiedBy: z.string().trim().min(1),
   source: z.string(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
@@ -53,12 +65,20 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState({})
 
+      let dates: MemberOrganizationDateRange
+
+      try {
+        dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+      } catch (error) {
+        throw new BadRequestError('Invalid work experience date range')
+      }
+
       const memberOrgData: IMemberOrganization = {
         memberId,
         organizationId: data.organizationId,
         title: data.jobTitle,
-        dateStart: data.startDate,
-        dateEnd: data.endDate,
+        dateStart: dates.dateStart,
+        dateEnd: dates.dateEnd,
         source: data.source,
         verified: data.verified,
         verifiedBy: data.verifiedBy,
@@ -67,7 +87,22 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       let newMemberOrgId: string | undefined
 
       await qx.tx(async (tx) => {
-        await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, data)
+        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
+        // Hidden project-registry/email-domain rows for this company are shown as the same card.
+        // Drop them so the new UI job owns the dates the person just entered.
+        const overlappingIds = getOverlappingGroupedMemberOrganizations(
+          memberOrgs,
+          memberOrgData,
+        ).flatMap((row) => (row.id ? [row.id] : []))
+
+        if (overlappingIds.length > 0) {
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: overlappingIds,
+            skipMsaCleanup: true,
+          })
+        }
+
+        await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)
 
         newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData)
 
@@ -75,12 +110,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          tx,
+        const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
           data.organizationId,
-        )
+        ])
 
-        if (newMemberOrgId && isAffiliationBlocked) {
+        if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
           await changeMemberOrganizationAffiliationOverrides(tx, [
             {
               memberId,
@@ -88,13 +122,19 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
               allowAffiliation: false,
             },
           ])
+          await deleteMemberSegmentAffiliations(tx, {
+            memberId,
+            organizationId: data.organizationId,
+          })
         }
-
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
       })
 
-      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
+      })
+
+      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
       createdMo = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === newMemberOrgId)
 
       captureNewState(createdMo ?? null)

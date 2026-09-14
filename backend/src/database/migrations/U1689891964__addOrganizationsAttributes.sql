@@ -1,1 +1,0 @@
-ALTER TABLE DROP COLUMN "attributes";

@@ -18,6 +18,7 @@ import {
 
 import { configMap } from './config'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
+import { getKafkaMessageCounts } from './utils'
 
 export class KafkaQueueService extends LoggerBase implements IQueue {
   private readonly MAX_RECONNECT_ATTEMPTS = 5
@@ -56,65 +57,14 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
 
   async getQueueMessageCount(conf: IKafkaChannelConfig): Promise<number> {
     const topic = conf.name
-    // The consumer group ID is the same as the topic name
     const groupId = topic
 
     const admin = this.client.admin()
     await admin.connect()
 
     try {
-      this.log.debug({ topic, groupId }, 'Fetching message count for topic and consumer group')
-
-      const topicOffsets = await admin.fetchTopicOffsets(topic)
-      this.log.debug({ topic, groupId, topicOffsets }, 'Topic offsets fetched')
-
-      const offsetsResponse = await admin.fetchOffsets({
-        groupId: groupId,
-        topics: [topic],
-      })
-      this.log.debug({ topic, groupId, offsetsResponse }, 'Consumer group offsets fetched')
-
-      const offsets = offsetsResponse[0].partitions
-      this.log.debug({ topic, groupId, offsets }, 'Consumer group offsets')
-
-      let totalLeft = 0
-      for (const offset of offsets) {
-        const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
-        if (topicOffset) {
-          // If consumer offset is -1, it means no committed offset, so lag is the total messages in partition
-          if (offset.offset === '-1') {
-            const lag = Number(topicOffset.offset) - Number(topicOffset.low)
-            totalLeft += lag
-            this.log.debug(
-              {
-                partition: offset.partition,
-                topicOffset: topicOffset.offset,
-                topicLow: topicOffset.low,
-                consumerOffset: offset.offset,
-                lag,
-              },
-              'Partition lag calculated (no committed offset)',
-            )
-          } else {
-            const lag = Number(topicOffset.offset) - Number(offset.offset)
-            totalLeft += lag
-            this.log.debug(
-              {
-                partition: offset.partition,
-                topicOffset: topicOffset.offset,
-                consumerOffset: offset.offset,
-                lag,
-              },
-              'Partition lag calculated',
-            )
-          }
-        } else {
-          this.log.debug({ partition: offset.partition }, 'No topic offset found for partition')
-        }
-      }
-
-      this.log.debug({ topic, groupId, totalLeft }, 'Total messages left calculated')
-      return totalLeft
+      const counts = await getKafkaMessageCounts(this.log, admin, topic, groupId)
+      return counts.unconsumed
     } catch (err) {
       this.log.error({ topic, groupId, err }, 'Failed to get message count!')
       throw err

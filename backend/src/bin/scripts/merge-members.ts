@@ -3,10 +3,12 @@ import commandLineUsage from 'command-line-usage'
 import * as fs from 'fs'
 import path from 'path'
 
+import { generateUUIDv1 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
-import { optionsQx } from '@crowd/data-access-layer'
 import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members'
 import { getServiceLogger } from '@crowd/logging'
+
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 
@@ -32,6 +34,13 @@ const options = [
     type: String,
     description:
       'The unique ID of a member that will be merged into the first one. This one will be destroyed. You can provide multiple ids here separated by comma.',
+  },
+  {
+    name: 'userId',
+    alias: 'u',
+    typeLabel: '{underline userId}',
+    type: String,
+    description: 'User ID of the user performing the merge.',
   },
   {
     name: 'help',
@@ -65,6 +74,8 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
     const originalId = parameters.originalId
     const targetIds = parameters.targetId.split(',')
 
+    const userId = parameters.userId
+
     const options = await SequelizeRepository.getDefaultIRepositoryOptions()
     const qx = SequelizeRepository.getQueryExecutor(options)
 
@@ -74,6 +85,16 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
     ])
 
     options.currentTenant = { id: originalMember.tenantId }
+    options.currentUser = { id: userId }
+
+    const ctx = {
+      ...options,
+      requestId: generateUUIDv1(),
+      userData: {
+        ip: '127.0.0.1',
+        userAgent: 'merge-members-script',
+      },
+    }
 
     for (const targetId of targetIds) {
       const targetMember = await findMemberById(qx, targetId, [
@@ -89,7 +110,7 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
         log.info(`Merging ${targetId} into ${originalId}...`)
         const service = new CommonMemberService(optionsQx(options), options.temporal, log)
         try {
-          await service.merge(originalId, targetId)
+          await service.merge(originalId, targetId, ctx)
         } catch (err) {
           log.error(`Error merging members: ${err.message}`)
           process.exit(1)

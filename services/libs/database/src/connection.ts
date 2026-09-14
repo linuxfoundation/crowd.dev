@@ -87,14 +87,6 @@ export const getDbInstance = (): DbInstance => {
   return dbInstance
 }
 
-export const formatQuery = (query: string, values: Record<string, unknown>): string => {
-  if (!dbInstance) {
-    throw new Error('Database instance not initialized!')
-  }
-
-  return dbInstance.as.format(query, values)
-}
-
 const dbConnection: Record<string, DbConnection | undefined> = {}
 
 export const getDbConnection = async (

@@ -5,7 +5,9 @@ SQL >
     FROM maintainers_roles_copy_ds
     WHERE
         1 = 1
-        {% if defined(project) %}
+        {% if defined(collectionSlug) %}
+            AND insightsProjectId IN (SELECT insightsProjectId FROM segments_filtered_by_collection)
+        {% elif defined(project) %}
             AND insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
         {% end %}
         {% if defined(repos) %}

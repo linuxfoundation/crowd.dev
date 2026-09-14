@@ -1,0 +1,623 @@
+import {
+  MavenPackageToSync,
+  QueryExecutor,
+  listMavenCriticalPackagesById,
+  listMavenPackagesToSync,
+  logAuditFieldChange,
+  removeDeclaredPackageRepo,
+  replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
+  setPackageRepositoryUrl,
+  touchPackageSyncedAt,
+  upsertMaintainer,
+  upsertPackage,
+  upsertPackageRepo,
+  upsertRepo,
+  upsertVersionsBatch,
+} from '@crowd/data-access-layer'
+import type {
+  PackageRepoOwnershipMatch,
+  PackageRepoSignal,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
+import { getServiceChildLogger } from '@crowd/logging'
+
+import { getMavenConfig } from '../config'
+import {
+  OwnershipEvidence,
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+} from '../utils/ownershipMatch'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
+
+import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
+import { isMavenFetchError, resolveVersionsList } from './metadata'
+import { isPrerelease, parseRepoUrl } from './normalize'
+import {
+  GRADLE_PLUGIN_PORTAL_BASE_URL,
+  JITPACK_BASE_URL,
+  MAVEN_CENTRAL_BASE_URL,
+  isAlternativeRegistry,
+  isJitpackNamespace,
+  resolveRegistryBaseUrl,
+  resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
+} from './registry'
+
+const log = getServiceChildLogger('maven')
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface BatchResult {
+  processed: number
+  skipped: number
+  error: number
+  unchanged: number
+  declared_matched: number
+  declared_unmatched: number
+  declared_no_evidence: number
+}
+
+function emptyBatchResult(): BatchResult {
+  return { processed: 0, skipped: 0, error: 0, unchanged: 0, ...emptyDeclaredOwnershipCounts() }
+}
+
+type CriticalStatus = 'processed' | 'skipped' | 'unchanged' | 'error'
+
+interface CriticalPackageResult {
+  status: CriticalStatus
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}
+
+// prettier-ignore
+type MavenConfig = ReturnType<typeof getMavenConfig>
+type PackageRow = MavenPackageToSync
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// prettier-ignore
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary', evidence?: Omit<OwnershipEvidence, 'repoOwner'>): Promise<PackageRepoOwnershipMatch | null> {
+  if (!repositoryUrl) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
+    return null
+  }
+  const parsed = parseRepoUrl(repositoryUrl)
+  if (!parsed) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
+    return null
+  }
+  const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
+  const ownershipMatch = matchOwnership({
+    ...evidence,
+    repoOwner: parsed.host === 'other' ? null : parsed.owner,
+  })
+  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal, ownershipMatch })
+  repoChanged.forEach((f) => changed?.add(f))
+  const removedFields = await removeDeclaredPackageRepo(qx, String(packageId), String(repoId))
+  removedFields.forEach((f) => changed?.add(f))
+  return ownershipMatch
+}
+
+// Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
+// rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
+// can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
+// prettier-ignore
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const code = (err as { code?: string }).code
+      const isDeadlock =
+        code === '40P01' || /deadlock detected/i.test(String((err as Error)?.message))
+      if (isDeadlock && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 50 * attempt + Math.random() * 100))
+        log.debug({ attempt }, 'Deadlock detected — retrying transaction')
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+// ─── Non-critical: copy universe stats into packages ─────────────────────────
+
+// prettier-ignore
+async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise<void> {
+  await upsertPackage(qx, {
+    purl: pkg.purl,
+    ecosystem: 'maven',
+    namespace: pkg.namespace,
+    name: pkg.name,
+    description: null,
+    homepage: null,
+    registryUrl: pkg.namespace ? resolveRegistryPageUrl(pkg.namespace, pkg.name) : null,
+    declaredRepositoryUrl: null,
+    repositoryUrl: null,
+    licenses: null,
+    licensesRaw: null,
+    latestVersion: null,
+    ingestionSource: 'packages_universe',
+    dependentPackagesCount: pkg.dependentPackagesCount,
+    dependentReposCount: pkg.dependentReposCount,
+  })
+}
+
+// ─── Critical: full POM extraction ───────────────────────────────────────────
+
+// prettier-ignore
+async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceFullExtraction: boolean): Promise<CriticalPackageResult> {
+  const groupId = pkg.namespace
+  const artifactId = pkg.name
+
+  if (!groupId) {
+    log.warn({ purl: pkg.purl }, 'Skipping: null namespace (groupId)')
+    return { status: 'skipped', ownershipMatch: null }
+  }
+
+  let baseUrl = resolveRegistryBaseUrl(groupId)
+
+  // Phase 1: lightweight metadata fetch to get the current upstream version.
+  let metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
+
+  // If the primary (non-Central) registry returned NOT_FOUND, try Maven Central as a
+  // fallback. This handles artifacts that share a namespace with non-Central packages but
+  // are themselves published on Central — e.g. com.google.firebase:firebase-admin is the
+  // server-side Java SDK on Central, while most com.google.firebase artifacts are Android
+  // SDKs on Google Maven.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isAlternativeRegistry(groupId)) {
+    const centralUrl = process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+    const centralMetadata = await resolveVersionsList(groupId, artifactId, centralUrl)
+    if (!isMavenFetchError(centralMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary registry — resolved via Maven Central fallback')
+      baseUrl = centralUrl
+      metadata = centralMetadata
+    }
+  }
+
+  // Second fallback: JitPack for io.github.* / com.github.* packages not found on
+  // Maven Central. These namespaces are also used by well-known Central artifacts
+  // (e.g. resilience4j, caffeine), so Central is tried first; JitPack is the fallback
+  // for packages that genuinely live only on JitPack.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isJitpackNamespace(groupId)) {
+    const jitpackMetadata = await resolveVersionsList(groupId, artifactId, JITPACK_BASE_URL)
+    if (!isMavenFetchError(jitpackMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found on Maven Central — resolved via JitPack fallback')
+      baseUrl = JITPACK_BASE_URL
+      metadata = jitpackMetadata
+    }
+  }
+
+  // Third fallback: Gradle Plugin Portal. Plugins can be published under any groupId
+  // (not just gradle.plugin.*), so this is worth trying for all NOT_FOUND packages.
+  // Skip when GPP is already the primary registry (gradle.plugin.*) to avoid a
+  // redundant second call to the same URL.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && baseUrl !== GRADLE_PLUGIN_PORTAL_BASE_URL) {
+    const gradlePortalMetadata = await resolveVersionsList(groupId, artifactId, GRADLE_PLUGIN_PORTAL_BASE_URL)
+    if (!isMavenFetchError(gradlePortalMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary/Central — resolved via Gradle Plugin Portal fallback')
+      baseUrl = GRADLE_PLUGIN_PORTAL_BASE_URL
+      metadata = gradlePortalMetadata
+    }
+  }
+
+  if (isMavenFetchError(metadata)) {
+    if (metadata.kind === 'NOT_FOUND') {
+      await upsertPackage(qx, {
+        purl: pkg.purl,
+        ecosystem: 'maven',
+        namespace: groupId,
+        name: artifactId,
+        description: null,
+        homepage: null,
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
+        declaredRepositoryUrl: null,
+        repositoryUrl: null,
+        licenses: null,
+        licensesRaw: null,
+        latestVersion: pkg.latestVersion ?? null,
+        ingestionSource: 'maven_not_on_central',
+        dependentPackagesCount: pkg.dependentPackagesCount,
+        dependentReposCount: pkg.dependentReposCount,
+      })
+      log.warn({ groupId, artifactId, baseUrl }, 'Not found in registry — writing minimal record')
+      return { status: 'skipped', ownershipMatch: null }
+    }
+    if (metadata.kind === 'RATE_LIMIT') {
+      log.warn(
+        { groupId, artifactId, status: metadata.status },
+        'Rate limited — will retry next pass',
+      )
+      return { status: 'error', ownershipMatch: null }
+    }
+    throw new Error(
+      `Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`,
+    )
+  }
+
+  const version = metadata.releaseVersion
+
+  if (!version) {
+    await upsertPackage(qx, {
+      purl: pkg.purl,
+      ecosystem: 'maven',
+      namespace: groupId,
+      name: artifactId,
+      description: null,
+      homepage: null,
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
+      declaredRepositoryUrl: null,
+      repositoryUrl: null,
+      licenses: null,
+      licensesRaw: null,
+      latestVersion: null,
+      ingestionSource: 'maven_no_version',
+      dependentPackagesCount: pkg.dependentPackagesCount,
+      dependentReposCount: pkg.dependentReposCount,
+    })
+    log.warn({ groupId, artifactId }, 'No release version in metadata — writing minimal record')
+    return { status: 'skipped', ownershipMatch: null }
+  }
+
+  // Phase 2: skip full POM extraction only if this row was already Maven-enriched —
+  // a version match on a never-extracted row (fresh promotion, error, deps_dev) is coincidental.
+  if (!forceFullExtraction && version === pkg.latestVersion && pkg.ingestionSource === 'maven-registry') {
+    await touchPackageSyncedAt(qx, pkg.purl, {
+      dependentPackagesCount: pkg.dependentPackagesCount,
+      dependentReposCount: pkg.dependentReposCount,
+    })
+    log.debug({ groupId, artifactId, version }, 'Version unchanged — skipping POM extraction')
+    return { status: 'unchanged', ownershipMatch: null }
+  }
+
+  // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
+  // transaction so partial writes never leave the package in an inconsistent state.
+  const result = await extractArtifact(groupId, artifactId, version, baseUrl)
+
+  if (result.error) {
+    log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction failed')
+    await upsertPackage(qx, {
+      purl: pkg.purl,
+      ecosystem: 'maven',
+      namespace: groupId,
+      name: artifactId,
+      description: null,
+      homepage: null,
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
+      declaredRepositoryUrl: null,
+      repositoryUrl: null,
+      licenses: null,
+      licensesRaw: null,
+      latestVersion: version,
+      ingestionSource: 'maven_error',
+      dependentPackagesCount: pkg.dependentPackagesCount,
+      dependentReposCount: pkg.dependentReposCount,
+    })
+    return { status: 'error', ownershipMatch: null }
+  }
+
+  const scmRepositoryUrl = normalizeScmUrl(result.scmUrl)
+  const fallbackRepo = scmRepositoryUrl
+    ? null
+    : resolveManifestRepo([{ field: 'url', url: result.homepageUrl, signal: 'secondary' }])
+  const repositoryUrl = scmRepositoryUrl ?? fallbackRepo?.repo.url ?? null
+
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
+
+  await withDeadlockRetry(() =>
+    qx.tx(async (t: QueryExecutor) => {
+      const changed = new Set<string>()
+
+      const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
+        purl: pkg.purl,
+        ecosystem: 'maven',
+        namespace: groupId,
+        name: artifactId,
+        description: result.description,
+        homepage: result.homepageUrl,
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
+        declaredRepositoryUrl: result.scmUrl,
+        repositoryUrl,
+        licenses: result.licenses.length > 0 ? result.licenses : null,
+        licensesRaw: result.licensesRaw,
+        latestVersion: version,
+        versionsCount: metadata.versions.length > 0 ? metadata.versions.length : null,
+        latestReleaseAt: metadata.lastUpdated,
+        ingestionSource: 'maven-registry',
+        dependentPackagesCount: pkg.dependentPackagesCount,
+        dependentReposCount: pkg.dependentReposCount,
+      })
+      pkgChanged.forEach((f) => changed.add(f))
+
+      const allVersions = metadata.versions.length > 0 ? metadata.versions : [version]
+      const verChanged = await upsertVersionsBatch(
+        t,
+        allVersions.map((v) => ({
+          packageId,
+          ecosystem: 'maven',
+          namespace: groupId,
+          name: artifactId,
+          number: v,
+          isLatest: v === metadata.releaseVersion,
+          isPrerelease: isPrerelease(v),
+          license: result.licenses[0] ?? null,
+        })),
+      )
+      verChanged.forEach((f) => changed.add(f))
+
+      const allPeople = [
+        ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
+        ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
+      ].sort((a, b) => {
+        // Stable order on the shared maintainers table so concurrent transactions acquire
+        // row locks in the same order → no deadlock cycles.
+        const ka = a.username ?? a.email ?? a.displayName ?? ''
+        const kb = b.username ?? b.email ?? b.displayName ?? ''
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      })
+
+      const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
+      for (const person of allPeople) {
+        const username = person.username ?? person.email ?? person.displayName
+        if (!username) continue
+        const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
+          ecosystem: 'maven',
+          username,
+          displayName: person.displayName,
+          url: person.url,
+          email: person.email ?? null,
+        })
+        mChanged.forEach((f) => changed.add(f))
+        maintainerLinks.push({ maintainerId, role: person.role })
+      }
+
+      if (maintainerLinks.length > 0) {
+        const pmChanged = await replacePackageMaintainers(t, packageId, maintainerLinks)
+        pmChanged.forEach((f) => changed.add(f))
+      }
+
+      // upsertPackage's COALESCE can't distinguish a dropped <scm><url> from "unknown" — this
+      // POM extraction succeeded, so clear declared_repository_url explicitly when it's gone.
+      const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+        t,
+        packageId.toString(),
+        result.scmUrl,
+      )
+      declaredClearedFields.forEach((f) => changed.add(f))
+
+      ownershipMatch = await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary', {
+        namespace: groupId,
+        maintainers: allPeople.map((p) => p.username),
+      })
+
+      await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
+
+      log.debug(
+        {
+          groupId,
+          artifactId,
+          version,
+          parentHops: result.parentHops,
+          licenses: result.licenses.length,
+          maintainers: maintainerLinks.length,
+          versions: allVersions.length,
+        },
+        'ok',
+      )
+    }),
+  )
+
+  return { status: 'processed', ownershipMatch }
+}
+
+// ─── Batch processing ─────────────────────────────────────────────────────────
+
+// prettier-ignore
+export async function processBatch(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
+  const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
+  const refreshDays = config.refreshDays
+
+  const packages = await listMavenPackagesToSync(qx, { limit: batchSize, refreshDays, isCritical })
+
+  return processPackages(qx, config, packages, isCritical, forceFullExtraction)
+}
+
+// Runs a concrete list of packages through the enrichment pipeline.
+// prettier-ignore
+async function processPackages(qx: QueryExecutor, config: MavenConfig, packages: PackageRow[], isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
+  const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
+
+  if (packages.length === 0) return emptyBatchResult()
+
+  // Cluster the batch by namespace so artifacts sharing a parent POM are processed
+  // adjacently — this is what makes the parent-POM cache effective. The criticality
+  // ordering only decides *which* packages are in the batch (via the SQL LIMIT);
+  // it does not group same-namespace siblings, so we reorder here. Only matters on
+  // the critical path (the non-critical path issues no POM/parent HTTP).
+  if (isCritical) {
+    packages.sort(
+      (a, b) =>
+        (a.namespace ?? '').localeCompare(b.namespace ?? '') || a.name.localeCompare(b.name),
+    )
+  }
+
+  log.info({ count: packages.length, isCritical }, 'Batch started')
+
+  const counts = emptyBatchResult()
+
+  for (let batchStart = 0; batchStart < packages.length; batchStart += concurrency) {
+    const group = packages.slice(batchStart, batchStart + concurrency)
+
+    if (isCritical && config.groupDelayMs > 0 && batchStart > 0) {
+      await new Promise((r) => setTimeout(r, config.groupDelayMs))
+    }
+
+    await Promise.all(
+      group.map(async (pkg) => {
+        try {
+          if (!isCritical) {
+            await processNonCriticalPackage(qx, pkg)
+            counts.processed++
+            return
+          }
+
+          const res = await processCriticalPackage(qx, pkg, forceFullExtraction)
+          counts[res.status]++
+          if (res.ownershipMatch) bumpDeclaredOwnershipCounts(counts, res.ownershipMatch)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
+          counts.error++
+        }
+      }),
+    )
+
+    const done = batchStart + group.length
+    if (done % 1000 === 0 || done === packages.length) {
+      log.info({ done, total: packages.length, ...counts }, 'Progress')
+    }
+  }
+
+  if (isCritical) {
+    // POM cache only fills on the critical path (parent-chain resolution).
+    log.info(getPomCacheStats(), 'POM cache')
+  }
+
+  return counts
+}
+
+// ─── Phase runner ─────────────────────────────────────────────────────────────
+
+// prettier-ignore
+async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, isShuttingDown: () => boolean): Promise<BatchResult> {
+  const label = isCritical ? 'critical' : 'non-critical'
+  const total: BatchResult = emptyBatchResult()
+  let batchNum = 0
+  const phaseStartedAt = Date.now()
+
+  log.info({ phase: label }, 'Phase started')
+
+  while (!isShuttingDown()) {
+    // The standalone loop is the backfill entry point → always full extraction.
+    const result = await processBatch(qx, config, isCritical, true)
+
+    if (result.processed + result.skipped + result.error + result.unchanged === 0) {
+      const durationSec = Math.round((Date.now() - phaseStartedAt) / 1000)
+      log.info({ phase: label, ...total, durationSec }, 'Phase complete')
+      return total
+    }
+
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.error += result.error
+    total.unchanged += result.unchanged
+    total.declared_matched += result.declared_matched
+    total.declared_unmatched += result.declared_unmatched
+    total.declared_no_evidence += result.declared_no_evidence
+
+    log.info(
+      {
+        phase: label,
+        batch: batchNum,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalUnchanged: total.unchanged,
+        totalErrors: total.error,
+        declaredMatched: total.declared_matched,
+        declaredUnmatched: total.declared_unmatched,
+        declaredNoEvidence: total.declared_no_evidence,
+        elapsedSec: Math.round((Date.now() - phaseStartedAt) / 1000),
+      },
+      'Batch done',
+    )
+  }
+
+  return total
+}
+
+// ─── One-shot backfill ──────────────────────────────────────────────────────────
+
+/**
+ * Drains the Tier 2 critical queue once, with full POM extraction, and returns
+ * the totals. It does NOT idle-loop — it runs until a batch comes back empty (or
+ * shutdown is requested) and then returns, so the caller can exit. Meant to be
+ * triggered manually (e.g. `pnpm backfill:maven` execed into the packages-worker
+ * container).
+ */
+// prettier-ignore
+export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
+  return runPhase(qx, config, true, isShuttingDown)
+}
+
+/**
+ * Force full-refresh backfill: re-runs POM extraction over EVERY critical Maven
+ * row, ignoring the staleness window. Unlike runMavenCriticalBackfill (which
+ * drains listMavenPackagesToSync by predicate and cannot terminate with
+ * refreshDays=0 — the freshly-synced top rows re-qualify every batch), this pages
+ * strictly by `id > afterId`, so each row is processed exactly once and the scan
+ * always terminates. Every page runs with forceFullExtraction=true.
+ *
+ * Trade-off vs. the normal path: rows are visited in id order, not
+ * dependent_count order, so if interrupted the most-depended-on packages are not
+ * guaranteed to be done first. Restart re-scans from id 0 (idempotent upserts).
+ */
+// prettier-ignore
+export async function runMavenCriticalForceBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
+  const total: BatchResult = emptyBatchResult()
+  const startedAt = Date.now()
+  // Cursor kept as a string: id is a Postgres bigint, and Number() coercion would
+  // silently lose precision above 2^53, corrupting the cursor and skipping rows.
+  let afterId = '0'
+  let batchNum = 0
+
+  log.info('Force full-refresh started (all critical rows, keyset by id, ignoring refreshDays)')
+
+  while (!isShuttingDown()) {
+    const page = await listMavenCriticalPackagesById(qx, { afterId, limit: config.batchSize })
+    if (page.length === 0) break
+
+    // Capture the cursor before processPackages reorders the page in place (it
+    // clusters by namespace for the parent-POM cache). Rows come back id-ordered,
+    // so the max id is the last element — kept as a string to preserve bigint precision.
+    afterId = page[page.length - 1].id
+
+    const result = await processPackages(qx, config, page, true, true)
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.error += result.error
+    total.unchanged += result.unchanged
+    total.declared_matched += result.declared_matched
+    total.declared_unmatched += result.declared_unmatched
+    total.declared_no_evidence += result.declared_no_evidence
+
+    log.info(
+      {
+        batch: batchNum,
+        afterId,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalUnchanged: total.unchanged,
+        totalErrors: total.error,
+        declaredMatched: total.declared_matched,
+        declaredUnmatched: total.declared_unmatched,
+        declaredNoEvidence: total.declared_no_evidence,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+      },
+      'Force batch done',
+    )
+  }
+
+  log.info(
+    { ...total, durationSec: Math.round((Date.now() - startedAt) / 1000) },
+    'Force full-refresh complete',
+  )
+  return total
+}

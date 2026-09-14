@@ -41,13 +41,13 @@ and the GitHub and GitLab API tokens.
 
 Node 24 is required to build and run this, as well as pnpm for dependency management.
 
-Notice that since this is a much simpler tool than the other workers and doesn't use the same dependencies, you have to
-install the dependencies with the `--ignore-workspace` flag to avoid installing all the other workspace dependencies.
+This cronjob is intentionally not part of the root workspace (`!services/cronjobs`).
+It has its own lockfile; install from this directory.
 
 Install the dependencies with:
 
 ```bash
-pnpm install --ignore-workspace
+pnpm install
 ```
 
 To run the main process:

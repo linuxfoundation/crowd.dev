@@ -2,9 +2,15 @@
 import { uniq } from 'lodash'
 
 import { Error400, dateIntersects, groupBy } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
-import { optionsQx } from '@crowd/data-access-layer'
+import { signalMemberUpdate } from '@crowd/common_services'
+import {
+  changeMemberOrganizationAffiliationOverrides,
+  fetchManyOrganizationAffiliationPolicies,
+  fetchMemberOrganizations,
+  findMemberAffiliationOverrides,
+} from '@crowd/data-access-layer'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import {
@@ -14,8 +20,8 @@ import {
 } from '@crowd/types'
 
 import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
-import MemberOrganizationAffiliationOverridesRepository from '@/database/repositories/member/memberOrganizationAffiliationOverridesRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -62,6 +68,18 @@ export default class MemberAffiliationsService extends LoggerBase {
     memberId: string,
     data: Partial<IMemberAffiliation>[],
   ): Promise<IMemberAffiliation[]> {
+    if (data?.length > 0) {
+      const qx = SequelizeRepository.getQueryExecutor(this.options)
+      const organizationIds = data
+        .map((a) => a.organizationId)
+        .filter((id): id is string => Boolean(id))
+      const policies = await fetchManyOrganizationAffiliationPolicies(qx, organizationIds)
+
+      if ([...policies.values()].some((isBlocked) => isBlocked)) {
+        throw new Error400(this.options.language, 'This organization does not allow affiliations')
+      }
+    }
+
     return MemberAffiliationsRepository.upsertMultiple(memberId, data, this.options)
   }
 
@@ -103,17 +121,44 @@ export default class MemberAffiliationsService extends LoggerBase {
       }
     }
 
-    const override = await MemberOrganizationAffiliationOverridesRepository.changeOverride(
-      data,
-      this.options,
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+
+    const memberOrgs = await fetchMemberOrganizations(qx, data.memberId)
+    const memberOrg = memberOrgs.find((mo) => mo.id === data.memberOrganizationId)
+
+    const overlappingGroupedRows = memberOrg
+      ? getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
+      : []
+
+    const memberOrgIds = [
+      data.memberOrganizationId,
+      ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
+    ]
+
+    // Apply the override to hidden grouped rows so the merged work experience has one decision
+    await changeMemberOrganizationAffiliationOverrides(
+      qx,
+      memberOrgIds.map((memberOrganizationId) => ({
+        ...data,
+        memberOrganizationId,
+      })),
     )
 
-    const commonMemberService = new CommonMemberService(
-      optionsQx(this.options),
-      this.options.temporal,
-      this.options.log,
-    )
-    await commonMemberService.startAffiliationRecalculation(data.memberId, [])
+    if (data.allowAffiliation === false && memberOrg?.organizationId) {
+      await deleteMemberSegmentAffiliations(qx, {
+        memberId: data.memberId,
+        organizationId: memberOrg.organizationId,
+      })
+    }
+
+    const overrides = await findMemberAffiliationOverrides(qx, data.memberId, [
+      data.memberOrganizationId,
+    ])
+
+    const override = overrides[0]
+
+    await signalMemberUpdate(this.options.temporal, data.memberId)
+
     return override
   }
 }

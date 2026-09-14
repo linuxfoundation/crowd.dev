@@ -3,21 +3,15 @@ import max from 'lodash.max'
 import min from 'lodash.min'
 import moment from 'moment'
 
+import { normalizeMemberIdentityValue } from '@crowd/common'
 import {
   ActivityRelations,
   ActivityTimeseriesDatapoint,
   Counter,
-  DbConnOrTx,
   TinybirdClient,
 } from '@crowd/database'
-import { ActivityDisplayService } from '@crowd/integrations'
-import {
-  ActivityTypeSettings,
-  IActivityBySentimentMoodResult,
-  IActivityByTypeAndPlatformResult,
-  ITimeseriesDatapoint,
-  PageData,
-} from '@crowd/types'
+import { ActivityDisplayService } from '@crowd/integrations/src/integrations/activityDisplayService'
+import { ActivityTypeSettings, ITimeseriesDatapoint, PageData } from '@crowd/types'
 
 import { getLatestMemberActivityRelations } from '../activityRelations'
 import { MemberField, queryMembers } from '../members/base'
@@ -35,30 +29,6 @@ import {
   IQueryActivityResult,
   IQueryGroupedActivitiesParameters,
 } from './types'
-
-export async function getActivitiesById(
-  conn: DbConnOrTx,
-  ids: string[],
-  segmentIds: string[],
-  qx: QueryExecutor,
-  activityTypeSettings: ActivityTypeSettings,
-): Promise<IQueryActivityResult[]> {
-  if (ids.length === 0) {
-    return []
-  }
-
-  const data = await queryActivities(
-    {
-      filter: { and: [{ id: { in: ids } }] },
-      limit: ids.length,
-      segmentIds,
-    },
-    qx,
-    activityTypeSettings,
-  )
-
-  return data.rows
-}
 
 export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'id',
@@ -101,41 +71,6 @@ export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'gitDeletions',
   'gitIsMerge',
 ]
-
-export async function setMemberDataToActivities(
-  conn: DbConnOrTx,
-  memberId: string,
-  data: { isBot: boolean; isTeamMember: boolean },
-): Promise<void> {
-  await conn.none(
-    `
-      update activities set
-        "member_isBot" = $(isBot),
-        "member_isTeamMember" = $(isTeamMember)
-      where "memberId" = $(memberId);
-    `,
-    {
-      memberId,
-      ...data,
-    },
-  )
-}
-
-export async function addActivityToConversation(
-  conn: DbConnOrTx,
-  id: string,
-  conversationId: string,
-): Promise<void> {
-  await conn.none(
-    `
-    UPDATE activities SET "conversationId" = $(conversationId) WHERE id = $(id);
-    `,
-    {
-      id,
-      conversationId,
-    },
-  )
-}
 
 export type ActivityColumn =
   | 'id'
@@ -441,83 +376,6 @@ export async function activitiesTimeseries(
   }))
 }
 
-export async function activitiesBySentiment(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityBySentimentMoodResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, sentimentLabel
-    FROM activities
-    WHERE "deletedAt" IS NULL
-    AND "sentimentLabel" IS NOT NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY sentimentLabel;`
-
-  const rows: IActivityBySentimentMoodResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
-}
-
-export async function activitiesByTypeAndPlatform(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityByTypeAndPlatformResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, platform, type
-    FROM activities
-    WHERE "deletedAt" IS NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY platform, type ORDER BY count DESC;`
-
-  const rows: IActivityByTypeAndPlatformResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
-}
-
 export async function getLastActivitiesForMembers(
   qx: QueryExecutor,
   memberIds: string[],
@@ -591,6 +449,11 @@ export async function createOrUpdateRelations(
       continue
     }
 
+    data.username = normalizeMemberIdentityValue(data.username)
+    if (data.objectMemberUsername != null) {
+      data.objectMemberUsername = normalizeMemberIdentityValue(data.objectMemberUsername)
+    }
+
     if (data.platform === undefined || data.platform === null) {
       continue
     }
@@ -622,7 +485,7 @@ export async function createOrUpdateRelations(
                 `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value)
+          WHERE lower(value) = lower($(value))
             and platform = $(platform)
             and verified = true
             and "deletedAt" is null
@@ -731,7 +594,7 @@ export async function createOrUpdateRelations(
             `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value)
+        WHERE lower(value) = lower($(value))
           and platform = $(platform)
           and verified = true
           and "deletedAt" is null
@@ -920,6 +783,13 @@ export async function updateActivityRelationsById(
   qe: QueryExecutor,
   data: IActivityRelationUpdateById,
 ): Promise<void> {
+  if (typeof data.username === 'string') {
+    data.username = normalizeMemberIdentityValue(data.username)
+  }
+  if (typeof data.objectMemberUsername === 'string') {
+    data.objectMemberUsername = normalizeMemberIdentityValue(data.objectMemberUsername)
+  }
+
   const fields: string[] = []
 
   for (const [key, value] of Object.entries(data)) {

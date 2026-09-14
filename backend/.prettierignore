@@ -3,3 +3,4 @@ node_modules
 admin
 venv-*
 .serverless
+.claude

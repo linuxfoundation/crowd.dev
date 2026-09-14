@@ -1,0 +1,334 @@
+import { EPOCH_DATE, dateIntersects } from '@crowd/common'
+import {
+  IMemberOrganization,
+  MemberOrgDate,
+  MemberOrgStintChange,
+  MemberRoleUnmergeStrategy,
+} from '@crowd/types'
+
+function roleKey(
+  role: IMemberOrganization,
+  strategy: MemberRoleUnmergeStrategy,
+): string | undefined {
+  if (strategy === MemberRoleUnmergeStrategy.SAME_MEMBER) {
+    return role.organizationId
+  }
+  return role.memberId
+}
+
+function roleExistsInArray(
+  role: IMemberOrganization,
+  roles: IMemberOrganization[],
+  strategy: MemberRoleUnmergeStrategy,
+): boolean {
+  const key = roleKey(role, strategy)
+  return roles.some(
+    (r) =>
+      roleKey(r, strategy) === key &&
+      r.title === role.title &&
+      r.dateStart === role.dateStart &&
+      r.dateEnd === role.dateEnd,
+  )
+}
+
+export function rolesIntersect(
+  roleA: IMemberOrganization,
+  roleB: IMemberOrganization,
+  strategy: MemberRoleUnmergeStrategy,
+): boolean {
+  if (roleKey(roleA, strategy) !== roleKey(roleB, strategy) || roleA.title !== roleB.title) {
+    return false
+  }
+
+  const startA = new Date(roleA.dateStart).getTime()
+  const endA = new Date(roleA.dateEnd).getTime()
+  const startB = new Date(roleB.dateStart).getTime()
+  const endB = new Date(roleB.dateEnd).getTime()
+
+  return (
+    (startA < startB && endA > startB) ||
+    (startB < startA && endB > startA) ||
+    (startA < startB && endA > endB) ||
+    (startB < startA && endB > endA)
+  )
+}
+
+export function unmergeRoles(
+  mergedRoles: IMemberOrganization[],
+  primaryBackupRoles: IMemberOrganization[],
+  secondaryBackupRoles: IMemberOrganization[],
+  strategy: MemberRoleUnmergeStrategy,
+): IMemberOrganization[] {
+  const unmergedRoles: IMemberOrganization[] = mergedRoles.filter(
+    (role) =>
+      role.source === 'ui' ||
+      !secondaryBackupRoles.some((r) => roleKey(r, strategy) === roleKey(role, strategy)),
+  )
+
+  const editableRoles = mergedRoles.filter(
+    (role) =>
+      role.source !== 'ui' &&
+      secondaryBackupRoles.some((r) => roleKey(r, strategy) === roleKey(role, strategy)),
+  )
+
+  for (const secondaryBackupRole of secondaryBackupRoles) {
+    const { dateStart, dateEnd } = secondaryBackupRole
+
+    if (dateStart === null && dateEnd === null) {
+      if (
+        roleExistsInArray(secondaryBackupRole, editableRoles, strategy) &&
+        roleExistsInArray(secondaryBackupRole, primaryBackupRoles, strategy)
+      ) {
+        unmergedRoles.push(secondaryBackupRole)
+      }
+    } else if (dateStart !== null && dateEnd === null) {
+      const currentRoleFromPrimaryBackup = primaryBackupRoles.find(
+        (r) =>
+          roleKey(r, strategy) === roleKey(secondaryBackupRole, strategy) &&
+          r.title === secondaryBackupRole.title &&
+          r.dateStart !== null &&
+          r.dateEnd === null,
+      )
+      if (currentRoleFromPrimaryBackup) {
+        unmergedRoles.push(currentRoleFromPrimaryBackup)
+      }
+    } else if (dateStart !== null && dateEnd !== null) {
+      if (
+        roleExistsInArray(secondaryBackupRole, editableRoles, strategy) &&
+        roleExistsInArray(secondaryBackupRole, primaryBackupRoles, strategy)
+      ) {
+        unmergedRoles.push(secondaryBackupRole)
+      } else {
+        const intersecting = editableRoles.find((r) =>
+          rolesIntersect(secondaryBackupRole, r, strategy),
+        )
+
+        if (intersecting) {
+          const fromBackup = primaryBackupRoles.find((r) =>
+            rolesIntersect(secondaryBackupRole, r, strategy),
+          )
+          if (fromBackup) {
+            unmergedRoles.push(fromBackup)
+          }
+        }
+      }
+    }
+  }
+
+  return unmergedRoles
+}
+
+export const MEMBER_ORG_STINT_CHANGES_QUEUE = 'infer-member-organization-stint-changes:members'
+export const MEMBER_ORG_STINT_CHANGES_DATES_PREFIX = 'infer-member-organization-stint-changes:dates'
+
+const EPOCH_TOLERANCE_MS = 5 * 86_400_000
+
+/**
+ * Converts member organization dates into YYYY-MM-DD and treats epoch-like values as missing.
+ */
+export function normalizeMemberOrganizationDate(
+  date: string | Date | null | undefined,
+): string | null {
+  if (date === null || date === undefined || date === '') {
+    return null
+  }
+
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  if (parsed.getTime() <= EPOCH_DATE.getTime() + EPOCH_TOLERANCE_MS) {
+    return null
+  }
+
+  return parsed.toISOString().split('T')[0]
+}
+
+interface Stint {
+  id: string | null
+  organizationId: string
+  dateStart: string | null
+  dateEnd: string | null
+  isDirty: boolean
+  isNew: boolean
+}
+
+type DatedStint = Stint & { dateStart: string; dateEnd: string }
+
+/**
+ * Core logic to determine if activity dates should expand existing stints or create new ones.
+ */
+export function inferMemberOrganizationStintChanges(
+  memberId: string,
+  existingRows: IMemberOrganization[],
+  orgDates: MemberOrgDate[],
+): MemberOrgStintChange[] {
+  const diff = (a: string, b: string) => Math.abs(Date.parse(b) - Date.parse(a)) / 86_400_000
+
+  // Normalize once so all range comparisons use the same date shape
+  const normalizedRows = existingRows.map((row) => ({
+    ...row,
+    dateStart: normalizeMemberOrganizationDate(row.dateStart),
+    dateEnd: normalizeMemberOrganizationDate(row.dateEnd),
+  }))
+
+  const activeRows = normalizedRows.filter((row) => !row.deletedAt)
+
+  const tombstonedOrgIds = new Set(
+    normalizedRows.filter((row) => row.deletedAt && row.deletedBy).map((row) => row.organizationId),
+  )
+
+  // Deleted dated rows suppress recreation for dates the user removed
+  const deletedRows = normalizedRows.filter(
+    (row): row is typeof row & { dateStart: string } => !!row.deletedAt && !!row.dateStart,
+  )
+
+  const sortedDates = orgDates
+    .map((entry) => ({
+      organizationId: entry.organizationId,
+      date: normalizeMemberOrganizationDate(entry.date),
+    }))
+    .filter((entry): entry is MemberOrgDate => entry.date !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  // 1. Initialize local state to track modifications and new records
+  const stints: Stint[] = activeRows.map((row) => ({
+    id: row.id ?? null,
+    organizationId: row.organizationId,
+    dateStart: row.dateStart,
+    dateEnd: row.dateEnd,
+    isDirty: false,
+    isNew: false,
+  }))
+
+  for (const { organizationId, date: targetDate } of sortedDates) {
+    if (tombstonedOrgIds.has(organizationId)) {
+      continue
+    }
+
+    if (
+      deletedRows.some(
+        (row) =>
+          row.organizationId === organizationId &&
+          dateIntersects(row.dateStart, row.dateEnd, targetDate, targetDate),
+      )
+    ) {
+      continue
+    }
+
+    const orgStints = stints.filter((s) => s.organizationId === organizationId)
+
+    // 2. Skip if the date is already covered by an existing stint
+    if (
+      orgStints.some(
+        (s) => s.dateStart && s.dateEnd && targetDate >= s.dateStart && targetDate <= s.dateEnd,
+      )
+    )
+      continue
+
+    // 3. Fill undated placeholder only when no dated stint exists yet (Rule 2)
+    const dated = orgStints.filter(
+      (s): s is DatedStint => s.dateStart !== null && s.dateEnd !== null,
+    )
+    const placeholder = orgStints.find((s) => !s.dateStart && !s.dateEnd)
+    if (placeholder && dated.length === 0) {
+      placeholder.dateStart = placeholder.dateEnd = targetDate
+      placeholder.isDirty = true
+      continue
+    }
+
+    // 4. Find the closest neighbor stint to see if expansion is possible
+    let neighbor: DatedStint | null = null
+    let minGap = Infinity
+
+    for (const s of dated) {
+      const gap =
+        targetDate > s.dateEnd ? diff(s.dateEnd, targetDate) : diff(targetDate, s.dateStart)
+      if (gap < minGap) {
+        minGap = gap
+        neighbor = s
+      }
+    }
+
+    if (!neighbor) {
+      stints.push({
+        id: null,
+        organizationId,
+        dateStart: targetDate,
+        dateEnd: targetDate,
+        isDirty: true,
+        isNew: true,
+      })
+      continue
+    }
+
+    // 5. Only split when another org has meaningful exclusive presence in the gap
+    // between the closest same-org stint and the new date (>30 days).
+    // Concurrent/overlapping orgs that barely extend into the gap are not career breaks.
+    const isForward = targetDate > neighbor.dateEnd
+    const gapStart = isForward ? neighbor.dateEnd : targetDate
+    const gapEnd = isForward ? targetDate : neighbor.dateStart
+
+    const hasSeparator = stints.some((s) => {
+      if (s.organizationId === organizationId || !s.dateStart || !s.dateEnd) {
+        return false
+      }
+
+      const overlapStart = s.dateStart > gapStart ? s.dateStart : gapStart
+      const overlapEnd = s.dateEnd < gapEnd ? s.dateEnd : gapEnd
+      if (overlapStart >= overlapEnd) return false
+
+      // Wrapping orgs were already concurrent, so need >90d (vs >30d) to separate
+      const isUmbrella = s.dateStart <= neighbor.dateStart && s.dateEnd >= neighbor.dateEnd
+      const threshold = isUmbrella ? 90 : 30
+
+      return diff(overlapStart, overlapEnd) > threshold
+    })
+
+    if (hasSeparator) {
+      // 6a. Another org clearly sits in between — start a fresh stint rather than bridging
+      stints.push({
+        id: null,
+        organizationId,
+        dateStart: targetDate,
+        dateEnd: targetDate,
+        isDirty: true,
+        isNew: true,
+      })
+    } else if (isForward && minGap <= 30) {
+      // 6b. Forward extension within the debounce window — skip to avoid thrashing dateEnd.
+      // Backward extensions are not debounced (rare, only during historical re-ingestion).
+      continue
+    } else {
+      // 6c. Extend the neighbor in the appropriate direction
+      if (isForward) neighbor.dateEnd = targetDate
+      else neighbor.dateStart = targetDate
+      neighbor.isDirty = true
+    }
+  }
+
+  // 7. Map only modified or new stints back to change objects
+  return stints.flatMap((s): MemberOrgStintChange[] => {
+    if (!s.isDirty || !s.dateStart || !s.dateEnd) {
+      return []
+    }
+
+    const payload = {
+      memberId,
+      organizationId: s.organizationId,
+      dateStart: s.dateStart,
+      dateEnd: s.dateEnd,
+    }
+
+    if (s.isNew) {
+      return [{ type: 'insert', ...payload }]
+    }
+
+    if (!s.id) {
+      return []
+    }
+
+    return [{ type: 'update', id: s.id, ...payload }]
+  })
+}

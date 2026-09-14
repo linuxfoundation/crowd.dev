@@ -192,7 +192,7 @@ const handleMergeRequestsStream: GitlabStreamHandler = async (ctx, api, data) =>
           data: item.data,
           user,
         },
-        type: GitlabActivityType.MERGE_REQUEST_CLOSED,
+        type: GitlabActivityType.MERGE_REQUEST_MERGED,
         projectId: data.projectId,
         pathWithNamespace: data.pathWithNamespace,
       })

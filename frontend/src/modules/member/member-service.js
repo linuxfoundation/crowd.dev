@@ -221,7 +221,7 @@ export class MemberService {
     return authAxios.post('/membersToMerge', data).then(({ data }) => Promise.resolve(data));
   }
 
-  static async fetchBotSuggestions(limit, offset) {
+  static async fetchBotSuggestions(limit, offset, query = {}) {
     const segments = [getSelectedProjectGroup().id];
 
     return authAxios
@@ -230,6 +230,7 @@ export class MemberService {
           segments,
           offset,
           limit,
+          ...query,
         },
       })
       .then(({ data }) => Promise.resolve(data));

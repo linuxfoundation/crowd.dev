@@ -1,16 +1,22 @@
 import _ from 'lodash'
 import { v4 as uuid } from 'uuid'
 
-import { getLongestDateRange } from '@crowd/common'
+import { getLongestDateRange, getMemberOrganizationSourceRank } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
 import {
   IChangeAffiliationOverrideData,
   IMemberOrganization,
   IMemberOrganizationAffiliationOverride,
+  type MemberOrganizationAffiliationOverrideDbRow,
 } from '@crowd/types'
 
 import { findMemberAffiliations } from '../member_segment_affiliations'
 import { IManualAffiliationData } from '../old/apps/data_sink_worker/repo/memberAffiliation.data'
+import {
+  type OrganizationVerifiedPrimaryDomains,
+  fetchManyOrganizationVerifiedPrimaryDomains,
+  preferCompanyOverUniversityWhenOverlapping,
+} from '../organizations/identities'
 import { QueryExecutor } from '../queryExecutor'
 
 import type { MemberOrganizationWithOverrides, TimelineItem } from './types'
@@ -19,10 +25,19 @@ const logger = getServiceChildLogger('member-affiliations')
 
 type AffiliationItem = MemberOrganizationWithOverrides | IManualAffiliationData
 
-async function prepareMemberOrganizationAffiliationTimeline(
+const isManualAffiliation = (row: AffiliationItem): row is IManualAffiliationData =>
+  'segmentId' in row && !!row.segmentId
+
+const isMemberOrganizationWithOverrides = (
+  row: AffiliationItem,
+): row is MemberOrganizationWithOverrides => !isManualAffiliation(row)
+
+export async function prepareMemberOrganizationAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
 ): Promise<TimelineItem[]> {
+  let memberOrgDomains: OrganizationVerifiedPrimaryDomains[] = []
+
   const isDateInInterval = (date: Date, start: Date | null, end: Date | null) => {
     return (!start || date >= start) && (!end || date <= end)
   }
@@ -53,11 +68,25 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
 
     // manual affiliations (identified by segmentId) always take highest precedence
-    const manualAffiliations = orgs.filter((row) => 'segmentId' in row && !!row.segmentId)
+    const manualAffiliations = orgs.filter(isManualAffiliation)
     if (manualAffiliations.length > 0) {
       if (manualAffiliations.length === 1) return manualAffiliations[0]
       // if multiple manual affiliations, pick the one with the longest date range
       return getLongestDateRange(manualAffiliations)
+    }
+
+    const memberOrgs = orgs.filter(isMemberOrganizationWithOverrides)
+    const companyPreferredOrgs = preferCompanyOverUniversityWhenOverlapping(
+      memberOrgs,
+      memberOrgDomains,
+    )
+
+    if (companyPreferredOrgs.length < memberOrgs.length) {
+      const companyPreferredOrgIds = new Set(companyPreferredOrgs.map((row) => row.organizationId))
+      orgs = orgs.filter(
+        (row) =>
+          !isMemberOrganizationWithOverrides(row) || companyPreferredOrgIds.has(row.organizationId),
+      )
     }
 
     // first check if there's a primary work experience
@@ -81,11 +110,22 @@ async function prepareMemberOrganizationAffiliationTimeline(
         return withDates[0]
       }
 
-      // 2. get the two orgs with the most members, and return the one with the most members if there's no draw
+      // 2. among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
+      if (withDates.length > 1) {
+        const ranked = withDates.map((row) => ({
+          row,
+          rank: getMemberOrganizationSourceRank(
+            isMemberOrganizationWithOverrides(row) ? row.source : undefined,
+          ),
+        }))
+        const bestRank = Math.min(...ranked.map((r) => r.rank))
+        orgs = ranked.filter((r) => r.rank === bestRank).map((r) => r.row)
+        if (orgs.length === 1) return orgs[0]
+      }
+
+      // 3. get the two orgs with the most members, and return the one with the most members if there's no draw
       // only compare member orgs (manual affiliations don't have memberCount)
-      const memberOrgsOnly = orgs.filter(
-        (row: AffiliationItem) => 'segmentId' in row && !!row.segmentId,
-      ) as MemberOrganizationWithOverrides[]
+      const memberOrgsOnly = orgs.filter(isMemberOrganizationWithOverrides)
       if (memberOrgsOnly.length >= 2) {
         const sortedByMembers = memberOrgsOnly.sort((a, b) => b.memberCount - a.memberCount)
         if (sortedByMembers[0].memberCount > sortedByMembers[1].memberCount) {
@@ -93,20 +133,18 @@ async function prepareMemberOrganizationAffiliationTimeline(
         }
       }
 
-      // 3. there's a draw, return the one with the longer date range
+      // 4. there's a draw, return the one with the longer date range
       return getLongestDateRange(orgs)
     }
   }
 
   // solves conflicts in timeranges, always decides on one org when there are overlapping ranges
   const buildTimeline = (
-    memberOrganizations: MemberOrganizationWithOverrides[],
-    manualAffiliations: IManualAffiliationData[],
+    affiliations: AffiliationItem[],
     fallbackOrganizationId: string | null,
+    includeFallback = true,
   ): TimelineItem[] => {
-    const allAffiliationsWithDates = [...memberOrganizations, ...manualAffiliations].filter(
-      (row) => !!row.dateStart,
-    )
+    const allAffiliationsWithDates = affiliations.filter((row) => !!row.dateStart)
 
     const earliestStartDate =
       allAffiliationsWithDates.length > 0
@@ -130,7 +168,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
       let gapStartDate = null
 
       for (let date = new Date(earliestStartDate); date <= now; date.setDate(date.getDate() + 1)) {
-        const orgs = findOrgsWithRolesInDate(date, [...memberOrganizations, ...manualAffiliations])
+        const orgs = findOrgsWithRolesInDate(date, affiliations)
 
         if (orgs.length === 0) {
           // means there's a gap in the timeline, close the current range if there's one
@@ -208,13 +246,15 @@ async function prepareMemberOrganizationAffiliationTimeline(
       fallbackEnd = oneDayBefore(earliestStartDate)
     }
 
-    // prepend range to cover all activities before the earliest affiliation date
-    // also handles edge case where fallback org is null and the timeline is empty.
-    timeline.unshift({
-      organizationId: fallbackOrganizationId,
-      dateStart: fallbackStart.toISOString(),
-      dateEnd: fallbackEnd.toISOString(),
-    })
+    if (includeFallback) {
+      // prepend range to cover all activities before the earliest affiliation date
+      // also handles edge case where fallback org is null and the timeline is empty.
+      timeline.unshift({
+        organizationId: fallbackOrganizationId,
+        dateStart: fallbackStart.toISOString(),
+        dateEnd: fallbackEnd.toISOString(),
+      })
+    }
 
     return timeline
   }
@@ -243,6 +283,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
         mo."dateStart",
         mo."dateEnd",
         mo."createdAt",
+        mo."source",
         coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience",
         coalesce(a.total_count, 0) as "memberCount"
       FROM "memberOrganizations" mo
@@ -289,7 +330,82 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .value() ?? null
   }
 
-  return buildTimeline(memberOrganizations, manualAffiliations, fallbackOrganizationId)
+  const organizationIds = Array.from(
+    new Set(memberOrganizations.map((row: MemberOrganizationWithOverrides) => row.organizationId)),
+  )
+
+  memberOrgDomains = await fetchManyOrganizationVerifiedPrimaryDomains(
+    qx,
+    organizationIds as string[],
+  )
+
+  // Route activities exclusively to ONE timeline pass to prevent double-processing:
+  // 1. If an activity has a verified email domain, it lands in the email timeline.
+  // 2. Otherwise, fallback to the date-based timeline (excluding these known domains).
+  const emailDomains = [...new Set(memberOrgDomains.flatMap((row) => row.domains))]
+  const nonEmailActivityFilter =
+    emailDomains.length > 0 ? { excludeEmailDomains: emailDomains } : {}
+
+  // Separate global and manual timelines to prevent stale data.
+  // Global member orgs apply everywhere; manual segment affiliations act as localized overrides.
+  const baseTimeline = buildTimeline(memberOrganizations, fallbackOrganizationId).map((item) => ({
+    ...item,
+    ...nonEmailActivityFilter,
+    skipManualAffiliationSegments: manualAffiliations.length > 0,
+  }))
+
+  // Activities on a member-org email domain belong to that org, overriding whatever
+  // role the date-based timeline would have picked during an overlap.
+  const domainsByOrgId = _.keyBy(memberOrgDomains, 'orgId')
+  const memberOrgsPerDomain = _.flatMap(memberOrganizations, (memberOrganization) =>
+    (domainsByOrgId[memberOrganization.organizationId]?.domains ?? []).map((domain) => ({
+      memberOrganization,
+      domain,
+    })),
+  )
+
+  const emailAffiliations = _.flatMap(
+    _.groupBy(memberOrgsPerDomain, 'domain'),
+    (entries, matchEmailDomain) => {
+      const primary = selectPrimaryWorkExperience(entries.map((entry) => entry.memberOrganization))
+
+      return [
+        {
+          organizationId: primary.organizationId,
+          dateStart: new Date('1970-01-01').toISOString(),
+          dateEnd: null,
+          matchEmailDomain,
+          skipManualAffiliationSegments: manualAffiliations.length > 0,
+        },
+      ]
+    },
+  )
+
+  // Only keep items with a valid org; gaps (null orgs) are already handled by the base timeline.
+  const manualTimeline = _.flatMap(
+    _.groupBy(manualAffiliations, 'segmentId'),
+    (affiliations, segmentId) => {
+      const items = buildTimeline(affiliations, null, false)
+        .filter((item) => item.organizationId !== null)
+        .map((item) => ({ ...item, segmentId }))
+
+      // Manual affiliations without dates are ignored by buildTimeline (no anchor point).
+      // Create a 1970 catch-all so the base pass's SQL `NOT EXISTS` check still matches them.
+      if (items.length === 0) {
+        const primary = selectPrimaryWorkExperience(affiliations)
+        items.push({
+          organizationId: primary.organizationId,
+          dateStart: new Date('1970-01-01').toISOString(),
+          dateEnd: primary.dateEnd ? new Date(primary.dateEnd).toISOString() : null,
+          segmentId,
+        })
+      }
+
+      return items
+    },
+  )
+
+  return [...baseTimeline, ...manualTimeline, ...emailAffiliations]
 }
 
 async function processAffiliationActivities(
@@ -308,29 +424,59 @@ async function processAffiliationActivities(
   }
 
   // Build the where conditions for the subquery
-  const conditions = [`"memberId" = $(memberId)`]
+  const conditions = [`ar."memberId" = $(memberId)`]
 
   // Organization filtering
   if (affiliation.organizationId) {
-    conditions.push(`("organizationId" is null or "organizationId" <> $(organizationId))`)
+    conditions.push(`(ar."organizationId" is null or ar."organizationId" <> $(organizationId))`)
   } else {
-    conditions.push(`"organizationId" is not null`)
+    conditions.push(`ar."organizationId" is not null`)
   }
 
   // Date filtering
   if (affiliation.dateStart) {
-    conditions.push(`"timestamp" >= $(dateStart)::date`)
+    conditions.push(`ar."timestamp" >= $(dateStart)::date`)
     params.dateStart = affiliation.dateStart
   }
   if (affiliation.dateEnd) {
-    conditions.push(`"timestamp" < $(dateEnd)::date + interval '1 day'`)
+    conditions.push(`ar."timestamp" < $(dateEnd)::date + interval '1 day'`)
     params.dateEnd = affiliation.dateEnd
+  }
+
+  // Give each pass a disjoint slice of activities by email so no row is written twice: matchEmailDomain
+  // takes activities on this org's domain, excludeEmailDomains takes the rest (no '@', or a foreign domain).
+  if (affiliation.matchEmailDomain) {
+    conditions.push(`split_part(lower(ar.username), '@', 2) = $(matchEmailDomain)`)
+    params.matchEmailDomain = affiliation.matchEmailDomain
+  } else if (affiliation.excludeEmailDomains?.length) {
+    conditions.push(`(
+      position('@' in coalesce(ar.username, '')) = 0
+      OR lower(split_part(ar.username, '@', 2)) NOT IN ($(excludeEmailDomains:csv))
+    )`)
+    params.excludeEmailDomains = affiliation.excludeEmailDomains
   }
 
   // Segment filtering (for manual affiliations)
   if (affiliation.segmentId) {
-    conditions.push(`"segmentId" = $(segmentId)`)
+    conditions.push(`ar."segmentId" = $(segmentId)`)
     params.segmentId = affiliation.segmentId
+  }
+
+  // Don't overwrite activities that a member segment affiliation covers
+  // Those are handled in the manual timeline.
+  if (affiliation.skipManualAffiliationSegments) {
+    conditions.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM "memberSegmentAffiliations" msa
+        WHERE msa."memberId" = $(memberId)
+          AND msa."segmentId" = ar."segmentId"
+          AND msa."deletedAt" IS NULL
+          AND msa."organizationId" IS NOT NULL
+          AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
+          AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
+      )
+    `)
   }
 
   const whereClause = conditions.join(' and ')
@@ -341,7 +487,7 @@ async function processAffiliationActivities(
         UPDATE "activityRelations"
         SET "organizationId" = $(organizationId), "updatedAt" = CURRENT_TIMESTAMP
         WHERE "activityId" in (
-          select "activityId" from "activityRelations"
+          select ar."activityId" from "activityRelations" ar
           where ${whereClause}
           limit $(batchSize)
         )
@@ -377,9 +523,20 @@ export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, m
 export async function changeMemberOrganizationAffiliationOverrides(
   qx: QueryExecutor,
   data: IChangeAffiliationOverrideData[],
-): Promise<void> {
+  returnRows: true,
+): Promise<MemberOrganizationAffiliationOverrideDbRow[]>
+export async function changeMemberOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  data: IChangeAffiliationOverrideData[],
+  returnRows?: false,
+): Promise<void>
+export async function changeMemberOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  data: IChangeAffiliationOverrideData[],
+  returnRows = false,
+): Promise<MemberOrganizationAffiliationOverrideDbRow[] | void> {
   if (!Array.isArray(data) || data.length === 0) {
-    return
+    return returnRows ? [] : undefined
   }
 
   const rows: IMemberOrganizationAffiliationOverride[] = []
@@ -394,7 +551,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
     }
 
     rows.push({
-      id: uuid(),
+      id: d.id ?? uuid(),
       memberId: d.memberId,
       memberOrganizationId: d.memberOrganizationId,
       allowAffiliation: d.allowAffiliation,
@@ -403,7 +560,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
   }
 
   if (rows.length === 0) {
-    return
+    return returnRows ? [] : undefined
   }
 
   const valuesSql = rows
@@ -432,8 +589,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
     {} as Record<string, unknown>,
   )
 
-  await qx.result(
-    `
+  const query = `
       INSERT INTO "memberOrganizationAffiliationOverrides" (
         id,
         "memberId",
@@ -445,10 +601,15 @@ export async function changeMemberOrganizationAffiliationOverrides(
       ON CONFLICT ("memberId", "memberOrganizationId")
       DO UPDATE SET
         "allowAffiliation" = COALESCE(EXCLUDED."allowAffiliation", "memberOrganizationAffiliationOverrides"."allowAffiliation"),
-        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience");
-    `,
-    params,
-  )
+        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience")
+      ${returnRows ? 'RETURNING *' : ''}
+    `
+
+  if (returnRows) {
+    return qx.select(query, params)
+  }
+
+  await qx.result(query, params)
 }
 
 export async function findMemberAffiliationOverrides(

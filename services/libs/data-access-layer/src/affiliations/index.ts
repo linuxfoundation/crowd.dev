@@ -1,4 +1,4 @@
-import { getLongestDateRange } from '@crowd/common'
+import { getLongestDateRange, getMemberOrganizationSourceRank } from '@crowd/common'
 import { IMemberOrganization } from '@crowd/types'
 
 import { BLACKLISTED_MEMBER_TITLES } from '../members/base'
@@ -22,6 +22,7 @@ export interface IWorkExperienceResolution {
   isPrimaryWorkExperience: boolean
   memberCount: number
   segmentId: string | null
+  source?: string | null
 }
 
 /**
@@ -58,7 +59,8 @@ export async function findWorkExperiencesBulk(
         mo."createdAt",
         COALESCE(ovr."isPrimaryWorkExperience", false)      AS "isPrimaryWorkExperience",
         COALESCE(a.total_count, 0)                          AS "memberCount",
-        NULL::text                                          AS "segmentId"
+        NULL::text                                          AS "segmentId",
+        mo."source"
       FROM "memberOrganizations" mo
       JOIN organizations o ON mo."organizationId" = o.id
       LEFT JOIN "memberOrganizationAffiliationOverrides" ovr ON ovr."memberOrganizationId" = mo.id
@@ -92,10 +94,12 @@ export async function findManualAffiliationsBulk(
         NULL::timestamptz AS "createdAt",
         false             AS "isPrimaryWorkExperience",
         0                 AS "memberCount",
-        msa."segmentId"
+        msa."segmentId",
+        NULL              AS "source"
       FROM "memberSegmentAffiliations" msa
       JOIN organizations o ON msa."organizationId" = o.id
       WHERE msa."memberId" IN ($(memberIds:csv))
+        AND msa."deletedAt" IS NULL
     `,
     { memberIds },
   )
@@ -121,13 +125,25 @@ export function selectPrimaryWorkExperience(orgs: IWorkExperienceResolution[]) {
   const withDates = orgs.filter((r) => r.dateStart)
   if (withDates.length === 1) return withDates[0]
 
-  // 4. Org with strictly more members wins; if tied, fall through
+  // 4. Among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
+  if (withDates.length > 1) {
+    const ranked = withDates.map((r) => ({
+      row: r,
+      rank: getMemberOrganizationSourceRank(r.source),
+    }))
+    const bestRank = Math.min(...ranked.map((r) => r.rank))
+    const topSourceGroup = ranked.filter((r) => r.rank === bestRank).map((r) => r.row)
+    if (topSourceGroup.length === 1) return topSourceGroup[0]
+    orgs = topSourceGroup
+  }
+
+  // 5. Org with strictly more members wins; if tied, fall through
   const sorted = [...orgs].sort((a, b) => b.memberCount - a.memberCount)
   if (sorted.length >= 2 && sorted[0].memberCount > sorted[1].memberCount) {
     return sorted[0]
   }
 
-  // 5. Longest date range as final tiebreaker
+  // 6. Longest date range as final tiebreaker
   return getLongestDateRange(
     orgs as unknown as IMemberOrganization[],
   ) as unknown as IWorkExperienceResolution
@@ -138,12 +154,10 @@ function findFallbackOrg(rows: IWorkExperienceResolution[]): IWorkExperienceReso
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
   if (primaryUndated) return primaryUndated
 
-  return (
-    rows
-      .filter((r) => !r.dateStart && !r.dateEnd)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      .at(0) ?? null
-  )
+  const undated = rows
+    .filter((r) => !r.dateStart && !r.dateEnd)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  return undated[0] ?? null
 }
 
 /**

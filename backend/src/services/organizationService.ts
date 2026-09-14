@@ -6,29 +6,42 @@ import {
   organizationMergeAction,
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import {
+  Error400,
+  Error404,
+  Error409,
+  generateOrganizationNameVariants,
+  mergeObjects,
+  normalizeHostname,
+} from '@crowd/common'
 import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
-  optionsQx,
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
+import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src/org_merge'
 import {
   OrganizationField,
   addOrgsToSegments,
+  deleteFakeOrganizationSuggestion,
   findOrgAttributes,
   findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
-import { findLfSegmentByName } from '@crowd/data-access-layer/src/segments'
+import {
+  decrementOrganizationMergeSuggestionCounts,
+  findManyLfSegmentsByNames,
+  getOrganizationsCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
@@ -49,6 +62,7 @@ import {
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
@@ -502,7 +516,7 @@ export default class OrganizationService extends LoggerBase {
       throw new Error409(this.options.language, 'merge.errors.multiple', mergeActions[0].state)
     }
 
-    let blockAffiliations = false
+    let orgAffiliationChanges = false
 
     try {
       const { original, toMerge } = await captureApiChange(
@@ -521,6 +535,7 @@ export default class OrganizationService extends LoggerBase {
 
           if (originalWithLfxMembership && toMergeWithLfxMembership) {
             await OrganizationRepository.addNoMerge(originalId, toMergeId, this.options)
+            await OrganizationRepository.removeToMerge(originalId, toMergeId, this.options)
             this.log.info(
               { originalId, toMergeId },
               '[Merge Organizations] - Skipping merge of two LFX membership orgs!',
@@ -681,8 +696,15 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Moving members to original organisation!',
           )
 
-          // update members that belong to source organization to destinati
-          await moveMembersBetweenOrganizations(optionsQx(repoOptions), toMergeId, originalId)
+          const { shouldRecalculateAffiliations } = await moveMembersBetweenOrganizations(
+            optionsQx(repoOptions),
+            toMergeId,
+            originalId,
+          )
+
+          if (shouldRecalculateAffiliations) {
+            orgAffiliationChanges = true
+          }
 
           this.log.info(
             { originalId, toMergeId },
@@ -712,20 +734,8 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
 
-          if (toUpdate.isAffiliationBlocked) {
-            this.log.info(
-              { originalId, toMergeId },
-              '[Merge Organizations] - Organization wide affiliation block detected!',
-            )
-
-            await applyOrganizationAffiliationPolicyToMembers(
-              optionsQx(repoOptions),
-              originalId,
-              false,
-            )
-
-            blockAffiliations = true
-          }
+          // Drop leftover suggestions that still mention the secondary.
+          await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
 
           await SequelizeRepository.commitTransaction(tx)
 
@@ -745,6 +755,15 @@ export default class OrganizationService extends LoggerBase {
         }),
       )
 
+      const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
+
       await this.options.temporal.workflow.start('finishOrganizationMerging', {
         taskQueue: 'entity-merging',
         workflowId: `finishOrganizationMerging/${originalId}/${toMergeId}`,
@@ -756,7 +775,7 @@ export default class OrganizationService extends LoggerBase {
           toMergeId,
           original.displayName,
           toMerge.displayName,
-          blockAffiliations,
+          orgAffiliationChanges,
           this.options.currentUser.id,
         ],
       })
@@ -819,24 +838,11 @@ export default class OrganizationService extends LoggerBase {
 
   async addToNoMerge(organizationId: string, noMergeId: string): Promise<void> {
     const transaction = await SequelizeRepository.createTransaction(this.options)
+    const txOptions = { ...this.options, transaction }
 
     try {
-      await OrganizationRepository.addNoMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.addNoMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
+      await OrganizationRepository.addNoMerge(organizationId, noMergeId, txOptions)
+      await OrganizationRepository.removeToMerge(organizationId, noMergeId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {
@@ -844,6 +850,16 @@ export default class OrganizationService extends LoggerBase {
 
       throw error
     }
+
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+      organizationId,
+      noMergeId,
+    ])
+
+    // Precomputed per-project-group counts are only refreshed by cron every few hours.
+    // Decrement here so no-merge from the UI is reflected immediately.
+    await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
   }
 
   async createOrUpdate(
@@ -919,8 +935,11 @@ export default class OrganizationService extends LoggerBase {
         if (data.displayName) {
           // Block organization affiliation if a LF segment (project, subproject, or project group)
           // has the same name as the organization when creating one.
-          const lfSegment = await findLfSegmentByName(qx, data.displayName)
-          if (lfSegment) {
+          const lfSegments = await findManyLfSegmentsByNames(
+            qx,
+            generateOrganizationNameVariants(data.displayName),
+          )
+          if (lfSegments.length > 0) {
             this.log.info(
               { displayName: data.displayName },
               'Found segment with the same name as the organization, blocking affiliation!',
@@ -1082,7 +1101,14 @@ export default class OrganizationService extends LoggerBase {
         data.isAffiliationBlocked !== existingOrg.isAffiliationBlocked
       ) {
         await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
+        if (data.isAffiliationBlocked) {
+          await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
+        }
         recalculateAffiliations = true
+      }
+
+      if (data.isAffiliationBlocked === true) {
+        await deleteFakeOrganizationSuggestion(qx, record.id)
       }
 
       await SequelizeRepository.commitTransaction(tx)
@@ -1163,10 +1189,19 @@ export default class OrganizationService extends LoggerBase {
   }
 
   async query(data) {
-    const { filter, orderBy, limit, offset, segments } = data
+    const { filter: rawFilter, orderBy, limit, offset, segments, search: rawSearch } = data
+    const searchTerm =
+      typeof rawSearch === 'string' && rawSearch.trim() ? rawSearch.trim() : undefined
+
+    // Strip frontend-state keys that are never valid filter columns or operators.
+    // These can appear when the raw Pinia filter state is sent instead of the
+    // processed output of buildApiFilter.
+    const { search: _s, relation: _r, order: _o, settings: _st, ...filter } = rawFilter ?? {}
+
     return OrganizationRepository.findAndCountAll(
       {
         filter,
+        search: searchTerm,
         orderBy,
         limit,
         offset,
