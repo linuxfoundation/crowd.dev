@@ -20,6 +20,23 @@ describe('startPipelineRun', () => {
     expect(run.finishedAt).toBeNull()
     expect(run.startedAt).not.toBeNull()
   })
+
+  test('is idempotent for a retried temporalRunId', async ({ qx }) => {
+    const first = await startPipelineRun(qx, {
+      stage: 'evaluation',
+      temporalRunId: 'run-1',
+    })
+    const retried = await startPipelineRun(qx, {
+      stage: 'evaluation',
+      temporalRunId: 'run-1',
+    })
+
+    expect(retried.id).toBe(first.id)
+    expect(retried.startedAt).toBe(first.startedAt)
+
+    const runs = await findPipelineRuns(qx, { stage: 'evaluation' })
+    expect(runs.filter((r) => r.temporalRunId === 'run-1')).toHaveLength(1)
+  })
 })
 
 describe('finishPipelineRun', () => {

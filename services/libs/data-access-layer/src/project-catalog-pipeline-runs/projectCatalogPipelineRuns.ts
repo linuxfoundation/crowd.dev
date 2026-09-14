@@ -34,9 +34,8 @@ const PIPELINE_RUN_COLUMNS = [
   'updatedAt',
 ]
 
-// evaluatorInputTokens/evaluatorOutputTokens are BIGINT: the shared pg connection
-// only registers type parsers for numeric/int4, so BIGINT comes back as a string
-// unless cast to numeric here (see services/libs/database/src/connection.ts).
+// BIGINT columns have no pg type parser registered (connection.ts), so cast
+// them to numeric here or they come back as strings.
 const BIGINT_COLUMNS = new Set(['evaluatorInputTokens', 'evaluatorOutputTokens'])
 
 const PIPELINE_RUN_RETURNING_COLUMNS = PIPELINE_RUN_COLUMNS.map((c) =>
@@ -65,6 +64,8 @@ export async function startPipelineRun(
       NOW(),
       NOW()
     )
+    ON CONFLICT ("stage", "temporalRunId") WHERE "temporalRunId" IS NOT NULL
+    DO UPDATE SET "updatedAt" = NOW()
     RETURNING ${PIPELINE_RUN_RETURNING_COLUMNS}
     `,
     {
