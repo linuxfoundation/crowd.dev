@@ -23,6 +23,8 @@
     "trigger-bootstrap:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/triggerBootstrap.ts",
     "rescore-package-repos": "SERVICE=github-repos-enricher tsx src/scripts/rescorePackageRepos.ts",
     "rescore-package-repos:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=github-repos-enricher tsx src/scripts/rescorePackageRepos.ts",
+    "backfill-ownership-match": "SERVICE=github-repos-enricher tsx src/scripts/backfillOwnershipMatch.ts",
+    "backfill-ownership-match:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=github-repos-enricher tsx src/scripts/backfillOwnershipMatch.ts",
     "trigger-go": "SERVICE=go-worker tsx src/scripts/triggerGoEnrich.ts",
     "trigger-go:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=go-worker tsx src/scripts/triggerGoEnrich.ts",
     "trigger-nuget": "SERVICE=nuget-worker tsx src/scripts/triggerNuGetSync.ts",

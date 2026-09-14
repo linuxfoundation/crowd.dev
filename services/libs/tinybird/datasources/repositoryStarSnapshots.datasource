@@ -1,0 +1,21 @@
+DESCRIPTION >
+    - `repositoryStarSnapshots` contains aggregate-only star count snapshots for repositories.
+    - Replicated from Postgres - one row per repository per snapshot run, no per-user stargazer identity.
+    - `id` is the primary key identifier for the snapshot record.
+    - `repositoryId` links to the repository this snapshot belongs to.
+    - `starCount` is the aggregate star count captured at `capturedAt`.
+    - `capturedAt` is when the snapshot was taken.
+    - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
+
+SCHEMA >
+    `id` String `json:$.record.id`,
+    `repositoryId` String `json:$.record.repositoryId`,
+    `starCount` Int32 `json:$.record.starCount`,
+    `capturedAt` DateTime64(3) `json:$.record.capturedAt`,
+    `createdAt` DateTime64(3) `json:$.record.createdAt`,
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY repositoryId, capturedAt
+ENGINE_VER updatedAt
