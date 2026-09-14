@@ -27,7 +27,7 @@ SQL >
         {% if defined(repos) %}
             AND channel
             IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
-        {% else %} AND channel IN (SELECT channel FROM repos_to_channels)
+        {% else %} AND lower(channel) IN (SELECT lower(channel) FROM repos_to_channels)
         {% end %}
         {% if defined(startDate) %}
             AND openedAt > {{ DateTime(startDate, description="Filter after date", required=False) }}

@@ -16,7 +16,7 @@ SQL >
         WHERE
             memberId != ''
             AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
                 AND timestamp >= toStartOfQuarter(
@@ -40,7 +40,7 @@ SQL >
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             AND timestamp >= toStartOfQuarter(now() - INTERVAL 1 QUARTER)
             AND timestamp < toStartOfQuarter(now())
@@ -56,7 +56,7 @@ SQL >
         WHERE
             memberId != ''
             AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
                 AND timestamp >= toStartOfQuarter(
@@ -81,7 +81,7 @@ SQL >
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             AND timestamp >= toStartOfQuarter(now() - INTERVAL 2 QUARTER)
             AND timestamp < toStartOfQuarter(now() - INTERVAL 1 QUARTER)

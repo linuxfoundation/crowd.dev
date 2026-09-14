@@ -18,7 +18,7 @@ SQL >
             memberId != ''
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -36,7 +36,7 @@ SQL >
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             AND timestamp >= toStartOfQuarter(now() - toIntervalQuarter(1))
             AND timestamp < toStartOfQuarter(now())
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
         GROUP BY channel
     {% end %}
 
