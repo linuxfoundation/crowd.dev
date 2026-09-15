@@ -22,6 +22,7 @@ import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from '..
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const MAX_REPORTED_MISMATCHES = 50
+const SLACK_TITLE_MAX_LENGTH = 140
 
 export interface IShadowDiffChannel {
   channelName: string
@@ -173,13 +174,20 @@ function describeChannel(result: IShadowDiffChannelResult): string {
   return `${result.channelName} (integration ${result.integrationId})`
 }
 
+function truncateSlackTitle(title: string): string {
+  if (title.length <= SLACK_TITLE_MAX_LENGTH) {
+    return title
+  }
+  return `${title.slice(0, SLACK_TITLE_MAX_LENGTH - 1)}…`
+}
+
 export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
   for (const result of results) {
     if (result.status === 'error') {
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
-        `Shadow diff failed for ${describeChannel(result)}`,
+        truncateSlackTitle(`Shadow diff failed for ${describeChannel(result)}`),
         result.errorMessage ?? 'unknown error',
       )
       continue
@@ -189,7 +197,7 @@ export async function reportShadowDiffResults(results: IShadowDiffChannelResult[
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
-        `Shadow diff: no nango mapping for ${describeChannel(result)}`,
+        truncateSlackTitle(`Shadow diff: no nango mapping for ${describeChannel(result)}`),
         'This channel is in shadow mode but has no matching integration.nango_mapping row, so it could not be compared against nango.',
       )
       continue
@@ -203,7 +211,7 @@ export async function reportShadowDiffResults(results: IShadowDiffChannelResult[
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
-        `Shadow diff mismatches for ${describeChannel(result)}`,
+        truncateSlackTitle(`Shadow diff mismatches for ${describeChannel(result)}`),
         result.mismatches.map(formatMismatch).join('\n') + truncatedNotice,
       )
     }

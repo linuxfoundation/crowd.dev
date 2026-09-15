@@ -13,6 +13,7 @@ export const PASS_THROUGH_FIELDS = [
 ] as const
 
 const LOW_SEVERITY_TYPES = new Set(['pull_request-review-requested'])
+const MAX_FIELD_VALUE_LENGTH = 500
 
 export type ShadowDiffSeverity = 'high' | 'low'
 
@@ -42,6 +43,14 @@ function severityForType(type: string): ShadowDiffSeverity {
   return LOW_SEVERITY_TYPES.has(type) ? 'low' : 'high'
 }
 
+function truncateFieldValue(value: unknown): unknown {
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value)
+  if (serialized === undefined || serialized.length <= MAX_FIELD_VALUE_LENGTH) {
+    return value
+  }
+  return `${serialized.slice(0, MAX_FIELD_VALUE_LENGTH)}… [truncated]`
+}
+
 function comparePassThroughFields(
   shadowData: Record<string, unknown>,
   nangoData: Record<string, unknown>,
@@ -51,7 +60,11 @@ function comparePassThroughFields(
     const shadowValue = shadowData[field]
     const nangoValue = nangoData[field]
     if (!isDeepStrictEqual(shadowValue, nangoValue)) {
-      mismatches.push({ field, shadowValue, nangoValue })
+      mismatches.push({
+        field,
+        shadowValue: truncateFieldValue(shadowValue),
+        nangoValue: truncateFieldValue(nangoValue),
+      })
     }
   }
   return mismatches

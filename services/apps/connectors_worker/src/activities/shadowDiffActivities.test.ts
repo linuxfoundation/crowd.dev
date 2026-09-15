@@ -321,6 +321,24 @@ describe('reportShadowDiffResults', () => {
     )
   })
 
+  it('truncates the Slack title so long channel names cannot exceed the header block limit', async () => {
+    const longChannelName = `https://github.com/${'a'.repeat(150)}/${'b'.repeat(150)}`
+
+    await reportShadowDiffResults([
+      {
+        channelName: longChannelName,
+        integrationId: 'integration-1',
+        status: 'mapping_missing',
+        mismatches: [],
+        totalMismatchCount: 0,
+      },
+    ])
+
+    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(1)
+    const [, , title] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
+    expect(title.length).toBeLessThanOrEqual(140)
+  })
+
   it('notes how many mismatches were truncated when totalMismatchCount exceeds the reported list', async () => {
     await reportShadowDiffResults([
       {

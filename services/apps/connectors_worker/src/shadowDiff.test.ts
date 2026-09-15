@@ -65,6 +65,27 @@ describe('diffShadowAgainstNango', () => {
     ])
   })
 
+  it('truncates large field values so a single mismatch cannot blow up the activity payload', () => {
+    const hugeShadowBody = 'a'.repeat(1000)
+    const hugeNangoBody = 'b'.repeat(1000)
+    const shadow: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issues-comment', data: { body: hugeShadowBody } },
+    ]
+    const nango: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issues-comment', data: { body: hugeNangoBody } },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toHaveLength(1)
+    const field = result[0].fields?.[0]
+    expect(field?.field).toBe('body')
+    expect((field?.shadowValue as string).length).toBeLessThan(hugeShadowBody.length)
+    expect(field?.shadowValue).toContain('[truncated]')
+    expect((field?.nangoValue as string).length).toBeLessThan(hugeNangoBody.length)
+    expect(field?.nangoValue).toContain('[truncated]')
+  })
+
   it('reports high-severity missing_in_nango when a shadow record has no nango counterpart', () => {
     const shadow: IDiffableRecord[] = [{ sourceId: 'issue-1', type: 'issues-comment', data: {} }]
 
