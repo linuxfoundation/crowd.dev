@@ -1,30 +1,24 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
-import { DEFAULT_TENANT_ID } from '@crowd/common'
-
 import { svc } from '../main'
-import { generateMemberMergeSuggestions } from '../workflows/generateMemberMergeSuggestions'
+import { spawnSubprojectMemberMergeSuggestions } from '../workflows/spawnSubprojectMemberMergeSuggestions'
 
-export const scheduleGenerateMemberMergeSuggestions = async () => {
+export const scheduleSubprojectMemberMergeSuggestions = async () => {
   try {
     await svc.temporal.schedule.create({
-      scheduleId: 'member-merge-suggestions',
+      scheduleId: 'subproject-member-merge-suggestions',
       spec: {
-        cronExpressions: ['0 */2 * * *'],
+        cronExpressions: ['0 6 * * *'],
       },
       policies: {
-        overlap: ScheduleOverlapPolicy.BUFFER_ONE,
+        overlap: ScheduleOverlapPolicy.SKIP,
         catchupWindow: '1 minute',
       },
       action: {
         type: 'startWorkflow',
-        workflowType: generateMemberMergeSuggestions,
+        workflowType: spawnSubprojectMemberMergeSuggestions,
         taskQueue: 'merge-suggestions',
-        args: [
-          {
-            tenantId: DEFAULT_TENANT_ID,
-          },
-        ],
+        args: [],
       },
     })
   } catch (err) {

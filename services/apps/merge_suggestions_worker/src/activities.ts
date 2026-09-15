@@ -28,8 +28,10 @@ import {
   updateOrganizationMergeSuggestionsLastGeneratedAt,
 } from './activities/organizationMergeSuggestions'
 import {
+  fetchCachedSubprojects,
   fetchRecentlyOnboardedSubprojects,
   fetchSubprojectMemberMergePairs,
+  markSubprojectDone,
 } from './activities/subprojectMemberMergeSuggestions'
 
 export {
@@ -58,4 +60,6 @@ export {
   addMemberSuggestionToNoMerge,
   fetchRecentlyOnboardedSubprojects,
   fetchSubprojectMemberMergePairs,
+  fetchCachedSubprojects,
+  markSubprojectDone,
 }

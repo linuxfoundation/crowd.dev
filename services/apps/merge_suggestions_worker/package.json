@@ -21,6 +21,7 @@
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/opensearch": "workspace:*",
+    "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",

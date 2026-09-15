@@ -6,19 +6,31 @@ import {
   proxyActivities,
 } from '@temporalio/workflow'
 
-import type * as activities from '../activities/subprojectMemberMergeSuggestions'
+import type * as activities from '../activities'
 
 import { generateSubprojectMemberMergeSuggestions } from './generateSubprojectMemberMergeSuggestions'
 
-const { fetchRecentlyOnboardedSubprojects } = proxyActivities<typeof activities>({
+const { fetchRecentlyOnboardedSubprojects, fetchCachedSubprojects } = proxyActivities<
+  typeof activities
+>({
   startToCloseTimeout: '2 minutes',
 })
 
 export async function spawnSubprojectMemberMergeSuggestions(): Promise<void> {
-  const subprojectIds = await fetchRecentlyOnboardedSubprojects()
+  const recentlyOnboarded = await fetchRecentlyOnboardedSubprojects()
+  if (recentlyOnboarded.length === 0) {
+    return
+  }
+
+  const cached = new Set(await fetchCachedSubprojects(recentlyOnboarded))
+  const toProcess = recentlyOnboarded.filter((subprojectId) => !cached.has(subprojectId))
+
+  if (toProcess.length === 0) {
+    return
+  }
 
   await Promise.all(
-    subprojectIds.map((subprojectId) =>
+    toProcess.map((subprojectId) =>
       executeChild(generateSubprojectMemberMergeSuggestions, {
         workflowId: `generate-subproject-member-merge-suggestions/${subprojectId}`,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,

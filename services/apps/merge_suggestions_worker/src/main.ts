@@ -19,7 +19,7 @@ const config: Config = {
     enabled: true,
   },
   redis: {
-    enabled: false,
+    enabled: true,
   },
 }
 
@@ -39,8 +39,8 @@ setImmediate(async () => {
 
   await scheduleGenerateMemberMergeSuggestions()
   await scheduleGenerateOrganizationMergeSuggestions()
-  // TODO: Uncomment this once we test it
-  // await scheduleGenerateSubprojectMemberMergeSuggestions()
+  // TODO: Uncomment this and the import above once we test it
+  // await scheduleSubprojectMemberMergeSuggestions()
 
   await svc.start()
 })
