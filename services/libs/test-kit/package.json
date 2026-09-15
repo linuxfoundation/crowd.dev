@@ -19,7 +19,7 @@
     "@crowd/database": "workspace:*",
     "@crowd/integrations": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@faker-js/faker": "^9.9.0",
+    "@faker-js/faker": "^10.5.0",
     "pg-promise": "catalog:"
   },
   "devDependencies": {
