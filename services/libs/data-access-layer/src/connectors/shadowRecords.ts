@@ -11,6 +11,9 @@ export async function recordShadowRecords(
     return
   }
 
+  const bySourceId = new Map(records.map((r) => [r.sourceId, r]))
+  const deduped = [...bySourceId.values()]
+
   await qx.result(
     `INSERT INTO integration.sync_shadow_records
        ("unitId", type, "sourceId", "occurredAt", data)
@@ -25,10 +28,10 @@ export async function recordShadowRecords(
      DO UPDATE SET data = EXCLUDED.data, "occurredAt" = EXCLUDED."occurredAt"`,
     {
       unitId,
-      types: records.map((r) => r.type),
-      sourceIds: records.map((r) => r.sourceId),
-      occurredAts: records.map((r) => r.occurredAt),
-      data: records.map((r) => JSON.stringify(r.data)),
+      types: deduped.map((r) => r.type),
+      sourceIds: deduped.map((r) => r.sourceId),
+      occurredAts: deduped.map((r) => r.occurredAt),
+      data: deduped.map((r) => JSON.stringify(r.data)),
     },
   )
 }
