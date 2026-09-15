@@ -12,7 +12,14 @@ export const dummyConnector: Manifest = {
       cadenceMinutes: 60,
       schema: z.record(z.unknown()),
       run: async (ctx: SyncContext) => {
-        await ctx.emit(Array.from({ length: TICK_COUNT }, (_, index) => ({ tick: index })))
+        await ctx.emit(
+          Array.from({ length: TICK_COUNT }, (_, index) => ({
+            type: 'tick',
+            sourceId: `tick-${index}`,
+            timestamp: new Date().toISOString(),
+            tick: index,
+          })),
+        )
         await ctx.commitWatermark({ since: new Date().toISOString() })
         return { complete: true }
       },
