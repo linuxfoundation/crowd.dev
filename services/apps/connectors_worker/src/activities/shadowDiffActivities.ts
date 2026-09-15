@@ -22,7 +22,9 @@ import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from '..
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const MAX_REPORTED_MISMATCHES = 50
-const SLACK_TITLE_MAX_LENGTH = 140
+const SLACK_HEADER_MAX_LENGTH = 150
+const SLACK_ICON_PREFIX_MAX_LENGTH = 18 // longest persona icon used below, ':rotating_light: '
+const SLACK_TITLE_MAX_LENGTH = SLACK_HEADER_MAX_LENGTH - SLACK_ICON_PREFIX_MAX_LENGTH
 
 export interface IShadowDiffChannel {
   channelName: string
@@ -76,15 +78,23 @@ function toDiffableShadowRecord(record: {
   return { sourceId: record.sourceId, type: record.type, data: record.data }
 }
 
+function isDeletedNangoRecord(record: INangoRecord): boolean {
+  return (
+    record.metadata.lastAction === NangoMetadataLastAction.DELETED ||
+    Boolean(record.metadata.deletedAt)
+  )
+}
+
 function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
-  if (record.metadata.lastAction === NangoMetadataLastAction.DELETED || record.metadata.deletedAt) {
-    return null
-  }
   const activity = record.activity as Record<string, unknown> | null | undefined
   if (!activity || typeof activity.sourceId !== 'string' || typeof activity.type !== 'string') {
     return null
   }
   return { sourceId: activity.sourceId, type: activity.type, data: activity }
+}
+
+function diffableRecordKey(record: IDiffableRecord): string {
+  return `${record.type}::${record.sourceId}`
 }
 
 async function diffUnit(
@@ -116,9 +126,23 @@ async function diffUnit(
     windowEnd,
   )
 
+  const diffableNangoRecords = nangoRecords
+    .map(toDiffableNangoRecord)
+    .filter((r): r is IDiffableRecord => r !== null)
+
+  const deletedNangoKeys = new Set(
+    nangoRecords
+      .filter(isDeletedNangoRecord)
+      .map(toDiffableNangoRecord)
+      .filter((r): r is IDiffableRecord => r !== null)
+      .map(diffableRecordKey),
+  )
+
   return diffShadowAgainstNango(
-    shadowRecords.map(toDiffableShadowRecord),
-    nangoRecords.map(toDiffableNangoRecord).filter((r): r is IDiffableRecord => r !== null),
+    shadowRecords
+      .map(toDiffableShadowRecord)
+      .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
+    diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
   )
 }
 

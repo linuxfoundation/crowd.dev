@@ -224,6 +224,37 @@ describe('runShadowDiffForChannel', () => {
     expect(result.mismatches).toHaveLength(0)
   })
 
+  it('does not flag missing_in_nango when a nango record was deleted but shadow still has it', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue([
+      {
+        type: 'issues-comment',
+        sourceId: 'issue-1',
+        occurredAt: '2026-09-14T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: 'issue-1', body: 'shadow body' },
+      },
+    ])
+    mocks.getNangoCloudRecords.mockResolvedValue({
+      records: [
+        {
+          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
+          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z', lastAction: 'DELETED' },
+        },
+      ],
+      nextCursor: undefined,
+    })
+
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.mismatches).toHaveLength(0)
+  })
+
   it('caps reported mismatches at 50 while preserving the true total count', async () => {
     mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
     mocks.getShadowRecordsInWindow.mockResolvedValue(
@@ -321,7 +352,7 @@ describe('reportShadowDiffResults', () => {
     )
   })
 
-  it('truncates the Slack title so long channel names cannot exceed the header block limit', async () => {
+  it('truncates the Slack title so long channel names cannot exceed the header block limit even with the persona icon prefixed', async () => {
     const longChannelName = `https://github.com/${'a'.repeat(150)}/${'b'.repeat(150)}`
 
     await reportShadowDiffResults([
@@ -336,7 +367,11 @@ describe('reportShadowDiffResults', () => {
 
     expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(1)
     const [, , title] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
-    expect(title.length).toBeLessThanOrEqual(140)
+    const SLACK_HEADER_MAX_LENGTH = 150
+    const LONGEST_PERSONA_ICON_PREFIX = ':rotating_light: '
+    expect(title.length + LONGEST_PERSONA_ICON_PREFIX.length).toBeLessThanOrEqual(
+      SLACK_HEADER_MAX_LENGTH,
+    )
   })
 
   it('notes how many mismatches were truncated when totalMismatchCount exceeds the reported list', async () => {
