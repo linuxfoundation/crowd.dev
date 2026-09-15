@@ -9,6 +9,12 @@ describe('describeChannelError', () => {
 
   it('stringifies non-Error throwables instead of losing the detail', () => {
     expect(describeChannelError('raw string failure')).toBe('raw string failure')
-    expect(describeChannelError({ code: 'ECONNRESET' })).toBe('[object Object]')
+    expect(describeChannelError({ code: 'ECONNRESET' })).toBe('{"code":"ECONNRESET"}')
+  })
+
+  it('falls back to String() when the thrown value cannot be JSON-serialized', () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    expect(describeChannelError(circular)).toBe(String(circular))
   })
 })

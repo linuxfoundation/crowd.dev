@@ -1,4 +1,4 @@
-import { log, proxyActivities } from '@temporalio/workflow'
+import { continueAsNew, log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from '../activities/shadowDiffActivities'
 
@@ -10,7 +10,17 @@ const activity = proxyActivities<typeof activities>({
 const CHANNEL_CONCURRENCY = 10
 
 export function describeChannelError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  if (err instanceof Error) {
+    return err.message
+  }
+  if (typeof err === 'string') {
+    return err
+  }
+  try {
+    return JSON.stringify(err) ?? String(err)
+  } catch {
+    return String(err)
+  }
 }
 
 async function runChannel(
@@ -34,12 +44,19 @@ async function runChannel(
   }
 }
 
-export async function shadowDiff(): Promise<void> {
+export async function shadowDiff(startIndex = 0): Promise<void> {
   const channels = await activity.listShadowDiffChannels()
 
-  for (let i = 0; i < channels.length; i += CHANNEL_CONCURRENCY) {
-    const batch = channels.slice(i, i + CHANNEL_CONCURRENCY)
-    const results = await Promise.all(batch.map(runChannel))
-    await activity.reportShadowDiffResults(results)
+  if (startIndex >= channels.length) {
+    return
+  }
+
+  const batch = channels.slice(startIndex, startIndex + CHANNEL_CONCURRENCY)
+  const results = await Promise.all(batch.map(runChannel))
+  await activity.reportShadowDiffResults(results)
+
+  const nextIndex = startIndex + CHANNEL_CONCURRENCY
+  if (nextIndex < channels.length) {
+    await continueAsNew<typeof shadowDiff>(nextIndex)
   }
 }

@@ -106,7 +106,14 @@ async function diffUnit(
 ): Promise<IShadowDiffMismatch[]> {
   const model = getNangoModelForSync(unit.syncName)
   if (!model) {
-    return []
+    return [
+      {
+        sourceId: unit.id,
+        type: unit.syncName,
+        kind: 'unsupported_sync',
+        severity: 'high',
+      },
+    ]
   }
 
   const shadowRecords = await getShadowRecordsInWindow(qx, unit.id, windowStart, windowEnd)
@@ -166,18 +173,22 @@ export async function runShadowDiffForChannel(
 
   const { windowStart, windowEnd } = previousDayWindow()
   const mismatches: IShadowDiffMismatch[] = []
+  let totalMismatchCount = 0
 
   for (const unit of channel.units) {
     const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
-    mismatches.push(...unitMismatches)
+    totalMismatchCount += unitMismatches.length
+    if (mismatches.length < MAX_REPORTED_MISMATCHES) {
+      mismatches.push(...unitMismatches.slice(0, MAX_REPORTED_MISMATCHES - mismatches.length))
+    }
   }
 
   return {
     channelName: channel.channelName,
     integrationId: channel.integrationId,
     status: 'ok',
-    mismatches: mismatches.slice(0, MAX_REPORTED_MISMATCHES),
-    totalMismatchCount: mismatches.length,
+    mismatches,
+    totalMismatchCount,
   }
 }
 
@@ -206,24 +217,32 @@ function truncateSlackTitle(title: string): string {
 }
 
 export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
+  const failedChannels: string[] = []
+
   for (const result of results) {
     if (result.status === 'error') {
-      await sendSlackNotificationAsync(
+      const sent = await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
         truncateSlackTitle(`Shadow diff failed for ${describeChannel(result)}`),
         result.errorMessage ?? 'unknown error',
       )
+      if (!sent) {
+        failedChannels.push(describeChannel(result))
+      }
       continue
     }
 
     if (result.status === 'mapping_missing') {
-      await sendSlackNotificationAsync(
+      const sent = await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         truncateSlackTitle(`Shadow diff: no nango mapping for ${describeChannel(result)}`),
         'This channel is in shadow mode but has no matching integration.nango_mapping row, so it could not be compared against nango.',
       )
+      if (!sent) {
+        failedChannels.push(describeChannel(result))
+      }
       continue
     }
 
@@ -232,12 +251,19 @@ export async function reportShadowDiffResults(results: IShadowDiffChannelResult[
         result.totalMismatchCount > result.mismatches.length
           ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown`
           : ''
-      await sendSlackNotificationAsync(
+      const sent = await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         truncateSlackTitle(`Shadow diff mismatches for ${describeChannel(result)}`),
         result.mismatches.map(formatMismatch).join('\n') + truncatedNotice,
       )
+      if (!sent) {
+        failedChannels.push(describeChannel(result))
+      }
     }
+  }
+
+  if (failedChannels.length > 0) {
+    throw new Error(`Failed to deliver shadow diff Slack alerts for: ${failedChannels.join(', ')}`)
   }
 }

@@ -17,7 +17,11 @@ const MAX_FIELD_VALUE_LENGTH = 500
 
 export type ShadowDiffSeverity = 'high' | 'low'
 
-export type ShadowDiffMismatchKind = 'missing_in_nango' | 'missing_in_shadow' | 'field_mismatch'
+export type ShadowDiffMismatchKind =
+  | 'missing_in_nango'
+  | 'missing_in_shadow'
+  | 'field_mismatch'
+  | 'unsupported_sync'
 
 export interface IDiffableRecord {
   sourceId: string

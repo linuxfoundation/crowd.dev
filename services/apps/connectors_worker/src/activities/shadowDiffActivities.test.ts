@@ -278,6 +278,27 @@ describe('runShadowDiffForChannel', () => {
     expect(result.totalMismatchCount).toBe(60)
   })
 
+  it('flags units with an unrecognized syncName instead of silently reporting a clean diff', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [{ ...UNIT, syncName: 'some-new-unmapped-sync' }],
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.mismatches).toEqual([
+      {
+        sourceId: UNIT.id,
+        type: 'some-new-unmapped-sync',
+        kind: 'unsupported_sync',
+        severity: 'high',
+      },
+    ])
+    expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
+  })
+
   it('throws when a per-channel fetch fails, so Temporal can retry the activity', async () => {
     mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
     mocks.getShadowRecordsInWindow.mockRejectedValue(new Error('db exploded'))
@@ -295,6 +316,7 @@ describe('runShadowDiffForChannel', () => {
 describe('reportShadowDiffResults', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.sendSlackNotificationAsync.mockResolvedValue(true)
   })
 
   it('sends one Slack alert per channel that has mismatches or an error, and skips healthy channels', async () => {
@@ -391,5 +413,23 @@ describe('reportShadowDiffResults', () => {
       'Shadow diff mismatches for noisy-repo (integration integration-1)',
       expect.stringContaining('2 more mismatch(es) not shown'),
     )
+  })
+
+  it('throws when a Slack alert fails to deliver, so Temporal retries instead of silently dropping the alert', async () => {
+    mocks.sendSlackNotificationAsync.mockResolvedValue(false)
+
+    await expect(
+      reportShadowDiffResults([
+        {
+          channelName: 'noisy-repo',
+          integrationId: 'integration-1',
+          status: 'ok',
+          mismatches: [
+            { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' },
+          ],
+          totalMismatchCount: 1,
+        },
+      ]),
+    ).rejects.toThrow('noisy-repo (integration integration-1)')
   })
 })
