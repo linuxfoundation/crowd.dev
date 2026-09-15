@@ -284,7 +284,9 @@ async function backfillRepo(
   const rowsToWrite = allRows.filter((row) => row.date < cutoffDate)
 
   if (!dryRun) {
-    for (const row of rowsToWrite) {
+    // Newest-first: a crash mid-loop leaves `earliestExisting` pointing at the true
+    // gap boundary on retry, instead of an ancient row that hides everything after it.
+    for (const row of [...rowsToWrite].reverse()) {
       await upsertStarSnapshot(qx, repo.repositoryId, row.count, `${row.date}T00:00:00.000Z`)
     }
   }
