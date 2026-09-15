@@ -9,6 +9,10 @@ const activity = proxyActivities<typeof activities>({
 
 const CHANNEL_CONCURRENCY = 10
 
+export function describeChannelError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 async function runChannel(
   channel: activities.IShadowDiffChannel,
 ): Promise<activities.IShadowDiffChannelResult> {
@@ -25,6 +29,7 @@ async function runChannel(
       status: 'error',
       mismatches: [],
       totalMismatchCount: 0,
+      errorMessage: describeChannelError(err),
     }
   }
 }
