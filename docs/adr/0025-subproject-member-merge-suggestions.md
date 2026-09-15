@@ -14,9 +14,7 @@ Inside a single recently onboarded project, the same weak signals are much stron
 
 Add a daily, subproject-scoped merge-suggestions generator for recently onboarded Insights projects. For each eligible subproject (an Insights project's segment, with integrations finished and member aggregates populated), Postgres finds plausible duplicate pairs using project-scoped signals — shared display name, reversed name tokens, display name matching another member's username, or an email local-part matching another member's username. When a key matches more than two members, the busiest member is the primary and the others pair with it (a star, not a clique).
 
-Application code then classifies which rules matched each pair and assigns a similarity score, trusting complementary git/GitHub splits more than name-only matches. Suggestions are written through the existing merge-suggestion upsert (last-write-wins, including a stronger existing global score) and flow through the existing LLM merge review. The global scorer and its OpenSearch query are not changed.
-
-A successful run, including one that finds zero suggestions, marks the subproject in Redis with a TTL matching the 7-day SQL window. Postgres remains discovery; Redis is succeed-once so the same project is not rescored every day. Failures are not marked and retry on the next daily spawn.
+Application code then classifies which rules matched each pair and assigns a similarity score, trusting complementary git/GitHub splits more than name-only matches. Suggestions are written through the existing merge-suggestion upsert, which overwrites any lower global score for the same pair, and flow through the existing LLM merge review. The global scorer and its OpenSearch query are not changed. After a successful run we mark the subproject in Redis so it is not rescored every day for the rest of the 7-day window.
 
 ## Alternatives Considered
 
@@ -40,11 +38,6 @@ A successful run, including one that finds zero suggestions, marks the subprojec
 - **Cons**: Large projects put tens of thousands of members into workflow history, hitting Temporal payload limits and re-paying that cost on every replay.
 - **Why not**: Only the small set of candidate pairs needs to cross the activity boundary.
 
-### Alternative 5: A Postgres ledger of processed subprojects
-- **Pros**: Survives Redis flush; queryable; same durability as the rest of merge-suggestion state.
-- **Cons**: A new table for a window that already expires in 7 days.
-- **Why not**: The skip only has to outlive the SQL discovery window. A Redis flush at worst re-upserts the same pairs.
-
 ## Consequences
 
 ### Positive
@@ -52,13 +45,11 @@ A successful run, including one that finds zero suggestions, marks the subprojec
 - Global matching behavior is unchanged; the risk is contained to the project scope.
 - Per-subproject workflows isolate failures and make "why did this project not produce suggestions" answerable from history.
 - Existing merge-suggestion storage and LLM review are reused, so there is no new downstream flow to operate.
-- Redis succeed-once keeps the daily job from rescoring the same project for the rest of the onboarding window.
 
 ### Negative
 - Another scheduled workload and a second, project-scoped scoring policy to keep in sync with the global one.
-- Last-write-wins means a project-scoped score can replace a stronger global score for the same pair.
+- The generator intentionally overwrites lower global scores for the same pair, so the two scorers can disagree and the project-scoped one wins within its window.
 
 ### Risks
 - Name-based matches can still pair two different people with the same name. Mitigated by scoping to one project, skipping placeholder names, and routing everything through the existing LLM review rather than auto-merging.
-- Eligibility depends on integrations being done and aggregates being populated within 7 days of `insightsProjects.createdAt`; a project whose data lands late may be missed until the window logic is revisited.
-- A Redis flush drops the skip keys. Mitigated by the 7-day window and last-write-wins upsert: the worst case is a re-run, not lost suggestions.
+- Eligibility depends on integrations being done and aggregates being populated; a project whose data lands late may be missed until the window logic is revisited.
