@@ -2,8 +2,6 @@ import { IMemberMergeSuggestion } from '@crowd/types'
 
 import { ISubprojectMember, ISubprojectMemberMergePair } from './types'
 
-// Postgres already found likely duplicate pairs in this project.
-// We decide why they matched and how confident to be.
 export function scoreSubprojectMemberMergePairs(
   pairs: ISubprojectMemberMergePair[],
 ): IMemberMergeSuggestion[] {
@@ -46,7 +44,6 @@ function classifyPair(left: ISubprojectMember, right: ISubprojectMember): Rule[]
   const rightView = memberView(right)
   const rules: Rule[] = []
 
-  // "Jane Doe" === "Jane Doe"
   if (
     leftView.normName.length >= 4 &&
     leftView.normName === rightView.normName &&
@@ -55,7 +52,6 @@ function classifyPair(left: ISubprojectMember, right: ISubprojectMember): Rule[]
     rules.push('same_display_name')
   }
 
-  // "Zhou Shelven" vs "Shelven Zhou"
   if (
     leftView.normName.includes(' ') &&
     leftView.sortedTokens === rightView.sortedTokens &&
@@ -64,12 +60,10 @@ function classifyPair(left: ISubprojectMember, right: ISubprojectMember): Rule[]
     rules.push('reversed_name')
   }
 
-  // git display name "fishyu-mushroom" vs github username fishyu-mushroom
   if (hasDisplayNameUsernameMatch(leftView, rightView)) {
     rules.push('display_name_username')
   }
 
-  // git email fishyu@... vs github username fishyu
   if (hasEmailLocalpartUsernameMatch(leftView, rightView)) {
     rules.push('email_localpart_username')
   }

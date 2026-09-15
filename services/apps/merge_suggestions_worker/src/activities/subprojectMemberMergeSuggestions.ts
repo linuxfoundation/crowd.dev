@@ -8,14 +8,14 @@ import { ISubprojectMemberMergePair } from '../types'
 const SUBPROJECT_MEMBER_MERGE_CACHE = 'subproject-member-merge'
 
 export async function fetchRecentlyOnboardedSubprojects(): Promise<string[]> {
-  const qx = pgpQx(svc.postgres.writer.connection())
+  const qx = pgpQx(svc.postgres.reader.connection())
   return db.fetchRecentlyOnboardedSubprojects(qx)
 }
 
 export async function fetchSubprojectMemberMergePairs(
   segmentId: string,
 ): Promise<ISubprojectMemberMergePair[]> {
-  const qx = pgpQx(svc.postgres.writer.connection())
+  const qx = pgpQx(svc.postgres.reader.connection())
   return db.fetchSubprojectMemberMergePairs(qx, segmentId)
 }
 
@@ -30,6 +30,6 @@ export async function fetchCachedSubprojects(subprojectIds: string[]): Promise<s
 
 export async function markSubprojectDone(subprojectId: string): Promise<void> {
   const cache = new RedisCache(SUBPROJECT_MEMBER_MERGE_CACHE, svc.redis, svc.log)
-  // TTL matches the SQL eligibility window so the key expires when the project drops out
+  // 7d from this run; SQL already drops the project after insightsProjects.createdAt + 7d
   await cache.set(subprojectId, '1', 7 * 24 * 60 * 60)
 }
