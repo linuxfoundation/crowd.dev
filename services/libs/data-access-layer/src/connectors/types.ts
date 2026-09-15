@@ -38,10 +38,7 @@ export type IClaimedUnit = Pick<
   'id' | 'integrationId' | 'platform' | 'syncName' | 'channelId' | 'channelName'
 >
 
-export type IShadowDiffUnit = Pick<
-  ISyncUnit,
-  'id' | 'integrationId' | 'channelName' | 'syncName'
->
+export type IShadowDiffUnit = Pick<ISyncUnit, 'id' | 'integrationId' | 'channelName' | 'syncName'>
 
 export interface ISyncRunProgress {
   watermark: Record<string, unknown>
