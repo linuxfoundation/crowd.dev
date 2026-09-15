@@ -94,14 +94,17 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
+function stripTrailingSentencePunctuation(text: string): string {
+  return text.replace(/[.,;:!?]+$/, '')
+}
+
 // Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
 function extractRepoUrls(text: string): string[] {
   const urls = new Set<string>()
   const regex = /https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/gi
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
-    // Strip trailing sentence punctuation before canonicalizing (e.g. "...bar." at EOL).
-    const repo = match[2].replace(/[.,;:!?]+$/, '')
+    const repo = stripTrailingSentencePunctuation(match[2])
     if (!repo) continue
 
     const canonical = canonicalizeGithubRepoUrl(`https://github.com/${match[1]}/${repo}`)
