@@ -29,6 +29,7 @@ async function createSyncUnit(
     status?: string
     emitEnabled?: boolean
     watermark?: Record<string, unknown> | null
+    platform?: string
   },
 ): Promise<string> {
   const id = generateUUIDv1()
@@ -37,11 +38,12 @@ async function createSyncUnit(
     INSERT INTO integration.sync_units
       (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "emitEnabled", watermark)
     VALUES
-      ($(id), $(integrationId), 'github', $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb)
+      ($(id), $(integrationId), $(platform), $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb)
     `,
     {
       id,
       integrationId,
+      platform: overrides.platform ?? 'github',
       channelName: overrides.channelName,
       syncName: overrides.syncName,
       status: overrides.status ?? 'active',
@@ -86,6 +88,13 @@ describe('listShadowDiffUnits', () => {
       channelName: 'https://github.com/nodejs/node',
       syncName: 'issues',
       watermark: null,
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'dummy-channel',
+      syncName: 'issues',
+      watermark: { phase: 'incremental' },
+      platform: 'dummy',
     })
 
     const result = await listShadowDiffUnits(qx)

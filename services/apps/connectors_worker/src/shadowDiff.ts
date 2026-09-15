@@ -57,19 +57,23 @@ function comparePassThroughFields(
   return mismatches
 }
 
+function diffKey(record: IDiffableRecord): string {
+  return `${record.type}::${record.sourceId}`
+}
+
 export function diffShadowAgainstNango(
   shadowRecords: IDiffableRecord[],
   nangoRecords: IDiffableRecord[],
 ): IShadowDiffMismatch[] {
-  const shadowBySourceId = new Map(shadowRecords.map((r) => [r.sourceId, r]))
-  const nangoBySourceId = new Map(nangoRecords.map((r) => [r.sourceId, r]))
+  const shadowByKey = new Map(shadowRecords.map((r) => [diffKey(r), r]))
+  const nangoByKey = new Map(nangoRecords.map((r) => [diffKey(r), r]))
   const mismatches: IShadowDiffMismatch[] = []
 
-  for (const [sourceId, shadowRecord] of shadowBySourceId) {
-    const nangoRecord = nangoBySourceId.get(sourceId)
+  for (const [key, shadowRecord] of shadowByKey) {
+    const nangoRecord = nangoByKey.get(key)
     if (!nangoRecord) {
       mismatches.push({
-        sourceId,
+        sourceId: shadowRecord.sourceId,
         type: shadowRecord.type,
         kind: 'missing_in_nango',
         severity: severityForType(shadowRecord.type),
@@ -80,7 +84,7 @@ export function diffShadowAgainstNango(
     const fields = comparePassThroughFields(shadowRecord.data, nangoRecord.data)
     if (fields.length > 0) {
       mismatches.push({
-        sourceId,
+        sourceId: shadowRecord.sourceId,
         type: shadowRecord.type,
         kind: 'field_mismatch',
         severity: 'high',
@@ -89,10 +93,10 @@ export function diffShadowAgainstNango(
     }
   }
 
-  for (const [sourceId, nangoRecord] of nangoBySourceId) {
-    if (!shadowBySourceId.has(sourceId)) {
+  for (const [key, nangoRecord] of nangoByKey) {
+    if (!shadowByKey.has(key)) {
       mismatches.push({
-        sourceId,
+        sourceId: nangoRecord.sourceId,
         type: nangoRecord.type,
         kind: 'missing_in_shadow',
         severity: severityForType(nangoRecord.type),

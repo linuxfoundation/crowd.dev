@@ -85,6 +85,22 @@ describe('diffShadowAgainstNango', () => {
     ])
   })
 
+  it('keeps records with the same sourceId but different types as distinct entries', () => {
+    const shadow: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issue-opened', data: { body: 'opened body' } },
+      { sourceId: 'issue-1', type: 'issues-comment', data: { body: 'comment body' } },
+    ]
+    const nango: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issue-opened', data: { body: 'opened body' } },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toEqual([
+      { sourceId: 'issue-1', type: 'issues-comment', kind: 'missing_in_nango', severity: 'high' },
+    ])
+  })
+
   it('downgrades pull_request-review-requested one-sided mismatches to low severity', () => {
     const shadow: IDiffableRecord[] = [
       { sourceId: 'pr-1-reviewer-a', type: 'pull_request-review-requested', data: {} },

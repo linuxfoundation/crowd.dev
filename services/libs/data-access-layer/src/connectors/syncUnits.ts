@@ -217,6 +217,7 @@ export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDif
      FROM integration.sync_units
      WHERE "emitEnabled" = false
        AND status = 'active'
+       AND platform = 'github'
        AND watermark->>'phase' = 'incremental'
      ORDER BY "channelName", "syncName"`,
   )

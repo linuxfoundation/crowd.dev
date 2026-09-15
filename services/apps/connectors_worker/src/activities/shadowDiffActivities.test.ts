@@ -101,6 +101,28 @@ describe('listShadowDiffChannels', () => {
       },
     ])
   })
+
+  it('keeps units with the same channelName but different integrationId as separate channels', async () => {
+    mocks.listShadowDiffUnits.mockResolvedValue([
+      UNIT,
+      { ...UNIT, id: 'unit-2', integrationId: 'integration-2' },
+    ])
+
+    const channels = await listShadowDiffChannels()
+
+    expect(channels).toEqual([
+      {
+        channelName: UNIT.channelName,
+        integrationId: 'integration-1',
+        units: [UNIT],
+      },
+      {
+        channelName: UNIT.channelName,
+        integrationId: 'integration-2',
+        units: [{ ...UNIT, id: 'unit-2', integrationId: 'integration-2' }],
+      },
+    ])
+  })
 })
 
 describe('runShadowDiffForChannel', () => {

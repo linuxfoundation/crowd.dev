@@ -47,11 +47,12 @@ export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
 
   const byChannel = new Map<string, IShadowDiffChannel>()
   for (const unit of units) {
-    const existing = byChannel.get(unit.channelName)
+    const key = `${unit.integrationId}::${unit.channelName}`
+    const existing = byChannel.get(key)
     if (existing) {
       existing.units.push(unit)
     } else {
-      byChannel.set(unit.channelName, {
+      byChannel.set(key, {
         channelName: unit.channelName,
         integrationId: unit.integrationId,
         units: [unit],

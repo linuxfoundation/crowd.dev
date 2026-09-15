@@ -7,20 +7,29 @@ const activity = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
 
+const CHANNEL_CONCURRENCY = 10
+
+async function runChannel(
+  channel: activities.IShadowDiffChannel,
+): Promise<activities.IShadowDiffChannelResult> {
+  try {
+    return await activity.runShadowDiffForChannel(channel)
+  } catch (err) {
+    log.error('shadow diff activity call failed for channel', {
+      channelName: channel.channelName,
+      err,
+    })
+    return { channelName: channel.channelName, status: 'error', mismatches: [] }
+  }
+}
+
 export async function shadowDiff(): Promise<void> {
   const channels = await activity.listShadowDiffChannels()
 
   const results: activities.IShadowDiffChannelResult[] = []
-  for (const channel of channels) {
-    try {
-      results.push(await activity.runShadowDiffForChannel(channel))
-    } catch (err) {
-      log.error('shadow diff activity call failed for channel', {
-        channelName: channel.channelName,
-        err,
-      })
-      results.push({ channelName: channel.channelName, status: 'error', mismatches: [] })
-    }
+  for (let i = 0; i < channels.length; i += CHANNEL_CONCURRENCY) {
+    const batch = channels.slice(i, i + CHANNEL_CONCURRENCY)
+    results.push(...(await Promise.all(batch.map(runChannel))))
   }
 
   await activity.reportShadowDiffResults(results)
