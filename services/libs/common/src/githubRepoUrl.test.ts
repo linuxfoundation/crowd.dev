@@ -66,8 +66,20 @@ describe('canonicalizeRepoUrl', () => {
     )
   })
 
-  it('keeps ssh://git@github.com:<port>/... URLs with an explicit port intact', () => {
+  it('canonicalizes ssh://git@github.com:<port>/... URLs with an explicit port', () => {
     expect(canonicalizeRepoUrl('ssh://git@github.com:2222/torvalds/linux.git')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('rewrites git@github.com: SSH URLs with a mixed-case host', () => {
+    expect(canonicalizeRepoUrl('git@GitHub.com:Torvalds/Linux.git')?.url).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('rewrites ssh://git@github.com/ URLs with a mixed-case host', () => {
+    expect(canonicalizeRepoUrl('ssh://git@GITHUB.com/Torvalds/Linux')?.url).toBe(
       'https://github.com/torvalds/linux',
     )
   })
@@ -110,6 +122,8 @@ describe('canonicalizeRepoUrl', () => {
     expect(canonicalizeRepoUrl('https://github.com/user-attachments/assets/foo.png')).toBeNull()
     expect(canonicalizeRepoUrl('https://github.com/orgs/linuxfoundation/people')).toBeNull()
     expect(canonicalizeRepoUrl('https://github.com/marketplace/some-app')).toBeNull()
+    expect(canonicalizeRepoUrl('https://github.com/features/actions')).toBeNull()
+    expect(canonicalizeRepoUrl('https://github.com/search/advanced')).toBeNull()
   })
 
   it('rejects empty, null, or unparseable input', () => {
@@ -137,6 +151,12 @@ describe('canonicalizeRepoUrl', () => {
 
   it('lowercases only the host for non-GitHub hosts', () => {
     expect(canonicalizeRepoUrl('https://GCC.GNU.ORG/git/gcc')?.host).toBe('gcc.gnu.org')
+  })
+
+  it('preserves an explicit port for non-GitHub hosts', () => {
+    expect(canonicalizeRepoUrl('https://git.example.com:8443/Owner/Repo')?.url).toBe(
+      'https://git.example.com:8443/Owner/Repo',
+    )
   })
 })
 

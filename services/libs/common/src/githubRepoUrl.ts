@@ -17,6 +17,8 @@ const GITHUB_NON_REPO_OWNERS = new Set([
   'settings',
   'login',
   'about',
+  'features',
+  'search',
 ])
 
 function toParsableUrl(raw: string): string {
@@ -24,9 +26,9 @@ function toParsableUrl(raw: string): string {
   const sshRewritten = trimmed
     // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@github.com:owner/repo.git —
     // left alone when followed by digits/ (an actual port, e.g. ssh://git@github.com:2222/owner/repo.git).
-    .replace(/^ssh:\/\/git@github\.com:(?!\d+(?:\/|$))/, 'https://github.com/')
-    .replace(/^ssh:\/\/git@github\.com\//, 'https://github.com/')
-    .replace(/^git@github\.com:/, 'https://github.com/')
+    .replace(/^ssh:\/\/git@github\.com:(?!\d+(?:\/|$))/i, 'https://github.com/')
+    .replace(/^ssh:\/\/git@github\.com\//i, 'https://github.com/')
+    .replace(/^git@github\.com:/i, 'https://github.com/')
 
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(sshRewritten)
     ? sshRewritten
@@ -63,9 +65,8 @@ export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalR
   }
 
   if (host === GITHUB_HOST) {
-    // Deep links (/tree/<branch>, /blob/<branch>/<path>, /pull/<n>, ...) still
-    // unambiguously reference the repo at the first two segments — take those
-    // instead of rejecting, matching how the rest of the repo already treats them.
+    // Deep links (/tree/<branch>, /blob/<branch>/<path>, ...) still unambiguously
+    // reference the repo at the first two segments — take those instead of rejecting.
     const segments = path.split('/')
     if (segments.length < 2 || !segments[0] || !segments[1]) {
       return null
@@ -87,9 +88,11 @@ export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalR
   }
 
   // Non-GitHub hosts (GitLab, Gerrit, Googlesource, git.kernel.org, ...) keep
-  // their path case as-is — several of these hosts are case-sensitive.
+  // their path case and explicit port as-is — several of these are case-sensitive
+  // and distinct ports can mean distinct servers.
+  const authority = parsed.port ? `${host}:${parsed.port}` : host
   return {
-    url: `https://${host}/${path}`,
+    url: `https://${authority}/${path}`,
     host,
     isGithub: false,
     owner: null,
