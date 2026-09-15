@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   fetchMemberIdentities,
   findMemberIdsByIdentities,
+  findMemberProjectGroupId,
   suggestMemberMerge,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
@@ -64,9 +65,11 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
       )
     }
 
+    const projectGroupId = await findMemberProjectGroupId(qx, primaryMemberId)
     throw new ConflictError('Multiple member profiles matched', {
       reason: 'multi-match',
       memberIds,
+      ...(projectGroupId ? { projectGroupId } : {}),
     })
   }
 

@@ -202,6 +202,38 @@ export async function getRepositoriesByUrl(
   )
 }
 
+// Expects canonicalGithubRepoUrls in canonicalizeGithubRepoUrl's output form; non-GitHub URLs never match.
+export async function findRepoUrlsInCdp(
+  qx: QueryExecutor,
+  canonicalGithubRepoUrls: string[],
+): Promise<Set<string>> {
+  if (canonicalGithubRepoUrls.length === 0) {
+    return new Set()
+  }
+
+  const rows: { repoUrl: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT unnest($(repoUrls)::text[]) AS url
+    ),
+    normalized AS (
+      SELECT DISTINCT 'https://github.com/' || lower(
+        regexp_replace(regexp_replace(url, '^https?://(www\\.)?github\\.com/', '', 'i'), '(\\.git)?/*$', '', 'i')
+      ) AS url
+      FROM public.repositories
+      WHERE "deletedAt" IS NULL
+        AND url ~* '^https?://(www\\.)?github\\.com/'
+    )
+    SELECT DISTINCT c.url AS "repoUrl"
+    FROM candidates c
+    JOIN normalized n ON n.url = c.url
+    `,
+    { repoUrls: canonicalGithubRepoUrls },
+  )
+
+  return new Set(rows.map((row) => row.repoUrl))
+}
+
 /**
  * Soft deletes repositories by setting deletedAt = NOW()
  * Only deletes repos matching both the URLs and sourceIntegrationId

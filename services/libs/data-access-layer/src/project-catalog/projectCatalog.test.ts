@@ -3,7 +3,9 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import {
+  bulkInsertProjectCatalog,
   findProjectCatalogById,
+  findProjectCatalogByRepoUrl,
   insertProjectCatalog,
   markProjectCatalogOnboardingSkipped,
   updateProjectCatalog,
@@ -69,5 +71,20 @@ describe('markProjectCatalogOnboardingSkipped', () => {
     expect(updatedRows).toBe(0)
     expect(row?.action).toBe('onboarded')
     expect(row?.skipReason).toBeNull()
+  })
+})
+
+describe('bulkInsertProjectCatalog', () => {
+  test('inserts a row with action=skip and its skipReason', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({
+        action: 'skip',
+        skipReason: 'repository already tracked in CDP (discovery pre-check)',
+      }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.action).toBe('skip')
+    expect(row?.skipReason).toBe('repository already tracked in CDP (discovery pre-check)')
   })
 })
