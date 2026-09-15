@@ -19,12 +19,7 @@ export async function scheduleShadowDiff(): Promise<void> {
         workflowType: shadowDiff,
         taskQueue: 'connectors',
         args: [],
-        // Each run only processes one bounded batch of channels before continuing as new, so
-        // workflowRunTimeout only needs to cover a single batch's worst-case activity retries.
-        // workflowExecutionTimeout is a safety net for the whole continue-as-new chain in case
-        // of an unexpectedly large number of channels.
-        workflowRunTimeout: '20 minutes',
-        workflowExecutionTimeout: '6 hours',
+        workflowExecutionTimeout: '30 minutes',
       },
     })
   } catch (err) {
