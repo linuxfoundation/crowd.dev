@@ -566,7 +566,7 @@ export async function getNangoMappingForRepo(
   owner: string,
   repoName: string,
 ): Promise<INangoMappingRow | null> {
-  return qx.selectOneOrNone(
+  const rows = await qx.select(
     `
     SELECT nm.*
     FROM integration.nango_mapping nm
@@ -577,9 +577,13 @@ export async function getNangoMappingForRepo(
       AND nango_integration."deletedAt" IS NULL
       AND nm.owner = $(owner)
       AND nm."repoName" = $(repoName)
+    ORDER BY nm."updatedAt" DESC
+    LIMIT 1
     `,
     { integrationId, nangoPlatform: PlatformType.GITHUB_NANGO, owner, repoName },
   )
+
+  return rows[0] ?? null
 }
 
 export async function addRepoToGitIntegration(

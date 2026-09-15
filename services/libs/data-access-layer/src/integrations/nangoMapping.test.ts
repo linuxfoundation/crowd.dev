@@ -56,6 +56,24 @@ describe('getNangoMappingForRepo', () => {
     expect(result).toBeNull()
   })
 
+  test('returns the most recently updated mapping when duplicate-connection cleanup leaves two rows for the same repo', async ({
+    qx,
+  }) => {
+    const [segmentGroup] = (
+      await createSegments(qx, [{ name: generateUUIDv1(), slug: generateUUIDv1() }])
+    ).projectGroups
+    const segmentId = segmentGroup.row.id
+
+    const githubIntegrationId = await createIntegration(qx, 'github', segmentId)
+    const nangoIntegrationId = await createIntegration(qx, 'github-nango', segmentId)
+    await addGithubNangoConnection(qx, nangoIntegrationId, 'conn-old', 'kubernetes', 'kubernetes')
+    await addGithubNangoConnection(qx, nangoIntegrationId, 'conn-new', 'kubernetes', 'kubernetes')
+
+    const result = await getNangoMappingForRepo(qx, githubIntegrationId, 'kubernetes', 'kubernetes')
+
+    expect(result?.connectionId).toBe('conn-new')
+  })
+
   test('returns null when the repo is not mapped for the sibling integration', async ({ qx }) => {
     const [segmentGroup] = (
       await createSegments(qx, [{ name: generateUUIDv1(), slug: generateUUIDv1() }])
