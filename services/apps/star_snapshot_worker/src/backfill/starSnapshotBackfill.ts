@@ -14,9 +14,8 @@ const GITHUB_API_VERSION = '2022-11-28'
 const FETCH_TIMEOUT_MS = 30_000
 const WEEKS_PER_PAGE = 30
 const REPO_PAGE_SIZE = 500
-// GitHub's history sums land exact in every repo checked so far (verified live against
-// several repos of very different sizes), but the current-count fetch happens a moment
-// after the last history page, so a star/unstar landing in between would show as drift.
+// The current-count fetch happens a moment after the last history page, so a
+// star/unstar landing in between would show up as drift here.
 const RECONCILIATION_TOLERANCE = 2
 
 interface StargazerHistoryWeek {
@@ -56,10 +55,8 @@ export interface StarSnapshotBackfillTotals {
   completed: boolean
 }
 
-// GitHub's own `/repos/{owner}/{repo}/stargazers/history` walks back one page at a time
-// (30 weeks/page) until an empty page confirms we've passed repo creation. Reading
-// `rel="last"` off the first page's Link header gets the exact page count up front,
-// saving the one wasted trailing empty-page call per repo.
+// Reading `rel="last"` off the first page's Link header gets the exact page count up
+// front, saving the one wasted trailing empty-page call per repo.
 function parseLastPage(linkHeader: string | null): number | undefined {
   if (!linkHeader) {
     return undefined
@@ -86,6 +83,9 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
 
     async throttleIfNeeded(): Promise<void> {
       if (remaining > reservedFloor) {
+        // No await before this line, so concurrent callers see the decrement
+        // before any of them observes the real value off a response.
+        remaining--
         return
       }
       const waitMs = Math.max(resetAtMs - Date.now(), 0) + 1_000
@@ -210,9 +210,8 @@ function buildForwardCounts(daily: DailyDelta[]): DailyCount[] {
   })
 }
 
-// Fallback for the rare repo whose forward-summed deltas don't reconcile with its real
-// current count: anchor the most recent day to that known-good total and walk backward,
-// undoing each day's delta, instead of trusting the endpoint's cumulative sum blindly.
+// Fallback when forward-summed deltas don't reconcile: anchor the most recent day to
+// the known-good total and walk backward, undoing each day's delta.
 function buildBackwardCounts(daily: DailyDelta[], knownCurrentTotal: number): DailyCount[] {
   const counts = new Array<number>(daily.length)
   let running = knownCurrentTotal
