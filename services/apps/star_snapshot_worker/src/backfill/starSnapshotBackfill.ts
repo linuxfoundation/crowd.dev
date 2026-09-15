@@ -8,7 +8,7 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { Logger } from '@crowd/logging'
 import { IRepoForStarSnapshot } from '@crowd/types'
 
-import { parseGithubRepoUrl } from '../activities/index'
+import { parseGithubRepoUrl } from '../githubRepoUrl'
 
 const GITHUB_API_VERSION = '2022-11-28'
 const FETCH_TIMEOUT_MS = 30_000
@@ -304,6 +304,8 @@ export async function runStarSnapshotBackfill(
       batches.push(repos.slice(i, i + options.concurrency))
     }
 
+    let processedCount = 0
+
     for (const batch of batches) {
       if (options.isShuttingDown()) {
         break
@@ -336,12 +338,26 @@ export async function runStarSnapshotBackfill(
           totals.reposAnchoredBackward++
         }
       })
+
+      processedCount += batch.length
     }
 
-    afterUrl = repos[repos.length - 1].repoUrl
+    if (processedCount === 0) {
+      // Shutdown hit before any batch in this page ran - leave the checkpoint pointing
+      // at the previous page so none of these repos are skipped on resume.
+      break
+    }
+
+    // Checkpoint only as far as repos actually processed, not the whole page - otherwise
+    // a shutdown mid-page would advance past repos that never ran.
+    afterUrl = repos[processedCount - 1].repoUrl
 
     log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
     await options.onProgress?.(afterUrl, totals)
+
+    if (processedCount < repos.length) {
+      break
+    }
 
     if (repos.length < REPO_PAGE_SIZE) {
       totals.completed = true
