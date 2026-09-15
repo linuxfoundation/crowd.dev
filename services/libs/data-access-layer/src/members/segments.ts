@@ -24,6 +24,26 @@ export async function findLastSyncDate(qx: QueryExecutor, memberId: string): Pro
   return result?.lastSyncDate ? new Date(result.lastSyncDate) : null
 }
 
+export async function findMemberProjectGroupId(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<string | null> {
+  const row = await qx.selectOneOrNone(
+    `
+      SELECT msa."segmentId" AS "projectGroupId"
+      FROM "memberSegmentsAgg" msa
+      INNER JOIN segments s ON s.id = msa."segmentId"
+      WHERE msa."memberId" = $(memberId)
+        AND s."parentId" IS NULL
+        AND s."grandparentId" IS NULL
+      LIMIT 1
+    `,
+    { memberId },
+  )
+
+  return row?.projectGroupId ?? null
+}
+
 export async function cleanupMemberAggregates(qx: QueryExecutor, memberId: string) {
   return qx.result(
     `

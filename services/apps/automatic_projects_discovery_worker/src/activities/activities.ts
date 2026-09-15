@@ -4,7 +4,11 @@ import { parse } from 'csv-parse'
 import {
   bulkInsertProjectCatalog,
   findExistingProjectCatalogRepoUrls,
+  findRepoUrlsInCdp,
+  finishPipelineRun,
+  startPipelineRun,
 } from '@crowd/data-access-layer'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -19,6 +23,8 @@ const log = getServiceLogger()
 // Matches the LF Criticality Score API's page size, so the stream can stop after one page
 // once a chunk satisfies the cap, instead of always fetching several pages upfront.
 const CANDIDATE_CHUNK_SIZE = 100
+
+const ALREADY_IN_CDP_SKIP_REASON = 'repository already tracked in CDP (discovery pre-check)'
 
 export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()
@@ -36,10 +42,17 @@ export async function listDatasets(sourceName: string): Promise<IDatasetDescript
   return datasets
 }
 
+export interface IProcessDatasetResult {
+  totalRows: number
+  totalSkipped: number
+  totalSkippedAlreadyInCdp: number
+  totalAccepted: number
+}
+
 export async function processDataset(
   sourceName: string,
   dataset: IDatasetDescriptor,
-): Promise<void> {
+): Promise<IProcessDatasetResult> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -79,7 +92,8 @@ export async function processDataset(
   }
 
   const accepted: IDbProjectCatalogCreate[] = []
-  const acceptedRepoUrls = new Set<string>()
+  const skippedInCdp: IDbProjectCatalogCreate[] = []
+  const seenRepoUrls = new Set<string>()
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
   let totalSkipped = 0
@@ -88,9 +102,7 @@ export async function processDataset(
     const seenInChunk = new Set<string>()
     const unseen = candidates.filter(
       (c) =>
-        !acceptedRepoUrls.has(c.repoUrl) &&
-        !seenInChunk.has(c.repoUrl) &&
-        seenInChunk.add(c.repoUrl),
+        !seenRepoUrls.has(c.repoUrl) && !seenInChunk.has(c.repoUrl) && seenInChunk.add(c.repoUrl),
     )
     if (unseen.length === 0) {
       return
@@ -100,16 +112,31 @@ export async function processDataset(
       qx,
       unseen.map((c) => c.repoUrl),
     )
+    const fresh = unseen.filter((c) => !existingRepoUrls.has(c.repoUrl))
+    if (fresh.length === 0) {
+      return
+    }
 
-    for (const candidate of unseen) {
+    const repoUrlsInCdp = await findRepoUrlsInCdp(
+      qx,
+      fresh.map((c) => c.repoUrl),
+    )
+
+    for (const candidate of fresh) {
+      if (repoUrlsInCdp.has(candidate.repoUrl)) {
+        skippedInCdp.push({
+          ...candidate,
+          action: 'skip',
+          skipReason: ALREADY_IN_CDP_SKIP_REASON,
+        })
+        seenRepoUrls.add(candidate.repoUrl)
+        continue
+      }
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
         break
       }
-      if (existingRepoUrls.has(candidate.repoUrl)) {
-        continue
-      }
       accepted.push(candidate)
-      acceptedRepoUrls.add(candidate.repoUrl)
+      seenRepoUrls.add(candidate.repoUrl)
     }
   }
 
@@ -135,7 +162,11 @@ export async function processDataset(
       await acceptNewRows(chunk)
       chunk = []
 
-      Context.current().heartbeat({ totalRows, accepted: accepted.length })
+      Context.current().heartbeat({
+        totalRows,
+        accepted: accepted.length,
+        skippedAlreadyInCdp: skippedInCdp.length,
+      })
 
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
         log.info(
@@ -157,8 +188,9 @@ export async function processDataset(
     stream.destroy()
   }
 
-  if (accepted.length > 0) {
-    await bulkInsertProjectCatalog(qx, accepted)
+  const toInsert = [...accepted, ...skippedInCdp]
+  if (toInsert.length > 0) {
+    await bulkInsertProjectCatalog(qx, toInsert)
   }
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -169,9 +201,37 @@ export async function processDataset(
       datasetId: dataset.id,
       totalRows,
       totalSkipped,
+      totalSkippedAlreadyInCdp: skippedInCdp.length,
       totalAccepted: accepted.length,
       elapsedSeconds,
     },
     'Dataset processing complete.',
   )
+
+  return {
+    totalRows,
+    totalSkipped,
+    totalSkippedAlreadyInCdp: skippedInCdp.length,
+    totalAccepted: accepted.length,
+  }
+}
+
+export async function startDiscoveryPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'discovery', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishDiscoveryPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }

@@ -22,6 +22,7 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/write-api-e2e-tests` | Add or change Public API e2e / smoke / contract tests |
 | `/fix-vulns-git-integration` | Triage Dependabot alerts and validate dependency bumps for the git_integration worker |
 | `/tb-quarantine-triage` | Investigate Tinybird quarantine failures, file IN Jira tickets, create fix worktrees |
+| `/tinybird`    | Update/push a Tinybird pipe or datasource, staging vs prod Tinybird workspace, `tb push`/`tb pull`  |
 
 ## Trigger Phrases
 
@@ -77,3 +78,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "Fix vulns", "bump deps", "dependabot triage", "security alerts"
 - "Are the git-integration deps vulnerable?", "review dependabot PRs"
 - Any request about vulnerabilities or dependency bumps in `git_integration`
+
+**`/tinybird`** — match any of these intents:
+- "Update a pipe", "push to Tinybird", "tb push", "tb pull"
+- "Change a datasource", "add a field to a Tinybird pipe"
+- "Staging vs prod Tinybird workspace", "deploy a Tinybird endpoint"

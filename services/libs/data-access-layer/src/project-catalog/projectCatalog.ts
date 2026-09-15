@@ -318,6 +318,7 @@ export async function bulkInsertProjectCatalog(
     source: item.source ?? null,
     action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
+    skipReason: item.skipReason ?? null,
   }))
 
   await qx.result(
@@ -329,6 +330,7 @@ export async function bulkInsertProjectCatalog(
       "source",
       "action",
       "lfCriticalityScore",
+      "skipReason",
       "createdAt",
       "updatedAt",
       "syncedAt"
@@ -340,6 +342,7 @@ export async function bulkInsertProjectCatalog(
       v."source",
       v."action",
       v."lfCriticalityScore"::double precision,
+      v."skipReason",
       NOW(),
       NOW(),
       NOW()
@@ -349,7 +352,8 @@ export async function bulkInsertProjectCatalog(
       "repoUrl" text,
       "source" text,
       "action" text,
-      "lfCriticalityScore" double precision
+      "lfCriticalityScore" double precision,
+      "skipReason" text
     )
     ON CONFLICT ("repoUrl") DO NOTHING
     `,

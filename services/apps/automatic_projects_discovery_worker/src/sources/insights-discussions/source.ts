@@ -1,6 +1,8 @@
 import https from 'https'
 import { Readable } from 'stream'
 
+import { canonicalizeGithubRepoUrl } from '@crowd/common'
+import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
@@ -9,7 +11,6 @@ const log = getServiceLogger()
 
 const CATEGORY_SLUG = 'project-onboardings'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
-const GITHUB_NON_REPO_OWNERS = new Set(['user-attachments', 'orgs', 'apps', 'marketplace'])
 const OWNER = 'linuxfoundation'
 const REPO = 'insights'
 
@@ -93,19 +94,22 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
+function stripTrailingSentencePunctuation(text: string): string {
+  return text.replace(/[.,;:!?]+$/, '')
+}
+
 // Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
 function extractRepoUrls(text: string): string[] {
   const urls = new Set<string>()
   const regex = /https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/gi
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
-    const owner = match[1].toLowerCase()
-    const repo = match[2]
-      .replace(/[.,;:!?]+$/, '')
-      .replace(/\.git$/, '')
-      .toLowerCase()
-    if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner)) {
-      urls.add(`https://github.com/${owner}/${repo}`)
+    const repo = stripTrailingSentencePunctuation(match[2])
+    if (!repo) continue
+
+    const canonical = canonicalizeGithubRepoUrl(`https://github.com/${match[1]}/${repo}`)
+    if (canonical) {
+      urls.add(canonical)
     }
   }
   return Array.from(urls)
@@ -245,21 +249,12 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
     const repoUrl = rawRow['repoUrl'] as string | undefined
     if (!repoUrl) return null
 
-    let projectSlug = ''
-    let repoName = ''
-    try {
-      const urlPath = new URL(repoUrl).pathname.replace(/^\//, '').replace(/\/$/, '')
-      projectSlug = urlPath
-      repoName = urlPath.split('/').pop() || ''
-    } catch {
-      return null
-    }
-
-    if (!projectSlug || !repoName) return null
+    const identity = deriveProjectIdentityFromRepoUrl(repoUrl)
+    if (!identity) return null
 
     return {
-      projectSlug,
-      repoName,
+      projectSlug: identity.projectSlug,
+      repoName: identity.repoName,
       repoUrl,
     }
   }
