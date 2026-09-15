@@ -8,7 +8,7 @@ export async function scheduleShadowDiff(): Promise<void> {
     await svc.temporal.schedule.create({
       scheduleId: 'connectors-shadow-diff',
       spec: {
-        calendars: [{ hour: { start: 0, end: 1 } }],
+        calendars: [{ hour: { start: 0, end: 0 } }],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,

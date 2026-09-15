@@ -94,7 +94,15 @@ async function diffUnit(
 
   await initNangoCloudClient()
   const nangoRecords = await fetchNangoRecordsInWindow<INangoRecord>(
-    (cursor) => getNangoCloudRecords(NangoIntegration.GITHUB, connectionId, model, cursor),
+    (cursor) =>
+      getNangoCloudRecords(
+        NangoIntegration.GITHUB,
+        connectionId,
+        model,
+        cursor,
+        undefined,
+        windowStart.toISOString(),
+      ),
     windowStart,
     windowEnd,
   )

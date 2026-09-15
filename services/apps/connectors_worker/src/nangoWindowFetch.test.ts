@@ -4,6 +4,7 @@ import { FetchNangoPage, INangoWindowPage, fetchNangoRecordsInWindow } from './n
 
 interface ITestRecord {
   id: string
+  timestamp: number
   metadata: { lastModifiedAt: string }
 }
 
@@ -15,13 +16,29 @@ describe('fetchNangoRecordsInWindow', () => {
   const windowStart = new Date('2026-09-10T00:00:00.000Z')
   const windowEnd = new Date('2026-09-11T00:00:00.000Z')
 
-  it('filters out records before the window and stops once a record reaches the window end', async () => {
+  it('filters records by their own event timestamp, not lastModifiedAt', async () => {
     const fetchPage = vi.fn<FetchNangoPage<ITestRecord>>().mockResolvedValueOnce(
       page([
-        { id: 'before', metadata: { lastModifiedAt: '2026-09-09T00:00:00.000Z' } },
-        { id: 'in-window', metadata: { lastModifiedAt: '2026-09-10T12:00:00.000Z' } },
-        { id: 'at-end', metadata: { lastModifiedAt: '2026-09-11T00:00:00.000Z' } },
-        { id: 'after', metadata: { lastModifiedAt: '2026-09-12T00:00:00.000Z' } },
+        {
+          id: 'before',
+          timestamp: new Date('2026-09-09T00:00:00.000Z').getTime(),
+          metadata: { lastModifiedAt: '2026-09-09T00:05:00.000Z' },
+        },
+        {
+          id: 'in-window',
+          timestamp: new Date('2026-09-10T12:00:00.000Z').getTime(),
+          metadata: { lastModifiedAt: '2026-09-10T12:05:00.000Z' },
+        },
+        {
+          id: 'at-end',
+          timestamp: new Date('2026-09-11T00:00:00.000Z').getTime(),
+          metadata: { lastModifiedAt: '2026-09-11T00:05:00.000Z' },
+        },
+        {
+          id: 'after',
+          timestamp: new Date('2026-09-12T00:00:00.000Z').getTime(),
+          metadata: { lastModifiedAt: '2026-09-12T00:05:00.000Z' },
+        },
       ]),
     )
 
@@ -31,43 +48,83 @@ describe('fetchNangoRecordsInWindow', () => {
     expect(fetchPage).toHaveBeenCalledTimes(1)
   })
 
-  it('paginates via cursor across multiple pages until the window end is reached', async () => {
+  it('includes a delayed-sync record whose lastModifiedAt lags its event timestamp', async () => {
+    const fetchPage = vi.fn<FetchNangoPage<ITestRecord>>().mockResolvedValueOnce(
+      page([
+        {
+          id: 'delayed-sync',
+          timestamp: new Date('2026-09-10T12:00:00.000Z').getTime(),
+          metadata: { lastModifiedAt: '2026-09-12T00:00:00.000Z' },
+        },
+      ]),
+    )
+
+    const result = await fetchNangoRecordsInWindow(fetchPage, windowStart, windowEnd)
+
+    expect(result.map((r) => r.id)).toEqual(['delayed-sync'])
+  })
+
+  it('stops paginating once lastModifiedAt passes the window end plus the grace period', async () => {
     const fetchPage = vi
       .fn<FetchNangoPage<ITestRecord>>()
       .mockResolvedValueOnce(
         page(
-          [{ id: 'page1-before', metadata: { lastModifiedAt: '2026-09-09T00:00:00.000Z' } }],
+          [
+            {
+              id: 'page1-in-window',
+              timestamp: new Date('2026-09-10T06:00:00.000Z').getTime(),
+              metadata: { lastModifiedAt: '2026-09-10T06:05:00.000Z' },
+            },
+          ],
           'cursor-1',
         ),
       )
       .mockResolvedValueOnce(
-        page(
-          [{ id: 'page2-in-window', metadata: { lastModifiedAt: '2026-09-10T06:00:00.000Z' } }],
-          'cursor-2',
-        ),
-      )
-      .mockResolvedValueOnce(
-        page([{ id: 'page3-after', metadata: { lastModifiedAt: '2026-09-11T00:00:00.000Z' } }]),
+        page([
+          {
+            id: 'page2-past-grace-period',
+            timestamp: new Date('2026-09-20T00:00:00.000Z').getTime(),
+            metadata: { lastModifiedAt: '2026-09-20T00:00:00.000Z' },
+          },
+        ]),
       )
 
     const result = await fetchNangoRecordsInWindow(fetchPage, windowStart, windowEnd)
 
-    expect(result.map((r) => r.id)).toEqual(['page2-in-window'])
-    expect(fetchPage).toHaveBeenCalledTimes(3)
+    expect(result.map((r) => r.id)).toEqual(['page1-in-window'])
+    expect(fetchPage).toHaveBeenCalledTimes(2)
     expect(fetchPage).toHaveBeenNthCalledWith(2, 'cursor-1')
-    expect(fetchPage).toHaveBeenNthCalledWith(3, 'cursor-2')
   })
 
-  it('stops when there is no next cursor even if the window end was never reached', async () => {
+  it('paginates via cursor across multiple pages until a next cursor is absent', async () => {
     const fetchPage = vi
       .fn<FetchNangoPage<ITestRecord>>()
       .mockResolvedValueOnce(
-        page([{ id: 'only', metadata: { lastModifiedAt: '2026-09-10T06:00:00.000Z' } }]),
+        page(
+          [
+            {
+              id: 'page1',
+              timestamp: new Date('2026-09-10T01:00:00.000Z').getTime(),
+              metadata: { lastModifiedAt: '2026-09-10T01:05:00.000Z' },
+            },
+          ],
+          'cursor-1',
+        ),
+      )
+      .mockResolvedValueOnce(
+        page([
+          {
+            id: 'page2',
+            timestamp: new Date('2026-09-10T06:00:00.000Z').getTime(),
+            metadata: { lastModifiedAt: '2026-09-10T06:05:00.000Z' },
+          },
+        ]),
       )
 
     const result = await fetchNangoRecordsInWindow(fetchPage, windowStart, windowEnd)
 
-    expect(result.map((r) => r.id)).toEqual(['only'])
-    expect(fetchPage).toHaveBeenCalledTimes(1)
+    expect(result.map((r) => r.id)).toEqual(['page1', 'page2'])
+    expect(fetchPage).toHaveBeenCalledTimes(2)
+    expect(fetchPage).toHaveBeenNthCalledWith(2, 'cursor-1')
   })
 })

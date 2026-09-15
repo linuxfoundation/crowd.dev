@@ -141,6 +141,7 @@ describe('runShadowDiffForChannel', () => {
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
+          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
           metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z' },
         },
@@ -163,7 +164,14 @@ describe('runShadowDiffForChannel', () => {
       kind: 'field_mismatch',
     })
     expect(mocks.initNangoCloudClient).toHaveBeenCalled()
-    expect(getNangoCloudRecords).toHaveBeenCalledWith('github', 'conn-1', 'GithubIssue', undefined)
+    expect(getNangoCloudRecords).toHaveBeenCalledWith(
+      'github',
+      'conn-1',
+      'GithubIssue',
+      undefined,
+      undefined,
+      '2026-09-14T00:00:00.000Z',
+    )
   })
 
   it('reports status error and does not throw when a per-channel fetch fails', async () => {

@@ -449,6 +449,7 @@ export const getNangoCloudRecords = async (
   model: string,
   cursor?: string,
   limit?: number,
+  modifiedAfter?: string,
 ): Promise<INangoResult> => {
   ensureBackendClient()
 
@@ -467,6 +468,7 @@ export const getNangoCloudRecords = async (
     model,
     limit: limit ?? DEFAULT_NANGO_FETCH_LIMIT,
     cursor,
+    modifiedAfter,
   })
 
   const records = result.records.map(toRecord)

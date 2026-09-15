@@ -1,4 +1,7 @@
+export const LATE_SYNC_GRACE_PERIOD_MS = 3 * 24 * 60 * 60 * 1000
+
 export interface INangoWindowRecord {
+  timestamp: number
   metadata: { lastModifiedAt: string }
 }
 
@@ -18,25 +21,26 @@ export async function fetchNangoRecordsInWindow<T extends INangoWindowRecord>(
 ): Promise<T[]> {
   const windowStartMs = windowStart.getTime()
   const windowEndMs = windowEnd.getTime()
+  const earlyExitThresholdMs = windowEndMs + LATE_SYNC_GRACE_PERIOD_MS
   const result: T[] = []
   let cursor: string | undefined
-  let reachedWindowEnd = false
+  let reachedEarlyExitThreshold = false
 
-  while (!reachedWindowEnd) {
+  while (!reachedEarlyExitThreshold) {
     const page = await fetchPage(cursor)
 
     for (const record of page.records) {
-      const modifiedAtMs = new Date(record.metadata.lastModifiedAt).getTime()
-      if (modifiedAtMs >= windowEndMs) {
-        reachedWindowEnd = true
+      const lastModifiedAtMs = new Date(record.metadata.lastModifiedAt).getTime()
+      if (lastModifiedAtMs >= earlyExitThresholdMs) {
+        reachedEarlyExitThreshold = true
         break
       }
-      if (modifiedAtMs >= windowStartMs) {
+      if (record.timestamp >= windowStartMs && record.timestamp < windowEndMs) {
         result.push(record)
       }
     }
 
-    if (reachedWindowEnd || !page.nextCursor) {
+    if (reachedEarlyExitThreshold || !page.nextCursor) {
       break
     }
     cursor = page.nextCursor
