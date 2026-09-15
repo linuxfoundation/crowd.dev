@@ -149,9 +149,22 @@ SQL >
                         dh.vulnerableDeps AS vulnerableDeps
                     FROM
                         (
-                            SELECT DISTINCT url
-                            FROM repositories FINAL
-                            WHERE deletedAt IS NULL AND archived = false AND excluded = false
+                            SELECT url
+                            FROM
+                                (
+                                    WITH
+                                        argMax(
+                                            tuple(url, archived, excluded, deletedAt), updatedAt
+                                        ) AS latest
+                                    SELECT
+                                        latest .1 AS url,
+                                        latest .2 AS archived,
+                                        latest .3 AS excluded,
+                                        latest .4 AS deletedAt
+                                    FROM repositories FINAL
+                                    GROUP BY lower(url)
+                                )
+                            WHERE isNull (deletedAt) AND archived = false AND excluded = false
                         ) AS allRepos
                     LEFT JOIN
                         (

@@ -308,7 +308,7 @@ DESCRIPTION >
 
 SQL >
     SELECT
-        channel,
+        lower(channel) AS channel,
         countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
         uniqIf(
@@ -327,7 +327,7 @@ SQL >
         ) AS activeOrganizationsPrevious365Days
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
-    GROUP BY channel
+    GROUP BY lower(channel)
 
 NODE project_insights_copy_repo_results
 DESCRIPTION >
