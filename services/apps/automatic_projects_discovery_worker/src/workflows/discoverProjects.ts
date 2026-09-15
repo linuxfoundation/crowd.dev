@@ -28,6 +28,7 @@ const pipelineRunActivities = proxyActivities<typeof activities>({
 interface ISourceBreakdown {
   rows: number
   skippedPreCheck: number
+  skippedAlreadyInCdp: number
   skipped: number
   accepted: number
 }
@@ -46,6 +47,7 @@ export async function discoverProjects(
   let succeeded = 0
   let failed = 0
   let skippedPreCheck = 0
+  let skippedAlreadyInCdp = 0
   let skipped = 0
   const bySource: Record<string, ISourceBreakdown> = {}
 
@@ -68,7 +70,13 @@ export async function discoverProjects(
         `source=${sourceName} mode=${mode}, ${datasets.length}/${allDatasets.length} datasets to process.`,
       )
 
-      const sourceStats: ISourceBreakdown = { rows: 0, skippedPreCheck: 0, skipped: 0, accepted: 0 }
+      const sourceStats: ISourceBreakdown = {
+        rows: 0,
+        skippedPreCheck: 0,
+        skippedAlreadyInCdp: 0,
+        skipped: 0,
+        accepted: 0,
+      }
 
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i]
@@ -77,15 +85,21 @@ export async function discoverProjects(
         try {
           const result = await processActivities.processDataset(sourceName, dataset)
 
-          const datasetSkipped = result.totalRows - result.totalAccepted - result.totalSkipped
+          const datasetSkipped =
+            result.totalRows -
+            result.totalAccepted -
+            result.totalSkipped -
+            result.totalSkippedAlreadyInCdp
 
           totalCandidates += result.totalRows
           succeeded += result.totalAccepted
           skippedPreCheck += result.totalSkipped
+          skippedAlreadyInCdp += result.totalSkippedAlreadyInCdp
           skipped += datasetSkipped
 
           sourceStats.rows += result.totalRows
           sourceStats.skippedPreCheck += result.totalSkipped
+          sourceStats.skippedAlreadyInCdp += result.totalSkippedAlreadyInCdp
           sourceStats.skipped += datasetSkipped
           sourceStats.accepted += result.totalAccepted
         } catch (err) {
@@ -104,6 +118,10 @@ export async function discoverProjects(
 
       log.info(`[${sourceName}] Done. Processed ${datasets.length} dataset(s).`)
     }
+
+    log.info(
+      `Discovery run complete. totalCandidates=${totalCandidates} succeeded=${succeeded} failed=${failed} skipped=${skipped} skippedPreCheck=${skippedPreCheck} skippedAlreadyInCdp=${skippedAlreadyInCdp}`,
+    )
 
     await pipelineRunActivities.finishDiscoveryPipelineRun(pipelineRunId, {
       status: 'completed',
