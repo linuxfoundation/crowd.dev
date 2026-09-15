@@ -19,7 +19,13 @@ async function runChannel(
       channelName: channel.channelName,
       err,
     })
-    return { channelName: channel.channelName, status: 'error', mismatches: [] }
+    return {
+      channelName: channel.channelName,
+      integrationId: channel.integrationId,
+      status: 'error',
+      mismatches: [],
+      totalMismatchCount: 0,
+    }
   }
 }
 

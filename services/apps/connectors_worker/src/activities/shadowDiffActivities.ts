@@ -20,6 +20,7 @@ import { fetchNangoRecordsInWindow } from '../nangoWindowFetch'
 import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from '../shadowDiff'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
+const MAX_REPORTED_MISMATCHES = 50
 
 export interface IShadowDiffChannel {
   channelName: string
@@ -31,8 +32,10 @@ export type ShadowDiffChannelStatus = 'ok' | 'mapping_missing' | 'error'
 
 export interface IShadowDiffChannelResult {
   channelName: string
+  integrationId: string
   status: ShadowDiffChannelStatus
   mismatches: IShadowDiffMismatch[]
+  totalMismatchCount: number
   errorMessage?: string
 }
 
@@ -124,7 +127,13 @@ export async function runShadowDiffForChannel(
     const mapping = await getNangoMappingForRepo(qx, channel.integrationId, owner, repo)
 
     if (!mapping) {
-      return { channelName: channel.channelName, status: 'mapping_missing', mismatches: [] }
+      return {
+        channelName: channel.channelName,
+        integrationId: channel.integrationId,
+        status: 'mapping_missing',
+        mismatches: [],
+        totalMismatchCount: 0,
+      }
     }
 
     const { windowStart, windowEnd } = previousDayWindow()
@@ -135,13 +144,21 @@ export async function runShadowDiffForChannel(
       mismatches.push(...unitMismatches)
     }
 
-    return { channelName: channel.channelName, status: 'ok', mismatches }
+    return {
+      channelName: channel.channelName,
+      integrationId: channel.integrationId,
+      status: 'ok',
+      mismatches: mismatches.slice(0, MAX_REPORTED_MISMATCHES),
+      totalMismatchCount: mismatches.length,
+    }
   } catch (err) {
     svc.log.error({ err, channelName: channel.channelName }, 'shadow diff failed for channel')
     return {
       channelName: channel.channelName,
+      integrationId: channel.integrationId,
       status: 'error',
       mismatches: [],
+      totalMismatchCount: 0,
       errorMessage: err instanceof Error ? err.message : String(err),
     }
   }
@@ -160,13 +177,17 @@ function formatMismatch(mismatch: IShadowDiffMismatch): string {
   return `[${mismatch.severity}] ${mismatch.type}/${mismatch.sourceId} ${mismatch.kind}`
 }
 
+function describeChannel(result: IShadowDiffChannelResult): string {
+  return `${result.channelName} (integration ${result.integrationId})`
+}
+
 export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
   for (const result of results) {
     if (result.status === 'error') {
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
-        `Shadow diff failed for ${result.channelName}`,
+        `Shadow diff failed for ${describeChannel(result)}`,
         result.errorMessage ?? 'unknown error',
       )
       continue
@@ -176,18 +197,22 @@ export async function reportShadowDiffResults(results: IShadowDiffChannelResult[
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
-        `Shadow diff: no nango mapping for ${result.channelName}`,
+        `Shadow diff: no nango mapping for ${describeChannel(result)}`,
         'This channel is in shadow mode but has no matching integration.nango_mapping row, so it could not be compared against nango.',
       )
       continue
     }
 
     if (result.mismatches.length > 0) {
+      const truncatedNotice =
+        result.totalMismatchCount > result.mismatches.length
+          ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown`
+          : ''
       await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
-        `Shadow diff mismatches for ${result.channelName}`,
-        result.mismatches.map(formatMismatch).join('\n'),
+        `Shadow diff mismatches for ${describeChannel(result)}`,
+        result.mismatches.map(formatMismatch).join('\n') + truncatedNotice,
       )
     }
   }

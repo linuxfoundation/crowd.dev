@@ -141,8 +141,10 @@ describe('runShadowDiffForChannel', () => {
 
     expect(result).toEqual({
       channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
       status: 'mapping_missing',
       mismatches: [],
+      totalMismatchCount: 0,
     })
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
   })
@@ -181,6 +183,7 @@ describe('runShadowDiffForChannel', () => {
 
     expect(result.status).toBe('ok')
     expect(result.mismatches).toHaveLength(1)
+    expect(result.totalMismatchCount).toBe(1)
     expect(result.mismatches[0]).toMatchObject({
       sourceId: 'issue-1',
       kind: 'field_mismatch',
@@ -194,6 +197,29 @@ describe('runShadowDiffForChannel', () => {
       undefined,
       '2026-09-14T00:00:00.000Z',
     )
+  })
+
+  it('caps reported mismatches at 50 while preserving the true total count', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue(
+      Array.from({ length: 60 }, (_, i) => ({
+        type: 'issues-comment',
+        sourceId: `issue-${i}`,
+        occurredAt: '2026-09-14T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: `issue-${i}` },
+      })),
+    )
+    mocks.getNangoCloudRecords.mockResolvedValue({ records: [], nextCursor: undefined })
+
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.mismatches).toHaveLength(50)
+    expect(result.totalMismatchCount).toBe(60)
   })
 
   it('reports status error and does not throw when a per-channel fetch fails', async () => {
@@ -218,16 +244,75 @@ describe('reportShadowDiffResults', () => {
 
   it('sends one Slack alert per channel that has mismatches or an error, and skips healthy channels', async () => {
     await reportShadowDiffResults([
-      { channelName: 'healthy-repo', status: 'ok', mismatches: [] },
+      {
+        channelName: 'healthy-repo',
+        integrationId: 'integration-1',
+        status: 'ok',
+        mismatches: [],
+        totalMismatchCount: 0,
+      },
       {
         channelName: 'mismatched-repo',
+        integrationId: 'integration-1',
         status: 'ok',
         mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
+        totalMismatchCount: 1,
       },
-      { channelName: 'unmapped-repo', status: 'mapping_missing', mismatches: [] },
-      { channelName: 'broken-repo', status: 'error', mismatches: [], errorMessage: 'boom' },
+      {
+        channelName: 'unmapped-repo',
+        integrationId: 'integration-1',
+        status: 'mapping_missing',
+        mismatches: [],
+        totalMismatchCount: 0,
+      },
+      {
+        channelName: 'broken-repo',
+        integrationId: 'integration-1',
+        status: 'error',
+        mismatches: [],
+        totalMismatchCount: 0,
+        errorMessage: 'boom',
+      },
     ])
 
     expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(3)
+  })
+
+  it('identifies the integration in the alert title so shared repos are distinguishable', async () => {
+    await reportShadowDiffResults([
+      {
+        channelName: 'shared-repo',
+        integrationId: 'integration-1',
+        status: 'mapping_missing',
+        mismatches: [],
+        totalMismatchCount: 0,
+      },
+    ])
+
+    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
+      'CDP_INTEGRATIONS_ALERTS',
+      'WARNING_PROPAGATOR',
+      'Shadow diff: no nango mapping for shared-repo (integration integration-1)',
+      expect.any(String),
+    )
+  })
+
+  it('notes how many mismatches were truncated when totalMismatchCount exceeds the reported list', async () => {
+    await reportShadowDiffResults([
+      {
+        channelName: 'noisy-repo',
+        integrationId: 'integration-1',
+        status: 'ok',
+        mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
+        totalMismatchCount: 3,
+      },
+    ])
+
+    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
+      'CDP_INTEGRATIONS_ALERTS',
+      'WARNING_PROPAGATOR',
+      'Shadow diff mismatches for noisy-repo (integration integration-1)',
+      expect.stringContaining('2 more mismatch(es) not shown'),
+    )
   })
 })

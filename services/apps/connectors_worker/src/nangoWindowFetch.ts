@@ -26,6 +26,9 @@ export async function fetchNangoRecordsInWindow<T extends INangoWindowRecord>(
   let cursor: string | undefined
   let reachedEarlyExitThreshold = false
 
+  // Nango's records API guarantees pages are ordered by lastModifiedAt ascending
+  // (https://docs.nango.dev/reference/api/sync/records-list), so it's safe to stop
+  // once a record crosses the threshold.
   while (!reachedEarlyExitThreshold) {
     const page = await fetchPage(cursor)
 
