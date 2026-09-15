@@ -71,6 +71,24 @@ export async function findLatestStarSnapshotForRepo(
   )
 }
 
+export async function findEarliestStarSnapshotForRepo(
+  qx: QueryExecutor,
+  repositoryId: string,
+): Promise<IRepositoryStarSnapshot | null> {
+  return qx.selectOneOrNone(
+    `
+      select *
+      from "repositoryStarSnapshots"
+      where "repositoryId" = $(repositoryId)
+      order by "capturedAt" asc
+      limit 1
+    `,
+    {
+      repositoryId,
+    },
+  )
+}
+
 export async function findStarSnapshotsForRepos(
   qx: QueryExecutor,
   repositoryIds: string[],
