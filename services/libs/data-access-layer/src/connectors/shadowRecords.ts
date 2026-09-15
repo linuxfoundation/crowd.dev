@@ -11,7 +11,7 @@ export async function recordShadowRecords(
     return
   }
 
-  const byKey = new Map(records.map((r) => [`${r.type}:${r.sourceId}`, r]))
+  const byKey = new Map(records.map((r) => [JSON.stringify([r.type, r.sourceId]), r]))
   const deduped = [...byKey.values()]
 
   await qx.result(
