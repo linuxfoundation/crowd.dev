@@ -24,11 +24,11 @@ const GITHUB_NON_REPO_OWNERS = new Set([
 function toParsableUrl(raw: string): string {
   const trimmed = raw.trim()
   const sshRewritten = trimmed
-    // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@host:owner/repo.git —
-    // left alone when followed by digits/ (an actual port, e.g. ssh://git@host:2222/owner/repo.git).
-    .replace(/^ssh:\/\/git@([a-zA-Z0-9.-]+):(?!\d+(?:\/|$))/, 'https://$1/')
-    .replace(/^ssh:\/\/git@([a-zA-Z0-9.-]+)\//, 'https://$1/')
-    .replace(/^git@([a-zA-Z0-9.-]+):/, 'https://$1/')
+    // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@github.com:owner/repo.git —
+    // left alone when followed by digits/ (an actual port, e.g. ssh://git@github.com:2222/owner/repo.git).
+    .replace(/^ssh:\/\/git@github\.com:(?!\d+(?:\/|$))/i, 'https://github.com/')
+    .replace(/^ssh:\/\/git@github\.com\//i, 'https://github.com/')
+    .replace(/^git@github\.com:/i, 'https://github.com/')
 
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(sshRewritten)
     ? sshRewritten
@@ -88,7 +88,8 @@ export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalR
     }
   }
 
-  // Non-GitHub hosts keep path case and explicit port — case-sensitive upstreams,
+  // Non-GitHub hosts (GitLab, Gerrit, Googlesource, git.kernel.org, ...) keep
+  // their path case and explicit port as-is — several of these are case-sensitive
   // and distinct ports can mean distinct servers.
   const authority = parsed.port ? `${host}:${parsed.port}` : host
   return {

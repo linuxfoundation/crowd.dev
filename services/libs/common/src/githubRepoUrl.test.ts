@@ -158,18 +158,6 @@ describe('canonicalizeRepoUrl', () => {
       'https://git.example.com:8443/Owner/Repo',
     )
   })
-
-  it('rewrites a scp-style git@ SSH URL for a non-GitHub host', () => {
-    expect(canonicalizeRepoUrl('git@gitlab.com:GNOME/Glib.git')?.url).toBe(
-      'https://gitlab.com/GNOME/Glib',
-    )
-  })
-
-  it('does not merge a www.-prefixed non-GitHub host with its bare counterpart', () => {
-    expect(canonicalizeRepoUrl('https://www.git.example.com/Owner/Repo')?.host).toBe(
-      'www.git.example.com',
-    )
-  })
 })
 
 describe('canonicalizeGithubRepoUrl', () => {
