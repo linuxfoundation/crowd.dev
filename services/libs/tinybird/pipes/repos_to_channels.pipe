@@ -21,14 +21,27 @@ SQL >
     SELECT canonicalUrl AS url, segmentId, sourceIntegrationId, insightsProjectId, enabled, excluded
     FROM
         (
+            WITH
+                argMax(
+                    tuple(
+                        url,
+                        segmentId,
+                        sourceIntegrationId,
+                        insightsProjectId,
+                        enabled,
+                        excluded,
+                        deletedAt
+                    ),
+                    updatedAt
+                ) AS latest
             SELECT
-                argMax(url, updatedAt) AS canonicalUrl,
-                argMax(segmentId, updatedAt) AS segmentId,
-                argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
-                argMax(insightsProjectId, updatedAt) AS insightsProjectId,
-                argMax(enabled, updatedAt) AS enabled,
-                argMax(excluded, updatedAt) AS excluded,
-                argMax(deletedAt, updatedAt) AS deletedAt
+                latest .1 AS canonicalUrl,
+                latest .2 AS segmentId,
+                latest .3 AS sourceIntegrationId,
+                latest .4 AS insightsProjectId,
+                latest .5 AS enabled,
+                latest .6 AS excluded,
+                latest .7 AS deletedAt
             FROM repositories FINAL
             GROUP BY lower(url)
         )

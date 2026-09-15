@@ -81,7 +81,8 @@ SQL >
             SELECT repoUrl
             FROM
                 (
-                    SELECT argMax(url, updatedAt) AS repoUrl, argMax(deletedAt, updatedAt) AS deletedAt
+                    WITH argMax(tuple(url, deletedAt), updatedAt) AS latest
+                    SELECT latest .1 AS repoUrl, latest .2 AS deletedAt
                     FROM repositories FINAL
                     GROUP BY lower(url)
                 )
@@ -92,16 +93,14 @@ SQL >
             SELECT url, excluded
             FROM
                 (
-                    SELECT
-                        argMax(url, updatedAt) AS url,
-                        argMax(excluded, updatedAt) AS excluded,
-                        argMax(deletedAt, updatedAt) AS deletedAt
+                    WITH argMax(tuple(url, excluded, deletedAt), updatedAt) AS latest
+                    SELECT latest .1 AS url, latest .2 AS excluded, latest .3 AS deletedAt
                     FROM repositories FINAL
                     GROUP BY lower(url)
                 )
             WHERE deletedAt IS NULL
         ) AS rf
-        ON rf.url = allRepos.repoUrl
+        ON lower(rf.url) = lower(allRepos.repoUrl)
     LEFT JOIN
         (
             SELECT mr.repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
@@ -253,11 +252,11 @@ SQL >
         ON c.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT url AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+            SELECT lower(url) AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt
             FROM repos
-            GROUP BY url
+            GROUP BY lower(url)
         ) AS rc
-        ON rc.repoUrl = allRepos.repoUrl
+        ON rc.repoUrl = lower(allRepos.repoUrl)
     LEFT JOIN
         (
             SELECT

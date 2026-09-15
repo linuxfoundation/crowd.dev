@@ -191,12 +191,19 @@ SQL >
                                 r.excluded AS isExcluded
                             FROM
                                 (
+                                    WITH
+                                        argMax(
+                                            tuple(
+                                                url, archived, excluded, sourceIntegrationId, deletedAt
+                                            ),
+                                            updatedAt
+                                        ) AS latest
                                     SELECT
-                                        argMax(url, updatedAt) AS url,
-                                        argMax(archived, updatedAt) AS archived,
-                                        argMax(excluded, updatedAt) AS excluded,
-                                        argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
-                                        argMax(deletedAt, updatedAt) AS deletedAt
+                                        latest .1 AS url,
+                                        latest .2 AS archived,
+                                        latest .3 AS excluded,
+                                        latest .4 AS sourceIntegrationId,
+                                        latest .5 AS deletedAt
                                     FROM repositories FINAL
                                     GROUP BY lower(url)
                                 ) AS r

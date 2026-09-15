@@ -158,11 +158,15 @@ SQL >
                                     SELECT canonicalUrl AS url
                                     FROM
                                         (
+                                            WITH
+                                                argMax(
+                                                    tuple(url, archived, excluded, deletedAt), updatedAt
+                                                ) AS latest
                                             SELECT
-                                                argMax(url, updatedAt) AS canonicalUrl,
-                                                argMax(archived, updatedAt) AS archived,
-                                                argMax(excluded, updatedAt) AS excluded,
-                                                argMax(deletedAt, updatedAt) AS deletedAt
+                                                latest .1 AS canonicalUrl,
+                                                latest .2 AS archived,
+                                                latest .3 AS excluded,
+                                                latest .4 AS deletedAt
                                             FROM repositories FINAL
                                             GROUP BY lower(url)
                                         )
@@ -170,11 +174,13 @@ SQL >
                                 ) AS base
                             LEFT JOIN
                                 (
-                                    SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+                                    SELECT
+                                        lower(url) AS url,
+                                        argMax(lastCommitAt, updatedAt) AS lastCommitAt
                                     FROM repos
-                                    GROUP BY url
+                                    GROUP BY lower(url)
                                 ) AS rc
-                                ON rc.url = base.url
+                                ON rc.url = lower(base.url)
                         ) AS rp
                     LEFT JOIN
                         (

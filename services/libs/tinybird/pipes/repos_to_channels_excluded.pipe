@@ -17,11 +17,12 @@ SQL >
     SELECT canonicalUrl AS url
     FROM
         (
+            WITH argMax(tuple(url, enabled, excluded, deletedAt), updatedAt) AS latest
             SELECT
-                argMax(url, updatedAt) AS canonicalUrl,
-                argMax(enabled, updatedAt) AS enabled,
-                argMax(excluded, updatedAt) AS excluded,
-                argMax(deletedAt, updatedAt) AS deletedAt
+                latest .1 AS canonicalUrl,
+                latest .2 AS enabled,
+                latest .3 AS excluded,
+                latest .4 AS deletedAt
             FROM repositories FINAL
             GROUP BY lower(url)
         )
