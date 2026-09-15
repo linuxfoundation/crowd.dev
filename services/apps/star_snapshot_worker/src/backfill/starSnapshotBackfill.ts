@@ -46,6 +46,7 @@ export interface StarSnapshotBackfillOptions {
 export interface StarSnapshotBackfillTotals {
   reposProcessed: number
   reposSkippedNoHistory: number
+  reposSkippedNegativeCount: number
   reposReconciled: number
   reposAnchoredBackward: number
   reposFailed: number
@@ -223,7 +224,7 @@ function buildBackwardCounts(daily: DailyDelta[], knownCurrentTotal: number): Da
 }
 
 interface RepoBackfillResult {
-  status: 'reconciled' | 'anchored' | 'skipped-no-history'
+  status: 'reconciled' | 'anchored' | 'skipped-no-history' | 'skipped-negative-count'
   daysWritten: number
 }
 
@@ -256,6 +257,16 @@ async function backfillRepo(
   }
   const allRows = reconciled ? forward : buildBackwardCounts(daily, knownCurrentTotal)
 
+  if (allRows.some((row) => row.count < 0)) {
+    // Backward anchoring can undershoot below zero when the history-derived deltas
+    // overshoot the known total by more than reconciliation allows for.
+    log.warn(
+      { repoUrl: repo.repoUrl, knownCurrentTotal },
+      'backward-anchored reconstruction produced a negative star count, skipping repo',
+    )
+    return { status: 'skipped-negative-count', daysWritten: 0 }
+  }
+
   // Never touch days the live daily worker (CM-1438) already owns — only fill the gap
   // behind its earliest snapshot, and never write "today" while it's still in progress.
   const earliestExisting = await findEarliestStarSnapshotForRepo(qx, repo.repositoryId)
@@ -281,6 +292,7 @@ export async function runStarSnapshotBackfill(
   const totals: StarSnapshotBackfillTotals = {
     reposProcessed: 0,
     reposSkippedNoHistory: 0,
+    reposSkippedNegativeCount: 0,
     reposReconciled: 0,
     reposAnchoredBackward: 0,
     reposFailed: 0,
@@ -331,6 +343,8 @@ export async function runStarSnapshotBackfill(
         totals.daysWritten += result.value.daysWritten
         if (result.value.status === 'skipped-no-history') {
           totals.reposSkippedNoHistory++
+        } else if (result.value.status === 'skipped-negative-count') {
+          totals.reposSkippedNegativeCount++
         } else if (result.value.status === 'reconciled') {
           totals.reposReconciled++
         } else {
