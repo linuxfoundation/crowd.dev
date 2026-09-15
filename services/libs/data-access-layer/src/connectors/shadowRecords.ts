@@ -11,8 +11,8 @@ export async function recordShadowRecords(
     return
   }
 
-  const bySourceId = new Map(records.map((r) => [r.sourceId, r]))
-  const deduped = [...bySourceId.values()]
+  const byKey = new Map(records.map((r) => [`${r.type}:${r.sourceId}`, r]))
+  const deduped = [...byKey.values()]
 
   await qx.result(
     `INSERT INTO integration.sync_shadow_records
