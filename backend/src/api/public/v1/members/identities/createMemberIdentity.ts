@@ -9,6 +9,7 @@ import {
   findMemberIdByVerifiedIdentity,
   findMemberIdentitiesByValue,
   findMemberIdentityConflict,
+  findMemberProjectGroupId,
   insertMemberIdentities,
   suggestMemberMerge,
   touchMemberUpdatedAt,
@@ -92,9 +93,11 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             })
 
             if (conflict) {
+              const projectGroupId = await findMemberProjectGroupId(qx, memberId)
               throw new ConflictError('Identity already exists on another member', {
                 ...conflictContext,
                 conflictMemberId: conflict.memberId,
+                ...(projectGroupId ? { projectGroupId } : {}),
               })
             }
           }
@@ -168,9 +171,11 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
               ])
             }
 
+            const projectGroupId = await findMemberProjectGroupId(qx, memberId)
             rethrowDbConflict(error, {
               ...conflictContext,
               ...(conflictMemberId ? { conflictMemberId } : {}),
+              ...(projectGroupId ? { projectGroupId } : {}),
             })
           }
         } else if (error instanceof ConflictError) {

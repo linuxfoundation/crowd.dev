@@ -59,6 +59,22 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
   },
 }
 
+export function estimateLlmCostUsd(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+): number | null {
+  if (!Object.prototype.hasOwnProperty.call(LLM_MODEL_PRICING_MAP, modelId)) {
+    return null
+  }
+  const pricing = LLM_MODEL_PRICING_MAP[modelId as LlmModelType]
+
+  return (
+    (inputTokens / 1000) * pricing.costPer1000InputTokens +
+    (outputTokens / 1000) * pricing.costPer1000OutputTokens
+  )
+}
+
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,

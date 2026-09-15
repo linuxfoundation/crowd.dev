@@ -1,4 +1,4 @@
-import { Error400, Error409 } from '@crowd/common'
+import { Error400, Error409, canonicalizeGithubRepoUrl } from '@crowd/common'
 import {
   deriveProjectIdentityFromRepoUrl,
   upsertProjectCatalogManualAction,
@@ -14,35 +14,6 @@ type ManualProjectCatalogAction = (typeof MANUALLY_ACCEPTABLE_ACTIONS)[number]
 
 function isManualProjectCatalogAction(value: unknown): value is ManualProjectCatalogAction {
   return MANUALLY_ACCEPTABLE_ACTIONS.includes(value as ManualProjectCatalogAction)
-}
-
-function canonicalizeGithubRepoUrl(repoUrl: unknown): string | null {
-  if (typeof repoUrl !== 'string') {
-    return null
-  }
-
-  let url: URL
-  try {
-    url = new URL(repoUrl.replace(/^git@github\.com:/, 'https://github.com/'))
-  } catch {
-    return null
-  }
-
-  if (url.hostname !== 'github.com') {
-    return null
-  }
-
-  const parts = url.pathname
-    .replace(/^\//, '')
-    .replace(/\/$/, '')
-    .replace(/\.git$/, '')
-    .split('/')
-
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    return null
-  }
-
-  return `https://github.com/${parts[0]}/${parts[1]}`
 }
 
 /**
@@ -63,7 +34,9 @@ function canonicalizeGithubRepoUrl(repoUrl: unknown): string | null {
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.projectCatalogEdit)
 
-  const repoUrl = canonicalizeGithubRepoUrl(req.body?.repoUrl)
+  const repoUrl = canonicalizeGithubRepoUrl(
+    typeof req.body?.repoUrl === 'string' ? req.body.repoUrl : null,
+  )
   if (!repoUrl) {
     return req.responseHandler.error(req, res, new Error400(req.language))
   }

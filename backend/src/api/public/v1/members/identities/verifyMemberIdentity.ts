@@ -19,6 +19,7 @@ import {
   findMemberById,
   findMemberIdByVerifiedIdentity,
   findMemberIdentityById,
+  findMemberProjectGroupId,
   queryActivityRelations,
   suggestMemberMerge,
   updateMemberIdentity,
@@ -103,12 +104,14 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
                 identity.type,
               )
 
+              const projectGroupId = await findMemberProjectGroupId(qx, memberId)
               rethrowDbConflict(error, {
                 memberId,
                 ...(conflictMemberId ? { conflictMemberId } : {}),
                 platform: identity.platform,
                 value: identity.value,
                 type: identity.type,
+                ...(projectGroupId ? { projectGroupId } : {}),
               })
             }
 

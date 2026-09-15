@@ -499,6 +499,9 @@ importers:
       '@crowd/archetype-worker':
         specifier: workspace:*
         version: link:../../archetypes/worker
+      '@crowd/common':
+        specifier: workspace:*
+        version: link:../../libs/common
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
@@ -1289,6 +1292,9 @@ importers:
       '@crowd/opensearch':
         specifier: workspace:*
         version: link:../../libs/opensearch
+      '@crowd/redis':
+        specifier: workspace:*
+        version: link:../../libs/redis
       '@crowd/types':
         specifier: workspace:*
         version: link:../../libs/types
@@ -1300,7 +1306,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.19.0(debug@4.4.3(supports-color@5.5.0))(supports-color@8.1.1)
       fast-levenshtein:
         specifier: ^3.0.0
         version: 3.0.0
@@ -1752,6 +1758,9 @@ importers:
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
+      '@crowd/types':
+        specifier: workspace:*
+        version: link:../../libs/types
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.17.2
@@ -16288,6 +16297,16 @@ snapshots:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@5.5.0))
       form-data: 4.0.6
       https-proxy-agent: 5.0.1(supports-color@5.5.0)
+      proxy-from-env: 2.1.0
+    transitivePeerDependencies:
+      - debug
+      - supports-color
+
+  axios@1.19.0(debug@4.4.3(supports-color@5.5.0))(supports-color@8.1.1):
+    dependencies:
+      follow-redirects: 1.16.0(debug@4.4.3(supports-color@5.5.0))
+      form-data: 4.0.6
+      https-proxy-agent: 5.0.1(supports-color@8.1.1)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
