@@ -41,6 +41,7 @@ export interface StarSnapshotBackfillOptions {
   dryRun: boolean
   afterUrl?: string
   isShuttingDown: () => boolean
+  onProgress?: (afterUrl: string, totals: StarSnapshotBackfillTotals) => Promise<void> | void
 }
 
 export interface StarSnapshotBackfillTotals {
@@ -50,6 +51,9 @@ export interface StarSnapshotBackfillTotals {
   reposAnchoredBackward: number
   reposFailed: number
   daysWritten: number
+  // false when the run stopped early (shutdown signal) rather than exhausting all repos —
+  // callers use this to decide whether a resume checkpoint should be kept or cleared.
+  completed: boolean
 }
 
 // GitHub's own `/repos/{owner}/{repo}/stargazers/history` walks back one page at a time
@@ -282,6 +286,7 @@ export async function runStarSnapshotBackfill(
     reposAnchoredBackward: 0,
     reposFailed: 0,
     daysWritten: 0,
+    completed: false,
   }
 
   const rateLimiter = createCoreRateLimiter(options.reservedCoreRateLimit, log)
@@ -290,6 +295,7 @@ export async function runStarSnapshotBackfill(
   while (!options.isShuttingDown()) {
     const repos = await findReposForStarSnapshot(qx, REPO_PAGE_SIZE, afterUrl)
     if (repos.length === 0) {
+      totals.completed = true
       break
     }
 
@@ -332,13 +338,13 @@ export async function runStarSnapshotBackfill(
       })
     }
 
-    log.info(
-      { ...totals, afterUrl: repos[repos.length - 1].repoUrl },
-      'star snapshot backfill progress',
-    )
     afterUrl = repos[repos.length - 1].repoUrl
 
+    log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
+    await options.onProgress?.(afterUrl, totals)
+
     if (repos.length < REPO_PAGE_SIZE) {
+      totals.completed = true
       break
     }
   }
