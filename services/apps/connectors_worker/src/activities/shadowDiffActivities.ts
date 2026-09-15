@@ -9,6 +9,7 @@ import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   INangoRecord,
   NangoIntegration,
+  NangoMetadataLastAction,
   getNangoCloudRecords,
   initNangoCloudClient,
 } from '@crowd/nango'
@@ -75,6 +76,9 @@ function toDiffableShadowRecord(record: {
 }
 
 function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
+  if (record.metadata.lastAction === NangoMetadataLastAction.DELETED || record.metadata.deletedAt) {
+    return null
+  }
   const activity = record.activity as Record<string, unknown> | null | undefined
   if (!activity || typeof activity.sourceId !== 'string' || typeof activity.type !== 'string') {
     return null
@@ -122,45 +126,33 @@ export async function runShadowDiffForChannel(
 ): Promise<IShadowDiffChannelResult> {
   const qx = dbStoreQx(svc.postgres.writer)
 
-  try {
-    const { owner, repo } = parseRepoChannel(channel.channelName)
-    const mapping = await getNangoMappingForRepo(qx, channel.integrationId, owner, repo)
+  const { owner, repo } = parseRepoChannel(channel.channelName)
+  const mapping = await getNangoMappingForRepo(qx, channel.integrationId, owner, repo)
 
-    if (!mapping) {
-      return {
-        channelName: channel.channelName,
-        integrationId: channel.integrationId,
-        status: 'mapping_missing',
-        mismatches: [],
-        totalMismatchCount: 0,
-      }
-    }
-
-    const { windowStart, windowEnd } = previousDayWindow()
-    const mismatches: IShadowDiffMismatch[] = []
-
-    for (const unit of channel.units) {
-      const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
-      mismatches.push(...unitMismatches)
-    }
-
+  if (!mapping) {
     return {
       channelName: channel.channelName,
       integrationId: channel.integrationId,
-      status: 'ok',
-      mismatches: mismatches.slice(0, MAX_REPORTED_MISMATCHES),
-      totalMismatchCount: mismatches.length,
-    }
-  } catch (err) {
-    svc.log.error({ err, channelName: channel.channelName }, 'shadow diff failed for channel')
-    return {
-      channelName: channel.channelName,
-      integrationId: channel.integrationId,
-      status: 'error',
+      status: 'mapping_missing',
       mismatches: [],
       totalMismatchCount: 0,
-      errorMessage: err instanceof Error ? err.message : String(err),
     }
+  }
+
+  const { windowStart, windowEnd } = previousDayWindow()
+  const mismatches: IShadowDiffMismatch[] = []
+
+  for (const unit of channel.units) {
+    const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    mismatches.push(...unitMismatches)
+  }
+
+  return {
+    channelName: channel.channelName,
+    integrationId: channel.integrationId,
+    status: 'ok',
+    mismatches: mismatches.slice(0, MAX_REPORTED_MISMATCHES),
+    totalMismatchCount: mismatches.length,
   }
 }
 

@@ -213,12 +213,17 @@ export async function getUnitById(qx: QueryExecutor, id: string): Promise<ISyncU
 
 export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
   return qx.select(
-    `SELECT id, "integrationId", "channelName", "syncName"
-     FROM integration.sync_units
-     WHERE "emitEnabled" = false
-       AND status = 'active'
-       AND platform = 'github'
-       AND watermark->>'phase' = 'incremental'
-     ORDER BY "channelName", "syncName"`,
+    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
+     FROM integration.sync_units su
+     WHERE su."emitEnabled" = false
+       AND su.status = 'active'
+       AND su.platform = 'github'
+       AND su.watermark->>'phase' = 'incremental'
+       AND EXISTS (
+         SELECT 1
+         FROM public.integrations i
+         WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
+       )
+     ORDER BY su."channelName", su."syncName"`,
   )
 }

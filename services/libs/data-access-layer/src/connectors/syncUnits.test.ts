@@ -8,14 +8,17 @@ import { listShadowDiffUnits } from './syncUnits'
 
 const test = withQx(base)
 
-async function createIntegration(qx: QueryExecutor): Promise<string> {
+async function createIntegration(
+  qx: QueryExecutor,
+  overrides: { deletedAt?: string } = {},
+): Promise<string> {
   const id = generateUUIDv1()
   await qx.result(
     `
-    INSERT INTO public.integrations (id, platform, status, "tenantId", "createdAt", "updatedAt")
-    VALUES ($(id), 'github', 'done', $(tenantId), NOW(), NOW())
+    INSERT INTO public.integrations (id, platform, status, "tenantId", "createdAt", "updatedAt", "deletedAt")
+    VALUES ($(id), 'github', 'done', $(tenantId), NOW(), NOW(), $(deletedAt)::timestamptz)
     `,
-    { id, tenantId: DEFAULT_TENANT_ID },
+    { id, tenantId: DEFAULT_TENANT_ID, deletedAt: overrides.deletedAt ?? null },
   )
   return id
 }
@@ -106,5 +109,21 @@ describe('listShadowDiffUnits', () => {
       channelName: 'https://github.com/kubernetes/kubernetes',
       syncName: 'issues',
     })
+  })
+
+  test('excludes units whose parent integration was soft-deleted', async ({ qx }) => {
+    const deletedIntegrationId = await createIntegration(qx, {
+      deletedAt: '2026-09-01T00:00:00.000Z',
+    })
+
+    await createSyncUnit(qx, deletedIntegrationId, {
+      channelName: 'https://github.com/kubernetes/kubernetes',
+      syncName: 'issues',
+      watermark: { phase: 'incremental' },
+    })
+
+    const result = await listShadowDiffUnits(qx)
+
+    expect(result).toHaveLength(0)
   })
 })
