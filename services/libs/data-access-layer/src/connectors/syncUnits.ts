@@ -2,6 +2,7 @@ import type { QueryExecutor } from '../queryExecutor'
 
 import type {
   IClaimedUnit,
+  IShadowDiffUnit,
   ISyncRunProgress,
   ISyncRunSuccess,
   ISyncUnit,
@@ -207,5 +208,16 @@ export async function getUnitById(qx: QueryExecutor, id: string): Promise<ISyncU
      FROM integration.sync_units
      WHERE id = $(id)`,
     { id },
+  )
+}
+
+export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
+  return qx.select(
+    `SELECT id, "integrationId", "channelName", "syncName"
+     FROM integration.sync_units
+     WHERE "emitEnabled" = false
+       AND status = 'active'
+       AND watermark->>'phase' = 'incremental'
+     ORDER BY "channelName", "syncName"`,
   )
 }

@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest'
+
+import { IDiffableRecord, diffShadowAgainstNango } from './shadowDiff'
+
+describe('diffShadowAgainstNango', () => {
+  it('returns no mismatches when records match on all pass-through fields', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'issue-1',
+        type: 'issues-comment',
+        data: {
+          type: 'issues-comment',
+          sourceId: 'issue-1',
+          sourceParentId: 'issue-parent',
+          score: 1,
+          title: 'title',
+          body: 'body',
+          url: 'https://example.com',
+          attributes: { foo: 'bar' },
+          timestamp: '2026-09-10T00:00:00.000Z',
+          memberId: 'should-be-ignored',
+        },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'issue-1',
+        type: 'issues-comment',
+        data: {
+          type: 'issues-comment',
+          sourceId: 'issue-1',
+          sourceParentId: 'issue-parent',
+          score: 1,
+          title: 'title',
+          body: 'body',
+          url: 'https://example.com',
+          attributes: { foo: 'bar' },
+          timestamp: '2026-09-10T00:00:00.000Z',
+          memberId: 'different-and-fine',
+        },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('reports a field_mismatch with the differing field when a pass-through field diverges', () => {
+    const shadow: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issues-comment', data: { body: 'old body' } },
+    ]
+    const nango: IDiffableRecord[] = [
+      { sourceId: 'issue-1', type: 'issues-comment', data: { body: 'new body' } },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toEqual([
+      {
+        sourceId: 'issue-1',
+        type: 'issues-comment',
+        kind: 'field_mismatch',
+        severity: 'high',
+        fields: [{ field: 'body', shadowValue: 'old body', nangoValue: 'new body' }],
+      },
+    ])
+  })
+
+  it('reports high-severity missing_in_nango when a shadow record has no nango counterpart', () => {
+    const shadow: IDiffableRecord[] = [{ sourceId: 'issue-1', type: 'issues-comment', data: {} }]
+
+    const result = diffShadowAgainstNango(shadow, [])
+
+    expect(result).toEqual([
+      { sourceId: 'issue-1', type: 'issues-comment', kind: 'missing_in_nango', severity: 'high' },
+    ])
+  })
+
+  it('reports high-severity missing_in_shadow when a nango record has no shadow counterpart', () => {
+    const nango: IDiffableRecord[] = [{ sourceId: 'issue-1', type: 'issues-comment', data: {} }]
+
+    const result = diffShadowAgainstNango([], nango)
+
+    expect(result).toEqual([
+      { sourceId: 'issue-1', type: 'issues-comment', kind: 'missing_in_shadow', severity: 'high' },
+    ])
+  })
+
+  it('downgrades pull_request-review-requested one-sided mismatches to low severity', () => {
+    const shadow: IDiffableRecord[] = [
+      { sourceId: 'pr-1-reviewer-a', type: 'pull_request-review-requested', data: {} },
+      { sourceId: 'pr-1-reviewer-b', type: 'pull_request-review-requested', data: {} },
+    ]
+    const nango: IDiffableRecord[] = [
+      { sourceId: 'pr-1-aggregated', type: 'pull_request-review-requested', data: {} },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toHaveLength(3)
+    expect(result.every((m) => m.severity === 'low')).toBe(true)
+  })
+})

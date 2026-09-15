@@ -725,9 +725,15 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/nango':
+        specifier: workspace:*
+        version: link:../../libs/nango
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis
+      '@crowd/slack':
+        specifier: workspace:*
+        version: link:../../libs/slack
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
