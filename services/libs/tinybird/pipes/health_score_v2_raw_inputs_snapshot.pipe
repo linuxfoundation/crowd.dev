@@ -81,9 +81,7 @@ SQL >
             SELECT repoUrl
             FROM
                 (
-                    SELECT
-                        argMax(url, updatedAt) AS repoUrl,
-                        argMax(deletedAt, updatedAt) AS deletedAt
+                    SELECT argMax(url, updatedAt) AS repoUrl, argMax(deletedAt, updatedAt) AS deletedAt
                     FROM repositories FINAL
                     GROUP BY lower(url)
                 )
