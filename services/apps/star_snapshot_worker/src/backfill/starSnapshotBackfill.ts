@@ -76,14 +76,17 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       const observedReset = Number(headers.get('x-ratelimit-reset'))
       const observedResetMs = Number.isFinite(observedReset) ? observedReset * 1000 : undefined
 
-      // Concurrent requests' responses can land out of order, so only trust a lower
-      // remaining within the same reset window; a new window always replaces it.
+      // A response from an already-passed reset window carries no information about
+      // the current one - ignore it entirely rather than let it rewind resetAtMs.
+      if (observedResetMs !== undefined && observedResetMs < resetAtMs) {
+        return
+      }
+
       if (Number.isFinite(observedRemaining)) {
-        if (observedResetMs !== undefined && observedResetMs > resetAtMs) {
-          remaining = observedRemaining
-        } else {
-          remaining = Math.min(remaining, observedRemaining)
-        }
+        remaining =
+          observedResetMs !== undefined && observedResetMs > resetAtMs
+            ? observedRemaining
+            : Math.min(remaining, observedRemaining)
       }
       if (observedResetMs !== undefined) {
         resetAtMs = observedResetMs
