@@ -9,10 +9,23 @@ TAGS "Repository URLs", "Gerrit"
 
 NODE repos_to_expand
 DESCRIPTION >
-    Get excluded repository URLs to expand
+    Get excluded repository URLs to expand. Dedupes case-only-duplicate `repositories` rows the
+    same way `repos_to_channels_deduplicated` does (IN-1307) before checking `excluded`, so a
+    stale case-duplicate row can't suppress the active canonical repository's activity.
 
 SQL >
-    SELECT url FROM repositories FINAL WHERE isNull (deletedAt) AND enabled = true AND excluded = true
+    SELECT canonicalUrl AS url
+    FROM
+        (
+            SELECT
+                argMax(url, updatedAt) AS canonicalUrl,
+                argMax(enabled, updatedAt) AS enabled,
+                argMax(excluded, updatedAt) AS excluded,
+                argMax(deletedAt, updatedAt) AS deletedAt
+            FROM repositories FINAL
+            GROUP BY lower(url)
+        )
+    WHERE isNull (deletedAt) AND enabled = true AND excluded = true
 
 NODE gerrit_repos
 DESCRIPTION >

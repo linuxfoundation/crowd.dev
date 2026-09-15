@@ -13,7 +13,9 @@ TAGS "Repository URLs", "Gerrit"
 NODE repos_to_channels_deduplicated
 DESCRIPTION >
     One canonical row per case-insensitive URL, keeping the most recently
-    updated of any case-only-duplicate `repositories` rows.
+    updated of any case-only-duplicate `repositories` rows. `deletedAt` is picked by the same
+    argMax before filtering, so a soft-deleted newest row correctly drops the group instead of
+    resurrecting an older, stale-cased row as canonical (IN-1307).
 
 SQL >
     SELECT canonicalUrl AS url, segmentId, sourceIntegrationId, insightsProjectId, enabled, excluded
@@ -25,11 +27,12 @@ SQL >
                 argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
                 argMax(insightsProjectId, updatedAt) AS insightsProjectId,
                 argMax(enabled, updatedAt) AS enabled,
-                argMax(excluded, updatedAt) AS excluded
+                argMax(excluded, updatedAt) AS excluded,
+                argMax(deletedAt, updatedAt) AS deletedAt
             FROM repositories FINAL
-            WHERE isNull (deletedAt)
             GROUP BY lower(url)
         )
+    WHERE isNull (deletedAt)
 
 NODE repos_to_expand
 DESCRIPTION >

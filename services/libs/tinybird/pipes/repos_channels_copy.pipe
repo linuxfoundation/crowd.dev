@@ -12,7 +12,9 @@ TAGS "Repository URLs", "Gerrit", "Health Score v2"
 NODE repos_channels_copy_deduplicated
 DESCRIPTION >
     One canonical row per case-insensitive URL, keeping the most recently
-    updated of any case-only-duplicate `repositories` rows.
+    updated of any case-only-duplicate `repositories` rows. `deletedAt` is picked by the same
+    argMax before filtering, so a soft-deleted newest row correctly drops the group instead of
+    resurrecting an older, stale-cased row as canonical (IN-1307).
 
 SQL >
     SELECT canonicalUrl AS url, sourceIntegrationId, excluded
@@ -21,11 +23,12 @@ SQL >
             SELECT
                 argMax(url, updatedAt) AS canonicalUrl,
                 argMax(sourceIntegrationId, updatedAt) AS sourceIntegrationId,
-                argMax(excluded, updatedAt) AS excluded
+                argMax(excluded, updatedAt) AS excluded,
+                argMax(deletedAt, updatedAt) AS deletedAt
             FROM repositories FINAL
-            WHERE deletedAt IS NULL
             GROUP BY lower(url)
         )
+    WHERE deletedAt IS NULL
 
 NODE repos_channels_copy_calc
 SQL >

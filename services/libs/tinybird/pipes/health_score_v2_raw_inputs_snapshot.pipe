@@ -24,6 +24,9 @@ DESCRIPTION >
     - All joins against activityRelations, pull_requests_analyzed, and issues_analyzed route through
     `repos_channels_ds` (populated by repos_channels_copy.pipe), which expands each Gerrit repo URL
     to both its plain URL and /q/project: channel variant.
+    - `allRepos`/`rf` dedupe case-only-duplicate `repositories` rows the same way
+    `repos_channels_copy_deduplicated` does (IN-1307), so a repo isn't snapshotted twice with the
+    non-canonical casing left with missing raw inputs.
 
 TAGS "Validation", "Health Score v2"
 
@@ -73,9 +76,33 @@ SQL >
         upw.unansweredAged90d AS unansweredPrsAged90d,
         uw.openedLast18m AS issuesOpenedLast18m,
         upw.openedLast18m AS prsOpenedLast18m
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE deletedAt IS NULL) AS allRepos
+    FROM
+        (
+            SELECT repoUrl
+            FROM
+                (
+                    SELECT
+                        argMax(url, updatedAt) AS repoUrl,
+                        argMax(deletedAt, updatedAt) AS deletedAt
+                    FROM repositories FINAL
+                    GROUP BY lower(url)
+                )
+            WHERE deletedAt IS NULL
+        ) AS allRepos
     LEFT JOIN
-        (SELECT url, excluded FROM repositories FINAL WHERE deletedAt IS NULL) AS rf
+        (
+            SELECT url, excluded
+            FROM
+                (
+                    SELECT
+                        argMax(url, updatedAt) AS url,
+                        argMax(excluded, updatedAt) AS excluded,
+                        argMax(deletedAt, updatedAt) AS deletedAt
+                    FROM repositories FINAL
+                    GROUP BY lower(url)
+                )
+            WHERE deletedAt IS NULL
+        ) AS rf
         ON rf.url = allRepos.repoUrl
     LEFT JOIN
         (

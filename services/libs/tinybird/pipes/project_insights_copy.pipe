@@ -331,7 +331,8 @@ SQL >
 
 NODE project_insights_copy_repo_results
 DESCRIPTION >
-    Join all repository insights together
+    Join all repository insights together.
+    `hs.channel` is always lowercase (IN-1307); `base.repoUrl` is lowered to match on the join.
 
 SQL >
     SELECT
@@ -398,7 +399,7 @@ SQL >
         CAST(NULL AS Nullable(UInt8)) AS coveredCategoryCount,
         CAST(NULL AS Nullable(UInt8)) AS healthMaxScore
     FROM project_insights_copy_repo_base AS base
-    LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
+    LEFT JOIN repo_health_score_copy_ds AS hs ON lower(base.repoUrl) = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
     LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON base.repoUrl = hv2.repoUrl
 

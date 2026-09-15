@@ -3,21 +3,24 @@ DESCRIPTION >
     Returns enabled, non-excluded repository URLs linked to insights projects, deduplicated to one
     canonical row per case-insensitive URL (keeping the most recently updated of any
     case-only-duplicate `repositories` rows, IN-1307 — same dedup as `repos_channels_copy.pipe`).
+    `channel` is lowercased to match the `lower(channel) AS channel` every sibling
+    `repo_health_score_*` metric pipe emits — the `USING (channel)` joins below are exact match,
+    so a mixed-case canonical URL here would otherwise COALESCE every metric to 0.
 
 SQL >
-    SELECT canonicalUrl AS channel
+    SELECT lower(canonicalUrl) AS channel
     FROM
         (
             SELECT
                 argMax(url, updatedAt) AS canonicalUrl,
                 argMax(enabled, updatedAt) AS enabled,
                 argMax(excluded, updatedAt) AS excluded,
-                argMax(insightsProjectId, updatedAt) AS insightsProjectId
+                argMax(insightsProjectId, updatedAt) AS insightsProjectId,
+                argMax(deletedAt, updatedAt) AS deletedAt
             FROM repositories FINAL
-            WHERE isNull (deletedAt)
             GROUP BY lower(url)
         )
-    WHERE enabled = true AND excluded = false AND insightsProjectId != ''
+    WHERE isNull (deletedAt) AND enabled = true AND excluded = false AND insightsProjectId != ''
 
 NODE repo_health_score_copy_data
 DESCRIPTION >
