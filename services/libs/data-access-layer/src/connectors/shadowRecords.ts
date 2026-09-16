@@ -35,3 +35,19 @@ export async function recordShadowRecords(
     },
   )
 }
+
+export async function getShadowRecordsInWindow(
+  qx: QueryExecutor,
+  unitId: string,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<IShadowRecord[]> {
+  return qx.select(
+    `SELECT type, "sourceId", "occurredAt", data
+     FROM integration.sync_shadow_records
+     WHERE "unitId" = $(unitId)
+       AND "occurredAt" >= $(windowStart)
+       AND "occurredAt" < $(windowEnd)`,
+    { unitId, windowStart, windowEnd },
+  )
+}

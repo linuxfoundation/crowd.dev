@@ -2,6 +2,7 @@ import type { QueryExecutor } from '../queryExecutor'
 
 import type {
   IClaimedUnit,
+  IShadowDiffUnit,
   ISyncRunProgress,
   ISyncRunSuccess,
   ISyncUnit,
@@ -207,5 +208,22 @@ export async function getUnitById(qx: QueryExecutor, id: string): Promise<ISyncU
      FROM integration.sync_units
      WHERE id = $(id)`,
     { id },
+  )
+}
+
+export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
+  return qx.select(
+    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
+     FROM integration.sync_units su
+     WHERE su."emitEnabled" = false
+       AND su.status = 'active'
+       AND su.platform = 'github'
+       AND su.watermark->>'phase' = 'incremental'
+       AND EXISTS (
+         SELECT 1
+         FROM public.integrations i
+         WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
+       )
+     ORDER BY su."channelName", su."syncName"`,
   )
 }

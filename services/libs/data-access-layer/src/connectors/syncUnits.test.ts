@@ -1,0 +1,129 @@
+import { test as base, describe, expect } from 'vitest'
+
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
+import type { QueryExecutor } from '@crowd/database'
+import { withQx } from '@crowd/test-kit/db'
+
+import { listShadowDiffUnits } from './syncUnits'
+
+const test = withQx(base)
+
+async function createIntegration(
+  qx: QueryExecutor,
+  overrides: { deletedAt?: string } = {},
+): Promise<string> {
+  const id = generateUUIDv1()
+  await qx.result(
+    `
+    INSERT INTO public.integrations (id, platform, status, "tenantId", "createdAt", "updatedAt", "deletedAt")
+    VALUES ($(id), 'github', 'done', $(tenantId), NOW(), NOW(), $(deletedAt)::timestamptz)
+    `,
+    { id, tenantId: DEFAULT_TENANT_ID, deletedAt: overrides.deletedAt ?? null },
+  )
+  return id
+}
+
+async function createSyncUnit(
+  qx: QueryExecutor,
+  integrationId: string,
+  overrides: {
+    channelName: string
+    syncName: string
+    status?: string
+    emitEnabled?: boolean
+    watermark?: Record<string, unknown> | null
+    platform?: string
+  },
+): Promise<string> {
+  const id = generateUUIDv1()
+  await qx.result(
+    `
+    INSERT INTO integration.sync_units
+      (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "emitEnabled", watermark)
+    VALUES
+      ($(id), $(integrationId), $(platform), $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb)
+    `,
+    {
+      id,
+      integrationId,
+      platform: overrides.platform ?? 'github',
+      channelName: overrides.channelName,
+      syncName: overrides.syncName,
+      status: overrides.status ?? 'active',
+      emitEnabled: overrides.emitEnabled ?? false,
+      watermark: overrides.watermark === undefined ? null : JSON.stringify(overrides.watermark),
+    },
+  )
+  return id
+}
+
+describe('listShadowDiffUnits', () => {
+  test('returns only active, shadow-mode units in the incremental phase', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+
+    const eligibleId = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/kubernetes/kubernetes',
+      syncName: 'issues',
+      watermark: { phase: 'incremental' },
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/kubernetes/kubernetes',
+      syncName: 'forks',
+      emitEnabled: true,
+      watermark: { phase: 'incremental' },
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/torvalds/linux',
+      syncName: 'issues',
+      status: 'paused',
+      watermark: { phase: 'incremental' },
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/rust-lang/rust',
+      syncName: 'issues',
+      watermark: { phase: 'backfill' },
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/nodejs/node',
+      syncName: 'issues',
+      watermark: null,
+    })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'dummy-channel',
+      syncName: 'issues',
+      watermark: { phase: 'incremental' },
+      platform: 'dummy',
+    })
+
+    const result = await listShadowDiffUnits(qx)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: eligibleId,
+      integrationId,
+      channelName: 'https://github.com/kubernetes/kubernetes',
+      syncName: 'issues',
+    })
+  })
+
+  test('excludes units whose parent integration was soft-deleted', async ({ qx }) => {
+    const deletedIntegrationId = await createIntegration(qx, {
+      deletedAt: '2026-09-01T00:00:00.000Z',
+    })
+
+    await createSyncUnit(qx, deletedIntegrationId, {
+      channelName: 'https://github.com/kubernetes/kubernetes',
+      syncName: 'issues',
+      watermark: { phase: 'incremental' },
+    })
+
+    const result = await listShadowDiffUnits(qx)
+
+    expect(result).toHaveLength(0)
+  })
+})
