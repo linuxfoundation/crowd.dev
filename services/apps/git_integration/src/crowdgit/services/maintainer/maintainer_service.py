@@ -1089,6 +1089,17 @@ class MaintainerService(BaseService):
             )
             await update_maintainer_run(repository.id, latest_maintainer_file)
 
+            if not is_cncf_repo(repository.url):
+                project_ctx = await find_project_repo_sibling(repository.id)
+                if project_ctx and project_ctx.project_repo_id:
+                    today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+                    await end_date_maintainers_for_repos([repository.id], today_midnight)
+                    self.logger.info(
+                        f"End-dated own maintainer rows for {repository.url}: "
+                        f".project authority at {project_ctx.project_repo_url} "
+                        f"appeared during processing"
+                    )
+
             if is_cncf_repo(repository.url) and latest_maintainer_file == "maintainers.yaml":
                 project_ctx = await find_project_repo_sibling(repository.id)
                 if project_ctx and project_ctx.sibling_repo_ids:
