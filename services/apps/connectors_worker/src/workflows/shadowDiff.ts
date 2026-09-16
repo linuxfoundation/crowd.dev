@@ -39,6 +39,7 @@ async function runChannel(
       status: 'error',
       mismatches: [],
       totalMismatchCount: 0,
+      syncSummaries: [],
       errorMessage: describeChannelError(err),
     }
   }

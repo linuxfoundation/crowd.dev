@@ -18,10 +18,21 @@ import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/s
 import { svc } from '../main'
 import { getNangoModelForSync } from '../nangoModelMapping'
 import { fetchNangoRecordsInWindow } from '../nangoWindowFetch'
-import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from '../shadowDiff'
+import {
+  IDiffableRecord,
+  IShadowDiffMismatch,
+  ShadowDiffMismatchKind,
+  diffShadowAgainstNango,
+} from '../shadowDiff'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const MAX_REPORTED_MISMATCHES = 50
+const MAX_DETAILED_MISMATCHES_PER_SYNC = 5
+const REPORTED_COUNT_KINDS: readonly ShadowDiffMismatchKind[] = [
+  'missing_in_nango',
+  'missing_in_shadow',
+  'field_mismatch',
+]
 const SLACK_HEADER_MAX_LENGTH = 150
 const SLACK_ICON_PREFIX_MAX_LENGTH = 18 // longest persona icon used below, ':rotating_light: '
 const SLACK_TITLE_MAX_LENGTH = SLACK_HEADER_MAX_LENGTH - SLACK_ICON_PREFIX_MAX_LENGTH
@@ -34,12 +45,18 @@ export interface IShadowDiffChannel {
 
 export type ShadowDiffChannelStatus = 'ok' | 'mapping_missing' | 'error'
 
+export interface IShadowDiffSyncSummary {
+  syncName: string
+  counts: Record<ShadowDiffMismatchKind, number>
+}
+
 export interface IShadowDiffChannelResult {
   channelName: string
   integrationId: string
   status: ShadowDiffChannelStatus
   mismatches: IShadowDiffMismatch[]
   totalMismatchCount: number
+  syncSummaries: IShadowDiffSyncSummary[]
   errorMessage?: string
 }
 
@@ -112,6 +129,7 @@ async function diffUnit(
         type: unit.syncName,
         kind: 'unsupported_sync',
         severity: 'high',
+        syncName: unit.syncName,
       },
     ]
   }
@@ -145,12 +163,29 @@ async function diffUnit(
       .map(diffableRecordKey),
   )
 
-  return diffShadowAgainstNango(
+  const mismatches = diffShadowAgainstNango(
     shadowRecords
       .map(toDiffableShadowRecord)
       .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
     diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
   )
+
+  return mismatches.map((mismatch) => ({ ...mismatch, syncName: unit.syncName }))
+}
+
+function countMismatchesByKind(
+  mismatches: IShadowDiffMismatch[],
+): Record<ShadowDiffMismatchKind, number> {
+  const counts: Record<ShadowDiffMismatchKind, number> = {
+    missing_in_nango: 0,
+    missing_in_shadow: 0,
+    field_mismatch: 0,
+    unsupported_sync: 0,
+  }
+  for (const mismatch of mismatches) {
+    counts[mismatch.kind] += 1
+  }
+  return counts
 }
 
 export async function runShadowDiffForChannel(
@@ -168,16 +203,19 @@ export async function runShadowDiffForChannel(
       status: 'mapping_missing',
       mismatches: [],
       totalMismatchCount: 0,
+      syncSummaries: [],
     }
   }
 
   const { windowStart, windowEnd } = previousDayWindow()
   const mismatches: IShadowDiffMismatch[] = []
+  const syncSummaries: IShadowDiffSyncSummary[] = []
   let totalMismatchCount = 0
 
   for (const unit of channel.units) {
     const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
     totalMismatchCount += unitMismatches.length
+    syncSummaries.push({ syncName: unit.syncName, counts: countMismatchesByKind(unitMismatches) })
     if (mismatches.length < MAX_REPORTED_MISMATCHES) {
       mismatches.push(...unitMismatches.slice(0, MAX_REPORTED_MISMATCHES - mismatches.length))
     }
@@ -189,6 +227,7 @@ export async function runShadowDiffForChannel(
     status: 'ok',
     mismatches,
     totalMismatchCount,
+    syncSummaries,
   }
 }
 
@@ -214,6 +253,55 @@ function truncateSlackTitle(title: string): string {
     return title
   }
   return `${title.slice(0, SLACK_TITLE_MAX_LENGTH - 1)}…`
+}
+
+function formatSyncSummaryTable(summaries: IShadowDiffSyncSummary[]): string {
+  const nameWidth = Math.max('syncName'.length, ...summaries.map((s) => s.syncName.length))
+  const header = `${'syncName'.padEnd(nameWidth)}  ${REPORTED_COUNT_KINDS.join('  ')}`
+  const rows = summaries.map((summary) => {
+    const cells = REPORTED_COUNT_KINDS.map((kind) =>
+      String(summary.counts[kind]).padEnd(kind.length),
+    )
+    return `${summary.syncName.padEnd(nameWidth)}  ${cells.join('  ')}`
+  })
+  return ['```', header, ...rows, '```'].join('\n')
+}
+
+function formatUnsupportedSyncNotes(summaries: IShadowDiffSyncSummary[]): string[] {
+  return summaries
+    .filter((summary) => summary.counts.unsupported_sync > 0)
+    .map((summary) => `- ${summary.syncName}: no Nango model mapping (unsupported_sync)`)
+}
+
+function formatSyncDetails(
+  mismatches: IShadowDiffMismatch[],
+  syncSummaries: IShadowDiffSyncSummary[],
+): string[] {
+  const mismatchesBySyncName = new Map<string, IShadowDiffMismatch[]>()
+  for (const mismatch of mismatches) {
+    const syncName = mismatch.syncName ?? 'unknown'
+    const list = mismatchesBySyncName.get(syncName) ?? []
+    list.push(mismatch)
+    mismatchesBySyncName.set(syncName, list)
+  }
+
+  const sections: string[] = []
+  for (const summary of syncSummaries) {
+    const syncMismatches = mismatchesBySyncName.get(summary.syncName)
+    if (!syncMismatches || syncMismatches.length === 0) {
+      continue
+    }
+    const totalForSync = REPORTED_COUNT_KINDS.reduce((sum, kind) => sum + summary.counts[kind], 0)
+    const shown = syncMismatches.slice(0, MAX_DETAILED_MISMATCHES_PER_SYNC)
+    const moreNotice =
+      totalForSync > shown.length
+        ? `\n  … ${totalForSync - shown.length} more mismatch(es) not shown for this sync`
+        : ''
+    sections.push(
+      `*${summary.syncName}*\n${shown.map((m) => `  ${formatMismatch(m)}`).join('\n')}${moreNotice}`,
+    )
+  }
+  return sections
 }
 
 export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
@@ -249,13 +337,19 @@ export async function reportShadowDiffResults(results: IShadowDiffChannelResult[
     if (result.mismatches.length > 0) {
       const truncatedNotice =
         result.totalMismatchCount > result.mismatches.length
-          ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown`
+          ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown overall`
           : ''
+      const body =
+        [
+          formatSyncSummaryTable(result.syncSummaries),
+          ...formatUnsupportedSyncNotes(result.syncSummaries),
+          ...formatSyncDetails(result.mismatches, result.syncSummaries),
+        ].join('\n\n') + truncatedNotice
       const sent = await sendSlackNotificationAsync(
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         truncateSlackTitle(`Shadow diff mismatches for ${describeChannel(result)}`),
-        result.mismatches.map(formatMismatch).join('\n') + truncatedNotice,
+        body,
       )
       if (!sent) {
         failedChannels.push(describeChannel(result))

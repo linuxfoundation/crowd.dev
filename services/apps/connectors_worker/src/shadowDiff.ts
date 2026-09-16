@@ -41,6 +41,7 @@ export interface IShadowDiffMismatch {
   kind: ShadowDiffMismatchKind
   severity: ShadowDiffSeverity
   fields?: IFieldMismatch[]
+  syncName?: string
 }
 
 function severityForType(type: string): ShadowDiffSeverity {
