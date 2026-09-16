@@ -61,10 +61,13 @@ describe('resolvePrecheckSkipReason', () => {
   })
 
   test('does not flag a mixed owner even if some repos are LF', () => {
-    const reason = resolvePrecheckSkipReason(canonicalizeRepoUrl('https://github.com/google/new-repo'), {
-      reposInCdp: new Set(),
-      exclusivelyLfOwners: new Set(),
-    })
+    const reason = resolvePrecheckSkipReason(
+      canonicalizeRepoUrl('https://github.com/google/new-repo'),
+      {
+        reposInCdp: new Set(),
+        exclusivelyLfOwners: new Set(),
+      },
+    )
 
     expect(reason).toBeNull()
   })
