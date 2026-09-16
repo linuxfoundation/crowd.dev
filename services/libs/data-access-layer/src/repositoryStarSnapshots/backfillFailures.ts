@@ -1,15 +1,7 @@
 import { IRepositoryStarBackfillFailure } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
-const ERROR_MESSAGE_MAX_LENGTH = 500
-
-function truncateErrorMessage(message: string | null): string | null {
-  if (!message) {
-    return null
-  }
-  return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
-}
+import { truncateErrorMessage } from '../utils'
 
 export async function recordStarBackfillFailure(
   qx: QueryExecutor,
