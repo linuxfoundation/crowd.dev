@@ -28,6 +28,7 @@ import {
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const MAX_REPORTED_MISMATCHES = 50
 const MAX_DETAILED_MISMATCHES_PER_SYNC = 5
+const MAX_DETAILED_REPOS = 10
 const REPORTED_COUNT_KINDS: readonly ShadowDiffMismatchKind[] = [
   'missing_in_nango',
   'missing_in_shadow',
@@ -304,60 +305,121 @@ function formatSyncDetails(
   return sections
 }
 
-export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
-  const failedChannels: string[] = []
-
-  for (const result of results) {
-    if (result.status === 'error') {
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        truncateSlackTitle(`Shadow diff failed for ${describeChannel(result)}`),
-        result.errorMessage ?? 'unknown error',
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
-      continue
-    }
-
-    if (result.status === 'mapping_missing') {
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.WARNING_PROPAGATOR,
-        truncateSlackTitle(`Shadow diff: no nango mapping for ${describeChannel(result)}`),
-        'This channel is in shadow mode but has no matching integration.nango_mapping row, so it could not be compared against nango.',
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
-      continue
-    }
-
-    if (result.mismatches.length > 0) {
-      const truncatedNotice =
-        result.totalMismatchCount > result.mismatches.length
-          ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown overall`
-          : ''
-      const body =
-        [
-          formatSyncSummaryTable(result.syncSummaries),
-          ...formatUnsupportedSyncNotes(result.syncSummaries),
-          ...formatSyncDetails(result.mismatches, result.syncSummaries),
-        ].join('\n\n') + truncatedNotice
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.WARNING_PROPAGATOR,
-        truncateSlackTitle(`Shadow diff mismatches for ${describeChannel(result)}`),
-        body,
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
+function aggregateCountsByKind(
+  summaries: IShadowDiffSyncSummary[],
+): Record<ShadowDiffMismatchKind, number> {
+  const counts: Record<ShadowDiffMismatchKind, number> = {
+    missing_in_nango: 0,
+    missing_in_shadow: 0,
+    field_mismatch: 0,
+    unsupported_sync: 0,
+  }
+  for (const summary of summaries) {
+    for (const kind of REPORTED_COUNT_KINDS) {
+      counts[kind] += summary.counts[kind]
     }
   }
+  return counts
+}
 
-  if (failedChannels.length > 0) {
-    throw new Error(`Failed to deliver shadow diff Slack alerts for: ${failedChannels.join(', ')}`)
+function formatRepoSummaryTable(withMismatches: IShadowDiffChannelResult[]): string | null {
+  if (withMismatches.length === 0) {
+    return null
+  }
+
+  const nameWidth = Math.max(
+    'repo'.length,
+    'TOTAL'.length,
+    ...withMismatches.map((r) => r.channelName.length),
+  )
+  const header = `${'repo'.padEnd(nameWidth)}  ${REPORTED_COUNT_KINDS.join('  ')}`
+  const totals = aggregateCountsByKind(withMismatches.flatMap((r) => r.syncSummaries))
+
+  const rows = withMismatches.map((result) => {
+    const counts = aggregateCountsByKind(result.syncSummaries)
+    const cells = REPORTED_COUNT_KINDS.map((kind) => String(counts[kind]).padEnd(kind.length))
+    return `${result.channelName.padEnd(nameWidth)}  ${cells.join('  ')}`
+  })
+  const totalCells = REPORTED_COUNT_KINDS.map((kind) => String(totals[kind]).padEnd(kind.length))
+  const totalRow = `${'TOTAL'.padEnd(nameWidth)}  ${totalCells.join('  ')}`
+
+  return ['```', header, ...rows, totalRow, '```'].join('\n')
+}
+
+function formatRepoDetailSections(withMismatches: IShadowDiffChannelResult[]): string[] {
+  const shown = withMismatches.slice(0, MAX_DETAILED_REPOS)
+  const sections = shown.map((result) => {
+    const truncatedNotice =
+      result.totalMismatchCount > result.mismatches.length
+        ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown for this repo`
+        : ''
+    const body = [
+      formatSyncSummaryTable(result.syncSummaries),
+      ...formatUnsupportedSyncNotes(result.syncSummaries),
+      ...formatSyncDetails(result.mismatches, result.syncSummaries),
+    ].join('\n\n')
+    return `*${describeChannel(result)}*\n${body}${truncatedNotice}`
+  })
+
+  if (withMismatches.length > shown.length) {
+    sections.push(
+      `… ${withMismatches.length - shown.length} more repo(s) with mismatches not detailed here — see the summary table above`,
+    )
+  }
+
+  return sections
+}
+
+function formatStatusNotes(results: IShadowDiffChannelResult[], label: string): string[] {
+  if (results.length === 0) {
+    return []
+  }
+  return [
+    `*${label} (${results.length})*`,
+    ...results.map((r) => `- ${describeChannel(r)}${r.errorMessage ? `: ${r.errorMessage}` : ''}`),
+  ]
+}
+
+export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
+  if (results.length === 0) {
+    return
+  }
+
+  const okResults = results.filter((r) => r.status === 'ok')
+  const withMismatches = okResults
+    .filter((r) => r.totalMismatchCount > 0)
+    .sort((a, b) => b.totalMismatchCount - a.totalMismatchCount)
+  const cleanResults = okResults.filter((r) => r.totalMismatchCount === 0)
+  const mappingMissingResults = results.filter((r) => r.status === 'mapping_missing')
+  const errorResults = results.filter((r) => r.status === 'error')
+
+  const summaryLine = `Checked ${results.length} repo(s): ${cleanResults.length} clean, ${withMismatches.length} with mismatches, ${mappingMissingResults.length} missing nango mapping, ${errorResults.length} errored.`
+
+  const body = [
+    summaryLine,
+    formatRepoSummaryTable(withMismatches),
+    ...formatStatusNotes(mappingMissingResults, 'No nango mapping'),
+    ...formatStatusNotes(errorResults, 'Errored'),
+    ...formatRepoDetailSections(withMismatches),
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join('\n\n')
+
+  const persona =
+    errorResults.length > 0
+      ? SlackPersona.ERROR_REPORTER
+      : withMismatches.length > 0 || mappingMissingResults.length > 0
+        ? SlackPersona.WARNING_PROPAGATOR
+        : SlackPersona.SUCCESS_ANNOUNCER
+
+  const sent = await sendSlackNotificationAsync(
+    SlackChannel.CDP_INTEGRATIONS_ALERTS,
+    persona,
+    truncateSlackTitle('Shadow diff report'),
+    body,
+  )
+
+  if (!sent) {
+    throw new Error('Failed to deliver shadow diff Slack report')
   }
 }

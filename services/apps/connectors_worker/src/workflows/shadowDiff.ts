@@ -48,9 +48,11 @@ async function runChannel(
 export async function shadowDiff(): Promise<void> {
   const channels = await activity.listShadowDiffChannels()
 
+  const results: activities.IShadowDiffChannelResult[] = []
   for (let i = 0; i < channels.length; i += CHANNEL_CONCURRENCY) {
     const batch = channels.slice(i, i + CHANNEL_CONCURRENCY)
-    const results = await Promise.all(batch.map(runChannel))
-    await activity.reportShadowDiffResults(results)
+    results.push(...(await Promise.all(batch.map(runChannel))))
   }
+
+  await activity.reportShadowDiffResults(results)
 }
