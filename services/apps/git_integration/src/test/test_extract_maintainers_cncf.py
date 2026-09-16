@@ -1,11 +1,10 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 import crowdgit.services.maintainer.maintainer_service as maintainer_service_module
 from crowdgit.database.crud import ProjectContext
-from crowdgit.enums import ExecutionStatus
 from crowdgit.models import CloneBatchInfo, Repository
 from crowdgit.models.maintainer_info import MaintainerInfoItem, MaintainerResult
 from crowdgit.services.maintainer.maintainer_service import MaintainerService
