@@ -39,9 +39,8 @@ export interface StarSnapshotBackfillOptions {
   concurrency: number
   dryRun: boolean
   afterUrl?: string
-  // Repos already successfully backfilled in a previous run - skipped without hitting
-  // GitHub, and mutated in place as this run completes more repos so the caller can
-  // persist it for the next run.
+  // Repos already backfilled in a previous run - skipped without hitting GitHub;
+  // mutated in place here and persisted by the caller for the next run.
   completedRepoIds?: Set<string>
   isShuttingDown: () => boolean
   onProgress?: (afterUrl: string, totals: StarSnapshotBackfillTotals) => Promise<void> | void
@@ -102,13 +101,12 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       }
     },
 
-    // GitHub's secondary/abuse limit never shows up in the rate-limit headers, only as
-    // a 403 - callers report it here so every subsequent call (even from other repos
-    // already in flight) backs off instead of piling on more 403s.
-    noteSecondaryRateLimit(): void {
+    // GitHub's secondary/abuse limit only surfaces as a 403/429, never in headers -
+    // callers report it here so every in-flight call backs off, not just this one.
+    noteSecondaryRateLimit(retryAfterMs?: number): void {
       secondaryCooldownUntilMs = Math.max(
         secondaryCooldownUntilMs,
-        Date.now() + SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+        Date.now() + (retryAfterMs ?? SECONDARY_RATE_LIMIT_COOLDOWN_MS),
       )
     },
 
@@ -173,10 +171,18 @@ async function assertOk(
   if (response.status === 404) {
     throw new Error(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
   }
-  if (response.status === 403) {
+  if (response.status === 403 || response.status === 429) {
+    const retryAfterHeader = Number(response.headers.get('retry-after'))
+    const retryAfterMs = Number.isFinite(retryAfterHeader) ? retryAfterHeader * 1000 : undefined
+
+    if (response.status === 429) {
+      rateLimiter.noteSecondaryRateLimit(retryAfterMs)
+      throw new Error(`GitHub rate limit hit (429) fetching ${what} for ${owner}/${name}`)
+    }
+
     const body = await response.text()
     if (body.toLowerCase().includes('rate limit')) {
-      rateLimiter.noteSecondaryRateLimit()
+      rateLimiter.noteSecondaryRateLimit(retryAfterMs)
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
     throw new Error(`GitHub auth failure (403) fetching ${what} for ${owner}/${name}`)
@@ -327,12 +333,8 @@ async function backfillRepo(
   return { status: reconciled ? 'reconciled' : 'anchored', daysWritten: rowsToWrite.length }
 }
 
-// Bounded-concurrency worker pool: `concurrency` workers pull the next index off a
-// shared cursor as soon as they're free, instead of waiting in lockstep for a fixed
-// batch to fully settle. A worker only ever stops *between* items, so every index it
-// was handed always finishes before the pool as a whole does - callers can treat the
-// returned count as "everything below this index is done", even under a mid-run
-// shutdown or out-of-order completion.
+// `concurrency` workers pull the next index as they free up, instead of lockstep batches.
+// A worker never abandons a grabbed item, so returned count N means indices 0..N-1 are done.
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
@@ -415,7 +417,11 @@ export async function runStarSnapshotBackfill(
         totals.reposProcessed++
         try {
           const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
-          options.completedRepoIds?.add(repo.repositoryId)
+          // A negative-count skip is a reconstruction anomaly, not a terminal success -
+          // leave it off completedRepoIds so a future run retries it instead of skipping forever.
+          if (result.status !== 'skipped-negative-count') {
+            options.completedRepoIds?.add(repo.repositoryId)
+          }
           recordOutcome(totals, result)
         } catch (err) {
           totals.reposFailed++
@@ -438,10 +444,8 @@ export async function runStarSnapshotBackfill(
       break
     }
 
-    // Checkpoint only as far as repos actually handled, not the whole page -
-    // runWithConcurrency hands out indices strictly in order and never abandons a
-    // grabbed repo mid-flight, so everything below `processedCount` is guaranteed done
-    // even though completion order itself can be out of order under concurrency.
+    // Checkpoint only as far as repos actually handled, not the whole page - runWithConcurrency
+    // guarantees everything below `processedCount` is done, even out of completion order.
     afterUrl = repos[processedCount - 1].repoUrl
 
     log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
@@ -457,10 +461,8 @@ export async function runStarSnapshotBackfill(
     }
   }
 
-  // One extra pass over whatever failed this run, after the main sweep - a repo that
-  // tripped the secondary rate limit will have had a full cooldown to recover by now.
-  // Only runs on a full, uninterrupted pass: a checkpoint resumed later never revisits
-  // repos behind its cursor, so this is the only chance to recover them without --fresh.
+  // One retry pass over this run's failures, after any rate-limit cooldown - only on a
+  // full pass, since a resumed checkpoint never revisits repos behind its cursor.
   if (totals.completed && !options.isShuttingDown() && failedRepos.length > 0) {
     const toRetry = failedRepos.splice(0, failedRepos.length)
     log.info(
@@ -471,7 +473,9 @@ export async function runStarSnapshotBackfill(
     await runWithConcurrency(toRetry, options.concurrency, options.isShuttingDown, async (repo) => {
       try {
         const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
-        options.completedRepoIds?.add(repo.repositoryId)
+        if (result.status !== 'skipped-negative-count') {
+          options.completedRepoIds?.add(repo.repositoryId)
+        }
         totals.reposFailed--
         totals.reposRecoveredOnRetry++
         recordOutcome(totals, result)
