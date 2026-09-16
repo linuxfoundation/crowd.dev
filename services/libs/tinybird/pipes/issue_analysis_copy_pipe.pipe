@@ -8,7 +8,7 @@ SQL >
         sourceId,
         timestamp AS openedAt,
         segmentId,
-        channel,
+        lower(channel) AS channel,
         platform,
         memberId,
         organizationId

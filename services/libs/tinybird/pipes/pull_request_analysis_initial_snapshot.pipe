@@ -10,7 +10,7 @@ SQL >
     SELECT
         activityId as id,
         sourceId,
-        channel,
+        lower(channel) AS channel,
         timestamp AS openedAt,
         segmentId,
         gitChangedLinesBucket,
