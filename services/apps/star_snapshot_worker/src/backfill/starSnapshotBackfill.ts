@@ -287,7 +287,7 @@ function buildBackwardCounts(daily: DailyDelta[], knownCurrentTotal: number): Da
   return daily.map((d, i) => ({ date: d.date, count: counts[i] }))
 }
 
-interface RepoBackfillResult {
+export interface RepoBackfillResult {
   status: 'reconciled' | 'anchored' | 'skipped-no-history' | 'skipped-negative-count'
   daysWritten: number
 }

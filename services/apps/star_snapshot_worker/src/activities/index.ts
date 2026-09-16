@@ -13,6 +13,7 @@ import { IRepoForStarSnapshot } from '@crowd/types'
 
 import {
   CoreRateLimiter,
+  RepoBackfillResult,
   SECONDARY_RATE_LIMIT_COOLDOWN_MS,
   backfillRepo,
   createCoreRateLimiter,
@@ -297,10 +298,9 @@ export async function backfillRepoStarHistory(
   }
 
   const qx = pgpQx(svc.postgres.writer.connection())
+  let result: RepoBackfillResult
   try {
-    await backfillRepo(qx, repo, rateLimiter, svc.log, false)
-    await recordStarBackfillSuccess(qx, repo.repositoryId)
-    return { outcome: 'done' }
+    result = await backfillRepo(qx, repo, rateLimiter, svc.log, false)
   } catch (err) {
     const message = (err as Error)?.message ?? String(err)
     if (message.toLowerCase().includes('rate limit')) {
@@ -318,4 +318,11 @@ export async function backfillRepoStarHistory(
     )
     return { outcome: 'done' }
   }
+
+  // A negative-count skip is a reconstruction anomaly, not a completed backfill - leave
+  // it unmarked so the repo stays in the candidate pool and retries on the next run.
+  if (result.status !== 'skipped-negative-count') {
+    await recordStarBackfillSuccess(qx, repo.repositoryId)
+  }
+  return { outcome: 'done' }
 }

@@ -3,7 +3,7 @@ import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
-export * from './backfillFailures'
+export * from './backfillStatus'
 
 export async function findReposForStarSnapshot(
   qx: QueryExecutor,
@@ -40,22 +40,13 @@ export async function findReposNeedingStarBackfill(
           r.id as "repositoryId",
           r.url as "repoUrl"
       from public.repositories r
-      left join public."repositoryStarBackfillFailures" f on f."repositoryId" = r.id
+      left join public."repositoryStarBackfillStatus" f on f."repositoryId" = r.id
       where r."deletedAt" is null
         and r."excluded" = false
         and r.url like 'https://github.com%'
         and ($(afterUrl)::text is null or r.url > $(afterUrl))
         and f."deadLetteredAt" is null
-        -- "Zero-row" = no snapshot older than 2 days: a repo the daily worker (CM-1438)
-        -- only ever wrote forward-looking rows for, never given deep history by a
-        -- backfill run. Once backfilled it always has an old row, so it drops out of
-        -- this selection for good - this runs once per repo, not on a recurring basis.
-        and not exists (
-          select 1
-          from "repositoryStarSnapshots" s
-          where s."repositoryId" = r.id
-            and s."capturedAt" < now() - interval '2 days'
-        )
+        and f."completedAt" is null
       order by r.url asc
       limit $(limit)
     `,
