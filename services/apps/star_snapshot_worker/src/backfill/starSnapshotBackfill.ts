@@ -491,11 +491,11 @@ export async function runStarSnapshotBackfill(
     await runWithConcurrency(toRetry, options.concurrency, options.isShuttingDown, async (repo) => {
       try {
         const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
+        totals.reposFailed--
         if (result.status !== 'skipped-negative-count') {
           options.completedRepoIds?.add(repo.repositoryId)
+          totals.reposRecoveredOnRetry++
         }
-        totals.reposFailed--
-        totals.reposRecoveredOnRetry++
         recordOutcome(totals, result)
       } catch (err) {
         log.warn(

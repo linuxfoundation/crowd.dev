@@ -177,7 +177,7 @@ const main = async () => {
   }
 
   log.info({ ...totals, dryRun }, 'star snapshot backfill complete')
-  process.exit(0)
+  process.exit(totals.reposFailed > 0 ? 1 : 0)
 }
 
 main().catch((err) => {
