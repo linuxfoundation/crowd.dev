@@ -207,7 +207,7 @@ export async function runShadowDiffForChannel(
     }
   }
 
-  const { windowStart, windowEnd } = previousDayWindow()
+  const { windowStart, windowEnd } = previousDayWindow(new Date(Date.now() - MS_PER_DAY))
   const mismatches: IShadowDiffMismatch[] = []
   const syncSummaries: IShadowDiffSyncSummary[] = []
   let totalMismatchCount = 0

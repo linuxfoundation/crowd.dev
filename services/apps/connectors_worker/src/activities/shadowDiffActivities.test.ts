@@ -163,16 +163,16 @@ describe('runShadowDiffForChannel', () => {
       {
         type: 'issues-comment',
         sourceId: 'issue-1',
-        occurredAt: '2026-09-14T12:00:00.000Z',
+        occurredAt: '2026-09-13T12:00:00.000Z',
         data: { type: 'issues-comment', sourceId: 'issue-1', body: 'shadow body' },
       },
     ])
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
         },
       ],
       nextCursor: undefined,
@@ -210,7 +210,7 @@ describe('runShadowDiffForChannel', () => {
       'GithubIssue',
       undefined,
       undefined,
-      '2026-09-14T00:00:00.000Z',
+      '2026-09-13T00:00:00.000Z',
     )
   })
 
@@ -220,9 +220,9 @@ describe('runShadowDiffForChannel', () => {
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z', lastAction: 'DELETED' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z', lastAction: 'DELETED' },
         },
       ],
       nextCursor: undefined,
@@ -244,16 +244,16 @@ describe('runShadowDiffForChannel', () => {
       {
         type: 'issues-comment',
         sourceId: 'issue-1',
-        occurredAt: '2026-09-14T12:00:00.000Z',
+        occurredAt: '2026-09-13T12:00:00.000Z',
         data: { type: 'issues-comment', sourceId: 'issue-1', body: 'shadow body' },
       },
     ])
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z', lastAction: 'DELETED' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z', lastAction: 'DELETED' },
         },
       ],
       nextCursor: undefined,
@@ -275,7 +275,7 @@ describe('runShadowDiffForChannel', () => {
       Array.from({ length: 60 }, (_, i) => ({
         type: 'issues-comment',
         sourceId: `issue-${i}`,
-        occurredAt: '2026-09-14T12:00:00.000Z',
+        occurredAt: '2026-09-13T12:00:00.000Z',
         data: { type: 'issues-comment', sourceId: `issue-${i}` },
       })),
     )
