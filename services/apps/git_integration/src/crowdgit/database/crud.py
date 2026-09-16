@@ -335,7 +335,7 @@ async def find_github_identity(github_username: str):
         FROM "memberIdentities"
     WHERE
         platform = 'github'
-        AND value = $1
+        AND LOWER(value) = LOWER($1)
         AND "verified" = TRUE
         AND "deletedAt" is null
     LIMIT 1
