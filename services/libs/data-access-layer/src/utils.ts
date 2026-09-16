@@ -202,3 +202,12 @@ export function injectSoftDeletionCriteria(filter?: QueryFilter): QueryFilter {
 
   return filter
 }
+
+export const ERROR_MESSAGE_MAX_LENGTH = 500
+
+export function truncateErrorMessage(message: string | null): string | null {
+  if (!message) {
+    return null
+  }
+  return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
+}

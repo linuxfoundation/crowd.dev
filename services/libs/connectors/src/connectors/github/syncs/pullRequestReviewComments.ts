@@ -27,6 +27,7 @@ async function fetchThreads(ctx: SyncContext, prId: string): Promise<ReviewThrea
       ctx.http,
       REVIEW_THREADS_FOR_PRS_QUERY,
       { ids: [prId], first: THREADS_PAGE_SIZE, after: cursor },
+      ctx.log,
     )
     const connection = data.nodes[0]?.reviewThreads
     if (!connection?.edges) {
@@ -53,6 +54,7 @@ async function fetchThreadComments(
       ctx.http,
       COMMENTS_FOR_THREADS_QUERY,
       { ids: [threadId], first: COMMENTS_PAGE_SIZE, after: cursor },
+      ctx.log,
     )
     const connection = data.nodes[0]?.comments
     if (!connection?.edges) {

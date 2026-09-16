@@ -42,11 +42,16 @@ async function runDiscussionsSync(ctx: SyncContext): Promise<SyncOutcome> {
       ? comment.replies.pageInfo.endCursor
       : null
     while (repliesCursor) {
-      const data = await githubGraphql<CommentRepliesPage>(ctx.http, COMMENT_REPLIES_QUERY, {
-        id: comment.id,
-        first: REPLIES_PAGE_SIZE,
-        cursor: repliesCursor,
-      })
+      const data = await githubGraphql<CommentRepliesPage>(
+        ctx.http,
+        COMMENT_REPLIES_QUERY,
+        {
+          id: comment.id,
+          first: REPLIES_PAGE_SIZE,
+          cursor: repliesCursor,
+        },
+        ctx.log,
+      )
       const replies = data.node?.replies
       if (!replies) {
         break
@@ -79,6 +84,7 @@ async function runDiscussionsSync(ctx: SyncContext): Promise<SyncOutcome> {
           cursor: commentsCursor,
           repliesFirst: REPLIES_PAGE_SIZE,
         },
+        ctx.log,
       )
       const comments = data.node?.comments
       if (!comments) {
@@ -103,12 +109,17 @@ async function runDiscussionsSync(ctx: SyncContext): Promise<SyncOutcome> {
   let walked = false
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<DiscussionsPage>(ctx.http, DISCUSSIONS_QUERY, {
-      owner,
-      repo,
-      first: PAGE_SIZE,
-      cursor,
-    })
+    const data = await githubGraphql<DiscussionsPage>(
+      ctx.http,
+      DISCUSSIONS_QUERY,
+      {
+        owner,
+        repo,
+        first: PAGE_SIZE,
+        cursor,
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.discussions
     const discussions = nodes.filter((node): node is DiscussionNode => node !== null)
