@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getNangoCloudRecords } from '@crowd/nango'
 import { sendSlackNotificationAsync } from '@crowd/slack'
@@ -129,6 +129,12 @@ describe('listShadowDiffChannels', () => {
 describe('runShadowDiffForChannel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('returns mapping_missing when no nango_mapping row exists for the repo', async () => {
@@ -151,9 +157,6 @@ describe('runShadowDiffForChannel', () => {
   })
 
   it('reports mismatches found between shadow and nango records for the window', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'))
-
     mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
     mocks.getShadowRecordsInWindow.mockResolvedValue([
       {
@@ -179,8 +182,6 @@ describe('runShadowDiffForChannel', () => {
       integrationId: UNIT.integrationId,
       units: [UNIT],
     })
-
-    vi.useRealTimers()
 
     expect(result.status).toBe('ok')
     expect(result.mismatches).toHaveLength(1)
