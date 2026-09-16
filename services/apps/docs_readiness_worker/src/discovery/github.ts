@@ -7,8 +7,16 @@ export function parseGithubRepo(url: string): { owner: string; repo: string } | 
   return canonical?.isGithub ? { owner: canonical.owner, repo: canonical.repo } : null
 }
 
+function isGithubUrl(repo: string): boolean {
+  try {
+    return new URL(repo).hostname === 'github.com'
+  } catch {
+    return false
+  }
+}
+
 export function primaryRepo(repos: string[]): string | null {
-  const githubRepos = repos.filter((repo) => repo.includes('github.com'))
+  const githubRepos = repos.filter(isGithubUrl)
   if (githubRepos.length === 0) {
     return null
   }

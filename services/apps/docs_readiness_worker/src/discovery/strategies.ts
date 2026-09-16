@@ -39,7 +39,10 @@ function candidate(url: string, method: NonOverrideMethod, livenessOk: boolean):
   return { url, method, confidence: STRATEGY_CONFIDENCE[method], livenessOk }
 }
 
-function isBadgeOrGithubHost(host: string): boolean {
+function isBadgeOrGithubHost(host: string | null): boolean {
+  if (!host) {
+    return false
+  }
   return (
     host === 'github.com' ||
     BADGE_HOSTS.some((badge) => host === badge || host.endsWith(`.${badge}`))
@@ -279,7 +282,7 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
         return false
       }
       const host = domainOf(result.link)
-      if (host === 'github.com') {
+      if (!host || host === 'github.com') {
         return false
       }
       return (

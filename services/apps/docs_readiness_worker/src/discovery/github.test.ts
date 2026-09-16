@@ -39,6 +39,22 @@ describe('primaryRepo', () => {
   it('returns null when the list is empty', () => {
     expect(primaryRepo([])).toBeNull()
   })
+
+  it('does not let a non-github host matching the substring shadow a real github.com entry', () => {
+    expect(primaryRepo(['https://notgithub.com/a/b/c', 'https://github.com/torvalds/linux'])).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
+
+  it('ignores a non-github host even when no real github.com entry exists', () => {
+    expect(primaryRepo(['https://notgithub.com/a/b/c'])).toBeNull()
+  })
+
+  it('ignores malformed repo strings without throwing', () => {
+    expect(primaryRepo(['not a url', 'https://github.com/torvalds/linux'])).toBe(
+      'https://github.com/torvalds/linux',
+    )
+  })
 })
 
 function stubFetch(handler: (input: string, init?: RequestInit) => Response) {
