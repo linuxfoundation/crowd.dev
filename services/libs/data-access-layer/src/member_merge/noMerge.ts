@@ -37,7 +37,8 @@ async function verifiedKeysByMember(
   const map = new Map<string, VerifiedKeyRow[]>()
   for (const id of memberIds) map.set(id, [])
   for (const row of rows) {
-    map.get(row.memberId)!.push(row)
+    const list = map.get(row.memberId)
+    if (list) list.push(row)
   }
   return map
 }
@@ -49,9 +50,7 @@ function hashFrom(
 ): string {
   const [first, second] = [memberId, noMergeId].sort()
   const keys = [first, second].flatMap((id) =>
-    (byMember.get(id) ?? [])
-      .map((r) => `${r.platform}:${r.type}:${r.value}`)
-      .sort(),
+    (byMember.get(id) ?? []).map((r) => `${id}:${r.platform}:${r.type}:${r.value}`).sort(),
   )
   return createHash('sha256').update(keys.join('|')).digest('hex')
 }
