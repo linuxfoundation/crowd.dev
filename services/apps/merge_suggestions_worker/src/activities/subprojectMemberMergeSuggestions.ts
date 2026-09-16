@@ -1,3 +1,4 @@
+import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import * as db from '@crowd/data-access-layer/src/member_merge/subprojectSuggestions'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { RedisCache } from '@crowd/redis'
@@ -16,7 +17,17 @@ export async function fetchSubprojectMemberMergePairs(
   segmentId: string,
 ): Promise<ISubprojectMemberMergePair[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
-  return db.fetchSubprojectMemberMergePairs(qx, segmentId)
+  const pairs = await db.fetchSubprojectMemberMergePairs(qx, segmentId)
+
+  if (pairs.length === 0) return pairs
+
+  const memberIds = [...new Set(pairs.flatMap((p) => [p.primary.id, p.other.id]))]
+  const noMerge = await getMemberNoMerge(qx, memberIds)
+  const blocked = new Set(
+    noMerge.flatMap((nm) => [`${nm.memberId}:${nm.noMergeId}`, `${nm.noMergeId}:${nm.memberId}`]),
+  )
+
+  return pairs.filter((p) => !blocked.has(`${p.primary.id}:${p.other.id}`))
 }
 
 export async function fetchCachedSubprojects(subprojectIds: string[]): Promise<string[]> {

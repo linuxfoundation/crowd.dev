@@ -204,12 +204,6 @@ export async function fetchSubprojectMemberMergePairs(
       JOIN project_members oth ON oth."memberId" = p.other_id
       LEFT JOIN member_identities pi ON pi."memberId" = p.primary_id
       LEFT JOIN member_identities oi ON oi."memberId" = p.other_id
-      WHERE NOT EXISTS (
-        SELECT 1
-        FROM "memberNoMerge" nm
-        WHERE (nm."memberId" = p.primary_id AND nm."noMergeId" = p.other_id)
-           OR (nm."memberId" = p.other_id AND nm."noMergeId" = p.primary_id)
-      )
       ORDER BY GREATEST(prim."activityCount", oth."activityCount") DESC, p.primary_id, p.other_id
     `,
     { segmentId },
