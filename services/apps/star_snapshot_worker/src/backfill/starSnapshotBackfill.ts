@@ -397,6 +397,10 @@ export async function runStarSnapshotBackfill(
   const rateLimiter = createCoreRateLimiter(options.reservedCoreRateLimit, log)
   const failedRepos: IRepoForStarSnapshot[] = []
   let afterUrl = options.afterUrl
+  // The persisted checkpoint, kept separate from `afterUrl` (the live scan cursor) so a
+  // failure doesn't rewind live pagination - only frozen until the retry sweep resolves it.
+  let checkpointUrl = options.afterUrl
+  let checkpointFrozen = false
 
   while (!options.isShuttingDown()) {
     const repos = await findReposForStarSnapshot(qx, REPO_PAGE_SIZE, afterUrl)
@@ -446,21 +450,24 @@ export async function runStarSnapshotBackfill(
       break
     }
 
-    // Stop the checkpoint at the earliest unresolved failure in this page - advancing past
-    // it would lose a repo that only lives in `failedRepos` if we crash before the retry sweep.
+    // The live cursor always advances a full page so the scan keeps making progress and
+    // reaches the retry sweep - only the persisted checkpoint freezes at a failure.
+    afterUrl = repos[processedCount - 1].repoUrl
+
     const newFailures = failedRepos.slice(failedBeforePage)
-    const earliestFailedIndex =
-      newFailures.length > 0
-        ? Math.min(...newFailures.map((repo) => repos.indexOf(repo)))
-        : undefined
-    if (earliestFailedIndex === undefined) {
-      afterUrl = repos[processedCount - 1].repoUrl
-    } else if (earliestFailedIndex > 0) {
-      afterUrl = repos[earliestFailedIndex - 1].repoUrl
+    if (!checkpointFrozen && newFailures.length > 0) {
+      const earliestFailedIndex = Math.min(...newFailures.map((repo) => repos.indexOf(repo)))
+      if (earliestFailedIndex > 0) {
+        checkpointUrl = repos[earliestFailedIndex - 1].repoUrl
+      }
+      checkpointFrozen = true
+    }
+    if (!checkpointFrozen) {
+      checkpointUrl = afterUrl
     }
 
     log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
-    await options.onProgress?.(afterUrl, totals)
+    await options.onProgress?.(checkpointUrl, totals)
 
     if (processedCount < repos.length) {
       break
@@ -499,8 +506,11 @@ export async function runStarSnapshotBackfill(
     })
 
     log.info({ ...totals }, 'star snapshot backfill retry sweep done')
+    // The retry sweep was the last chance for this run's failures - unfreeze the
+    // checkpoint now, even for repos still failing, or resume would retry them forever.
     if (afterUrl) {
-      await options.onProgress?.(afterUrl, totals)
+      checkpointUrl = afterUrl
+      await options.onProgress?.(checkpointUrl, totals)
     }
   }
 
