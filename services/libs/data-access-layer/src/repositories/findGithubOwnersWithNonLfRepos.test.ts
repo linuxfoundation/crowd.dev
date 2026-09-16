@@ -181,4 +181,26 @@ describe('findGithubOwnersWithNonLfRepos', () => {
 
     expect(result.has('some-owner')).toBe(true)
   })
+
+  test('matches a repo stored as an ssh:// URL with a colon and no port', async ({ qx }) => {
+    await createRepository(qx, {
+      url: 'ssh://git@github.com:some-owner/some-repo.git',
+      isLF: false,
+    })
+
+    const result = await findGithubOwnersWithNonLfRepos(qx, ['some-owner'])
+
+    expect(result.has('some-owner')).toBe(true)
+  })
+
+  test('matches a repo stored with no scheme at all', async ({ qx }) => {
+    await createRepository(qx, {
+      url: 'github.com/some-owner/some-repo',
+      isLF: false,
+    })
+
+    const result = await findGithubOwnersWithNonLfRepos(qx, ['some-owner'])
+
+    expect(result.has('some-owner')).toBe(true)
+  })
 })
