@@ -15,6 +15,7 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 1. **Skip gate**: When processing any non-`.project` repo that has a `.project` sibling (determined by querying sibling repos via `segments.parentId` under the CNCF projectGroup), raise `MaintainerSkippedProjectLevelError` — no file detection, no LLM calls, no writes to `maintainersInternal`.
 2. **Sibling end-date**: After a `.project` repo successfully saves its maintainer roster, bulk-update `maintainersInternal` to set `endDate` on all active rows belonging to sibling repos in the same project.
 3. **Emeritus extraction**: Add `"emeritus"` as a third valid `normalized_title` in the LLM prompt and model. Emeritus-classified entries are filtered out in `save_maintainers` before any upsert, keeping them out of `maintainersInternal` entirely.
+4. **Case-insensitive handle lookup**: `find_github_identity` uses `LOWER(value) = LOWER($1)` when querying `memberIdentities`. GitHub handles are case-insensitive; CDP sometimes stores the lowercase variant as the non-deleted identity (e.g. `thor-wl` active, `Thor-wl` deleted). A case-sensitive match silently misses these, leaving a maintainer with no `identityId` row in `maintainersInternal`.
 
 ## Alternatives Considered
 
@@ -39,6 +40,7 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 - Eliminates over-collection from sibling repos for CNCF projects; one authoritative source per project.
 - Emeritus roles no longer pollute the active maintainer set.
 - Skip gate is cheap: one DB query per repo per cycle, no LLM cost for skipped repos.
+- Case-insensitive handle lookup recovers maintainers whose `memberIdentities` row was stored under a different casing than the handle in `maintainers.yaml`.
 
 ### Negative
 - Per-repo maintainer queries against sibling repo URLs return empty; consumers that need project-level maintainers must query via the `.project` repo. The `mv_maintainer_roles` MV does not yet filter `endDate IS NULL` (tracked separately), so sibling rows remain visible downstream until that is addressed.
