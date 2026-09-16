@@ -300,7 +300,7 @@ export async function backfillRepoStarHistory(
   const qx = pgpQx(svc.postgres.writer.connection())
   let result: RepoBackfillResult
   try {
-    result = await backfillRepo(qx, repo, rateLimiter, svc.log, false)
+    result = await backfillRepo(qx, repo, rateLimiter, svc.log, { dryRun: false, failFast: true })
   } catch (err) {
     const message = (err as Error)?.message ?? String(err)
     if (message.toLowerCase().includes('rate limit')) {
@@ -322,7 +322,17 @@ export async function backfillRepoStarHistory(
   // A negative-count skip is a reconstruction anomaly, not a completed backfill - leave
   // it unmarked so the repo stays in the candidate pool and retries on the next run.
   if (result.status !== 'skipped-negative-count') {
-    await recordStarBackfillSuccess(qx, repo.repositoryId)
+    try {
+      await recordStarBackfillSuccess(qx, repo.repositoryId)
+    } catch (err) {
+      // The GitHub fetch and row writes already succeeded - don't let a transient marker
+      // write force a full activity retry (which would re-fetch the entire stargazer
+      // history). The repo just stays a self-heal candidate until the next run.
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+        'failed to record star backfill completion marker, will retry on next self-heal run',
+      )
+    }
   }
   return { outcome: 'done' }
 }
