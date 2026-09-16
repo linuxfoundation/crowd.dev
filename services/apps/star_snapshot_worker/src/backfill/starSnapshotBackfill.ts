@@ -111,8 +111,10 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
     },
 
     async throttleIfNeeded(): Promise<void> {
-      const secondaryWaitMs = secondaryCooldownUntilMs - Date.now()
-      if (secondaryWaitMs > 0) {
+      // Re-check the shared deadline after each wait - another in-flight call can push
+      // secondaryCooldownUntilMs further out while this one sleeps.
+      while (secondaryCooldownUntilMs > Date.now()) {
+        const secondaryWaitMs = secondaryCooldownUntilMs - Date.now()
         log.warn(
           { waitMs: secondaryWaitMs },
           'GitHub secondary rate limit cooldown in effect, backing off',
@@ -506,9 +508,10 @@ export async function runStarSnapshotBackfill(
     })
 
     log.info({ ...totals }, 'star snapshot backfill retry sweep done')
-    // The retry sweep was the last chance for this run's failures - unfreeze the
-    // checkpoint now, even for repos still failing, or resume would retry them forever.
-    if (afterUrl) {
+    // Only unfreeze once every failure from this run is resolved - a repo still failing
+    // after the retry sweep must stay behind the checkpoint, or a resumed run would
+    // silently skip it forever instead of retrying it on a later run.
+    if (afterUrl && totals.reposFailed === 0) {
       checkpointUrl = afterUrl
       await options.onProgress?.(checkpointUrl, totals)
     }
