@@ -57,6 +57,7 @@ async function runIssueCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
           first: COMMENTS_PAGINATED_PAGE_SIZE,
           cursor: commentsCursor,
         },
+        ctx.log,
       )
       const comments = data.repository.issue?.comments
       if (!comments?.nodes) {
@@ -69,13 +70,18 @@ async function runIssueCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
   }
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<IssuesPage>(ctx.http, ISSUES_QUERY, {
-      owner,
-      repo,
-      first: PAGE_SIZE,
-      cursor,
-      since: querySince,
-    })
+    const data = await githubGraphql<IssuesPage>(
+      ctx.http,
+      ISSUES_QUERY,
+      {
+        owner,
+        repo,
+        first: PAGE_SIZE,
+        cursor,
+        since: querySince,
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.issues
     const issues = nodes.filter((node): node is IssueNode => node !== null)
@@ -89,6 +95,7 @@ async function runIssueCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
           ids: batch.map((issue) => issue.id),
           first: COMMENTS_BATCH_PAGE_SIZE,
         },
+        ctx.log,
       )
 
       const toPaginate: { issue: IssueNode; commentsCursor: string | null }[] = []
