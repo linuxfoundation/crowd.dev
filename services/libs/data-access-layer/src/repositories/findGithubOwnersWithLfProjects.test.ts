@@ -181,4 +181,15 @@ describe('findGithubOwnersWithLfProjects', () => {
 
     expect(result.has('kubernetes')).toBe(true)
   })
+
+  test('matches a repo stored as an ssh:// URL with a non-standard port', async ({ qx }) => {
+    await createRepository(qx, {
+      url: 'ssh://git@github.com:2222/kubernetes/kubernetes.git',
+      isLF: true,
+    })
+
+    const result = await findGithubOwnersWithLfProjects(qx, ['kubernetes'])
+
+    expect(result.has('kubernetes')).toBe(true)
+  })
 })

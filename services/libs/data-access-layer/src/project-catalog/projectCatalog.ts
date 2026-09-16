@@ -602,8 +602,9 @@ export async function finalizeProjectCatalogEvaluation(
   )
 }
 
-// Guarded like finalizeProjectCatalogEvaluation. Leaves evaluationResult/evaluationReason
-// untouched so this skip stays out of the agent's verdict columns and its skip alert.
+// Guarded like finalizeProjectCatalogEvaluation. Explicitly nulls evaluationResult/evaluationReason
+// (clearing any stale verdict from a prior evaluation) so this skip stays out of the agent's
+// verdict columns and its skip alert.
 export async function markProjectCatalogPreCheckSkipped(
   qx: QueryExecutor,
   id: string,

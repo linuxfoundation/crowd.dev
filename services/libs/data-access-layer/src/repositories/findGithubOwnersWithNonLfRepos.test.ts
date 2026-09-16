@@ -170,4 +170,15 @@ describe('findGithubOwnersWithNonLfRepos', () => {
 
     expect(result.has('some-owner')).toBe(true)
   })
+
+  test('matches a repo stored as an ssh:// URL with a non-standard port', async ({ qx }) => {
+    await createRepository(qx, {
+      url: 'ssh://git@github.com:2222/some-owner/some-repo.git',
+      isLF: false,
+    })
+
+    const result = await findGithubOwnersWithNonLfRepos(qx, ['some-owner'])
+
+    expect(result.has('some-owner')).toBe(true)
+  })
 })

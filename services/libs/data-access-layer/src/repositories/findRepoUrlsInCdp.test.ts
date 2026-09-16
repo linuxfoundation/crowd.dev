@@ -126,4 +126,12 @@ describe('findRepoUrlsInCdp', () => {
 
     expect(result.has('https://github.com/kubernetes/kubernetes')).toBe(true)
   })
+
+  test('matches a repo stored as an ssh:// URL with a non-standard port', async ({ qx }) => {
+    await createRepository(qx, { url: 'ssh://git@github.com:2222/kubernetes/kubernetes.git' })
+
+    const result = await findRepoUrlsInCdp(qx, ['https://github.com/kubernetes/kubernetes'])
+
+    expect(result.has('https://github.com/kubernetes/kubernetes')).toBe(true)
+  })
 })

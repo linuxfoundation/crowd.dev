@@ -202,9 +202,10 @@ export async function getRepositoriesByUrl(
   )
 }
 
-// Mirrors the URL forms canonicalizeRepoUrl accepts (https, ssh://git@, and scp-style git@host:).
+// Mirrors the URL forms canonicalizeRepoUrl accepts (https, ssh://git@ with an optional
+// port, and scp-style git@host:).
 const GITHUB_URL_PREFIX_PATTERN =
-  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com/|git@github\\.com:)'
+  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com(:\\d+)?/|git@github\\.com:)'
 
 // Expects canonicalGithubRepoUrls in canonicalizeGithubRepoUrl's output form; non-GitHub URLs never match.
 export async function findRepoUrlsInCdp(
