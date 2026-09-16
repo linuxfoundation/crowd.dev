@@ -14,11 +14,16 @@ async function fetchTimeline(ctx: SyncContext, prId: string): Promise<(PrTimelin
   const items: (PrTimelineItem | null)[] = []
   let cursor: string | null = null
   do {
-    const data = await githubGraphql<PrTimelinePage>(ctx.http, PR_TIMELINE_QUERY, {
-      ids: [prId],
-      first: TIMELINE_PAGE_SIZE,
-      after: cursor,
-    })
+    const data = await githubGraphql<PrTimelinePage>(
+      ctx.http,
+      PR_TIMELINE_QUERY,
+      {
+        ids: [prId],
+        first: TIMELINE_PAGE_SIZE,
+        after: cursor,
+      },
+      ctx.log,
+    )
     const timeline = data.nodes[0]?.timelineItems
     if (!timeline) {
       break
