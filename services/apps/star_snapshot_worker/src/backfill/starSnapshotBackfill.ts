@@ -508,13 +508,14 @@ export async function runStarSnapshotBackfill(
     })
 
     log.info({ ...totals }, 'star snapshot backfill retry sweep done')
-    // Only unfreeze once every failure from this run is resolved - a repo still failing
-    // after the retry sweep must stay behind the checkpoint, or a resumed run would
-    // silently skip it forever instead of retrying it on a later run.
+    // Only advance the persisted checkpoint once every failure from this run is resolved -
+    // a repo still failing must stay behind it so a future resume keeps retrying it instead
+    // of skipping past it forever. Flush progress either way, so repos that did recover on
+    // a mixed retry still get persisted to completedRepoIds instead of being re-fetched.
     if (afterUrl && totals.reposFailed === 0) {
       checkpointUrl = afterUrl
-      await options.onProgress?.(checkpointUrl, totals)
     }
+    await options.onProgress?.(checkpointUrl, totals)
   }
 
   return totals
