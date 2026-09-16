@@ -4,7 +4,7 @@ import { INangoRecord } from './types'
 export const toRecord = (data: any): INangoRecord => {
   return {
     id: data.id,
-    timestamp: data.timestamp,
+    timestamp: Date.parse(data.activityData?.timestamp ?? data.timestamp ?? ''),
     integrationId: data.integrationId,
 
     activity: data.activityData,
