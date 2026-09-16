@@ -1,5 +1,7 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import { getMemberNoMerge } from './noMerge'
+
 type SubprojectMember = {
   id: string
   displayName: string
@@ -47,7 +49,7 @@ export async function fetchSubprojectMemberMergePairs(
   qx: QueryExecutor,
   segmentId: string,
 ): Promise<SubprojectMemberMergePair[]> {
-  return qx.select(
+  const pairs: SubprojectMemberMergePair[] = await qx.select(
     `
       WITH project_members AS MATERIALIZED (
         SELECT
@@ -208,4 +210,14 @@ export async function fetchSubprojectMemberMergePairs(
     `,
     { segmentId },
   )
+
+  if (pairs.length === 0) return pairs
+
+  const memberIds = [...new Set(pairs.flatMap((p) => [p.primary.id, p.other.id]))]
+  const noMerge = await getMemberNoMerge(qx, memberIds)
+  const blocked = new Set(
+    noMerge.flatMap((nm) => [`${nm.memberId}:${nm.noMergeId}`, `${nm.noMergeId}:${nm.memberId}`]),
+  )
+
+  return pairs.filter((p) => !blocked.has(`${p.primary.id}:${p.other.id}`))
 }
