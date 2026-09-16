@@ -195,7 +195,12 @@ describe('runShadowDiffForChannel', () => {
     expect(result.syncSummaries).toEqual([
       {
         syncName: 'issues',
-        counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 1, unsupported_sync: 0 },
+        counts: {
+          missing_in_nango: 0,
+          missing_in_shadow: 0,
+          field_mismatch: 1,
+          unsupported_sync: 0,
+        },
       },
     ])
     expect(mocks.initNangoCloudClient).toHaveBeenCalled()
@@ -309,7 +314,12 @@ describe('runShadowDiffForChannel', () => {
     expect(result.syncSummaries).toEqual([
       {
         syncName: 'some-new-unmapped-sync',
-        counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 1 },
+        counts: {
+          missing_in_nango: 0,
+          missing_in_shadow: 0,
+          field_mismatch: 0,
+          unsupported_sync: 1,
+        },
       },
     ])
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
@@ -350,13 +360,24 @@ describe('reportShadowDiffResults', () => {
         integrationId: 'integration-1',
         status: 'ok',
         mismatches: [
-          { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+          {
+            sourceId: 'a',
+            type: 'issue',
+            kind: 'missing_in_nango',
+            severity: 'high',
+            syncName: 'issues',
+          },
         ],
         totalMismatchCount: 1,
         syncSummaries: [
           {
             syncName: 'issues',
-            counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            counts: {
+              missing_in_nango: 1,
+              missing_in_shadow: 0,
+              field_mismatch: 0,
+              unsupported_sync: 0,
+            },
           },
         ],
       },
@@ -432,13 +453,24 @@ describe('reportShadowDiffResults', () => {
         integrationId: 'integration-1',
         status: 'ok',
         mismatches: [
-          { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+          {
+            sourceId: 'a',
+            type: 'issue',
+            kind: 'missing_in_nango',
+            severity: 'high',
+            syncName: 'issues',
+          },
         ],
         totalMismatchCount: 3,
         syncSummaries: [
           {
             syncName: 'issues',
-            counts: { missing_in_nango: 3, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            counts: {
+              missing_in_nango: 3,
+              missing_in_shadow: 0,
+              field_mismatch: 0,
+              unsupported_sync: 0,
+            },
           },
         ],
       },
@@ -459,8 +491,20 @@ describe('reportShadowDiffResults', () => {
         integrationId: 'integration-1',
         status: 'ok',
         mismatches: [
-          { sourceId: 'i-1', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
-          { sourceId: 'i-2', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+          {
+            sourceId: 'i-1',
+            type: 'issue',
+            kind: 'missing_in_nango',
+            severity: 'high',
+            syncName: 'issues',
+          },
+          {
+            sourceId: 'i-2',
+            type: 'issue',
+            kind: 'missing_in_nango',
+            severity: 'high',
+            syncName: 'issues',
+          },
           {
             sourceId: 'c-1',
             type: 'issues-comment',
@@ -473,15 +517,30 @@ describe('reportShadowDiffResults', () => {
         syncSummaries: [
           {
             syncName: 'discussions',
-            counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            counts: {
+              missing_in_nango: 0,
+              missing_in_shadow: 0,
+              field_mismatch: 0,
+              unsupported_sync: 0,
+            },
           },
           {
             syncName: 'issues',
-            counts: { missing_in_nango: 2, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            counts: {
+              missing_in_nango: 2,
+              missing_in_shadow: 0,
+              field_mismatch: 0,
+              unsupported_sync: 0,
+            },
           },
           {
             syncName: 'issue-comments',
-            counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            counts: {
+              missing_in_nango: 1,
+              missing_in_shadow: 0,
+              field_mismatch: 0,
+              unsupported_sync: 0,
+            },
           },
         ],
       },
@@ -510,13 +569,24 @@ describe('reportShadowDiffResults', () => {
           integrationId: 'integration-1',
           status: 'ok',
           mismatches: [
-            { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+            {
+              sourceId: 'a',
+              type: 'issue',
+              kind: 'missing_in_nango',
+              severity: 'high',
+              syncName: 'issues',
+            },
           ],
           totalMismatchCount: 1,
           syncSummaries: [
             {
               syncName: 'issues',
-              counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+              counts: {
+                missing_in_nango: 1,
+                missing_in_shadow: 0,
+                field_mismatch: 0,
+                unsupported_sync: 0,
+              },
             },
           ],
         },
