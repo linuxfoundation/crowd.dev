@@ -169,6 +169,26 @@ const job: IJobDefinition = {
       })
     }
 
+    const precheckRows = await dbConnection.any<{ skipReason: string; total: string }>(
+      `
+      SELECT "skipReason", count(*) AS total
+      FROM "projectCatalog"
+      WHERE action = 'skip'
+        AND "evaluationResult" IS NULL
+        AND "skipReason" LIKE 'evaluation pre-check:%'
+        AND "evaluatedAt"::date = CURRENT_DATE
+      GROUP BY "skipReason"
+      ORDER BY total DESC
+      `,
+    )
+
+    if (precheckRows.length > 0) {
+      sections.push({
+        title: 'Deterministic pre-check (never reached the agent)',
+        text: precheckRows.map((row) => `${row.skipReason}: ${row.total}`).join('\n'),
+      })
+    }
+
     await sendSlackNotificationAsync(
       SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
       persona,
