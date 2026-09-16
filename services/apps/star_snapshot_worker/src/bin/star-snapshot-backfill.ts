@@ -26,6 +26,7 @@ process.on('SIGTERM', shutdown)
 const DEFAULT_RESERVED_CORE_RATE_LIMIT = 2_000
 const DEFAULT_CONCURRENCY = 5
 const DEFAULT_CHECKPOINT_FILE = '/var/lib/star-snapshot-worker/backfill-checkpoint.json'
+const DEFAULT_COMPLETED_REPOS_FILE = '/var/lib/star-snapshot-worker/backfill-completed-repos.json'
 
 interface Checkpoint {
   afterUrl: string
@@ -74,12 +75,38 @@ async function clearCheckpoint(path: string): Promise<void> {
   await rm(path, { force: true })
 }
 
+async function readCompletedRepoIds(path: string): Promise<Set<string>> {
+  try {
+    const ids = JSON.parse(await readFile(path, 'utf-8')) as string[]
+    return new Set(ids)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return new Set()
+    }
+    throw err
+  }
+}
+
+// Written atomically (tmp file + rename), same as the checkpoint - a crash mid-write
+// must never leave a corrupt file a resumed run would fail to parse.
+async function writeCompletedRepoIds(path: string, ids: Set<string>): Promise<void> {
+  const tmpPath = `${path}.${randomUUID()}.tmp`
+  await writeFile(tmpPath, JSON.stringify([...ids]))
+  await rename(tmpPath, path)
+}
+
+async function clearCompletedRepoIds(path: string): Promise<void> {
+  await rm(path, { force: true })
+}
+
 const main = async () => {
   const dryRun = process.argv.includes('--dry-run')
   const fresh = process.argv.includes('--fresh')
   const afterUrlOverride = readFlagValue('--after-url')
   const checkpointFile =
     process.env.STAR_SNAPSHOT_BACKFILL_CHECKPOINT_FILE ?? DEFAULT_CHECKPOINT_FILE
+  const completedReposFile =
+    process.env.STAR_SNAPSHOT_BACKFILL_COMPLETED_REPOS_FILE ?? DEFAULT_COMPLETED_REPOS_FILE
   const reservedCoreRateLimit = readIntEnv(
     'STAR_SNAPSHOT_BACKFILL_RESERVED_CORE_RATE_LIMIT',
     DEFAULT_RESERVED_CORE_RATE_LIMIT,
@@ -98,8 +125,26 @@ const main = async () => {
     }
   }
 
+  // --fresh means ignore all prior progress, including which repos were already done -
+  // otherwise stale entries would wrongly skip repos whose data was since cleared out.
+  if (fresh) {
+    await clearCompletedRepoIds(completedReposFile)
+  }
+  const completedRepoIds = fresh
+    ? new Set<string>()
+    : await readCompletedRepoIds(completedReposFile)
+
   log.info(
-    { dryRun, fresh, afterUrl, checkpointFile, reservedCoreRateLimit, concurrency },
+    {
+      dryRun,
+      fresh,
+      afterUrl,
+      checkpointFile,
+      completedReposFile,
+      alreadyBackfilledCount: completedRepoIds.size,
+      reservedCoreRateLimit,
+      concurrency,
+    },
     'star snapshot backfill starting (backfilling repositoryStarSnapshots from GitHub stargazers/history)...',
   )
 
@@ -113,9 +158,15 @@ const main = async () => {
     concurrency,
     dryRun,
     afterUrl,
+    completedRepoIds,
     isShuttingDown: () => shuttingDown,
-    onProgress: (progressAfterUrl) =>
-      dryRun ? undefined : writeCheckpoint(checkpointFile, progressAfterUrl),
+    onProgress: async (progressAfterUrl) => {
+      if (dryRun) return
+      await Promise.all([
+        writeCheckpoint(checkpointFile, progressAfterUrl),
+        writeCompletedRepoIds(completedReposFile, completedRepoIds),
+      ])
+    },
   })
 
   if (totals.completed && !dryRun) {

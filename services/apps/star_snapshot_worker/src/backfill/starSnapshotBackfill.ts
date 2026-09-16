@@ -39,12 +39,17 @@ export interface StarSnapshotBackfillOptions {
   concurrency: number
   dryRun: boolean
   afterUrl?: string
+  // Repos already successfully backfilled in a previous run - skipped without hitting
+  // GitHub, and mutated in place as this run completes more repos so the caller can
+  // persist it for the next run.
+  completedRepoIds?: Set<string>
   isShuttingDown: () => boolean
   onProgress?: (afterUrl: string, totals: StarSnapshotBackfillTotals) => Promise<void> | void
 }
 
 export interface StarSnapshotBackfillTotals {
   reposProcessed: number
+  reposSkippedAlreadyBackfilled: number
   reposSkippedNoHistory: number
   reposSkippedNegativeCount: number
   reposReconciled: number
@@ -304,6 +309,7 @@ export async function runStarSnapshotBackfill(
 ): Promise<StarSnapshotBackfillTotals> {
   const totals: StarSnapshotBackfillTotals = {
     reposProcessed: 0,
+    reposSkippedAlreadyBackfilled: 0,
     reposSkippedNoHistory: 0,
     reposSkippedNegativeCount: 0,
     reposReconciled: 0,
@@ -335,8 +341,11 @@ export async function runStarSnapshotBackfill(
         break
       }
 
+      const toProcess = batch.filter((repo) => !options.completedRepoIds?.has(repo.repositoryId))
+      totals.reposSkippedAlreadyBackfilled += batch.length - toProcess.length
+
       const results = await Promise.allSettled(
-        batch.map((repo) => backfillRepo(qx, repo, rateLimiter, log, options.dryRun)),
+        toProcess.map((repo) => backfillRepo(qx, repo, rateLimiter, log, options.dryRun)),
       )
 
       results.forEach((result, i) => {
@@ -345,7 +354,7 @@ export async function runStarSnapshotBackfill(
           totals.reposFailed++
           log.warn(
             {
-              repoUrl: batch[i].repoUrl,
+              repoUrl: toProcess[i].repoUrl,
               error: (result.reason as Error)?.message ?? result.reason,
             },
             'star snapshot backfill failed for repo',
@@ -353,6 +362,7 @@ export async function runStarSnapshotBackfill(
           return
         }
 
+        options.completedRepoIds?.add(toProcess[i].repositoryId)
         totals.daysWritten += result.value.daysWritten
         if (result.value.status === 'skipped-no-history') {
           totals.reposSkippedNoHistory++
