@@ -71,7 +71,7 @@ function parseLastPage(linkHeader: string | null): number | undefined {
   return match ? Number(match[1]) : undefined
 }
 
-const SECONDARY_RATE_LIMIT_COOLDOWN_MS = 60_000
+export const SECONDARY_RATE_LIMIT_COOLDOWN_MS = 60_000
 
 export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
   let remaining = Infinity
@@ -134,6 +134,20 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
         'GitHub core rate limit near reserved floor, backing off until reset',
       )
       await new Promise((resolve) => setTimeout(resolve, waitMs))
+    },
+
+    // Same decision as throttleIfNeeded, without the blocking wait or the reservation -
+    // callers that can't afford to hold a thread/activity open for the wait (e.g. a
+    // Temporal activity, which risks its startToCloseTimeout on a potentially ~1hr wait)
+    // use this to learn how long to back off and do the waiting somewhere durable instead.
+    peekWaitMs(): number {
+      if (secondaryCooldownUntilMs > Date.now()) {
+        return secondaryCooldownUntilMs - Date.now()
+      }
+      if (remaining > reservedFloor) {
+        return 0
+      }
+      return Math.max(resetAtMs - Date.now(), 0) + 1_000
     },
   }
 }
@@ -278,7 +292,7 @@ interface RepoBackfillResult {
   daysWritten: number
 }
 
-async function backfillRepo(
+export async function backfillRepo(
   qx: QueryExecutor,
   repo: IRepoForStarSnapshot,
   rateLimiter: CoreRateLimiter,

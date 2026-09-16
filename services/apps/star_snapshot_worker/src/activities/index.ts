@@ -3,13 +3,37 @@ import { ApplicationFailure } from '@temporalio/client'
 import { getGithubInstallationToken } from '@crowd/common_services'
 import {
   findReposForStarSnapshot as findReposForStarSnapshotQx,
+  findReposNeedingStarBackfill as findReposNeedingStarBackfillQx,
+  recordStarBackfillFailure,
+  recordStarBackfillSuccess,
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { IRepoForStarSnapshot } from '@crowd/types'
 
+import {
+  CoreRateLimiter,
+  SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+  backfillRepo,
+  createCoreRateLimiter,
+} from '../backfill/starSnapshotBackfill'
 import { parseGithubRepoUrl } from '../githubRepoUrl'
 import { svc } from '../main'
+
+const SELF_HEAL_RESERVED_CORE_RATE_LIMIT = 2_000
+const SELF_HEAL_DEAD_LETTER_AFTER = 3
+
+let selfHealRateLimiter: CoreRateLimiter | undefined
+// Lazily built on first use (not at module load) - svc.log isn't guaranteed ready until
+// after svc.init() runs. One instance per worker process, shared across every concurrent
+// backfillRepoStarHistory call - the reserved floor is a real GitHub quota, not a
+// per-activity budget.
+function getSelfHealRateLimiter(): CoreRateLimiter {
+  if (!selfHealRateLimiter) {
+    selfHealRateLimiter = createCoreRateLimiter(SELF_HEAL_RESERVED_CORE_RATE_LIMIT, svc.log)
+  }
+  return selfHealRateLimiter
+}
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 const FETCH_TIMEOUT_MS = 30_000
@@ -249,4 +273,49 @@ export async function findReposForStarSnapshot(
 ): Promise<IRepoForStarSnapshot[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
   return findReposForStarSnapshotQx(qx, limit, afterUrl)
+}
+
+export async function findReposNeedingStarBackfill(
+  limit?: number,
+  afterUrl?: string,
+): Promise<IRepoForStarSnapshot[]> {
+  const qx = pgpQx(svc.postgres.reader.connection())
+  return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
+}
+
+export type BackfillRepoStarHistoryResult =
+  | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'done' }
+
+export async function backfillRepoStarHistory(
+  repo: IRepoForStarSnapshot,
+): Promise<BackfillRepoStarHistoryResult> {
+  const rateLimiter = getSelfHealRateLimiter()
+  const waitMs = rateLimiter.peekWaitMs()
+  if (waitMs > 0) {
+    return { outcome: 'rate-limited', waitMs }
+  }
+
+  const qx = pgpQx(svc.postgres.writer.connection())
+  try {
+    await backfillRepo(qx, repo, rateLimiter, svc.log, false)
+    await recordStarBackfillSuccess(qx, repo.repositoryId)
+    return { outcome: 'done' }
+  } catch (err) {
+    const message = (err as Error)?.message ?? String(err)
+    if (message.toLowerCase().includes('rate limit')) {
+      return {
+        outcome: 'rate-limited',
+        waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      }
+    }
+    await recordStarBackfillFailure(
+      qx,
+      repo.repositoryId,
+      (err as Error)?.name ?? 'Error',
+      message,
+      SELF_HEAL_DEAD_LETTER_AFTER,
+    )
+    return { outcome: 'done' }
+  }
 }
