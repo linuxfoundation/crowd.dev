@@ -376,6 +376,11 @@ export async function runStarSnapshotBackfill(
       })
 
       processedCount += batch.length
+
+      log.info(
+        { ...totals, afterUrl: batch[batch.length - 1].repoUrl },
+        'star snapshot backfill batch done',
+      )
     }
 
     if (processedCount === 0) {
