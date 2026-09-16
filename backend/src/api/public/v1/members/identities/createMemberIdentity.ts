@@ -12,7 +12,6 @@ import {
   findMemberProjectGroupId,
   insertMemberIdentities,
   suggestMemberMerge,
-  touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
@@ -141,8 +140,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
               result = updatedExact
             }
           }
-
-          await touchMemberUpdatedAt(tx, memberId)
 
           return { identity: result, alreadyExisted: existed }
         })
