@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
+import { canonicalizeRepoUrl } from '@crowd/common'
+
 import {
   PRECHECK_SKIP_REASONS,
   computeExclusivelyLfOwners,
@@ -9,7 +11,7 @@ import {
 describe('resolvePrecheckSkipReason', () => {
   test('returns null when nothing matches', () => {
     const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://github.com/some-owner/some-repo' },
+      canonicalizeRepoUrl('https://github.com/some-owner/some-repo'),
       { reposInCdp: new Set(), exclusivelyLfOwners: new Set() },
     )
 
@@ -18,7 +20,7 @@ describe('resolvePrecheckSkipReason', () => {
 
   test('flags a non-GitHub repo', () => {
     const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://gitlab.com/gitlab-org/gitlab' },
+      canonicalizeRepoUrl('https://gitlab.com/gitlab-org/gitlab'),
       { reposInCdp: new Set(), exclusivelyLfOwners: new Set() },
     )
 
@@ -27,7 +29,7 @@ describe('resolvePrecheckSkipReason', () => {
 
   test('flags a repo already tracked in CDP', () => {
     const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://github.com/kubernetes/kubernetes' },
+      canonicalizeRepoUrl('https://github.com/kubernetes/kubernetes'),
       {
         reposInCdp: new Set(['https://github.com/kubernetes/kubernetes']),
         exclusivelyLfOwners: new Set(),
@@ -39,7 +41,7 @@ describe('resolvePrecheckSkipReason', () => {
 
   test('flags a repo whose owner is exclusively LF', () => {
     const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://github.com/kubernetes/new-repo' },
+      canonicalizeRepoUrl('https://github.com/kubernetes/new-repo'),
       { reposInCdp: new Set(), exclusivelyLfOwners: new Set(['kubernetes']) },
     )
 
@@ -48,7 +50,7 @@ describe('resolvePrecheckSkipReason', () => {
 
   test('prefers already-in-CDP over the LF-owner criterion', () => {
     const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://github.com/kubernetes/kubernetes' },
+      canonicalizeRepoUrl('https://github.com/kubernetes/kubernetes'),
       {
         reposInCdp: new Set(['https://github.com/kubernetes/kubernetes']),
         exclusivelyLfOwners: new Set(['kubernetes']),
@@ -59,19 +61,19 @@ describe('resolvePrecheckSkipReason', () => {
   })
 
   test('does not flag a mixed owner even if some repos are LF', () => {
-    const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'https://github.com/google/new-repo' },
-      { reposInCdp: new Set(), exclusivelyLfOwners: new Set() },
-    )
+    const reason = resolvePrecheckSkipReason(canonicalizeRepoUrl('https://github.com/google/new-repo'), {
+      reposInCdp: new Set(),
+      exclusivelyLfOwners: new Set(),
+    })
 
     expect(reason).toBeNull()
   })
 
   test('returns null for a repo URL that fails to canonicalize', () => {
-    const reason = resolvePrecheckSkipReason(
-      { repoUrl: 'not a url' },
-      { reposInCdp: new Set(), exclusivelyLfOwners: new Set() },
-    )
+    const reason = resolvePrecheckSkipReason(canonicalizeRepoUrl('not a url'), {
+      reposInCdp: new Set(),
+      exclusivelyLfOwners: new Set(),
+    })
 
     expect(reason).toBeNull()
   })

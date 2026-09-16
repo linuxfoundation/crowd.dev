@@ -96,6 +96,28 @@ describe('markProjectCatalogPreCheckSkipped', () => {
     expect(row?.evaluatedAt).not.toBeNull()
   })
 
+  test('clears a stale evaluationResult from a prior verdict on a manually re-queued row', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+    await updateProjectCatalog(qx, inserted.id, {
+      evaluationResult: 'false',
+      evaluationReason: 'not a real open source project',
+    })
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(
+      qx,
+      inserted.id,
+      'evaluation pre-check: repository already tracked in CDP',
+    )
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(updatedRows).toBe(1)
+    expect(row?.action).toBe('skip')
+    expect(row?.evaluationResult).toBeNull()
+    expect(row?.evaluationReason).toBeNull()
+  })
+
   test('does not touch a row already evaluated', async ({ qx }) => {
     const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
     await updateProjectCatalog(qx, inserted.id, {

@@ -1,5 +1,4 @@
-import { canonicalizeRepoUrl } from '@crowd/common'
-import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
+import { ICanonicalRepoUrl } from '@crowd/common'
 
 export const PRECHECK_SKIP_REASONS = {
   notGithub: 'evaluation pre-check: repository is not hosted on GitHub',
@@ -15,10 +14,9 @@ export interface IPrecheckFacts {
 // Order matters: cheapest/most certain evidence first. A URL that fails to
 // canonicalize is not a skip — it falls through to the agent.
 export function resolvePrecheckSkipReason(
-  project: Pick<IDbProjectCatalog, 'repoUrl'>,
+  canonical: ICanonicalRepoUrl | null,
   facts: IPrecheckFacts,
 ): string | null {
-  const canonical = canonicalizeRepoUrl(project.repoUrl)
   if (!canonical) {
     return null
   }

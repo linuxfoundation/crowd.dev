@@ -612,7 +612,8 @@ export async function markProjectCatalogPreCheckSkipped(
   return qx.result(
     `
     UPDATE "projectCatalog"
-    SET "action" = 'skip', "skipReason" = $(reason), "evaluatedAt" = NOW(), "updatedAt" = NOW()
+    SET "action" = 'skip', "skipReason" = $(reason), "evaluatedAt" = NOW(),
+        "evaluationResult" = NULL, "evaluationReason" = NULL, "updatedAt" = NOW()
     WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
     `,
     { id, reason },

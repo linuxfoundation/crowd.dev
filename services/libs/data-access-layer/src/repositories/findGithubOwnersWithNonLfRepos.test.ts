@@ -151,4 +151,23 @@ describe('findGithubOwnersWithNonLfRepos', () => {
 
     expect(result.size).toBe(0)
   })
+
+  test('matches a repo stored as an scp-style git@ URL', async ({ qx }) => {
+    await createRepository(qx, { url: 'git@github.com:some-owner/some-repo.git', isLF: false })
+
+    const result = await findGithubOwnersWithNonLfRepos(qx, ['some-owner'])
+
+    expect(result.has('some-owner')).toBe(true)
+  })
+
+  test('matches a repo stored as an ssh:// URL', async ({ qx }) => {
+    await createRepository(qx, {
+      url: 'ssh://git@github.com/some-owner/some-repo.git',
+      isLF: false,
+    })
+
+    const result = await findGithubOwnersWithNonLfRepos(qx, ['some-owner'])
+
+    expect(result.has('some-owner')).toBe(true)
+  })
 })

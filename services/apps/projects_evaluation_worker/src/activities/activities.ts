@@ -57,15 +57,17 @@ export async function precheckPendingProjects(
   // same reasoning as evaluateAndUpdateProject's fresh-state read below.
   const writeQx = pgpQx(svc.postgres.writer.connection())
 
-  const githubCanonicals = projects
-    .map((project) => canonicalizeRepoUrl(project.repoUrl))
-    .filter((canonical): canonical is ICanonicalRepoUrl & { isGithub: true } =>
+  const canonicalsByProjectId = new Map(
+    projects.map((project) => [project.id, canonicalizeRepoUrl(project.repoUrl)] as const),
+  )
+  const githubCanonicals = [...canonicalsByProjectId.values()].filter(
+    (canonical): canonical is ICanonicalRepoUrl & { isGithub: true } =>
       Boolean(canonical?.isGithub),
-    )
+  )
   const githubCanonicalUrls = githubCanonicals.map((canonical) => canonical.url)
   const githubOwners = githubCanonicals.map((canonical) => canonical.owner)
-  const uncanonicalizable = projects.filter(
-    (project) => !canonicalizeRepoUrl(project.repoUrl),
+  const uncanonicalizable = [...canonicalsByProjectId.values()].filter(
+    (canonical) => !canonical,
   ).length
 
   const [reposInCdp, lfOwners, nonLfOwners] = await Promise.all([
@@ -80,7 +82,10 @@ export async function precheckPendingProjects(
   let skippedPreCheck = 0
 
   for (const project of projects) {
-    const reason = resolvePrecheckSkipReason(project, { reposInCdp, exclusivelyLfOwners })
+    const reason = resolvePrecheckSkipReason(canonicalsByProjectId.get(project.id) ?? null, {
+      reposInCdp,
+      exclusivelyLfOwners,
+    })
 
     if (!reason) {
       remaining.push(project)
@@ -89,16 +94,26 @@ export async function precheckPendingProjects(
 
     const updatedRows = await markProjectCatalogPreCheckSkipped(writeQx, project.id, reason)
 
-    if (updatedRows === 0) {
+    if (updatedRows > 0) {
+      skippedPreCheck++
+      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+      continue
+    }
+
+    // 0 rows: either a manual request moved this row out of 'evaluate', or a prior
+    // attempt of this same (retried) activity already skipped it with this reason.
+    const fresh = await findProjectCatalogById(writeQx, project.id)
+    const alreadyPrechecked = fresh?.action === 'skip' && fresh?.skipReason === reason
+
+    if (alreadyPrechecked) {
+      skippedPreCheck++
+      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+    } else {
       log.info(
         { id: project.id, repoUrl: project.repoUrl },
         'Project was moved out of evaluate by a manual request while pre-checking, discarding skip.',
       )
-      continue
     }
-
-    skippedPreCheck++
-    breakdown[reason] = (breakdown[reason] ?? 0) + 1
   }
 
   log.info(

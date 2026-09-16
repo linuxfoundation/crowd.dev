@@ -234,6 +234,10 @@ export async function findRepoUrlsInCdp(
   return new Set(rows.map((row) => row.repoUrl))
 }
 
+// Mirrors the URL forms canonicalizeRepoUrl accepts (https, ssh://git@, and scp-style git@host:).
+const GITHUB_URL_PREFIX_PATTERN =
+  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com/|git@github\\.com:)'
+
 // Returned owners are lowercased regardless of input case, matching canonicalizeRepoUrl's `owner`.
 export async function findGithubOwnersWithLfProjects(
   qx: QueryExecutor,
@@ -250,14 +254,14 @@ export async function findGithubOwnersWithLfProjects(
     ),
     "lfOwners" AS (
       SELECT DISTINCT split_part(
-        lower(regexp_replace(r.url, '^https?://(www\\.)?github\\.com/', '', 'i')), '/', 1
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
       ) AS owner
       FROM public.repositories r
       JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId"
       WHERE r."deletedAt" IS NULL
         AND ip."deletedAt" IS NULL
         AND ip."isLF"
-        AND r.url ~* '^https?://(www\\.)?github\\.com/[^/]+/[^/]+'
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
     )
     SELECT c.owner AS owner
     FROM candidates c
@@ -286,12 +290,12 @@ export async function findGithubOwnersWithNonLfRepos(
     ),
     "nonLfOwners" AS (
       SELECT DISTINCT split_part(
-        lower(regexp_replace(r.url, '^https?://(www\\.)?github\\.com/', '', 'i')), '/', 1
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
       ) AS owner
       FROM public.repositories r
       LEFT JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId" AND ip."deletedAt" IS NULL
       WHERE r."deletedAt" IS NULL
-        AND r.url ~* '^https?://(www\\.)?github\\.com/[^/]+/[^/]+'
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
         AND COALESCE(ip."isLF", false) = false
     )
     SELECT c.owner AS owner

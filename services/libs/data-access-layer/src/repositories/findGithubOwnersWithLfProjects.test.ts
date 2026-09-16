@@ -162,4 +162,20 @@ describe('findGithubOwnersWithLfProjects', () => {
 
     expect(result.size).toBe(0)
   })
+
+  test('matches a repo stored as an scp-style git@ URL', async ({ qx }) => {
+    await createRepository(qx, { url: 'git@github.com:kubernetes/kubernetes.git', isLF: true })
+
+    const result = await findGithubOwnersWithLfProjects(qx, ['kubernetes'])
+
+    expect(result.has('kubernetes')).toBe(true)
+  })
+
+  test('matches a repo stored as an ssh:// URL', async ({ qx }) => {
+    await createRepository(qx, { url: 'ssh://git@github.com/kubernetes/kubernetes.git', isLF: true })
+
+    const result = await findGithubOwnersWithLfProjects(qx, ['kubernetes'])
+
+    expect(result.has('kubernetes')).toBe(true)
+  })
 })
