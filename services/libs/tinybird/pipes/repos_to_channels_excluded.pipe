@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `repos_to_channels_excluded.pipe` expands excluded repository URLs to all possible activity channel formats.
+    - Every repo also expands to a lowercase channel variant, since some activities were ingested with lowercased repo casing.
     - For Gerrit repos, generates both the original URL and the /q/project: variant since activity channels use this format.
-    - Non-Gerrit repos are passed through unchanged.
     - Used by activity filtering pipes to build exclusion filters for channels that belong to excluded repositories.
     - Response: `channel` - all possible channel URL formats for excluded repos
 
@@ -9,24 +9,10 @@ TAGS "Repository URLs", "Gerrit"
 
 NODE repos_to_expand
 DESCRIPTION >
-    Get excluded repository URLs to expand. Dedupes case-only-duplicate `repositories` rows the
-    same way `repos_to_channels_deduplicated` does (IN-1307) before checking `excluded`, so a
-    stale case-duplicate row can't suppress the active canonical repository's activity.
+    Get excluded repository URLs to expand
 
 SQL >
-    SELECT canonicalUrl AS url
-    FROM
-        (
-            WITH argMax(tuple(url, enabled, excluded, deletedAt), updatedAt) AS latest
-            SELECT
-                latest .1 AS canonicalUrl,
-                latest .2 AS enabled,
-                latest .3 AS excluded,
-                latest .4 AS deletedAt
-            FROM repositories FINAL
-            GROUP BY lower(url)
-        )
-    WHERE isNull (deletedAt) AND enabled = true AND excluded = true
+    SELECT url FROM repositories FINAL WHERE isNull (deletedAt) AND enabled = true AND excluded = true
 
 NODE gerrit_repos
 DESCRIPTION >
@@ -45,6 +31,10 @@ DESCRIPTION >
 SQL >
     -- Original URLs (all excluded repos)
     SELECT url AS channel
+    FROM repos_to_expand
+    UNION ALL
+    -- Lowercase channel variant: matches activities ingested with lowercased repo casing
+    SELECT lower(url) AS channel
     FROM repos_to_expand
     UNION ALL
     -- Gerrit channel variants: insert q/project: after the base path

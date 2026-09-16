@@ -26,17 +26,9 @@ SQL >
         {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
         {% end %} AND isNotNull(resolvedAt) AND resolvedInSeconds > 0 AND platform != 'gerrit'
         {% if defined(repos) %}
-            AND lower(channel) IN (
-                arrayMap(
-                    x -> lower(x),
-                    {{
-                        Array(
-                            repos, 'String', description="Filter activity repo list", required=False
-                        )
-                    }}
-                )
-            )
-        {% else %} AND lower(channel) IN (SELECT lower(channel) FROM repos_to_channels)
+            AND channel
+            IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
+        {% else %} AND channel IN (SELECT channel FROM repos_to_channels)
         {% end %}
         {% if defined(startDate) %}
             AND openedAt > {{ DateTime(startDate, description="Filter after date", required=False) }}

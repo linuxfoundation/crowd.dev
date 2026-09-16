@@ -12,11 +12,11 @@ NODE repo_health_score_active_days_score
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT lower(channel) AS channel, countDistinct(DATE(timestamp)) AS activeDaysCount
+        SELECT channel, countDistinct(DATE(timestamp)) AS activeDaysCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            lower(channel) = lower({{ String(repoUrl, description="Repository URL", required=False) }})
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -27,12 +27,12 @@ SQL >
             {% end %}
         GROUP BY channel
     {% else %}
-        SELECT lower(channel) AS channel, countDistinct(DATE(timestamp)) AS activeDaysCount
+        SELECT channel, countDistinct(DATE(timestamp)) AS activeDaysCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             timestamp >= toStartOfDay(now() - toIntervalDay(365))
             AND timestamp < toStartOfDay(now())
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY channel
     {% end %}
 

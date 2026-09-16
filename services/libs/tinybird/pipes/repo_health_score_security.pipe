@@ -40,6 +40,6 @@ SQL >
 
 NODE repo_health_score_security_score
 SQL >
-    SELECT lower(repo) AS channel, round(avg(percentage)) AS securityPercentage
+    SELECT repo AS channel, round(avg(percentage)) AS securityPercentage
     FROM repo_health_score_security_category
-    GROUP BY lower(repo)
+    GROUP BY repo

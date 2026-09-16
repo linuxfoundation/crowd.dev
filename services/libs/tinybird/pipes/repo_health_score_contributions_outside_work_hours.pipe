@@ -14,15 +14,15 @@ SQL >
     %
     {% if defined(repoUrl) %}
         SELECT
-            lower(channel) AS channel,
+            channel,
             round(
                 (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
                 / count(id)
             ) AS contributionsOutsideWorkHours
         FROM contributions_with_local_time_ds
         WHERE
-            lower(channel) = lower({{ String(repoUrl, description="Repository URL", required=False) }})
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -34,7 +34,7 @@ SQL >
         GROUP BY channel
     {% else %}
         SELECT
-            lower(channel) AS channel,
+            channel,
             round(
                 (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
                 / count(id)
@@ -43,7 +43,7 @@ SQL >
         WHERE
             timestamp >= toStartOfDay(now() - toIntervalDay(365))
             AND timestamp < toStartOfDay(now() + toIntervalDay(1))
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY channel
     {% end %}
 

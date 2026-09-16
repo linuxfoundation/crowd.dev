@@ -8,9 +8,6 @@ DESCRIPTION >
     below). Project-level rollup (best-state-wins) happens in project_insights_copy.pipe.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
     health_score_v2_maintainer.pipe description for why.
-    - Base repo list dedupes case-only-duplicate `repositories` rows the same way
-    `repos_channels_copy_deduplicated` does (IN-1307), so a repo isn't emitted twice with the
-    non-canonical casing left with no lifecycle signal.
     - `NULL` branch added 2026-07-24 (IN-1196, per Joana's review): the original spec's `active`
     fallback fired whenever a repo failed every other branch, including repos with NO real signal
     at all. Confirmed on blocknetdx/blocknet: lastCommitAt IS NULL and commits/issues/PRs are all
@@ -110,27 +107,15 @@ SQL >
             SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
             FROM
                 (
-                    SELECT canonicalUrl AS url, archived
-                    FROM
-                        (
-                            WITH argMax(tuple(url, archived, excluded, deletedAt), updatedAt) AS latest
-                            SELECT
-                                latest .1 AS canonicalUrl,
-                                latest .2 AS archived,
-                                latest .3 AS excluded,
-                                latest .4 AS deletedAt
-                            FROM repositories FINAL
-                            GROUP BY lower(url)
-                        )
+                    SELECT DISTINCT url, archived
+                    FROM repositories FINAL
                     WHERE deletedAt IS NULL AND excluded = false
                 ) AS base
             LEFT JOIN
                 (
-                    SELECT lower(url) AS url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
-                    FROM repos
-                    GROUP BY lower(url)
+                    SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt FROM repos GROUP BY url
                 ) AS rc
-                ON rc.url = lower(base.url)
+                ON rc.url = base.url
         ) AS r
     LEFT JOIN
         (
@@ -142,7 +127,7 @@ SQL >
                     AND ar.timestamp > now() - INTERVAL 12 MONTH
                 ) AS commitsPrior6m
             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
+            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
             WHERE ar.type = 'authored-commit'
             GROUP BY ch.repoUrl
         ) AS c
@@ -151,7 +136,7 @@ SQL >
         (
             SELECT ch.repoUrl AS repoUrl, countIf(ia.closedAt IS NULL) AS issuesOpenNow
             FROM issues_analyzed ia
-            INNER JOIN repos_channels_ds ch ON lower(ia.channel) = lower(ch.channel)
+            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
             GROUP BY ch.repoUrl
         ) AS n
         ON n.repoUrl = r.url
@@ -171,7 +156,7 @@ SQL >
                     AND ia.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d
             FROM issues_analyzed ia
-            INNER JOIN repos_channels_ds ch ON lower(ia.channel) = lower(ch.channel)
+            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
             GROUP BY ch.repoUrl
         ) AS w
         ON w.repoUrl = r.url
@@ -181,7 +166,7 @@ SQL >
                 ch.repoUrl AS repoUrl,
                 countIf(pra.openedAt > now() - INTERVAL 18 MONTH) AS prsInWindow18m
             FROM pull_requests_analyzed pra
-            INNER JOIN repos_channels_ds ch ON lower(pra.channel) = lower(ch.channel)
+            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
             GROUP BY ch.repoUrl
         ) AS p
         ON p.repoUrl = r.url
@@ -197,7 +182,7 @@ SQL >
                     AND pra.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d
             FROM pull_requests_analyzed pra
-            INNER JOIN repos_channels_ds ch ON lower(pra.channel) = lower(ch.channel)
+            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
             GROUP BY ch.repoUrl
         ) AS pw
         ON pw.repoUrl = r.url

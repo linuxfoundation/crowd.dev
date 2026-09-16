@@ -17,10 +17,8 @@ SQL >
         WHERE
             segmentId = (SELECT segmentId FROM segments_filtered)
             AND closedAt IS NOT NULL
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
-            {% if defined(repos) %}
-                AND lower(channel) IN (SELECT lower(channel) FROM repos_to_channels)
-            {% end %}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND openedAt
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -36,7 +34,7 @@ SQL >
             openedAt >= toStartOfDay(now()) - INTERVAL 365 DAY
             AND openedAt < toStartOfDay(now()) + INTERVAL 1 DAY
             AND closedAt IS NOT NULL
-            AND lower(channel) NOT IN (SELECT lower(channel) FROM repos_to_channels_excluded)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY segmentId
     {% end %}
 

@@ -37,9 +37,6 @@ DESCRIPTION >
     to both its plain URL and /q/project: channel variant. isGerrit is derived from
     integrations.platform='gerrit', covering all Gerrit hosts regardless of domain.
     changeset-merged is counted in observedActorsCount so admin/cherry-pick merges count toward bus factor.
-    - `allRepos` dedupes case-only-duplicate `repositories` rows the same way
-    `repos_channels_copy_deduplicated` does (IN-1307), so a repo isn't emitted twice with the
-    non-canonical casing left with missing maintainer signals.
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -189,24 +186,7 @@ SQL >
                                 r.url AS repoUrl,
                                 (i.platform = 'gerrit') AS isGerrit,
                                 r.excluded AS isExcluded
-                            FROM
-                                (
-                                    WITH
-                                        argMax(
-                                            tuple(
-                                                url, archived, excluded, sourceIntegrationId, deletedAt
-                                            ),
-                                            updatedAt
-                                        ) AS latest
-                                    SELECT
-                                        latest .1 AS url,
-                                        latest .2 AS archived,
-                                        latest .3 AS excluded,
-                                        latest .4 AS sourceIntegrationId,
-                                        latest .5 AS deletedAt
-                                    FROM repositories FINAL
-                                    GROUP BY lower(url)
-                                ) AS r
+                            FROM repositories r FINAL
                             LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
                             WHERE r.deletedAt IS NULL AND r.archived = false AND r.excluded = false
                         ) AS allRepos
@@ -220,8 +200,7 @@ SQL >
                                 (
                                     SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
                                     FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                                    INNER JOIN
-                                        repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
+                                    INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                                     WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
@@ -238,7 +217,7 @@ SQL >
                                 ch.repoUrl AS repoUrl,
                                 count(DISTINCT ar.memberId) AS observedActorsCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
+                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                             WHERE
                                 ar.timestamp > now() - INTERVAL 12 MONTH
                                 AND ar.memberId != ''
@@ -259,7 +238,7 @@ SQL >
                         (
                             SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.organizationId) AS orgCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN repos_channels_ds ch ON lower(ar.channel) = lower(ch.channel)
+                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                             WHERE ar.timestamp > now() - INTERVAL 12 MONTH AND ar.organizationId != ''
                             GROUP BY ch.repoUrl
                         ) AS od
@@ -271,7 +250,7 @@ SQL >
                                 quantile(0.5)
                                 (pra.reviewedInSeconds) AS medianPrResponseS
                             FROM pull_requests_analyzed pra
-                            INNER JOIN repos_channels_ds ch ON lower(pra.channel) = lower(ch.channel)
+                            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
                             WHERE
                                 pra.openedAt > now() - INTERVAL 12 MONTH
                                 AND pra.reviewedInSeconds IS NOT NULL
@@ -285,7 +264,7 @@ SQL >
                                 quantile(0.5)
                                 (ia.respondedInSeconds) AS medianIssueResponseS
                             FROM issues_analyzed ia
-                            INNER JOIN repos_channels_ds ch ON lower(ia.channel) = lower(ch.channel)
+                            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
                             WHERE
                                 ia.openedAt > now() - INTERVAL 12 MONTH
                                 AND ia.respondedInSeconds IS NOT NULL

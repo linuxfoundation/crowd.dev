@@ -308,7 +308,7 @@ DESCRIPTION >
 
 SQL >
     SELECT
-        lower(channel) AS channel,
+        channel,
         countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
         uniqIf(
@@ -327,12 +327,11 @@ SQL >
         ) AS activeOrganizationsPrevious365Days
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
-    GROUP BY lower(channel)
+    GROUP BY channel
 
 NODE project_insights_copy_repo_results
 DESCRIPTION >
-    Join all repository insights together.
-    `hs.channel` is always lowercase (IN-1307); `base.repoUrl` is lowered to match on the join.
+    Join all repository insights together
 
 SQL >
     SELECT
@@ -399,9 +398,9 @@ SQL >
         CAST(NULL AS Nullable(UInt8)) AS coveredCategoryCount,
         CAST(NULL AS Nullable(UInt8)) AS healthMaxScore
     FROM project_insights_copy_repo_base AS base
-    LEFT JOIN repo_health_score_copy_ds AS hs ON lower(base.repoUrl) = hs.channel
-    LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON lower(base.repoUrl) = lower(rm.channel)
-    LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON lower(base.repoUrl) = lower(hv2.repoUrl)
+    LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
+    LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
+    LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON base.repoUrl = hv2.repoUrl
 
 NODE project_insights_copy_results
 DESCRIPTION >

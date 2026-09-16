@@ -6,7 +6,7 @@ DESCRIPTION >
     Mirrors `project_insights_impact_breakdown_copy.pipe`'s overall structure (single rollup NODE,
     `TYPE COPY`, scheduled after its upstream dependency).
     - Join path: `repositories` (project's own repos, filtered `enabled = true AND excluded = false`)
-    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.canonicalUrl`) — same population filter
+    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.url`) — same population filter
     and join shape as `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node.
     - Aggregation per column, chosen per column type (not one rule for all columns), per the IN-1212
     content-spec execution plan:
@@ -53,10 +53,6 @@ DESCRIPTION >
     "not applicable" framing per spec is about the project's overall data availability, not a single
     repo's classification.
     - `lastCommitAt`: `max()` — the most recent commit across the project's repos.
-    - Repos joined from a deduplicated subquery over `repositories` (IN-1307), not the raw table —
-    one canonical row per case-insensitive URL, same dedup as `repos_channels_copy.pipe` — so a
-    case-only-duplicate repo contributes exactly one row to the project rollup instead of one
-    matched + one unmatched (all-NULL) row.
     - Schedule: `55 2 * * *`, moved post-review (epipav) from the original `35 2 * * *` — see
     `health_score_v2_signal_detail.pipe`'s DESCRIPTION for the production-data-backed rationale
     (real job-log analysis, not a guess). `health_score_v2_signal_detail.pipe` (populates the source
@@ -146,29 +142,11 @@ SQL >
         ) AS busFactorScoreActivityWeightedMean
     FROM insightsProjects ip FINAL
     LEFT JOIN
-        (
-            SELECT canonicalUrl, insightsProjectId, enabled, excluded
-            FROM
-                (
-                    WITH
-                        argMax(
-                            tuple(url, insightsProjectId, enabled, excluded, deletedAt), updatedAt
-                        ) AS latest
-                    SELECT
-                        latest .1 AS canonicalUrl,
-                        latest .2 AS insightsProjectId,
-                        latest .3 AS enabled,
-                        latest .4 AS excluded,
-                        latest .5 AS deletedAt
-                    FROM repositories FINAL
-                    GROUP BY lower(url)
-                )
-            WHERE isNull (deletedAt)
-        ) AS rep
+        repositories rep FINAL
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false
-    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.canonicalUrl
+    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
     GROUP BY ip.id, ip.slug
 
 TYPE COPY
