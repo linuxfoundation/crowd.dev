@@ -21,7 +21,7 @@ class MaintainerInfoItem(BaseModel):
     github_username: str | None = None
     name: str | None = None
     title: str | None = None
-    normalized_title: Literal["maintainer", "contributor"] | None = None
+    normalized_title: Literal["maintainer", "contributor", "emeritus"] | None = None
     email: str | None = None
 
 

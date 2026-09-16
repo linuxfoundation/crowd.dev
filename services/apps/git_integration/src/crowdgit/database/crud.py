@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -464,6 +465,73 @@ async def set_maintainer_end_date(
             role,
         ),
     )
+
+
+@dataclass
+class ProjectContext:
+    project_segment_id: str
+    project_repo_id: str
+    project_repo_url: str
+    sibling_repo_ids: list[str] = field(default_factory=list)
+
+
+async def find_project_repo_sibling(repo_id: str) -> ProjectContext | None:
+    """
+    For a given repo, find the sibling .project repo within the same CNCF project segment,
+    and list all other sibling repo IDs.
+
+    Returns None if the repo's segment is not a CNCF subproject (grandparentSlug != 'cncf')
+    or no .project sibling exists.
+    """
+    sql = """
+        WITH self_segment AS (
+            SELECT s.id, s.type, s."parentId", s."parentSlug", s."grandparentSlug"
+            FROM public.repositories r
+            JOIN public.segments s ON s.id = r."segmentId"
+            WHERE r.id = $1
+        ),
+        project_id_cte AS (
+            SELECT "parentId" AS project_id
+            FROM self_segment
+            WHERE type = 'subproject' AND "grandparentSlug" = 'cncf'
+        ),
+        project_repos AS (
+            SELECT r.id, r.url
+            FROM public.repositories r
+            JOIN public.segments s ON s.id = r."segmentId"
+            WHERE (SELECT project_id FROM project_id_cte) IS NOT NULL
+              AND s.type = 'subproject'
+              AND s."parentId" = (SELECT project_id FROM project_id_cte)
+              AND r."deletedAt" IS NULL
+        )
+        SELECT
+            (SELECT project_id::text FROM project_id_cte)                                           AS project_segment_id,
+            (SELECT id::text  FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_id,
+            (SELECT url       FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_url,
+            ARRAY(SELECT id::text FROM project_repos WHERE url !~* '/\\.project(\\.git)?$')         AS sibling_repo_ids
+    """
+    row = await fetchrow(sql, (repo_id,))
+    if not row or not row.get("project_segment_id") or not row.get("project_repo_id"):
+        return None
+    return ProjectContext(
+        project_segment_id=row["project_segment_id"],
+        project_repo_id=row["project_repo_id"],
+        project_repo_url=row["project_repo_url"],
+        sibling_repo_ids=list(row["sibling_repo_ids"] or []),
+    )
+
+
+async def end_date_maintainers_for_repos(repo_ids: list[str], end_date: datetime) -> None:
+    """Bulk end-date all active maintainer rows for a list of repo IDs."""
+    if not repo_ids:
+        return
+    sql = """
+        UPDATE "maintainersInternal"
+           SET "endDate" = $1, "updatedAt" = NOW()
+         WHERE "repoId" = ANY($2::uuid[])
+           AND "endDate" IS NULL
+    """
+    await execute(sql, (end_date, repo_ids))
 
 
 async def batch_check_parent_activities(

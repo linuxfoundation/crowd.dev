@@ -105,6 +105,13 @@ class MaintainerIntervalNotElapsedError(CrowdGitError):
 
 
 @dataclass
+class MaintainerSkippedProjectLevelError(CrowdGitError):
+    error_message: str = "Maintainer detection skipped: project-level source (.project/maintainers.yaml) is authoritative"
+    error_code: ErrorCode = ErrorCode.MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE
+    ai_cost: int = 0
+
+
+@dataclass
 class AffiliationFileNotFoundError(CrowdGitError):
     error_message: str = "No affiliation file found in this repository"
     error_code: ErrorCode = ErrorCode.NO_AFFILIATION_FILE
