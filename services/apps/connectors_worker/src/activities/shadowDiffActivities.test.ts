@@ -48,7 +48,11 @@ vi.mock('@crowd/nango', () => ({
 vi.mock('@crowd/slack', () => ({
   sendSlackNotificationAsync: mocks.sendSlackNotificationAsync,
   SlackChannel: { CDP_INTEGRATIONS_ALERTS: 'CDP_INTEGRATIONS_ALERTS' },
-  SlackPersona: { WARNING_PROPAGATOR: 'WARNING_PROPAGATOR', ERROR_REPORTER: 'ERROR_REPORTER' },
+  SlackPersona: {
+    WARNING_PROPAGATOR: 'WARNING_PROPAGATOR',
+    ERROR_REPORTER: 'ERROR_REPORTER',
+    SUCCESS_ANNOUNCER: 'SUCCESS_ANNOUNCER',
+  },
 }))
 
 const UNIT: {
@@ -345,7 +349,7 @@ describe('reportShadowDiffResults', () => {
     mocks.sendSlackNotificationAsync.mockResolvedValue(true)
   })
 
-  it('sends one Slack alert per channel that has mismatches or an error, and skips healthy channels', async () => {
+  it('sends a single consolidated Slack report covering every repo in the run', async () => {
     await reportShadowDiffResults([
       {
         channelName: 'healthy-repo',
@@ -400,15 +404,52 @@ describe('reportShadowDiffResults', () => {
       },
     ])
 
-    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(3)
+    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(1)
+    const [, , , body] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
+    const bodyText = String(body)
+
+    expect(bodyText).toContain(
+      'Checked 4 repo(s): 1 clean, 1 with mismatches, 1 missing nango mapping, 1 errored.',
+    )
+    expect(bodyText).toContain('mismatched-repo')
+    expect(bodyText).not.toContain('healthy-repo')
+    expect(bodyText).toContain('unmapped-repo (integration integration-1)')
+    expect(bodyText).toContain('broken-repo (integration integration-1): boom')
   })
 
-  it('identifies the integration in the alert title so shared repos are distinguishable', async () => {
+  it('does not send anything when there are no channels to report on', async () => {
+    await reportShadowDiffResults([])
+
+    expect(sendSlackNotificationAsync).not.toHaveBeenCalled()
+  })
+
+  it('uses the ERROR_REPORTER persona when any channel errored, even alongside mismatches', async () => {
     await reportShadowDiffResults([
       {
-        channelName: 'shared-repo',
+        channelName: 'broken-repo',
         integrationId: 'integration-1',
-        status: 'mapping_missing',
+        status: 'error',
+        mismatches: [],
+        totalMismatchCount: 0,
+        syncSummaries: [],
+        errorMessage: 'boom',
+      },
+    ])
+
+    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
+      'CDP_INTEGRATIONS_ALERTS',
+      'ERROR_REPORTER',
+      'Shadow diff report',
+      expect.any(String),
+    )
+  })
+
+  it('uses the SUCCESS_ANNOUNCER persona when every checked repo is clean', async () => {
+    await reportShadowDiffResults([
+      {
+        channelName: 'healthy-repo',
+        integrationId: 'integration-1',
+        status: 'ok',
         mismatches: [],
         totalMismatchCount: 0,
         syncSummaries: [],
@@ -417,32 +458,9 @@ describe('reportShadowDiffResults', () => {
 
     expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
       'CDP_INTEGRATIONS_ALERTS',
-      'WARNING_PROPAGATOR',
-      'Shadow diff: no nango mapping for shared-repo (integration integration-1)',
+      'SUCCESS_ANNOUNCER',
+      'Shadow diff report',
       expect.any(String),
-    )
-  })
-
-  it('truncates the Slack title so long channel names cannot exceed the header block limit even with the persona icon prefixed', async () => {
-    const longChannelName = `https://github.com/${'a'.repeat(150)}/${'b'.repeat(150)}`
-
-    await reportShadowDiffResults([
-      {
-        channelName: longChannelName,
-        integrationId: 'integration-1',
-        status: 'mapping_missing',
-        mismatches: [],
-        totalMismatchCount: 0,
-        syncSummaries: [],
-      },
-    ])
-
-    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(1)
-    const [, , title] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
-    const SLACK_HEADER_MAX_LENGTH = 150
-    const LONGEST_PERSONA_ICON_PREFIX = ':rotating_light: '
-    expect(title.length + LONGEST_PERSONA_ICON_PREFIX.length).toBeLessThanOrEqual(
-      SLACK_HEADER_MAX_LENGTH,
     )
   })
 
@@ -476,12 +494,47 @@ describe('reportShadowDiffResults', () => {
       },
     ])
 
-    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
-      'CDP_INTEGRATIONS_ALERTS',
-      'WARNING_PROPAGATOR',
-      'Shadow diff mismatches for noisy-repo (integration integration-1)',
-      expect.stringContaining('2 more mismatch(es) not shown overall'),
-    )
+    const [, , , body] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
+    expect(String(body)).toContain('2 more mismatch(es) not shown for this repo')
+  })
+
+  it('caps per-repo detail sections at MAX_DETAILED_REPOS while keeping every repo in the summary table', async () => {
+    const results = Array.from({ length: 12 }, (_, i) => ({
+      channelName: `repo-${i}`,
+      integrationId: 'integration-1',
+      status: 'ok' as const,
+      mismatches: [
+        {
+          sourceId: `s-${i}`,
+          type: 'issue',
+          kind: 'missing_in_nango' as const,
+          severity: 'high' as const,
+          syncName: 'issues',
+        },
+      ],
+      totalMismatchCount: 1,
+      syncSummaries: [
+        {
+          syncName: 'issues',
+          counts: {
+            missing_in_nango: 1,
+            missing_in_shadow: 0,
+            field_mismatch: 0,
+            unsupported_sync: 0,
+          },
+        },
+      ],
+    }))
+
+    await reportShadowDiffResults(results)
+
+    const [, , , body] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
+    const bodyText = String(body)
+
+    for (let i = 0; i < 12; i++) {
+      expect(bodyText).toContain(`repo-${i}`)
+    }
+    expect(bodyText).toContain('2 more repo(s) with mismatches not detailed here')
   })
 
   it('groups the report body by sync name with a counts table followed by per-sync diff details', async () => {
@@ -591,6 +644,6 @@ describe('reportShadowDiffResults', () => {
           ],
         },
       ]),
-    ).rejects.toThrow('noisy-repo (integration integration-1)')
+    ).rejects.toThrow('Failed to deliver shadow diff Slack report')
   })
 })
