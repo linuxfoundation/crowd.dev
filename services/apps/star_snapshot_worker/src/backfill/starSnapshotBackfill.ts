@@ -172,8 +172,9 @@ async function assertOk(
     throw new Error(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
   }
   if (response.status === 403 || response.status === 429) {
-    const retryAfterHeader = Number(response.headers.get('retry-after'))
-    const retryAfterMs = Number.isFinite(retryAfterHeader) ? retryAfterHeader * 1000 : undefined
+    const retryAfterHeader = response.headers.get('retry-after')
+    const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
+    const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
 
     if (response.status === 429) {
       rateLimiter.noteSecondaryRateLimit(retryAfterMs)
@@ -181,7 +182,7 @@ async function assertOk(
     }
 
     const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
+    if (retryAfterMs !== undefined || body.toLowerCase().includes('rate limit')) {
       rateLimiter.noteSecondaryRateLimit(retryAfterMs)
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
@@ -404,6 +405,7 @@ export async function runStarSnapshotBackfill(
       break
     }
 
+    const failedBeforePage = failedRepos.length
     const processedCount = await runWithConcurrency(
       repos,
       options.concurrency,
@@ -444,9 +446,18 @@ export async function runStarSnapshotBackfill(
       break
     }
 
-    // Checkpoint only as far as repos actually handled, not the whole page - runWithConcurrency
-    // guarantees everything below `processedCount` is done, even out of completion order.
-    afterUrl = repos[processedCount - 1].repoUrl
+    // Stop the checkpoint at the earliest unresolved failure in this page - advancing past
+    // it would lose a repo that only lives in `failedRepos` if we crash before the retry sweep.
+    const newFailures = failedRepos.slice(failedBeforePage)
+    const earliestFailedIndex =
+      newFailures.length > 0
+        ? Math.min(...newFailures.map((repo) => repos.indexOf(repo)))
+        : undefined
+    if (earliestFailedIndex === undefined) {
+      afterUrl = repos[processedCount - 1].repoUrl
+    } else if (earliestFailedIndex > 0) {
+      afterUrl = repos[earliestFailedIndex - 1].repoUrl
+    }
 
     log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
     await options.onProgress?.(afterUrl, totals)
