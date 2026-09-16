@@ -1,12 +1,9 @@
 DESCRIPTION >
     - Populates `repos_channels_ds` with the expanded channel set for every repository.
     - Non-Gerrit repos: one row (channel = url) plus a lowercase channel variant when the url
-    isn't already lowercase, since some activities were ingested with lowercased repo casing,
-    plus a variant for whatever casing actually shows up in ingested activity data for that
-    repo's segment (e.g. a repo whose url is already lowercase can still have activities
-    ingested under GitHub's mixed-case display name, as with hermes-agent/NousResearch).
-    Both variants are skipped when they'd duplicate a casing already emitted above, since this
-    datasource is INNER JOINed downstream and a duplicate row would double count() metrics.
+    isn't already lowercase, since some activities were ingested with lowercased repo casing.
+    The lowercase variant is skipped for already-lowercase urls to avoid an exact-duplicate row
+    (this datasource is INNER JOINed downstream, so a duplicate would double count() metrics).
     Gerrit repos: two rows — plain url plus the /q/project: variant used by Gerrit ingestion.
     - Mirrors the expansion logic in repos_to_channels.pipe but as a COPY pipe so the result can
     be joined by other COPY pipes (which cannot use template-based API pipes).
@@ -38,24 +35,6 @@ SQL >
     FROM repositories r FINAL
     LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
     WHERE r.deletedAt IS NULL AND r.url != lower(r.url)
-    UNION ALL
-    -- Observed-casing channel variant: covers activities ingested with a channel casing that
-    -- differs from both r.url and lower(r.url) (e.g. r.url already lowercase but GitHub's live
-    -- display casing at ingestion time was mixed-case, as with hermes-agent). Excludes casings
-    -- already covered by the two branches above to avoid the double-count duplicate-row problem
-    -- this datasource's downstream INNER JOIN consumers have (see note above).
-    SELECT
-        r.url AS repoUrl,
-        a.channel AS channel,
-        (i.platform = 'gerrit') AS isGerrit,
-        r.excluded AS isExcluded
-    FROM repositories r FINAL
-    LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    INNER JOIN
-        (SELECT DISTINCT channel, segmentId FROM activityRelations_deduplicated_cleaned_bucket_union) a
-        ON a.segmentId = r.segmentId
-        AND lower(a.channel) = lower(r.url)
-    WHERE r.deletedAt IS NULL AND a.channel != r.url AND a.channel != lower(r.url)
     UNION ALL
     SELECT
         r.url AS repoUrl,
