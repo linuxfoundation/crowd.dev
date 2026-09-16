@@ -43,6 +43,7 @@ from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.llm.bedrock import invoke_bedrock
 from crowdgit.services.maintainer.cncf_maintainers import (
+    CNCF_MAINTAINERS_FILENAMES,
     find_cncf_maintainers_file,
     is_cncf_repo,
     parse_cncf_maintainers_yaml,
@@ -1100,7 +1101,10 @@ class MaintainerService(BaseService):
                         f"appeared during processing"
                     )
 
-            if is_cncf_repo(repository.url) and latest_maintainer_file == "maintainers.yaml":
+            if (
+                is_cncf_repo(repository.url)
+                and latest_maintainer_file in CNCF_MAINTAINERS_FILENAMES
+            ):
                 project_ctx = await find_project_repo_sibling(repository.id)
                 if project_ctx and project_ctx.sibling_repo_ids:
                     today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
