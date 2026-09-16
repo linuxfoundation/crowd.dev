@@ -1,8 +1,13 @@
+import { ICanonicalRepoUrl, canonicalizeRepoUrl } from '@crowd/common'
 import {
   finalizeProjectCatalogEvaluation,
+  findGithubOwnersWithLfProjects,
+  findGithubOwnersWithNonLfRepos,
   findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
+  findRepoUrlsInCdp,
   finishPipelineRun,
+  markProjectCatalogPreCheckSkipped,
   promoteProjectsToEvaluate,
   startPipelineRun,
 } from '@crowd/data-access-layer'
@@ -14,7 +19,8 @@ import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
-import { IEvaluationActivityResult, IPriorityConfig } from '../types'
+import { computeExclusivelyLfOwners, resolvePrecheckSkipReason } from '../precheck/precheck'
+import { IEvaluationActivityResult, IPrecheckResult, IPriorityConfig } from '../types'
 
 const log = getServiceLogger()
 
@@ -42,6 +48,71 @@ export async function fetchPendingProjects(batchSize: number): Promise<IDbProjec
   log.info({ count: projects.length, batchSize }, 'Fetched projects pending evaluation.')
 
   return projects
+}
+
+export async function precheckPendingProjects(
+  projects: IDbProjectCatalog[],
+): Promise<IPrecheckResult> {
+  // Writer connection: avoids replica lag missing a just-written repo/project mapping,
+  // same reasoning as evaluateAndUpdateProject's fresh-state read below.
+  const writeQx = pgpQx(svc.postgres.writer.connection())
+
+  const githubCanonicals = projects
+    .map((project) => canonicalizeRepoUrl(project.repoUrl))
+    .filter((canonical): canonical is ICanonicalRepoUrl & { isGithub: true } =>
+      Boolean(canonical?.isGithub),
+    )
+  const githubCanonicalUrls = githubCanonicals.map((canonical) => canonical.url)
+  const githubOwners = githubCanonicals.map((canonical) => canonical.owner)
+  const uncanonicalizable = projects.filter(
+    (project) => !canonicalizeRepoUrl(project.repoUrl),
+  ).length
+
+  const [reposInCdp, lfOwners, nonLfOwners] = await Promise.all([
+    findRepoUrlsInCdp(writeQx, githubCanonicalUrls),
+    findGithubOwnersWithLfProjects(writeQx, githubOwners),
+    findGithubOwnersWithNonLfRepos(writeQx, githubOwners),
+  ])
+  const exclusivelyLfOwners = computeExclusivelyLfOwners(lfOwners, nonLfOwners)
+
+  const remaining: IDbProjectCatalog[] = []
+  const breakdown: Record<string, number> = {}
+  let skippedPreCheck = 0
+
+  for (const project of projects) {
+    const reason = resolvePrecheckSkipReason(project, { reposInCdp, exclusivelyLfOwners })
+
+    if (!reason) {
+      remaining.push(project)
+      continue
+    }
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(writeQx, project.id, reason)
+
+    if (updatedRows === 0) {
+      log.info(
+        { id: project.id, repoUrl: project.repoUrl },
+        'Project was moved out of evaluate by a manual request while pre-checking, discarding skip.',
+      )
+      continue
+    }
+
+    skippedPreCheck++
+    breakdown[reason] = (breakdown[reason] ?? 0) + 1
+  }
+
+  log.info(
+    {
+      total: projects.length,
+      skippedPreCheck,
+      remaining: remaining.length,
+      breakdown,
+      uncanonicalizable,
+    },
+    'Deterministic pre-check complete.',
+  )
+
+  return { remaining, skippedPreCheck, breakdown }
 }
 
 export async function evaluateAndUpdateProject(

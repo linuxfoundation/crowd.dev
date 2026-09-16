@@ -269,6 +269,41 @@ export async function findGithubOwnersWithLfProjects(
   return new Set(rows.map((row) => row.owner))
 }
 
+// Symmetric to findGithubOwnersWithLfProjects: a repo with no insightsProjectId,
+// or mapped to a non-LF project, counts as non-LF evidence for its owner.
+export async function findGithubOwnersWithNonLfRepos(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "nonLfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '^https?://(www\\.)?github\\.com/', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      LEFT JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId" AND ip."deletedAt" IS NULL
+      WHERE r."deletedAt" IS NULL
+        AND r.url ~* '^https?://(www\\.)?github\\.com/[^/]+/[^/]+'
+        AND COALESCE(ip."isLF", false) = false
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "nonLfOwners" n ON n.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
+}
+
 /**
  * Soft deletes repositories by setting deletedAt = NOW()
  * Only deletes repos matching both the URLs and sourceIntegrationId
