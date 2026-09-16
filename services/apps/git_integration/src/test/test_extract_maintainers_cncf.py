@@ -175,7 +175,11 @@ async def test_process_maintainers_end_dates_siblings_after_project_repo_runs(
 
     cncf_result = MaintainerResult(
         maintainer_file="maintainers.yaml",
-        maintainer_info=[MaintainerInfoItem(github_username="alice", title="maintainer", normalized_title="maintainer")],
+        maintainer_info=[
+            MaintainerInfoItem(
+                github_username="alice", title="maintainer", normalized_title="maintainer"
+            )
+        ],
     )
 
     monkeypatch.setattr(service, "check_if_interval_elapsed", AsyncMock(return_value=(True, 0.0)))
@@ -187,9 +191,7 @@ async def test_process_maintainers_end_dates_siblings_after_project_repo_runs(
         "find_project_repo_sibling",
         AsyncMock(return_value=_project_context_with_sibling()),
     )
-    monkeypatch.setattr(
-        maintainer_service_module, "end_date_maintainers_for_repos", end_date_mock
-    )
+    monkeypatch.setattr(maintainer_service_module, "end_date_maintainers_for_repos", end_date_mock)
     monkeypatch.setattr(maintainer_service_module, "save_service_execution", AsyncMock())
 
     await service.process_maintainers(repository, batch)

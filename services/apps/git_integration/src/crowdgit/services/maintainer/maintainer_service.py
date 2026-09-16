@@ -1093,7 +1093,9 @@ class MaintainerService(BaseService):
                 project_ctx = await find_project_repo_sibling(repository.id)
                 if project_ctx and project_ctx.sibling_repo_ids:
                     today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
-                    await end_date_maintainers_for_repos(project_ctx.sibling_repo_ids, today_midnight)
+                    await end_date_maintainers_for_repos(
+                        project_ctx.sibling_repo_ids, today_midnight
+                    )
                     self.logger.info(
                         f"End-dated sibling maintainer rows for project "
                         f"{project_ctx.project_segment_id} after processing {repository.url}"
