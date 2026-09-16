@@ -152,6 +152,7 @@ describe('runShadowDiffForChannel', () => {
       status: 'mapping_missing',
       mismatches: [],
       totalMismatchCount: 0,
+      syncSummaries: [],
     })
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
   })
@@ -189,7 +190,14 @@ describe('runShadowDiffForChannel', () => {
     expect(result.mismatches[0]).toMatchObject({
       sourceId: 'issue-1',
       kind: 'field_mismatch',
+      syncName: 'issues',
     })
+    expect(result.syncSummaries).toEqual([
+      {
+        syncName: 'issues',
+        counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 1, unsupported_sync: 0 },
+      },
+    ])
     expect(mocks.initNangoCloudClient).toHaveBeenCalled()
     expect(getNangoCloudRecords).toHaveBeenCalledWith(
       'github',
@@ -295,6 +303,13 @@ describe('runShadowDiffForChannel', () => {
         type: 'some-new-unmapped-sync',
         kind: 'unsupported_sync',
         severity: 'high',
+        syncName: 'some-new-unmapped-sync',
+      },
+    ])
+    expect(result.syncSummaries).toEqual([
+      {
+        syncName: 'some-new-unmapped-sync',
+        counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 1 },
       },
     ])
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
@@ -328,13 +343,22 @@ describe('reportShadowDiffResults', () => {
         status: 'ok',
         mismatches: [],
         totalMismatchCount: 0,
+        syncSummaries: [],
       },
       {
         channelName: 'mismatched-repo',
         integrationId: 'integration-1',
         status: 'ok',
-        mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
+        mismatches: [
+          { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+        ],
         totalMismatchCount: 1,
+        syncSummaries: [
+          {
+            syncName: 'issues',
+            counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+          },
+        ],
       },
       {
         channelName: 'unmapped-repo',
@@ -342,6 +366,7 @@ describe('reportShadowDiffResults', () => {
         status: 'mapping_missing',
         mismatches: [],
         totalMismatchCount: 0,
+        syncSummaries: [],
       },
       {
         channelName: 'broken-repo',
@@ -349,6 +374,7 @@ describe('reportShadowDiffResults', () => {
         status: 'error',
         mismatches: [],
         totalMismatchCount: 0,
+        syncSummaries: [],
         errorMessage: 'boom',
       },
     ])
@@ -364,6 +390,7 @@ describe('reportShadowDiffResults', () => {
         status: 'mapping_missing',
         mismatches: [],
         totalMismatchCount: 0,
+        syncSummaries: [],
       },
     ])
 
@@ -385,6 +412,7 @@ describe('reportShadowDiffResults', () => {
         status: 'mapping_missing',
         mismatches: [],
         totalMismatchCount: 0,
+        syncSummaries: [],
       },
     ])
 
@@ -403,8 +431,16 @@ describe('reportShadowDiffResults', () => {
         channelName: 'noisy-repo',
         integrationId: 'integration-1',
         status: 'ok',
-        mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
+        mismatches: [
+          { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+        ],
         totalMismatchCount: 3,
+        syncSummaries: [
+          {
+            syncName: 'issues',
+            counts: { missing_in_nango: 3, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+          },
+        ],
       },
     ])
 
@@ -412,8 +448,56 @@ describe('reportShadowDiffResults', () => {
       'CDP_INTEGRATIONS_ALERTS',
       'WARNING_PROPAGATOR',
       'Shadow diff mismatches for noisy-repo (integration integration-1)',
-      expect.stringContaining('2 more mismatch(es) not shown'),
+      expect.stringContaining('2 more mismatch(es) not shown overall'),
     )
+  })
+
+  it('groups the report body by sync name with a counts table followed by per-sync diff details', async () => {
+    await reportShadowDiffResults([
+      {
+        channelName: 'linuxfoundation/insights',
+        integrationId: 'integration-1',
+        status: 'ok',
+        mismatches: [
+          { sourceId: 'i-1', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+          { sourceId: 'i-2', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
+          {
+            sourceId: 'c-1',
+            type: 'issues-comment',
+            kind: 'missing_in_nango',
+            severity: 'high',
+            syncName: 'issue-comments',
+          },
+        ],
+        totalMismatchCount: 3,
+        syncSummaries: [
+          {
+            syncName: 'discussions',
+            counts: { missing_in_nango: 0, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+          },
+          {
+            syncName: 'issues',
+            counts: { missing_in_nango: 2, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+          },
+          {
+            syncName: 'issue-comments',
+            counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+          },
+        ],
+      },
+    ])
+
+    const [, , , body] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
+    const bodyText = String(body)
+
+    expect(bodyText).toContain('discussions')
+    expect(bodyText).toContain('issues')
+    expect(bodyText).toContain('issue-comments')
+    expect(bodyText.indexOf('```')).toBeLessThan(bodyText.indexOf('*issues*'))
+    expect(bodyText.indexOf('*issues*')).toBeLessThan(bodyText.indexOf('*issue-comments*'))
+    expect(bodyText).toContain('i-1')
+    expect(bodyText).toContain('i-2')
+    expect(bodyText).toContain('c-1')
   })
 
   it('throws when a Slack alert fails to deliver, so Temporal retries instead of silently dropping the alert', async () => {
@@ -426,9 +510,15 @@ describe('reportShadowDiffResults', () => {
           integrationId: 'integration-1',
           status: 'ok',
           mismatches: [
-            { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' },
+            { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high', syncName: 'issues' },
           ],
           totalMismatchCount: 1,
+          syncSummaries: [
+            {
+              syncName: 'issues',
+              counts: { missing_in_nango: 1, missing_in_shadow: 0, field_mismatch: 0, unsupported_sync: 0 },
+            },
+          ],
         },
       ]),
     ).rejects.toThrow('noisy-repo (integration integration-1)')
