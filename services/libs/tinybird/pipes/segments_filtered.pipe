@@ -5,17 +5,23 @@ DESCRIPTION >
     - Ensures only enabled projects are accessible and validates repository access when `repos` parameter is provided.
     - Serves as the foundational security and scoping mechanism for the entire analytics platform.
     - Primary use case: inherited by virtually all other pipes to establish project context and data isolation.
+    - `repositories` also includes a lowercase variant of every repo URL, since some activities were ingested with lowercased repo casing.
     - Parameters:
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
     - `repos`: Optional array of repository URLs - validates that all specified repos exist in the project (e.g., ['https://github.com/kubernetes/kubernetes'])
-    - Response: `insightsProjectId`, `segmentId`, `repositories` (array of all project repositories)
+    - Response: `insightsProjectId`, `segmentId`, `repositories` (array of all project repositories, plus their lowercase variants)
 
 TAGS "Infrastructure", "Core", "Project scoping", "Security"
 
 NODE segments_filtered_0
 SQL >
     %
-    SELECT i.id as insightsProjectId, i.segmentId, groupArrayIf(r.url, r.url != '') as repositories
+    SELECT
+        i.id as insightsProjectId,
+        i.segmentId,
+        arrayConcat(
+            groupArrayIf(r.url, r.url != ''), groupArrayIf(lower(r.url), r.url != '')
+        ) as repositories
     FROM insightsProjects i FINAL
     LEFT JOIN
         repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
