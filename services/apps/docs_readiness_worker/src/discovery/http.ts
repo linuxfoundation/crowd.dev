@@ -30,7 +30,7 @@ function isPrivateIpv4(host: string): boolean {
 }
 
 function isPrivateIpv6(addr: string): boolean {
-  const a = addr.toLowerCase()
+  const a = addr.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
   if (a === '::1' || a === '::') {
     return true
   }

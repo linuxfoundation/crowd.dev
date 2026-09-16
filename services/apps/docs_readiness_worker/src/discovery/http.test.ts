@@ -161,6 +161,7 @@ describe('isPrivateOrLoopbackHost', () => {
     ['::1', 'ipv6 loopback'],
     ['169.254.169.254', 'ipv4 link-local / cloud metadata'],
     ['fe80::1', 'ipv6 link-local'],
+    ['fc00::1', 'ipv6 unique-local'],
     ['10.0.0.5', 'ipv4 rfc1918 10/8'],
     ['172.16.0.5', 'ipv4 rfc1918 172.16/12'],
     ['192.168.1.5', 'ipv4 rfc1918 192.168/16'],
@@ -169,6 +170,14 @@ describe('isPrivateOrLoopbackHost', () => {
     ['myservice.local', 'local-suffixed hostname'],
   ])('is true for %s (%s)', (host) => {
     expect(isPrivateOrLoopbackHost(host)).toBe(true)
+  })
+
+  it.each([
+    ['::1', 'ipv6 loopback'],
+    ['fe80::1', 'ipv6 link-local'],
+    ['fc00::1', 'ipv6 unique-local'],
+  ])('is true for %s (%s) via URL.hostname bracketed form', (host) => {
+    expect(isPrivateOrLoopbackHost(new URL(`http://[${host}]/`).hostname)).toBe(true)
   })
 
   it('is false for a public hostname', () => {
@@ -204,6 +213,15 @@ describe('probe SSRF guard', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await probe('http://10.0.0.5/internal')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never calls fetch for an ipv6 loopback address', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('http://[::1]/')
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
