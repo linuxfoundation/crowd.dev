@@ -234,6 +234,41 @@ export async function findRepoUrlsInCdp(
   return new Set(rows.map((row) => row.repoUrl))
 }
 
+// Returned owners are lowercased regardless of input case, matching canonicalizeRepoUrl's `owner`.
+export async function findGithubOwnersWithLfProjects(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "lfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '^https?://(www\\.)?github\\.com/', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId"
+      WHERE r."deletedAt" IS NULL
+        AND ip."deletedAt" IS NULL
+        AND ip."isLF"
+        AND r.url ~* '^https?://(www\\.)?github\\.com/[^/]+/[^/]+'
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "lfOwners" l ON l.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
+}
+
 /**
  * Soft deletes repositories by setting deletedAt = NOW()
  * Only deletes repos matching both the URLs and sourceIntegrationId

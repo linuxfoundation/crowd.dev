@@ -22,6 +22,8 @@ import { IJobDefinition } from '../types'
 const ONBOARDED_REASON = 'project is already onboarded'
 const LF_REASON = 'project is already part of LF'
 
+const CONTRADICTIONS_ONLY_REASONS = new Set<string>([ONBOARDED_REASON])
+
 const MAX_ROWS_PER_SECTION = 25
 
 const ACTION_LABELS: Record<ProjectCatalogAction, string> = {
@@ -142,14 +144,28 @@ const job: IJobDefinition = {
     }
 
     for (const [reason, reasonRows] of byReason) {
-      const visibleRows = reasonRows.slice(0, MAX_ROWS_PER_SECTION)
-      const lines = visibleRows.map((row) => formatLine(row))
-      if (reasonRows.length > visibleRows.length) {
-        lines.push(`… and ${reasonRows.length - visibleRows.length} more`)
+      const contradictionsOnly = CONTRADICTIONS_ONLY_REASONS.has(reason)
+      const listedRows = contradictionsOnly
+        ? reasonRows.filter((row) => row.suspicious)
+        : reasonRows
+
+      if (contradictionsOnly && listedRows.length === 0) {
+        continue
       }
+
+      const visibleRows = listedRows.slice(0, MAX_ROWS_PER_SECTION)
+      const lines = visibleRows.map((row) => formatLine(row))
+      if (listedRows.length > visibleRows.length) {
+        lines.push(`… and ${listedRows.length - visibleRows.length} more`)
+      }
+
       sections.push({
         title: `Reason: "${reason}"`,
-        text: [`Total: ${reasonRows.length}`, ...lines].join('\n'),
+        text: [
+          `Total: ${reasonRows.length}`,
+          ...(contradictionsOnly ? [`Contradicting: ${listedRows.length}`] : []),
+          ...lines,
+        ].join('\n'),
       })
     }
 
