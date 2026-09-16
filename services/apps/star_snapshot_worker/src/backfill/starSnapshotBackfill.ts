@@ -55,6 +55,7 @@ export interface StarSnapshotBackfillTotals {
   reposReconciled: number
   reposAnchoredBackward: number
   reposFailed: number
+  reposRecoveredOnRetry: number
   daysWritten: number
   // false when the run stopped early (shutdown signal) rather than exhausting all repos —
   // callers use this to decide whether a resume checkpoint should be kept or cleared.
@@ -71,9 +72,12 @@ function parseLastPage(linkHeader: string | null): number | undefined {
   return match ? Number(match[1]) : undefined
 }
 
+const SECONDARY_RATE_LIMIT_COOLDOWN_MS = 60_000
+
 export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
   let remaining = Infinity
   let resetAtMs = 0
+  let secondaryCooldownUntilMs = 0
 
   return {
     observe(headers: Headers): void {
@@ -98,7 +102,26 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       }
     },
 
+    // GitHub's secondary/abuse limit never shows up in the rate-limit headers, only as
+    // a 403 - callers report it here so every subsequent call (even from other repos
+    // already in flight) backs off instead of piling on more 403s.
+    noteSecondaryRateLimit(): void {
+      secondaryCooldownUntilMs = Math.max(
+        secondaryCooldownUntilMs,
+        Date.now() + SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      )
+    },
+
     async throttleIfNeeded(): Promise<void> {
+      const secondaryWaitMs = secondaryCooldownUntilMs - Date.now()
+      if (secondaryWaitMs > 0) {
+        log.warn(
+          { waitMs: secondaryWaitMs },
+          'GitHub secondary rate limit cooldown in effect, backing off',
+        )
+        await new Promise((resolve) => setTimeout(resolve, secondaryWaitMs))
+      }
+
       if (remaining > reservedFloor) {
         // No await before this line, so concurrent callers see the decrement
         // before any of them observes the real value off a response.
@@ -139,6 +162,7 @@ async function assertOk(
   owner: string,
   name: string,
   what: string,
+  rateLimiter: CoreRateLimiter,
 ): Promise<void> {
   if (response.ok) {
     return
@@ -152,6 +176,7 @@ async function assertOk(
   if (response.status === 403) {
     const body = await response.text()
     if (body.toLowerCase().includes('rate limit')) {
+      rateLimiter.noteSecondaryRateLimit()
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
     throw new Error(`GitHub auth failure (403) fetching ${what} for ${owner}/${name}`)
@@ -170,7 +195,7 @@ async function fetchStargazerHistory(
   await rateLimiter.throttleIfNeeded()
   const firstResponse = await githubGet(`${baseUrl}&page=1`, token)
   rateLimiter.observe(firstResponse.headers)
-  await assertOk(firstResponse, owner, name, 'stargazer history')
+  await assertOk(firstResponse, owner, name, 'stargazer history', rateLimiter)
 
   const firstPage = (await firstResponse.json()) as StargazerHistoryWeek[]
   if (firstPage.length === 0) {
@@ -184,7 +209,7 @@ async function fetchStargazerHistory(
     await rateLimiter.throttleIfNeeded()
     const response = await githubGet(`${baseUrl}&page=${page}`, token)
     rateLimiter.observe(response.headers)
-    await assertOk(response, owner, name, 'stargazer history')
+    await assertOk(response, owner, name, 'stargazer history', rateLimiter)
     weeks.push(...((await response.json()) as StargazerHistoryWeek[]))
   }
 
@@ -200,7 +225,7 @@ async function fetchCurrentStarCount(
   await rateLimiter.throttleIfNeeded()
   const response = await githubGet(`https://api.github.com/repos/${owner}/${name}`, token)
   rateLimiter.observe(response.headers)
-  await assertOk(response, owner, name, 'current star count')
+  await assertOk(response, owner, name, 'current star count', rateLimiter)
   const body = (await response.json()) as { stargazers_count: number }
   return body.stargazers_count
 }
@@ -302,6 +327,52 @@ async function backfillRepo(
   return { status: reconciled ? 'reconciled' : 'anchored', daysWritten: rowsToWrite.length }
 }
 
+// Bounded-concurrency worker pool: `concurrency` workers pull the next index off a
+// shared cursor as soon as they're free, instead of waiting in lockstep for a fixed
+// batch to fully settle. A worker only ever stops *between* items, so every index it
+// was handed always finishes before the pool as a whole does - callers can treat the
+// returned count as "everything below this index is done", even under a mid-run
+// shutdown or out-of-order completion.
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  isShuttingDown: () => boolean,
+  handler: (item: T) => Promise<void>,
+): Promise<number> {
+  let nextIndex = 0
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      if (isShuttingDown()) {
+        return
+      }
+      const index = nextIndex++
+      if (index >= items.length) {
+        return
+      }
+      await handler(items[index])
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+  return nextIndex
+}
+
+function recordOutcome(totals: StarSnapshotBackfillTotals, result: RepoBackfillResult): void {
+  totals.daysWritten += result.daysWritten
+  if (result.status === 'skipped-no-history') {
+    totals.reposSkippedNoHistory++
+  } else if (result.status === 'skipped-negative-count') {
+    totals.reposSkippedNegativeCount++
+  } else if (result.status === 'reconciled') {
+    totals.reposReconciled++
+  } else {
+    totals.reposAnchoredBackward++
+  }
+}
+
 export async function runStarSnapshotBackfill(
   qx: QueryExecutor,
   log: Logger,
@@ -315,11 +386,13 @@ export async function runStarSnapshotBackfill(
     reposReconciled: 0,
     reposAnchoredBackward: 0,
     reposFailed: 0,
+    reposRecoveredOnRetry: 0,
     daysWritten: 0,
     completed: false,
   }
 
   const rateLimiter = createCoreRateLimiter(options.reservedCoreRateLimit, log)
+  const failedRepos: IRepoForStarSnapshot[] = []
   let afterUrl = options.afterUrl
 
   while (!options.isShuttingDown()) {
@@ -329,68 +402,46 @@ export async function runStarSnapshotBackfill(
       break
     }
 
-    const batches: IRepoForStarSnapshot[][] = []
-    for (let i = 0; i < repos.length; i += options.concurrency) {
-      batches.push(repos.slice(i, i + options.concurrency))
-    }
-
-    let processedCount = 0
-
-    for (const batch of batches) {
-      if (options.isShuttingDown()) {
-        break
-      }
-
-      const toProcess = batch.filter((repo) => !options.completedRepoIds?.has(repo.repositoryId))
-      totals.reposSkippedAlreadyBackfilled += batch.length - toProcess.length
-
-      const results = await Promise.allSettled(
-        toProcess.map((repo) => backfillRepo(qx, repo, rateLimiter, log, options.dryRun)),
-      )
-
-      results.forEach((result, i) => {
-        totals.reposProcessed++
-        if (result.status === 'rejected') {
-          totals.reposFailed++
-          log.warn(
-            {
-              repoUrl: toProcess[i].repoUrl,
-              error: (result.reason as Error)?.message ?? result.reason,
-            },
-            'star snapshot backfill failed for repo',
-          )
+    const processedCount = await runWithConcurrency(
+      repos,
+      options.concurrency,
+      options.isShuttingDown,
+      async (repo) => {
+        if (options.completedRepoIds?.has(repo.repositoryId)) {
+          totals.reposSkippedAlreadyBackfilled++
           return
         }
 
-        options.completedRepoIds?.add(toProcess[i].repositoryId)
-        totals.daysWritten += result.value.daysWritten
-        if (result.value.status === 'skipped-no-history') {
-          totals.reposSkippedNoHistory++
-        } else if (result.value.status === 'skipped-negative-count') {
-          totals.reposSkippedNegativeCount++
-        } else if (result.value.status === 'reconciled') {
-          totals.reposReconciled++
-        } else {
-          totals.reposAnchoredBackward++
+        totals.reposProcessed++
+        try {
+          const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
+          options.completedRepoIds?.add(repo.repositoryId)
+          recordOutcome(totals, result)
+        } catch (err) {
+          totals.reposFailed++
+          failedRepos.push(repo)
+          log.warn(
+            { repoUrl: repo.repoUrl, error: (err as Error)?.message ?? err },
+            'star snapshot backfill failed for repo',
+          )
         }
-      })
 
-      processedCount += batch.length
-
-      log.info(
-        { ...totals, afterUrl: batch[batch.length - 1].repoUrl },
-        'star snapshot backfill batch done',
-      )
-    }
+        if (totals.reposProcessed % options.concurrency === 0) {
+          log.info({ ...totals, afterUrl: repo.repoUrl }, 'star snapshot backfill batch done')
+        }
+      },
+    )
 
     if (processedCount === 0) {
-      // Shutdown hit before any batch in this page ran - leave the checkpoint pointing
+      // Shutdown hit before any repo in this page ran - leave the checkpoint pointing
       // at the previous page so none of these repos are skipped on resume.
       break
     }
 
-    // Checkpoint only as far as repos actually processed, not the whole page - otherwise
-    // a shutdown mid-page would advance past repos that never ran.
+    // Checkpoint only as far as repos actually handled, not the whole page -
+    // runWithConcurrency hands out indices strictly in order and never abandons a
+    // grabbed repo mid-flight, so everything below `processedCount` is guaranteed done
+    // even though completion order itself can be out of order under concurrency.
     afterUrl = repos[processedCount - 1].repoUrl
 
     log.info({ ...totals, afterUrl }, 'star snapshot backfill progress')
@@ -403,6 +454,38 @@ export async function runStarSnapshotBackfill(
     if (repos.length < REPO_PAGE_SIZE) {
       totals.completed = true
       break
+    }
+  }
+
+  // One extra pass over whatever failed this run, after the main sweep - a repo that
+  // tripped the secondary rate limit will have had a full cooldown to recover by now.
+  // Only runs on a full, uninterrupted pass: a checkpoint resumed later never revisits
+  // repos behind its cursor, so this is the only chance to recover them without --fresh.
+  if (totals.completed && !options.isShuttingDown() && failedRepos.length > 0) {
+    const toRetry = failedRepos.splice(0, failedRepos.length)
+    log.info(
+      { retryCount: toRetry.length },
+      'star snapshot backfill retrying repos that failed earlier this run',
+    )
+
+    await runWithConcurrency(toRetry, options.concurrency, options.isShuttingDown, async (repo) => {
+      try {
+        const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
+        options.completedRepoIds?.add(repo.repositoryId)
+        totals.reposFailed--
+        totals.reposRecoveredOnRetry++
+        recordOutcome(totals, result)
+      } catch (err) {
+        log.warn(
+          { repoUrl: repo.repoUrl, error: (err as Error)?.message ?? err },
+          'star snapshot backfill retry failed for repo',
+        )
+      }
+    })
+
+    log.info({ ...totals }, 'star snapshot backfill retry sweep done')
+    if (afterUrl) {
+      await options.onProgress?.(afterUrl, totals)
     }
   }
 

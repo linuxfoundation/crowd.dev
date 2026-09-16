@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { readFile, rename, rm, writeFile } from 'fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'fs/promises'
+import { dirname } from 'path'
 
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -65,6 +66,7 @@ async function readCheckpoint(path: string): Promise<Checkpoint | undefined> {
 // Written atomically (tmp file + rename) so a crash mid-write never leaves a corrupt
 // checkpoint that a resumed run would fail to parse.
 async function writeCheckpoint(path: string, afterUrl: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
   const tmpPath = `${path}.${randomUUID()}.tmp`
   const checkpoint: Checkpoint = { afterUrl, updatedAt: new Date().toISOString() }
   await writeFile(tmpPath, JSON.stringify(checkpoint))
@@ -90,6 +92,7 @@ async function readCompletedRepoIds(path: string): Promise<Set<string>> {
 // Written atomically (tmp file + rename), same as the checkpoint - a crash mid-write
 // must never leave a corrupt file a resumed run would fail to parse.
 async function writeCompletedRepoIds(path: string, ids: Set<string>): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
   const tmpPath = `${path}.${randomUUID()}.tmp`
   await writeFile(tmpPath, JSON.stringify([...ids]))
   await rename(tmpPath, path)
