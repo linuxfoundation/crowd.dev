@@ -1,6 +1,7 @@
 DESCRIPTION >
     - `repos_to_channels.pipe` expands repository URLs to all possible activity channel formats.
     - Every repo also expands to a lowercase channel variant, since some activities were ingested with lowercased repo casing.
+    - Also expands to whatever channel casing actually shows up in ingested activity data for that repo's segment (e.g. a repo whose url is already lowercase can still have activities ingested under GitHub's mixed-case display name, as with hermes-agent/NousResearch).
     - For Gerrit repos, generates both the original URL and the /q/project: variant since activity channels use this format.
     - Used by activity filtering pipes to match repos against activity channels.
     - Parameters:
@@ -61,6 +62,16 @@ SQL >
     -- Lowercase channel variant: matches activities ingested with lowercased repo casing
     SELECT lower(url) AS channel, segmentId
     FROM repos_to_expand
+    UNION ALL
+    -- Observed-casing channel variant: matches activities ingested with GitHub's live display
+    -- casing, which can differ from both url and lower(url) even when url is already lowercase
+    -- (e.g. hermes-agent's repo url is lowercase but its activities carry NousResearch casing).
+    SELECT a.channel AS channel, e.segmentId AS segmentId
+    FROM repos_to_expand e
+    INNER JOIN
+        (SELECT DISTINCT channel, segmentId FROM activityRelations_deduplicated_cleaned_bucket_union) a
+        ON a.segmentId = e.segmentId
+        AND lower(a.channel) = lower(e.url)
     UNION ALL
     -- Gerrit channel variants: insert q/project: after the base path
     SELECT
