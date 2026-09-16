@@ -202,6 +202,10 @@ export async function getRepositoriesByUrl(
   )
 }
 
+// Mirrors the URL forms canonicalizeRepoUrl accepts (https, ssh://git@, and scp-style git@host:).
+const GITHUB_URL_PREFIX_PATTERN =
+  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com/|git@github\\.com:)'
+
 // Expects canonicalGithubRepoUrls in canonicalizeGithubRepoUrl's output form; non-GitHub URLs never match.
 export async function findRepoUrlsInCdp(
   qx: QueryExecutor,
@@ -218,11 +222,11 @@ export async function findRepoUrlsInCdp(
     ),
     normalized AS (
       SELECT DISTINCT 'https://github.com/' || lower(
-        regexp_replace(regexp_replace(url, '^https?://(www\\.)?github\\.com/', '', 'i'), '(\\.git)?/*$', '', 'i')
+        regexp_replace(regexp_replace(url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i'), '(\\.git)?/*$', '', 'i')
       ) AS url
       FROM public.repositories
       WHERE "deletedAt" IS NULL
-        AND url ~* '^https?://(www\\.)?github\\.com/'
+        AND url ~* '^${GITHUB_URL_PREFIX_PATTERN}'
     )
     SELECT DISTINCT c.url AS "repoUrl"
     FROM candidates c
@@ -233,10 +237,6 @@ export async function findRepoUrlsInCdp(
 
   return new Set(rows.map((row) => row.repoUrl))
 }
-
-// Mirrors the URL forms canonicalizeRepoUrl accepts (https, ssh://git@, and scp-style git@host:).
-const GITHUB_URL_PREFIX_PATTERN =
-  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com/|git@github\\.com:)'
 
 // Returned owners are lowercased regardless of input case, matching canonicalizeRepoUrl's `owner`.
 export async function findGithubOwnersWithLfProjects(

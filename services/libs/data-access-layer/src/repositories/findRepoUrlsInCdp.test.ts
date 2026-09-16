@@ -110,4 +110,20 @@ describe('findRepoUrlsInCdp', () => {
 
     expect(result.size).toBe(0)
   })
+
+  test('matches a repo stored as an scp-style git@ URL', async ({ qx }) => {
+    await createRepository(qx, { url: 'git@github.com:kubernetes/kubernetes.git' })
+
+    const result = await findRepoUrlsInCdp(qx, ['https://github.com/kubernetes/kubernetes'])
+
+    expect(result.has('https://github.com/kubernetes/kubernetes')).toBe(true)
+  })
+
+  test('matches a repo stored as an ssh:// URL', async ({ qx }) => {
+    await createRepository(qx, { url: 'ssh://git@github.com/kubernetes/kubernetes.git' })
+
+    const result = await findRepoUrlsInCdp(qx, ['https://github.com/kubernetes/kubernetes'])
+
+    expect(result.has('https://github.com/kubernetes/kubernetes')).toBe(true)
+  })
 })
