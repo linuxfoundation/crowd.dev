@@ -60,7 +60,7 @@ def parse_cncf_maintainers_yaml(content: str) -> list[MaintainerInfoItem] | None
 
     string_members = [member for member in members if isinstance(member, str)]
     if not string_members:
-        return None
+        return string_members
 
     return [
         MaintainerInfoItem(

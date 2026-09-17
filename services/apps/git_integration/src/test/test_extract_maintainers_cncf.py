@@ -226,3 +226,39 @@ async def test_process_maintainers_runs_normally_when_no_project_repo(
     await service.process_maintainers(repository, batch)
 
     extract_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_maintainers_end_dates_siblings_when_all_emeritus(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """All-emeritus .project roster is still authoritative and end-dates siblings."""
+    service = MaintainerService()
+    repository = _make_repository(PROJECT_REPO_ID, "https://github.com/cri-o/.project")
+    batch = _make_batch("https://github.com/cri-o/.project")
+
+    end_date_mock = AsyncMock()
+
+    cncf_result = MaintainerResult(
+        maintainer_file="maintainers.yaml",
+        maintainer_info=[],
+        cncf_authoritative=True,
+    )
+
+    monkeypatch.setattr(service, "check_if_interval_elapsed", AsyncMock(return_value=(True, 0.0)))
+    monkeypatch.setattr(service, "extract_maintainers", AsyncMock(return_value=cncf_result))
+    monkeypatch.setattr(service, "save_maintainers", AsyncMock())
+    monkeypatch.setattr(maintainer_service_module, "update_maintainer_run", AsyncMock())
+    monkeypatch.setattr(
+        maintainer_service_module,
+        "find_project_repo_sibling",
+        AsyncMock(return_value=_project_context_with_sibling()),
+    )
+    monkeypatch.setattr(maintainer_service_module, "end_date_maintainers_for_repos", end_date_mock)
+    monkeypatch.setattr(maintainer_service_module, "save_service_execution", AsyncMock())
+
+    await service.process_maintainers(repository, batch)
+
+    end_date_mock.assert_called_once()
+    call_args = end_date_mock.call_args[0]
+    assert call_args[0] == [SIBLING_REPO_ID]
