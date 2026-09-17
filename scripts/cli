@@ -878,6 +878,26 @@ function install_libs() {
     (cd $CLI_HOME/.. && pnpm i --frozen-lockfile)
 }
 
+function lint_backend() {
+    (cd $CLI_HOME/../backend && pnpm run lint && pnpm run format-check && pnpm run tsc-check)
+}
+
+function lint_services() {
+    (cd $CLI_HOME/.. && \
+        ./services/scripts/check_package_scripts.sh && \
+        pnpm --filter="./services/**" --if-present run lint && \
+        pnpm --filter="./services/**" --if-present run format-check && \
+        pnpm --filter="./services/**" --if-present --workspace-concurrency=4 run tsc-check)
+}
+
+function lint_changed() {
+    (cd $CLI_HOME/.. && \
+        ./services/scripts/check_package_scripts.sh && \
+        pnpm --filter="...[main]" --if-present run lint && \
+        pnpm --filter="...[main]" --if-present run format-check && \
+        pnpm --filter="...[main]" --if-present --workspace-concurrency=4 run tsc-check)
+}
+
 function install_tinybird_cli() {    
     say "Setting up Tinybird CLI..."
     
@@ -1092,7 +1112,7 @@ ${YELLOW}Build & Deploy:${RESET}
 ${YELLOW}Database:${RESET}
   db-backup <name> | db-restore <name> | migrate-env\n
 ${YELLOW}Lint:${RESET}
-  lint-backend | lint-services\n"
+  lint-backend | lint-services | lint-changed\n"
 
 [[ -z "$1" ]] && say "$SCRIPT_USAGE" && exit 1
 while test $# -gt 0; do
@@ -1267,11 +1287,15 @@ while test $# -gt 0; do
         exit
         ;;
     lint-backend)
-        (cd $CLI_HOME/../backend && pnpm run lint && pnpm run format-check && pnpm run tsc-check)
+        lint_backend
         exit
         ;;
     lint-services)
-        (cd $CLI_HOME/../services/scripts && ./lint_apps.sh && ./lint_libs.sh)
+        lint_services
+        exit
+        ;;
+    lint-changed)
+        lint_changed
         exit
         ;;
     *)
