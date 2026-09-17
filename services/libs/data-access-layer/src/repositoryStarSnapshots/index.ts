@@ -56,9 +56,8 @@ export async function findReposNeedingStarBackfill(
   return repos || []
 }
 
-// Repos whose captured-day count falls short of their first-to-last day span - a real
-// gap, not just "not backfilled yet" (that's findReposNeedingStarBackfill's job).
-// Scoped to repositoryIds so this stays an index seek per repo, not a full-table scan.
+// Repos whose captured-day count falls short of their day span (real gap, not just
+// "not backfilled yet" - findReposNeedingStarBackfill's job). Scoped for an index seek.
 export async function findRepoIdsWithStarSnapshotGaps(
   qx: QueryExecutor,
   repositoryIds: string[],
@@ -67,14 +66,16 @@ export async function findRepoIdsWithStarSnapshotGaps(
     return []
   }
 
+  // AT TIME ZONE 'UTC' before the date cast - capturedAt's raw string form renders in the
+  // session's timezone, and GitHub's history/backfill writes are UTC-day based.
   const rows: { repositoryId: string }[] = await qx.select(
     `
       with per_repo as (
         select
             "repositoryId",
-            min("capturedAt"::date) as first_date,
-            max("capturedAt"::date) as last_date,
-            count(distinct "capturedAt"::date) as distinct_days
+            min(("capturedAt" at time zone 'UTC')::date) as first_date,
+            max(("capturedAt" at time zone 'UTC')::date) as last_date,
+            count(distinct ("capturedAt" at time zone 'UTC')::date) as distinct_days
         from "repositoryStarSnapshots"
         where "repositoryId" in ($(repositoryIds:csv))
         group by "repositoryId"
@@ -85,7 +86,10 @@ export async function findRepoIdsWithStarSnapshotGaps(
       where r."deletedAt" is null
         and r."excluded" = false
         and r.url like 'https://github.com%'
-        and (p.last_date - p.first_date + 1) - p.distinct_days > 0
+        and (
+          (p.last_date - p.first_date + 1) - p.distinct_days > 0
+          or p.last_date < current_date - 1
+        )
     `,
     { repositoryIds },
   )

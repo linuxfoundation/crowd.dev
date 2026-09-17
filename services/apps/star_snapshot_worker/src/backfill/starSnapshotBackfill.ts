@@ -410,7 +410,11 @@ export async function backfillRepo(
           to: `${candidateRows[candidateRows.length - 1].date}T23:59:59.999Z`,
         })
       : []
-  const existingDates = new Set(existingRows.map((row) => row.capturedAt.slice(0, 10)))
+  // capturedAt is pg's raw text output (session-timezone dependent) - reparse as UTC so it
+  // lines up with GitHub's UTC-based dates instead of drifting a day near local midnight.
+  const existingDates = new Set(
+    existingRows.map((row) => new Date(row.capturedAt).toISOString().slice(0, 10)),
+  )
   const rowsToWrite = candidateRows.filter((row) => !existingDates.has(row.date))
 
   if (!options.dryRun) {
