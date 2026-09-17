@@ -5,10 +5,8 @@ import { IRepoForStarSnapshot } from '@crowd/types'
 import * as activities from '../activities'
 
 const { backfillRepoStarHistory } = proxyActivities<typeof activities>({
-  // No heartbeats - a large/old repo pages through its full stargazer history then writes
-  // one row per historical day, sequentially, inside a single call. 10 minutes is a generous
-  // margin over that under normal conditions, well short of forcing the 3 retries into a
-  // false dead-letter for a repo that just happens to be old, not actually stuck.
+  // No heartbeats - a large/old repo pages its full stargazer history then writes one row per
+  // historical day in one call; 10 minutes covers that without false-dead-lettering an old repo.
   startToCloseTimeout: '10 minutes',
   retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
@@ -17,9 +15,8 @@ export interface IBackfillStarHistoryBatchArgs {
   repos: IRepoForStarSnapshot[]
 }
 
-// Rate-limited repos are retried in place rather than failing the batch - the wait is a
-// durable workflow sleep, not a blocking activity call, so it's safe even when GitHub's
-// reset is the better part of an hour away.
+// Rate-limited repos retry in place via a durable workflow sleep, not a blocking activity
+// call, so it's safe even when GitHub's reset is the better part of an hour away.
 export async function backfillStarHistoryBatch(args: IBackfillStarHistoryBatchArgs): Promise<void> {
   let pending = args.repos
   const ownerId = workflowInfo().workflowId
@@ -34,9 +31,8 @@ export async function backfillStarHistoryBatch(args: IBackfillStarHistoryBatchAr
 
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        // The activity already isolates and records every outcome it can reach; a
-        // rejection here means every retry attempt itself failed to even run (e.g. a DB
-        // blip), so the repo is neither recorded as failed nor retried within this batch.
+        // A rejection means every retry of the activity itself failed to run (e.g. a DB blip) -
+        // the repo is left neither recorded as failed nor retried within this batch.
         log.warn('backfillRepoStarHistory activity exhausted retries', {
           repoUrl: pending[i].repoUrl,
           error: (result.reason as Error)?.message ?? result.reason,

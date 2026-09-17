@@ -25,13 +25,8 @@ export interface ISelfHealStarBackfillArgs {
   batchesDispatchedSoFar?: number
 }
 
-// A retry of this workflow (the schedule's `retry` policy) restarts with fresh args, so it
-// re-derives the same batch-N workflow IDs already dispatched by the failed attempt. Those
-// children run ABANDONED, so they're either still running or already finished - either way,
-// a start collision here means "already handled," not a real failure. REJECT_DUPLICATE is
-// required for that: the default ALLOW_DUPLICATE lets a new execution silently replace a
-// already-completed one with the same ID instead of throwing, which would re-run the whole
-// batch (re-fetching every repo's stargazer history) after its in-flight claims were released.
+// A workflow retry re-derives the same batch-N IDs; REJECT_DUPLICATE is required so that
+// collision throws instead of ALLOW_DUPLICATE silently re-running an already-finished batch.
 async function startBatchChild(
   batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
   workflowId: string,
@@ -56,9 +51,8 @@ async function startBatchChild(
   }
 }
 
-// Fans out zero-row repos to abandoned child workflows instead of processing them
-// in-line - each batch keeps its own rate-limit retry loop, so one page of candidates
-// isn't held up waiting on GitHub's reset for another.
+// Fans out to abandoned child workflows so each batch's own rate-limit retry loop doesn't
+// hold up other pages waiting on GitHub's reset.
 export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {}): Promise<void> {
   const repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
   let batchesDispatched = args.batchesDispatchedSoFar ?? 0

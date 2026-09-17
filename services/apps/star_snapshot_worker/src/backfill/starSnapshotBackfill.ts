@@ -80,9 +80,16 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
 
   return {
     observe(headers: Headers): void {
-      const observedRemaining = Number(headers.get('x-ratelimit-remaining'))
-      const observedReset = Number(headers.get('x-ratelimit-reset'))
-      const observedResetMs = Number.isFinite(observedReset) ? observedReset * 1000 : undefined
+      // headers.get() returns null when absent, and Number(null) is 0 - checking presence
+      // explicitly keeps a response with no rate-limit headers from being read as "zero quota".
+      const remainingHeader = headers.get('x-ratelimit-remaining')
+      const resetHeader = headers.get('x-ratelimit-reset')
+      const observedRemaining = remainingHeader !== null ? Number(remainingHeader) : undefined
+      const observedReset = resetHeader !== null ? Number(resetHeader) : undefined
+      const observedResetMs =
+        observedReset !== undefined && Number.isFinite(observedReset)
+          ? observedReset * 1000
+          : undefined
 
       // A response from an already-passed reset window carries no information about
       // the current one - ignore it entirely rather than let it rewind resetAtMs.
@@ -90,7 +97,7 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
         return
       }
 
-      if (Number.isFinite(observedRemaining)) {
+      if (observedRemaining !== undefined && Number.isFinite(observedRemaining)) {
         remaining =
           observedResetMs !== undefined && observedResetMs > resetAtMs
             ? observedRemaining
@@ -136,18 +143,14 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       await new Promise((resolve) => setTimeout(resolve, waitMs))
     },
 
-    // Same decision as throttleIfNeeded, without the blocking wait or the reservation -
-    // callers that can't afford to hold a thread/activity open for the wait (e.g. a
-    // Temporal activity, which risks its startToCloseTimeout on a potentially ~1hr wait)
-    // use this to learn how long to back off and do the waiting somewhere durable instead.
+    // Non-blocking version of throttleIfNeeded, for a caller (e.g. a Temporal activity) that
+    // can't hold its startToCloseTimeout open for the wait - it backs off durably instead.
     peekWaitMs(): number {
       if (secondaryCooldownUntilMs > Date.now()) {
         return secondaryCooldownUntilMs - Date.now()
       }
-      // Unlike throttleIfNeeded, a failFast caller may never reach a real GitHub call
-      // (reserveOrThrow throws instead), so remaining would otherwise stay stuck at or
-      // below the floor forever once observed. Treat a passed reset as a fresh window so
-      // the next call goes through and observe() can correct it from the real response.
+      // A failFast caller may never make a real call after this (reserveOrThrow throws instead),
+      // so treat a passed reset as fresh (remaining = Infinity) or it'd stay stuck at the floor.
       if (resetAtMs > 0 && Date.now() >= resetAtMs) {
         remaining = Infinity
       }
@@ -157,9 +160,8 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       return Math.max(resetAtMs - Date.now(), 0) + 1_000
     },
 
-    // Same reservation as throttleIfNeeded, but synchronous - throws instead of blocking so
-    // a caller that only peeked once at entry (e.g. the self-heal activity) can't have quota
-    // run out from under it between the peek and an internal GitHub call.
+    // Same reservation as throttleIfNeeded but synchronous - throws so a caller that peeked
+    // once at entry can't have quota run out from under it before its own GitHub call.
     reserveOrThrow(): void {
       if (secondaryCooldownUntilMs > Date.now()) {
         throw new Error('GitHub rate limit hit: secondary cooldown in effect')
@@ -180,10 +182,8 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
 
 export type CoreRateLimiter = ReturnType<typeof createCoreRateLimiter>
 
-// failFast=true reserves synchronously and throws (rate-limit error) instead of awaiting the
-// wait - for callers like a Temporal activity that can't hold a startToCloseTimeout open for
-// GitHub's reset. failFast=false preserves the original blocking behavior for long-running
-// callers like the CM-1463 CLI script.
+// failFast=true throws synchronously instead of awaiting the wait, for a caller (a Temporal
+// activity) that can't hold its startToCloseTimeout open for GitHub's reset.
 async function acquireRateLimitSlot(
   rateLimiter: CoreRateLimiter,
   failFast: boolean,
@@ -240,10 +240,8 @@ async function assertOk(
 
     const body = await response.text()
     const bodyLower = body.toLowerCase()
-    // A `retry-after` header or explicit secondary/abuse wording is the real signal for
-    // GitHub's secondary limit; a primary core-limit 403 carries neither. Misclassifying the
-    // latter here would apply only the short default cooldown instead of the real, possibly
-    // much longer `x-ratelimit-reset` that `observe()` already captured from this response.
+    // Only a retry-after header or explicit secondary/abuse wording signals GitHub's secondary
+    // limit; misclassifying a primary 403 here would use the short cooldown, not the real reset.
     const isSecondaryRateLimit =
       retryAfterMs !== undefined ||
       bodyLower.includes('secondary rate limit') ||
