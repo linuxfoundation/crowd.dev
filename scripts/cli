@@ -900,6 +900,16 @@ function _lint_changed_packages_with_script() {
     done <<< "$list"
 }
 
+function _lint_changed_run() {
+    local label="$1" packages="$2"
+    shift 2
+    if [[ -z "$packages" ]]; then
+        whisper "Skipped $label check - no relevant packages changed"
+    else
+        say "Checking $label for:" && whisper "$packages" && "$@"
+    fi
+}
+
 function lint_changed() {
     if ! command -v jq &>/dev/null; then
         error "jq is required for lint-changed but is not installed. Install it: brew install jq (macOS) / apt-get install jq (Debian/Ubuntu) / dnf install jq (Fedora)."
@@ -918,22 +928,18 @@ function lint_changed() {
             say "Checking typescript for entire workspace" && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
-            local root packages_all matched_count lint_packages format_packages tsc_packages && \
+            local root packages_all lint_packages format_packages tsc_packages && \
             root="$(pwd)" && \
             packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
-            matched_count="$(printf '%s' "$packages_all" | grep -c . || true)" && \
             lint_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" lint)" && \
             format_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" format-check)" && \
             tsc_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
-            [[ -z "$lint_packages" ]] && lint_packages="(none — $matched_count matched project(s), none have a lint script)" ; \
-            [[ -z "$format_packages" ]] && format_packages="(none — $matched_count matched project(s), none have a format-check script)" ; \
-            [[ -z "$tsc_packages" ]] && tsc_packages="(none — $matched_count matched project(s), none have a tsc-check script)" ; \
-            say "Checking lint for:" && whisper "$lint_packages" && \
-            pnpm --filter="...[origin/main]" --if-present run lint && \
-            say "Checking format for:" && whisper "$format_packages" && \
-            pnpm --filter="...[origin/main]" --if-present run format-check && \
-            say "Checking typescript for:" && whisper "$tsc_packages" && \
-            pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
+            _lint_changed_run "lint" "$lint_packages" \
+                pnpm --filter="...[origin/main]" --if-present run lint && \
+            _lint_changed_run "format" "$format_packages" \
+                pnpm --filter="...[origin/main]" --if-present run format-check && \
+            _lint_changed_run "typescript" "$tsc_packages" \
+                pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
         fi)
 }
 
