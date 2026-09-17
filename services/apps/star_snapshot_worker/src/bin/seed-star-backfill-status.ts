@@ -58,7 +58,9 @@ const main = async () => {
   )
 
   log.info({ seeded, skipped, total: repositoryIds.length }, 'star backfill status seed complete')
-  process.exit(0)
+  // A repo left unseeded here isn't lost - it just refetches its full history on the next
+  // self-heal run - but a non-zero exit makes a partial run visible instead of silently green.
+  process.exit(skipped > 0 ? 1 : 0)
 }
 
 main().catch((err) => {

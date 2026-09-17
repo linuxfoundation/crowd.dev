@@ -369,19 +369,36 @@ export async function backfillRepoStarHistory(
     return { outcome: 'done' }
   }
 
-  // A negative-count skip is a reconstruction anomaly, not a completed backfill - leave
-  // it unmarked so the repo stays in the candidate pool and retries on the next run.
-  if (result.status !== 'skipped-negative-count') {
+  if (result.status === 'skipped-negative-count') {
+    // Deterministic for this repo's actual GitHub data - retrying it plain would refetch its
+    // full history every run forever, so it's dead-lettered like any other failure.
     try {
-      await recordStarBackfillSuccess(qx, repo.repositoryId)
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        'NegativeStarCountAnomaly',
+        'backward-anchored reconstruction produced a negative star count',
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
     } catch (err) {
-      // Fetch and row writes already succeeded - don't let a transient marker-write error force
-      // a full retry (re-fetching all stargazer history); it just stays a candidate till next run.
       svc.log.warn(
         { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
-        'failed to record star backfill completion marker, will retry on next self-heal run',
+        'failed to record star backfill anomaly marker, will retry on next self-heal run',
       )
     }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
+    return { outcome: 'done' }
+  }
+
+  try {
+    await recordStarBackfillSuccess(qx, repo.repositoryId)
+  } catch (err) {
+    // Fetch and row writes already succeeded - don't let a transient marker-write error force
+    // a full retry (re-fetching all stargazer history); it just stays a candidate till next run.
+    svc.log.warn(
+      { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+      'failed to record star backfill completion marker, will retry on next self-heal run',
+    )
   }
   await releaseInflightClaim(inflightCache, repo.repositoryId)
   return { outcome: 'done' }
