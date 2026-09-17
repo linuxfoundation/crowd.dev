@@ -892,17 +892,18 @@ function lint_services() {
 
 function lint_changed() {
     (cd $CLI_HOME/.. && \
+        git fetch origin main && \
         ./services/scripts/check_package_scripts.sh && \
-        if git diff --name-only "$(git merge-base main HEAD)" \
+        if git diff --name-only "$(git merge-base origin/main HEAD)" \
             | grep -qE '^(services/\.eslintrc\.cjs|services/\.prettierrc\.cjs|services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
             yell "Shared config changed (eslint/prettier/tsconfig base, lockfile or catalog) - falling back to full workspace checks" && \
             pnpm -r --if-present run lint && \
             pnpm -r --if-present run format-check && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
-            pnpm --filter="...[main]" --if-present run lint && \
-            pnpm --filter="...[main]" --if-present run format-check && \
-            pnpm --filter="...[main]" --if-present --workspace-concurrency=4 run tsc-check
+            pnpm --filter="...[origin/main]" --if-present run lint && \
+            pnpm --filter="...[origin/main]" --if-present run format-check && \
+            pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
         fi)
 }
 
