@@ -68,7 +68,9 @@ export async function recordStarBackfillSuccess(
 
 export async function findDeadLetteredStarBackfillFailures(
   qx: QueryExecutor,
-  since: Date | null = null,
+  // string accepted so a caller can pass back a previously-read `deadLetteredAt` (pg's raw
+  // text output) unparsed - reparsing it via `new Date()` is session-timezone dependent.
+  since: Date | string | null = null,
 ): Promise<IRepositoryStarBackfillStatus[]> {
   const failures: IRepositoryStarBackfillStatus[] = await qx.select(
     `

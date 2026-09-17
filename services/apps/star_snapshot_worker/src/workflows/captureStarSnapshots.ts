@@ -73,12 +73,24 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   const total = (args.totalSoFar ?? 0) + repos.length
 
-  if (rejectedBatches > 0) {
+  // A handful of rejected batches out of many is routine GitHub flakiness that self-heals
+  // (next run's diff, or the gap backfill) - only a wiped-out page (every batch rejected)
+  // signals something systemic (auth/token/outage) worth failing the execution over.
+  if (batches.length > 0 && rejectedBatches === batches.length) {
     // A plain Error only fails the workflow task (infinite replay); ApplicationFailure
     // is required to fail the execution so the schedule's retry policy engages.
     throw ApplicationFailure.create({
-      message: `${rejectedBatches} of ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
+      message: `all ${batches.length} batch(es) failed after retries on this page; ${succeeded} succeeded and ${failed} failed so far (already-persisted snapshots are safe to retry)`,
       type: 'StarSnapshotBatchFailure',
+    })
+  }
+
+  if (rejectedBatches > 0) {
+    log.error('star snapshot capture had partial batch failures on this page', {
+      rejectedBatches,
+      totalBatches: batches.length,
+      succeeded,
+      failed,
     })
   }
 
