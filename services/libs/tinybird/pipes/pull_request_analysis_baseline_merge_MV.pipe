@@ -27,7 +27,7 @@ SQL >
         activityId as id,
         sourceId,
         sourceParentId,
-        channel,
+        lower(channel) AS channel,
         timestamp as ts,
         segmentId,
         gitChangedLinesBucket,

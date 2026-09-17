@@ -14,6 +14,17 @@ SQL >
         AND isNull (r.deletedAt)
         AND r.enabled = true
         AND r.insightsProjectId != ''
+    UNION ALL
+    -- Lowercase channel variant: matches activities ingested with lowercased repo casing
+    SELECT lower(r.url) AS url, r.segmentId, r.insightsProjectId
+    FROM collectionsRepositories cr FINAL
+    JOIN repositories r FINAL ON cr.repoId = r.id
+    WHERE
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
+        AND isNull (cr.deletedAt)
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+        AND r.insightsProjectId != ''
 
 NODE ai_projects
 SQL >
@@ -23,8 +34,8 @@ SQL >
         p.name,
         p.slug,
         p.softwareValue,
-        groupArray(ar.url) AS repoUrls,
-        arrayFilter(x -> x LIKE '%github.com%', groupArray(ar.url)) AS githubRepos
+        arrayDistinct(groupArray(ar.url)) AS repoUrls,
+        arrayDistinct(arrayFilter(x -> x LIKE '%github.com%', groupArray(ar.url))) AS githubRepos
     FROM insights_projects_populated_ds p
     JOIN ai_repos ar ON ar.insightsProjectId = p.id
     GROUP BY p.id, p.segmentId, p.name, p.slug, p.softwareValue
