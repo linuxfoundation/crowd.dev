@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+CLI_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+source $CLI_HOME/utils.sh
+
+REQUIRED_SCRIPTS=("lint" "format-check" "tsc-check")
+FAILED=0
+
+check_dir () {
+  local group_dir="$1"
+  local group_label="$2"
+
+  for pkg_dir in "$group_dir"*/; do
+    local pkg_json="${pkg_dir}package.json"
+    if [ -f "$pkg_json" ]; then
+      local pkg
+      pkg=$(basename "$pkg_dir")
+      local missing=()
+
+      for script in "${REQUIRED_SCRIPTS[@]}"; do
+        if [ "$(jq -r --arg s "$script" '.scripts[$s] // empty' "$pkg_json")" == "" ]; then
+          missing+=("$script")
+        fi
+      done
+
+      if [ ${#missing[@]} -gt 0 ]; then
+        error "$group_label $pkg is missing required script(s): ${missing[*]}"
+        FAILED=1
+      fi
+    fi
+  done
+}
+
+check_dir "$CLI_HOME/../libs/" "Library"
+check_dir "$CLI_HOME/../archetypes/" "Archetype"
+check_dir "$CLI_HOME/../apps/" "App"
+
+if [ "$FAILED" -eq 1 ]; then
+  error "One or more packages are missing required scripts (${REQUIRED_SCRIPTS[*]})."
+  exit 1
+fi
+
+say "All services packages define the required scripts."
