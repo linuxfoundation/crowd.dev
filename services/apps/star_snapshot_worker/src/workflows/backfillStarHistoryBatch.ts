@@ -1,4 +1,4 @@
-import { log, proxyActivities, sleep } from '@temporalio/workflow'
+import { log, proxyActivities, sleep, workflowInfo } from '@temporalio/workflow'
 
 import { IRepoForStarSnapshot } from '@crowd/types'
 
@@ -18,9 +18,12 @@ export interface IBackfillStarHistoryBatchArgs {
 // reset is the better part of an hour away.
 export async function backfillStarHistoryBatch(args: IBackfillStarHistoryBatchArgs): Promise<void> {
   let pending = args.repos
+  const ownerId = workflowInfo().workflowId
 
   while (pending.length > 0) {
-    const results = await Promise.allSettled(pending.map((repo) => backfillRepoStarHistory(repo)))
+    const results = await Promise.allSettled(
+      pending.map((repo) => backfillRepoStarHistory(repo, ownerId)),
+    )
 
     const stillPending: IRepoForStarSnapshot[] = []
     let waitMs = 0
@@ -39,6 +42,10 @@ export async function backfillStarHistoryBatch(args: IBackfillStarHistoryBatchAr
       if (result.value.outcome === 'rate-limited') {
         stillPending.push(pending[i])
         waitMs = Math.max(waitMs, result.value.waitMs)
+      } else if (result.value.outcome === 'in-flight') {
+        log.debug('repo already claimed by another self-heal batch, skipping', {
+          repoUrl: pending[i].repoUrl,
+        })
       }
     })
 

@@ -9,6 +9,7 @@ import {
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { RedisCache } from '@crowd/redis'
 import { IRepoForStarSnapshot } from '@crowd/types'
 
 import {
@@ -23,6 +24,10 @@ import { svc } from '../main'
 
 const SELF_HEAL_RESERVED_CORE_RATE_LIMIT = 2_000
 const SELF_HEAL_DEAD_LETTER_AFTER = 3
+// A repo stays claimed for the whole duration a batch is (potentially repeatedly, across
+// rate-limit backoffs) processing it - 6h comfortably covers that, while still auto-releasing
+// a crashed/stuck claim well before the next daily schedule tick could otherwise double-dispatch it.
+const SELF_HEAL_INFLIGHT_TTL_SECONDS = 6 * 60 * 60
 
 let selfHealRateLimiter: CoreRateLimiter | undefined
 // Lazily built on first use (not at module load) - svc.log isn't guaranteed ready until
@@ -34,6 +39,14 @@ function getSelfHealRateLimiter(): CoreRateLimiter {
     selfHealRateLimiter = createCoreRateLimiter(SELF_HEAL_RESERVED_CORE_RATE_LIMIT, svc.log)
   }
   return selfHealRateLimiter
+}
+
+let selfHealInflightCache: RedisCache | undefined
+function getSelfHealInflightCache(): RedisCache {
+  if (!selfHealInflightCache) {
+    selfHealInflightCache = new RedisCache('starBackfillInflight', svc.redis, svc.log)
+  }
+  return selfHealInflightCache
 }
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
@@ -284,13 +297,46 @@ export async function findReposNeedingStarBackfill(
   return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
 }
 
+// A leftover claim only costs a repo one skipped run before the TTL clears it - not worth
+// forcing a full activity retry (re-fetching the entire stargazer history) over.
+async function releaseInflightClaim(cache: RedisCache, repositoryId: string): Promise<void> {
+  try {
+    await cache.delete(repositoryId)
+  } catch (err) {
+    svc.log.warn(
+      { repositoryId, error: (err as Error)?.message ?? err },
+      'failed to release star backfill in-flight claim, will auto-expire via TTL',
+    )
+  }
+}
+
 export type BackfillRepoStarHistoryResult =
   | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'in-flight' }
   | { outcome: 'done' }
 
 export async function backfillRepoStarHistory(
   repo: IRepoForStarSnapshot,
+  ownerId: string,
 ): Promise<BackfillRepoStarHistoryResult> {
+  const inflightCache = getSelfHealInflightCache()
+  // Claims the repo for this batch (ownerId = the batch workflow's own workflowId), so a
+  // different day's batch dispatched for the same still-pending repo backs off instead of
+  // re-processing it. Re-claiming with the same ownerId (this batch's own retry loop) is a
+  // no-op that just confirms the existing claim.
+  const holder = await inflightCache.setIfNotExistsOrGet(
+    repo.repositoryId,
+    ownerId,
+    SELF_HEAL_INFLIGHT_TTL_SECONDS,
+  )
+  if (holder !== ownerId) {
+    return { outcome: 'in-flight' }
+  }
+  // The SETNX above only sets the TTL on the very first claim - renew it on every
+  // subsequent attempt (rate-limit retry, activity retry) too, or a repo that bounces
+  // through backoffs for longer than the TTL would have its claim expire mid-processing.
+  await inflightCache.set(repo.repositoryId, ownerId, SELF_HEAL_INFLIGHT_TTL_SECONDS)
+
   const rateLimiter = getSelfHealRateLimiter()
   const waitMs = rateLimiter.peekWaitMs()
   if (waitMs > 0) {
@@ -309,13 +355,24 @@ export async function backfillRepoStarHistory(
         waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
       }
     }
-    await recordStarBackfillFailure(
-      qx,
-      repo.repositoryId,
-      (err as Error)?.name ?? 'Error',
-      message,
-      SELF_HEAL_DEAD_LETTER_AFTER,
-    )
+    try {
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        (err as Error)?.name ?? 'Error',
+        message,
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
+    } catch (recordErr) {
+      // The failure itself is already known (we're in this catch because backfillRepo threw) -
+      // don't let a transient marker write also fail the activity and force Temporal to retry
+      // the whole thing (re-fetching the entire stargazer history) just to log the failure.
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (recordErr as Error)?.message ?? recordErr },
+        'failed to record star backfill failure marker, will retry on next self-heal run',
+      )
+    }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
     return { outcome: 'done' }
   }
 
@@ -334,5 +391,6 @@ export async function backfillRepoStarHistory(
       )
     }
   }
+  await releaseInflightClaim(inflightCache, repo.repositoryId)
   return { outcome: 'done' }
 }
