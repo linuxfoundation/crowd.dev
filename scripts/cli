@@ -903,11 +903,7 @@ function _lint_changed_packages_with_script() {
 function _lint_changed_run() {
     local label="$1" packages="$2"
     shift 2
-    if [[ -z "$packages" ]]; then
-        whisper "Skipped $label check - no relevant packages changed"
-    else
-        say "Checking $label for:" && whisper "$packages" && "$@"
-    fi
+    say "Checking $label for:" && whisper "$packages" && "$@"
 }
 
 function lint_changed() {
@@ -928,18 +924,20 @@ function lint_changed() {
             say "Checking typescript for entire workspace" && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
-            local root packages_all lint_packages format_packages tsc_packages && \
+            local root packages_all changed_packages && \
             root="$(pwd)" && \
             packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
-            lint_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" lint)" && \
-            format_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" format-check)" && \
-            tsc_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
-            _lint_changed_run "lint" "$lint_packages" \
-                pnpm --filter="...[origin/main]" --if-present run lint && \
-            _lint_changed_run "format" "$format_packages" \
-                pnpm --filter="...[origin/main]" --if-present run format-check && \
-            _lint_changed_run "typescript" "$tsc_packages" \
-                pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
+            changed_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" lint)" && \
+            if [[ -z "$changed_packages" ]]; then
+                whisper "Skipping all checks - no relevant packages changed"
+            else
+                _lint_changed_run "lint" "$changed_packages" \
+                    pnpm --filter="...[origin/main]" --if-present run lint && \
+                _lint_changed_run "format" "$changed_packages" \
+                    pnpm --filter="...[origin/main]" --if-present run format-check && \
+                _lint_changed_run "typescript" "$changed_packages" \
+                    pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
+            fi
         fi)
 }
 
