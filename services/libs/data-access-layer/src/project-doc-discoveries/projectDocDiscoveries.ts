@@ -15,7 +15,6 @@ const DISCOVERY_COLUMNS = [
   .map((c) => `"${c}"`)
   .join(',\n')
 
-// One row per project; a re-discovery overwrites the previous result.
 export async function upsertProjectDocDiscovery(
   qx: QueryExecutor,
   data: IProjectDocDiscoveryUpsert,
