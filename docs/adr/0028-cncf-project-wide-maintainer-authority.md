@@ -1,4 +1,4 @@
-# ADR-0027: CNCF `.project` Repo as Project-Wide Maintainer Authority
+# ADR-0028: CNCF `.project` Repo as Project-Wide Maintainer Authority
 
 **Date**: 2026-09-16
 **Status**: accepted
