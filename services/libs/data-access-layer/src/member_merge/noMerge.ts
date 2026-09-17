@@ -74,10 +74,13 @@ function shareVerifiedEmail(
 export async function getMemberNoMerge(
   qx: QueryExecutor,
   memberIds: string[],
+  options?: { includeExpired?: boolean },
 ): Promise<{ memberId: string; noMergeId: string }[]> {
   if (memberIds.length === 0) {
     return []
   }
+
+  const includeExpired = options?.includeExpired ?? true
 
   const rows: MemberNoMergeRow[] = await qx.select(
     `
@@ -91,6 +94,10 @@ export async function getMemberNoMerge(
 
   if (rows.length === 0) {
     return []
+  }
+
+  if (!includeExpired) {
+    return rows.map(({ memberId, noMergeId }) => ({ memberId, noMergeId }))
   }
 
   const involved = [...new Set(rows.flatMap((row) => [row.memberId, row.noMergeId]))]
