@@ -897,12 +897,23 @@ function lint_changed() {
         if git diff --name-only "$(git merge-base origin/main HEAD)" \
             | grep -qE '^(services/\.eslintrc\.cjs|services/\.prettierrc\.cjs|services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
             yell "Shared config changed (eslint/prettier/tsconfig base, lockfile or catalog) - falling back to full workspace checks" && \
+            say "Checking lint for entire workspace" && \
             pnpm -r --if-present run lint && \
+            say "Checking format for entire workspace" && \
             pnpm -r --if-present run format-check && \
+            say "Checking typescript for entire workspace" && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
+            local root packages && \
+            root="$(pwd)" && \
+            packages="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null \
+                | while IFS= read -r p; do [[ "$p" == "$root" ]] && echo "(root)" || echo "${p#$root/}"; done)" && \
+            [[ -z "$packages" ]] && packages="(none)" ; \
+            say "Checking lint for:" && whisper "$packages" && \
             pnpm --filter="...[origin/main]" --if-present run lint && \
+            say "Checking format for:" && whisper "$packages" && \
             pnpm --filter="...[origin/main]" --if-present run format-check && \
+            say "Checking typescript for:" && whisper "$packages" && \
             pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
         fi)
 }
