@@ -10,12 +10,13 @@ export interface IRepoForStarSnapshot {
   repoUrl: string
 }
 
-export interface IRepositoryStarBackfillFailure {
+export interface IRepositoryStarBackfillStatus {
   repositoryId: string
   consecutiveFailures: number
   lastErrorClass: string | null
   lastErrorMessage: string | null
   deadLetteredAt: string | null
+  completedAt: string | null
   createdAt: string
   updatedAt: string
 }
