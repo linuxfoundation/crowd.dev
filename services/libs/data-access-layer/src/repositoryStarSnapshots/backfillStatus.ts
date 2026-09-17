@@ -1,4 +1,4 @@
-import { IRepositoryStarBackfillFailure } from '@crowd/types'
+import { IRepositoryStarBackfillStatus } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
@@ -12,7 +12,7 @@ export async function recordStarBackfillFailure(
 ): Promise<void> {
   await qx.result(
     `
-      insert into public."repositoryStarBackfillFailures"
+      insert into public."repositoryStarBackfillStatus"
           ("repositoryId", "consecutiveFailures", "lastErrorClass", "lastErrorMessage", "deadLetteredAt", "createdAt", "updatedAt")
       values
           ($(repositoryId), 1, $(errorClass), $(errorMessage),
@@ -20,17 +20,18 @@ export async function recordStarBackfillFailure(
            now(), now())
       on conflict ("repositoryId")
           do update
-          set "consecutiveFailures" = "repositoryStarBackfillFailures"."consecutiveFailures" + 1,
+          set "consecutiveFailures" = "repositoryStarBackfillStatus"."consecutiveFailures" + 1,
               "lastErrorClass" = excluded."lastErrorClass",
               "lastErrorMessage" = excluded."lastErrorMessage",
               "deadLetteredAt" = case
-                  when "repositoryStarBackfillFailures"."deadLetteredAt" is not null
-                      then "repositoryStarBackfillFailures"."deadLetteredAt"
+                  when "repositoryStarBackfillStatus"."deadLetteredAt" is not null
+                      then "repositoryStarBackfillStatus"."deadLetteredAt"
                   when $(deadLetterAfter)::int is not null
-                      and "repositoryStarBackfillFailures"."consecutiveFailures" + 1 >= $(deadLetterAfter)
+                      and "repositoryStarBackfillStatus"."consecutiveFailures" + 1 >= $(deadLetterAfter)
                       then now()
                   else null
               end,
+              "completedAt" = null,
               "updatedAt" = now()
     `,
     {
@@ -48,8 +49,18 @@ export async function recordStarBackfillSuccess(
 ): Promise<void> {
   await qx.result(
     `
-      delete from public."repositoryStarBackfillFailures"
-      where "repositoryId" = $(repositoryId)
+      insert into public."repositoryStarBackfillStatus"
+          ("repositoryId", "consecutiveFailures", "completedAt", "createdAt", "updatedAt")
+      values
+          ($(repositoryId), 0, now(), now(), now())
+      on conflict ("repositoryId")
+          do update
+          set "consecutiveFailures" = 0,
+              "lastErrorClass" = null,
+              "lastErrorMessage" = null,
+              "deadLetteredAt" = null,
+              "completedAt" = now(),
+              "updatedAt" = now()
     `,
     { repositoryId },
   )
@@ -58,11 +69,11 @@ export async function recordStarBackfillSuccess(
 export async function findDeadLetteredStarBackfillFailures(
   qx: QueryExecutor,
   since: Date | null = null,
-): Promise<IRepositoryStarBackfillFailure[]> {
-  const failures: IRepositoryStarBackfillFailure[] = await qx.select(
+): Promise<IRepositoryStarBackfillStatus[]> {
+  const failures: IRepositoryStarBackfillStatus[] = await qx.select(
     `
       select *
-      from public."repositoryStarBackfillFailures"
+      from public."repositoryStarBackfillStatus"
       where "deadLetteredAt" is not null
         and ($(since)::timestamptz is null or "deadLetteredAt" >= $(since))
       order by "deadLetteredAt" desc

@@ -3,7 +3,7 @@ import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
-export * from './backfillFailures'
+export * from './backfillStatus'
 
 export async function findReposForStarSnapshot(
   qx: QueryExecutor,
@@ -20,6 +20,33 @@ export async function findReposForStarSnapshot(
         and r."excluded" = false
         and r.url like 'https://github.com%'
         and ($(afterUrl)::text is null or r.url > $(afterUrl))
+      order by r.url asc
+      limit $(limit)
+    `,
+    { limit, afterUrl },
+  )
+
+  return repos || []
+}
+
+export async function findReposNeedingStarBackfill(
+  qx: QueryExecutor,
+  limit: number | null = null,
+  afterUrl: string | null = null,
+): Promise<IRepoForStarSnapshot[]> {
+  const repos: IRepoForStarSnapshot[] = await qx.select(
+    `
+      select
+          r.id as "repositoryId",
+          r.url as "repoUrl"
+      from public.repositories r
+      left join public."repositoryStarBackfillStatus" f on f."repositoryId" = r.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and ($(afterUrl)::text is null or r.url > $(afterUrl))
+        and f."deadLetteredAt" is null
+        and f."completedAt" is null
       order by r.url asc
       limit $(limit)
     `,

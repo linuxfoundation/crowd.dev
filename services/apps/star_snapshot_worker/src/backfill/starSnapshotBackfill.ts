@@ -71,7 +71,7 @@ function parseLastPage(linkHeader: string | null): number | undefined {
   return match ? Number(match[1]) : undefined
 }
 
-const SECONDARY_RATE_LIMIT_COOLDOWN_MS = 60_000
+export const SECONDARY_RATE_LIMIT_COOLDOWN_MS = 60_000
 
 export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
   let remaining = Infinity
@@ -80,9 +80,16 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
 
   return {
     observe(headers: Headers): void {
-      const observedRemaining = Number(headers.get('x-ratelimit-remaining'))
-      const observedReset = Number(headers.get('x-ratelimit-reset'))
-      const observedResetMs = Number.isFinite(observedReset) ? observedReset * 1000 : undefined
+      // headers.get() returns null when absent, and Number(null) is 0 - checking presence
+      // explicitly keeps a response with no rate-limit headers from being read as "zero quota".
+      const remainingHeader = headers.get('x-ratelimit-remaining')
+      const resetHeader = headers.get('x-ratelimit-reset')
+      const observedRemaining = remainingHeader !== null ? Number(remainingHeader) : undefined
+      const observedReset = resetHeader !== null ? Number(resetHeader) : undefined
+      const observedResetMs =
+        observedReset !== undefined && Number.isFinite(observedReset)
+          ? observedReset * 1000
+          : undefined
 
       // A response from an already-passed reset window carries no information about
       // the current one - ignore it entirely rather than let it rewind resetAtMs.
@@ -90,7 +97,7 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
         return
       }
 
-      if (Number.isFinite(observedRemaining)) {
+      if (observedRemaining !== undefined && Number.isFinite(observedRemaining)) {
         remaining =
           observedResetMs !== undefined && observedResetMs > resetAtMs
             ? observedRemaining
@@ -135,10 +142,58 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       )
       await new Promise((resolve) => setTimeout(resolve, waitMs))
     },
+
+    // Non-blocking version of throttleIfNeeded, for a caller (e.g. a Temporal activity) that
+    // can't hold its startToCloseTimeout open for the wait - it backs off durably instead.
+    peekWaitMs(): number {
+      if (secondaryCooldownUntilMs > Date.now()) {
+        return secondaryCooldownUntilMs - Date.now()
+      }
+      // A failFast caller may never make a real call after this (reserveOrThrow throws instead),
+      // so treat a passed reset as fresh (remaining = Infinity) or it'd stay stuck at the floor.
+      if (resetAtMs > 0 && Date.now() >= resetAtMs) {
+        remaining = Infinity
+      }
+      if (remaining > reservedFloor) {
+        return 0
+      }
+      return Math.max(resetAtMs - Date.now(), 0) + 1_000
+    },
+
+    // Same reservation as throttleIfNeeded but synchronous - throws so a caller that peeked
+    // once at entry can't have quota run out from under it before its own GitHub call.
+    reserveOrThrow(): void {
+      if (secondaryCooldownUntilMs > Date.now()) {
+        throw new Error('GitHub rate limit hit: secondary cooldown in effect')
+      }
+      // See peekWaitMs - without this, once remaining drops to the floor it never
+      // recovers, since throwing here means no real call ever runs to refresh it via observe().
+      if (resetAtMs > 0 && Date.now() >= resetAtMs) {
+        remaining = Infinity
+      }
+      if (remaining > reservedFloor) {
+        remaining--
+        return
+      }
+      throw new Error('GitHub rate limit hit: core rate limit near reserved floor')
+    },
   }
 }
 
 export type CoreRateLimiter = ReturnType<typeof createCoreRateLimiter>
+
+// failFast=true throws synchronously instead of awaiting the wait, for a caller (a Temporal
+// activity) that can't hold its startToCloseTimeout open for GitHub's reset.
+async function acquireRateLimitSlot(
+  rateLimiter: CoreRateLimiter,
+  failFast: boolean,
+): Promise<void> {
+  if (failFast) {
+    rateLimiter.reserveOrThrow()
+    return
+  }
+  await rateLimiter.throttleIfNeeded()
+}
 
 async function githubGet(url: string, token: string): Promise<Response> {
   const controller = new AbortController()
@@ -184,8 +239,18 @@ async function assertOk(
     }
 
     const body = await response.text()
-    if (retryAfterMs !== undefined || body.toLowerCase().includes('rate limit')) {
+    const bodyLower = body.toLowerCase()
+    // Only a retry-after header or explicit secondary/abuse wording signals GitHub's secondary
+    // limit; misclassifying a primary 403 here would use the short cooldown, not the real reset.
+    const isSecondaryRateLimit =
+      retryAfterMs !== undefined ||
+      bodyLower.includes('secondary rate limit') ||
+      bodyLower.includes('abuse detection')
+    if (isSecondaryRateLimit) {
       rateLimiter.noteSecondaryRateLimit(retryAfterMs)
+      throw new Error(`GitHub secondary rate limit hit fetching ${what} for ${owner}/${name}`)
+    }
+    if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
     throw new Error(`GitHub auth failure (403) fetching ${what} for ${owner}/${name}`)
@@ -198,10 +263,11 @@ async function fetchStargazerHistory(
   name: string,
   token: string,
   rateLimiter: CoreRateLimiter,
+  failFast: boolean,
 ): Promise<StargazerHistoryWeek[]> {
   const baseUrl = `https://api.github.com/repos/${owner}/${name}/stargazers/history?per_page=${WEEKS_PER_PAGE}`
 
-  await rateLimiter.throttleIfNeeded()
+  await acquireRateLimitSlot(rateLimiter, failFast)
   const firstResponse = await githubGet(`${baseUrl}&page=1`, token)
   rateLimiter.observe(firstResponse.headers)
   await assertOk(firstResponse, owner, name, 'stargazer history', rateLimiter)
@@ -215,7 +281,7 @@ async function fetchStargazerHistory(
   const weeks = [...firstPage]
 
   for (let page = 2; page <= lastPage; page++) {
-    await rateLimiter.throttleIfNeeded()
+    await acquireRateLimitSlot(rateLimiter, failFast)
     const response = await githubGet(`${baseUrl}&page=${page}`, token)
     rateLimiter.observe(response.headers)
     await assertOk(response, owner, name, 'stargazer history', rateLimiter)
@@ -230,8 +296,9 @@ async function fetchCurrentStarCount(
   name: string,
   token: string,
   rateLimiter: CoreRateLimiter,
+  failFast: boolean,
 ): Promise<number> {
-  await rateLimiter.throttleIfNeeded()
+  await acquireRateLimitSlot(rateLimiter, failFast)
   const response = await githubGet(`https://api.github.com/repos/${owner}/${name}`, token)
   rateLimiter.observe(response.headers)
   await assertOk(response, owner, name, 'current star count', rateLimiter)
@@ -273,29 +340,42 @@ function buildBackwardCounts(daily: DailyDelta[], knownCurrentTotal: number): Da
   return daily.map((d, i) => ({ date: d.date, count: counts[i] }))
 }
 
-interface RepoBackfillResult {
+export interface RepoBackfillResult {
   status: 'reconciled' | 'anchored' | 'skipped-no-history' | 'skipped-negative-count'
   daysWritten: number
 }
 
-async function backfillRepo(
+export interface BackfillRepoOptions {
+  dryRun: boolean
+  // true for callers that can't block on GitHub's rate-limit reset (e.g. a Temporal activity
+  // with a short startToCloseTimeout) - fails fast with a "rate limit" error instead.
+  failFast: boolean
+}
+
+export async function backfillRepo(
   qx: QueryExecutor,
   repo: IRepoForStarSnapshot,
   rateLimiter: CoreRateLimiter,
   log: Logger,
-  dryRun: boolean,
+  options: BackfillRepoOptions,
 ): Promise<RepoBackfillResult> {
   const { owner, name } = parseGithubRepoUrl(repo.repoUrl)
   const token = await getGithubInstallationToken()
 
-  const weeks = await fetchStargazerHistory(owner, name, token, rateLimiter)
+  const weeks = await fetchStargazerHistory(owner, name, token, rateLimiter, options.failFast)
   if (weeks.length === 0) {
     return { status: 'skipped-no-history', daysWritten: 0 }
   }
 
   const daily = buildDailyDeltas(weeks)
   const forward = buildForwardCounts(daily)
-  const knownCurrentTotal = await fetchCurrentStarCount(owner, name, token, rateLimiter)
+  const knownCurrentTotal = await fetchCurrentStarCount(
+    owner,
+    name,
+    token,
+    rateLimiter,
+    options.failFast,
+  )
 
   const reconciled =
     Math.abs(forward[forward.length - 1].count - knownCurrentTotal) <= RECONCILIATION_TOLERANCE
@@ -325,7 +405,7 @@ async function backfillRepo(
     : new Date().toISOString().slice(0, 10)
   const rowsToWrite = allRows.filter((row) => row.date < cutoffDate)
 
-  if (!dryRun) {
+  if (!options.dryRun) {
     // Newest-first: a crash mid-loop leaves `earliestExisting` pointing at the true
     // gap boundary on retry, instead of an ancient row that hides everything after it.
     for (const row of [...rowsToWrite].reverse()) {
@@ -338,7 +418,7 @@ async function backfillRepo(
 
 // `concurrency` workers pull the next index as they free up, instead of lockstep batches.
 // A worker never abandons a grabbed item, so returned count N means indices 0..N-1 are done.
-async function runWithConcurrency<T>(
+export async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
   isShuttingDown: () => boolean,
@@ -424,7 +504,10 @@ export async function runStarSnapshotBackfill(
 
         totals.reposProcessed++
         try {
-          const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
+          const result = await backfillRepo(qx, repo, rateLimiter, log, {
+            dryRun: options.dryRun,
+            failFast: false,
+          })
           // A negative-count skip is a reconstruction anomaly, not a terminal success -
           // leave it off completedRepoIds so a future run retries it instead of skipping forever.
           if (result.status !== 'skipped-negative-count') {
@@ -492,7 +575,10 @@ export async function runStarSnapshotBackfill(
 
     await runWithConcurrency(toRetry, options.concurrency, options.isShuttingDown, async (repo) => {
       try {
-        const result = await backfillRepo(qx, repo, rateLimiter, log, options.dryRun)
+        const result = await backfillRepo(qx, repo, rateLimiter, log, {
+          dryRun: options.dryRun,
+          failFast: false,
+        })
         totals.reposFailed--
         if (result.status !== 'skipped-negative-count') {
           options.completedRepoIds?.add(repo.repositoryId)
