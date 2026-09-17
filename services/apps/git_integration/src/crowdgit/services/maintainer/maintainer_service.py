@@ -43,7 +43,6 @@ from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.llm.bedrock import invoke_bedrock
 from crowdgit.services.maintainer.cncf_maintainers import (
-    CNCF_MAINTAINERS_FILENAMES,
     find_cncf_maintainers_file,
     is_cncf_repo,
     parse_cncf_maintainers_yaml,
@@ -818,6 +817,7 @@ class MaintainerService(BaseService):
                         MaintainerResult(
                             maintainer_file=cncf_file.name,
                             maintainer_info=cncf_maintainers,
+                            cncf_authoritative=True,
                         )
                     )
 
@@ -1050,7 +1050,7 @@ class MaintainerService(BaseService):
                 )
 
             if not is_cncf_repo(repository.url):
-                project_ctx = await find_project_repo_sibling(repository.id)
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
                 if project_ctx:
                     raise MaintainerSkippedProjectLevelError(
                         f"Skipping: project-level source at {project_ctx.project_repo_url}"
@@ -1091,7 +1091,7 @@ class MaintainerService(BaseService):
             await update_maintainer_run(repository.id, latest_maintainer_file)
 
             if not is_cncf_repo(repository.url):
-                project_ctx = await find_project_repo_sibling(repository.id)
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
                 if project_ctx and project_ctx.project_repo_id:
                     today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
                     await end_date_maintainers_for_repos([repository.id], today_midnight)
@@ -1101,11 +1101,8 @@ class MaintainerService(BaseService):
                         f"appeared during processing"
                     )
 
-            if (
-                is_cncf_repo(repository.url)
-                and latest_maintainer_file in CNCF_MAINTAINERS_FILENAMES
-            ):
-                project_ctx = await find_project_repo_sibling(repository.id)
+            if is_cncf_repo(repository.url) and maintainers.cncf_authoritative:
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
                 if project_ctx and project_ctx.sibling_repo_ids:
                     today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
                     await end_date_maintainers_for_repos(

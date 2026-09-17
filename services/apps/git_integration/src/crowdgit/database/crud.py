@@ -475,7 +475,7 @@ class ProjectContext:
     sibling_repo_ids: list[str] = field(default_factory=list)
 
 
-async def find_project_repo_sibling(repo_id: str) -> ProjectContext | None:
+async def find_project_repo_sibling(repo_id: str, segment_id: str | None) -> ProjectContext | None:
     """
     For a given repo, find the sibling .project repo within the same CNCF project segment,
     and list all other sibling repo IDs.
@@ -483,17 +483,13 @@ async def find_project_repo_sibling(repo_id: str) -> ProjectContext | None:
     Returns None if the repo's segment is not a CNCF subproject (grandparentSlug != 'cncf')
     or no .project sibling exists.
     """
+    if not segment_id:
+        return None
     sql = """
-        WITH self_segment AS (
-            SELECT s.id, s.type, s."parentId", s."parentSlug", s."grandparentSlug"
-            FROM public.repositories r
-            JOIN public.segments s ON s.id = r."segmentId"
-            WHERE r.id = $1
-        ),
-        project_id_cte AS (
+        WITH project_id_cte AS (
             SELECT "parentId" AS project_id
-            FROM self_segment
-            WHERE type = 'subproject' AND "grandparentSlug" = 'cncf'
+            FROM public.segments
+            WHERE id = $1::uuid AND type = 'subproject' AND "grandparentSlug" = 'cncf'
         ),
         project_repos AS (
             SELECT r.id, r.url
@@ -510,7 +506,7 @@ async def find_project_repo_sibling(repo_id: str) -> ProjectContext | None:
             (SELECT url       FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_url,
             ARRAY(SELECT id::text FROM project_repos WHERE url !~* '/\\.project(\\.git)?$')         AS sibling_repo_ids
     """
-    row = await fetchrow(sql, (repo_id,))
+    row = await fetchrow(sql, (segment_id,))
     if not row or not row.get("project_segment_id") or not row.get("project_repo_id"):
         return None
     return ProjectContext(

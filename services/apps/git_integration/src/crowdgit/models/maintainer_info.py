@@ -46,3 +46,4 @@ class MaintainerResult(BaseModel):
     candidate_files: list[tuple[str, int]] = []
     ai_suggested_file: str | None = None
     not_found: bool = False
+    cncf_authoritative: bool = False
