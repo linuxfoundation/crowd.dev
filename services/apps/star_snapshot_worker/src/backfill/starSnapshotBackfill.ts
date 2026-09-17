@@ -406,7 +406,8 @@ export async function backfillRepo(
     candidateRows.length > 0
       ? await findStarSnapshotsForRepos(qx, [repo.repositoryId], {
           from: `${candidateRows[0].date}T00:00:00.000Z`,
-          to: `${candidateRows[candidateRows.length - 1].date}T00:00:00.000Z`,
+          // End of day, not midnight - CM-1438 stores "today" at wall-clock time, not T00:00:00.
+          to: `${candidateRows[candidateRows.length - 1].date}T23:59:59.999Z`,
         })
       : []
   const existingDates = new Set(existingRows.map((row) => row.capturedAt.slice(0, 10)))
