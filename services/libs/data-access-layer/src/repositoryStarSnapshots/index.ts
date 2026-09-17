@@ -88,7 +88,7 @@ export async function findRepoIdsWithStarSnapshotGaps(
         and r.url like 'https://github.com%'
         and (
           (p.last_date - p.first_date + 1) - p.distinct_days > 0
-          or p.last_date < current_date - 1
+          or p.last_date < (now() at time zone 'UTC')::date - 1
         )
     `,
     { repositoryIds },
