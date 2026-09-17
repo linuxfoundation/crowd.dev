@@ -410,6 +410,7 @@ export async function updateVerifiedFlag(
         platform = $(platform) and
         lower(value) = lower($(value)) and
         type = $(type) and
+        verified is distinct from $(verified) and
         "deletedAt" is null
     `,
     p,

@@ -80,7 +80,7 @@ export async function getMemberNoMerge(
     return []
   }
 
-  const includeExpired = options?.includeExpired ?? true
+  const includeExpired = options?.includeExpired ?? false
 
   const rows: MemberNoMergeRow[] = await qx.select(
     `
@@ -96,7 +96,7 @@ export async function getMemberNoMerge(
     return []
   }
 
-  if (!includeExpired) {
+  if (includeExpired) {
     return rows.map(({ memberId, noMergeId }) => ({ memberId, noMergeId }))
   }
 
