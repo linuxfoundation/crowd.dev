@@ -25,9 +25,8 @@ export interface ISelfHealStarBackfillArgs {
   batchesDispatchedSoFar?: number
 }
 
-// Workflow code runs in Temporal's bundled V8 isolate, which only allows the 'assert', 'url'
-// and 'util' Node builtins - 'crypto' resolves to an empty stub there, so the digest has to be
-// plain JS (FNV-1a) instead of createHash.
+// Workflow isolate only allows 'assert'/'url'/'util' Node builtins - crypto is stubbed out,
+// so this hash is plain JS (FNV-1a) instead of createHash.
 function fnv1a32Hex(input: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
@@ -37,11 +36,8 @@ function fnv1a32Hex(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-// Content-addressed so a workflow retry - which reruns the candidate query and can shrink or
-// reshuffle it - can't collide two structurally different batches under the same id: any change
-// to a batch's repo membership yields a different id instead of tripping REJECT_DUPLICATE and
-// silently skipping the new batch. Order-independent since batch membership, not order, is what
-// must stay stable across retries.
+// Content-addressed (not positional) so a workflow retry with a reshuffled candidate list can't
+// collide two different batches under REJECT_DUPLICATE and silently skip one.
 function batchWorkflowId(batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>): string {
   const digest = fnv1a32Hex(
     batch
