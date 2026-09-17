@@ -5,7 +5,11 @@ import { IRepoForStarSnapshot } from '@crowd/types'
 import * as activities from '../activities'
 
 const { backfillRepoStarHistory } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '2 minutes',
+  // No heartbeats - a large/old repo pages through its full stargazer history then writes
+  // one row per historical day, sequentially, inside a single call. 10 minutes is a generous
+  // margin over that under normal conditions, well short of forcing the 3 retries into a
+  // false dead-letter for a repo that just happens to be old, not actually stuck.
+  startToCloseTimeout: '10 minutes',
   retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
 

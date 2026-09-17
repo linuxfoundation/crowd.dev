@@ -144,6 +144,13 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
       if (secondaryCooldownUntilMs > Date.now()) {
         return secondaryCooldownUntilMs - Date.now()
       }
+      // Unlike throttleIfNeeded, a failFast caller may never reach a real GitHub call
+      // (reserveOrThrow throws instead), so remaining would otherwise stay stuck at or
+      // below the floor forever once observed. Treat a passed reset as a fresh window so
+      // the next call goes through and observe() can correct it from the real response.
+      if (resetAtMs > 0 && Date.now() >= resetAtMs) {
+        remaining = Infinity
+      }
       if (remaining > reservedFloor) {
         return 0
       }
@@ -156,6 +163,11 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
     reserveOrThrow(): void {
       if (secondaryCooldownUntilMs > Date.now()) {
         throw new Error('GitHub rate limit hit: secondary cooldown in effect')
+      }
+      // See peekWaitMs - without this, once remaining drops to the floor it never
+      // recovers, since throwing here means no real call ever runs to refresh it via observe().
+      if (resetAtMs > 0 && Date.now() >= resetAtMs) {
+        remaining = Infinity
       }
       if (remaining > reservedFloor) {
         remaining--
@@ -408,7 +420,7 @@ export async function backfillRepo(
 
 // `concurrency` workers pull the next index as they free up, instead of lockstep batches.
 // A worker never abandons a grabbed item, so returned count N means indices 0..N-1 are done.
-async function runWithConcurrency<T>(
+export async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
   isShuttingDown: () => boolean,

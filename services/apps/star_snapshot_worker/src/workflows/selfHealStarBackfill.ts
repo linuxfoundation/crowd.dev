@@ -1,5 +1,6 @@
 import {
   ParentClosePolicy,
+  WorkflowIdReusePolicy,
   continueAsNew,
   log,
   proxyActivities,
@@ -27,7 +28,10 @@ export interface ISelfHealStarBackfillArgs {
 // A retry of this workflow (the schedule's `retry` policy) restarts with fresh args, so it
 // re-derives the same batch-N workflow IDs already dispatched by the failed attempt. Those
 // children run ABANDONED, so they're either still running or already finished - either way,
-// a start collision here means "already handled," not a real failure.
+// a start collision here means "already handled," not a real failure. REJECT_DUPLICATE is
+// required for that: the default ALLOW_DUPLICATE lets a new execution silently replace a
+// already-completed one with the same ID instead of throwing, which would re-run the whole
+// batch (re-fetching every repo's stargazer history) after its in-flight claims were released.
 async function startBatchChild(
   batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
   workflowId: string,
@@ -35,12 +39,12 @@ async function startBatchChild(
   try {
     await startChild(backfillStarHistoryBatch, {
       workflowId,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
       parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
       args: [{ repos: batch }],
     })
   } catch (err) {
-    const message = (err as Error)?.message ?? String(err)
-    if (!message.toLowerCase().includes('already started')) {
+    if (!(err instanceof Error) || err.name !== 'WorkflowExecutionAlreadyStartedError') {
       throw err
     }
     log.warn(
