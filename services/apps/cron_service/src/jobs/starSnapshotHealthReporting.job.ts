@@ -21,10 +21,14 @@ import { IJobDefinition } from '../types'
 const LAST_DEAD_LETTER_REPORTED_AT_KEY =
   'star-snapshot-health-reporting:last-dead-letter-reported-at'
 const SAMPLE_SIZE = 20
+// Keeps each gap-check query's IN-list bounded as the eligible repo count grows.
+const GAP_CHECK_BATCH_SIZE = 5_000
 
 const job: IJobDefinition = {
   name: 'star-snapshot-health-reporting',
-  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 45),
+  // 10:00 UTC - after both captureStarSnapshots (08:00) and selfHealStarBackfill (09:00),
+  // so the digest reflects that day's runs instead of racing ahead of them.
+  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(10, 0),
   timeout: 10 * 60,
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
@@ -43,15 +47,11 @@ const job: IJobDefinition = {
     ])
 
     const repoUrlById = new Map(allRepos.map((repo) => [repo.repositoryId, repo.repoUrl]))
-    const gappedRepoIds = await findRepoIdsWithStarSnapshotGaps(
-      qx,
-      allRepos.map((repo) => repo.repositoryId),
-    )
-
-    // Opaque high-water mark - passed straight back as `since` next run, never reparsed
-    // locally as a JS Date (see findDeadLetteredStarBackfillFailures).
-    if (newlyDeadLettered.length > 0) {
-      await redis.set(LAST_DEAD_LETTER_REPORTED_AT_KEY, newlyDeadLettered[0].deadLetteredAt)
+    const allRepoIds = allRepos.map((repo) => repo.repositoryId)
+    const gappedRepoIds: string[] = []
+    for (let i = 0; i < allRepoIds.length; i += GAP_CHECK_BATCH_SIZE) {
+      const batch = allRepoIds.slice(i, i + GAP_CHECK_BATCH_SIZE)
+      gappedRepoIds.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
     }
 
     const sections: SlackMessageSection[] = [
@@ -93,12 +93,21 @@ const job: IJobDefinition = {
         ? SlackPersona.WARNING_PROPAGATOR
         : SlackPersona.INFO_NOTIFIER
 
-    await sendSlackNotificationAsync(
+    const sent = await sendSlackNotificationAsync(
       SlackChannel.CDP_INTEGRATIONS_ALERTS,
       persona,
       'Star Snapshot Health Report',
       sections,
     )
+
+    // Only advance the cursor once the report actually went out - sendSlackNotificationAsync
+    // swallows delivery errors and returns false rather than throwing, so advancing
+    // unconditionally would silently drop that day's newly-dead-lettered rows for good.
+    if (sent && newlyDeadLettered.length > 0) {
+      await redis.set(LAST_DEAD_LETTER_REPORTED_AT_KEY, newlyDeadLettered[0].deadLetteredAt)
+    } else if (!sent) {
+      ctx.log.warn('star snapshot health report failed to send, will retry next run')
+    }
 
     ctx.log.info(
       `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${allDeadLettered.length}, gaps=${gappedRepoIds.length}`,

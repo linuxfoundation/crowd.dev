@@ -77,7 +77,7 @@ export async function findDeadLetteredStarBackfillFailures(
       select *
       from public."repositoryStarBackfillStatus"
       where "deadLetteredAt" is not null
-        and ($(since)::timestamptz is null or "deadLetteredAt" >= $(since))
+        and ($(since)::timestamptz is null or "deadLetteredAt" > $(since))
       order by "deadLetteredAt" desc
     `,
     { since },
