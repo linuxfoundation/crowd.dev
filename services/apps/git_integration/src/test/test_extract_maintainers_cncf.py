@@ -180,6 +180,7 @@ async def test_process_maintainers_end_dates_siblings_after_project_repo_runs(
                 github_username="alice", title="maintainer", normalized_title="maintainer"
             )
         ],
+        cncf_authoritative=True,
     )
 
     monkeypatch.setattr(service, "check_if_interval_elapsed", AsyncMock(return_value=(True, 0.0)))

@@ -812,7 +812,7 @@ class MaintainerService(BaseService):
                 except Exception as e:
                     self.logger.warning(f"CNCF maintainer file processing failed: {repr(e)}")
                     cncf_maintainers = None
-                if cncf_maintainers:
+                if cncf_maintainers is not None:
                     return _attach_metadata(
                         MaintainerResult(
                             maintainer_file=cncf_file.name,
