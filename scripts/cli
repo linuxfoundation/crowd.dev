@@ -918,15 +918,16 @@ function lint_changed() {
             say "Checking typescript for entire workspace" && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
-            local root packages_all lint_packages format_packages tsc_packages && \
+            local root packages_all matched_count lint_packages format_packages tsc_packages && \
             root="$(pwd)" && \
             packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
+            matched_count="$(printf '%s' "$packages_all" | grep -c . || true)" && \
             lint_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" lint)" && \
             format_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" format-check)" && \
             tsc_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
-            [[ -z "$lint_packages" ]] && lint_packages="(none)" ; \
-            [[ -z "$format_packages" ]] && format_packages="(none)" ; \
-            [[ -z "$tsc_packages" ]] && tsc_packages="(none)" ; \
+            [[ -z "$lint_packages" ]] && lint_packages="(none — $matched_count matched project(s), none have a lint script)" ; \
+            [[ -z "$format_packages" ]] && format_packages="(none — $matched_count matched project(s), none have a format-check script)" ; \
+            [[ -z "$tsc_packages" ]] && tsc_packages="(none — $matched_count matched project(s), none have a tsc-check script)" ; \
             say "Checking lint for:" && whisper "$lint_packages" && \
             pnpm --filter="...[origin/main]" --if-present run lint && \
             say "Checking format for:" && whisper "$format_packages" && \
