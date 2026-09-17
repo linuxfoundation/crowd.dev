@@ -56,6 +56,31 @@ export async function findReposNeedingStarBackfill(
   return repos || []
 }
 
+// Repos whose captured-day count falls short of their first-to-last day span - a real
+// gap, not just "not backfilled yet" (that's findReposNeedingStarBackfill's job).
+export async function findRepoIdsWithStarSnapshotGaps(qx: QueryExecutor): Promise<string[]> {
+  const rows: { repositoryId: string }[] = await qx.select(`
+    with per_repo as (
+      select
+          "repositoryId",
+          min("capturedAt"::date) as first_date,
+          max("capturedAt"::date) as last_date,
+          count(distinct "capturedAt"::date) as distinct_days
+      from public."repositoryStarSnapshots"
+      group by "repositoryId"
+    )
+    select p."repositoryId"
+    from per_repo p
+    join public.repositories r on r.id = p."repositoryId"
+    where r."deletedAt" is null
+      and r."excluded" = false
+      and r.url like 'https://github.com%'
+      and (p.last_date - p.first_date + 1) - p.distinct_days > 0
+  `)
+
+  return (rows || []).map((row) => row.repositoryId)
+}
+
 export async function upsertStarSnapshot(
   qx: QueryExecutor,
   repositoryId: string,
