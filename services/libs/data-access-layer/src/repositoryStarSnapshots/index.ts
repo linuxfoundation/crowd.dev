@@ -3,6 +3,8 @@ import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
+export * from './backfillFailures'
+
 export async function findReposForStarSnapshot(
   qx: QueryExecutor,
   limit: number | null = null,
