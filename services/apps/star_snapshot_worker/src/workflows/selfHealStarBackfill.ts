@@ -7,6 +7,7 @@ import {
   startChild,
   workflowInfo,
 } from '@temporalio/workflow'
+import { createHash } from 'crypto'
 
 import * as activities from '../activities'
 
@@ -25,8 +26,24 @@ export interface ISelfHealStarBackfillArgs {
   batchesDispatchedSoFar?: number
 }
 
-// A workflow retry re-derives the same batch-N IDs; REJECT_DUPLICATE is required so that
-// collision throws instead of ALLOW_DUPLICATE silently re-running an already-finished batch.
+// Content-addressed so a workflow retry - which reruns the candidate query and can shrink or
+// reshuffle it - can't collide two structurally different batches under the same id: any change
+// to a batch's repo membership yields a different id instead of tripping REJECT_DUPLICATE and
+// silently skipping the new batch. Order-independent since batch membership, not order, is what
+// must stay stable across retries.
+function batchWorkflowId(batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>): string {
+  const digest = createHash('sha1')
+    .update(
+      batch
+        .map((repo) => repo.repositoryId)
+        .sort()
+        .join(','),
+    )
+    .digest('hex')
+    .slice(0, 16)
+  return `${workflowInfo().workflowId}/batch-${digest}`
+}
+
 async function startBatchChild(
   batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
   workflowId: string,
@@ -59,7 +76,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
 
   for (let i = 0; i < repos.length; i += BATCH_SIZE) {
     const batch = repos.slice(i, i + BATCH_SIZE)
-    await startBatchChild(batch, `${workflowInfo().workflowId}/batch-${batchesDispatched}`)
+    await startBatchChild(batch, batchWorkflowId(batch))
     batchesDispatched++
   }
 
