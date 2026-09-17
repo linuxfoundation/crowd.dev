@@ -17,13 +17,18 @@ async function runIssuesSync(ctx: SyncContext): Promise<SyncOutcome> {
   let cursor: string | null = null
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<IssuesPage>(ctx.http, ISSUES_QUERY, {
-      owner,
-      repo,
-      first: PAGE_SIZE,
-      cursor,
-      since: querySince,
-    })
+    const data = await githubGraphql<IssuesPage>(
+      ctx.http,
+      ISSUES_QUERY,
+      {
+        owner,
+        repo,
+        first: PAGE_SIZE,
+        cursor,
+        since: querySince,
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.issues
     const issues = nodes.filter((node): node is IssueNode => node !== null)
