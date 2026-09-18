@@ -1,0 +1,431 @@
+[
+  {
+    "id": "llms-txt-exists",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt found at any candidate location (https://kyverno.io/docs/llms.txt, https://kyverno.io/llms.txt)",
+    "details": {
+      "candidateUrls": [
+        {
+          "url": "https://kyverno.io/docs/llms.txt",
+          "status": 404,
+          "redirected": false
+        },
+        {
+          "url": "https://kyverno.io/llms.txt",
+          "status": 404,
+          "redirected": false
+        }
+      ],
+      "discoveredFiles": [],
+      "fetchErrors": 0,
+      "rateLimited": 0
+    }
+  },
+  {
+    "id": "llms-txt-valid",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "llms-txt-exists"
+    ]
+  },
+  {
+    "id": "llms-txt-size",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "llms-txt-exists"
+    ]
+  },
+  {
+    "id": "llms-txt-links-resolve",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "llms-txt-exists"
+    ]
+  },
+  {
+    "id": "llms-txt-links-markdown",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "llms-txt-exists"
+    ]
+  },
+  {
+    "id": "llms-txt-directive-html",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt directive found in HTML of any of 1 pages",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "nearTopCount": 0,
+      "buriedCount": 0,
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "found": false
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "llms-txt-directive-md",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "Could not fetch markdown for any of 1 pages; 1 had no markdown version",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "fetchErrors": 1,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "found": false,
+          "error": "No markdown version available"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "markdown-url-support",
+    "category": "markdown-availability",
+    "status": "fail",
+    "message": "No pages support .md URLs (0/1 tested)",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "skippedPages": 0,
+      "sampled": false,
+      "mdSupported": 0,
+      "mdUnsupported": 1,
+      "supportRate": 0,
+      "fetchErrors": 0,
+      "rateLimited": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "mdUrl": "https://kyverno.io/docs.md",
+          "supported": false,
+          "alreadyMd": false,
+          "status": 0
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "content-negotiation",
+    "category": "markdown-availability",
+    "status": "fail",
+    "message": "Server ignores Accept: text/markdown header (0/1 pages return markdown)",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "skippedPages": 0,
+      "normalizedMdUrls": 0,
+      "softErrorPages": 0,
+      "sampled": false,
+      "markdownWithCorrectType": 0,
+      "markdownWithWrongType": 0,
+      "htmlOnly": 1,
+      "negotiationRate": 0,
+      "fetchErrors": 0,
+      "rateLimited": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "classification": "html",
+          "contentType": "text/html; charset=UTF-8",
+          "status": 200
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "rendering-strategy",
+    "category": "page-size",
+    "status": "pass",
+    "message": "All 1 pages contain server-rendered content",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "serverRendered": 1,
+      "sparseContent": 0,
+      "spaShells": 0,
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "status": "pass",
+          "analysis": {
+            "hasContent": true,
+            "hasSpaMarkers": false,
+            "spaMarker": null,
+            "contentHeadings": 4,
+            "contentParagraphs": 7,
+            "codeBlocks": 2,
+            "hasMainContent": true,
+            "visibleTextLength": 2092,
+            "htmlLength": 64435
+          }
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "page-size-markdown",
+    "category": "page-size",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "markdown-url-support",
+      "content-negotiation"
+    ]
+  },
+  {
+    "id": "page-size-html",
+    "category": "page-size",
+    "status": "pass",
+    "message": "All 1 pages under 50K chars (median 64K HTML \u2192 9K markdown (86% boilerplate))",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "median": 9161,
+      "max": 9161,
+      "avgBoilerplatePercent": 86,
+      "passBucket": 1,
+      "warnBucket": 0,
+      "failBucket": 0,
+      "fetchErrors": 0,
+      "rateLimited": 0,
+      "thresholds": {
+        "pass": 50000,
+        "fail": 100000
+      },
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "htmlCharacters": 64435,
+          "convertedCharacters": 9161,
+          "conversionRatio": 86,
+          "status": "pass"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "content-start-position",
+    "category": "page-size",
+    "status": "fail",
+    "message": "1 of 1 pages have content starting past 50% (worst 71%)",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "medianPercent": 71,
+      "maxPercent": 71,
+      "passBucket": 0,
+      "warnBucket": 0,
+      "failBucket": 1,
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "contentStartChar": 6538,
+          "totalChars": 9161,
+          "contentStartPercent": 71,
+          "status": "fail"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "tabbed-content-serialization",
+    "category": "content-structure",
+    "status": "pass",
+    "message": "No tabbed content detected across 1 pages",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "pagesWithTabs": 0,
+      "totalGroupsFound": 0,
+      "fetchErrors": 0,
+      "tabbedPages": [
+        {
+          "url": "https://kyverno.io/docs",
+          "tabGroups": [],
+          "totalTabbedChars": 0,
+          "status": "pass",
+          "source": "html"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "section-header-quality",
+    "category": "content-structure",
+    "status": "pass",
+    "message": "No tabbed content found; header quality check not applicable"
+  },
+  {
+    "id": "markdown-code-fence-validity",
+    "category": "content-structure",
+    "status": "skip",
+    "message": "Site does not serve markdown content; nothing to analyze"
+  },
+  {
+    "id": "http-status-codes",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "All 1 pages return proper error codes for bad URLs",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "soft404Count": 0,
+      "correctErrorCount": 1,
+      "indeterminateCount": 0,
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "testUrl": "https://kyverno.io/docs-afdocs-nonexistent-8f3a",
+          "status": 404,
+          "classification": "correct-error",
+          "redirected": false
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "redirect-behavior",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "All 1 redirect(s) across 1 pages are same-host HTTP redirects",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "noRedirectCount": 0,
+      "sameHostCount": 1,
+      "crossHostCount": 0,
+      "jsRedirectCount": 0,
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "status": 301,
+          "classification": "same-host",
+          "redirectTarget": "https://kyverno.io/docs/introduction/"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "llms-txt-coverage",
+    "category": "observability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "llms-txt-exists"
+    ]
+  },
+  {
+    "id": "markdown-content-parity",
+    "category": "observability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass",
+    "dependsOn": [
+      "markdown-url-support",
+      "content-negotiation"
+    ]
+  },
+  {
+    "id": "cache-header-hygiene",
+    "category": "observability",
+    "status": "pass",
+    "message": "All 1 endpoints have appropriate cache headers",
+    "details": {
+      "totalPages": 1,
+      "testedEndpoints": 1,
+      "sampled": false,
+      "passBucket": 1,
+      "warnBucket": 0,
+      "failBucket": 0,
+      "fetchErrors": 0,
+      "endpointResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "cacheControl": "public,max-age=1800,stale-while-revalidate=86400",
+          "maxAge": 1800,
+          "sMaxAge": null,
+          "mustRevalidate": false,
+          "noCache": false,
+          "noStore": false,
+          "etag": "\"4f183711c705d2b0cfb28d8fec15e6e6-ssl-df\"",
+          "lastModified": null,
+          "expires": null,
+          "effectiveMaxAge": 1800,
+          "status": "pass"
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "auth-gate-detection",
+    "category": "authentication",
+    "status": "pass",
+    "message": "All 1 pages are publicly accessible",
+    "details": {
+      "totalPages": 1,
+      "testedPages": 1,
+      "sampled": false,
+      "accessible": 1,
+      "authRequired": 0,
+      "softAuthGate": 0,
+      "authRedirect": 0,
+      "ssoDomains": [],
+      "fetchErrors": 0,
+      "pageResults": [
+        {
+          "url": "https://kyverno.io/docs",
+          "classification": "accessible",
+          "status": 301
+        }
+      ],
+      "discoveryWarnings": []
+    }
+  },
+  {
+    "id": "auth-alternative-access",
+    "category": "authentication",
+    "status": "skip",
+    "message": "All docs pages are publicly accessible; no alternative access paths needed"
+  }
+]
