@@ -5,6 +5,11 @@ CLI_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 source $CLI_HOME/utils.sh
 
+if ! command -v jq &>/dev/null; then
+  error "jq is required but is not installed. Install it: brew install jq (macOS) / apt-get install jq (Debian/Ubuntu) / dnf install jq (Fedora)."
+  exit 1
+fi
+
 REQUIRED_SCRIPTS=("lint" "format-check" "tsc-check")
 FAILED=0
 

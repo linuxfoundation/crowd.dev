@@ -43,7 +43,7 @@ Resolve any issues before proceeding.
 git diff --name-only origin/main...HEAD
 ```
 
-Note whether `backend/`, `services/**`, and/or `frontend/` have changed files — used only to decide which of Checks 2–4 apply.
+Note whether `backend/`, `services/**`, `frontend/`, `pnpm-lock.yaml`, and/or `pnpm-workspace.yaml` have changed files — used only to decide which of Checks 2–4 apply.
 
 ---
 
@@ -55,7 +55,7 @@ Note whether `backend/`, `services/**`, and/or `frontend/` have changed files �
 ./scripts/cli lint-changed
 ```
 
-Run this whenever `backend/` or `services/**` has changed files. Skip if neither changed.
+Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, or `pnpm-workspace.yaml` has changed files — the last two trigger `lint-changed`'s own full-workspace fallback. Skip only if none of these changed.
 
 The three checks run in order (lint → format-check → tsc-check) and stop at the first failure — same fail-fast behavior as the CI job. If lint fails, format/tsc did not run yet; fix and re-run to see the next check, same as watching CI re-run per push.
 
