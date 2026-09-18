@@ -5,7 +5,7 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { initNangoCloudClient } from '@crowd/nango'
 
-import { diffUnit, resolveDiffWindow } from '../activities/shadowDiffActivities'
+import { diffUnit, resolveDiffWindow } from '../shadowDiffUnit'
 
 const log = getServiceLogger()
 
