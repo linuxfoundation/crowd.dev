@@ -1,3 +1,13 @@
-import { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot } from './activities/index'
+import {
+  backfillRepoStarHistory,
+  fetchAndSaveStarSnapshotBatch,
+  findReposForStarSnapshot,
+  findReposNeedingStarBackfill,
+} from './activities/index'
 
-export { fetchAndSaveStarSnapshotBatch, findReposForStarSnapshot }
+export {
+  backfillRepoStarHistory,
+  fetchAndSaveStarSnapshotBatch,
+  findReposForStarSnapshot,
+  findReposNeedingStarBackfill,
+}

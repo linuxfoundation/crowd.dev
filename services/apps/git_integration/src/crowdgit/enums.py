@@ -18,6 +18,7 @@ class ErrorCode(str, Enum):
     NO_MAINTAINER_FOUND = "no-maintainer-found"
     MAINTAINER_ANALYSIS_FAILED = "maintainer-analysis-failed"
     MAINTAINER_INTERVAL_NOT_ELAPSED = "maintainer-interval-not-elapsed"
+    MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE = "maintainer-skipped-project-level-source"
     NO_AFFILIATION_FILE = "no-affiliation-file"
     AFFILIATION_ANALYSIS_FAILED = "affiliation-analysis-failed"
     AFFILIATION_INTERVAL_NOT_ELAPSED = "affiliation-interval-not-elapsed"

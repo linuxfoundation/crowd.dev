@@ -34,6 +34,9 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0025](./0025-subproject-member-merge-suggestions.md)      | Subproject member merge suggestions                                                                  | accepted | 2026-09-11 |
 | [ADR-0026](./0026-deterministic-precheck-before-llm-evaluation.md) | Deterministic pre-checks before spending an LLM call or CDP write                                | accepted | 2026-09-16 |
 
+| [ADR-0027](./0027-nomerge-is-evidence-bound.md)                | noMerge is a veto against evidence, not against member IDs forever                               | accepted | 2026-09-16 |
+| [ADR-0028](./0028-cncf-project-wide-maintainer-authority.md)       | CNCF `.project` repo as project-wide maintainer authority                                         | accepted | 2026-09-16 |
+
 ## Why ADRs?
 
 The codebase is in active transition across several axes (see `CLAUDE.md`). ADRs provide a durable record of:

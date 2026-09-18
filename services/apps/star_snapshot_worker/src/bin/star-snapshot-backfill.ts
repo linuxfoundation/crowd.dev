@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 
+import { findRepoIdsWithStarSnapshotGaps } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -155,6 +156,21 @@ const main = async () => {
   const qx = pgpQx(conn)
   await qx.selectOne('SELECT 1')
   log.info('Connected to database.')
+
+  // A repo can be marked complete yet still have a gap (e.g. an earlier interrupted
+  // run) - re-check and reprocess it instead of trusting the flag forever.
+  if (completedRepoIds.size > 0) {
+    const gappedRepoIds = await findRepoIdsWithStarSnapshotGaps(qx, [...completedRepoIds])
+    const unmarked = gappedRepoIds.filter((id) => completedRepoIds.delete(id)).length
+    if (unmarked > 0) {
+      log.info({ unmarked }, 'unmarked previously-completed repos with a star snapshot gap')
+      // A gapped repo can sort before the checkpoint cursor - restart the scan from the
+      // start (cheap, via completedRepoIds) unless --after-url was explicitly pinned.
+      if (!afterUrlOverride) {
+        afterUrl = undefined
+      }
+    }
+  }
 
   const totals = await runStarSnapshotBackfill(qx, log, {
     reservedCoreRateLimit,

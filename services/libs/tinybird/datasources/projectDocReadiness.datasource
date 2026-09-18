@@ -1,0 +1,34 @@
+DESCRIPTION >
+    - `projectDocReadiness` holds one AI documentation readiness result per project per run date, replicated from Postgres via Sequin.
+    - `projectId` joins to `insightsProjects`.id; `projectSlug` and `projectName` are denormalised for display.
+    - `docsUrl` is the documentation site that was scored; `discoveryMethod` and `confidence` say how it was found. `isOverride` = 1 when a manually submitted URL was used.
+    - `overallScore` (0-100) and `overallGrade` (A-F) summarise the run; `categoryScores` is a JSON object of per-category scores as a string.
+    - `ok` = 0 marks a failed run; `error` then holds the reason and the score columns are empty.
+    - Take the latest `runDate` per `projectId` for the current state; older rows form the history.
+
+TAGS "Project metadata"
+
+SCHEMA >
+    `id` String `json:$.record.id`,
+    `projectId` String `json:$.record.projectId`,
+    `projectSlug` String `json:$.record.projectSlug`,
+    `projectName` String `json:$.record.projectName`,
+    `docsUrl` String `json:$.record.docsUrl` DEFAULT '',
+    `discoveryMethod` String `json:$.record.discoveryMethod` DEFAULT '',
+    `confidence` String `json:$.record.confidence` DEFAULT '',
+    `isOverride` UInt8 `json:$.record.isOverride` DEFAULT 0,
+    `overallScore` Nullable(Int16) `json:$.record.overallScore`,
+    `overallGrade` String `json:$.record.overallGrade` DEFAULT '',
+    `categoryScores` String `json:$.record.categoryScores` DEFAULT '',
+    `runDate` Date `json:$.record.runDate`,
+    `runId` String `json:$.record.runId` DEFAULT '',
+    `durationMs` Nullable(Int32) `json:$.record.durationMs`,
+    `ok` UInt8 `json:$.record.ok`,
+    `error` String `json:$.record.error` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.createdAt`,
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(runDate)
+ENGINE_SORTING_KEY projectId, runDate
+ENGINE_VER updatedAt
