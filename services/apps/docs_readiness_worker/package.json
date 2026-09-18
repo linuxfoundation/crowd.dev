@@ -1,0 +1,35 @@
+{
+  "name": "@crowd/docs-readiness-worker",
+  "private": true,
+  "scripts": {
+    "start": "CROWD_TEMPORAL_TASKQUEUE=docs-readiness SERVICE=docs-readiness-worker tsx src/main.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=docs-readiness SERVICE=docs-readiness-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=docs-readiness SERVICE=docs-readiness-worker LOG_LEVEL=info tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
+    "tsc-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crowd/archetype-standard": "workspace:*",
+    "@crowd/archetype-worker": "workspace:*",
+    "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@temporalio/activity": "catalog:",
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "afdocs": "^0.20.0",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "nodemon": "^3.0.1",
+    "prettier": "catalog:"
+  }
+}

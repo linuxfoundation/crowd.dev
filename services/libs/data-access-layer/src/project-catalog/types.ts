@@ -69,3 +69,30 @@ export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
   evaluatedAt?: string | null
   onboardedAt?: string | null
 }
+
+// Shared contract between the projects evaluation worker and the /project-evaluation
+// public API so the two sides can't drift silently.
+export interface IProjectEvaluationRequest {
+  id: string
+  repoUrl: string
+  repoName: string
+  projectSlug: string
+  lfCriticalityScore: number | null
+  source: string | null
+}
+
+export type ProjectEvaluationOutcome = Extract<ProjectCatalogAction, 'onboard' | 'skip' | 'unsure'>
+
+export interface IProjectEvaluationMetrics {
+  model: string
+  inputTokens: number
+  outputTokens: number
+  seconds: number
+}
+
+export interface IProjectEvaluationResponse {
+  outcome: ProjectEvaluationOutcome
+  evaluationResult: string
+  evaluationReason: string | null
+  metrics: IProjectEvaluationMetrics | null
+}
