@@ -38,6 +38,7 @@ export async function processProjectDocsReadiness(
   let scored = 0
   let failed = 0
   let runStatus: 'completed' | 'failed' = 'failed'
+  let errorMessage: string | undefined
 
   try {
     const resolved = await resolveDocsUrl(projectId)
@@ -65,9 +66,19 @@ export async function processProjectDocsReadiness(
     }
 
     runStatus = 'completed'
+  } catch (err) {
+    errorMessage = (err as Error).message
+    throw err
   } finally {
     if (ownsRun) {
-      await finishRun(runId, { status: runStatus, totalProjects: 1, discovered, scored, failed })
+      await finishRun(runId, {
+        status: runStatus,
+        totalProjects: 1,
+        discovered,
+        scored,
+        failed,
+        errorMessage,
+      })
     }
   }
 }
