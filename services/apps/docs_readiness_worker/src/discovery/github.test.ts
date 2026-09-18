@@ -55,6 +55,22 @@ describe('primaryRepo', () => {
       'https://github.com/torvalds/linux',
     )
   })
+
+  it('accepts an scp-style git@github.com: url', () => {
+    expect(primaryRepo(['git@github.com:torvalds/linux.git'])).toBe(
+      'git@github.com:torvalds/linux.git',
+    )
+  })
+
+  it('accepts a www.github.com url', () => {
+    expect(primaryRepo(['https://www.github.com/torvalds/linux'])).toBe(
+      'https://www.github.com/torvalds/linux',
+    )
+  })
+
+  it('accepts a scheme-less github.com url', () => {
+    expect(primaryRepo(['github.com/torvalds/linux'])).toBe('github.com/torvalds/linux')
+  })
 })
 
 function stubFetch(handler: (input: string, init?: RequestInit) => Response) {

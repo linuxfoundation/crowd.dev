@@ -8,8 +8,14 @@ export function parseGithubRepo(url: string): { owner: string; repo: string } | 
 }
 
 function isGithubUrl(repo: string): boolean {
+  const rewritten = repo.trim().replace(/^git@([a-zA-Z0-9.-]+):/, 'https://$1/')
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(rewritten)
+    ? rewritten
+    : `https://${rewritten}`
+
   try {
-    return new URL(repo).hostname === 'github.com'
+    const host = new URL(withScheme).hostname.toLowerCase()
+    return host === 'github.com' || host === 'www.github.com'
   } catch {
     return false
   }
