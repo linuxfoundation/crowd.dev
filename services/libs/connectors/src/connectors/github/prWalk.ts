@@ -85,7 +85,7 @@ async function runIncremental(
       newSince = pullRequests[0].updatedAt
     }
 
-    const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) > sinceDate)
+    const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) >= sinceDate)
     if (fresh.length > 0) {
       await processPrs(fresh, sinceDate)
     }
