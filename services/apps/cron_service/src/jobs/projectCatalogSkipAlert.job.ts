@@ -103,6 +103,7 @@ const job: IJobDefinition = {
         SELECT
           repo_path,
           bool_or(true)                                              AS repo_exists,
+          count(DISTINCT "insightsProjectId") > 1                     AS ambiguous,
           -- multiple unrelated LF projects can share a generic Gerrit path
           -- (e.g. "r/ci-management"); only trust the project when it's unambiguous
           CASE WHEN count(DISTINCT "insightsProjectId") = 1
@@ -123,7 +124,7 @@ const job: IJobDefinition = {
       ),
       matched AS (
         SELECT
-          s."repoUrl", s.reason, r.repo_exists,
+          s."repoUrl", s.reason, r.repo_exists, COALESCE(r.ambiguous, false) AS ambiguous,
           CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END               AS matched_id,
           CASE WHEN ipr.id IS NOT NULL THEN ipr.name ELSE ips.name END           AS matched_name,
           CASE WHEN ipr.id IS NOT NULL THEN ipr."isLF" ELSE ips."isLF" END       AS matched_is_lf,
@@ -145,8 +146,9 @@ const job: IJobDefinition = {
         CASE m.reason
           WHEN $1 THEN (NOT COALESCE(m.repo_exists, false) AND m.matched_id IS NULL)
           WHEN $2 THEN CASE
-            WHEN m.matched_id IS NULL          THEN true
-            WHEN m.matched_deleted_at IS NOT NULL THEN NULL
+            WHEN m.ambiguous                      THEN NULL
+            WHEN m.matched_id IS NULL             THEN true
+            WHEN m.matched_deleted_at IS NOT NULL  THEN NULL
             ELSE NOT COALESCE(m.matched_is_lf, false)
           END
           ELSE NULL
