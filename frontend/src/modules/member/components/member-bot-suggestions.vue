@@ -134,9 +134,17 @@ const fetch = (page: number) => {
       hasMore.value = Boolean(res.hasMore);
       const [row] = res.rows || [];
 
-      if (row?.member) {
+      if (row?.memberId) {
         hasSuggestion.value = true;
-        suggestion.value = row;
+        suggestion.value = {
+          ...row,
+          member: row.member ?? {
+            id: row.memberId,
+            displayName: row.displayName,
+            attributes: row.attributes,
+            activityCount: row.activityCount,
+          },
+        };
         return undefined;
       }
 
