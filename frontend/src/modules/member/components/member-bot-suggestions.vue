@@ -62,13 +62,18 @@
       </div>
     </header>
 
-    <div v-if="loading || hasSuggestion" class="w-full">
-      <app-member-merge-suggestions-details
-        :member="suggestion.member"
-        :loading="loading"
-        :is-preview="true"
-        class="w-full bg-primary-25"
-      />
+    <div v-if="loading || hasSuggestion">
+      <div class="flex p-5">
+        <div class="w-full">
+          <app-member-merge-suggestions-details
+            :member="suggestion.member"
+            :loading="loading"
+            :is-preview="true"
+            :two-column="true"
+            class="rounded-lg bg-primary-25"
+          />
+        </div>
+      </div>
     </div>
     <div v-else class="py-20 flex flex-col items-center">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />
