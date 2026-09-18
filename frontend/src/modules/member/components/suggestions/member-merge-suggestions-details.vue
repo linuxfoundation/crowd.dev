@@ -24,7 +24,7 @@
       :class="{ 'bg-gray-50': props.isPrimary }"
     >
       <!-- primary member -->
-      <slot v-if="!props.isStandalone" name="header">
+      <slot name="header">
         <div class="h-13 flex justify-between items-start">
           <div
             v-if="props.isPreview"
@@ -154,11 +154,7 @@
         </div>
       </div>
 
-      <div
-        :class="{
-          'grid grid-cols-1 gap-x-8 sm:grid-cols-2': props.isStandalone,
-        }"
-      >
+      <div>
         <article class="pb-4">
           <p class="text-2xs font-medium text-gray-500 pb-1">
             Engagement level
@@ -304,11 +300,6 @@ const props = defineProps({
     default: false,
   },
   isPreview: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  isStandalone: {
     type: Boolean,
     required: false,
     default: false,

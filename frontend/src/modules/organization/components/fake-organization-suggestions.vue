@@ -24,14 +24,22 @@
         </div>
 
         <app-loading v-if="loading" height="16px" width="128px" radius="3px" />
-        <div v-else class="text-xs leading-5 text-gray-500">
-          <div>{{ hasSuggestion ? `Suggestion ${offset + 1}` : '0 suggestions' }}</div>
+        <div
+          v-else-if="hasSuggestion"
+          class="text-xs leading-5 text-gray-500"
+        >
+          <div>Suggestion {{ offset + 1 }}</div>
+        </div>
+        <div
+          v-else
+          class="text-xs leading-5 text-gray-500"
+        >
+          <div>0 suggestions</div>
         </div>
       </div>
       <div class="flex items-center gap-4">
         <lf-button
           type="secondary"
-          size="small"
           :disabled="loading || !hasSuggestion"
           :loading="sendingDismiss"
           @click="dismiss()"
@@ -40,7 +48,6 @@
         </lf-button>
         <lf-button
           type="primary"
-          size="small"
           :disabled="loading || !hasSuggestion"
           :loading="sendingMark"
           @click="markAsFake()"
@@ -51,15 +58,15 @@
       </div>
     </header>
 
-    <div v-if="loading || hasSuggestion" class="p-5">
-      <app-organization-merge-suggestions-details
-        :organization="suggestion.organization"
-        :loading="loading"
-      >
-        <template #header>
-          <div class="h-13" />
-        </template>
-      </app-organization-merge-suggestions-details>
+    <div v-if="loading || hasSuggestion">
+      <div class="flex p-5">
+        <app-organization-merge-suggestions-details
+          :organization="suggestion.organization"
+          :loading="loading"
+          :is-preview="true"
+          class="rounded-lg bg-primary-25"
+        />
+      </div>
     </div>
     <div v-else class="py-20 flex flex-col items-center">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />
