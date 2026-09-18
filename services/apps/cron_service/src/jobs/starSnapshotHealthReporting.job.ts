@@ -41,6 +41,9 @@ const job: IJobDefinition = {
     const redis = await getRedisClient(REDIS_CONFIG())
 
     const since = await redis.get(LAST_DEAD_LETTER_REPORTED_AT_KEY)
+    // Captured before the read below, not after gap-checks/Slack send - those can run long
+    // enough to erode the safety margin if the watermark were taken at persist time instead.
+    const nextCursor = await getDeadLetterReportCursor(qx)
 
     const [newlyDeadLettered, totalDeadLettered, allRepos] = await Promise.all([
       findDeadLetteredStarBackfillFailures(qx, since),
@@ -102,10 +105,7 @@ const job: IJobDefinition = {
       sections,
     )
 
-    // Cursor is a DB-time watermark (now() minus a safety margin), not the max row we observed -
-    // a slow-committing write can land with an older timestamp than a cursor set from this read.
     if (sent) {
-      const nextCursor = await getDeadLetterReportCursor(qx)
       await redis.set(LAST_DEAD_LETTER_REPORTED_AT_KEY, nextCursor)
     } else {
       ctx.log.warn('star snapshot health report failed to send, will retry next run')
