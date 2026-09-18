@@ -4,10 +4,11 @@
     v-model="isModalOpen"
     container-class="overflow-auto"
     content-class="!max-h-none"
-    width="48rem"
+    width="44rem"
   >
     <app-member-bot-suggestions
       :offset="props.offset"
+      :segments="props.segments"
       class="!border-t-0 !shadow-none"
       @reload="emit('reload')"
     >
@@ -35,9 +36,11 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     offset?: number;
+    segments?: string[];
   }>(),
   {
     offset: 0,
+    segments: () => [],
   },
 );
 

@@ -136,6 +136,7 @@ export async function fetchMemberBotSuggestionsBySegment(
     INNER JOIN "memberSegmentsAgg" msa ON mbs."memberId" = msa."memberId"
     AND msa."segmentId" = $(segmentId)
     INNER JOIN "members" m ON mbs."memberId" = m.id
+    WHERE mbs.confidence > 0
   `
 
   const countQuery = createQuery('COUNT(*)')

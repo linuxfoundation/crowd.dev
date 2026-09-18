@@ -49,6 +49,7 @@
   <app-fake-organization-suggestions-dialog
     v-model="isModalOpen"
     :offset="detailsOffset"
+    :segments="segments"
     @reload="reload()"
   />
 </template>

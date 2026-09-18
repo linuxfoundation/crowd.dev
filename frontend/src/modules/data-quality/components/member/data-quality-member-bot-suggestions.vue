@@ -42,6 +42,7 @@
   <app-member-bot-suggestions-dialog
     v-model="isModalOpen"
     :offset="detailsOffset"
+    :segments="segments"
     @reload="reload()"
   />
 </template>
@@ -87,11 +88,10 @@ const loadBotSuggestions = () => {
   })
     .then((res) => {
       total.value = +res.count;
-      const rows = res.rows.filter((s: any) => s.confidence > 0);
       if (+res.offset > 0) {
-        botSuggestions.value = [...botSuggestions.value, ...rows];
+        botSuggestions.value = [...botSuggestions.value, ...res.rows];
       } else {
-        botSuggestions.value = rows;
+        botSuggestions.value = res.rows;
       }
     })
     .finally(() => {

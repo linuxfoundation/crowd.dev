@@ -6,9 +6,9 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || offset <= 0 || !hasSuggestion"
+            :disabled="loading || currentOffset <= 0 || !hasSuggestion"
             :icon-only="true"
-            @click="fetch(offset - 1)"
+            @click="fetch(currentOffset - 1)"
           >
             <lf-icon name="chevron-left" :size="16" />
           </lf-button>
@@ -17,7 +17,7 @@
             size="small"
             :disabled="loading || !hasMore"
             :icon-only="true"
-            @click="fetch(offset + 1)"
+            @click="fetch(currentOffset + 1)"
           >
             <lf-icon name="chevron-right" :size="16" />
           </lf-button>
@@ -28,7 +28,7 @@
           v-else-if="hasSuggestion"
           class="text-xs leading-5 text-gray-500"
         >
-          <div>Suggestion {{ offset + 1 }}</div>
+          <div>Suggestion {{ currentOffset + 1 }}</div>
         </div>
         <div
           v-else
@@ -65,7 +65,6 @@
             :organization="suggestion.organization"
             :loading="loading"
             :is-preview="true"
-            :two-column="true"
             class="rounded-lg bg-primary-25"
           />
         </div>
@@ -97,9 +96,11 @@ import { OrganizationService } from '@/modules/organization/organization-service
 const props = withDefaults(
   defineProps<{
     offset?: number;
+    segments?: string[];
   }>(),
   {
     offset: 0,
+    segments: () => [],
   },
 );
 
@@ -108,7 +109,7 @@ const emit = defineEmits<{(e: 'reload'): void}>();
 const { trackEvent } = useProductTracking();
 
 const suggestion = ref<any>({});
-const offset = ref(props.offset);
+const currentOffset = ref(props.offset);
 const hasMore = ref(false);
 const hasSuggestion = ref(false);
 const loading = ref(false);
@@ -116,16 +117,18 @@ const sendingDismiss = ref(false);
 const sendingMark = ref(false);
 const changed = ref(false);
 
+const suggestionQuery = () => (props.segments?.length ? { segments: props.segments } : {});
+
 const fetch = (page: number) => {
   if (page > -1) {
-    offset.value = page;
+    currentOffset.value = page;
   }
 
   loading.value = true;
 
-  return OrganizationService.fetchFakeOrganizationSuggestions(1, offset.value)
+  return OrganizationService.fetchFakeOrganizationSuggestions(1, currentOffset.value, suggestionQuery())
     .then((res: any) => {
-      offset.value = +res.offset;
+      currentOffset.value = +res.offset;
       hasMore.value = Boolean(res.hasMore);
       const [row] = res.rows || [];
 
@@ -146,8 +149,8 @@ const fetch = (page: number) => {
       hasSuggestion.value = false;
       suggestion.value = {};
 
-      if (offset.value > 0) {
-        return fetch(offset.value - 1);
+      if (currentOffset.value > 0) {
+        return fetch(currentOffset.value - 1);
       }
 
       return undefined;
@@ -179,7 +182,7 @@ const markAsFake = () => {
   })
     .then(() => {
       changed.value = true;
-      fetch(offset.value);
+      fetch(currentOffset.value);
     })
     .catch((err) => {
       ToastStore.error(err.response.data);
@@ -204,7 +207,7 @@ const dismiss = () => {
   OrganizationService.dismissFakeOrganizationSuggestion(suggestion.value.organizationId)
     .then(() => {
       changed.value = true;
-      fetch(offset.value);
+      fetch(currentOffset.value);
     })
     .catch((err) => {
       ToastStore.error(err.response.data);
