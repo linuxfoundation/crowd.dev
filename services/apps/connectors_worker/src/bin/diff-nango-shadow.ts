@@ -8,11 +8,9 @@ import { fetchNangoRecordsInWindow } from '../nangoWindowFetch'
 
 const log = getServiceLogger()
 
-const MODEL = 'GithubPullRequestComment'
-
 function usage(): never {
   log.error(
-    'Usage: diff-nango-pr-comments --connection-id <id> --shadow-csv <path> --window-start <iso> --window-end <iso>',
+    'Usage: diff-nango-shadow --connection-id <id> --model <NangoModel> --shadow-csv <path> --window-start <iso> --window-end <iso>',
   )
   process.exit(1)
 }
@@ -29,16 +27,18 @@ function takeFlag(argv: string[], flag: string): string | undefined {
 
 function parseArgs(rawArgv: string[]): {
   connectionId: string
+  model: string
   shadowCsvPath: string
   windowStart: Date
   windowEnd: Date
 } {
   const argv = rawArgv.filter((arg) => arg !== '--')
   const connectionId = takeFlag(argv, '--connection-id')
+  const model = takeFlag(argv, '--model')
   const shadowCsvPath = takeFlag(argv, '--shadow-csv')
   const windowStartArg = takeFlag(argv, '--window-start')
   const windowEndArg = takeFlag(argv, '--window-end')
-  if (!connectionId || !shadowCsvPath || !windowStartArg || !windowEndArg) {
+  if (!connectionId || !model || !shadowCsvPath || !windowStartArg || !windowEndArg) {
     usage()
   }
   const windowStart = new Date(windowStartArg)
@@ -46,7 +46,7 @@ function parseArgs(rawArgv: string[]): {
   if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime())) {
     usage()
   }
-  return { connectionId, shadowCsvPath, windowStart, windowEnd }
+  return { connectionId, model, shadowCsvPath, windowStart, windowEnd }
 }
 
 function readShadowSourceIds(csvPath: string): Set<string> {
@@ -58,7 +58,9 @@ function readShadowSourceIds(csvPath: string): Set<string> {
 
 setImmediate(async () => {
   try {
-    const { connectionId, shadowCsvPath, windowStart, windowEnd } = parseArgs(process.argv.slice(2))
+    const { connectionId, model, shadowCsvPath, windowStart, windowEnd } = parseArgs(
+      process.argv.slice(2),
+    )
 
     const shadowIds = readShadowSourceIds(shadowCsvPath)
     log.info({ shadowIds: shadowIds.size }, 'loaded shadow sourceIds')
@@ -70,7 +72,7 @@ setImmediate(async () => {
         getNangoCloudRecords(
           NangoIntegration.GITHUB,
           connectionId,
-          MODEL,
+          model,
           cursor,
           undefined,
           windowStart.toISOString(),
@@ -96,7 +98,7 @@ setImmediate(async () => {
 
     process.exit(0)
   } catch (err) {
-    log.error(err, 'diff-nango-pr-comments failed')
+    log.error(err, 'diff-nango-shadow failed')
     process.exit(1)
   }
 })

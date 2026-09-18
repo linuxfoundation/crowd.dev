@@ -13,7 +13,7 @@
     "tsc-check": "tsc --noEmit",
     "script:seed-github-sync-units": "tsx src/bin/seed-github-sync-units.ts",
     "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts",
-    "script:diff-nango-pr-comments": "tsx src/bin/diff-nango-pr-comments.ts"
+    "script:diff-nango-shadow": "tsx src/bin/diff-nango-shadow.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
