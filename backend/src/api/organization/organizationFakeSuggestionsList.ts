@@ -28,7 +28,7 @@ export default async (req, res) => {
   }
 
   const qx = SequelizeRepository.getQueryExecutor(req)
-  const detail = req.query.detail === 'true'
+  const detail = String(req.query.detail) === 'true'
 
   const payload = await findFakeOrganizationSuggestions(
     qx,
