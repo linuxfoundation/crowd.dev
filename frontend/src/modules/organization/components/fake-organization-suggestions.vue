@@ -1,7 +1,7 @@
 <template>
   <div class="panel !p-0">
-    <header class="flex items-center justify-between px-6 py-5 border-b">
-      <div class="flex items-center gap-4">
+    <header class="flex items-center justify-between px-6 py-5 border-b whitespace-nowrap">
+      <div class="flex items-center gap-4 shrink-0">
         <div class="flex items-center gap-2">
           <lf-button
             type="secondary"
@@ -37,7 +37,7 @@
           <div>0 suggestions</div>
         </div>
       </div>
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-4 shrink-0">
         <lf-button
           type="secondary"
           :disabled="loading || !hasSuggestion"
@@ -58,15 +58,13 @@
       </div>
     </header>
 
-    <div v-if="loading || hasSuggestion">
-      <div class="flex p-5">
-        <app-organization-merge-suggestions-details
-          :organization="suggestion.organization"
-          :loading="loading"
-          :is-preview="true"
-          class="rounded-lg bg-primary-25"
-        />
-      </div>
+    <div v-if="loading || hasSuggestion" class="w-full">
+      <app-organization-merge-suggestions-details
+        :organization="suggestion.organization"
+        :loading="loading"
+        :is-preview="true"
+        class="w-full bg-primary-25"
+      />
     </div>
     <div v-else class="py-20 flex flex-col items-center">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />
