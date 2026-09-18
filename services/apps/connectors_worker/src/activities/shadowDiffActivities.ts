@@ -3,6 +3,8 @@ import {
   IShadowDiffUnit,
   getShadowRecordsInWindow,
   listShadowDiffUnits,
+  pruneMatchingShadowRecords,
+  upsertSyncDiffSummary,
 } from '@crowd/data-access-layer/src/connectors'
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -65,6 +67,19 @@ export function previousDayWindow(now: Date = new Date()): { windowStart: Date; 
   const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const windowStart = new Date(windowEnd.getTime() - MS_PER_DAY)
   return { windowStart, windowEnd }
+}
+
+export function resolveDiffWindow(targetDay?: string): {
+  day: string
+  windowStart: Date
+  windowEnd: Date
+} {
+  if (targetDay) {
+    const windowStart = new Date(`${targetDay}T00:00:00.000Z`)
+    return { day: targetDay, windowStart, windowEnd: new Date(windowStart.getTime() + MS_PER_DAY) }
+  }
+  const { windowStart, windowEnd } = previousDayWindow(new Date(Date.now() - MS_PER_DAY))
+  return { day: windowStart.toISOString().slice(0, 10), windowStart, windowEnd }
 }
 
 export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
@@ -189,8 +204,43 @@ function countMismatchesByKind(
   return counts
 }
 
+async function persistUnitDiffResult(
+  qx: ReturnType<typeof dbStoreQx>,
+  channel: IShadowDiffChannel,
+  unit: IShadowDiffUnit,
+  day: string,
+  windowStart: Date,
+  windowEnd: Date,
+  mismatches: IShadowDiffMismatch[],
+): Promise<void> {
+  const counts = countMismatchesByKind(mismatches)
+
+  await upsertSyncDiffSummary(qx, {
+    unitId: unit.id,
+    day,
+    integrationId: channel.integrationId,
+    channelName: channel.channelName,
+    missingInNangoCount: counts.missing_in_nango,
+    missingInShadowCount: counts.missing_in_shadow,
+    fieldMismatchCount: counts.field_mismatch,
+    unsupportedSyncCount: counts.unsupported_sync,
+    highSeverityCount: mismatches.filter((m) => m.severity === 'high').length,
+  })
+
+  if (counts.unsupported_sync > 0) {
+    return
+  }
+
+  const keysToKeep = mismatches
+    .filter((m) => m.kind === 'field_mismatch' || m.kind === 'missing_in_nango')
+    .map((m) => ({ type: m.type, sourceId: m.sourceId }))
+
+  await pruneMatchingShadowRecords(qx, unit.id, windowStart, windowEnd, keysToKeep)
+}
+
 export async function runShadowDiffForChannel(
   channel: IShadowDiffChannel,
+  targetDay?: string,
 ): Promise<IShadowDiffChannelResult> {
   const qx = dbStoreQx(svc.postgres.writer)
 
@@ -208,13 +258,14 @@ export async function runShadowDiffForChannel(
     }
   }
 
-  const { windowStart, windowEnd } = previousDayWindow(new Date(Date.now() - MS_PER_DAY))
+  const { day, windowStart, windowEnd } = resolveDiffWindow(targetDay)
   const mismatches: IShadowDiffMismatch[] = []
   const syncSummaries: IShadowDiffSyncSummary[] = []
   let totalMismatchCount = 0
 
   for (const unit of channel.units) {
     const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    await persistUnitDiffResult(qx, channel, unit, day, windowStart, windowEnd, unitMismatches)
     totalMismatchCount += unitMismatches.length
     syncSummaries.push({ syncName: unit.syncName, counts: countMismatchesByKind(unitMismatches) })
     if (mismatches.length < MAX_REPORTED_MISMATCHES) {
