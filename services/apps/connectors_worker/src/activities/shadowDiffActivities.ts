@@ -111,12 +111,12 @@ function diffableRecordKey(record: { type: string; sourceId: string }): string {
   return `${record.type}::${record.sourceId}`
 }
 
-interface IShadowDiffUnitResult {
+export interface IShadowDiffUnitResult {
   mismatches: IShadowDiffMismatch[]
   shadowKeys: { type: string; sourceId: string }[]
 }
 
-async function diffUnit(
+export async function diffUnit(
   qx: ReturnType<typeof dbStoreQx>,
   unit: IShadowDiffUnit,
   connectionId: string,
