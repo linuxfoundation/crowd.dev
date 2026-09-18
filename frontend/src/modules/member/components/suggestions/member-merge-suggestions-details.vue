@@ -154,110 +154,112 @@
         </div>
       </div>
 
-      <div>
-        <article class="pb-4">
-          <p class="text-2xs font-medium text-gray-500 pb-1">
-            Engagement level
-          </p>
-          <slot name="engagementLevel">
-            <app-community-engagement-level v-if="member.reach?.total >= 0 && member.score" :member="member" />
-            <span v-else class="text-2xs">-</span>
-          </slot>
-        </article>
-        <article
-          v-if="
-            member.attributes?.location?.default
-              || compareMember?.attributes?.location?.default
-          "
-          class="pb-4"
-        >
-          <div class="flex items-center pb-1">
-            <p class="text-2xs font-medium text-gray-500 mr-1">
-              Location
+      <div :class="{ 'grid grid-cols-2 gap-x-8 items-start': props.twoColumn }">
+        <div>
+          <article class="pb-4">
+            <p class="text-2xs font-medium text-gray-500 pb-1">
+              Engagement level
             </p>
-            <el-tooltip
-              v-if="!isPreview && member.attributes?.location?.default && getAttributeSourceName(member.attributes?.location)"
-              :content="`Source: ${getAttributeSourceName(member.attributes?.location)}`"
-              placement="top"
-              trigger="hover"
-            >
-              <lf-svg name="source" class="h-3 w-3" />
-            </el-tooltip>
-          </div>
-          <p class="text-xs text-gray-900 whitespace-normal">
-            {{ member.attributes?.location?.default || '-' }}
-          </p>
-        </article>
-        <article
-          v-if="
-            member.organizations?.length || compareMember?.organizations?.length
-          "
-          class="pb-4"
-        >
-          <p class="text-2xs font-medium text-gray-500 pb-1">
-            Organization
-          </p>
-          <div>
-            <app-member-organizations :member="member" :show-title="false" />
-          </div>
-        </article>
-        <article
-          v-if="
-            member.attributes?.jobTitle?.default
-              || compareMember?.attributes?.jobTitle?.default
-          "
-          class="pb-4"
-        >
-          <div class="flex items-center pb-1">
-            <p class="text-2xs font-medium text-gray-500 pr-1">
-              Title
+            <slot name="engagementLevel">
+              <app-community-engagement-level v-if="member.reach?.total >= 0 && member.score" :member="member" />
+              <span v-else class="text-2xs">-</span>
+            </slot>
+          </article>
+          <article
+            v-if="
+              member.attributes?.location?.default
+                || compareMember?.attributes?.location?.default
+            "
+            class="pb-4"
+          >
+            <div class="flex items-center pb-1">
+              <p class="text-2xs font-medium text-gray-500 mr-1">
+                Location
+              </p>
+              <el-tooltip
+                v-if="!isPreview && member.attributes?.location?.default && getAttributeSourceName(member.attributes?.location)"
+                :content="`Source: ${getAttributeSourceName(member.attributes?.location)}`"
+                placement="top"
+                trigger="hover"
+              >
+                <lf-svg name="source" class="h-3 w-3" />
+              </el-tooltip>
+            </div>
+            <p class="text-xs text-gray-900 whitespace-normal">
+              {{ member.attributes?.location?.default || '-' }}
             </p>
-            <el-tooltip
-              v-if="!isPreview && member.attributes?.jobTitle?.default && getAttributeSourceName(member.attributes?.jobTitle)"
-              :content="`Source: ${getAttributeSourceName(member.attributes?.jobTitle)}`"
-              placement="top"
-              trigger="hover"
-            >
-              <lf-svg name="source" class="h-3 w-3" />
-            </el-tooltip>
-          </div>
-          <p class="text-xs text-gray-900 whitespace-normal">
-            {{ member.attributes?.jobTitle?.default || '-' }}
-          </p>
-        </article>
-        <article
-          v-if="member.joinedAt || compareMember?.joinedAt"
-          class="pb-4"
-        >
-          <p class="text-2xs font-medium text-gray-500 pb-1">
-            Joined date
-          </p>
-          <p class="text-xs text-gray-900 whitespace-normal">
-            {{ formatJoinedDate(member.joinedAt) }}
-          </p>
-        </article>
-        <article
-          v-if="member.activityCount > 0"
-          class="pb-4"
-        >
-          <p class="text-2xs font-medium text-gray-500 pb-1">
-            Activity Count
-          </p>
-          <p class="text-xs text-gray-900 whitespace-normal">
-            {{ member.activityCount || 0 }}
-          </p>
-        </article>
-        <slot name="property" />
-      </div>
-      <div class="pt-4">
-        <h6 class="text-sm font-semibold text-black pb-3">
-          Identities
-        </h6>
-        <app-identities-vertical-list-members
-          :member="member"
-          :order="memberOrder.suggestions"
-          :include-emails="true"
-        />
+          </article>
+          <article
+            v-if="
+              member.organizations?.length || compareMember?.organizations?.length
+            "
+            class="pb-4"
+          >
+            <p class="text-2xs font-medium text-gray-500 pb-1">
+              Organization
+            </p>
+            <div>
+              <app-member-organizations :member="member" :show-title="false" />
+            </div>
+          </article>
+          <article
+            v-if="
+              member.attributes?.jobTitle?.default
+                || compareMember?.attributes?.jobTitle?.default
+            "
+            class="pb-4"
+          >
+            <div class="flex items-center pb-1">
+              <p class="text-2xs font-medium text-gray-500 pr-1">
+                Title
+              </p>
+              <el-tooltip
+                v-if="!isPreview && member.attributes?.jobTitle?.default && getAttributeSourceName(member.attributes?.jobTitle)"
+                :content="`Source: ${getAttributeSourceName(member.attributes?.jobTitle)}`"
+                placement="top"
+                trigger="hover"
+              >
+                <lf-svg name="source" class="h-3 w-3" />
+              </el-tooltip>
+            </div>
+            <p class="text-xs text-gray-900 whitespace-normal">
+              {{ member.attributes?.jobTitle?.default || '-' }}
+            </p>
+          </article>
+          <article
+            v-if="member.joinedAt || compareMember?.joinedAt"
+            class="pb-4"
+          >
+            <p class="text-2xs font-medium text-gray-500 pb-1">
+              Joined date
+            </p>
+            <p class="text-xs text-gray-900 whitespace-normal">
+              {{ formatJoinedDate(member.joinedAt) }}
+            </p>
+          </article>
+          <article
+            v-if="member.activityCount > 0"
+            class="pb-4"
+          >
+            <p class="text-2xs font-medium text-gray-500 pb-1">
+              Activity Count
+            </p>
+            <p class="text-xs text-gray-900 whitespace-normal">
+              {{ member.activityCount || 0 }}
+            </p>
+          </article>
+          <slot name="property" />
+        </div>
+        <div :class="{ 'pt-4': !props.twoColumn }">
+          <h6 class="text-sm font-semibold text-black pb-3">
+            Identities
+          </h6>
+          <app-identities-vertical-list-members
+            :member="member"
+            :order="memberOrder.suggestions"
+            :include-emails="true"
+          />
+        </div>
       </div>
       <slot name="below" />
     </div>
@@ -300,6 +302,11 @@ const props = defineProps({
     default: false,
   },
   isPreview: {
+    type: Boolean,
+    required: false,
+    default: false,
+  },
+  twoColumn: {
     type: Boolean,
     required: false,
     default: false,
