@@ -21,7 +21,7 @@ describe('parseGithubUrl', () => {
   it('extracts owner and repo name', () => {
     expect(parseGithubUrl('https://github.com/octocat/Hello-World')).toEqual({
       owner: 'octocat',
-      name: 'Hello-World',
+      name: 'hello-world',
     })
   })
 
@@ -117,6 +117,30 @@ describe('fetchPublicRepoMetrics', () => {
       fetchPublicRepoMetrics('https://github.com/octocat/Hello-World', 'tok'),
     ).rejects.toMatchObject({ kind: 'NOT_FOUND' })
   })
+
+  it('throws RATE_LIMIT on 429 regardless of body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('secondary rate limit', {
+          status: 429,
+          headers: { 'retry-after': '30' },
+        }),
+      ),
+    )
+
+    await expect(
+      fetchPublicRepoMetrics('https://github.com/octocat/Hello-World', 'tok'),
+    ).rejects.toMatchObject({ kind: 'RATE_LIMIT' })
+  })
+
+  it('throws TRANSIENT when fetch itself rejects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+
+    await expect(
+      fetchPublicRepoMetrics('https://github.com/octocat/Hello-World', 'tok'),
+    ).rejects.toMatchObject({ kind: 'TRANSIENT' })
+  })
 })
 
 describe('fetchPublicRepoReadme', () => {
@@ -150,5 +174,26 @@ describe('fetchPublicRepoReadme', () => {
     await expect(
       fetchPublicRepoReadme('https://github.com/octocat/Hello-World', 'bad-token'),
     ).rejects.toMatchObject({ kind: 'AUTH' })
+  })
+
+  it('throws RATE_LIMIT on 429 regardless of body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response('', { status: 429, headers: { 'retry-after': '30' } })),
+    )
+
+    await expect(
+      fetchPublicRepoReadme('https://github.com/octocat/Hello-World', 'tok'),
+    ).rejects.toMatchObject({ kind: 'RATE_LIMIT' })
+  })
+
+  it('throws TRANSIENT when fetch itself rejects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+
+    await expect(
+      fetchPublicRepoReadme('https://github.com/octocat/Hello-World', 'tok'),
+    ).rejects.toMatchObject({ kind: 'TRANSIENT' })
   })
 })

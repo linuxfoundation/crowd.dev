@@ -9,7 +9,7 @@ export class GithubPublicClientError extends Error {
   constructor(
     public readonly kind: GithubPublicClientErrorKind,
     message: string,
-    public readonly retryAfterMs?: number,
+    public readonly resetAtMs?: number,
   ) {
     super(message)
     this.name = 'GithubPublicClientError'

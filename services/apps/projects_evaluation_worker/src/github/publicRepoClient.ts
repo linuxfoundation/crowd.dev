@@ -1,3 +1,5 @@
+import { githubRepoPath } from '@crowd/common'
+
 import { GithubPublicClientError, IPublicRepoMetrics, IPublicRepoReadme } from './types'
 
 const GITHUB_API_URL = 'https://api.github.com'
@@ -56,11 +58,21 @@ export function getGithubToken(): string {
 }
 
 export function parseGithubUrl(url: string): { owner: string; name: string } {
-  const match = url.match(/https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
-  if (!match) {
+  const path = githubRepoPath(url)
+  if (!path) {
     throw new GithubPublicClientError('NOT_FOUND', `Cannot parse GitHub URL: ${url}`)
   }
-  return { owner: match[1], name: match[2] }
+  const [owner, name] = path.split('/')
+  return { owner, name }
+}
+
+async function doFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new GithubPublicClientError('TRANSIENT', `Network error calling ${url}: ${message}`)
+  }
 }
 
 function rateLimitResetMs(headers: Headers): number {
@@ -71,12 +83,33 @@ function rateLimitResetMs(headers: Headers): number {
   return Date.now() + 65_000
 }
 
-// A 401 here means our own token is missing/expired/revoked, never a repo signal — it must
-// propagate as an error so callers stop instead of guessing, unlike the silent-failure bug
-// this client's Python predecessor had (see CM-1469 / Joana's onboarding findings).
+// A 401 here is our own token, never a repo signal — it must propagate, not be swallowed.
 function assertAuthenticated(response: Response, url: string): void {
   if (response.status === 401) {
     throw new GithubPublicClientError('AUTH', `401 Unauthorized calling GitHub for ${url}`)
+  }
+}
+
+// GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also
+// mean a genuine permission problem, so only 403 needs the response-body sniff.
+async function assertNotRateLimited(response: Response, what: string): Promise<void> {
+  if (response.status === 429) {
+    throw new GithubPublicClientError(
+      'RATE_LIMIT',
+      `Rate limited ${what}`,
+      rateLimitResetMs(response.headers),
+    )
+  }
+  if (response.status === 403) {
+    const body = await response.text()
+    if (body.toLowerCase().includes('rate limit')) {
+      throw new GithubPublicClientError(
+        'RATE_LIMIT',
+        `Rate limited ${what}`,
+        rateLimitResetMs(response.headers),
+      )
+    }
+    throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
   }
 }
 
@@ -86,7 +119,7 @@ export async function fetchPublicRepoMetrics(
 ): Promise<IPublicRepoMetrics> {
   const { owner, name } = parseGithubUrl(repoUrl)
 
-  const response = await fetch(`${GITHUB_API_URL}/graphql`, {
+  const response = await doFetch(`${GITHUB_API_URL}/graphql`, {
     method: 'POST',
     headers: {
       Authorization: `bearer ${token}`,
@@ -96,18 +129,7 @@ export async function fetchPublicRepoMetrics(
   })
 
   assertAuthenticated(response, repoUrl)
-
-  if (response.status === 403) {
-    const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
-      throw new GithubPublicClientError(
-        'RATE_LIMIT',
-        `Rate limited fetching metrics for ${repoUrl}`,
-        rateLimitResetMs(response.headers),
-      )
-    }
-    throw new GithubPublicClientError('AUTH', `403 Forbidden fetching metrics for ${repoUrl}`)
-  }
+  await assertNotRateLimited(response, `fetching metrics for ${repoUrl}`)
 
   if (response.status === 404) {
     throw new GithubPublicClientError('NOT_FOUND', `Repository not found: ${repoUrl}`)
@@ -168,7 +190,7 @@ export async function fetchPublicRepoReadme(
 ): Promise<IPublicRepoReadme | null> {
   const { owner, name } = parseGithubUrl(repoUrl)
 
-  const response = await fetch(`${GITHUB_API_URL}/repos/${owner}/${name}/readme`, {
+  const response = await doFetch(`${GITHUB_API_URL}/repos/${owner}/${name}/readme`, {
     headers: {
       Authorization: `bearer ${token}`,
       Accept: 'application/vnd.github.raw+json',
@@ -181,17 +203,7 @@ export async function fetchPublicRepoReadme(
     return null
   }
 
-  if (response.status === 403) {
-    const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
-      throw new GithubPublicClientError(
-        'RATE_LIMIT',
-        `Rate limited fetching README for ${repoUrl}`,
-        rateLimitResetMs(response.headers),
-      )
-    }
-    throw new GithubPublicClientError('AUTH', `403 Forbidden fetching README for ${repoUrl}`)
-  }
+  await assertNotRateLimited(response, `fetching README for ${repoUrl}`)
 
   if (!response.ok) {
     throw new GithubPublicClientError(
