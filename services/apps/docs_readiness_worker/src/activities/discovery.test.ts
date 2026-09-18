@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import { resolveDocsUrl } from './discovery'
+
 const mocks = vi.hoisted(() => ({
   findActiveProjectDocOverride: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
@@ -36,8 +38,6 @@ vi.mock('@crowd/common_services', () => ({
 vi.mock('../discovery', () => ({
   discoverDocs: mocks.discoverDocs,
 }))
-
-const { resolveDocsUrl } = await import('./discovery')
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -83,7 +83,14 @@ describe('resolveDocsUrl', () => {
       docsUrl: 'https://docs.example.com',
       discoveryMethod: 'docs-subdomain',
       confidence: 'high',
-      allCandidates: [{ url: 'https://docs.example.com', method: 'docs-subdomain', confidence: 'high', livenessOk: true }],
+      allCandidates: [
+        {
+          url: 'https://docs.example.com',
+          method: 'docs-subdomain',
+          confidence: 'high',
+          livenessOk: true,
+        },
+      ],
     })
 
     const result = await resolveDocsUrl('project-1')
@@ -122,7 +129,9 @@ describe('resolveDocsUrl', () => {
       name: 'Project',
       website: null,
     })
-    mocks.findEnabledRepositoriesForProject.mockResolvedValue([{ url: 'https://github.com/org/repo' }])
+    mocks.findEnabledRepositoriesForProject.mockResolvedValue([
+      { url: 'https://github.com/org/repo' },
+    ])
     mocks.getGithubInstallationToken.mockResolvedValue('gh-token')
     mocks.discoverDocs.mockResolvedValue({
       docsUrl: null,
