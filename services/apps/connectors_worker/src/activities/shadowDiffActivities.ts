@@ -2,6 +2,7 @@ import { parseRepoChannel } from '@crowd/connectors/src/connectors/github/paging
 import {
   IShadowDiffUnit,
   getShadowRecordsInWindow,
+  getUnitIdsWithSummary,
   listShadowDiffUnits,
   pruneMatchingShadowRecords,
   upsertSyncDiffSummary,
@@ -237,19 +238,24 @@ export async function runShadowDiffForChannel(
 
   const { day, windowStart, windowEnd } = resolveDiffWindow(targetDay)
 
+  const alreadySummarized = await getUnitIdsWithSummary(
+    qx,
+    channel.units.map((unit) => unit.id),
+    day,
+  )
+  const pendingUnits = channel.units.filter((unit) => !alreadySummarized.has(unit.id))
+
   const unitDiffs: { unit: IShadowDiffUnit; mismatches: IShadowDiffMismatch[] }[] = []
-  for (const unit of channel.units) {
+  for (const unit of pendingUnits) {
     const mismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
     unitDiffs.push({ unit, mismatches })
   }
 
-  await qx.tx((txQx) =>
-    Promise.all(
-      unitDiffs.map(({ unit, mismatches }) =>
-        persistUnitDiffResult(txQx, channel, unit, day, windowStart, windowEnd, mismatches),
-      ),
-    ),
-  )
+  await qx.tx(async (txQx) => {
+    for (const { unit, mismatches } of unitDiffs) {
+      await persistUnitDiffResult(txQx, channel, unit, day, windowStart, windowEnd, mismatches)
+    }
+  })
 
   return {
     channelName: channel.channelName,

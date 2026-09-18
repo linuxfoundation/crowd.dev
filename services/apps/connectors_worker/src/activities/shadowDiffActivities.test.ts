@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listShadowDiffUnits: vi.fn(),
   getNangoMappingForRepo: vi.fn(),
   getShadowRecordsInWindow: vi.fn(),
+  getUnitIdsWithSummary: vi.fn(),
   pruneMatchingShadowRecords: vi.fn(),
   upsertSyncDiffSummary: vi.fn(),
   initNangoCloudClient: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   listShadowDiffUnits: mocks.listShadowDiffUnits,
   getShadowRecordsInWindow: mocks.getShadowRecordsInWindow,
+  getUnitIdsWithSummary: mocks.getUnitIdsWithSummary,
   pruneMatchingShadowRecords: mocks.pruneMatchingShadowRecords,
   upsertSyncDiffSummary: mocks.upsertSyncDiffSummary,
 }))
@@ -125,6 +127,7 @@ describe('runShadowDiffForChannel', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'))
+    mocks.getUnitIdsWithSummary.mockResolvedValue(new Set())
     mocks.upsertSyncDiffSummary.mockResolvedValue(undefined)
     mocks.pruneMatchingShadowRecords.mockResolvedValue(0)
   })
@@ -343,5 +346,21 @@ describe('runShadowDiffForChannel', () => {
         units: [UNIT],
       }),
     ).rejects.toThrow('db exploded')
+  })
+
+  it('skips units that already have a summary for the day, to stay idempotent under Temporal retries', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getUnitIdsWithSummary.mockResolvedValue(new Set([UNIT.id]))
+
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(result.status).toBe('ok')
+    expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
+    expect(mocks.upsertSyncDiffSummary).not.toHaveBeenCalled()
+    expect(mocks.pruneMatchingShadowRecords).not.toHaveBeenCalled()
   })
 })
