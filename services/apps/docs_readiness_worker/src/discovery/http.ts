@@ -9,7 +9,7 @@ export interface IProbeResult {
 
 const MAX_REDIRECTS = 5
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
-const PRIVATE_HOSTNAME_RE = /^(localhost|.+\.(local|internal|localdomain))$/i
+const PRIVATE_HOSTNAME_RE = /^(localhost\.?|.+\.(local|internal|localdomain|localhost))$/i
 const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
 function isPrivateIpv4(host: string): boolean {
@@ -34,9 +34,17 @@ function isPrivateIpv6(addr: string): boolean {
   if (a === '::1' || a === '::') {
     return true
   }
-  const mapped = a.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
-  if (mapped) {
-    return isPrivateIpv4(mapped[1])
+  const dottedMapped = a.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
+  if (dottedMapped) {
+    return isPrivateIpv4(dottedMapped[1])
+  }
+  // WHATWG URL parsing canonicalizes an IPv4-mapped address to hex groups, e.g.
+  // ::ffff:127.0.0.1 -> ::ffff:7f00:1, so the dotted form above never matches a real hostname.
+  const hexMapped = a.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (hexMapped) {
+    const hi = parseInt(hexMapped[1], 16)
+    const lo = parseInt(hexMapped[2], 16)
+    return isPrivateIpv4([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.'))
   }
   if (/^f[cd][0-9a-f]{2}:/.test(a)) {
     return true // fc00::/7 unique-local
@@ -132,7 +140,8 @@ export function domainOf(url: string): string | null {
 }
 
 export function normalizedDomain(url: string): string | null {
-  return domainOf(url)?.replace(/^www\./, '') ?? null
+  const normalized = normalizeUrl(url)
+  return normalized ? (domainOf(normalized)?.replace(/^www\./, '') ?? null) : null
 }
 
 export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResult> {
@@ -158,14 +167,31 @@ export async function isLiveDocs(url: string): Promise<boolean> {
   return result.ok && result.contentType.includes('text/html')
 }
 
+const MAX_FETCH_TEXT_BYTES = 2 * 1024 * 1024
+
 export async function fetchText(url: string, timeoutMs = 5_000): Promise<string | null> {
   try {
     const response = await guardedFetch(url, timeoutMs)
-    if (!response || !response.ok) {
+    if (!response || !response.ok || !response.body) {
       return null
     }
 
-    return await response.text()
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      total += value.length
+      if (total > MAX_FETCH_TEXT_BYTES) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks).toString('utf-8')
   } catch {
     return null
   }

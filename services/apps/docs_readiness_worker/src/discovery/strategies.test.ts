@@ -164,6 +164,26 @@ describe('docsSubdomain', () => {
     ).toEqual([])
   })
 
+  it('probes the real domain, not "docs.null", for a scheme-less website', async () => {
+    routeFetch([['https://docs.example.com', html]])
+
+    const result = await docsSubdomain({
+      name: 'proj',
+      website: 'example.com',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://docs.example.com',
+        method: 'docs-subdomain',
+        confidence: 'high',
+        livenessOk: true,
+      },
+    ])
+  })
+
   it('returns [] on a fetch error', async () => {
     throwingFetch()
     expect(

@@ -153,6 +153,10 @@ describe('normalizedDomain', () => {
   it('returns null for malformed input', () => {
     expect(normalizedDomain('::not a url::')).toBeNull()
   })
+
+  it('resolves a scheme-less domain instead of returning null', () => {
+    expect(normalizedDomain('example.com')).toBe('example.com')
+  })
 })
 
 describe('isPrivateOrLoopbackHost', () => {
@@ -166,6 +170,8 @@ describe('isPrivateOrLoopbackHost', () => {
     ['172.16.0.5', 'ipv4 rfc1918 172.16/12'],
     ['192.168.1.5', 'ipv4 rfc1918 192.168/16'],
     ['localhost', 'localhost hostname'],
+    ['localhost.', 'trailing-dot localhost hostname'],
+    ['foo.localhost', 'localhost subdomain'],
     ['myservice.internal', 'internal-suffixed hostname'],
     ['myservice.local', 'local-suffixed hostname'],
   ])('is true for %s (%s)', (host) => {
@@ -176,6 +182,7 @@ describe('isPrivateOrLoopbackHost', () => {
     ['::1', 'ipv6 loopback'],
     ['fe80::1', 'ipv6 link-local'],
     ['fc00::1', 'ipv6 unique-local'],
+    ['::ffff:127.0.0.1', 'ipv4-mapped ipv6 loopback'],
   ])('is true for %s (%s) via URL.hostname bracketed form', (host) => {
     expect(isPrivateOrLoopbackHost(new URL(`http://[${host}]/`).hostname)).toBe(true)
   })
@@ -261,6 +268,15 @@ describe('probe SSRF guard', () => {
     const result = await probe('https://example.com/')
     expect(result.ok).toBe(true)
   })
+
+  it('never calls fetch for an ipv4-mapped ipv6 loopback address', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('http://[::ffff:127.0.0.1]/')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('fetchText', () => {
@@ -298,6 +314,17 @@ describe('fetchText', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.reject(new Error('timeout'))),
+    )
+
+    expect(await fetchText('https://example.com')).toBeNull()
+  })
+
+  it('returns null when the response body exceeds the size limit', async () => {
+    vi.stubGlobal(
+      'fetch',
+      jsonRouter({
+        'https://example.com': () => new Response('x'.repeat(2 * 1024 * 1024 + 1), { status: 200 }),
+      }),
     )
 
     expect(await fetchText('https://example.com')).toBeNull()
