@@ -23,6 +23,12 @@ const fetchActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
+// Batch DB reads (repo/owner lookups) plus one guarded write per skip decided.
+const precheckActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '2 minutes',
+  retry: { maximumAttempts: 3 },
+})
+
 // Each AI evaluation call takes ~30-40s; give generous headroom per project.
 const evaluateActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '3 minutes',
@@ -46,12 +52,12 @@ function recordEvaluatorUsage(
   outputTokens: number,
   costUsd: number | null,
 ): void {
-  const usage = models[model] ?? { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: null }
+  const usage = models[model] ?? { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 }
 
   usage.calls++
   usage.inputTokens += inputTokens
   usage.outputTokens += outputTokens
-  usage.costUsd = costUsd === null ? usage.costUsd : (usage.costUsd ?? 0) + costUsd
+  usage.costUsd = usage.costUsd === null || costUsd === null ? null : usage.costUsd + costUsd
 
   models[model] = usage
 }
@@ -68,6 +74,8 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
   let succeeded = 0
   let failed = 0
   let skipped = 0
+  let skippedPreCheck = 0
+  let precheckBreakdown: Record<string, number> = {}
   let evaluatorSeconds = 0
   const evaluatorModels: Record<string, IPipelineRunEvaluatorModelUsage> = {}
 
@@ -95,12 +103,18 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
     const projects = await fetchActivities.fetchPendingProjects(batchSize)
     totalCandidates = projects.length
 
-    if (projects.length > 0) {
-      log.info(`Evaluating ${projects.length} project(s) (batch size: ${batchSize}).`)
+    // Step 3: resolve what's already known from CDP before spending an LLM call on it.
+    const precheck = await precheckActivities.precheckPendingProjects(projects)
+    const remainingProjects = precheck.remaining
+    skippedPreCheck = precheck.skippedPreCheck
+    precheckBreakdown = precheck.breakdown
 
-      for (let i = 0; i < projects.length; i++) {
-        const project = projects[i]
-        log.info(`[${i + 1}/${projects.length}] Evaluating: ${project.repoUrl}`)
+    if (remainingProjects.length > 0) {
+      log.info(`Evaluating ${remainingProjects.length} project(s) (batch size: ${batchSize}).`)
+
+      for (let i = 0; i < remainingProjects.length; i++) {
+        const project = remainingProjects[i]
+        log.info(`[${i + 1}/${remainingProjects.length}] Evaluating: ${project.repoUrl}`)
 
         try {
           const result = await evaluateActivities.evaluateAndUpdateProject(project)
@@ -136,10 +150,10 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
       }
 
       log.info(
-        `Batch evaluation complete. total=${projects.length} succeeded=${succeeded} failed=${failed} skipped=${skipped}`,
+        `Batch evaluation complete. total=${remainingProjects.length} succeeded=${succeeded} failed=${failed} skipped=${skipped} skippedPreCheck=${skippedPreCheck}`,
       )
     } else {
-      log.info('No projects pending evaluation. Nothing to do.')
+      log.info('No projects pending evaluation after pre-check. Nothing to do.')
     }
 
     await pipelineRunActivities.finishEvaluationPipelineRun(pipelineRunId, {
@@ -148,6 +162,8 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
       succeeded,
       failed,
       skipped,
+      skippedPreCheck,
+      details: { precheckBreakdown },
       evaluator: buildEvaluatorSummary(),
     })
   } catch (err) {
@@ -158,6 +174,8 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
         succeeded,
         failed,
         skipped,
+        skippedPreCheck,
+        details: { precheckBreakdown },
         evaluator: buildEvaluatorSummary(),
         errorMessage: String(err),
       }),

@@ -9,17 +9,34 @@ on:
       - 'services/**'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  lint-format:
+  lint-changed:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./backend
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce required scripts on all services packages
+        run: ./services/scripts/check_package_scripts.sh
+
+      - name: Detect shared config changes
+        id: shared_config
+        run: |
+          if git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.sha }} \
+            | grep -qE '^(services/\.eslintrc\.cjs|services/\.prettierrc\.cjs|services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
+            echo "Shared config changed (eslint/prettier/tsconfig base, lockfile or catalog) — falling back to full workspace checks"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup pnpm and node
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
@@ -27,37 +44,29 @@ jobs:
           runtime: node@24
           cache: true
 
-      - name: Check linting
-        run: pnpm run lint
+      - name: Check linting (changed packages + dependents)
+        run: |
+          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
+            pnpm -r --if-present run lint
+          else
+            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present run lint
+          fi
 
-      - name: Check formatting
-        run: pnpm run format-check
+      - name: Check formatting (changed packages + dependents)
+        run: |
+          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
+            pnpm -r --if-present run format-check
+          else
+            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present run format-check
+          fi
 
-      - name: Check typescript
-        run: pnpm run tsc-check
-
-  lint-format-services:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./services
-
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm and node
-        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
-        with:
-          runtime: node@24
-          cache: true
-
-      - name: Check library linting, format and typescript
-        run: ./scripts/lint_libs.sh
-
-      - name: Check app linting, format and typescript
-        run: ./scripts/lint_apps.sh
+      - name: Check typescript (changed packages + dependents)
+        run: |
+          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
+            pnpm -r --if-present --workspace-concurrency=4 run tsc-check
+          else
+            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present --workspace-concurrency=4 run tsc-check
+          fi
 
   lint-python-git-integration:
     runs-on: ubuntu-latest

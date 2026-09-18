@@ -43,8 +43,20 @@ services:
     networks:
       - crowd-bridge
     volumes:
+      - ../../services/libs/audit-logs/src:/usr/crowd/app/services/libs/audit-logs/src
+      - ../../services/libs/common/src:/usr/crowd/app/services/libs/common/src
       - ../../services/libs/common_services/src:/usr/crowd/app/services/libs/common_services/src
       - ../../services/libs/data-access-layer/src:/usr/crowd/app/services/libs/data-access-layer/src
+      - ../../services/libs/database/src:/usr/crowd/app/services/libs/database/src
+      - ../../services/libs/integrations/src:/usr/crowd/app/services/libs/integrations/src
+      - ../../services/libs/logging/src:/usr/crowd/app/services/libs/logging/src
+      - ../../services/libs/nango/src:/usr/crowd/app/services/libs/nango/src
+      - ../../services/libs/opensearch/src:/usr/crowd/app/services/libs/opensearch/src
+      - ../../services/libs/queue/src:/usr/crowd/app/services/libs/queue/src
+      - ../../services/libs/redis/src:/usr/crowd/app/services/libs/redis/src
+      - ../../services/libs/snowflake/src:/usr/crowd/app/services/libs/snowflake/src
+      - ../../services/libs/telemetry/src:/usr/crowd/app/services/libs/telemetry/src
+      - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
       - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
       - ../../services/apps/docs_readiness_worker/src:/usr/crowd/app/services/apps/docs_readiness_worker/src
 

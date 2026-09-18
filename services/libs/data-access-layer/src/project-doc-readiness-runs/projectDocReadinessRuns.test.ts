@@ -22,23 +22,42 @@ describe('startDocReadinessRun', () => {
     expect(run.startedAt).not.toBeNull()
   })
 
-  test('is idempotent for a retried workflowId', async ({ qx }) => {
+  test('is idempotent for a retried temporalRunId', async ({ qx }) => {
     const first = await startDocReadinessRun(qx, {
       trigger: 'on-demand',
       scope: 'lf',
       workflowId: 'wf-1',
+      temporalRunId: 'run-1',
     })
     const retried = await startDocReadinessRun(qx, {
       trigger: 'on-demand',
       scope: 'lf',
       workflowId: 'wf-1',
+      temporalRunId: 'run-1',
     })
 
     expect(retried.id).toBe(first.id)
     expect(retried.startedAt).toBe(first.startedAt)
   })
 
-  test('allows many rows with a null workflowId', async ({ qx }) => {
+  test('allows a new row for a retried workflowId with a new temporalRunId', async ({ qx }) => {
+    const first = await startDocReadinessRun(qx, {
+      trigger: 'on-demand',
+      scope: 'lf',
+      workflowId: 'wf-1',
+      temporalRunId: 'run-1',
+    })
+    const retried = await startDocReadinessRun(qx, {
+      trigger: 'on-demand',
+      scope: 'lf',
+      workflowId: 'wf-1',
+      temporalRunId: 'run-2',
+    })
+
+    expect(retried.id).not.toBe(first.id)
+  })
+
+  test('allows many rows with a null temporalRunId', async ({ qx }) => {
     const a = await startDocReadinessRun(qx, { trigger: 'on-demand', scope: 'lf' })
     const b = await startDocReadinessRun(qx, { trigger: 'on-demand', scope: 'lf' })
 

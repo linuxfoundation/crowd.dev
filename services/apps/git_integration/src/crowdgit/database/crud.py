@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -334,7 +335,7 @@ async def find_github_identity(github_username: str):
         FROM "memberIdentities"
     WHERE
         platform = 'github'
-        AND value = $1
+        AND LOWER(value) = LOWER($1)
         AND "verified" = TRUE
         AND "deletedAt" is null
     LIMIT 1
@@ -409,19 +410,19 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 async def get_maintainers_for_repo(repo_id: str):
     # Active rows only (endDate IS NULL) — reappearing maintainers hit the "new"
     # branch and get reactivated by upsert_maintainer's ON CONFLICT clause.
-    # verified=TRUE mirrors find_github_identity / find_maintainer_identity_by_email.
+    # Deleted identities included regardless of verified flag so orphaned rows are
+    # visible to the diff loop and get end-dated (unverify flow clears verified before deletedAt).
     # platform/type are returned so the diff's safety guard can match identifiers
     # by kind and avoid cross-platform value collisions (e.g. a GitHub username
     # "foo" colliding with a same-named handle on another platform).
     maintainers_sql_query = """
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId",
-               mem.value as identity_value, mem.platform, mem.type
+               mem.value as identity_value, mem.platform, mem.type, mem."deletedAt" as identity_deleted_at
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
         WHERE mi."repoId" = $1
           AND mi."endDate" IS NULL
-          AND mem."verified" = TRUE
-          AND mem."deletedAt" is null
+          AND (mem."verified" = TRUE OR mem."deletedAt" IS NOT NULL)
         """
     return await query(
         maintainers_sql_query,
@@ -464,6 +465,69 @@ async def set_maintainer_end_date(
             role,
         ),
     )
+
+
+@dataclass
+class ProjectContext:
+    project_segment_id: str
+    project_repo_id: str
+    project_repo_url: str
+    sibling_repo_ids: list[str] = field(default_factory=list)
+
+
+async def find_project_repo_sibling(repo_id: str, segment_id: str | None) -> ProjectContext | None:
+    """
+    For a given repo, find the sibling .project repo within the same CNCF project segment,
+    and list all other sibling repo IDs.
+
+    Returns None if the repo's segment is not a CNCF subproject (grandparentSlug != 'cncf')
+    or no .project sibling exists.
+    """
+    if not segment_id:
+        return None
+    sql = """
+        WITH project_id_cte AS (
+            SELECT "parentId" AS project_id
+            FROM public.segments
+            WHERE id = $1::uuid AND type = 'subproject' AND "grandparentSlug" = 'cncf'
+        ),
+        project_repos AS (
+            SELECT r.id, r.url
+            FROM public.repositories r
+            JOIN public.segments s ON s.id = r."segmentId"
+            WHERE (SELECT project_id FROM project_id_cte) IS NOT NULL
+              AND s.type = 'subproject'
+              AND s."parentId" = (SELECT project_id FROM project_id_cte)
+              AND r."deletedAt" IS NULL
+        )
+        SELECT
+            (SELECT project_id::text FROM project_id_cte)                                           AS project_segment_id,
+            (SELECT id::text  FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_id,
+            (SELECT url       FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_url,
+            ARRAY(SELECT id::text FROM project_repos WHERE url !~* '/\\.project(\\.git)?$')         AS sibling_repo_ids
+    """
+    row = await fetchrow(sql, (segment_id,))
+    if not row or not row.get("project_segment_id") or not row.get("project_repo_id"):
+        return None
+    return ProjectContext(
+        project_segment_id=row["project_segment_id"],
+        project_repo_id=row["project_repo_id"],
+        project_repo_url=row["project_repo_url"],
+        sibling_repo_ids=list(row["sibling_repo_ids"] or []),
+    )
+
+
+async def end_date_maintainers_for_repos(repo_ids: list[str], end_date: datetime) -> None:
+    """Bulk end-date all active maintainer rows for a list of repo IDs."""
+    if not repo_ids:
+        return
+    sql = """
+        UPDATE "maintainersInternal"
+           SET "endDate" = $1, "updatedAt" = NOW()
+         WHERE "repoId" = ANY($2::uuid[])
+           AND "endDate" IS NULL
+    """
+    await execute(sql, (end_date, repo_ids))
 
 
 async def batch_check_parent_activities(

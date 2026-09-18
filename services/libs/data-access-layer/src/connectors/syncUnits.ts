@@ -1,4 +1,5 @@
 import type { QueryExecutor } from '../queryExecutor'
+import { truncateErrorMessage } from '../utils'
 
 import type {
   IClaimedUnit,
@@ -12,14 +13,6 @@ import type {
 const MIN_INITIAL_DELAY_SECONDS = 10
 const MAX_INITIAL_DELAY_SECONDS = 900
 const CLAIM_LEASE_MINUTES = 5
-const ERROR_MESSAGE_MAX_LENGTH = 500
-
-function truncateErrorMessage(message: string | null): string | null {
-  if (!message) {
-    return null
-  }
-  return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
-}
 
 export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]): Promise<number> {
   if (units.length === 0) {

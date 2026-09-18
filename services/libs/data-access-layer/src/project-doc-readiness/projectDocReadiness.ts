@@ -133,9 +133,7 @@ export async function findLatestProjectDocReadiness(
   )
 }
 
-// Replaces the project's check rows wholesale so the table always holds the
-// result of the latest successful scoring only. Callers wrap this together
-// with upsertProjectDocReadiness in one transaction.
+// Callers wrap this together with upsertProjectDocReadiness in one transaction.
 export async function replaceProjectDocReadinessChecks(
   qx: QueryExecutor,
   projectId: string,
@@ -207,8 +205,6 @@ export async function findProjectDocReadinessChecks(
   )
 }
 
-// Keyset-paged project selection for a sweep. 'lf' scope limits to LF projects;
-// 'incremental' mode picks projects with no readiness row or whose latest row failed.
 export async function findProjectsForDocsReadiness(
   qx: QueryExecutor,
   { mode, scope, afterId, limit }: IFindProjectsForDocsReadiness,

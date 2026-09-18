@@ -100,7 +100,9 @@ export async function mergeIfAllowed(
   primaryId: string,
   secondaryId: string,
 ): Promise<boolean> {
-  const noMergeMemberIds = await getMemberNoMerge(pgQx, [primaryId, secondaryId])
+  const noMergeMemberIds = await getMemberNoMerge(pgQx, [primaryId, secondaryId], {
+    includeExpired: true,
+  })
   const noMerge = noMergeMemberIds.some(
     (m) =>
       (m.memberId === primaryId && m.noMergeId === secondaryId) ||

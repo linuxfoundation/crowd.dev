@@ -20,13 +20,18 @@ async function runBackfill(
   let since = watermark.since
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<PullRequestsPage>(ctx.http, PULL_REQUESTS_QUERY, {
-      owner,
-      repo,
-      first: PR_PAGE_SIZE,
-      cursor,
-      direction: 'ASC',
-    })
+    const data = await githubGraphql<PullRequestsPage>(
+      ctx.http,
+      PULL_REQUESTS_QUERY,
+      {
+        owner,
+        repo,
+        first: PR_PAGE_SIZE,
+        cursor,
+        direction: 'ASC',
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.pullRequests
     const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
@@ -60,13 +65,18 @@ async function runIncremental(
   let newSince: string | null = null
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<PullRequestsPage>(ctx.http, PULL_REQUESTS_QUERY, {
-      owner,
-      repo,
-      first: PR_PAGE_SIZE,
-      cursor,
-      direction: 'DESC',
-    })
+    const data = await githubGraphql<PullRequestsPage>(
+      ctx.http,
+      PULL_REQUESTS_QUERY,
+      {
+        owner,
+        repo,
+        first: PR_PAGE_SIZE,
+        cursor,
+        direction: 'DESC',
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.pullRequests
     const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
