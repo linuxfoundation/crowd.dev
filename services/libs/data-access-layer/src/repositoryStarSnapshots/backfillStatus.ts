@@ -74,11 +74,14 @@ export async function findDeadLetteredStarBackfillFailures(
 ): Promise<IRepositoryStarBackfillStatus[]> {
   const failures: IRepositoryStarBackfillStatus[] = await qx.select(
     `
-      select *
-      from public."repositoryStarBackfillStatus"
-      where "deadLetteredAt" is not null
-        and ($(since)::timestamptz is null or "deadLetteredAt" > $(since))
-      order by "deadLetteredAt" desc
+      select f.*
+      from public."repositoryStarBackfillStatus" f
+      join public.repositories r on r.id = f."repositoryId"
+      where f."deadLetteredAt" is not null
+        and ($(since)::timestamptz is null or f."deadLetteredAt" > $(since))
+        and r."deletedAt" is null
+        and r."excluded" = false
+      order by f."deadLetteredAt" desc
     `,
     { since },
   )

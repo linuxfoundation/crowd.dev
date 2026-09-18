@@ -26,9 +26,10 @@ const GAP_CHECK_BATCH_SIZE = 5_000
 
 const job: IJobDefinition = {
   name: 'star-snapshot-health-reporting',
-  // 10:00 UTC - after both captureStarSnapshots (08:00) and selfHealStarBackfill (09:00),
-  // so the digest reflects that day's runs instead of racing ahead of them.
-  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(10, 0),
+  // cron_service runs all jobs on Europe/Berlin time (see main.ts), not UTC - captureStarSnapshots
+  // (08:00 UTC) and selfHealStarBackfill (09:00 UTC) are Temporal schedules and run in UTC.
+  // Noon Berlin is 10:00 UTC (CEST) or 11:00 UTC (CET), safely after both year-round.
+  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(12, 0),
   timeout: 10 * 60,
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
