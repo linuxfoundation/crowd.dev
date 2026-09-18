@@ -114,8 +114,7 @@ async function fetchBaselineRows(
   limit: number,
 ): Promise<IBaselineRow[]> {
   // Stratified by (action, evaluationReason) so a small sample still covers every decision
-  // category — onboard, each skip reason, unsure — instead of skewing toward whichever
-  // category happened to be evaluated most recently.
+  // category. 'unsure' rows are excluded: they hold a raw agent/LLM error, not a decision.
   return qx.select(
     `
     WITH ranked AS (
@@ -128,7 +127,7 @@ async function fetchBaselineRows(
       FROM "projectCatalog"
       WHERE "evaluatedAt" IS NOT NULL
         AND "evaluatedAt" < $(cutoff)
-        AND action IN ('onboard', 'skip', 'unsure')
+        AND action IN ('onboard', 'skip')
     )
     SELECT id, "repoUrl", "repoName", "projectSlug", "lfCriticalityScore", source,
            action, "evaluationResult", "evaluationReason"
@@ -194,10 +193,12 @@ async function evaluateWithNewEndpoint(
       }
     }
 
+    // Null evaluationReason means the old reason was never recorded — score outcome only.
     const match =
       result.outcome === 'onboard'
         ? row.action === 'onboard'
-        : row.action === 'skip' && result.evaluationReason === row.evaluationReason
+        : row.action === 'skip' &&
+          (row.evaluationReason === null || result.evaluationReason === row.evaluationReason)
 
     return {
       repoUrl: row.repoUrl,
