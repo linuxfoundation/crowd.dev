@@ -69,7 +69,6 @@
             :member="suggestion.member"
             :loading="loading"
             :is-preview="true"
-            :two-column="true"
             class="rounded-lg bg-primary-25"
           />
         </div>

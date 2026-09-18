@@ -144,166 +144,164 @@
         </div>
       </div>
 
-      <div :class="{ 'grid grid-cols-2 gap-x-8 items-start': props.twoColumn }">
-        <div>
-          <article
-            v-if="
-              getOrganizationWebsite(organization)
-                || getOrganizationWebsite(compareOrganization)
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Website
-            </p>
-            <a
-              :href="withHttp(getOrganizationWebsite(organization))"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-xs text-gray-900 whitespace-normal inline-block leading"
-            >{{ getOrganizationWebsite(organization) || '-' }}</a>
-          </article>
-          <article
-            v-if="
-              props.organization.location
-                || props.compareOrganization?.location
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Location
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ props.organization.location || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.attributes?.employees?.default
-                || props.compareOrganization?.attributes?.employees?.default
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              # of employees
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ props.organization.attributes?.employees?.default || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.attributes?.revenueRange?.default
-                || props.compareOrganization?.attributes?.revenueRange?.default
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Annual Revenue
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ revenueRange.formatValue(
-                props.organization.attributes?.revenueRange?.default,
-              ) || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.attributes?.industry?.default
-                || props.compareOrganization?.attributes?.industry?.default
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Industry
-            </p>
-            <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
-              {{ props.organization.attributes?.industry?.default || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.attributes?.type?.default
-                || props.compareOrganization?.attributes?.type?.default
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Type
-            </p>
-            <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
-              {{ props.organization.attributes?.type?.default || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.attributes?.founded?.default
-                || props.compareOrganization?.attributes?.founded?.default
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Founded
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ props.organization.attributes?.founded?.default || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.joinedAt
-                || props.compareOrganization?.joinedAt
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              Joined date
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ formatDateToTimeAgo(props.organization.joinedAt) || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.memberCount
-                || props.compareOrganization?.memberCount
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              # of people
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ props.organization.memberCount || '-' }}
-            </p>
-          </article>
-          <article
-            v-if="
-              props.organization.activityCount
-                || props.compareOrganization?.activityCount
-            "
-            class="pb-4"
-          >
-            <p class="text-2xs font-medium text-gray-500 pb-1">
-              # of Activities
-            </p>
-            <p class="text-xs text-gray-900 whitespace-normal">
-              {{ props.organization.activityCount || '-' }}
-            </p>
-          </article>
-        </div>
-        <div :class="{ 'pt-4': !props.twoColumn }">
-          <h6 class="text-sm font-semibold pb-3">
-            Identities
-          </h6>
-          <app-identities-vertical-list-organizations
-            :organization="organization"
-            :include-emails="true"
-            :include-domains="true"
-            :include-phone-numbers="true"
-            :order="organizationOrder.suggestions"
-          />
-        </div>
+      <div>
+        <article
+          v-if="
+            getOrganizationWebsite(organization)
+              || getOrganizationWebsite(compareOrganization)
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Website
+          </p>
+          <a
+            :href="withHttp(getOrganizationWebsite(organization))"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs text-gray-900 whitespace-normal inline-block leading"
+          >{{ getOrganizationWebsite(organization) || '-' }}</a>
+        </article>
+        <article
+          v-if="
+            props.organization.location
+              || props.compareOrganization?.location
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Location
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ props.organization.location || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.attributes?.employees?.default
+              || props.compareOrganization?.attributes?.employees?.default
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            # of employees
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ props.organization.attributes?.employees?.default || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.attributes?.revenueRange?.default
+              || props.compareOrganization?.attributes?.revenueRange?.default
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Annual Revenue
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ revenueRange.formatValue(
+              props.organization.attributes?.revenueRange?.default,
+            ) || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.attributes?.industry?.default
+              || props.compareOrganization?.attributes?.industry?.default
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Industry
+          </p>
+          <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
+            {{ props.organization.attributes?.industry?.default || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.attributes?.type?.default
+              || props.compareOrganization?.attributes?.type?.default
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Type
+          </p>
+          <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
+            {{ props.organization.attributes?.type?.default || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.attributes?.founded?.default
+              || props.compareOrganization?.attributes?.founded?.default
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Founded
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ props.organization.attributes?.founded?.default || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.joinedAt
+              || props.compareOrganization?.joinedAt
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            Joined date
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ formatDateToTimeAgo(props.organization.joinedAt) || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.memberCount
+              || props.compareOrganization?.memberCount
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            # of people
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ props.organization.memberCount || '-' }}
+          </p>
+        </article>
+        <article
+          v-if="
+            props.organization.activityCount
+              || props.compareOrganization?.activityCount
+          "
+          class="pb-4"
+        >
+          <p class="text-2xs font-medium text-gray-500 pb-1">
+            # of Activities
+          </p>
+          <p class="text-xs text-gray-900 whitespace-normal">
+            {{ props.organization.activityCount || '-' }}
+          </p>
+        </article>
+      </div>
+      <div class="pt-4">
+        <h6 class="text-sm font-semibold pb-3">
+          Identities
+        </h6>
+        <app-identities-vertical-list-organizations
+          :organization="organization"
+          :include-emails="true"
+          :include-domains="true"
+          :include-phone-numbers="true"
+          :order="organizationOrder.suggestions"
+        />
       </div>
     </div>
   </section>
@@ -344,11 +342,6 @@ const props = defineProps({
     default: false,
   },
   isPreview: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  twoColumn: {
     type: Boolean,
     required: false,
     default: false,
