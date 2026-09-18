@@ -410,6 +410,9 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 async def get_maintainers_for_repo(repo_id: str):
     # Active rows only (endDate IS NULL) — reappearing maintainers hit the "new"
     # branch and get reactivated by upsert_maintainer's ON CONFLICT clause.
+    # Includes soft-deleted identities so orphaned maintainersInternal rows
+    # (identity deleted after insertion) are visible to the diff loop and get
+    # end-dated rather than accumulating indefinitely.
     # verified=TRUE mirrors find_github_identity / find_maintainer_identity_by_email.
     # platform/type are returned so the diff's safety guard can match identifiers
     # by kind and avoid cross-platform value collisions (e.g. a GitHub username
@@ -422,7 +425,6 @@ async def get_maintainers_for_repo(repo_id: str):
         WHERE mi."repoId" = $1
           AND mi."endDate" IS NULL
           AND mem."verified" = TRUE
-          AND mem."deletedAt" is null
         """
     return await query(
         maintainers_sql_query,
