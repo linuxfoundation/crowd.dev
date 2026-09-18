@@ -1,0 +1,1924 @@
+[
+  {
+    "projectSlug": "finos-community",
+    "docsUrl": "https://community.finos.org/docs/development-infrastructure/project-documentation/",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://landscape.finos.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://landscape.finos.org/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://landscape.finos.org/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://landscape.finos.org/doc",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/development-infrastructure/project-documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/collaboration-infrastructure",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/journey/participate",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/finos-maintainers-cheatsheet",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/governance/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://community.finos.org/docs/governance/lifecycle-stages/labs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "insights",
+    "docsUrl": "https://docs.mx.com/api-reference/platform-api/reference/insights",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://insights.linuxfoundation.org",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://insights.linuxfoundation.org/docs",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developers.insights.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.progress.com/documentation/sitefinity-cms/insight/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/dynamics365/customer-insights/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.netapp.com/us-en/data-infrastructure-insights/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.mx.com/api-reference/platform-api/reference/insights",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://data-docs.hginsights.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://insights-core.readthedocs.io/en/latest/api.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "ojsf-dojo",
+    "docsUrl": "https://docs.dojo.tech/docs",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://dojo.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.dojo.tech/docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://dojotoolkit.org/documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.developers.optimizely.com/content-management-system/docs/introduction-to-dojo",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.defectdojo.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://devdocs.io/dojo/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://dojoengine.org/overview",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://dojotoolkit.org/reference-guide/1.6/about/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "http://devdocs.finki.ukim.mk/dojo/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "e4s",
+    "docsUrl": "https://docs.isambard.ac.uk/user-documentation/guides/e4s/",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://e4s.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://e4s.io/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/E4S-Project/E4S-documentation-demo/blob/master/.e4s/e4s.yaml",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://e4s-project.github.io/documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.isambard.ac.uk/user-documentation/guides/e4s/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.nersc.gov/applications/e4s/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://e4s.readthedocs.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/E4S-Project/E4S-Project.github.io/blob/master/use-documentation.md",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "kairos",
+    "docsUrl": "https://docs.kairos.com/documentation/full-api-reference/quick-start",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://kairos.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://kairos.io/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://kairos.io/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kairos.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/kairos-io/kairos-docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://kairosdb.github.io/docs/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kairos.com/documentation/full-api-reference/quick-start",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://kairos-6.gitbook.io/kairos-docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "openfeature",
+    "docsUrl": "https://openfeature.dev/docs/reference/intro/",
+    "discoveryMethod": "serp",
+    "allCandidates": [
+      {
+        "url": "https://openfeature.dev",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.openfeature.dev",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://openfeature.dev/docs/reference/intro/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://openfeature.dev/docs/reference/concepts/provider",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://launchdarkly.com/docs/sdk/openfeature",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developer.harness.io/docs/feature-management-experimentation/sdks-and-infrastructure/openfeature/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://openfeature.dev/docs/category/concepts/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://last9.io/blog/openfeature-flagging/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "veer",
+    "docsUrl": "https://chipsalliance.github.io/Cores-VeeR-EL2/html/index.html",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://chipsalliance.github.io/Cores-VeeR-EL2/html/index.html",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://chipsalliance.github.io/Cores-VeeR-EL2/html/main/docs_rendered/html/index.html",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://yosyshq.readthedocs.io/projects/ap123/en/latest/veer.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://antmicro.github.io/Cores-VeeR-EH1/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "airobustness",
+    "docsUrl": "https://adversarial-robustness-toolbox.org",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://adversarial-robustness-toolbox.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://readthedocs.org/projects/adversarial-robustness-toolbox/badge/?version=latest",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://adversarial-robustness-toolbox.readthedocs.io/en/latest",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "chisel",
+    "docsUrl": "https://chipsalliance.org",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://chipsalliance.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.chisel-lang.org",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.chisel-lang.org/chisel3/docs/appendix/chisel3-vs-chisel2.html",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "lfai-onnx",
+    "docsUrl": "https://onnx.ai",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://onnx.ai",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "http://onnx.ai/backend-scoreboard",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/onnx/backend-scoreboard#readme",
+        "method": "package-manifest",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "openssf-scorecard",
+    "docsUrl": "https://openssf.org",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://openssf.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://pkg.go.dev/badge/github.com/ossf/scorecard/v4.svg",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://scorecard.dev",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "Volcano",
+    "docsUrl": "https://volcano.sh",
+    "discoveryMethod": "project-website",
+    "allCandidates": [
+      {
+        "url": "https://volcano.sh",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/cncf/automation/tree/main/utilities/dot-project",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "goose",
+    "docsUrl": "https://goose-docs.ai/docs/category/getting-started",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://block.github.io/goose",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://goose-docs.ai",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://goose-docs.ai/docs/category/getting-started",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://goose-docs.ai/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://block-goose.mintlify.app/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://goose.readthedocs.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://goose.ai/docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "open-resource-discovery",
+    "docsUrl": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://open-resource-discovery.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://ord-reference-application.cfapps.sap.hana.ondemand.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/open-resource-discovery/reference-application",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://apis.io/apis/application-research/open-resource-discovery-api/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "ai-governance-framework",
+    "docsUrl": "https://docs.github.com/en/github/authenticating-to-github/signing-commits",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://air-governance-framework.finos.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.github.com/en/github/authenticating-to-github/signing-commits",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.ibm.com/think/insights/ai-governance-implementation",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.linkedin.com/pulse/ai-governance-documentation-practical-framework-business-derek-martin-sbvfe",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "Sparklyr",
+    "docsUrl": "https://spark.posit.co/packages/sparklyr/latest/reference/spark-connections.html",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://sparklyr.ai",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://spark.posit.co",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://spark.posit.co/packages/sparklyr/latest/reference/spark-connections.html",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cobaltcore",
+    "docsUrl": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cobaltcore-dev.github.io/docs",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3076644839",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "datashim",
+    "docsUrl": "https://kubernetes-csi.github.io/docs",
+    "discoveryMethod": "readme-scrape",
+    "allCandidates": [
+      {
+        "url": "https://datashim.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://kubernetes-csi.github.io/docs",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "http://datashim-io.github.io/datashim",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "capsule",
+    "docsUrl": "https://capsule.clastix.io/docs",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "https://github.com/cncf/automation/tree/main/utilities/dot-project",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://capsule.clastix.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://capsule.clastix.io/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://capsule.clastix.io/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://capsule.clastix.io/doc",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://sc1.checkpoint.com/documents/R80.40/SmartEndpoint_OLH/EN/Topics-EPSG/Docs.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://external-api.capsule.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": false
+      },
+      {
+        "url": "https://docs.digibee.com/documentation/developer-guide/development-cycle/build-overview/capsulas/how-to-use-capsules/how-to-configure-a-capsule",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.python.org/3/c-api/capsule.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.codeocean.com/user-guide/compute-capsule-basics",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.redhat.com/en/documentation/red_hat_satellite/6.2/html/architecture_guide/chap-documentation-architecture_guide-capsule_server_overview",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://projectcapsule.dev/docs/tenants/enforcement/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cortex",
+    "docsUrl": "https://cortexmetrics.io/docs",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "https://cortexmetrics.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/cncf/automation/tree/main/utilities/dot-project",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cortexmetrics.io/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs-cortex.paloaltonetworks.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cortex.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.strangebee.com/cortex/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cortexmetrics.io/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/TheHive-Project/CortexDocs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.paloaltonetworks.com/blog/2019/03/tech-docs-get-started-cortex-xdr/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cloud.google.com/cortex/docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cloudnativepg",
+    "docsUrl": "http://cnpg.io/docs",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "http://cnpg.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cnpg.io",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "http://cnpg.io/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "http://cnpg.io/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "http://cnpg.io/doc",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cloudnative-pg.github.io/docs/1.30/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cloudnative-pg.github.io/docs/devel/quickstart/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cloudnative-pg.github.io/docs/devel/cloudnative-pg.v1/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cloudnative-pg.io/documentation/1.15/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cloudnative-pg.io/documentation/1.20/declarative_role_management/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cosmos",
+    "docsUrl": "https://cosmograph.app/documentation",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "https://cosmograph.app",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cosmograph.app/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cosmograph.app/doc",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://astronomer.github.io/astronomer-cosmos/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/cosmos-db/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cosmos.network/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.nvidia.com/cosmos/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cosmos-cloud.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://cosmo-docs.wundergraph.com/overview",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.azure.cn/en-us/cosmos-db/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "ojsf-amp",
+    "docsUrl": "https://amp.dev/docs",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "https://amp.dev",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://amp.dev/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://amp.dev/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://ampcode.com/docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://amp.dev/documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://discourse.cubecoders.com/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://crankuptheamps.com/documentation",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/cubecoders/amp",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developers.google.com/search/docs/crawling-indexing/amp",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.reddit.com/r/Amp/comments/1iz3ujy/does_anyone_have_a_link_to_detailed_documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "ojsf-nodejs",
+    "docsUrl": "https://nodejs.org/en/docs",
+    "discoveryMethod": "docs-path",
+    "allCandidates": [
+      {
+        "url": "https://nodejs.org/en",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.nodejs.org",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://nodejs.org/en/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://nodejs.org/en/documentation",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://nodejs.org",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://nodejs.org/docs/latest/api/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://nodejs.org/api/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developer.mozilla.org/en-US/docs/Glossary/Node.js?ref=pyxofy",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://daily.dev/posts/node-js-check-out-the-new-node-js-api-documentation-preview-hr278sosa",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.youtube.com/watch?v=jSKAO0pgslM",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cloud-foundry",
+    "docsUrl": "https://docs.cloudfoundry.org",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://www.cloudfoundry.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cloudfoundry.org",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.cloudfoundry.org/docs",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.cloudfoundry.org/doc",
+        "method": "docs-path",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cloudfoundry.org/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.helixops.ai/bin/IT-Operations-Management/Continuous-Optimization/Moviri-documentation-for-BMC-TrueSight-Capacity-Optimization/mtsco107/Home_v20-02_01/Pivotal-Cloud-Foundry-View-version-20-02-01/Pivotal-Cloud-Foundry-View-PCF-Foundations-version-20-02-01/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://registry.terraform.io/providers/orange-cloudfoundry/cfsecurity/latest/docs",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.stackit.cloud/products/runtime/cloud-foundry/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.cloud.gov/platform/management/plugins/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "lima",
+    "docsUrl": "https://docs.github.com",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://docs.github.com",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/lima-vm/lima",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lima-vm.io/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lima.how/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lima1.readthedocs.io/en/stable/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://limagroup.gitlab-pages.esrf.fr/lima2/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.limacharlie.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "radius",
+    "docsUrl": "https://docs.radapp.io",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://radapp.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.radapp.io",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://freeradius.org/documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.radapp.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://networkradius.com/doc/current/introduction/RADIUS.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.eduvpn.org/server/v3/radius.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.radiusaas.com/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.rcdevs.com/glossary-radius/?gad_campaignid=41247525&gad_source=1&gbraid=0AAAAAD3XMD1Ey7Los88bJ8i5J4k4o0FwC&gclid=CjwKCAjwhNbTBhB4EiwAsFSg-qspICBCVGrBrnt8x6uGuvcE7QCZDuEeRZtAr2N1vQgVGXNKga6LoRoCCr8QAvD_BwE",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://duo.com/docs/radius",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "ptproject",
+    "docsUrl": "https://docs.pytorch.org",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://pytorch.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.pytorch.org",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://pytorch.org/docs",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.pytorch.org/docs/stable/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.pytorch.org/tutorials/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.pytorch.org/tutorials/beginner/basics/intro.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://devdocs.io/pytorch~1.13/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.pytorch.org/cppdocs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cdf-screwdriver",
+    "docsUrl": "https://docs.screwdriver.cd",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://screwdriver.cd",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.screwdriver.cd",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.screwdriver.cd/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://ker-tools.com/blogs/all-blogs/electric-precision-screwdriver-guide?srsltid=AfmBOoqp7eZkbISTqKipg6zQS-zXC4U6wGsoiO91KEnjJyT_tlWwTVGQ",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.screwdriver.cd/user-guide/api",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/screwdriver-cd/guide",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://th.rs-online.com/web/content/discovery/ideas-and-advice/screwdrivers-guide",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "kanister",
+    "docsUrl": "https://docs.kanister.io",
+    "discoveryMethod": "docs-subdomain",
+    "allCandidates": [
+      {
+        "url": "https://kanister.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://docs.kanister.io",
+        "method": "docs-subdomain",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/cncf/automation/tree/main/utilities/dot-project",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kanister.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kanister.io/functions.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kasten.io/8.5.9/kanister/reference/kanister-functions",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://docs.kasten.io/latest/kanister/testing/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "aiexplainability",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://aix360.res.ibm.com",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://readthedocs.org/projects/aix360/badge/?version=latest",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "lfai-milvus",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://milvus.io",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": false
+      },
+      {
+        "url": "https://milvus.io/docs",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "app-runtime-platform",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://pkg.go.dev/badge/code.cloudfoundry.org/archiver.svg",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "broadband-project",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://guide.opencord.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "celf",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://wiki.linuxfoundation.org/celp/start",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "chubaofs",
+    "docsUrl": null,
+    "discoveryMethod": null,
+    "allCandidates": [
+      {
+        "url": "https://chubao.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "project-eve",
+    "docsUrl": "https://lfedge.org",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "https://www.lfedge.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lfedge.org",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.lfedge.org/projects/eve",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.eve-ng.net/index.php/documentation/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://vercel.com/docs/eve",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lasp.colorado.edu/eve/data_access/eve-documentation/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://github.com/vercel/eve/blob/main/docs/README.md",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developers.eveonline.com/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://eve.dev/docs/getting-started",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "compas",
+    "docsUrl": "https://lfenergy.org",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "https://lfenergy.org",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.lfenergy.org/projects/compas",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://compas.dev/compas/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://compas.readthedocs.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://compas.dev/compas/latest/api/index.html",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://mpas-dev.github.io/compass/latest/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://developer.atlassian.com/cloud/compass/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "everest",
+    "docsUrl": "https://lfenergy.org",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "https://lfenergy.org",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://everest.github.io",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://lfenergy.org/projects/everest",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://everest.github.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://everest.readthedocs.io/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://openeverest.io/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "feilong",
+    "docsUrl": "https://openmainframeproject.org",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "https://openmainframeproject.org",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://feilong.readthedocs.io/en/latest/quickstart.html",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.openmainframeproject.org/projects/feilong",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://ae.trip.com/moments/poi-feilong-lake-10800999/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "materialx",
+    "docsUrl": "https://aswf.io",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "https://www.aswf.io",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "http://www.materialx.org",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "http://www.materialx.org/docs/api/index.html",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://aswf.io",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "o3de",
+    "docsUrl": "https://o3d.foundation",
+    "discoveryMethod": "llms-txt-probe",
+    "allCandidates": [
+      {
+        "url": "http://o3d.foundation",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": true
+      },
+      {
+        "url": "https://o3d.foundation",
+        "method": "llms-txt-probe",
+        "confidence": "high",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.docs.o3de.org/docs/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://www.open3d.org/docs/release/",
+        "method": "serp",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "data-prep-kit",
+    "docsUrl": "https://data-prep-kit.github.io/data-prep-kit",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "https://img.shields.io/badge/docs-live-brightgreen",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://data-prep-kit.github.io/data-prep-kit",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "deepspeed",
+    "docsUrl": "https://www.deepspeed.ai",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "https://www.deepspeed.ai",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://readthedocs.org/projects/deepspeed/badge/?version=latest",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "gridfm",
+    "docsUrl": "https://gridfm.github.io/gridfm-datakit",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "https://img.shields.io/badge/docs-available-brightgreen",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://gridfm.github.io/gridfm-datakit",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "hpx",
+    "docsUrl": "https://hpx.dev",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "https://hpx.dev",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      },
+      {
+        "url": "https://hpx.stellar-group.org",
+        "method": "project-website",
+        "confidence": "low",
+        "livenessOk": false
+      }
+    ]
+  },
+  {
+    "projectSlug": "openfl",
+    "docsUrl": "https://openfl.readthedocs.io",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "https://readthedocs.org/projects/openfl/badge/?version=latest",
+        "method": "readme-scrape",
+        "confidence": "low",
+        "livenessOk": false
+      },
+      {
+        "url": "https://openfl.readthedocs.io",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "cds-registration-wg",
+    "docsUrl": "http://cds-registration.lfenergy.org",
+    "discoveryMethod": "github-homepage",
+    "allCandidates": [
+      {
+        "url": "http://cds-registration.lfenergy.org",
+        "method": "github-homepage",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "symphony-generator",
+    "docsUrl": "https://github.com/finos/generator-symphony#readme",
+    "discoveryMethod": "package-manifest",
+    "allCandidates": [
+      {
+        "url": "https://github.com/finos/generator-symphony#readme",
+        "method": "package-manifest",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  },
+  {
+    "projectSlug": "tsterm",
+    "docsUrl": "https://github.com/TSTerminal/TSTerm#readme",
+    "discoveryMethod": "package-manifest",
+    "allCandidates": [
+      {
+        "url": "https://github.com/TSTerminal/TSTerm#readme",
+        "method": "package-manifest",
+        "confidence": "medium",
+        "livenessOk": true
+      }
+    ]
+  }
+]
