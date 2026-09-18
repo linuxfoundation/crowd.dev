@@ -5,18 +5,16 @@
     </div>
     <lf-scroll-body-controll v-else-if="botSuggestions.length > 0" @bottom="loadMore()">
       <lf-data-quality-member-bot-suggestion-item
-        v-for="(suggestion) of botSuggestions"
-        :key="suggestion.id"
+        v-for="(suggestion, si) of botSuggestions"
+        :key="suggestion.memberId"
         :suggestion="suggestion"
       >
         <template #action>
           <div class="flex gap-3">
-            <lf-button type="secondary" size="small" :disabled="itemsLoading[suggestion.memberId]" @click="markAsBot(suggestion, true)">
-              <lf-svg v-if="!itemsLoading[suggestion.memberId]" name="bot" class="w-4 h-4" />
-              <lf-spinner v-else size="16px" />
-              Mark as bot
+            <lf-button type="secondary" size="small" @click="isModalOpen = true; detailsOffset = si">
+              <lf-icon name="eye" />View suggestion
             </lf-button>
-            <lf-member-bot-suggestion-dropdown :suggestion="suggestion" @reload="reload()" @ignore-suggestion="markAsBot(suggestion, false)" />
+            <lf-member-bot-suggestion-dropdown :suggestion="suggestion" @reload="reload()" @ignore-suggestion="ignoreSuggestion(suggestion)" />
           </div>
         </template>
       </lf-data-quality-member-bot-suggestion-item>
@@ -41,6 +39,12 @@
       </p>
     </div>
   </div>
+  <app-member-bot-suggestions-dialog
+    v-model="isModalOpen"
+    :offset="detailsOffset"
+    :segments="segments"
+    @reload="reload()"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -56,8 +60,9 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ToastStore } from '@/shared/message/notification';
 import LfMemberBotSuggestionDropdown
   from '@/modules/member/components/suggestions/member-bot-suggestion-dropdown.vue';
+import AppMemberBotSuggestionsDialog
+  from '@/modules/member/components/member-bot-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
-import LfSvg from '@/shared/svg/svg.vue';
 
 const props = defineProps<{
   projectGroup: string,
@@ -69,6 +74,8 @@ const offset = ref(0);
 const total = ref(0);
 const botSuggestions = ref<any[]>([]);
 const itemsLoading = ref<any>({});
+const isModalOpen = ref(false);
+const detailsOffset = ref(0);
 
 const segments = computed(() => [props.projectGroup]);
 
@@ -77,14 +84,14 @@ const loadBotSuggestions = () => {
 
   MemberService.fetchBotSuggestions(limit.value, offset.value, {
     segments: segments.value,
+    detail: false,
   })
     .then((res) => {
       total.value = +res.count;
-      const rows = res.rows.filter((s: any) => s.confidence > 0);
       if (+res.offset > 0) {
-        botSuggestions.value = [...botSuggestions.value, ...rows];
+        botSuggestions.value = [...botSuggestions.value, ...res.rows];
       } else {
-        botSuggestions.value = rows;
+        botSuggestions.value = res.rows;
       }
     })
     .finally(() => {
@@ -92,14 +99,14 @@ const loadBotSuggestions = () => {
     });
 };
 
-const markAsBot = (suggestion: any, bot = true) => {
+const ignoreSuggestion = (suggestion: any) => {
   itemsLoading.value[suggestion.memberId] = true;
 
   MemberService.updateAttributes(suggestion.memberId, {
     ...suggestion.attributes,
     isBot: {
-      custom: bot,
-      default: bot,
+      custom: false,
+      default: false,
     },
   }).then(() => {
     reload();
