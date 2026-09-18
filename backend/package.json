@@ -39,7 +39,9 @@
     "script:create-api-key": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-api-key.ts",
     "script:onboard-default-tenant:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run script:onboard-default-tenant",
     "script:create-mailing-list-integration": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-mailing-list-integration.ts",
-    "script:create-mailing-list-integration:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-mailing-list-integration.ts"
+    "script:create-mailing-list-integration:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-mailing-list-integration.ts",
+    "script:compare-evaluator-accuracy": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/compare-evaluator-accuracy.ts",
+    "script:compare-evaluator-accuracy:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/compare-evaluator-accuracy.ts"
   },
   "lint-staged": {
     "**/*.ts": [
