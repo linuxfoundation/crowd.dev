@@ -213,7 +213,54 @@ describe('runShadowDiffForChannel', () => {
       UNIT.id,
       new Date('2026-09-13T00:00:00.000Z'),
       new Date('2026-09-14T00:00:00.000Z'),
-      [{ type: 'issues-comment', sourceId: 'issue-1' }],
+      [],
+    )
+  })
+
+  it('prunes only shadow records that were confirmed clean in the snapshot, not concurrently inserted ones', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue([
+      {
+        type: 'issues-comment',
+        sourceId: 'clean-1',
+        occurredAt: '2026-09-13T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: 'clean-1', body: 'same body' },
+      },
+      {
+        type: 'issues-comment',
+        sourceId: 'mismatched-1',
+        occurredAt: '2026-09-13T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: 'mismatched-1', body: 'shadow body' },
+      },
+    ])
+    mocks.getNangoCloudRecords.mockResolvedValue({
+      records: [
+        {
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-comment', sourceId: 'clean-1', body: 'same body' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
+        },
+        {
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-comment', sourceId: 'mismatched-1', body: 'nango body' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
+        },
+      ],
+      nextCursor: undefined,
+    })
+
+    await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(mocks.pruneMatchingShadowRecords).toHaveBeenCalledWith(
+      qx,
+      UNIT.id,
+      new Date('2026-09-13T00:00:00.000Z'),
+      new Date('2026-09-14T00:00:00.000Z'),
+      [{ type: 'issues-comment', sourceId: 'clean-1' }],
     )
   })
 

@@ -107,8 +107,13 @@ function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
   return { sourceId: activity.sourceId, type: activity.type, data: activity }
 }
 
-function diffableRecordKey(record: IDiffableRecord): string {
+function diffableRecordKey(record: { type: string; sourceId: string }): string {
   return `${record.type}::${record.sourceId}`
+}
+
+interface IShadowDiffUnitResult {
+  mismatches: IShadowDiffMismatch[]
+  shadowKeys: { type: string; sourceId: string }[]
 }
 
 async function diffUnit(
@@ -117,18 +122,21 @@ async function diffUnit(
   connectionId: string,
   windowStart: Date,
   windowEnd: Date,
-): Promise<IShadowDiffMismatch[]> {
+): Promise<IShadowDiffUnitResult> {
   const model = getNangoModelForSync(unit.syncName)
   if (!model) {
-    return [
-      {
-        sourceId: unit.id,
-        type: unit.syncName,
-        kind: 'unsupported_sync',
-        severity: 'high',
-        syncName: unit.syncName,
-      },
-    ]
+    return {
+      mismatches: [
+        {
+          sourceId: unit.id,
+          type: unit.syncName,
+          kind: 'unsupported_sync',
+          severity: 'high',
+          syncName: unit.syncName,
+        },
+      ],
+      shadowKeys: [],
+    }
   }
 
   const shadowRecords = await getShadowRecordsInWindow(qx, unit.id, windowStart, windowEnd)
@@ -160,14 +168,19 @@ async function diffUnit(
       .map(diffableRecordKey),
   )
 
+  const diffableShadowRecords = shadowRecords
+    .map(toDiffableShadowRecord)
+    .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r)))
+
   const mismatches = diffShadowAgainstNango(
-    shadowRecords
-      .map(toDiffableShadowRecord)
-      .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
+    diffableShadowRecords,
     diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
   )
 
-  return mismatches.map((mismatch) => ({ ...mismatch, syncName: unit.syncName }))
+  return {
+    mismatches: mismatches.map((mismatch) => ({ ...mismatch, syncName: unit.syncName })),
+    shadowKeys: shadowRecords.map((r) => ({ type: r.type, sourceId: r.sourceId })),
+  }
 }
 
 function countMismatchesByKind(
@@ -192,7 +205,7 @@ async function persistUnitDiffResult(
   day: string,
   windowStart: Date,
   windowEnd: Date,
-  mismatches: IShadowDiffMismatch[],
+  { mismatches, shadowKeys }: IShadowDiffUnitResult,
 ): Promise<void> {
   const counts = countMismatchesByKind(mismatches)
 
@@ -212,11 +225,17 @@ async function persistUnitDiffResult(
     return
   }
 
-  const keysToKeep = mismatches
-    .filter((m) => m.kind === 'field_mismatch' || m.kind === 'missing_in_nango')
-    .map((m) => ({ type: m.type, sourceId: m.sourceId }))
+  const keysWithUnresolvedMismatch = new Set(
+    mismatches
+      .filter((m) => m.kind === 'field_mismatch' || m.kind === 'missing_in_nango')
+      .map((m) => diffableRecordKey(m)),
+  )
 
-  await pruneMatchingShadowRecords(qx, unit.id, windowStart, windowEnd, keysToKeep)
+  const keysToDelete = shadowKeys.filter(
+    (key) => !keysWithUnresolvedMismatch.has(diffableRecordKey(key)),
+  )
+
+  await pruneMatchingShadowRecords(qx, unit.id, windowStart, windowEnd, keysToDelete)
 }
 
 export async function runShadowDiffForChannel(
@@ -245,15 +264,15 @@ export async function runShadowDiffForChannel(
   )
   const pendingUnits = channel.units.filter((unit) => !alreadySummarized.has(unit.id))
 
-  const unitDiffs: { unit: IShadowDiffUnit; mismatches: IShadowDiffMismatch[] }[] = []
+  const unitDiffs: { unit: IShadowDiffUnit; result: IShadowDiffUnitResult }[] = []
   for (const unit of pendingUnits) {
-    const mismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
-    unitDiffs.push({ unit, mismatches })
+    const result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    unitDiffs.push({ unit, result })
   }
 
   await qx.tx(async (txQx) => {
-    for (const { unit, mismatches } of unitDiffs) {
-      await persistUnitDiffResult(txQx, channel, unit, day, windowStart, windowEnd, mismatches)
+    for (const { unit, result } of unitDiffs) {
+      await persistUnitDiffResult(txQx, channel, unit, day, windowStart, windowEnd, result)
     }
   })
 

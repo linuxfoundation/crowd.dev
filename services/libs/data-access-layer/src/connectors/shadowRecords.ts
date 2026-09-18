@@ -57,24 +57,28 @@ export async function pruneMatchingShadowRecords(
   unitId: string,
   windowStart: Date,
   windowEnd: Date,
-  keysToKeep: { type: string; sourceId: string }[],
+  keysToDelete: { type: string; sourceId: string }[],
 ): Promise<number> {
+  if (keysToDelete.length === 0) {
+    return 0
+  }
+
   return qx.result(
     `DELETE FROM integration.sync_shadow_records sr
      WHERE sr."unitId" = $(unitId)
        AND sr."occurredAt" >= $(windowStart)
        AND sr."occurredAt" < $(windowEnd)
-       AND NOT EXISTS (
+       AND EXISTS (
          SELECT 1
-         FROM unnest($(keepTypes)::text[], $(keepSourceIds)::text[]) AS k(type, "sourceId")
+         FROM unnest($(deleteTypes)::text[], $(deleteSourceIds)::text[]) AS k(type, "sourceId")
          WHERE k.type = sr.type AND k."sourceId" = sr."sourceId"
        )`,
     {
       unitId,
       windowStart,
       windowEnd,
-      keepTypes: keysToKeep.map((k) => k.type),
-      keepSourceIds: keysToKeep.map((k) => k.sourceId),
+      deleteTypes: keysToDelete.map((k) => k.type),
+      deleteSourceIds: keysToDelete.map((k) => k.sourceId),
     },
   )
 }
