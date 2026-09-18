@@ -86,18 +86,25 @@ const job: IJobDefinition = {
       WITH skipped AS (
         SELECT
           pc."repoUrl", COALESCE(pc."evaluationReason", '(no reason provided)') AS reason,
-          CASE WHEN lower(regexp_replace(pc."repoUrl", '^https?://(www\\.)?([^/]+)/.*$', '\\2')) = 'github.com'
-            THEN lower(regexp_replace(regexp_replace(pc."repoUrl",
-              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))
-            ELSE regexp_replace(regexp_replace(pc."repoUrl",
-              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')
+          -- host-agnostic matching is only safe within the known GitHub/Gerrit-mirror
+          -- group; a generic multi-tenant host (gitlab.com, ...) keeps its own host
+          -- in the key, since a shared org/repo path there is pure coincidence
+          CASE WHEN pc.host = 'github.com' OR pc.host = 'review.opendev.org' OR pc.host LIKE 'gerrit.%'
+            THEN 'gh:' || lower(pc.path)
+            ELSE pc.host || '/' || pc.path
           END                                                                 AS repo_path,
           lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
             '[^a-zA-Z0-9-]+', '-', 'g'), '-+', '-', 'g'), '^-|-$', '', 'g')) AS derived_slug
-        FROM "projectCatalog" pc
-        WHERE pc.action = 'skip'
-          AND pc."evaluationResult" = 'false'
-          AND pc."evaluatedAt"::date = CURRENT_DATE
+        FROM (
+          SELECT pc.*,
+            lower(regexp_replace(pc."repoUrl", '^https?://(www\\.)?([^/]+)/.*$', '\\2')) AS host,
+            regexp_replace(regexp_replace(pc."repoUrl",
+              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')                      AS path
+          FROM "projectCatalog" pc
+          WHERE pc.action = 'skip'
+            AND pc."evaluationResult" = 'false'
+            AND pc."evaluatedAt"::date = CURRENT_DATE
+        ) pc
       ),
       repos_norm AS (
         SELECT
@@ -111,14 +118,18 @@ const job: IJobDefinition = {
           END                                                         AS "insightsProjectId"
         FROM (
           SELECT id, "insightsProjectId",
-            CASE WHEN lower(regexp_replace(url, '^https?://(www\\.)?([^/]+)/.*$', '\\2')) = 'github.com'
-              THEN lower(regexp_replace(regexp_replace(url,
-                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))
-              ELSE regexp_replace(regexp_replace(url,
-                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')
+            CASE WHEN host = 'github.com' OR host = 'review.opendev.org' OR host LIKE 'gerrit.%'
+              THEN 'gh:' || lower(path)
+              ELSE host || '/' || path
             END                                                        AS repo_path
-          FROM public.repositories
-          WHERE "deletedAt" IS NULL
+          FROM (
+            SELECT id, "insightsProjectId",
+              lower(regexp_replace(url, '^https?://(www\\.)?([^/]+)/.*$', '\\2')) AS host,
+              regexp_replace(regexp_replace(url,
+                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')             AS path
+            FROM public.repositories
+            WHERE "deletedAt" IS NULL
+          ) h
         ) x
         GROUP BY repo_path
       ),
