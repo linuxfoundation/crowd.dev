@@ -12,7 +12,8 @@
     "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:seed-github-sync-units": "tsx src/bin/seed-github-sync-units.ts",
-    "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts"
+    "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts",
+    "script:diff-nango-pr-comments": "tsx src/bin/diff-nango-pr-comments.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
