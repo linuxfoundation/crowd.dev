@@ -18,10 +18,13 @@ Run each check in order. Report results clearly and help fix any issues found.
 ## Check 0: Working Tree Status
 
 ```bash
+git fetch origin main
 git status
 git diff --stat origin/main...HEAD
 git log --format="%h %s%n%b" origin/main...HEAD
 ```
+
+Fetch first — every check below diffs against `origin/main`, so a stale local copy of it would give wrong commit/diff counts here and a wrong changed-package scope in Check 2–4.
 
 **Evaluate:**
 
@@ -40,50 +43,34 @@ Resolve any issues before proceeding.
 git diff --name-only origin/main...HEAD
 ```
 
-Group changed files into workspaces:
-
-| Workspace | Path prefix | Lint | Format check | Type check | Test |
-|---|---|---|---|---|---|
-| Backend | `backend/` | `cd backend && pnpm lint` | `cd backend && pnpm format-check` | `cd backend && pnpm tsc-check` | `cd backend && pnpm test` (needs Docker) |
-| Frontend | `frontend/` | `cd frontend && npm run lint` | — | — | — |
-| Each service | `services/apps/<name>/` | `cd services/apps/<name> && pnpm lint` | `cd services/apps/<name> && pnpm format-check` | `cd services/apps/<name> && pnpm tsc-check` | `cd services/apps/<name> && pnpm test` if vitest present |
-| Each lib | `services/libs/<name>/` | `cd services/libs/<name> && pnpm lint` | `cd services/libs/<name> && pnpm format-check` | `cd services/libs/<name> && pnpm tsc-check` | `cd services/libs/<name> && pnpm test` if vitest present |
-
-Run checks only for the workspaces that have changed files.
+Note whether `backend/`, `services/**`, `frontend/`, `pnpm-lock.yaml`, and/or `pnpm-workspace.yaml` have changed files — used only to decide which of Checks 2–4 apply.
 
 ---
 
-## Check 2: Lint
+## Check 2–4: Lint, Format, TypeScript
 
-For each changed workspace, run its lint command. Fix any errors before proceeding. Common issues:
+**Backend + services** — one command covers lint, format-check, and tsc-check, with dependency-graph-aware fan-out (packages that depend on a changed lib are checked too) and automatic fallback to a full workspace check when shared config (eslint/prettier/tsconfig base, lockfile, workspace yaml) changed:
 
-- Unused imports or variables
-- Missing type annotations
-- Rule violations
-
----
-
-## Check 3: Format Check
-
-For each changed workspace that has a `format-check` script (backend, services), run it.
-
-If there are format violations:
 ```bash
-# Fix them
-pnpm format
-# Then stage the fixes
-git add -p
+./scripts/cli lint-changed
 ```
 
-Frontend does not have a format-check script — skip for `frontend/`.
+Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, or `pnpm-workspace.yaml` has changed files — the last two trigger `lint-changed`'s own full-workspace fallback. Skip only if none of these changed.
 
----
+The three checks run in order (lint → format-check → tsc-check) and stop at the first failure — same fail-fast behavior as the CI job. If lint fails, format/tsc did not run yet; fix and re-run to see the next check, same as watching CI re-run per push.
 
-## Check 4: TypeScript Check
+Fix any errors it reports before proceeding:
+- Lint errors — unused imports, missing types, rule violations
+- Format violations — fix with `pnpm format` (from the relevant workspace) then `git add -p`
+- TypeScript errors — fix all before proceeding
 
-For each changed workspace that has `tsc-check` (backend, services), run it. Fix all type errors before proceeding.
+**Frontend** — no dependency-graph tooling exists for it yet; run manually if `frontend/` has changed files:
 
-Frontend does not have a `tsc-check` script — skip for `frontend/`.
+```bash
+cd frontend && npm run lint
+```
+
+Frontend has no `format-check` or `tsc-check` script — skip both.
 
 ---
 

@@ -1,7 +1,10 @@
 DESCRIPTION >
     - Populates `repos_channels_ds` with the expanded channel set for every repository.
-    - Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url plus the
-    /q/project: variant used by Gerrit activity ingestion.
+    - Non-Gerrit repos: one row (channel = url) plus a lowercase channel variant when the url
+    isn't already lowercase, since some activities were ingested with lowercased repo casing.
+    The lowercase variant is skipped for already-lowercase urls to avoid an exact-duplicate row
+    (this datasource is INNER JOINed downstream, so a duplicate would double count() metrics).
+    Gerrit repos: two rows — plain url plus the /q/project: variant used by Gerrit ingestion.
     - Mirrors the expansion logic in repos_to_channels.pipe but as a COPY pipe so the result can
     be joined by other COPY pipes (which cannot use template-based API pipes).
     - Runs daily at 00:00 UTC, before health score pipes (02:00 UTC) and the monthly raw inputs
@@ -19,6 +22,19 @@ SQL >
     FROM repositories r FINAL
     LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
     WHERE r.deletedAt IS NULL
+    UNION ALL
+    -- Lowercase channel variant: matches activities ingested with lowercased repo casing.
+    -- Skipped when url is already lowercase to avoid an exact-duplicate row: this datasource
+    -- is INNER JOINed (not IN-filtered) downstream, so a duplicate row would double count()/
+    -- countIf() metrics in Health Score v2 for every already-lowercase repo.
+    SELECT
+        r.url AS repoUrl,
+        lower(r.url) AS channel,
+        (i.platform = 'gerrit') AS isGerrit,
+        r.excluded AS isExcluded
+    FROM repositories r FINAL
+    LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL AND r.url != lower(r.url)
     UNION ALL
     SELECT
         r.url AS repoUrl,

@@ -202,6 +202,13 @@ export async function getRepositoriesByUrl(
   )
 }
 
+// Mirrors the URL forms canonicalizeRepoUrl accepts: https, ssh://git@ with an optional
+// numeric port, ssh://git@host:owner/repo (colon with no port), scp-style git@host:, and
+// a bare host with no scheme at all. Order matters: the port alternative must be tried
+// before the bare-colon one, or a numeric port would be swallowed as part of the owner.
+const GITHUB_URL_PREFIX_PATTERN =
+  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com(:\\d+)?/|ssh://git@github\\.com:|git@github\\.com:|github\\.com/)'
+
 // Expects canonicalGithubRepoUrls in canonicalizeGithubRepoUrl's output form; non-GitHub URLs never match.
 export async function findRepoUrlsInCdp(
   qx: QueryExecutor,
@@ -218,11 +225,11 @@ export async function findRepoUrlsInCdp(
     ),
     normalized AS (
       SELECT DISTINCT 'https://github.com/' || lower(
-        regexp_replace(regexp_replace(url, '^https?://(www\\.)?github\\.com/', '', 'i'), '(\\.git)?/*$', '', 'i')
+        regexp_replace(regexp_replace(url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i'), '(\\.git)?/*$', '', 'i')
       ) AS url
       FROM public.repositories
       WHERE "deletedAt" IS NULL
-        AND url ~* '^https?://(www\\.)?github\\.com/'
+        AND url ~* '^${GITHUB_URL_PREFIX_PATTERN}'
     )
     SELECT DISTINCT c.url AS "repoUrl"
     FROM candidates c
@@ -232,6 +239,76 @@ export async function findRepoUrlsInCdp(
   )
 
   return new Set(rows.map((row) => row.repoUrl))
+}
+
+// Returned owners are lowercased regardless of input case, matching canonicalizeRepoUrl's `owner`.
+export async function findGithubOwnersWithLfProjects(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "lfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId"
+      WHERE r."deletedAt" IS NULL
+        AND ip."deletedAt" IS NULL
+        AND ip."isLF"
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "lfOwners" l ON l.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
+}
+
+// Symmetric to findGithubOwnersWithLfProjects: a repo with no insightsProjectId,
+// or mapped to a non-LF project, counts as non-LF evidence for its owner.
+export async function findGithubOwnersWithNonLfRepos(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "nonLfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      LEFT JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId" AND ip."deletedAt" IS NULL
+      WHERE r."deletedAt" IS NULL
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
+        AND COALESCE(ip."isLF", false) = false
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "nonLfOwners" n ON n.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
 }
 
 /**

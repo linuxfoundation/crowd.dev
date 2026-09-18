@@ -32,3 +32,25 @@ export async function touchApiKeyLastUsed(qx: QueryExecutor, id: string): Promis
     { id },
   )
 }
+
+export interface ICreateApiKey {
+  name: string
+  keyHash: string
+  keyPrefix: string
+  scopes: string[]
+  expiresAt: Date | null
+  createdById: string | null
+}
+
+export async function createApiKey(qx: QueryExecutor, data: ICreateApiKey): Promise<string> {
+  const result = await qx.selectOne(
+    `
+      INSERT INTO "apiKeys" (name, "keyHash", "keyPrefix", scopes, "expiresAt", "createdById")
+      VALUES ($(name), $(keyHash), $(keyPrefix), $(scopes), $(expiresAt), $(createdById))
+      RETURNING id
+    `,
+    data,
+  )
+
+  return result.id
+}

@@ -27,8 +27,8 @@ const RUN_COLUMNS = [
   .map((c) => `"${c}"`)
   .join(',\n')
 
-// Upserts on workflowId so a retried start activity returns the existing row
-// instead of creating a second run for the same workflow execution.
+// Upserts on temporalRunId, not workflowId, since a retry reuses the workflow
+// id but gets a new run id — keying on workflowId would collapse both runs.
 export async function startDocReadinessRun(
   qx: QueryExecutor,
   data: IDocReadinessRunStart,
@@ -53,7 +53,7 @@ export async function startDocReadinessRun(
       NOW(),
       NOW()
     )
-    ON CONFLICT ("workflowId") WHERE "workflowId" IS NOT NULL
+    ON CONFLICT ("temporalRunId") WHERE "temporalRunId" IS NOT NULL
     DO UPDATE SET "updatedAt" = NOW()
     RETURNING ${RUN_COLUMNS}
     `,

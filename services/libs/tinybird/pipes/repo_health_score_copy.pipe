@@ -42,18 +42,18 @@ SQL >
         ) AS contributionsOutsideWorkHoursBenchmark,
         sec.securityPercentage AS securityPercentage
     FROM repo_health_score_copy_repos AS repos
-    LEFT JOIN repo_health_score_active_contributors AS ac USING (channel)
-    LEFT JOIN repo_health_score_contributor_dependency AS cd USING (channel)
-    LEFT JOIN repo_health_score_organization_dependency AS od USING (channel)
-    LEFT JOIN repo_health_score_retention AS ret USING (channel)
-    LEFT JOIN repo_health_score_stars AS st USING (channel)
-    LEFT JOIN repo_health_score_forks AS fk USING (channel)
-    LEFT JOIN repo_health_score_issues_resolution AS ir USING (channel)
-    LEFT JOIN repo_health_score_pull_requests AS pr USING (channel)
-    LEFT JOIN repo_health_score_merge_lead_time AS mlt USING (channel)
-    LEFT JOIN repo_health_score_active_days AS ad USING (channel)
-    LEFT JOIN repo_health_score_contributions_outside_work_hours AS owh USING (channel)
-    LEFT JOIN repo_health_score_security AS sec USING (channel)
+    LEFT JOIN repo_health_score_active_contributors AS ac ON repos.channel = ac.channel
+    LEFT JOIN repo_health_score_contributor_dependency AS cd ON repos.channel = cd.channel
+    LEFT JOIN repo_health_score_organization_dependency AS od ON repos.channel = od.channel
+    LEFT JOIN repo_health_score_retention AS ret ON repos.channel = ret.channel
+    LEFT JOIN repo_health_score_stars AS st ON repos.channel = st.channel
+    LEFT JOIN repo_health_score_forks AS fk ON repos.channel = fk.channel
+    LEFT JOIN repo_health_score_issues_resolution AS ir ON repos.channel = ir.channel
+    LEFT JOIN repo_health_score_pull_requests AS pr ON repos.channel = pr.channel
+    LEFT JOIN repo_health_score_merge_lead_time AS mlt ON repos.channel = mlt.channel
+    LEFT JOIN repo_health_score_active_days AS ad ON repos.channel = ad.channel
+    LEFT JOIN repo_health_score_contributions_outside_work_hours AS owh ON repos.channel = owh.channel
+    LEFT JOIN repo_health_score_security AS sec ON repos.channel = sec.channel
 
 NODE repo_health_score_copy_result
 DESCRIPTION >
