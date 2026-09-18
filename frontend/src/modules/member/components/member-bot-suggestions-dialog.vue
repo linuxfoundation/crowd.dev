@@ -4,7 +4,7 @@
     v-model="isModalOpen"
     container-class="overflow-auto"
     content-class="!max-h-none"
-    width="40rem"
+    width="36rem"
   >
     <app-member-bot-suggestions
       :offset="props.offset"
