@@ -1,7 +1,7 @@
 import { getGithubInstallationToken } from '@crowd/common_services'
 import {
-  findEarliestStarSnapshotForRepo,
   findReposForStarSnapshot,
+  findStarSnapshotsForRepos,
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -397,18 +397,30 @@ export async function backfillRepo(
     return { status: 'skipped-negative-count', daysWritten: 0 }
   }
 
-  // Never touch days the live daily worker (CM-1438) already owns — only fill the gap
-  // behind its earliest snapshot, and never write "today" while it's still in progress.
-  const earliestExisting = await findEarliestStarSnapshotForRepo(qx, repo.repositoryId)
-  const cutoffDate = earliestExisting
-    ? earliestExisting.capturedAt.slice(0, 10)
-    : new Date().toISOString().slice(0, 10)
-  const rowsToWrite = allRows.filter((row) => row.date < cutoffDate)
+  // Never touch "today" (CM-1438 owns it) - diff the rest against the DB so any missing
+  // day, not just ones behind the earliest snapshot, gets filled.
+  const today = new Date().toISOString().slice(0, 10)
+  const candidateRows = allRows.filter((row) => row.date < today)
+
+  const existingRows =
+    candidateRows.length > 0
+      ? await findStarSnapshotsForRepos(qx, [repo.repositoryId], {
+          from: `${candidateRows[0].date}T00:00:00.000Z`,
+          // End of day, not midnight - CM-1438 stores "today" at wall-clock time, not T00:00:00.
+          to: `${candidateRows[candidateRows.length - 1].date}T23:59:59.999Z`,
+        })
+      : []
+  // capturedAt is pg's raw text output (session-timezone dependent) - reparse as UTC so it
+  // lines up with GitHub's UTC-based dates instead of drifting a day near local midnight.
+  const existingDates = new Set(
+    existingRows.map((row) => new Date(row.capturedAt).toISOString().slice(0, 10)),
+  )
+  const rowsToWrite = candidateRows.filter((row) => !existingDates.has(row.date))
 
   if (!options.dryRun) {
-    // Newest-first: a crash mid-loop leaves `earliestExisting` pointing at the true
-    // gap boundary on retry, instead of an ancient row that hides everything after it.
-    for (const row of [...rowsToWrite].reverse()) {
+    // Idempotent per row (upsert on repositoryId+capturedAt), so a crash mid-loop just
+    // means a retry re-diffs against the DB and picks up wherever it left off.
+    for (const row of rowsToWrite) {
       await upsertStarSnapshot(qx, repo.repositoryId, row.count, `${row.date}T00:00:00.000Z`)
     }
   }
