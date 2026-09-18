@@ -1,69 +1,74 @@
 <template>
   <div class="panel !p-0">
-    <header class="flex items-center justify-between px-6 py-5 border-b">
-      <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2">
-          <lf-button
-            type="secondary"
-            size="small"
-            :disabled="loading || offset <= 0 || !hasSuggestion"
-            :icon-only="true"
-            @click="fetch(offset - 1)"
-          >
-            <lf-icon name="chevron-left" :size="16" />
-          </lf-button>
-          <lf-button
-            type="secondary"
-            size="small"
-            :disabled="loading || !hasMore"
-            :icon-only="true"
-            @click="fetch(offset + 1)"
-          >
-            <lf-icon name="chevron-right" :size="16" />
-          </lf-button>
-        </div>
+    <header class="sticky top-0 z-10 bg-white border-b">
+      <div class="flex items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div class="flex min-w-0 items-center gap-3">
+          <div class="flex shrink-0 items-center gap-2">
+            <lf-button
+              type="secondary"
+              size="small"
+              :disabled="loading || offset <= 0 || !hasSuggestion"
+              :icon-only="true"
+              @click="fetch(offset - 1)"
+            >
+              <lf-icon name="chevron-left" :size="16" />
+            </lf-button>
+            <lf-button
+              type="secondary"
+              size="small"
+              :disabled="loading || !hasMore"
+              :icon-only="true"
+              @click="fetch(offset + 1)"
+            >
+              <lf-icon name="chevron-right" :size="16" />
+            </lf-button>
+          </div>
 
-        <app-loading v-if="loading" height="16px" width="128px" radius="3px" />
-        <div v-else class="text-xs leading-5 text-gray-500">
-          <div>{{ hasSuggestion ? `Suggestion ${offset + 1}` : '0 suggestions' }}</div>
+          <app-loading v-if="loading" height="16px" width="96px" radius="3px" />
+          <div v-else class="truncate whitespace-nowrap text-xs leading-5 text-gray-500">
+            {{ hasSuggestion ? `Suggestion ${offset + 1}` : '0 suggestions' }}
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-4">
-        <app-member-merge-similarity
-          v-if="!loading && suggestion.confidence"
-          :similarity="suggestion.confidence"
-        />
-        <lf-button
-          type="secondary"
-          size="small"
-          :disabled="loading || !hasSuggestion"
-          :loading="sendingIgnore"
-          @click="markAsBot(false)"
-        >
-          Ignore suggestion
-        </lf-button>
-        <lf-button
-          type="primary"
-          size="small"
-          :disabled="loading || !hasSuggestion"
-          :loading="sendingMark"
-          @click="markAsBot(true)"
-        >
-          Mark as bot
-        </lf-button>
         <slot name="actions" />
+      </div>
+
+      <div class="flex flex-col gap-3 border-t bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div v-if="!loading && suggestion.confidence">
+          <app-member-merge-similarity
+            :similarity="suggestion.confidence"
+          />
+        </div>
+        <div class="flex w-full items-center gap-2 sm:w-auto">
+          <lf-button
+            type="secondary"
+            size="small"
+            class="flex-1 sm:flex-none"
+            :disabled="loading || !hasSuggestion"
+            :loading="sendingIgnore"
+            @click="markAsBot(false)"
+          >
+            Ignore suggestion
+          </lf-button>
+          <lf-button
+            type="primary"
+            size="small"
+            class="flex-1 sm:flex-none"
+            :disabled="loading || !hasSuggestion"
+            :loading="sendingMark"
+            @click="markAsBot(true)"
+          >
+            Mark as bot
+          </lf-button>
+        </div>
       </div>
     </header>
 
-    <div v-if="loading || hasSuggestion" class="p-5">
+    <div v-if="loading || hasSuggestion">
       <app-member-merge-suggestions-details
         :member="suggestion.member"
         :loading="loading"
-      >
-        <template #header>
-          <div class="h-13" />
-        </template>
-      </app-member-merge-suggestions-details>
+        :is-standalone="true"
+      />
     </div>
     <div v-else class="py-20 flex flex-col items-center">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />

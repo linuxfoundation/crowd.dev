@@ -3,8 +3,7 @@
     v-if="isModalOpen"
     v-model="isModalOpen"
     container-class="overflow-auto"
-    content-class="!max-h-none"
-    width="36rem"
+    width="40rem"
   >
     <app-member-bot-suggestions
       :offset="props.offset"
