@@ -910,10 +910,62 @@ importers:
     devDependencies:
       eslint:
         specifier: 'catalog:'
-        version: 8.57.0(supports-color@8.1.1)
+        version: 8.57.0(supports-color@5.5.0)
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
+      prettier:
+        specifier: 'catalog:'
+        version: 3.3.3
+
+  services/apps/docs_readiness_worker:
+    dependencies:
+      '@crowd/archetype-standard':
+        specifier: workspace:*
+        version: link:../../archetypes/standard
+      '@crowd/archetype-worker':
+        specifier: workspace:*
+        version: link:../../archetypes/worker
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../../libs/common_services
+      '@crowd/data-access-layer':
+        specifier: workspace:*
+        version: link:../../libs/data-access-layer
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../../libs/logging
+      '@crowd/types':
+        specifier: workspace:*
+        version: link:../../libs/types
+      '@temporalio/activity':
+        specifier: 'catalog:'
+        version: 1.17.2
+      '@temporalio/client':
+        specifier: 'catalog:'
+        version: 1.17.2
+      '@temporalio/workflow':
+        specifier: 'catalog:'
+        version: 1.17.2
+      afdocs:
+        specifier: ^0.20.0
+        version: 0.20.0
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
+      typescript:
+        specifier: 'catalog:'
+        version: 5.6.3
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      eslint:
+        specifier: 'catalog:'
+        version: 8.57.0(supports-color@8.1.1)
+      nodemon:
+        specifier: ^3.0.1
+        version: 3.1.0
       prettier:
         specifier: 'catalog:'
         version: 3.3.3
@@ -1178,7 +1230,7 @@ importers:
         version: 1.0.2
       express:
         specifier: ^4.18.2
-        version: 4.21.2(supports-color@5.5.0)
+        version: 4.21.2(supports-color@8.1.1)
       prom-client:
         specifier: ^15.1.0
         version: 15.1.3
@@ -1191,7 +1243,7 @@ importers:
     devDependencies:
       eslint:
         specifier: 'catalog:'
-        version: 8.57.0(supports-color@5.5.0)
+        version: 8.57.0(supports-color@8.1.1)
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
@@ -4525,6 +4577,9 @@ packages:
     peerDependencies:
       tslib: '2'
 
+  '@mixmark-io/domino@2.2.0':
+    resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
     engines: {node: '>=18'}
@@ -6180,6 +6235,11 @@ packages:
   acorn@8.16.0:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
+    hasBin: true
+
+  afdocs@0.20.0:
+    resolution: {integrity: sha512-jq+Sj4kDVJfzKb2+T+FN3BT8pWWS54m+F1pMvjyBTBvVLUw5wF8QHcd1FWyyuZgTls9Wg8rvqMNzyNMJF0qqmA==}
+    engines: {node: '>=22'}
     hasBin: true
 
   agent-base@6.0.2:
@@ -9167,6 +9227,9 @@ packages:
   node-html-parser@6.1.13:
     resolution: {integrity: sha512-qIsTMOY4C/dAa5Q5vsobRpOOvPfC4pB61UVW2uSwZNUp0QU/jCekTal1vMmbO0DgdHeLUJpv/ARmDqErVxA3Sg==}
 
+  node-html-parser@7.1.0:
+    resolution: {integrity: sha512-iJo8b2uYGT40Y8BTyy5ufL6IVbN8rbm/1QK2xffXU/1a/v3AAa0d1YAoqBNYqaS4R/HajkWIpIfdE6KcyFh1AQ==}
+
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
@@ -10784,6 +10847,13 @@ packages:
   tunnel@0.0.6:
     resolution: {integrity: sha512-1h/Lnq9yajKY2PEbBadPXj3VxsDDu844OnaAo52UVmIzIvwwtBPIuNvkjuzBlTWpfJyUbG3ez0KSBibQkj4ojg==}
     engines: {node: '>=0.6.11 <=0.7.0 || >=0.7.3'}
+
+  turndown-plugin-gfm@1.0.2:
+    resolution: {integrity: sha512-vwz9tfvF7XN/jE0dGoBei3FXWuvll78ohzCZQuOb+ZjWrs3a0XhQVomJEb2Qh4VHTPNRO4GPZh0V7VRbiWwkRg==}
+
+  turndown@7.2.4:
+    resolution: {integrity: sha512-I8yFsfRzmzK0WV1pNNOA4A7y4RDfFxPRxb3t+e3ui14qSGOxGtiSP6GjeX+Y6CHb7HYaFj7ECUD7VE5kQMZWGQ==}
+    engines: {node: '>=18', npm: '>=9'}
 
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
@@ -13842,6 +13912,8 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  '@mixmark-io/domino@2.2.0': {}
+
   '@modelcontextprotocol/sdk@1.29.0(supports-color@8.1.1)(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.31)
@@ -16046,6 +16118,16 @@ snapshots:
 
   acorn@8.16.0: {}
 
+  afdocs@0.20.0:
+    dependencies:
+      chalk: 5.4.1
+      commander: 13.1.0
+      node-html-parser: 7.1.0
+      picomatch: 4.0.4
+      turndown: 7.2.4
+      turndown-plugin-gfm: 1.0.2
+      yaml: 2.7.0
+
   agent-base@6.0.2(supports-color@5.5.0):
     dependencies:
       debug: 4.4.3(supports-color@5.5.0)
@@ -17872,42 +17954,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  express@4.21.2(supports-color@5.5.0):
-    dependencies:
-      accepts: 1.3.8
-      array-flatten: 1.1.1
-      body-parser: 1.20.3(supports-color@8.1.1)
-      content-disposition: 0.5.4
-      content-type: 1.0.5
-      cookie: 0.7.1
-      cookie-signature: 1.0.6
-      debug: 2.6.9(supports-color@8.1.1)
-      depd: 2.0.0
-      encodeurl: 2.0.0
-      escape-html: 1.0.3
-      etag: 1.8.1
-      finalhandler: 1.3.1(supports-color@8.1.1)
-      fresh: 0.5.2
-      http-errors: 2.0.0
-      merge-descriptors: 1.0.3
-      methods: 1.1.2
-      on-finished: 2.4.1
-      parseurl: 1.3.3
-      path-to-regexp: 0.1.12
-      proxy-addr: 2.0.7
-      qs: 6.13.0
-      range-parser: 1.2.1
-      safe-buffer: 5.2.1
-      send: 0.19.0(supports-color@8.1.1)
-      serve-static: 1.16.2(supports-color@5.5.0)
-      setprototypeof: 1.2.0
-      statuses: 2.0.1
-      type-is: 1.6.18
-      utils-merge: 1.0.1
-      vary: 1.1.2
-    transitivePeerDependencies:
-      - supports-color
-
   express@4.21.2(supports-color@8.1.1):
     dependencies:
       accepts: 1.3.8
@@ -19607,6 +19653,11 @@ snapshots:
       css-select: 5.1.0
       he: 1.2.0
 
+  node-html-parser@7.1.0:
+    dependencies:
+      css-select: 5.1.0
+      he: 1.2.0
+
   node-int64@0.4.0: {}
 
   node-readfiles@0.2.0:
@@ -20721,24 +20772,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  send@0.19.0(supports-color@5.5.0):
-    dependencies:
-      debug: 2.6.9(supports-color@5.5.0)
-      depd: 2.0.0
-      destroy: 1.2.0
-      encodeurl: 1.0.2
-      escape-html: 1.0.3
-      etag: 1.8.1
-      fresh: 0.5.2
-      http-errors: 2.0.0
-      mime: 1.6.0
-      ms: 2.1.3
-      on-finished: 2.4.1
-      range-parser: 1.2.1
-      statuses: 2.0.1
-    transitivePeerDependencies:
-      - supports-color
-
   send@0.19.0(supports-color@8.1.1):
     dependencies:
       debug: 2.6.9(supports-color@8.1.1)
@@ -20825,15 +20858,6 @@ snapshots:
       escape-html: 1.0.3
       parseurl: 1.3.3
       send: 0.18.0(supports-color@8.1.1)
-    transitivePeerDependencies:
-      - supports-color
-
-  serve-static@1.16.2(supports-color@5.5.0):
-    dependencies:
-      encodeurl: 2.0.0
-      escape-html: 1.0.3
-      parseurl: 1.3.3
-      send: 0.19.0(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -21554,6 +21578,12 @@ snapshots:
       fsevents: 2.3.3
 
   tunnel@0.0.6: {}
+
+  turndown-plugin-gfm@1.0.2: {}
+
+  turndown@7.2.4:
+    dependencies:
+      '@mixmark-io/domino': 2.2.0
 
   type-check@0.4.0:
     dependencies:

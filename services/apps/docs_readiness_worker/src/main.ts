@@ -1,10 +1,8 @@
 import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
 
-import { scheduleProjectsEvaluation } from './schedules/scheduleProjectsEvaluation'
-
 const config: Config = {
-  envvars: ['CROWD_API_SERVICE_URL', 'CROWD_PROJECT_EVALUATION_STATIC_API_KEY'],
+  envvars: ['GITHUB_TOKEN_CLIENT_ID', 'GITHUB_TOKEN_INSTALLATION_ID', 'GITHUB_TOKEN_PRIVATE_KEY'],
   producer: {
     enabled: false,
   },
@@ -29,12 +27,5 @@ export const svc = new ServiceWorker(config, options)
 
 setImmediate(async () => {
   await svc.init()
-
-  svc.log.info('Projects evaluation worker starting up.')
-
-  await scheduleProjectsEvaluation()
-
-  svc.log.info('Projects evaluation worker running — schedule registered, waiting for Temporal.')
-
   await svc.start()
 })
