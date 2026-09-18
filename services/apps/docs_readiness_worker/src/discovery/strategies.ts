@@ -162,7 +162,6 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       return []
     }
 
-    // README links can be markdown [text](url) or raw HTML href="url"
     const links = new Map<string, string>()
     for (const match of readme.matchAll(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g)) {
       links.set(match[2], match[1])
@@ -276,7 +275,6 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
     }
     const results = body.organic_results ?? []
 
-    // A docs subdomain or a docs-shaped host/path/title counts as a documentation result
     const kept = results.filter((result) => {
       if (!result.link) {
         return false
