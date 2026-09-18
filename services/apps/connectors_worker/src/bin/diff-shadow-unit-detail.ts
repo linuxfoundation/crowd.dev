@@ -5,7 +5,7 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { initNangoCloudClient } from '@crowd/nango'
 
-import { diffUnit, resolveDiffWindow } from '../shadowDiffUnit'
+import { diffUnit, diffableRecordKey, resolveDiffWindow } from '../shadowDiffUnit'
 
 const log = getServiceLogger()
 
@@ -67,11 +67,18 @@ setImmediate(async () => {
 
     await initNangoCloudClient()
 
-    const { mismatches } = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    const { mismatches, nangoRecordsByKey } = await diffUnit(
+      qx,
+      unit,
+      mapping.connectionId,
+      windowStart,
+      windowEnd,
+    )
 
     log.info({ mismatchCount: mismatches.length }, 'diff complete')
     for (const mismatch of mismatches) {
-      process.stdout.write(`${JSON.stringify(mismatch)}\n`)
+      const nangoRecord = nangoRecordsByKey.get(diffableRecordKey(mismatch))
+      process.stdout.write(`${JSON.stringify({ ...mismatch, nangoRecord })}\n`)
     }
 
     process.exit(0)

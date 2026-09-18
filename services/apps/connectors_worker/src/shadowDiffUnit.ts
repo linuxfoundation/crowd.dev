@@ -64,6 +64,7 @@ function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
 export interface IShadowDiffUnitResult {
   mismatches: IShadowDiffMismatch[]
   shadowKeys: { type: string; sourceId: string }[]
+  nangoRecordsByKey: Map<string, INangoRecord>
 }
 
 export async function diffUnit(
@@ -86,6 +87,7 @@ export async function diffUnit(
         },
       ],
       shadowKeys: [],
+      nangoRecordsByKey: new Map(),
     }
   }
 
@@ -127,9 +129,18 @@ export async function diffUnit(
     diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
   )
 
+  const nangoRecordsByKey = new Map<string, INangoRecord>()
+  for (const record of nangoRecords) {
+    const diffable = toDiffableNangoRecord(record)
+    if (diffable) {
+      nangoRecordsByKey.set(diffableRecordKey(diffable), record)
+    }
+  }
+
   return {
     mismatches: mismatches.map((mismatch) => ({ ...mismatch, syncName: unit.syncName })),
     shadowKeys: shadowRecords.map((r) => ({ type: r.type, sourceId: r.sourceId })),
+    nangoRecordsByKey,
   }
 }
 
