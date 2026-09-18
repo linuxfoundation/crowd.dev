@@ -86,8 +86,12 @@ const job: IJobDefinition = {
       WITH skipped AS (
         SELECT
           pc."repoUrl", COALESCE(pc."evaluationReason", '(no reason provided)') AS reason,
-          lower(regexp_replace(regexp_replace(pc."repoUrl",
-            '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))            AS repo_path,
+          CASE WHEN lower(regexp_replace(pc."repoUrl", '^https?://(www\\.)?([^/]+)/.*$', '\\2')) = 'github.com'
+            THEN lower(regexp_replace(regexp_replace(pc."repoUrl",
+              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))
+            ELSE regexp_replace(regexp_replace(pc."repoUrl",
+              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')
+          END                                                                 AS repo_path,
           lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
             '[^a-zA-Z0-9-]+', '-', 'g'), '-+', '-', 'g'), '^-|-$', '', 'g')) AS derived_slug
         FROM "projectCatalog" pc
@@ -96,19 +100,30 @@ const job: IJobDefinition = {
           AND pc."evaluatedAt"::date = CURRENT_DATE
       ),
       repos_norm AS (
-        SELECT DISTINCT ON (repo_path) repo_path, id, "insightsProjectId"
+        SELECT
+          repo_path,
+          bool_or(true)                                              AS repo_exists,
+          -- multiple unrelated LF projects can share a generic Gerrit path
+          -- (e.g. "r/ci-management"); only trust the project when it's unambiguous
+          CASE WHEN count(DISTINCT "insightsProjectId") = 1
+            THEN (array_agg("insightsProjectId") FILTER (WHERE "insightsProjectId" IS NOT NULL))[1]
+          END                                                         AS "insightsProjectId"
         FROM (
           SELECT id, "insightsProjectId",
-            lower(regexp_replace(regexp_replace(url,
-              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))        AS repo_path
+            CASE WHEN lower(regexp_replace(url, '^https?://(www\\.)?([^/]+)/.*$', '\\2')) = 'github.com'
+              THEN lower(regexp_replace(regexp_replace(url,
+                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))
+              ELSE regexp_replace(regexp_replace(url,
+                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')
+            END                                                        AS repo_path
           FROM public.repositories
           WHERE "deletedAt" IS NULL
         ) x
-        ORDER BY repo_path, id
+        GROUP BY repo_path
       ),
       matched AS (
         SELECT
-          s."repoUrl", s.reason, r.id AS repo_id,
+          s."repoUrl", s.reason, r.repo_exists,
           CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END               AS matched_id,
           CASE WHEN ipr.id IS NOT NULL THEN ipr.name ELSE ips.name END           AS matched_name,
           CASE WHEN ipr.id IS NOT NULL THEN ipr."isLF" ELSE ips."isLF" END       AS matched_is_lf,
@@ -121,14 +136,14 @@ const job: IJobDefinition = {
       SELECT
         m."repoUrl"          AS "repoUrl",
         m.reason              AS reason,
-        (m.repo_id IS NOT NULL) AS "repoInCdp",
+        COALESCE(m.repo_exists, false) AS "repoInCdp",
         m.matched_name         AS "matchedProject",
         m.matched_is_lf        AS "matchedIsLf",
         m.matched_deleted_at   AS "matchedDeletedAt",
         -- a soft-deleted insights project still counts as "exists in CDP"; its isLF
         -- flag doesn't, so LF-reason rows on it are unverifiable rather than flagged
         CASE m.reason
-          WHEN $1 THEN (m.repo_id IS NULL AND m.matched_id IS NULL)
+          WHEN $1 THEN (NOT COALESCE(m.repo_exists, false) AND m.matched_id IS NULL)
           WHEN $2 THEN CASE
             WHEN m.matched_id IS NULL          THEN true
             WHEN m.matched_deleted_at IS NOT NULL THEN NULL
