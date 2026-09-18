@@ -4,7 +4,7 @@ SQL >
     SELECT memberId, groupUniqArray(role) as roles
     FROM maintainers_roles_copy_ds
     WHERE
-        1 = 1
+        startDate <= now() AND (endDate = toDateTime64('1970-01-01 00:00:00', 3) OR endDate >= now())
         {% if defined(collectionSlug) %}
             AND insightsProjectId IN (SELECT insightsProjectId FROM segments_filtered_by_collection)
         {% elif defined(project) %}
