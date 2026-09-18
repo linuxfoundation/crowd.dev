@@ -3,13 +3,48 @@ import { ApplicationFailure } from '@temporalio/client'
 import { getGithubInstallationToken } from '@crowd/common_services'
 import {
   findReposForStarSnapshot as findReposForStarSnapshotQx,
+  findReposNeedingStarBackfill as findReposNeedingStarBackfillQx,
+  recordStarBackfillFailure,
+  recordStarBackfillSuccess,
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { RedisCache } from '@crowd/redis'
 import { IRepoForStarSnapshot } from '@crowd/types'
 
+import {
+  CoreRateLimiter,
+  RepoBackfillResult,
+  SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+  backfillRepo,
+  createCoreRateLimiter,
+} from '../backfill/starSnapshotBackfill'
 import { parseGithubRepoUrl } from '../githubRepoUrl'
 import { svc } from '../main'
+
+const SELF_HEAL_RESERVED_CORE_RATE_LIMIT = 2_000
+const SELF_HEAL_DEAD_LETTER_AFTER = 3
+// Covers a batch's full processing time (incl. rate-limit backoffs) while still auto-releasing
+// a crashed/stuck claim before the next daily schedule tick could double-dispatch it.
+const SELF_HEAL_INFLIGHT_TTL_SECONDS = 6 * 60 * 60
+
+let selfHealRateLimiter: CoreRateLimiter | undefined
+// Lazy (svc.log isn't ready at module load) singleton per worker process - the reserved
+// floor is a real GitHub quota shared across every concurrent activity call, not per-call.
+function getSelfHealRateLimiter(): CoreRateLimiter {
+  if (!selfHealRateLimiter) {
+    selfHealRateLimiter = createCoreRateLimiter(SELF_HEAL_RESERVED_CORE_RATE_LIMIT, svc.log)
+  }
+  return selfHealRateLimiter
+}
+
+let selfHealInflightCache: RedisCache | undefined
+function getSelfHealInflightCache(): RedisCache {
+  if (!selfHealInflightCache) {
+    selfHealInflightCache = new RedisCache('starBackfillInflight', svc.redis, svc.log)
+  }
+  return selfHealInflightCache
+}
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 const FETCH_TIMEOUT_MS = 30_000
@@ -249,4 +284,122 @@ export async function findReposForStarSnapshot(
 ): Promise<IRepoForStarSnapshot[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
   return findReposForStarSnapshotQx(qx, limit, afterUrl)
+}
+
+export async function findReposNeedingStarBackfill(
+  limit?: number,
+  afterUrl?: string,
+): Promise<IRepoForStarSnapshot[]> {
+  const qx = pgpQx(svc.postgres.reader.connection())
+  return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
+}
+
+// A leftover claim only costs a repo one skipped run before the TTL clears it - not worth
+// forcing a full activity retry (re-fetching the entire stargazer history) over.
+async function releaseInflightClaim(cache: RedisCache, repositoryId: string): Promise<void> {
+  try {
+    await cache.delete(repositoryId)
+  } catch (err) {
+    svc.log.warn(
+      { repositoryId, error: (err as Error)?.message ?? err },
+      'failed to release star backfill in-flight claim, will auto-expire via TTL',
+    )
+  }
+}
+
+export type BackfillRepoStarHistoryResult =
+  | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'in-flight' }
+  | { outcome: 'done' }
+
+export async function backfillRepoStarHistory(
+  repo: IRepoForStarSnapshot,
+  ownerId: string,
+): Promise<BackfillRepoStarHistoryResult> {
+  const inflightCache = getSelfHealInflightCache()
+  // Claims the repo for this batch (ownerId) so a different day's batch backs off instead of
+  // re-processing it; re-claiming with the same ownerId is a no-op that confirms it.
+  const holder = await inflightCache.setIfNotExistsOrGet(
+    repo.repositoryId,
+    ownerId,
+    SELF_HEAL_INFLIGHT_TTL_SECONDS,
+  )
+  if (holder !== ownerId) {
+    return { outcome: 'in-flight' }
+  }
+  // SETNX only sets the TTL on the first claim - renew it every attempt too, or a repo
+  // that bounces through backoffs longer than the TTL loses its claim mid-processing.
+  await inflightCache.set(repo.repositoryId, ownerId, SELF_HEAL_INFLIGHT_TTL_SECONDS)
+
+  const rateLimiter = getSelfHealRateLimiter()
+  const waitMs = rateLimiter.peekWaitMs()
+  if (waitMs > 0) {
+    return { outcome: 'rate-limited', waitMs }
+  }
+
+  const qx = pgpQx(svc.postgres.writer.connection())
+  let result: RepoBackfillResult
+  try {
+    result = await backfillRepo(qx, repo, rateLimiter, svc.log, { dryRun: false, failFast: true })
+  } catch (err) {
+    const message = (err as Error)?.message ?? String(err)
+    if (message.toLowerCase().includes('rate limit')) {
+      return {
+        outcome: 'rate-limited',
+        waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      }
+    }
+    try {
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        (err as Error)?.name ?? 'Error',
+        message,
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
+    } catch (recordErr) {
+      // Failure is already known here - don't let a transient marker-write error also fail the
+      // activity and force a full retry (re-fetching all stargazer history) just to log it.
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (recordErr as Error)?.message ?? recordErr },
+        'failed to record star backfill failure marker, will retry on next self-heal run',
+      )
+    }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
+    return { outcome: 'done' }
+  }
+
+  if (result.status === 'skipped-negative-count') {
+    // Deterministic for this repo's actual GitHub data - retrying it plain would refetch its
+    // full history every run forever, so it's dead-lettered like any other failure.
+    try {
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        'NegativeStarCountAnomaly',
+        'backward-anchored reconstruction produced a negative star count',
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
+    } catch (err) {
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+        'failed to record star backfill anomaly marker, will retry on next self-heal run',
+      )
+    }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
+    return { outcome: 'done' }
+  }
+
+  try {
+    await recordStarBackfillSuccess(qx, repo.repositoryId)
+  } catch (err) {
+    // Fetch and row writes already succeeded - don't let a transient marker-write error force
+    // a full retry (re-fetching all stargazer history); it just stays a candidate till next run.
+    svc.log.warn(
+      { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+      'failed to record star backfill completion marker, will retry on next self-heal run',
+    )
+  }
+  await releaseInflightClaim(inflightCache, repo.repositoryId)
+  return { outcome: 'done' }
 }

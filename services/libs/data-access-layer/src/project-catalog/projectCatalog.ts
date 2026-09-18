@@ -602,6 +602,24 @@ export async function finalizeProjectCatalogEvaluation(
   )
 }
 
+// Guarded like finalizeProjectCatalogEvaluation. Explicitly nulls the verdict columns
+// (clearing any stale prior verdict) so this skip stays out of the agent's skip alert.
+export async function markProjectCatalogPreCheckSkipped(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'skip', "skipReason" = $(reason), "evaluatedAt" = NOW(),
+        "evaluationResult" = NULL, "evaluationReason" = NULL, "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    `,
+    { id, reason },
+  )
+}
+
 export async function updateProjectCatalogSyncedAt(qx: QueryExecutor, id: string): Promise<void> {
   await qx.selectNone(
     `
