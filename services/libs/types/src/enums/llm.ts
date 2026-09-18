@@ -17,4 +17,5 @@ export enum LlmQueryType {
   MEMBER_BOT_VALIDATION = 'member_bot_validation',
   SELECT_MOST_RELEVANT_DOMAIN = 'select_most_relevant_domain',
   FAKE_ORGANIZATION_ANALYSIS = 'fake_organization_analysis',
+  PROJECT_EVALUATION = 'project_evaluation',
 }
