@@ -271,18 +271,13 @@ if (parameters.help || !parameters.apiUrl || !parameters.apiKey) {
     const baselineRows = await fetchBaselineRows(qx, parameters.limit)
     console.log(`Comparing ${baselineRows.length} historical rows against the new endpoint...`)
 
-    const comparisonRows = await runWithConcurrency(
-      baselineRows,
-      parameters.concurrency,
-      (row) => evaluateWithNewEndpoint(parameters.apiUrl, parameters.apiKey, row),
+    const comparisonRows = await runWithConcurrency(baselineRows, parameters.concurrency, (row) =>
+      evaluateWithNewEndpoint(parameters.apiUrl, parameters.apiKey, row),
     )
 
     const summary = summarize(comparisonRows)
 
-    fs.writeFileSync(
-      parameters.out,
-      JSON.stringify({ summary, rows: comparisonRows }, null, 2),
-    )
+    fs.writeFileSync(parameters.out, JSON.stringify({ summary, rows: comparisonRows }, null, 2))
 
     console.log(JSON.stringify(summary, null, 2))
     console.log(`\nFull report written to ${parameters.out}`)
