@@ -88,3 +88,18 @@ export async function findDeadLetteredStarBackfillFailures(
 
   return failures || []
 }
+
+export async function countDeadLetteredStarBackfillFailures(qx: QueryExecutor): Promise<number> {
+  const { count } = await qx.selectOne(
+    `
+      select count(*)::int as count
+      from public."repositoryStarBackfillStatus" f
+      join public.repositories r on r.id = f."repositoryId"
+      where f."deadLetteredAt" is not null
+        and r."deletedAt" is null
+        and r."excluded" = false
+    `,
+  )
+
+  return count
+}

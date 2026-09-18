@@ -2,6 +2,7 @@ import CronTime from 'cron-time-generator'
 
 import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import {
+  countDeadLetteredStarBackfillFailures,
   findDeadLetteredStarBackfillFailures,
   findRepoIdsWithStarSnapshotGaps,
   findReposForStarSnapshot,
@@ -41,9 +42,9 @@ const job: IJobDefinition = {
 
     const since = await redis.get(LAST_DEAD_LETTER_REPORTED_AT_KEY)
 
-    const [newlyDeadLettered, allDeadLettered, allRepos] = await Promise.all([
+    const [newlyDeadLettered, totalDeadLettered, allRepos] = await Promise.all([
       findDeadLetteredStarBackfillFailures(qx, since),
-      findDeadLetteredStarBackfillFailures(qx, null),
+      countDeadLetteredStarBackfillFailures(qx),
       findReposForStarSnapshot(qx),
     ])
 
@@ -60,7 +61,7 @@ const job: IJobDefinition = {
         title: 'Star Snapshot Health Summary',
         text: [
           `🪦 Newly dead-lettered (self-heal): *${newlyDeadLettered.length}*`,
-          `📉 Total dead-lettered (self-heal): *${allDeadLettered.length}*`,
+          `📉 Total dead-lettered (self-heal): *${totalDeadLettered}*`,
           `📅 Repos with a snapshot gap right now: *${gappedRepoIds.length}*`,
         ].join('\n'),
       },
@@ -111,7 +112,7 @@ const job: IJobDefinition = {
     }
 
     ctx.log.info(
-      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${allDeadLettered.length}, gaps=${gappedRepoIds.length}`,
+      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${totalDeadLettered}, gaps=${gappedRepoIds.length}`,
     )
   },
 }
