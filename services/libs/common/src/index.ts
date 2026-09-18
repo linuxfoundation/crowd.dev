@@ -19,6 +19,8 @@ import {
   UnauthorizedError,
 } from './errors/http'
 
+export { getErrorMessage } from './errors/errorMessage'
+
 export { getDbConstraint } from './errors/db'
 
 export * from './env'
@@ -35,6 +37,8 @@ export * from './rawQueryParser'
 export * from './byteLength'
 export * from './domain'
 export * from './githubRepoUrl'
+export * from './github/types'
+export * from './github/publicRepoClient'
 export * from './displayName'
 export * from './organization'
 export * from './country'
