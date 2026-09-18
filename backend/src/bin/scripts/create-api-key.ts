@@ -29,7 +29,7 @@ const options = [
     alias: 's',
     type: String,
     defaultValue: '',
-    description: 'Comma-separated list of scopes (e.g. "project-evaluation:write").',
+    description: 'Comma-separated list of scopes (e.g. "write:project-evaluation").',
   },
   {
     name: 'expiresInDays',
