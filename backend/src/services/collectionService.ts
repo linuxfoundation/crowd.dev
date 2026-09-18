@@ -231,7 +231,7 @@ export class CollectionService extends LoggerBase {
   }
 
   async createInsightsProject(project: Partial<ICreateInsightsProject>) {
-    return SequelizeRepository.withTx(this.options, async (tx) => {
+    const createdProject = await SequelizeRepository.withTx(this.options, async (tx) => {
       const qx = SequelizeRepository.getQueryExecutor({ ...this.options, transaction: tx })
       const slug = project.slug ?? getCleanString(project.name).replace(/\s+/g, '-')
 
@@ -269,6 +269,14 @@ export class CollectionService extends LoggerBase {
 
       return txSvc.findInsightsProjectById(createdProject.id)
     })
+
+    try {
+      await this.startDocsReadinessWorkflow(createdProject.id)
+    } catch (err) {
+      this.log.error(err, 'Failed to start docs readiness workflow for new insights project')
+    }
+
+    return createdProject
   }
 
   async destroyInsightsProject(id: string) {
