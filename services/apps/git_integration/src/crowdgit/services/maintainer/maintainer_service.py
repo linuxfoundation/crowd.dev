@@ -278,9 +278,10 @@ class MaintainerService(BaseService):
             current_value = (current.get("identity_value") or "").lower()
             current_platform = current.get("platform")
             current_type = current.get("type")
+            identity_deleted = current.get("identity_deleted_at") is not None
             is_github_username = current_platform == "github" and current_type == "username"
             is_email = current_type == "email"
-            skip_end_date = bool(current_value) and (
+            skip_end_date = not identity_deleted and bool(current_value) and (
                 (is_github_username and current_value in unresolved_usernames)
                 or (is_email and current_value in unresolved_emails)
             )

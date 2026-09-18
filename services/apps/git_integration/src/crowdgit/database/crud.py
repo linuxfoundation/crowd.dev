@@ -417,7 +417,7 @@ async def get_maintainers_for_repo(repo_id: str):
     # "foo" colliding with a same-named handle on another platform).
     maintainers_sql_query = """
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId",
-               mem.value as identity_value, mem.platform, mem.type
+               mem.value as identity_value, mem.platform, mem.type, mem."deletedAt" as identity_deleted_at
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
         WHERE mi."repoId" = $1
