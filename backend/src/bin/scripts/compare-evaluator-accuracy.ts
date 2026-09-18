@@ -47,6 +47,12 @@ interface IComparisonRow {
   newError: string | null
   match: boolean | null
   oldAgentOnlyReason: boolean
+  newMetrics: {
+    model: string
+    inputTokens: number
+    outputTokens: number
+    seconds: number
+  } | null
 }
 
 const options = [
@@ -175,10 +181,19 @@ async function evaluateWithNewEndpoint(
         newError: `HTTP ${response.status}`,
         match: null,
         oldAgentOnlyReason,
+        newMetrics: null,
       }
     }
 
     const result: IProjectEvaluationResponse = await response.json()
+    const newMetrics = result.metrics
+      ? {
+          model: result.metrics.model,
+          inputTokens: result.metrics.inputTokens,
+          outputTokens: result.metrics.outputTokens,
+          seconds: result.metrics.seconds,
+        }
+      : null
 
     if (result.outcome === 'unsure' && result.evaluationResult === 'error') {
       return {
@@ -190,6 +205,7 @@ async function evaluateWithNewEndpoint(
         newError: result.evaluationReason,
         match: null,
         oldAgentOnlyReason,
+        newMetrics,
       }
     }
 
@@ -209,6 +225,7 @@ async function evaluateWithNewEndpoint(
       newError: null,
       match,
       oldAgentOnlyReason,
+      newMetrics,
     }
   } catch (err) {
     return {
@@ -220,6 +237,7 @@ async function evaluateWithNewEndpoint(
       newError: err instanceof Error ? err.message : String(err),
       match: null,
       oldAgentOnlyReason,
+      newMetrics: null,
     }
   }
 }
@@ -244,6 +262,23 @@ async function runWithConcurrency<T, R>(
   return results
 }
 
+function average(values: number[]): number | null {
+  return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null
+}
+
+function summarizeNewEndpointCost(rows: IComparisonRow[]) {
+  const withMetrics = rows.filter((r) => r.newMetrics !== null).map((r) => r.newMetrics!)
+
+  return {
+    callsWithMetrics: withMetrics.length,
+    avgInputTokens: average(withMetrics.map((m) => m.inputTokens)),
+    avgOutputTokens: average(withMetrics.map((m) => m.outputTokens)),
+    avgSeconds: average(withMetrics.map((m) => m.seconds)),
+    totalInputTokens: withMetrics.reduce((sum, m) => sum + m.inputTokens, 0),
+    totalOutputTokens: withMetrics.reduce((sum, m) => sum + m.outputTokens, 0),
+  }
+}
+
 function summarize(rows: IComparisonRow[]) {
   const scored = rows.filter((r) => r.match !== null)
   const scoredSupported = scored.filter((r) => !r.oldAgentOnlyReason)
@@ -258,6 +293,7 @@ function summarize(rows: IComparisonRow[]) {
       ? scoredSupported.filter((r) => r.match).length / scoredSupported.length
       : null,
     oldAgentOnlyReasonRows: rows.filter((r) => r.oldAgentOnlyReason).length,
+    newEndpointCost: summarizeNewEndpointCost(rows),
   }
 }
 
