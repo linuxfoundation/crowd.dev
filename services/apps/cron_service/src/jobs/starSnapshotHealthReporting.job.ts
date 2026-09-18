@@ -6,6 +6,7 @@ import {
   findDeadLetteredStarBackfillFailures,
   findRepoIdsWithStarSnapshotGaps,
   findReposForStarSnapshot,
+  getDeadLetterReportCursor,
 } from '@crowd/data-access-layer'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -27,9 +28,8 @@ const GAP_CHECK_BATCH_SIZE = 5_000
 
 const job: IJobDefinition = {
   name: 'star-snapshot-health-reporting',
-  // cron_service runs all jobs on Europe/Berlin time (see main.ts), not UTC - captureStarSnapshots
-  // (08:00 UTC) and selfHealStarBackfill (09:00 UTC) are Temporal schedules and run in UTC.
-  // Noon Berlin is 10:00 UTC (CEST) or 11:00 UTC (CET), safely after both year-round.
+  // cron_service runs jobs on Europe/Berlin time (main.ts); noon Berlin trails both the UTC-based
+  // captureStarSnapshots (08:00 UTC) and selfHealStarBackfill (09:00 UTC) schedules year-round.
   cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(12, 0),
   timeout: 10 * 60,
   enabled: async () => IS_PROD_ENV,
@@ -102,12 +102,12 @@ const job: IJobDefinition = {
       sections,
     )
 
-    // Only advance the cursor once the report actually went out - sendSlackNotificationAsync
-    // swallows delivery errors and returns false rather than throwing, so advancing
-    // unconditionally would silently drop that day's newly-dead-lettered rows for good.
-    if (sent && newlyDeadLettered.length > 0) {
-      await redis.set(LAST_DEAD_LETTER_REPORTED_AT_KEY, newlyDeadLettered[0].deadLetteredAt)
-    } else if (!sent) {
+    // Cursor is a DB-time watermark (now() minus a safety margin), not the max row we observed -
+    // a slow-committing write can land with an older timestamp than a cursor set from this read.
+    if (sent) {
+      const nextCursor = await getDeadLetterReportCursor(qx)
+      await redis.set(LAST_DEAD_LETTER_REPORTED_AT_KEY, nextCursor)
+    } else {
       ctx.log.warn('star snapshot health report failed to send, will retry next run')
     }
 

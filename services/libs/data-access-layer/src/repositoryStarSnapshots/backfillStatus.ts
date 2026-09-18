@@ -89,6 +89,16 @@ export async function findDeadLetteredStarBackfillFailures(
   return failures || []
 }
 
+// DB-time watermark, not a max-observed-row value - a transaction's `now()` is its start time,
+// so a slow commit can land with an older timestamp than a cursor set from an already-read row.
+export async function getDeadLetterReportCursor(qx: QueryExecutor): Promise<string> {
+  const { cursor } = await qx.selectOne(
+    `select (now() - interval '5 minutes')::timestamptz as cursor`,
+  )
+
+  return cursor
+}
+
 export async function countDeadLetteredStarBackfillFailures(qx: QueryExecutor): Promise<number> {
   const { count } = await qx.selectOne(
     `

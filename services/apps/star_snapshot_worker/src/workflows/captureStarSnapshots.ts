@@ -73,9 +73,8 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   const total = (args.totalSoFar ?? 0) + repos.length
 
-  // A handful of rejected batches out of many is routine GitHub flakiness that self-heals
-  // (next run's diff, or the gap backfill) - only a wiped-out page (every batch rejected)
-  // signals something systemic (auth/token/outage) worth failing the execution over.
+  // A few rejected batches self-heal (next run's diff, or the gap backfill) - only a fully
+  // wiped-out page signals something systemic (auth/token/outage) worth failing the run over.
   if (batches.length > 0 && rejectedBatches === batches.length) {
     // A plain Error only fails the workflow task (infinite replay); ApplicationFailure
     // is required to fail the execution so the schedule's retry policy engages.
