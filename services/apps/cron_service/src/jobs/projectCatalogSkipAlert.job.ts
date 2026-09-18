@@ -42,6 +42,7 @@ interface ISkipRow {
   repoInCdp: boolean
   matchedProject: string | null
   matchedIsLf: boolean | null
+  matchedDeletedAt: string | null
   suspicious: boolean | null
 }
 
@@ -86,7 +87,7 @@ const job: IJobDefinition = {
         SELECT
           pc."repoUrl", COALESCE(pc."evaluationReason", '(no reason provided)') AS reason,
           lower(regexp_replace(regexp_replace(pc."repoUrl",
-            '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))     AS repo_path,
+            '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))            AS repo_path,
           lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
             '[^a-zA-Z0-9-]+', '-', 'g'), '-+', '-', 'g'), '^-|-$', '', 'g')) AS derived_slug
         FROM "projectCatalog" pc
@@ -99,28 +100,44 @@ const job: IJobDefinition = {
         FROM (
           SELECT id, "insightsProjectId",
             lower(regexp_replace(regexp_replace(url,
-              '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))  AS repo_path
+              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', ''))        AS repo_path
           FROM public.repositories
           WHERE "deletedAt" IS NULL
         ) x
         ORDER BY repo_path, id
+      ),
+      matched AS (
+        SELECT
+          s."repoUrl", s.reason, r.id AS repo_id,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END               AS matched_id,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr.name ELSE ips.name END           AS matched_name,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr."isLF" ELSE ips."isLF" END       AS matched_is_lf,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr."deletedAt" ELSE ips."deletedAt" END AS matched_deleted_at
+        FROM skipped s
+        LEFT JOIN repos_norm r           ON r.repo_path = s.repo_path
+        LEFT JOIN "insightsProjects" ipr ON ipr.id = r."insightsProjectId"
+        LEFT JOIN "insightsProjects" ips ON ips.slug = s.derived_slug
       )
       SELECT
-        s."repoUrl"                                   AS "repoUrl",
-        s.reason                                       AS reason,
-        (r.id IS NOT NULL)                             AS "repoInCdp",
-        COALESCE(ipr.name, ips.name)                   AS "matchedProject",
-        COALESCE(ipr."isLF", ips."isLF")               AS "matchedIsLf",
-        CASE s.reason
-          WHEN $1 THEN (r.id IS NULL AND ips.id IS NULL)
-          WHEN $2 THEN NOT COALESCE(ipr."isLF", ips."isLF", false)
+        m."repoUrl"          AS "repoUrl",
+        m.reason              AS reason,
+        (m.repo_id IS NOT NULL) AS "repoInCdp",
+        m.matched_name         AS "matchedProject",
+        m.matched_is_lf        AS "matchedIsLf",
+        m.matched_deleted_at   AS "matchedDeletedAt",
+        -- a soft-deleted insights project still counts as "exists in CDP"; its isLF
+        -- flag doesn't, so LF-reason rows on it are unverifiable rather than flagged
+        CASE m.reason
+          WHEN $1 THEN (m.repo_id IS NULL AND m.matched_id IS NULL)
+          WHEN $2 THEN CASE
+            WHEN m.matched_id IS NULL          THEN true
+            WHEN m.matched_deleted_at IS NOT NULL THEN NULL
+            ELSE NOT COALESCE(m.matched_is_lf, false)
+          END
           ELSE NULL
         END                                             AS suspicious
-      FROM skipped s
-      LEFT JOIN repos_norm r           ON r.repo_path = s.repo_path
-      LEFT JOIN "insightsProjects" ipr ON ipr.id = r."insightsProjectId" AND ipr."deletedAt" IS NULL
-      LEFT JOIN "insightsProjects" ips ON ips.slug = s.derived_slug      AND ips."deletedAt" IS NULL
-      ORDER BY suspicious DESC NULLS LAST, s.reason, s."repoUrl"
+      FROM matched m
+      ORDER BY suspicious DESC NULLS LAST, m.reason, m."repoUrl"
       `,
       [ONBOARDED_REASON, LF_REASON],
     )
