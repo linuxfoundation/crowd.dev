@@ -5,7 +5,7 @@
     </div>
     <lf-scroll-body-controll v-else-if="suggestions.length > 0" @bottom="loadMore()">
       <lf-data-quality-fake-organization-suggestion-item
-        v-for="suggestion of suggestions"
+        v-for="(suggestion, si) of suggestions"
         :key="suggestion.organizationId"
         :suggestion="suggestion"
       >
@@ -14,11 +14,9 @@
             <lf-button
               type="secondary"
               size="small"
-              :disabled="itemsLoading[suggestion.organizationId]"
-              @click="markAsFake(suggestion)"
+              @click="isModalOpen = true; detailsOffset = si"
             >
-              <lf-spinner v-if="itemsLoading[suggestion.organizationId]" size="16px" />
-              Mark as fake
+              <lf-icon name="eye" />View suggestion
             </lf-button>
             <lf-fake-organization-suggestion-dropdown
               :suggestion="suggestion"
@@ -48,6 +46,11 @@
       </p>
     </div>
   </div>
+  <app-fake-organization-suggestions-dialog
+    v-model="isModalOpen"
+    :offset="detailsOffset"
+    @reload="reload()"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -63,15 +66,13 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ToastStore } from '@/shared/message/notification';
 import LfFakeOrganizationSuggestionDropdown
   from '@/modules/organization/components/suggestions/fake-organization-suggestion-dropdown.vue';
+import AppFakeOrganizationSuggestionsDialog
+  from '@/modules/organization/components/fake-organization-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
-import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
-import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 
 const props = defineProps<{
   projectGroup: string,
 }>();
-
-const { trackEvent } = useProductTracking();
 
 const loading = ref(true);
 const limit = ref(20);
@@ -79,6 +80,8 @@ const offset = ref(0);
 const total = ref(0);
 const suggestions = ref<any[]>([]);
 const itemsLoading = ref<Record<string, boolean>>({});
+const isModalOpen = ref(false);
+const detailsOffset = ref(0);
 
 const segments = computed(() => [props.projectGroup]);
 
@@ -87,6 +90,7 @@ const loadSuggestions = () => {
 
   OrganizationService.fetchFakeOrganizationSuggestions(limit.value, offset.value, {
     segments: segments.value,
+    detail: false,
   })
     .then((res) => {
       total.value = +res.count;
@@ -104,28 +108,6 @@ const loadSuggestions = () => {
 const reload = () => {
   offset.value = 0;
   loadSuggestions();
-};
-
-const markAsFake = (suggestion: any) => {
-  itemsLoading.value[suggestion.organizationId] = true;
-
-  trackEvent({
-    key: FeatureEventKey.MARK_FAKE_ORGANIZATION_SUGGESTION,
-    type: EventType.FEATURE,
-  });
-
-  OrganizationService.update(suggestion.organizationId, {
-    isAffiliationBlocked: true,
-  })
-    .then(() => {
-      reload();
-    })
-    .catch((err) => {
-      ToastStore.error(err.response.data);
-    })
-    .finally(() => {
-      itemsLoading.value[suggestion.organizationId] = false;
-    });
 };
 
 const dismiss = (suggestion: any) => {

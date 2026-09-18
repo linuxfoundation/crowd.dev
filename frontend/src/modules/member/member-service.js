@@ -230,6 +230,7 @@ export class MemberService {
           segments,
           offset,
           limit,
+          detail: true,
           ...query,
         },
       })

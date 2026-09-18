@@ -241,6 +241,7 @@ export class OrganizationService {
           segments,
           offset,
           limit,
+          detail: true,
           ...query,
         },
       })
