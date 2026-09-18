@@ -90,8 +90,9 @@ describe('evaluateProject', () => {
     getGithubToken.mockReturnValue('token')
     fetchPublicRepoMetrics.mockResolvedValue(metrics)
     fetchPublicRepoReadme.mockResolvedValue(readme)
+    const nonOnboardReason = 'project is a documentation repo, an SDK, a website, a recipe, etc'
     queryLlm.mockResolvedValue({
-      answer: '{"onboard": false, "non_onboard_reason": "project is a documentation repo"}',
+      answer: `{"onboard": false, "non_onboard_reason": "${nonOnboardReason}"}`,
       model: 'test-model',
       inputTokenCount: 10,
       outputTokenCount: 5,
@@ -99,13 +100,51 @@ describe('evaluateProject', () => {
     })
     parseLlmJson.mockReturnValue({
       onboard: false,
-      non_onboard_reason: 'project is a documentation repo',
+      non_onboard_reason: nonOnboardReason,
     })
 
     const result = await evaluateProject(input, qx, bedrockCredentials, log)
 
     expect(result.outcome).toBe('skip')
-    expect(result.evaluationReason).toBe('project is a documentation repo')
+    expect(result.evaluationReason).toBe(nonOnboardReason)
+  })
+
+  it('returns an unsure/error result when the non-onboard reason is not one of the allowed values', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockResolvedValue({
+      answer: '{"onboard": false, "non_onboard_reason": "I just felt like it"}',
+      model: 'test-model',
+      inputTokenCount: 10,
+      outputTokenCount: 5,
+      responseTimeSeconds: 1.2,
+    })
+    parseLlmJson.mockReturnValue({ onboard: false, non_onboard_reason: 'I just felt like it' })
+
+    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationResult).toBe('error')
+  })
+
+  it('returns an unsure/error result when onboard is false without a reason', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockResolvedValue({
+      answer: '{"onboard": false}',
+      model: 'test-model',
+      inputTokenCount: 10,
+      outputTokenCount: 5,
+      responseTimeSeconds: 1.2,
+    })
+    parseLlmJson.mockReturnValue({ onboard: false })
+
+    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationResult).toBe('error')
   })
 
   it('returns an unsure/error result when the GitHub token is missing', async () => {
