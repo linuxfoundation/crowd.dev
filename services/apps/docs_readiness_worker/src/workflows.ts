@@ -1,1 +1,1 @@
-export {}
+export { processProjectDocsReadiness } from './workflows/processProjectDocsReadiness'
