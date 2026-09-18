@@ -27,7 +27,7 @@ import PullRequestCommitsQueryNoAdditions, {
 import PullRequestReviewThreadCommentsQuery from './api/graphql/pullRequestReviewThreadComments'
 import PullRequestReviewThreadsQuery from './api/graphql/pullRequestReviewThreads'
 import PullRequestsQuery from './api/graphql/pullRequests'
-import StargazersQuery from './api/graphql/stargazers'
+import RepoAccessQuery from './api/graphql/repoAccess'
 import { GithubTokenRotator } from './tokenRotator'
 import {
   GithubActivitySubType,
@@ -310,9 +310,9 @@ const processRootStream: ProcessStreamHandler = async (ctx) => {
 
   for (const repo of data.reposToCheck) {
     try {
-      // we don't need to get default 100 item per page, just 1 is enough to check if repo is available
-      const stargazersQuery = new StargazersQuery(repo, await getGithubToken(ctx), 1)
-      await stargazersQuery.getSinglePage('')
+      // cheapest possible query, just to check if repo is available with the github token
+      const repoAccessQuery = new RepoAccessQuery(repo, await getGithubToken(ctx))
+      await repoAccessQuery.getSinglePage('')
       repos.push(repo)
     } catch (e) {
       if (e.rateLimitResetSeconds) {
@@ -336,7 +336,6 @@ const processRootStream: ProcessStreamHandler = async (ctx) => {
   // now it's time to start streams
   for (const repo of repos) {
     for (const endpoint of [
-      GithubStreamType.STARGAZERS,
       GithubStreamType.FORKS,
       GithubStreamType.PULLS,
       GithubStreamType.ISSUES,
@@ -348,41 +347,6 @@ const processRootStream: ProcessStreamHandler = async (ctx) => {
         page: '',
       })
     }
-  }
-}
-
-const processStargazersStream: ProcessStreamHandler = async (ctx) => {
-  const data = ctx.stream.data as GithubBasicStream
-  const stargazersQuery = new StargazersQuery(data.repo, await getGithubToken(ctx))
-
-  const result = await stargazersQuery.getSinglePage(
-    data.page,
-    {
-      concurrentRequestLimiter: getConcurrentRequestLimiter(ctx),
-      integrationId: ctx.integration.id,
-    },
-    getTokenRotator(ctx),
-  )
-  // handle next page
-  await publishNextPageStream(ctx, result)
-
-  for (const record of result.data) {
-    if (record.node === null) {
-      throw new Error(
-        'Stargazer is not found. This might be a deleted user. Please check the data.',
-      )
-    }
-
-    const member = await prepareMember(record.node, ctx)
-
-    // publish data
-    await ctx.processData<GithubApiData>({
-      type: GithubActivityType.STAR,
-      data: record,
-      member,
-      repo: data.repo,
-      isOld: true,
-    })
   }
 }
 
@@ -1250,9 +1214,6 @@ const handler: ProcessStreamHandler = async (ctx) => {
     const streamType = streamIdentifier.split(':')[0]
 
     switch (streamType) {
-      case GithubStreamType.STARGAZERS:
-        await processStargazersStream(ctx)
-        break
       case GithubStreamType.FORKS:
         await processForksStream(ctx)
         break

@@ -52,8 +52,6 @@ type Rows = Array<Array<DataItem>>
 
 const lokiMetricToStreamType = (metric: string): GithubManualStreamType => {
   switch (metric) {
-    case 'stars':
-      return GithubManualStreamType.STARGAZERS
     case 'forks':
       return GithubManualStreamType.FORKS
     case 'totalIssues':
