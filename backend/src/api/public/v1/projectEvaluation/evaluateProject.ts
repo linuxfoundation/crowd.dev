@@ -90,8 +90,8 @@ const MIN_STARS_FOR_EVALUATION = 25
 // LLM judgment on "not mainly run on GitHub" is unreliable for repos with near-zero
 // closed issues/PRs and stars — there's no README/description signal for it to reason
 // over, so we decide deterministically instead of spending a call on it.
-// closedIssues reads as 0 when GitHub Issues is disabled on the repo (e.g. canonical/snapd),
-// which is not an activity signal — CM-1475.
+// closedIssues can be a stale count from before Issues was disabled, so it's excluded
+// entirely once the feature is off rather than trusted as a current activity signal — CM-1475.
 function hasInsufficientActivity(metrics: IPublicRepoMetrics): boolean {
   const closedActivity =
     (metrics.hasIssuesEnabled ? metrics.closedIssues : 0) + metrics.closedPullRequests

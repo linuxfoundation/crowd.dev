@@ -245,7 +245,7 @@ describe('evaluateProject', () => {
     expect(queryLlm).toHaveBeenCalledOnce()
   })
 
-  it('does not skip deterministically when issues are disabled but closed PRs are high', async () => {
+  it('tells the LLM when GitHub Issues is disabled instead of reading it as low activity', async () => {
     getGithubToken.mockReturnValue('token')
     fetchPublicRepoMetrics.mockResolvedValue({
       ...metrics,
@@ -264,10 +264,10 @@ describe('evaluateProject', () => {
     })
     parseLlmJson.mockReturnValue({ onboard: true })
 
-    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+    await evaluateProject(input, qx, bedrockCredentials, log)
 
-    expect(result.outcome).toBe('onboard')
-    expect(queryLlm).toHaveBeenCalledOnce()
+    const prompt = queryLlm.mock.calls[0][1] as string
+    expect(prompt).toContain('GitHub Issues is disabled on this repo')
   })
 
   it('skips deterministically when issues are disabled and closed PRs are also near zero', async () => {
