@@ -63,8 +63,8 @@ const job: IJobDefinition = {
       {
         title: 'Star Snapshot Health Summary',
         text: [
-          `🪦 New repos self-heal stopped retrying (3 failures in a row): *${newlyDeadLettered.length}*`,
-          `📉 Total repos self-heal has stopped retrying: *${totalDeadLettered}*`,
+          `🪦 New actionable dead-letters (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
+          `📉 Total actionable dead-letters: *${totalDeadLettered}*`,
           `📅 Repos with a snapshot gap right now: *${gappedRepoIds.length}*`,
         ].join('\n'),
       },
@@ -77,7 +77,7 @@ const job: IJobDefinition = {
         return `• \`${url}\` - ${failure.lastErrorClass ?? 'unknown error'} (${failure.consecutiveFailures} consecutive failures)`
       })
       sections.push({
-        title: `Repos Self-Heal Stopped Retrying (top ${shown.length} of ${newlyDeadLettered.length})`,
+        title: `Actionable Dead-Letters (top ${shown.length} of ${newlyDeadLettered.length})`,
         text: lines.join('\n'),
       })
     }
