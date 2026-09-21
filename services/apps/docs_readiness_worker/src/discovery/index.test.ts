@@ -142,6 +142,20 @@ describe('discoverDocs', () => {
     expect(result.docsUrl).toBe('https://example.com/docs')
   })
 
+  test('falls back to serp when the only live candidate has no docs signal', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://example.com', 'project-website', true),
+    ])
+    strategyMocks.serpStrategy.mockResolvedValue([
+      candidate('https://docs.example.com/guide', 'serp', true),
+    ])
+
+    const result = await discoverDocs(ctx('serp-key'))
+
+    expect(strategyMocks.serpStrategy).toHaveBeenCalledTimes(1)
+    expect(result.docsUrl).toBe('https://docs.example.com/guide')
+  })
+
   test('falls back to serp only when no live candidate exists and a key is set', async () => {
     strategyMocks.STRATEGIES.push(async () => [
       candidate('https://example.com', 'project-website', false),

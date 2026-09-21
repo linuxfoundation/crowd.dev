@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
-import { rankCandidates } from './rank'
+import { candidateHasDocsSignal, rankCandidates } from './rank'
 
 const pocOutcomes = JSON.parse(
   readFileSync(join(__dirname, '__fixtures__/poc-rank-outcomes.json'), 'utf-8'),
@@ -74,9 +74,8 @@ describe('rankCandidates', () => {
   })
 
   test('domain agreement bonus counts distinct methods, not raw URL count on a domain', () => {
-    // docs-path alone probes /docs, /documentation and /doc on one domain — that's one
-    // strategy's redundant guesses, not independent corroboration, so it must not out-agree
-    // a domain confirmed by a single different (and otherwise higher-scoring) strategy.
+    // Guards against inflating the agreement bonus by URL count instead of distinct methods:
+    // one strategy probing 3 paths must not out-agree a domain confirmed by another strategy.
     const singleStrategyTriple = [
       candidate('https://a.com/docs', 'docs-path', true),
       candidate('https://a.com/documentation', 'docs-path', true),
@@ -87,10 +86,9 @@ describe('rankCandidates', () => {
     expect(winner).toEqual(docsSubdomainOnB)
   })
 
-  test('domain affinity bonus: the project domain outranks an unrelated but better URL-shaped domain', () => {
+  test('domain affinity: a live, signal-bearing candidate on the project domain wins over an unrelated but better URL-shaped domain', () => {
     // Without domain affinity, an unrelated third-party "docs." host can outscore the
-    // project's own site purely on URL shape (this mirrors a real POC case: a SERP hit for
-    // an unrelated vendor's API reference outscored the project's own homepage + /docs pair).
+    // project's own on-domain result purely on URL shape.
     const ownHomepage = candidate('https://example.com', 'github-homepage', true)
     const ownDocsPage = candidate('https://example.com/docs', 'readme-scrape', true)
     const unrelatedDocs = candidate('https://docs.unrelated-vendor.com/reference', 'serp', true)
@@ -99,6 +97,20 @@ describe('rankCandidates', () => {
     expect(rankCandidates([ownHomepage, ownDocsPage, unrelatedDocs], 'example.com')).toEqual(
       ownDocsPage,
     )
+  })
+
+  test('domain affinity: an on-domain signal-bearing hit wins even without a domain-agreement assist', () => {
+    // A lone same-method on-domain hit has no other candidate to earn an agreement bonus from,
+    // so affinity must gate to the project domain rather than rely on outscoring off-domain shape.
+    const ownDocsHit = candidate('https://example.com/docs', 'serp', true)
+    const unrelatedDocs = candidate('https://docs.unrelated-vendor.com/reference', 'serp', true)
+    expect(rankCandidates([ownDocsHit, unrelatedDocs], 'example.com')).toEqual(ownDocsHit)
+  })
+
+  test('domain affinity: a signal-less live candidate on the project domain does not shadow real off-domain docs', () => {
+    const bareHomepage = candidate('https://example.com', 'project-website', true)
+    const offDomainDocs = candidate('https://docs.other.com/guide', 'serp', true)
+    expect(rankCandidates([bareHomepage, offDomainDocs], 'example.com')).toEqual(offDomainDocs)
   })
 
   test('penalizes a bare host/path with no docs signal', () => {
@@ -124,28 +136,20 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     allCandidates: IDocCandidate[]
   }>
 
-  // Mirrors discoverDocs's own serp gate (see index.ts): serp candidates are only kept when no
-  // non-serp candidate in the fixture is live. Without this, a "match" here only proves
-  // rankCandidates parity with the original POC's ranker on a candidate set discoverDocs could
-  // never actually produce — not that discoverDocs itself would reach that outcome. This replay
-  // still doesn't cover domain-affinity scoring, since the fixture carries no project website to
-  // derive a projectDomain from; see the dedicated "domain affinity bonus" test above for that.
+  // Mirrors discoverDocs's own serp gate (index.ts) so a "match" here proves parity with what
+  // discoverDocs would actually produce, not just with rankCandidates on an unreachable input.
   function replayCandidates(allCandidates: IDocCandidate[]): IDocCandidate[] {
     const nonSerp = allCandidates.filter((c) => c.method !== 'serp')
-    return nonSerp.some((c) => c.livenessOk) ? nonSerp : allCandidates
+    return nonSerp.some((c) => c.livenessOk && candidateHasDocsSignal(c)) ? nonSerp : allCandidates
   }
 
-  // These 3 recorded POC outcomes are serp results, but their fixture also has a live non-serp
-  // candidate — under discoverDocs's serp gate, serp never runs for them, so the recorded
-  // outcome is structurally unreachable by the current pipeline. discoverDocs's own (better)
-  // answer is asserted instead. Flagged in review:
-  // https://github.com/linuxfoundation/crowd.dev/pull/4682#discussion_r4059916800
+  // Recorded POC outcomes for these are serp results, but a live signal-bearing candidate
+  // already blocks serp from running — asserts the gate-reachable answer instead.
   const GATE_UNREACHABLE: Record<string, { url: string; method: string }> = {
     'finos-community': { url: 'https://landscape.finos.org/docs', method: 'docs-path' },
     kairos: { url: 'https://kairos.io/docs', method: 'docs-path' },
     openfeature: { url: 'https://docs.openfeature.dev', method: 'docs-subdomain' },
     insights: { url: 'https://insights.linuxfoundation.org/docs', method: 'readme-scrape' },
-    'ojsf-dojo': { url: 'https://dojo.io', method: 'project-website' },
     e4s: { url: 'https://e4s.io/documentation', method: 'docs-path' },
   }
 
@@ -156,9 +160,14 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
   })
 
   for (const fixture of fixtures) {
-    test(`${fixture.projectSlug}: winner matches recorded POC outcome`, () => {
+    const gateAdjusted = GATE_UNREACHABLE[fixture.projectSlug]
+    const testName = gateAdjusted
+      ? `${fixture.projectSlug}: winner matches gate-adjusted outcome (recorded serp result is unreachable)`
+      : `${fixture.projectSlug}: winner matches recorded POC outcome`
+
+    test(testName, () => {
       const winner = rankCandidates(replayCandidates(fixture.allCandidates))
-      const expected = GATE_UNREACHABLE[fixture.projectSlug] ?? {
+      const expected = gateAdjusted ?? {
         url: fixture.docsUrl,
         method: fixture.discoveryMethod,
       }

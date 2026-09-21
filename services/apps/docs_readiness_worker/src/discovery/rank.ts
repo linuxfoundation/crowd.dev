@@ -14,8 +14,6 @@ const METHOD_BONUS: Partial<Record<IDocCandidate['method'], number>> = {
   'project-website': 1,
 }
 
-const DOMAIN_AFFINITY_BONUS = 5
-
 function pathnameOf(url: string): string {
   try {
     return new URL(url).pathname
@@ -28,6 +26,15 @@ function hasDocsSignal(host: string, pathname: string): boolean {
   return host.startsWith('docs.') || DOCS_KEYWORDS.test(host) || DOCS_KEYWORDS.test(pathname)
 }
 
+export function candidateHasDocsSignal(c: IDocCandidate): boolean {
+  return hasDocsSignal(domainOf(c.url) ?? '', pathnameOf(c.url))
+}
+
+function isOnProjectDomain(url: string, projectDomain: string): boolean {
+  const domain = normalizedDomain(url)
+  return domain === projectDomain || (domain?.endsWith(`.${projectDomain}`) ?? false)
+}
+
 export function rankCandidates(
   candidates: IDocCandidate[],
   projectDomain: string | null = null,
@@ -37,8 +44,15 @@ export function rankCandidates(
     return null
   }
 
+  // A live candidate on the project's own domain only overrides off-domain results once it
+  // actually carries a docs signal — otherwise a bare homepage would shadow real off-domain docs.
+  const ownDomainLive = projectDomain
+    ? live.filter((c) => isOnProjectDomain(c.url, projectDomain))
+    : []
+  const pool = ownDomainLive.some(candidateHasDocsSignal) ? ownDomainLive : live
+
   const domainMethods: Record<string, Set<IDocCandidate['method']>> = {}
-  for (const c of live) {
+  for (const c of pool) {
     const domain = normalizedDomain(c.url)
     if (!domainMethods[domain]) {
       domainMethods[domain] = new Set()
@@ -46,7 +60,7 @@ export function rankCandidates(
     domainMethods[domain].add(c.method)
   }
 
-  const scored = live.map((c) => {
+  const scored = pool.map((c) => {
     const host = domainOf(c.url) ?? ''
     const pathname = pathnameOf(c.url)
     const domain = normalizedDomain(c.url)
@@ -61,10 +75,6 @@ export function rankCandidates(
 
     if (!hasDocsSignal(host, pathname)) {
       score -= 2
-    }
-
-    if (projectDomain && (domain === projectDomain || domain?.endsWith(`.${projectDomain}`))) {
-      score += DOMAIN_AFFINITY_BONUS
     }
 
     return { candidate: c, score }

@@ -1,7 +1,7 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { normalizedDomain } from './http'
-import { rankCandidates } from './rank'
+import { candidateHasDocsSignal, rankCandidates } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -39,7 +39,7 @@ async function runStrategies(
 export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDocsResult> {
   const baseCandidates = dedupeByUrl(await runStrategies(STRATEGIES, ctx))
 
-  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk)
+  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk && candidateHasDocsSignal(c))
   const allCandidates =
     !hasLiveCandidate && ctx.serpApiKey
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])
