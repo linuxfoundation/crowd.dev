@@ -2,6 +2,8 @@ import { getGithubInstallationToken } from '@crowd/common_services'
 import {
   findReposForStarSnapshot,
   findStarSnapshotsForRepos,
+  recordStarBackfillFailure,
+  recordStarBackfillSuccess,
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -13,6 +15,9 @@ import { parseGithubRepoUrl } from '../githubRepoUrl'
 const GITHUB_API_VERSION = '2022-11-28'
 const FETCH_TIMEOUT_MS = 30_000
 const WEEKS_PER_PAGE = 30
+// Same threshold the self-heal worker uses for this shared table - a repo that keeps failing
+// across CLI reruns should dead-letter on the same cadence regardless of which producer hit it.
+const BACKFILL_DEAD_LETTER_AFTER = 3
 const REPO_PAGE_SIZE = 500
 // The current-count fetch happens a moment after the last history page, so a
 // star/unstar landing in between would show up as drift here.
@@ -218,6 +223,7 @@ async function assertOk(
   name: string,
   what: string,
   rateLimiter: CoreRateLimiter,
+  log: Logger,
 ): Promise<void> {
   if (response.ok) {
     return
@@ -253,6 +259,20 @@ async function assertOk(
     if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
+    // Neither rate-limit wording nor a retry-after header - most likely a real per-repo/org
+    // permission 403 (installation restricted or suspended for that org), not a token problem.
+    // Logged here since the generic error message alone gives no way to tell the two apart later.
+    log.warn(
+      {
+        owner,
+        name,
+        what,
+        remaining: response.headers.get('x-ratelimit-remaining'),
+        reset: response.headers.get('x-ratelimit-reset'),
+        body: body.slice(0, 500),
+      },
+      'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
+    )
     throw new Error(`GitHub auth failure (403) fetching ${what} for ${owner}/${name}`)
   }
   throw new Error(`GitHub API error ${response.status} fetching ${what} for ${owner}/${name}`)
@@ -264,13 +284,14 @@ async function fetchStargazerHistory(
   token: string,
   rateLimiter: CoreRateLimiter,
   failFast: boolean,
+  log: Logger,
 ): Promise<StargazerHistoryWeek[]> {
   const baseUrl = `https://api.github.com/repos/${owner}/${name}/stargazers/history?per_page=${WEEKS_PER_PAGE}`
 
   await acquireRateLimitSlot(rateLimiter, failFast)
   const firstResponse = await githubGet(`${baseUrl}&page=1`, token)
   rateLimiter.observe(firstResponse.headers)
-  await assertOk(firstResponse, owner, name, 'stargazer history', rateLimiter)
+  await assertOk(firstResponse, owner, name, 'stargazer history', rateLimiter, log)
 
   const firstPage = (await firstResponse.json()) as StargazerHistoryWeek[]
   if (firstPage.length === 0) {
@@ -284,7 +305,7 @@ async function fetchStargazerHistory(
     await acquireRateLimitSlot(rateLimiter, failFast)
     const response = await githubGet(`${baseUrl}&page=${page}`, token)
     rateLimiter.observe(response.headers)
-    await assertOk(response, owner, name, 'stargazer history', rateLimiter)
+    await assertOk(response, owner, name, 'stargazer history', rateLimiter, log)
     weeks.push(...((await response.json()) as StargazerHistoryWeek[]))
   }
 
@@ -297,11 +318,12 @@ async function fetchCurrentStarCount(
   token: string,
   rateLimiter: CoreRateLimiter,
   failFast: boolean,
+  log: Logger,
 ): Promise<number> {
   await acquireRateLimitSlot(rateLimiter, failFast)
   const response = await githubGet(`https://api.github.com/repos/${owner}/${name}`, token)
   rateLimiter.observe(response.headers)
-  await assertOk(response, owner, name, 'current star count', rateLimiter)
+  await assertOk(response, owner, name, 'current star count', rateLimiter, log)
   const body = (await response.json()) as { stargazers_count: number }
   return body.stargazers_count
 }
@@ -362,7 +384,7 @@ export async function backfillRepo(
   const { owner, name } = parseGithubRepoUrl(repo.repoUrl)
   const token = await getGithubInstallationToken()
 
-  const weeks = await fetchStargazerHistory(owner, name, token, rateLimiter, options.failFast)
+  const weeks = await fetchStargazerHistory(owner, name, token, rateLimiter, options.failFast, log)
   if (weeks.length === 0) {
     return { status: 'skipped-no-history', daysWritten: 0 }
   }
@@ -375,6 +397,7 @@ export async function backfillRepo(
     token,
     rateLimiter,
     options.failFast,
+    log,
   )
 
   const reconciled =
@@ -524,15 +547,42 @@ export async function runStarSnapshotBackfill(
           // leave it off completedRepoIds so a future run retries it instead of skipping forever.
           if (result.status !== 'skipped-negative-count') {
             options.completedRepoIds?.add(repo.repositoryId)
+            if (!options.dryRun) {
+              try {
+                await recordStarBackfillSuccess(qx, repo.repositoryId)
+              } catch (recordErr) {
+                log.warn(
+                  { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
+                  'failed to clear star backfill failure marker after success',
+                )
+              }
+            }
           }
           recordOutcome(totals, result)
         } catch (err) {
           totals.reposFailed++
           failedRepos.push(repo)
+          const message = (err as Error)?.message ?? String(err)
           log.warn(
-            { repoUrl: repo.repoUrl, error: (err as Error)?.message ?? err },
+            { repoUrl: repo.repoUrl, error: message },
             'star snapshot backfill failed for repo',
           )
+          if (!options.dryRun) {
+            try {
+              await recordStarBackfillFailure(
+                qx,
+                repo.repositoryId,
+                (err as Error)?.name ?? 'Error',
+                message,
+                BACKFILL_DEAD_LETTER_AFTER,
+              )
+            } catch (recordErr) {
+              log.warn(
+                { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
+                'failed to record star backfill failure marker, will stay untracked until next run',
+              )
+            }
+          }
         }
 
         if (totals.reposProcessed % options.concurrency === 0) {
@@ -595,13 +645,38 @@ export async function runStarSnapshotBackfill(
         if (result.status !== 'skipped-negative-count') {
           options.completedRepoIds?.add(repo.repositoryId)
           totals.reposRecoveredOnRetry++
+          if (!options.dryRun) {
+            try {
+              await recordStarBackfillSuccess(qx, repo.repositoryId)
+            } catch (recordErr) {
+              log.warn(
+                { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
+                'failed to clear star backfill failure marker after recovery',
+              )
+            }
+          }
         }
         recordOutcome(totals, result)
       } catch (err) {
+        const message = (err as Error)?.message ?? String(err)
         log.warn(
-          { repoUrl: repo.repoUrl, error: (err as Error)?.message ?? err },
+          { repoUrl: repo.repoUrl, error: message },
           'star snapshot backfill retry failed for repo',
         )
+        try {
+          await recordStarBackfillFailure(
+            qx,
+            repo.repositoryId,
+            (err as Error)?.name ?? 'Error',
+            message,
+            BACKFILL_DEAD_LETTER_AFTER,
+          )
+        } catch (recordErr) {
+          log.warn(
+            { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
+            'failed to record star backfill failure marker, will stay untracked until next run',
+          )
+        }
       }
     })
 
