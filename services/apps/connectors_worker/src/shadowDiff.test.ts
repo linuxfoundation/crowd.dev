@@ -141,6 +141,25 @@ describe('diffShadowAgainstNango', () => {
     expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
   })
 
+  it('ignores additions/deletions/changedFiles drift on pull request review thread comment attributes', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { attributes: { additions: 10, deletions: 2, changedFiles: 3, state: 'OPEN' } },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { attributes: { additions: 15, deletions: 4, changedFiles: 5, state: 'OPEN' } },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
   it('still reports a mismatch on pull request attributes outside the snapshot fields', () => {
     const shadow: IDiffableRecord[] = [
       {

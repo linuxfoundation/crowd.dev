@@ -23,6 +23,7 @@ const TYPES_WITH_SNAPSHOT_ATTRIBUTES = new Set([
   'pull_request-reviewed',
   'pull_request-assigned',
   'pull_request-merged',
+  'pull_request-review-thread-comment',
 ])
 
 export type ShadowDiffSeverity = 'high' | 'low'
