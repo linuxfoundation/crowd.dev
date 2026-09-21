@@ -2,13 +2,14 @@
 
 /* eslint-disable no-continue */
 
+import * as fs from 'fs'
+import path from 'path'
+
 /**
  * TBD
  */
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
-import * as fs from 'fs'
-import path from 'path'
 
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'

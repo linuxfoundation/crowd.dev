@@ -2,11 +2,11 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { Readable } from 'stream'
+
 import * as tar from 'tar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PypiSourceNotFoundError, downloadAndExtractPypiSource } from '../pypiSource'
-
 import { buildStoredZip } from './zipFixture'
 
 vi.mock('../downloadLimits', async (importOriginal) => {

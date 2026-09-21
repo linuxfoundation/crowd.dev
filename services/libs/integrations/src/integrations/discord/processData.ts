@@ -4,7 +4,6 @@ import { PlatformType } from '@crowd/types'
 import { MemberAttributeName } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { MessageType } from './externalTypes'
 import { DISCORD_GRID } from './grid'
 import {

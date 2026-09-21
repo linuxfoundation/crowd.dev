@@ -7,7 +7,6 @@ import {
 } from '@temporalio/workflow'
 
 import type * as activities from '../activities'
-
 import { generateSubprojectMemberMergeSuggestions } from './generateSubprojectMemberMergeSuggestions'
 
 const { fetchRecentlyOnboardedSubprojects, fetchCachedSubprojects } = proxyActivities<

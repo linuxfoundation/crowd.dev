@@ -2,7 +2,6 @@ import { ParentClosePolicy, executeChild, proxyActivities, startChild } from '@t
 
 import type * as activities from '../activities/nangoActivities'
 import { ISyncGithubIntegrationArguments } from '../types'
-
 import { deleteDuplicateGithubConnection } from './deleteDuplicateGithubConnection'
 import { deleteGithubRepoConnection } from './deleteGithubRepoConnection'
 import { syncGithubRepo } from './syncGithubRepo'

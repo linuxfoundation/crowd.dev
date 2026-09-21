@@ -8,7 +8,6 @@ import {
   IEnrichmentSourceInput,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
-
 import {
   IMemberEnrichmentDataSerp,
   IMemberEnrichmentSerpApiResponse,

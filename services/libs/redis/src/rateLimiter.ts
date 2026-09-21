@@ -13,12 +13,7 @@ export class RateLimiter implements IRateLimiter {
     private readonly maxRequests: number,
     private readonly timeWindowSeconds: number,
     private readonly counterKey: string,
-  ) {
-    this.cache = cache
-    this.maxRequests = maxRequests
-    this.timeWindowSeconds = timeWindowSeconds
-    this.counterKey = counterKey
-  }
+  ) {}
 
   public async checkRateLimit(endpoint: string) {
     const value = await this.cache.get(this.counterKey)
@@ -75,12 +70,7 @@ export class ConcurrentRequestLimiter implements IConcurrentRequestLimiter {
     private readonly requestKey: string,
     // cache key will be deleted after this time since last increment / decrement
     private readonly maxLockTimeSeconds = 50,
-  ) {
-    this.cache = cache
-    this.maxConcurrentRequests = maxConcurrentRequests
-    this.requestKey = requestKey
-    this.maxLockTimeSeconds = maxLockTimeSeconds
-  }
+  ) {}
 
   public async checkConcurrentRequestLimit(
     integrationId: string,

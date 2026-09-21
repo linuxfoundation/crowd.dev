@@ -1,5 +1,4 @@
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
-
 import type { PyPiInfo, PyPiReleaseFile } from './types'
 
 const PURL_PYPI_PREFIX = 'pkg:pypi/'

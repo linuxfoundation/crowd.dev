@@ -25,7 +25,6 @@ import {
 
 import { MemberRepository } from '../repo/member.repo'
 import { OpenSearchIndex } from '../types'
-
 import { IMemberSyncResult } from './member.sync.data'
 import { ISearchHit } from './opensearch.data'
 import { OpenSearchService } from './opensearch.service'

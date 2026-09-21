@@ -1,7 +1,6 @@
 import { findManyLfxMemberships } from '../lfx_memberships'
 import { OrganizationField, queryOrgs } from '../organizations'
 import { QueryExecutor } from '../queryExecutor'
-
 import { MemberField, findMemberById } from './base'
 import { fetchMemberIdentities } from './identities'
 import { fetchMemberOrganizations } from './organizations'

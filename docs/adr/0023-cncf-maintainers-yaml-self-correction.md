@@ -17,11 +17,13 @@ For repos matching the CNCF `.project` convention, run a new Step 0 ahead of the
 ## Alternatives Considered
 
 ### Alternative 1: Prioritize `maintainers.yaml` inside the existing candidate union
+
 - **Pros**: Smaller change; reuses the existing scoring/classifier pipeline; no new CNCF-specific code path.
 - **Cons**: Still subject to the saved-file shortcut — a repo already locked onto `CODEOWNERS` would never re-run detection to discover the higher-priority file exists.
 - **Why not**: Doesn't fix the actual bug (permanent lock-in); would require also changing the shortcut logic for every repo, not just CNCF ones, expanding blast radius.
 
 ### Alternative 2: One-time backfill migration instead of a code change
+
 - **Pros**: No runtime logic change; a single script could re-detect and re-save the correct file for all currently-affected repos.
 - **Cons**: Doesn't self-correct going forward — any repo that adds `maintainers.yaml` later, or any newly onboarded CNCF repo, would hit the same bug again.
 - **Why not**: Treats a systemic bug as a one-off data-quality issue; the union/count-based selection was still wrong for this repo class.
@@ -29,14 +31,17 @@ For repos matching the CNCF `.project` convention, run a new Step 0 ahead of the
 ## Consequences
 
 ### Positive
+
 - CNCF `.project` repos now resolve to the CNCF-authoritative roster regardless of what any other candidate file contains or how many entries it extracts.
 - Self-correcting: a repo already locked onto a stale file recovers on its next processing run, no manual reset required going forward.
 - Reprocessing all 202 CNCF `.project` repos raised `maintainers.yaml` adoption from 59/202 (29%) to 200/202 (99%); 141 repos switched their saved file (mostly `CODEOWNERS` → `maintainers.yaml`), and 42 repos gained previously-missing maintainers with none lost.
 
 ### Negative
+
 - Adds a CNCF-specific branch to a service that was otherwise format-agnostic, increasing the number of code paths to reason about in `extract_maintainers`.
 - Repos are re-checked against the CNCF path on every eligible run instead of only once, adding a bounded amount of extra file-system/parse work per run for CNCF repos specifically.
 
 ### Risks
+
 - If a CNCF repo's `maintainers.yaml` is malformed or temporarily wrong, the self-correction could overwrite a previously-correct saved file; mitigated by only overriding when `parse_cncf_maintainers_yaml` returns a non-empty roster, and by keeping the existing pipeline as a fallback when parsing fails.
 - The remaining 2/202 repos (`arras-energy`, `sdcio`) still resolve to no maintainer file after reprocessing — genuinely empty upstream data, not a code issue, but worth tracking if it recurs across other repos.

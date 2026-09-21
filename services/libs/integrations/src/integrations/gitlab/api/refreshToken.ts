@@ -1,7 +1,6 @@
 import axios from 'axios'
 
 import { IProcessStreamContext } from '../../../types'
-
 import { handleGitlabError } from './errorHandler'
 
 export const refreshToken = async (ctx: IProcessStreamContext) => {

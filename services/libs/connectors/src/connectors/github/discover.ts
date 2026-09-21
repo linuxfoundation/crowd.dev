@@ -1,7 +1,6 @@
 import axios from 'axios'
 
 import type { Channel, Credential } from '../../types'
-
 import { GITHUB_REQUEST_TIMEOUT_MS, mintInstallationToken, resolveInstallationId } from './appToken'
 
 const PER_PAGE = 100

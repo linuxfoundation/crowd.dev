@@ -8,7 +8,6 @@ import {
 } from '@crowd/types'
 
 import { ProcessDataHandler } from '../../types'
-
 import { TWITTER_GRID } from './grid'
 import { TwitterActivityType, TwitterPublishData, TwitterStreamType } from './types'
 

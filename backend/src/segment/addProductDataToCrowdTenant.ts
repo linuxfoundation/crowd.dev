@@ -24,7 +24,7 @@ interface CrowdAnalyticsData {
   properties: any
 }
 
-const expandAttributes = (attributes: Object) => {
+const expandAttributes = (attributes: object) => {
   const obj = {}
   Object.keys(attributes).forEach((key) => {
     obj[key.toLowerCase()] = {

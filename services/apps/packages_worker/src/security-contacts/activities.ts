@@ -4,7 +4,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getReportingProtocolConfig, getSecurityContactsConfig } from '../config'
 import { getCdpDb, getPackagesDb } from '../db'
-
 import { githubApiGet } from './githubToken'
 import { IngestSingleResult, ingestSecurityContactsForPurl } from './ingestSingle'
 import { BatchResult, processBatch } from './processBatch'

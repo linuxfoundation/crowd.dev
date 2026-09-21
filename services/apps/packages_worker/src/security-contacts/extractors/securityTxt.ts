@@ -1,5 +1,4 @@
 import { Extractor, ExtractorResult, ProvenanceEntry, RawContact, RepoPolicies } from '../types'
-
 import { fetchText, isEmail } from './http'
 
 const SOURCE = 'security.txt'

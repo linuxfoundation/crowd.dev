@@ -1,6 +1,5 @@
 import { ExtractorResult, ProvenanceEntry, RawContact, RepoPolicies } from '../../types'
 import { extractEmails, fetchJson, registryHeaders } from '../http'
-
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'pypi'

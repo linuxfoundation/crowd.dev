@@ -58,14 +58,8 @@ class MemberSimilarityCalculator {
 
     // We check if there are any verified<->unverified email matches between primary & similar members
     if (
-      (similarMemberUnverifiedEmails &&
-        similarMemberUnverifiedEmails.length > 0 &&
-        similarMemberUnverifiedEmails.some((email) =>
-          primaryMemberVerifiedEmails.includes(email),
-        )) ||
-      (similarMemberVerifiedEmails &&
-        similarMemberVerifiedEmails.length > 0 &&
-        similarMemberVerifiedEmails.some((email) => primaryMemberUnverifiedEmails.includes(email)))
+      similarMemberUnverifiedEmails?.some((email) => primaryMemberVerifiedEmails.includes(email)) ||
+      similarMemberVerifiedEmails?.some((email) => primaryMemberUnverifiedEmails.includes(email))
     ) {
       return 0.98
     }

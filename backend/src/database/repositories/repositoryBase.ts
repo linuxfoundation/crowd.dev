@@ -5,7 +5,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { PageData, SearchCriteria } from '@crowd/types'
 
 import { optionsQx } from '../sequelizeQueryExecutor'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
