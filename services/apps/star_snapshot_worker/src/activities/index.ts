@@ -129,10 +129,8 @@ async function queryStargazerCounts(
         throw new Error('GitHub rate limit hit fetching stargazer counts')
       }
       if (bodyLower.includes('ip allow list')) {
-        // A per-org IP allow list block rejects this whole multi-repo query at the HTTP level
-        // before any field resolves, so which repo(s) in the batch caused it can't be told apart
-        // from here - synthesize per-alias errors so this doesn't throw and fail the whole batch
-        // (and, if every batch on the page hit this, the run) same as a real per-field GraphQL error.
+        // Org IP allow list blocks the whole batch at the HTTP level before any field resolves,
+        // so which repo caused it can't be told apart - synthesize per-alias errors instead.
         return {
           errors: entries.map((entry, i) => ({
             path: [`r${i}`],

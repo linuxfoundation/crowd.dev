@@ -82,7 +82,7 @@ export async function findDeadLetteredStarBackfillFailures(
         and ($(since)::timestamptz is null or f."deadLetteredAt" > $(since))
         and r."deletedAt" is null
         and r."excluded" = false
-        and f."lastErrorClass" not in ($(nonActionableErrorClasses:csv))
+        and (f."lastErrorClass" is null or f."lastErrorClass" not in ($(nonActionableErrorClasses:csv)))
       order by f."deadLetteredAt" desc
     `,
     { since, nonActionableErrorClasses: NON_ACTIONABLE_GITHUB_ERROR_CLASSES },
@@ -110,7 +110,7 @@ export async function countDeadLetteredStarBackfillFailures(qx: QueryExecutor): 
       where f."deadLetteredAt" is not null
         and r."deletedAt" is null
         and r."excluded" = false
-        and f."lastErrorClass" not in ($(nonActionableErrorClasses:csv))
+        and (f."lastErrorClass" is null or f."lastErrorClass" not in ($(nonActionableErrorClasses:csv)))
     `,
     { nonActionableErrorClasses: NON_ACTIONABLE_GITHUB_ERROR_CLASSES },
   )
