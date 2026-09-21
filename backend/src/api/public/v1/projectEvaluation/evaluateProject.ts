@@ -83,6 +83,29 @@ function errorResult(err: unknown): IProjectEvaluationResponse {
   }
 }
 
+const INSUFFICIENT_ACTIVITY_REASON = 'project has insufficient GitHub activity to evaluate'
+const MIN_CLOSED_ACTIVITY_FOR_EVALUATION = 3
+const MIN_STARS_FOR_EVALUATION = 25
+
+// LLM judgment on "not mainly run on GitHub" is unreliable for repos with near-zero
+// closed issues/PRs and stars — there's no README/description signal for it to reason
+// over, so we decide deterministically instead of spending a call on it.
+function hasInsufficientActivity(metrics: IPublicRepoMetrics): boolean {
+  const closedActivity = metrics.closedIssues + metrics.closedPullRequests
+  return (
+    closedActivity < MIN_CLOSED_ACTIVITY_FOR_EVALUATION && metrics.stars < MIN_STARS_FOR_EVALUATION
+  )
+}
+
+function insufficientActivityResult(): IProjectEvaluationResponse {
+  return {
+    outcome: 'skip',
+    evaluationResult: 'false',
+    evaluationReason: INSUFFICIENT_ACTIVITY_REASON,
+    metrics: null,
+  }
+}
+
 export async function evaluateProject(
   input: IProjectEvaluationRequest,
   qx: QueryExecutor,
@@ -107,6 +130,10 @@ export async function evaluateProject(
     readme = results[1]
   } catch (err) {
     return errorResult(err)
+  }
+
+  if (hasInsufficientActivity(metrics)) {
+    return insufficientActivityResult()
   }
 
   const llmService = new LlmService(qx, bedrockCredentials, log)

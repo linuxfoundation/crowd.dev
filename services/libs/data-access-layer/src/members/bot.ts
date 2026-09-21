@@ -126,7 +126,7 @@ export async function fetchMemberBotSuggestionsBySegment(
   segmentId: string,
   limit: number,
   offset: number,
-): Promise<PageData<IDbMemberBotSuggestionBySegment>> {
+): Promise<PageData<IDbMemberBotSuggestionBySegment> & { hasMore: boolean }> {
   const params = { segmentId, limit, offset }
 
   const createQuery = (fields: string) => `
@@ -136,6 +136,7 @@ export async function fetchMemberBotSuggestionsBySegment(
     INNER JOIN "memberSegmentsAgg" msa ON mbs."memberId" = msa."memberId"
     AND msa."segmentId" = $(segmentId)
     INNER JOIN "members" m ON mbs."memberId" = m.id
+    WHERE mbs.confidence > 0
   `
 
   const countQuery = createQuery('COUNT(*)')
@@ -158,10 +159,13 @@ export async function fetchMemberBotSuggestionsBySegment(
     qx.selectOne(countQuery, params),
   ])
 
+  const count = parseInt(results[1].count, 10)
+
   return {
     rows: results[0],
-    count: parseInt(results[1].count, 10),
+    count,
     limit,
     offset,
+    hasMore: offset + results[0].length < count,
   }
 }

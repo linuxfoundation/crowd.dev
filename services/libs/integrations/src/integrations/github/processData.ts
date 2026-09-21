@@ -302,31 +302,6 @@ const parseOrgMember = (memberData: GithubPrepareOrgMemberOutput): IMemberData =
   return member
 }
 
-const parseStar: ProcessDataHandler = async (ctx) => {
-  const apiData = ctx.data as GithubApiData
-  const data = apiData.data
-  const memberData = apiData.member
-
-  const member = parseMember(memberData)
-
-  const activity: IActivityData = {
-    type: GithubActivityType.STAR,
-    sourceId: generateSourceIdHash(
-      data.node.login,
-      GithubActivityType.STAR,
-      Math.floor(new Date(data.starredAt).getTime() / 1000).toString(),
-      PlatformType.GITHUB,
-    ),
-    sourceParentId: '',
-    timestamp: new Date(data.starredAt).toISOString(),
-    channel: apiData.repo.url,
-    member,
-    score: GITHUB_GRID.star.score,
-  }
-
-  await ctx.publishActivity(activity)
-}
-
 const parseFork: ProcessDataHandler = async (ctx) => {
   const apiData = ctx.data as GithubApiData
 
@@ -1407,9 +1382,6 @@ const handler: ProcessDataHandler = async (ctx) => {
   if (event) {
     // parse github api data
     switch (event) {
-      case GithubActivityType.STAR:
-        await parseStar(ctx)
-        break
       case GithubActivityType.FORK:
         await parseFork(ctx)
         break

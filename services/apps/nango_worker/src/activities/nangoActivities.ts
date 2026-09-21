@@ -24,6 +24,7 @@ import {
 import { getChildLogger } from '@crowd/logging'
 import {
   ALL_NANGO_INTEGRATIONS,
+  NANGO_INTEGRATION_CONFIG,
   NangoIntegration,
   createNangoGithubConnection,
   deleteNangoConnection,
@@ -164,6 +165,14 @@ export async function processNangoWebhook(
 
   if (!ALL_NANGO_INTEGRATIONS.includes(args.providerConfigKey as NangoIntegration)) {
     logger.info({ providerConfigKey: args.providerConfigKey }, 'Skipping non-Nango integration!')
+    return
+  }
+
+  if (
+    args.providerConfigKey === NangoIntegration.GITHUB &&
+    args.model === NANGO_INTEGRATION_CONFIG[NangoIntegration.GITHUB].models.STAR
+  ) {
+    logger.info('Skipping GithubStar records!')
     return
   }
 
