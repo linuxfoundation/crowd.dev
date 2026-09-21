@@ -265,7 +265,7 @@ async def test_process_maintainers_end_dates_siblings_when_all_emeritus(
 
 
 @pytest.mark.asyncio
-async def test_upsert_maintainers_persists_emeritus_role(monkeypatch: pytest.MonkeyPatch):
+async def test_save_maintainers_persists_emeritus_role(monkeypatch: pytest.MonkeyPatch):
     service = MaintainerService()
     item = MaintainerInfoItem(
         github_username="alice",
@@ -283,10 +283,11 @@ async def test_upsert_maintainers_persists_emeritus_role(monkeypatch: pytest.Mon
     upsert_mock = AsyncMock()
     monkeypatch.setattr(maintainer_service_module, "upsert_maintainer", upsert_mock)
 
-    await service.insert_new_maintainers(
-        repo_url="https://github.com/cri-o/.project",
+    await service.save_maintainers(
         repo_id="repo-1",
+        repo_url="https://github.com/cri-o/.project",
         maintainers=[item],
+        last_maintainer_run_at=None,
     )
 
     upsert_mock.assert_called_once()
