@@ -1,7 +1,7 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { normalizedDomain } from './http'
-import { candidateHasDocsSignal, rankCandidates, repoNameAnchor } from './rank'
+import { candidateHasDocsSignal, methodPriority, rankCandidates, repoNameAnchor } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -11,11 +11,17 @@ export interface IDiscoverDocsResult {
   allCandidates: IDocCandidate[]
 }
 
+// A live duplicate always wins over a dead one; between two live duplicates, keep the one whose
+// method ranking treats as more authoritative rather than whichever strategy happened to run first.
 function dedupeByUrl(candidates: IDocCandidate[]): IDocCandidate[] {
   const byUrl = new Map<string, IDocCandidate>()
   for (const c of candidates) {
     const existing = byUrl.get(c.url)
-    if (!existing || (c.livenessOk && !existing.livenessOk)) {
+    const dominatesOnLiveness = c.livenessOk && !existing?.livenessOk
+    const dominatesOnMethod =
+      c.livenessOk === existing?.livenessOk &&
+      methodPriority(c.method) > methodPriority(existing.method)
+    if (!existing || dominatesOnLiveness || dominatesOnMethod) {
       byUrl.set(c.url, c)
     }
   }

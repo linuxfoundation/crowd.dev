@@ -14,6 +14,10 @@ const METHOD_BONUS: Partial<Record<IDocCandidate['method'], number>> = {
   'project-website': 1,
 }
 
+export function methodPriority(method: IDocCandidate['method']): number {
+  return METHOD_BONUS[method] ?? 0
+}
+
 function pathnameOf(url: string): string {
   try {
     return new URL(url).pathname

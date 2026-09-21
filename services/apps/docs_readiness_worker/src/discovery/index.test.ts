@@ -126,6 +126,19 @@ describe('discoverDocs', () => {
     expect(result.docsUrl).toBe('https://docs.example.com')
   })
 
+  test('prefers the higher-priority method when serp returns the same live URL as a live, signal-less base candidate', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://example.com', 'project-website', true),
+    ])
+    strategyMocks.serpStrategy.mockResolvedValue([candidate('https://example.com', 'serp', true)])
+
+    const result = await discoverDocs(ctx('serp-key'))
+
+    expect(result.allCandidates).toHaveLength(1)
+    expect(result.allCandidates[0].method).toBe('serp')
+    expect(result.discoveryMethod).toBe('serp')
+  })
+
   test('ranks with the project website domain, favoring it over an unrelated better-shaped domain', async () => {
     strategyMocks.STRATEGIES.push(
       async () => [
