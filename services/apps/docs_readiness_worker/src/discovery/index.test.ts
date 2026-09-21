@@ -170,4 +170,21 @@ describe('discoverDocs', () => {
     expect(result.docsUrl).toBe('https://docs.other.com')
     expect(result.allCandidates).toHaveLength(2)
   })
+
+  test('does not treat a github.com repo url website as a project domain for affinity', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://docs.github.com', 'docs-subdomain', true),
+      candidate('https://docs.realproject.dev', 'llms-txt-probe', true),
+    ])
+
+    const result = await discoverDocs({
+      name: 'proj',
+      website: 'https://github.com/acme/real-project',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+
+    expect(result.docsUrl).toBe('https://docs.realproject.dev')
+  })
 })

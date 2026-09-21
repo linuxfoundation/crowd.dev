@@ -148,7 +148,8 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
   // project-website candidate as the stand-in for ctx.website since the POC didn't record it.
   function replayProjectDomain(allCandidates: IDocCandidate[]): string | null {
     const website = allCandidates.find((c) => c.method === 'project-website')
-    return website ? normalizedDomain(website.url) : null
+    const domain = website ? normalizedDomain(website.url) : null
+    return domain === 'github.com' ? null : domain
   }
 
   // Recorded POC outcomes for these are serp results, but a live signal-bearing candidate
