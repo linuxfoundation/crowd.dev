@@ -1,4 +1,4 @@
-import { githubRepoPath } from '@crowd/common'
+import { githubRepoPath } from '../githubRepoUrl'
 
 import { GithubPublicClientError, IPublicRepoMetrics, IPublicRepoReadme } from './types'
 

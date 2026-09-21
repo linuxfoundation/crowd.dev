@@ -1,19 +1,32 @@
 import type { Request, Response } from 'express'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { IProjectEvaluationResponse, projectEvaluationRequestSchema } from './types'
+import { evaluateProject } from './evaluateProject'
+import { IProjectEvaluationRequest, projectEvaluationRequestSchema } from './types'
 
 export default async (req: Request, res: Response): Promise<void> => {
-  validateOrThrow(projectEvaluationRequestSchema, req.body)
-
-  const response: IProjectEvaluationResponse = {
-    outcome: 'unsure',
-    evaluationResult: 'not_implemented',
-    evaluationReason: 'Evaluation decision logic is not implemented yet',
-    metrics: null,
+  const parsed = validateOrThrow(projectEvaluationRequestSchema, req.body)
+  const input: IProjectEvaluationRequest = {
+    id: parsed.id,
+    repoUrl: parsed.repoUrl,
+    repoName: parsed.repoName,
+    projectSlug: parsed.projectSlug,
+    lfCriticalityScore: parsed.lfCriticalityScore ?? null,
+    source: parsed.source ?? null,
   }
+
+  const response = await evaluateProject(
+    input,
+    optionsQx(req),
+    {
+      accessKeyId: process.env.CROWD_AWS_BEDROCK_ACCESS_KEY_ID,
+      secretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
+    },
+    req.log,
+  )
 
   ok(res, response)
 }

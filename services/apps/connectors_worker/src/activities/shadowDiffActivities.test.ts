@@ -1,21 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getNangoCloudRecords } from '@crowd/nango'
-import { sendSlackNotificationAsync } from '@crowd/slack'
 
-import {
-  listShadowDiffChannels,
-  reportShadowDiffResults,
-  runShadowDiffForChannel,
-} from './shadowDiffActivities'
+import { listShadowDiffChannels, runShadowDiffForChannel } from './shadowDiffActivities'
 
 const mocks = vi.hoisted(() => ({
   listShadowDiffUnits: vi.fn(),
   getNangoMappingForRepo: vi.fn(),
   getShadowRecordsInWindow: vi.fn(),
+  getUnitIdsWithSummary: vi.fn(),
+  pruneMatchingShadowRecords: vi.fn(),
+  upsertSyncDiffSummary: vi.fn(),
   initNangoCloudClient: vi.fn(),
   getNangoCloudRecords: vi.fn(),
-  sendSlackNotificationAsync: vi.fn(),
 }))
 
 vi.mock('../main', () => ({
@@ -25,13 +22,18 @@ vi.mock('../main', () => ({
   },
 }))
 
+const qx = { tx: (fn: (tx: unknown) => Promise<unknown>) => fn(qx) }
+
 vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
-  dbStoreQx: vi.fn(() => ({})),
+  dbStoreQx: vi.fn(() => qx),
 }))
 
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   listShadowDiffUnits: mocks.listShadowDiffUnits,
   getShadowRecordsInWindow: mocks.getShadowRecordsInWindow,
+  getUnitIdsWithSummary: mocks.getUnitIdsWithSummary,
+  pruneMatchingShadowRecords: mocks.pruneMatchingShadowRecords,
+  upsertSyncDiffSummary: mocks.upsertSyncDiffSummary,
 }))
 
 vi.mock('@crowd/data-access-layer/src/integrations', () => ({
@@ -43,12 +45,6 @@ vi.mock('@crowd/nango', () => ({
   NangoMetadataLastAction: { ADDED: 'ADDED', UPDATED: 'UPDATED', DELETED: 'DELETED' },
   initNangoCloudClient: mocks.initNangoCloudClient,
   getNangoCloudRecords: mocks.getNangoCloudRecords,
-}))
-
-vi.mock('@crowd/slack', () => ({
-  sendSlackNotificationAsync: mocks.sendSlackNotificationAsync,
-  SlackChannel: { CDP_INTEGRATIONS_ALERTS: 'CDP_INTEGRATIONS_ALERTS' },
-  SlackPersona: { WARNING_PROPAGATOR: 'WARNING_PROPAGATOR', ERROR_REPORTER: 'ERROR_REPORTER' },
 }))
 
 const UNIT: {
@@ -131,6 +127,9 @@ describe('runShadowDiffForChannel', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'))
+    mocks.getUnitIdsWithSummary.mockResolvedValue(new Set())
+    mocks.upsertSyncDiffSummary.mockResolvedValue(undefined)
+    mocks.pruneMatchingShadowRecords.mockResolvedValue(0)
   })
 
   afterEach(() => {
@@ -150,28 +149,27 @@ describe('runShadowDiffForChannel', () => {
       channelName: UNIT.channelName,
       integrationId: UNIT.integrationId,
       status: 'mapping_missing',
-      mismatches: [],
-      totalMismatchCount: 0,
     })
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
+    expect(mocks.upsertSyncDiffSummary).not.toHaveBeenCalled()
   })
 
-  it('reports mismatches found between shadow and nango records for the window', async () => {
+  it('persists a diff summary and prunes matching shadow records for the window', async () => {
     mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
     mocks.getShadowRecordsInWindow.mockResolvedValue([
       {
         type: 'issues-comment',
         sourceId: 'issue-1',
-        occurredAt: '2026-09-14T12:00:00.000Z',
+        occurredAt: '2026-09-13T12:00:00.000Z',
         data: { type: 'issues-comment', sourceId: 'issue-1', body: 'shadow body' },
       },
     ])
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
         },
       ],
       nextCursor: undefined,
@@ -183,12 +181,10 @@ describe('runShadowDiffForChannel', () => {
       units: [UNIT],
     })
 
-    expect(result.status).toBe('ok')
-    expect(result.mismatches).toHaveLength(1)
-    expect(result.totalMismatchCount).toBe(1)
-    expect(result.mismatches[0]).toMatchObject({
-      sourceId: 'issue-1',
-      kind: 'field_mismatch',
+    expect(result).toEqual({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      status: 'ok',
     })
     expect(mocks.initNangoCloudClient).toHaveBeenCalled()
     expect(getNangoCloudRecords).toHaveBeenCalledWith(
@@ -197,7 +193,109 @@ describe('runShadowDiffForChannel', () => {
       'GithubIssue',
       undefined,
       undefined,
-      '2026-09-14T00:00:00.000Z',
+      '2026-09-13T00:00:00.000Z',
+    )
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({
+        unitId: UNIT.id,
+        day: '2026-09-13',
+        integrationId: UNIT.integrationId,
+        channelName: UNIT.channelName,
+        missingInNangoCount: 0,
+        missingInShadowCount: 0,
+        fieldMismatchCount: 1,
+        unsupportedSyncCount: 0,
+      }),
+    )
+    expect(mocks.pruneMatchingShadowRecords).toHaveBeenCalledWith(
+      qx,
+      UNIT.id,
+      new Date('2026-09-13T00:00:00.000Z'),
+      new Date('2026-09-14T00:00:00.000Z'),
+      [],
+    )
+  })
+
+  it('prunes only shadow records that were confirmed clean in the snapshot, not concurrently inserted ones', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue([
+      {
+        type: 'issues-comment',
+        sourceId: 'clean-1',
+        occurredAt: '2026-09-13T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: 'clean-1', body: 'same body' },
+      },
+      {
+        type: 'issues-comment',
+        sourceId: 'mismatched-1',
+        occurredAt: '2026-09-13T12:00:00.000Z',
+        data: { type: 'issues-comment', sourceId: 'mismatched-1', body: 'shadow body' },
+      },
+    ])
+    mocks.getNangoCloudRecords.mockResolvedValue({
+      records: [
+        {
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-comment', sourceId: 'clean-1', body: 'same body' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
+        },
+        {
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-comment', sourceId: 'mismatched-1', body: 'nango body' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
+        },
+      ],
+      nextCursor: undefined,
+    })
+
+    await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(mocks.pruneMatchingShadowRecords).toHaveBeenCalledWith(
+      qx,
+      UNIT.id,
+      new Date('2026-09-13T00:00:00.000Z'),
+      new Date('2026-09-14T00:00:00.000Z'),
+      [{ type: 'issues-comment', sourceId: 'clean-1' }],
+    )
+  })
+
+  it('resolves the diff window from an explicit targetDay instead of the previous UTC day', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue([])
+    mocks.getNangoCloudRecords.mockResolvedValue({ records: [], nextCursor: undefined })
+
+    await runShadowDiffForChannel(
+      {
+        channelName: UNIT.channelName,
+        integrationId: UNIT.integrationId,
+        units: [UNIT],
+      },
+      '2026-01-05',
+    )
+
+    expect(getNangoCloudRecords).toHaveBeenCalledWith(
+      'github',
+      'conn-1',
+      'GithubIssue',
+      undefined,
+      undefined,
+      '2026-01-05T00:00:00.000Z',
+    )
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({ unitId: UNIT.id, day: '2026-01-05' }),
+    )
+    expect(mocks.pruneMatchingShadowRecords).toHaveBeenCalledWith(
+      qx,
+      UNIT.id,
+      new Date('2026-01-05T00:00:00.000Z'),
+      new Date('2026-01-06T00:00:00.000Z'),
+      [],
     )
   })
 
@@ -207,9 +305,9 @@ describe('runShadowDiffForChannel', () => {
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z', lastAction: 'DELETED' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z', lastAction: 'DELETED' },
         },
       ],
       nextCursor: undefined,
@@ -222,7 +320,14 @@ describe('runShadowDiffForChannel', () => {
     })
 
     expect(result.status).toBe('ok')
-    expect(result.mismatches).toHaveLength(0)
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({
+        missingInNangoCount: 0,
+        missingInShadowCount: 0,
+        fieldMismatchCount: 0,
+      }),
+    )
   })
 
   it('does not flag missing_in_nango when a nango record was deleted but shadow still has it', async () => {
@@ -231,16 +336,16 @@ describe('runShadowDiffForChannel', () => {
       {
         type: 'issues-comment',
         sourceId: 'issue-1',
-        occurredAt: '2026-09-14T12:00:00.000Z',
+        occurredAt: '2026-09-13T12:00:00.000Z',
         data: { type: 'issues-comment', sourceId: 'issue-1', body: 'shadow body' },
       },
     ])
     mocks.getNangoCloudRecords.mockResolvedValue({
       records: [
         {
-          timestamp: new Date('2026-09-14T12:00:00.000Z').getTime(),
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
           activity: { type: 'issues-comment', sourceId: 'issue-1', body: 'nango body' },
-          metadata: { lastModifiedAt: '2026-09-14T12:00:00.000Z', lastAction: 'DELETED' },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z', lastAction: 'DELETED' },
         },
       ],
       nextCursor: undefined,
@@ -253,30 +358,10 @@ describe('runShadowDiffForChannel', () => {
     })
 
     expect(result.status).toBe('ok')
-    expect(result.mismatches).toHaveLength(0)
-  })
-
-  it('caps reported mismatches at 50 while preserving the true total count', async () => {
-    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
-    mocks.getShadowRecordsInWindow.mockResolvedValue(
-      Array.from({ length: 60 }, (_, i) => ({
-        type: 'issues-comment',
-        sourceId: `issue-${i}`,
-        occurredAt: '2026-09-14T12:00:00.000Z',
-        data: { type: 'issues-comment', sourceId: `issue-${i}` },
-      })),
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({ missingInNangoCount: 0 }),
     )
-    mocks.getNangoCloudRecords.mockResolvedValue({ records: [], nextCursor: undefined })
-
-    const result = await runShadowDiffForChannel({
-      channelName: UNIT.channelName,
-      integrationId: UNIT.integrationId,
-      units: [UNIT],
-    })
-
-    expect(result.status).toBe('ok')
-    expect(result.mismatches).toHaveLength(50)
-    expect(result.totalMismatchCount).toBe(60)
   })
 
   it('flags units with an unrecognized syncName instead of silently reporting a clean diff', async () => {
@@ -289,15 +374,12 @@ describe('runShadowDiffForChannel', () => {
     })
 
     expect(result.status).toBe('ok')
-    expect(result.mismatches).toEqual([
-      {
-        sourceId: UNIT.id,
-        type: 'some-new-unmapped-sync',
-        kind: 'unsupported_sync',
-        severity: 'high',
-      },
-    ])
     expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({ unsupportedSyncCount: 1 }),
+    )
+    expect(mocks.pruneMatchingShadowRecords).not.toHaveBeenCalled()
   })
 
   it('throws when a per-channel fetch fails, so Temporal can retry the activity', async () => {
@@ -312,125 +394,20 @@ describe('runShadowDiffForChannel', () => {
       }),
     ).rejects.toThrow('db exploded')
   })
-})
 
-describe('reportShadowDiffResults', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.sendSlackNotificationAsync.mockResolvedValue(true)
-  })
+  it('skips units that already have a summary for the day, to stay idempotent under Temporal retries', async () => {
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getUnitIdsWithSummary.mockResolvedValue(new Set([UNIT.id]))
 
-  it('sends one Slack alert per channel that has mismatches or an error, and skips healthy channels', async () => {
-    await reportShadowDiffResults([
-      {
-        channelName: 'healthy-repo',
-        integrationId: 'integration-1',
-        status: 'ok',
-        mismatches: [],
-        totalMismatchCount: 0,
-      },
-      {
-        channelName: 'mismatched-repo',
-        integrationId: 'integration-1',
-        status: 'ok',
-        mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
-        totalMismatchCount: 1,
-      },
-      {
-        channelName: 'unmapped-repo',
-        integrationId: 'integration-1',
-        status: 'mapping_missing',
-        mismatches: [],
-        totalMismatchCount: 0,
-      },
-      {
-        channelName: 'broken-repo',
-        integrationId: 'integration-1',
-        status: 'error',
-        mismatches: [],
-        totalMismatchCount: 0,
-        errorMessage: 'boom',
-      },
-    ])
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
 
-    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(3)
-  })
-
-  it('identifies the integration in the alert title so shared repos are distinguishable', async () => {
-    await reportShadowDiffResults([
-      {
-        channelName: 'shared-repo',
-        integrationId: 'integration-1',
-        status: 'mapping_missing',
-        mismatches: [],
-        totalMismatchCount: 0,
-      },
-    ])
-
-    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
-      'CDP_INTEGRATIONS_ALERTS',
-      'WARNING_PROPAGATOR',
-      'Shadow diff: no nango mapping for shared-repo (integration integration-1)',
-      expect.any(String),
-    )
-  })
-
-  it('truncates the Slack title so long channel names cannot exceed the header block limit even with the persona icon prefixed', async () => {
-    const longChannelName = `https://github.com/${'a'.repeat(150)}/${'b'.repeat(150)}`
-
-    await reportShadowDiffResults([
-      {
-        channelName: longChannelName,
-        integrationId: 'integration-1',
-        status: 'mapping_missing',
-        mismatches: [],
-        totalMismatchCount: 0,
-      },
-    ])
-
-    expect(sendSlackNotificationAsync).toHaveBeenCalledTimes(1)
-    const [, , title] = vi.mocked(sendSlackNotificationAsync).mock.calls[0]
-    const SLACK_HEADER_MAX_LENGTH = 150
-    const LONGEST_PERSONA_ICON_PREFIX = ':rotating_light: '
-    expect(title.length + LONGEST_PERSONA_ICON_PREFIX.length).toBeLessThanOrEqual(
-      SLACK_HEADER_MAX_LENGTH,
-    )
-  })
-
-  it('notes how many mismatches were truncated when totalMismatchCount exceeds the reported list', async () => {
-    await reportShadowDiffResults([
-      {
-        channelName: 'noisy-repo',
-        integrationId: 'integration-1',
-        status: 'ok',
-        mismatches: [{ sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' }],
-        totalMismatchCount: 3,
-      },
-    ])
-
-    expect(sendSlackNotificationAsync).toHaveBeenCalledWith(
-      'CDP_INTEGRATIONS_ALERTS',
-      'WARNING_PROPAGATOR',
-      'Shadow diff mismatches for noisy-repo (integration integration-1)',
-      expect.stringContaining('2 more mismatch(es) not shown'),
-    )
-  })
-
-  it('throws when a Slack alert fails to deliver, so Temporal retries instead of silently dropping the alert', async () => {
-    mocks.sendSlackNotificationAsync.mockResolvedValue(false)
-
-    await expect(
-      reportShadowDiffResults([
-        {
-          channelName: 'noisy-repo',
-          integrationId: 'integration-1',
-          status: 'ok',
-          mismatches: [
-            { sourceId: 'a', type: 'issue', kind: 'missing_in_nango', severity: 'high' },
-          ],
-          totalMismatchCount: 1,
-        },
-      ]),
-    ).rejects.toThrow('noisy-repo (integration integration-1)')
+    expect(result.status).toBe('ok')
+    expect(mocks.getShadowRecordsInWindow).not.toHaveBeenCalled()
+    expect(mocks.upsertSyncDiffSummary).not.toHaveBeenCalled()
+    expect(mocks.pruneMatchingShadowRecords).not.toHaveBeenCalled()
   })
 })

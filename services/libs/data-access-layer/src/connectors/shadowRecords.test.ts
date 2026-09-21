@@ -4,7 +4,11 @@ import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
-import { getShadowRecordsInWindow, recordShadowRecords } from './shadowRecords'
+import {
+  getShadowRecordsInWindow,
+  pruneMatchingShadowRecords,
+  recordShadowRecords,
+} from './shadowRecords'
 
 const test = withQx(base)
 
@@ -107,5 +111,133 @@ describe('getShadowRecordsInWindow', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].sourceId).toBe('mine')
+  })
+})
+
+describe('pruneMatchingShadowRecords', () => {
+  test('deletes only the records that match the given delete list', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+
+    await recordShadowRecords(qx, unitId, [
+      { type: 'issue', sourceId: 'matched', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      { type: 'issue', sourceId: 'mismatched', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+    ])
+
+    const deleted = await pruneMatchingShadowRecords(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+      [{ type: 'issue', sourceId: 'matched' }],
+    )
+
+    expect(deleted).toBe(1)
+    const remaining = await getShadowRecordsInWindow(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+    )
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].sourceId).toBe('mismatched')
+  })
+
+  test('deletes nothing when the delete list is empty', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+
+    await recordShadowRecords(qx, unitId, [
+      { type: 'issue', sourceId: 'a', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      { type: 'issue', sourceId: 'b', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+    ])
+
+    const deleted = await pruneMatchingShadowRecords(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+      [],
+    )
+
+    expect(deleted).toBe(0)
+    const remaining = await getShadowRecordsInWindow(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+    )
+    expect(remaining).toHaveLength(2)
+  })
+
+  test('does not delete a matching key that was inserted after the snapshot but outside the window', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+
+    await recordShadowRecords(qx, unitId, [
+      { type: 'issue', sourceId: 'outside', occurredAt: '2026-09-20T00:00:00.000Z', data: {} },
+    ])
+
+    const deleted = await pruneMatchingShadowRecords(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+      [{ type: 'issue', sourceId: 'outside' }],
+    )
+
+    expect(deleted).toBe(0)
+  })
+
+  test('does not delete records belonging to other units even if the key matches', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+    const otherUnitId = await createSyncUnit(qx, integrationId)
+
+    await recordShadowRecords(qx, otherUnitId, [
+      { type: 'issue', sourceId: 'other-unit', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+    ])
+
+    const deleted = await pruneMatchingShadowRecords(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+      [{ type: 'issue', sourceId: 'other-unit' }],
+    )
+
+    expect(deleted).toBe(0)
+  })
+
+  test('does not delete a record inserted concurrently with a matching key that was never in the delete list', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+
+    await recordShadowRecords(qx, unitId, [
+      { type: 'issue', sourceId: 'not-examined', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+    ])
+
+    const deleted = await pruneMatchingShadowRecords(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+      [],
+    )
+
+    expect(deleted).toBe(0)
+    const remaining = await getShadowRecordsInWindow(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+    )
+    expect(remaining).toHaveLength(1)
   })
 })
