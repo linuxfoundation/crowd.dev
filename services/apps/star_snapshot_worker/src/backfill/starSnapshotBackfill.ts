@@ -1,4 +1,10 @@
 import {
+  GithubAuthError,
+  GithubForbiddenError,
+  GithubIpAllowlistError,
+  GithubRepoNotFoundError,
+} from '@crowd/common'
+import {
   getGithubInstallationToken,
   getGithubInstallationTokenExpiration,
 } from '@crowd/common_services'
@@ -25,37 +31,6 @@ const REPO_PAGE_SIZE = 500
 // The current-count fetch happens a moment after the last history page, so a
 // star/unstar landing in between would show up as drift here.
 const RECONCILIATION_TOLERANCE = 2
-
-// Named so recordStarBackfillFailure's errorClass (err.name) can tell these apart downstream -
-// findDeadLetteredStarBackfillFailures excludes GithubRepoNotFoundError/GithubIpAllowlistError
-// by this exact name, since neither is actionable (repo gone / org policy block).
-export class GithubRepoNotFoundError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GithubRepoNotFoundError'
-  }
-}
-
-export class GithubIpAllowlistError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GithubIpAllowlistError'
-  }
-}
-
-export class GithubForbiddenError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GithubForbiddenError'
-  }
-}
-
-export class GithubAuthError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GithubAuthError'
-  }
-}
 
 interface StargazerHistoryWeek {
   week: number
