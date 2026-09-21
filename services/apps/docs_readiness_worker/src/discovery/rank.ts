@@ -14,6 +14,8 @@ const METHOD_BONUS: Partial<Record<IDocCandidate['method'], number>> = {
   'project-website': 1,
 }
 
+const DOMAIN_AFFINITY_BONUS = 5
+
 function pathnameOf(url: string): string {
   try {
     return new URL(url).pathname
@@ -26,16 +28,22 @@ function hasDocsSignal(host: string, pathname: string): boolean {
   return host.startsWith('docs.') || DOCS_KEYWORDS.test(host) || DOCS_KEYWORDS.test(pathname)
 }
 
-export function rankCandidates(candidates: IDocCandidate[]): IDocCandidate | null {
+export function rankCandidates(
+  candidates: IDocCandidate[],
+  projectDomain: string | null = null,
+): IDocCandidate | null {
   const live = candidates.filter((c) => c.livenessOk)
   if (live.length === 0) {
     return null
   }
 
-  const domainCounts: Record<string, number> = {}
+  const domainMethods: Record<string, Set<IDocCandidate['method']>> = {}
   for (const c of live) {
     const domain = normalizedDomain(c.url)
-    domainCounts[domain] = (domainCounts[domain] ?? 0) + 1
+    if (!domainMethods[domain]) {
+      domainMethods[domain] = new Set()
+    }
+    domainMethods[domain].add(c.method)
   }
 
   const scored = live.map((c) => {
@@ -49,10 +57,14 @@ export function rankCandidates(candidates: IDocCandidate[]): IDocCandidate | nul
     if (DOCS_KEYWORDS.test(host)) score += 2
     if (DOCS_KEYWORDS.test(pathname)) score += 2
 
-    score += (domainCounts[domain] - 1) * 3
+    score += (domainMethods[domain].size - 1) * 3
 
     if (!hasDocsSignal(host, pathname)) {
       score -= 2
+    }
+
+    if (projectDomain && (domain === projectDomain || domain?.endsWith(`.${projectDomain}`))) {
+      score += DOMAIN_AFFINITY_BONUS
     }
 
     return { candidate: c, score }

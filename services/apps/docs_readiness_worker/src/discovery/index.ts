@@ -1,5 +1,6 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
+import { normalizedDomain } from './http'
 import { rankCandidates } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
@@ -11,14 +12,14 @@ export interface IDiscoverDocsResult {
 }
 
 function dedupeByUrl(candidates: IDocCandidate[]): IDocCandidate[] {
-  const seen = new Set<string>()
-  return candidates.filter((c) => {
-    if (seen.has(c.url)) {
-      return false
+  const byUrl = new Map<string, IDocCandidate>()
+  for (const c of candidates) {
+    const existing = byUrl.get(c.url)
+    if (!existing || (c.livenessOk && !existing.livenessOk)) {
+      byUrl.set(c.url, c)
     }
-    seen.add(c.url)
-    return true
-  })
+  }
+  return [...byUrl.values()]
 }
 
 async function runStrategies(
@@ -44,7 +45,8 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])
       : baseCandidates
 
-  const winner = rankCandidates(allCandidates)
+  const projectDomain = ctx.website ? normalizedDomain(ctx.website) : null
+  const winner = rankCandidates(allCandidates, projectDomain)
 
   return {
     docsUrl: winner?.url ?? null,

@@ -111,6 +111,37 @@ describe('discoverDocs', () => {
     expect(strategyMocks.serpStrategy).not.toHaveBeenCalled()
   })
 
+  test('prefers a live duplicate over a dead one for the same URL across strategies', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://docs.example.com', 'docs-path', false),
+    ])
+    strategyMocks.serpStrategy.mockResolvedValue([
+      candidate('https://docs.example.com', 'serp', true),
+    ])
+
+    const result = await discoverDocs(ctx('serp-key'))
+
+    expect(result.allCandidates).toHaveLength(1)
+    expect(result.allCandidates[0].livenessOk).toBe(true)
+    expect(result.docsUrl).toBe('https://docs.example.com')
+  })
+
+  test('ranks with the project website domain, favoring it over an unrelated better-shaped domain', async () => {
+    strategyMocks.STRATEGIES.push(
+      async () => [
+        candidate('https://example.com', 'github-homepage', true),
+        candidate('https://example.com/docs', 'readme-scrape', true),
+      ],
+      async () => [
+        candidate('https://docs.unrelated-vendor.com/reference', 'package-manifest', true),
+      ],
+    )
+
+    const result = await discoverDocs(ctx())
+
+    expect(result.docsUrl).toBe('https://example.com/docs')
+  })
+
   test('falls back to serp only when no live candidate exists and a key is set', async () => {
     strategyMocks.STRATEGIES.push(async () => [
       candidate('https://example.com', 'project-website', false),

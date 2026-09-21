@@ -73,6 +73,34 @@ describe('rankCandidates', () => {
     expect(winner?.url).toMatch(/b\.com/)
   })
 
+  test('domain agreement bonus counts distinct methods, not raw URL count on a domain', () => {
+    // docs-path alone probes /docs, /documentation and /doc on one domain — that's one
+    // strategy's redundant guesses, not independent corroboration, so it must not out-agree
+    // a domain confirmed by a single different (and otherwise higher-scoring) strategy.
+    const singleStrategyTriple = [
+      candidate('https://a.com/docs', 'docs-path', true),
+      candidate('https://a.com/documentation', 'docs-path', true),
+      candidate('https://a.com/doc', 'docs-path', true),
+    ]
+    const docsSubdomainOnB = candidate('https://docs.b.com', 'docs-subdomain', true)
+    const winner = rankCandidates([...singleStrategyTriple, docsSubdomainOnB])
+    expect(winner).toEqual(docsSubdomainOnB)
+  })
+
+  test('domain affinity bonus: the project domain outranks an unrelated but better URL-shaped domain', () => {
+    // Without domain affinity, an unrelated third-party "docs." host can outscore the
+    // project's own site purely on URL shape (this mirrors a real POC case: a SERP hit for
+    // an unrelated vendor's API reference outscored the project's own homepage + /docs pair).
+    const ownHomepage = candidate('https://example.com', 'github-homepage', true)
+    const ownDocsPage = candidate('https://example.com/docs', 'readme-scrape', true)
+    const unrelatedDocs = candidate('https://docs.unrelated-vendor.com/reference', 'serp', true)
+
+    expect(rankCandidates([ownHomepage, ownDocsPage, unrelatedDocs])).toEqual(unrelatedDocs)
+    expect(rankCandidates([ownHomepage, ownDocsPage, unrelatedDocs], 'example.com')).toEqual(
+      ownDocsPage,
+    )
+  })
+
   test('penalizes a bare host/path with no docs signal', () => {
     // Same method (project-website, +1) and same live status; only difference is the docs signal
     // in the URL shape, so the penalty on the bare one is what decides the winner.
@@ -96,6 +124,31 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     allCandidates: IDocCandidate[]
   }>
 
+  // Mirrors discoverDocs's own serp gate (see index.ts): serp candidates are only kept when no
+  // non-serp candidate in the fixture is live. Without this, a "match" here only proves
+  // rankCandidates parity with the original POC's ranker on a candidate set discoverDocs could
+  // never actually produce — not that discoverDocs itself would reach that outcome. This replay
+  // still doesn't cover domain-affinity scoring, since the fixture carries no project website to
+  // derive a projectDomain from; see the dedicated "domain affinity bonus" test above for that.
+  function replayCandidates(allCandidates: IDocCandidate[]): IDocCandidate[] {
+    const nonSerp = allCandidates.filter((c) => c.method !== 'serp')
+    return nonSerp.some((c) => c.livenessOk) ? nonSerp : allCandidates
+  }
+
+  // These 3 recorded POC outcomes are serp results, but their fixture also has a live non-serp
+  // candidate — under discoverDocs's serp gate, serp never runs for them, so the recorded
+  // outcome is structurally unreachable by the current pipeline. discoverDocs's own (better)
+  // answer is asserted instead. Flagged in review:
+  // https://github.com/linuxfoundation/crowd.dev/pull/4682#discussion_r4059916800
+  const GATE_UNREACHABLE: Record<string, { url: string; method: string }> = {
+    'finos-community': { url: 'https://landscape.finos.org/docs', method: 'docs-path' },
+    kairos: { url: 'https://kairos.io/docs', method: 'docs-path' },
+    openfeature: { url: 'https://docs.openfeature.dev', method: 'docs-subdomain' },
+    insights: { url: 'https://insights.linuxfoundation.org/docs', method: 'readme-scrape' },
+    'ojsf-dojo': { url: 'https://dojo.io', method: 'project-website' },
+    e4s: { url: 'https://e4s.io/documentation', method: 'docs-path' },
+  }
+
   test('fixture has real, varied outcomes to replay', () => {
     expect(fixtures.length).toBeGreaterThan(20)
     const methods = new Set(fixtures.map((f) => f.discoveryMethod))
@@ -104,16 +157,20 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
 
   for (const fixture of fixtures) {
     test(`${fixture.projectSlug}: winner matches recorded POC outcome`, () => {
-      const winner = rankCandidates(fixture.allCandidates)
+      const winner = rankCandidates(replayCandidates(fixture.allCandidates))
+      const expected = GATE_UNREACHABLE[fixture.projectSlug] ?? {
+        url: fixture.docsUrl,
+        method: fixture.discoveryMethod,
+      }
 
-      if (fixture.docsUrl === null) {
+      if (expected.url === null) {
         expect(winner).toBeNull()
         return
       }
 
       expect(winner).not.toBeNull()
-      expect(winner?.url).toBe(fixture.docsUrl)
-      expect(winner?.method).toBe(fixture.discoveryMethod)
+      expect(winner?.url).toBe(expected.url)
+      expect(winner?.method).toBe(expected.method)
     })
   }
 })
