@@ -13,7 +13,6 @@
     "recalculate-enrichment-affiliations": "tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "tsx src/bin/recalculate-all-affiliations.ts",
     "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts",
-    "lint": "eslint --ext .ts src --max-warnings=0",
     "format": "prettier --write \"src/**/*.ts\"",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
@@ -40,7 +39,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "nodemon": "^3.0.1",
-    "eslint": "catalog:",
     "prettier": "catalog:"
   }
 }

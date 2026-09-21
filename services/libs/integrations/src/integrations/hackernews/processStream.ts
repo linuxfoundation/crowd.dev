@@ -44,11 +44,10 @@ const processMainStream: ProcessStreamHandler = async (ctx) => {
       await ctx.publishStream<HackerNewsMainStreamMetadata>(`${HackerNewsStreamType.MAIN}:${kid}`, {
         postId: kid,
         channel: metadata.channel,
-        ...((!post.parent && {
+        ...(!post.parent && {
           parentId: post.id.toString(),
           parentTitle: post.title || post.text,
-        }) ||
-          {}),
+        }),
       })
     }
   }

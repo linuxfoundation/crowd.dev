@@ -337,7 +337,7 @@ export default class IntegrationService {
           if (integration.segmentId) {
             segmentId = integration.segmentId
           }
-        } catch (err) {
+        } catch {
           throw new Error404()
         }
         // remove github/gitlab/gerrit remotes from git integration
@@ -1007,7 +1007,7 @@ export default class IntegrationService {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
           isGitintegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitintegrationConfigured = false
         }
 
@@ -1875,7 +1875,7 @@ export default class IntegrationService {
         try {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
           isGitIntegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitIntegrationConfigured = false
         }
 
@@ -1968,7 +1968,7 @@ export default class IntegrationService {
         acc[segmentId] = { remotes, integrationId: id }
         return acc
       }, {})
-    } catch (err) {
+    } catch {
       throw new Error400(this.options.language, 'errors.git.noIntegration')
     }
   }
@@ -2962,7 +2962,7 @@ export default class IntegrationService {
             await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
             isGitintegrationConfigured = true
-          } catch (err) {
+          } catch {
             isGitintegrationConfigured = false
           }
 

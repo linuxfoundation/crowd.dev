@@ -26,7 +26,7 @@ async function tryChannel(
       return result.limit
     }
     return false
-  } catch (err) {
+  } catch {
     return false
   }
 }

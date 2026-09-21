@@ -233,7 +233,7 @@ async function cleanupFiles(repoName: string): Promise<void> {
     )
 
     svc.log.info(`Cleaned generated files for repo: ${repoName}`)
-  } catch (err) {
+  } catch {
     svc.log.error(`Failed to clean generated files for repo: ${repoName}`)
     throw new Error(`Failed to clean generated files for repo: ${repoName}`)
   }

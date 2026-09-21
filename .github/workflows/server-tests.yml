@@ -9,6 +9,7 @@ on:
       - '.gitignore'
       - '.editorconfig'
       - '**/.eslintrc*'
+      - '.oxlintrc.json'
       - '.prettierrc'
       - '.prettierignore'
       - 'LICENSE'

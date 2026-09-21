@@ -11,7 +11,6 @@
     "build": "tsc && cp package*json dist/ && cp .sequelizerc dist/.sequelizerc ",
     "sequelize-cli:source": "pnpm run build && sequelize --config src/database/sequelize-cli-config.ts --migrations-source-path src/database/migrations",
     "sequelize-cli:build": "sequelize --config database/sequelize-cli-config.js --migrations-compiled-path database/migrations",
-    "lint": "eslint .",
     "format": "prettier --write .",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
@@ -43,7 +42,6 @@
   },
   "lint-staged": {
     "**/*.ts": [
-      "eslint",
       "prettier --write"
     ]
   },
@@ -151,16 +149,9 @@
     "@types/sanitize-html": "^2.6.2",
     "@types/superagent": "^4.1.15",
     "@types/uuid": "^9.0.2",
-    "@typescript-eslint/eslint-plugin": "^5.17.0",
-    "@typescript-eslint/parser": "^5.17.0",
     "copyfiles": "2.4.1",
     "cross-env": "7.0.2",
     "deep-object-diff": "^1.1.9",
-    "eslint": "catalog:",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-airbnb-typescript": "^16.1.4",
-    "eslint-config-prettier": "^8.5.0",
-    "eslint-plugin-import": "^2.25.4",
     "lint-staged": "^15.4.3",
     "nodemon": "2.0.4",
     "prettier": "catalog:",

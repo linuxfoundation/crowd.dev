@@ -80,7 +80,7 @@ Flag if any of these protected infrastructure files were modified — they requi
 - `scripts/cli`, `scripts/scaffold.yaml`
 - `.husky/*`, `commitlint.config.js`
 - `.github/workflows/**`, `.github/actions/**`
-- `tsconfig*.json`, `.eslintrc*`, `.prettierrc*`
+- `tsconfig*.json`, `.oxlintrc*`, `.eslintrc*`, `.prettierrc*`
 - `pnpm-lock.yaml`, `package.json`, `*/package.json`
 - `CLAUDE.md`, `.claude/settings.json`
 

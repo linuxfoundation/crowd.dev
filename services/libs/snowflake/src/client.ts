@@ -88,7 +88,7 @@ export class SnowflakeClient {
           format: 'pem',
           type: 'pkcs8',
         })
-      } catch (err) {
+      } catch {
         throw new Error('Invalid private key format')
       }
 

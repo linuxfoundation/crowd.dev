@@ -78,7 +78,6 @@
     "monitor:osspckgs:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
     "dedup-package-deps": "SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
     "dedup-package-deps:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
-    "lint": "eslint --ext .ts src --max-warnings=0",
     "format": "prettier --write \"src/**/*.ts\"",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
@@ -122,7 +121,6 @@
     "@types/unzipper": "^0.10.10",
     "nodemon": "^3.0.1",
     "vitest": "^3.2.4",
-    "eslint": "catalog:",
     "prettier": "catalog:"
   }
 }

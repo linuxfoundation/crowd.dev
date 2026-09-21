@@ -106,8 +106,12 @@ describe('getRepoHomepage', () => {
     expect(await getRepoHomepage('torvalds', 'linux', 'token123')).toBe('https://example.com')
 
     const [, init] = fetchMock.mock.calls[0]
-    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer token123')
-    expect((init?.headers as Record<string, string>)['X-GitHub-Api-Version']).toBe('2022-11-28')
+    expect(init?.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer token123',
+        'X-GitHub-Api-Version': '2022-11-28',
+      }),
+    )
   })
 
   it('returns null on a non-ok status', async () => {

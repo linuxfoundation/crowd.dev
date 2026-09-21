@@ -403,7 +403,7 @@ export async function fetchActivityRelationsDuplicateGroups(
     )
     SELECT * FROM grouped_activity_relations LIMIT $(limit);
     `,
-    { limit, ...(cursor || {}) },
+    { limit, ...cursor },
   )
 }
 

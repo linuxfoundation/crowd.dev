@@ -84,6 +84,8 @@ case "$FILE_PATH" in
     warn "TypeScript configuration — changes affect compilation across the monorepo." ;;
   .eslintrc*|*/.eslintrc*|eslint.config*|*/eslint.config*)
     warn "ESLint configuration — changes affect code quality rules for the project." ;;
+  .oxlintrc*|oxlint.config.*)
+    warn "Oxlint configuration — changes affect code quality rules for the project." ;;
   .prettierrc*|*/.prettierrc*)
     warn "Prettier configuration — changes affect code formatting standards." ;;
 esac

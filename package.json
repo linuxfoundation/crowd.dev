@@ -5,6 +5,7 @@
   },
   "scripts": {
     "prepare": "husky",
+    "lint": "oxlint .",
     "test": "vitest run",
     "test:server": "vitest run --project server",
     "test:changed": "vitest --changed",
@@ -14,6 +15,7 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
     "husky": "^9.1.7",
+    "oxlint": "catalog:",
     "vite": "6.3.5",
     "vitest": "4.1.7"
   },

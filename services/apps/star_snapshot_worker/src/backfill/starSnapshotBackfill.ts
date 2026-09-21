@@ -331,7 +331,7 @@ function buildForwardCounts(daily: DailyDelta[]): DailyCount[] {
 // Fallback when forward-summed deltas don't reconcile: anchor the most recent day to
 // the known-good total and walk backward, undoing each day's delta.
 function buildBackwardCounts(daily: DailyDelta[], knownCurrentTotal: number): DailyCount[] {
-  const counts = new Array<number>(daily.length)
+  const counts = Array.from({ length: daily.length }) as number[]
   let running = knownCurrentTotal
   for (let i = daily.length - 1; i >= 0; i--) {
     counts[i] = running

@@ -78,7 +78,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
 
   try {
     dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
-  } catch (error) {
+  } catch {
     throw new BadRequestError('Invalid work experience date range')
   }
 

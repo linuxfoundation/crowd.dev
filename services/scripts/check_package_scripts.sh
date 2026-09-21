@@ -10,7 +10,7 @@ if ! command -v jq &>/dev/null; then
   exit 1
 fi
 
-REQUIRED_SCRIPTS=("lint" "format-check" "tsc-check")
+REQUIRED_SCRIPTS=("format-check" "tsc-check")
 FAILED=0
 
 check_pkg_json () {

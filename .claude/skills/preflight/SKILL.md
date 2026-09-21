@@ -49,7 +49,7 @@ Note whether `backend/`, `services/**`, `frontend/`, `pnpm-lock.yaml`, and/or `p
 
 ## Check 2–4: Lint, Format, TypeScript
 
-**Backend + services** — one command covers lint, format-check, and tsc-check, with dependency-graph-aware fan-out (packages that depend on a changed lib are checked too) and automatic fallback to a full workspace check when shared config (eslint/prettier/tsconfig base, lockfile, workspace yaml) changed:
+**Backend + services** — one command covers lint (root `pnpm lint` / oxlint), format-check, and tsc-check. Format and tsc use dependency-graph-aware fan-out (packages that depend on a changed lib are checked too) and fall back to a full workspace check when shared config (prettier/tsconfig base, lockfile, workspace yaml) changed:
 
 ```bash
 ./scripts/cli lint-changed
@@ -88,7 +88,7 @@ Flag any changes to these protected files — they should NOT be modified withou
 - `scripts/cli`, `scripts/scaffold.yaml`, `scripts/scaffold.insights.yaml`
 - `.husky/*`, `commitlint.config.js`
 - `.github/workflows/**`, `.github/actions/**`
-- `tsconfig*.json`, `.eslintrc*`, `.prettierrc*`
+- `tsconfig*.json`, `.oxlintrc*`, `.eslintrc*`, `.prettierrc*`
 - `pnpm-lock.yaml`, `package.json`, `*/package.json`
 - `CLAUDE.md`, `.claude/settings.json`
 

@@ -124,7 +124,7 @@ export class RedisSemaphore {
       if (typeof parsed === 'number') {
         return this.migrateLegacyState(parsed)
       }
-    } catch (error) {
+    } catch {
       // If JSON parsing fails, it might be a plain integer string (old format)
       const legacyCount = parseInt(stateJson, 10)
       if (!isNaN(legacyCount) && legacyCount > 0) {

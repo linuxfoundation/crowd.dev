@@ -9,7 +9,6 @@
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "trigger-job:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=cron-service tsx src/worker.ts",
     "trigger-job": "SERVICE=cron-service tsx src/worker.ts",
-    "lint": "eslint --ext .ts src --max-warnings=0",
     "format": "prettier --write \"src/**/*.ts\"",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
@@ -40,7 +39,6 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "catalog:",
     "nodemon": "^3.0.1",
-    "eslint": "catalog:",
     "prettier": "catalog:"
   }
 }

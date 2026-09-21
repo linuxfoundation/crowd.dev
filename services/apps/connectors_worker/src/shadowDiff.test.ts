@@ -80,9 +80,9 @@ describe('diffShadowAgainstNango', () => {
     expect(result).toHaveLength(1)
     const field = result[0].fields?.[0]
     expect(field?.field).toBe('body')
-    expect((field?.shadowValue as string).length).toBeLessThan(hugeShadowBody.length)
+    expect((field?.shadowValue as string | undefined)?.length).toBeLessThan(hugeShadowBody.length)
     expect(field?.shadowValue).toContain('[truncated]')
-    expect((field?.nangoValue as string).length).toBeLessThan(hugeNangoBody.length)
+    expect((field?.nangoValue as string | undefined)?.length).toBeLessThan(hugeNangoBody.length)
     expect(field?.nangoValue).toContain('[truncated]')
   })
 

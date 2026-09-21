@@ -3,7 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
     "format": "prettier --write \"src/**/*.ts\"",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
@@ -13,7 +12,6 @@
     "@types/node": "catalog:",
     "@types/sanitize-html": "^2.9.0",
     "typescript": "catalog:",
-    "eslint": "catalog:",
     "prettier": "catalog:"
   },
   "dependencies": {

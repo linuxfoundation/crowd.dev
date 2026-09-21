@@ -43,7 +43,7 @@ const spawnJob = async (job: IJobDefinition) => {
         if (!child.killed) {
           child.kill('SIGKILL')
         }
-      } catch (killErr) {
+      } catch {
         // we can ignore this since we most likely were killing a dying child process
         // log.error(killErr, 'Error while killing a child process!')
       }
@@ -81,7 +81,7 @@ const spawnJob = async (job: IJobDefinition) => {
             `Job running for ${diff} seconds - current usage: CPU: ${data.cpu}%, RAM: ${data.memory}MB`,
           )
         }
-      } catch (err) {
+      } catch {
         // do nothing
       }
     }, 5000)

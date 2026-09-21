@@ -256,13 +256,16 @@ region=${deployInput.oracle.region}
       switch (deployInput.cloudEnvironment) {
         case CloudEnvironment.PRODUCTION: {
           servicesToUpdate.push(
-            ...[`${service}-system`, `${service}-normal`, `${service}-high`, `${service}-urgent`],
+            `${service}-system`,
+            `${service}-normal`,
+            `${service}-high`,
+            `${service}-urgent`,
           )
           break
         }
         case CloudEnvironment.LF_ORACLE_PRODUCTION:
         case CloudEnvironment.LF_PRODUCTION: {
-          servicesToUpdate.push(...[`${service}-system`, `${service}-normal`, `${service}-high`])
+          servicesToUpdate.push(`${service}-system`, `${service}-normal`, `${service}-high`)
           break
         }
 

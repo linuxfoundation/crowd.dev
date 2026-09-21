@@ -7,7 +7,6 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=connectors SERVICE=connectors-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9243 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",

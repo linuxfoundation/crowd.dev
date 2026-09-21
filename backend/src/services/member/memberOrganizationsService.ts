@@ -116,9 +116,9 @@ export default class MemberOrganizationsService extends LoggerBase {
         const resolvedOverrides = relatedOverrides.filter((override) => !!override)
 
         // Merge override flags from rows that are displayed as one work experience
-        const allowAffiliation =
-          resolvedOverrides.length === 0 ||
-          resolvedOverrides.every((override) => override.allowAffiliation !== false)
+        const allowAffiliation = resolvedOverrides.every(
+          (override) => override.allowAffiliation !== false,
+        )
 
         const isPrimaryWorkExperience = resolvedOverrides.some(
           (override) => override.isPrimaryWorkExperience,

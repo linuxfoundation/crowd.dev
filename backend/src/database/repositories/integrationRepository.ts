@@ -254,7 +254,7 @@ class IntegrationRepository {
    * @returns The integration object
    */
   // TODO: Test
-  static async findByIdentifier(identifier: string, platform: string): Promise<Array<Object>> {
+  static async findByIdentifier(identifier: string, platform: string): Promise<Array<object>> {
     const options = await SequelizeRepository.getDefaultIRepositoryOptions()
 
     const record = await options.database.integration.findOne({

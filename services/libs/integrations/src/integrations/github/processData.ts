@@ -1114,7 +1114,7 @@ const parseWebhookPullRequestReview = async (ctx: IProcessDataContext) => {
       body,
       score: scoreGrid.score,
       attributes: {
-        reviewState: (payload.review?.state as string).toUpperCase(),
+        reviewState: payload.review.state.toUpperCase(),
         state: pull.state,
         authorAssociation: pull.author_association,
         labels: pull.labels.map((l) => l.name),

@@ -528,7 +528,7 @@ async function main() {
   const resolvedPath = path.resolve(csvFilePath)
   try {
     fs.accessSync(resolvedPath, fs.constants.F_OK)
-  } catch (error) {
+  } catch {
     log.error(`Error: CSV file not found at path: ${resolvedPath}`)
     process.exit(1)
   }

@@ -8,7 +8,6 @@
     "./faker": "./src/faker.ts"
   },
   "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
     "format": "prettier --write \"src/**/*.ts\"",
     "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
@@ -26,7 +25,6 @@
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "4.1.7",
-    "eslint": "catalog:",
     "prettier": "catalog:"
   }
 }

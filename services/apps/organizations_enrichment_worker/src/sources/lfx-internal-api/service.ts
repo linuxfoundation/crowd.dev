@@ -216,7 +216,7 @@ export default class EnrichmentServiceLFXInternalAPI
           max: Math.round(value * 1.2),
         }
       }
-    } catch (err) {
+    } catch {
       this.log.warn({ revenue }, 'Failed to parse revenue')
       return null
     }
