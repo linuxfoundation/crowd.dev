@@ -86,6 +86,22 @@ describe('probe', () => {
       contentType: '',
     })
   })
+
+  it('cancels the response body after reading metadata', async () => {
+    const response = new Response('<html></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })
+    const cancel = vi.spyOn(response.body as ReadableStream, 'cancel')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(response)),
+    )
+
+    await probe('https://example.com/')
+
+    expect(cancel).toHaveBeenCalledOnce()
+  })
 })
 
 describe('isLiveDocs', () => {
@@ -95,6 +111,21 @@ describe('isLiveDocs', () => {
       jsonRouter({
         'https://example.com': () =>
           new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+      }),
+    )
+
+    expect(await isLiveDocs('https://example.com')).toBe(true)
+  })
+
+  it('is true for a differently-cased content type', async () => {
+    vi.stubGlobal(
+      'fetch',
+      jsonRouter({
+        'https://example.com': () =>
+          new Response('<html></html>', {
+            status: 200,
+            headers: { 'content-type': 'Text/HTML; charset=UTF-8' },
+          }),
       }),
     )
 
@@ -174,6 +205,8 @@ describe('isPrivateOrLoopbackHost', () => {
     ['foo.localhost', 'localhost subdomain'],
     ['myservice.internal', 'internal-suffixed hostname'],
     ['myservice.local', 'local-suffixed hostname'],
+    ['myservice.internal.', 'trailing-dot internal-suffixed hostname'],
+    ['metadata', 'unqualified single-label hostname'],
   ])('is true for %s (%s)', (host) => {
     expect(isPrivateOrLoopbackHost(host)).toBe(true)
   })
@@ -274,6 +307,24 @@ describe('probe SSRF guard', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await probe('http://[::ffff:127.0.0.1]/')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never calls fetch for a trailing-dot private-suffix hostname', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('http://service.internal./')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never calls fetch for an unqualified single-label hostname', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('http://metadata/latest/meta-data/')
 
     expect(fetchMock).not.toHaveBeenCalled()
   })

@@ -31,7 +31,9 @@ export interface IShadowRecord {
 export type SyncUnitUpsert = Pick<
   ISyncUnit,
   'integrationId' | 'platform' | 'channelId' | 'channelName' | 'syncName'
->
+> & {
+  watermark?: Record<string, unknown> | null
+}
 
 export type IClaimedUnit = Pick<
   ISyncUnit,
