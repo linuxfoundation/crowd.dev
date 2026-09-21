@@ -1,6 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
-
 import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,

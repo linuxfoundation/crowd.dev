@@ -5,13 +5,20 @@ permissions:
 on:
   pull_request:
     paths:
-      - 'backend/**'
-      - 'services/**'
-      - '.github/actions/node/**'
-      - '.oxlintrc.json'
-      - 'package.json'
-      - 'pnpm-workspace.yaml'
-      - 'pnpm-lock.yaml'
+      - "backend/**"
+      - "services/**"
+      - ".github/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".claude/**"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "**/*.md"
+      - "vitest.config.ts"
+      - "commitlint.config.js"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -34,8 +41,8 @@ jobs:
         id: shared_config
         run: |
           if git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.sha }} \
-            | grep -qE '^(services/\.prettierrc\.cjs|services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
-            echo "Shared config changed (prettier/tsconfig base, lockfile or catalog) — falling back to full workspace checks"
+            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
+            echo "Shared config changed (tsconfig base, lockfile or catalog) — falling back to full workspace tsc-check"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -50,13 +57,8 @@ jobs:
       - name: Check linting
         run: pnpm lint
 
-      - name: Check formatting (changed packages + dependents)
-        run: |
-          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
-            pnpm -r --if-present run format-check
-          else
-            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present run format-check
-          fi
+      - name: Check formatting
+        run: pnpm format-check
 
       - name: Check typescript (changed packages + dependents)
         run: |

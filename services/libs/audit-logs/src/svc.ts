@@ -6,7 +6,6 @@ import {
 } from '@crowd/data-access-layer'
 
 import { IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
-
 import { BuildActionFn } from './baseActions'
 
 export function buildAuditLogOptions(

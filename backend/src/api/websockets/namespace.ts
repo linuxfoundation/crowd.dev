@@ -7,7 +7,6 @@ import { databaseInit } from '../../database/databaseConnection'
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 import TenantUserRepository from '../../database/repositories/tenantUserRepository'
 import AuthService from '../../services/auth/authService'
-
 import { IAuthenticatedSocket, ISocket, ISocketHandler } from './types'
 
 const logger = getServiceChildLogger('websockets/namespaces')

@@ -9,7 +9,6 @@ import type { VersionDependencyEdge } from '@crowd/data-access-layer/src/package
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
-
 import {
   buildPackagistVersionRows,
   extractVersionDependencies,

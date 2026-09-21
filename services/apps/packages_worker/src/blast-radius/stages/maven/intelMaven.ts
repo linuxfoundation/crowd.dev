@@ -24,7 +24,6 @@ import {
 } from '../../clients/osvClient'
 import { toBareMavenCoordinate } from '../../packageIdentifier'
 import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
-
 import { highestVersion, mavenRangeEvents, versionsInRanges } from './mavenVersions'
 
 // OSV spells the Maven ecosystem 'Maven' (capital), unlike our DB's lowercase 'maven' —

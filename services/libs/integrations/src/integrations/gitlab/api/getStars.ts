@@ -3,7 +3,6 @@ import { Gitlab, ProjectStarrerSchema } from '@gitbeaker/rest'
 import { IProcessStreamContext } from '../../../types'
 import { GitlabApiResult, GitlabStarData } from '../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 import { getUser } from './getUser'
 

@@ -2,7 +2,6 @@ import axios from 'axios'
 
 import { IProcessStreamContext } from '../../../types'
 import { DiscordApiMember, DiscordGetMembersInput, DiscordGetMembersOutput } from '../types'
-
 import { handleDiscordError } from './errorHandler'
 import { retryWrapper } from './handleRateLimit'
 

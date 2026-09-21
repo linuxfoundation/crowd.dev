@@ -1,7 +1,6 @@
 import { PageData } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbMemberBotSuggestionBySegment, IDbMemberBotSuggestionInsert } from './types'
 
 export async function insertMemberBotSuggestion(

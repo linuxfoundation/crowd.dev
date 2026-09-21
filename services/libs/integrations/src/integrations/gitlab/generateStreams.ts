@@ -1,5 +1,4 @@
 import { GenerateStreamsHandler } from '../../types'
-
 import { GitLabSettings, GitlabRootStream, GitlabStreamType } from './types'
 
 const handler: GenerateStreamsHandler = async (ctx) => {

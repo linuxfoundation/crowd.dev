@@ -1,3 +1,5 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getDataSinkWorkerEmitter } from '@/serverless/utils/queueService'
 import { queryActivities } from '@crowd/data-access-layer'
 import {
   getSegmentSubprojectIds,
@@ -6,15 +8,11 @@ import {
 import { LoggerBase } from '@crowd/logging'
 import { IMemberIdentity, IntegrationResultType } from '@crowd/types'
 
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getDataSinkWorkerEmitter } from '@/serverless/utils/queueService'
-
 import ActivityRepository from '../database/repositories/activityRepository'
 import {
   UsernameIdentities,
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
-
 import { IServiceOptions } from './IServiceOptions'
 import SegmentService from './segmentService'
 

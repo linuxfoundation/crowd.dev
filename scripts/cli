@@ -879,14 +879,14 @@ function install_libs() {
 }
 
 function lint_backend() {
-    (cd $CLI_HOME/.. && pnpm lint && cd backend && pnpm run format-check && pnpm run tsc-check)
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && cd backend && pnpm run tsc-check)
 }
 
 function lint_services() {
     (cd $CLI_HOME/.. && \
         ./services/scripts/check_package_scripts.sh && \
         pnpm lint && \
-        pnpm --filter="./services/**" --if-present run format-check && \
+        pnpm format-check && \
         pnpm --filter="./services/**" --if-present --workspace-concurrency=4 run tsc-check)
 }
 
@@ -916,23 +916,21 @@ function lint_changed() {
         ./services/scripts/check_package_scripts.sh && \
         say "Checking lint" && \
         pnpm lint && \
+        say "Checking format" && \
+        pnpm format-check && \
         if git diff --name-only "$(git merge-base origin/main HEAD)" \
-            | grep -qE '^(services/\.prettierrc\.cjs|services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
-            yell "Shared config changed (prettier/tsconfig base, lockfile or catalog) - falling back to full workspace checks" && \
-            say "Checking format for entire workspace" && \
-            pnpm -r --if-present run format-check && \
+            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
+            yell "Shared config changed (tsconfig base, lockfile or catalog) - falling back to full workspace tsc-check" && \
             say "Checking typescript for entire workspace" && \
             pnpm -r --if-present --workspace-concurrency=4 run tsc-check
         else
             local root packages_all changed_packages && \
             root="$(pwd)" && \
             packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
-            changed_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" format-check)" && \
+            changed_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
             if [[ -z "$changed_packages" ]]; then
-                whisper "Skipping format and typescript - no relevant packages changed"
+                whisper "Skipping typescript - no relevant packages changed"
             else
-                _lint_changed_run "format" "$changed_packages" \
-                    pnpm --filter="...[origin/main]" --if-present run format-check && \
                 _lint_changed_run "typescript" "$changed_packages" \
                     pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
             fi

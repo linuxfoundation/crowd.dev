@@ -2,7 +2,6 @@ import { GITHUB_GRID, GithubActivityType } from '@crowd/integrations'
 
 import type { IssueCommentNode, IssueNode } from '../graphql/issues'
 import type { GithubActivity } from '../schemas'
-
 import { toMember } from './member'
 
 export function toIssueComment(comment: IssueCommentNode, issue: IssueNode): GithubActivity {

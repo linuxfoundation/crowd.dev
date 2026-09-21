@@ -1,10 +1,9 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { Error400 } from '@crowd/common'
 import {
   fetchMemberBotSuggestionsBySegment,
   fetchMemberProfile,
 } from '@crowd/data-access-layer/src/members'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'

@@ -6,7 +6,6 @@ import {
 } from '@crowd/common'
 
 import { CrowdQueue } from '../../types'
-
 import { IKafkaChannelConfig } from './types'
 
 export const INTEGRATION_RUN_WORKER_QUEUE_SETTINGS: IKafkaChannelConfig = {

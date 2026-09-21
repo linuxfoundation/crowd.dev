@@ -12,7 +12,6 @@ import {
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
-
 import { fetchOwners, fetchVersions } from './client'
 import {
   normalizeRubyGemsOwners,

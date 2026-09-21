@@ -1,5 +1,6 @@
 import commandLineArgs from 'command-line-args'
 
+import { DB_CONFIG, REDIS_CONFIG } from '@/conf'
 import { inferMemberOrganizationStintChanges } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
@@ -17,8 +18,6 @@ import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggesti
 import { getServiceLogger } from '@crowd/logging'
 import { getRedisClient } from '@crowd/redis'
 import { OrganizationSource } from '@crowd/types'
-
-import { DB_CONFIG, REDIS_CONFIG } from '@/conf'
 
 const log = getServiceLogger()
 

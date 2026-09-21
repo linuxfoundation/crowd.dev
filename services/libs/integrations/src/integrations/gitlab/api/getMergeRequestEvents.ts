@@ -3,7 +3,6 @@ import { DiscussionNoteSchema, DiscussionSchema, Gitlab, OffsetPagination } from
 import { IProcessStreamContext } from '../../../types'
 import { GitlabApiResult, GitlabDisccusionCommentData } from '../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 import { getUser } from './getUser'
 

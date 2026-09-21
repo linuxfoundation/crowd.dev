@@ -1,8 +1,7 @@
 import { QueryTypes } from 'sequelize'
 
-import { getServiceLogger } from '@crowd/logging'
-
 import SegmentRepository from '@/database/repositories/segmentRepository'
+import { getServiceLogger } from '@crowd/logging'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 import OrganizationService from '../../services/organizationService'

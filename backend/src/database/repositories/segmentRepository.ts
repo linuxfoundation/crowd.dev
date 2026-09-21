@@ -29,9 +29,8 @@ import {
 } from '@crowd/types'
 
 import removeFieldsFromObject from '../../utils/getObjectWithoutKey'
-
-import { IRepositoryOptions } from './IRepositoryOptions'
 import IntegrationRepository from './integrationRepository'
+import { IRepositoryOptions } from './IRepositoryOptions'
 import { RepositoryBase } from './repositoryBase'
 import SequelizeRepository from './sequelizeRepository'
 

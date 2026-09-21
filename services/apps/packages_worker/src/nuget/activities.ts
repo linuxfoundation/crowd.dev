@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getNuGetConfig } from '../config'
 import { getPackagesDb } from '../db'
-
 import { processBatch } from './runNuGetEnrichmentLoop'
 import { BatchResult } from './types'
 

@@ -5,7 +5,6 @@ import { PlatformType } from '@crowd/types'
 
 import { ILinkedInOrganization } from '../../types/linkedinTypes'
 import getToken from '../nango/getToken'
-
 import { handleLinkedinError } from './errorHandler'
 
 export const getOrganizations = async (

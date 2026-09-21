@@ -6,7 +6,6 @@ import { generateUUIDv4 as uuid } from '@crowd/common'
 
 import { IRepositoryOptions } from '../IRepositoryOptions'
 import SequelizeRepository from '../sequelizeRepository'
-
 import { ManyToManyType, QueryInput } from './queryTypes'
 
 const { Op } = Sequelize

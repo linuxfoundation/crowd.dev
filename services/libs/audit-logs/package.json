@@ -3,8 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -13,7 +11,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "prettier": "catalog:"
+    "typescript": "catalog:"
   }
 }

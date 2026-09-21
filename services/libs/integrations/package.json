@@ -3,16 +3,7 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/he": "^1.2.0",
-    "@types/node": "catalog:",
-    "@types/sanitize-html": "^2.9.0",
-    "typescript": "catalog:",
-    "prettier": "catalog:"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -29,5 +20,11 @@
     "lodash.merge": "^4.6.2",
     "sanitize-html": "^2.10.0",
     "verify-github-webhook": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/he": "^1.2.0",
+    "@types/node": "catalog:",
+    "@types/sanitize-html": "^2.9.0",
+    "typescript": "catalog:"
   }
 }
