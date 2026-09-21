@@ -52,7 +52,7 @@ Description: ${metrics.description ?? 'none'}
 Primary language: ${metrics.primaryLanguage ?? 'unknown'}
 Created: ${metrics.createdAt}, last pushed: ${metrics.pushedAt ?? 'unknown'}
 Stars: ${metrics.stars}, forks: ${metrics.forks}
-Open/closed issues: ${metrics.openIssues}/${metrics.closedIssues}${metrics.hasIssuesEnabled ? '' : ' (GitHub Issues is disabled on this repo — this is always 0/0 regardless of activity, ignore it)'}
+Open/closed issues: ${metrics.openIssues}/${metrics.closedIssues}${metrics.hasIssuesEnabled ? '' : ' (GitHub Issues is disabled on this repo — these counts may be stale from before it was disabled, ignore them as an activity signal)'}
 Open/closed pull requests: ${metrics.openPullRequests}/${metrics.closedPullRequests}
 Archived: ${metrics.isArchived}, fork: ${metrics.isFork}
 
