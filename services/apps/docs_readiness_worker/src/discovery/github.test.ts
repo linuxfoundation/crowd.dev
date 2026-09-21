@@ -71,6 +71,12 @@ describe('primaryRepo', () => {
   it('accepts a scheme-less github.com url', () => {
     expect(primaryRepo(['github.com/torvalds/linux'])).toBe('github.com/torvalds/linux')
   })
+
+  it('picks a parseable entry over an earlier bare-org url, regardless of slash count', () => {
+    expect(primaryRepo(['https://github.com/torvalds', 'git@github.com:torvalds/linux.git'])).toBe(
+      'git@github.com:torvalds/linux.git',
+    )
+  })
 })
 
 function stubFetch(handler: (input: string, init?: RequestInit) => Response) {

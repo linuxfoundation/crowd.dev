@@ -27,7 +27,7 @@ export function primaryRepo(repos: string[]): string | null {
     return null
   }
 
-  return githubRepos.find((repo) => repo.split('/').length >= 5) ?? githubRepos[0]
+  return githubRepos.find((repo) => parseGithubRepo(repo)) ?? githubRepos[0]
 }
 
 async function githubRequest(path: string, token: string, accept: string): Promise<Response> {
