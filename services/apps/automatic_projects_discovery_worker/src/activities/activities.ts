@@ -3,10 +3,12 @@ import { parse } from 'csv-parse'
 
 import {
   bulkInsertProjectCatalog,
+  findDiscoverySourceWatermark,
   findExistingProjectCatalogRepoUrls,
   findRepoUrlsInCdp,
   finishPipelineRun,
   startPipelineRun,
+  upsertDiscoverySourceWatermark,
 } from '@crowd/data-access-layer'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
@@ -30,16 +32,53 @@ export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()
 }
 
-export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
+export async function listDatasets(
+  sourceName: string,
+  since?: string,
+): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
 
-  log.info({ sourceName }, 'Listing datasets.')
+  log.info({ sourceName, since: since ?? 'none' }, 'Listing datasets.')
 
-  const datasets = await source.listAvailableDatasets()
+  const datasets = await source.listAvailableDatasets({ since })
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
 
   return datasets
+}
+
+export interface ISourceWatermark {
+  since: string | null
+  capturedAt: string
+}
+
+// Wide enough to absorb the gap between listDatasets and processDataset (up to 90 min
+// startToCloseTimeout, plus retries) and ordinary clock skew — re-processing is harmless.
+const WATERMARK_OVERLAP_MS = 24 * 60 * 60 * 1000
+
+export async function readSourceWatermark(sourceName: string): Promise<ISourceWatermark> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const watermark = await findDiscoverySourceWatermark(qx, sourceName)
+  const capturedAt = new Date().toISOString()
+
+  const since = watermark
+    ? new Date(new Date(watermark).getTime() - WATERMARK_OVERLAP_MS).toISOString()
+    : null
+
+  log.info({ sourceName, watermark, since, capturedAt }, 'Source watermark read.')
+
+  return { since, capturedAt }
+}
+
+export async function commitSourceWatermark(
+  sourceName: string,
+  watermark: string,
+  force: boolean,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceWatermark(qx, sourceName, watermark, { force })
+
+  log.info({ sourceName, watermark, force }, 'Source watermark committed.')
 }
 
 export interface IProcessDatasetResult {
@@ -47,6 +86,7 @@ export interface IProcessDatasetResult {
   totalSkipped: number
   totalSkippedAlreadyInCdp: number
   totalAccepted: number
+  truncated: boolean
 }
 
 export async function processDataset(
@@ -97,6 +137,7 @@ export async function processDataset(
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
   let totalSkipped = 0
+  let truncated = false
 
   async function acceptNewRows(candidates: IDbProjectCatalogCreate[]): Promise<void> {
     const seenInChunk = new Set<string>()
@@ -133,6 +174,7 @@ export async function processDataset(
         continue
       }
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
         break
       }
       accepted.push(candidate)
@@ -169,6 +211,7 @@ export async function processDataset(
       })
 
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
           'Discovery limit reached, stopping stream.',
@@ -178,9 +221,14 @@ export async function processDataset(
     }
   }
 
-  // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
-    await acceptNewRows(chunk)
+  // Flush a final partial chunk. If the limit was already hit, it's dropped —
+  // that's also truncation, not just the two breaks above.
+  if (chunk.length > 0) {
+    if (accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+      await acceptNewRows(chunk)
+    } else {
+      truncated = true
+    }
   }
 
   records.destroy()
@@ -203,6 +251,7 @@ export async function processDataset(
       totalSkipped,
       totalSkippedAlreadyInCdp: skippedInCdp.length,
       totalAccepted: accepted.length,
+      truncated,
       elapsedSeconds,
     },
     'Dataset processing complete.',
@@ -213,6 +262,7 @@ export async function processDataset(
     totalSkipped,
     totalSkippedAlreadyInCdp: skippedInCdp.length,
     totalAccepted: accepted.length,
+    truncated,
   }
 }
 

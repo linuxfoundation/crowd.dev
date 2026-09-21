@@ -174,17 +174,22 @@ interface IDiscussionRepoUrlRef {
   discussionUrl: string
 }
 
-async function fetchAllDiscussionRepoUrls(): Promise<IDiscussionRepoUrlRef[]> {
+async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRepoUrlRef[]> {
   const categoryId = await getDiscussionCategoryId()
-  log.info({ categoryId, owner: OWNER, repo: REPO }, 'Insights Discussions: category ID resolved.')
+  log.info(
+    { categoryId, owner: OWNER, repo: REPO, since: since ?? 'none (full walk)' },
+    'Insights Discussions: category ID resolved.',
+  )
 
   // Keyed by repoUrl: a repo cited across multiple discussions keeps the first as provenance.
   const refsByRepoUrl = new Map<string, IDiscussionRepoUrlRef>()
+  const sinceMs = since ? new Date(since).getTime() : null
   let cursor: string | null = null
   let hasNextPage = true
   let pageCount = 0
   let discussionsSeen = 0
   let skippedClosed = 0
+  let skippedUnchanged = 0
   let discussionsWithoutRefs = 0
 
   while (hasNextPage) {
@@ -196,6 +201,13 @@ async function fetchAllDiscussionRepoUrls(): Promise<IDiscussionRepoUrlRef[]> {
 
       if (discussion.closed) {
         skippedClosed++
+        continue
+      }
+
+      // Client-side, not an early-stop: pagination isn't ordered by updatedAt, so a
+      // stable walk of every page is required to not silently miss edited discussions.
+      if (sinceMs !== null && new Date(discussion.updatedAt).getTime() < sinceMs) {
+        skippedUnchanged++
         continue
       }
 
@@ -249,6 +261,7 @@ async function fetchAllDiscussionRepoUrls(): Promise<IDiscussionRepoUrlRef[]> {
     {
       discussionsSeen,
       skippedClosed,
+      skippedUnchanged,
       discussionsWithoutRefs,
       totalUniqueUrls: refsByRepoUrl.size,
     },
@@ -262,21 +275,25 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
   public readonly name = 'insights-discussions'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {
     const today = new Date().toISOString().slice(0, 10)
     return [
       {
         id: today,
         date: today,
         url: `https://github.com/${OWNER}/${REPO}/discussions/categories/${CATEGORY_SLUG}`,
+        since: options?.since,
       },
     ]
   }
 
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
-    log.info({ datasetId: dataset.id }, 'Insights Discussions: fetching discussion repo URLs.')
+    log.info(
+      { datasetId: dataset.id, since: dataset.since ?? 'none (full walk)' },
+      'Insights Discussions: fetching discussion repo URLs.',
+    )
 
-    const refs = await fetchAllDiscussionRepoUrls()
+    const refs = await fetchAllDiscussionRepoUrls(dataset.since)
 
     log.info(
       { datasetId: dataset.id, count: refs.length },
