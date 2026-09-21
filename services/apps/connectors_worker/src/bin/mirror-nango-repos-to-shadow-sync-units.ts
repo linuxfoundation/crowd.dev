@@ -85,7 +85,10 @@ setImmediate(async () => {
       log.warn('github manifest has no syncs registered yet - mirroring channels only')
     }
 
-    const since = new Date(Date.now() - MIRROR_INITIAL_LOOKBACK_MS).toISOString()
+    const cutoff = new Date(Date.now() - MIRROR_INITIAL_LOOKBACK_MS)
+    const since = new Date(
+      Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth(), cutoff.getUTCDate()),
+    ).toISOString()
     const watermark = { phase: 'incremental', since, cursor: null }
 
     const units: SyncUnitUpsert[] = []
