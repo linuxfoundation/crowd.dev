@@ -66,11 +66,12 @@ function truncateFieldValue(value: unknown): unknown {
   return `${serialized.slice(0, MAX_FIELD_VALUE_LENGTH)}… [truncated]`
 }
 
-function withoutSnapshotAttributeFields(
-  attributes: unknown,
-  type: string,
-): unknown {
-  if (!TYPES_WITH_SNAPSHOT_ATTRIBUTES.has(type) || typeof attributes !== 'object' || attributes === null) {
+function withoutSnapshotAttributeFields(attributes: unknown, type: string): unknown {
+  if (
+    !TYPES_WITH_SNAPSHOT_ATTRIBUTES.has(type) ||
+    typeof attributes !== 'object' ||
+    attributes === null
+  ) {
     return attributes
   }
   return Object.fromEntries(
@@ -88,9 +89,13 @@ function comparePassThroughFields(
   const mismatches: IFieldMismatch[] = []
   for (const field of PASS_THROUGH_FIELDS) {
     const shadowValue =
-      field === 'attributes' ? withoutSnapshotAttributeFields(shadowData[field], type) : shadowData[field]
+      field === 'attributes'
+        ? withoutSnapshotAttributeFields(shadowData[field], type)
+        : shadowData[field]
     const nangoValue =
-      field === 'attributes' ? withoutSnapshotAttributeFields(nangoData[field], type) : nangoData[field]
+      field === 'attributes'
+        ? withoutSnapshotAttributeFields(nangoData[field], type)
+        : nangoData[field]
     if (!isDeepStrictEqual(shadowValue, nangoValue)) {
       mismatches.push({
         field,

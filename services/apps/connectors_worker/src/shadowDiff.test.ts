@@ -165,7 +165,9 @@ describe('diffShadowAgainstNango', () => {
         type: 'pull_request-opened',
         kind: 'field_mismatch',
         severity: 'high',
-        fields: [{ field: 'attributes', shadowValue: { state: 'open' }, nangoValue: { state: 'closed' } }],
+        fields: [
+          { field: 'attributes', shadowValue: { state: 'open' }, nangoValue: { state: 'closed' } },
+        ],
       },
     ])
   })
