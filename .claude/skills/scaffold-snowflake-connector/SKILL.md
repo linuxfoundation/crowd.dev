@@ -697,10 +697,10 @@ When the user pastes results, for each row:
 
 ### Format & Lint
 
-After all files are written, format the connector package then lint from the repo root:
+After all files are written, format and lint from the repo root:
 
 ```bash
-pnpm --filter @crowd/snowflake-connectors run format
+pnpm format
 pnpm lint
 ```
 
