@@ -63,9 +63,9 @@ ${readme?.content ?? '(no README found)'}
 
 Evaluate the repository against these criteria, in order. Stop and answer as soon as one matches:
 
-1. Documentation repo: the repository is a documentation site, an SDK, a website, a recipe collection, or a notes repo with no core project code.
+1. Documentation repo: the repository is a documentation site, an SDK, a website, a recipe collection, a notes repo, or a data-only repository (a curated list, a plugin/package index, generated metadata, or a dataset) with no executable application logic.
 2. Linux kernel fork: the repository is a fork of, or based on, the Linux kernel (look for kernel-specific terms like "vmlinux", "CONFIG_", "arch/x86", "drivers/", or explicit mentions of being a Linux kernel fork).
-3. Not mainly run on GitHub: the closed pull request and issue counts are near zero relative to the project's age (created/last pushed dates above), suggesting the project is developed elsewhere and only mirrored here.
+3. Not mainly run on GitHub: the closed pull request and issue counts are low relative to the project's age and popularity (stars/forks) above, or the README explicitly states development happens elsewhere and this repository is only a mirror or read-only copy (being archived or read-only alone, without that, is not enough — a finished project fully developed on GitHub can also end up archived).
 
 If none of the criteria match, the repository should be onboarded.
 
