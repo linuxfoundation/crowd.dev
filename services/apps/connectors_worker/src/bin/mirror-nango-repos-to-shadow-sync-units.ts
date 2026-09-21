@@ -57,8 +57,8 @@ async function getNangoMappingForOwnerRepo(
     `SELECT nm."integrationId", nm."connectionId"
      FROM integration.nango_mapping nm
      JOIN integrations i ON i.id = nm."integrationId"
-     WHERE nm.owner = $(owner)
-       AND nm."repoName" = $(repoName)
+     WHERE lower(nm.owner) = lower($(owner))
+       AND lower(nm."repoName") = lower($(repoName))
        AND i.platform = 'github-nango'
        AND i."deletedAt" IS NULL
      ORDER BY nm."updatedAt" DESC
