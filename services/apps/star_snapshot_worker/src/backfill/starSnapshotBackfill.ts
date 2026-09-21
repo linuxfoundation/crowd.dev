@@ -1,4 +1,7 @@
-import { getGithubInstallationToken } from '@crowd/common_services'
+import {
+  getGithubInstallationToken,
+  getGithubInstallationTokenExpiration,
+} from '@crowd/common_services'
 import {
   findReposForStarSnapshot,
   findStarSnapshotsForRepos,
@@ -217,6 +220,20 @@ async function githubGet(url: string, token: string): Promise<Response> {
   }
 }
 
+// Cached token's own expiry, as of the moment a request against it got rejected - tells apart
+// "GitHub revoked/rotated the token early" (still fresh by our bookkeeping) from "our proactive
+// refresh missed the boundary" (already expired or expiring imminently by our own clock).
+function tokenExpiryDiagnostics(): {
+  tokenExpiresAt: string | null
+  tokenMsUntilExpiry: number | null
+} {
+  const expiresAt = getGithubInstallationTokenExpiration()
+  return {
+    tokenExpiresAt: expiresAt ? expiresAt.toISOString() : null,
+    tokenMsUntilExpiry: expiresAt ? expiresAt.getTime() - Date.now() : null,
+  }
+}
+
 async function assertOk(
   response: Response,
   owner: string,
@@ -229,6 +246,17 @@ async function assertOk(
     return
   }
   if (response.status === 401) {
+    const body = await response.text()
+    log.warn(
+      {
+        owner,
+        name,
+        what,
+        ...tokenExpiryDiagnostics(),
+        body: body.slice(0, 500),
+      },
+      'GitHub 401, token itself was rejected',
+    )
     throw new Error(`GitHub auth failure (401) fetching ${what} for ${owner}/${name}`)
   }
   if (response.status === 404) {
@@ -269,6 +297,7 @@ async function assertOk(
         what,
         remaining: response.headers.get('x-ratelimit-remaining'),
         reset: response.headers.get('x-ratelimit-reset'),
+        ...tokenExpiryDiagnostics(),
         body: body.slice(0, 500),
       },
       'GitHub 403 with no rate-limit signal, treating as auth/permission failure',

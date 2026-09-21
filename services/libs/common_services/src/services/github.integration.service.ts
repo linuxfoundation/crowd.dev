@@ -60,6 +60,10 @@ export const getGithubInstallationToken = async (): Promise<string> => {
   return token
 }
 
+// Diagnostic-only: lets a caller log how fresh the cached token was at the moment
+// GitHub rejected it, without exposing the token itself.
+export const getGithubInstallationTokenExpiration = (): Date | undefined => expiration
+
 export class GithubIntegrationService {
   constructor(private readonly log: Logger) {}
 
