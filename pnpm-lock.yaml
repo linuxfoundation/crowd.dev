@@ -33,9 +33,6 @@ catalogs:
     config:
       specifier: ^3.3.12
       version: 3.3.12
-    oxlint:
-      specifier: ^1.83.0
-      version: 1.83.0
     pg-promise:
       specifier: ^11.4.3
       version: 11.6.0
@@ -63,7 +60,7 @@ importers:
         specifier: ^9.1.7
         version: 9.1.7
       oxlint:
-        specifier: 'catalog:'
+        specifier: ^1.83.0
         version: 1.83.0
       vite:
         specifier: 6.3.5
