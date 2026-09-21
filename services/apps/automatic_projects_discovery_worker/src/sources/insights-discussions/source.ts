@@ -1,11 +1,12 @@
 import https from 'https'
 import { Readable } from 'stream'
 
-import { canonicalizeGithubRepoUrl } from '@crowd/common'
 import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
+
+import { extractDiscussionRepoUrls } from './parse'
 
 const log = getServiceLogger()
 
@@ -21,8 +22,11 @@ interface GraphQLResponse<T> {
 
 interface DiscussionNode {
   number: number
+  title: string
+  url: string
   body: string
   closed: boolean
+  updatedAt: string
 }
 
 interface DiscussionsPage {
@@ -94,31 +98,10 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
-function stripTrailingSentencePunctuation(text: string): string {
-  return text.replace(/[.,;:!?]+$/, '')
-}
-
-// Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
-function extractRepoUrls(text: string): string[] {
-  const urls = new Set<string>()
-  const regex = /https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/gi
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(text)) !== null) {
-    const repo = stripTrailingSentencePunctuation(match[2])
-    if (!repo) continue
-
-    const canonical = canonicalizeGithubRepoUrl(`https://github.com/${match[1]}/${repo}`)
-    if (canonical) {
-      urls.add(canonical)
-    }
-  }
-  return Array.from(urls)
-}
-
 async function getDiscussionCategoryId(): Promise<string> {
   const query = `
-    query {
-      repository(owner: "${OWNER}", name: "${REPO}") {
+    query GetDiscussionCategoryId($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
         discussionCategories(first: 25) {
           nodes {
             id
@@ -138,7 +121,7 @@ async function getDiscussionCategoryId(): Promise<string> {
     }
   }
 
-  const data = await graphqlRequest<CategoriesData>(query, {})
+  const data = await graphqlRequest<CategoriesData>(query, { owner: OWNER, name: REPO })
   const categories = data.repository.discussionCategories.nodes
   const category = categories.find((c) => c.slug === CATEGORY_SLUG)
 
@@ -157,8 +140,8 @@ async function fetchDiscussionsPage(
   cursor: string | null,
 ): Promise<DiscussionsPage> {
   const query = `
-    query GetDiscussions($categoryId: ID!, $cursor: String) {
-      repository(owner: "${OWNER}", name: "${REPO}") {
+    query GetDiscussions($owner: String!, $name: String!, $categoryId: ID!, $cursor: String) {
+      repository(owner: $owner, name: $name) {
         discussions(first: 100, categoryId: $categoryId, after: $cursor) {
           pageInfo {
             hasNextPage
@@ -166,34 +149,88 @@ async function fetchDiscussionsPage(
           }
           nodes {
             number
+            title
+            url
             body
             closed
+            updatedAt
           }
         }
       }
     }
   `
 
-  const data = await graphqlRequest<DiscussionsData>(query, { categoryId, cursor })
+  const data = await graphqlRequest<DiscussionsData>(query, {
+    owner: OWNER,
+    name: REPO,
+    categoryId,
+    cursor,
+  })
   return data.repository.discussions
 }
 
-async function fetchAllDiscussionRepoUrls(): Promise<string[]> {
+interface IDiscussionRepoUrlRef {
+  repoUrl: string
+  discussionNumber: number
+  discussionUrl: string
+}
+
+async function fetchAllDiscussionRepoUrls(): Promise<IDiscussionRepoUrlRef[]> {
   const categoryId = await getDiscussionCategoryId()
   log.info({ categoryId, owner: OWNER, repo: REPO }, 'Insights Discussions: category ID resolved.')
 
-  const allUrls = new Set<string>()
+  // Keyed by repoUrl: keeps the first discussion that referenced it as the
+  // provenance, since a repo cited across multiple discussions still only needs
+  // one project-catalog row.
+  const refsByRepoUrl = new Map<string, IDiscussionRepoUrlRef>()
   let cursor: string | null = null
   let hasNextPage = true
   let pageCount = 0
+  let discussionsSeen = 0
+  let skippedClosed = 0
+  let discussionsWithoutRefs = 0
 
   while (hasNextPage) {
     pageCount++
     const page = await fetchDiscussionsPage(categoryId, cursor)
 
     for (const discussion of page.nodes) {
-      for (const url of extractRepoUrls(discussion.body)) {
-        allUrls.add(url)
+      discussionsSeen++
+
+      if (discussion.closed) {
+        skippedClosed++
+        continue
+      }
+
+      const refs = extractDiscussionRepoUrls(discussion)
+
+      if (refs.repoUrls.length === 0) {
+        discussionsWithoutRefs++
+        log.warn(
+          { number: discussion.number, url: discussion.url },
+          'Insights Discussions: open discussion produced no repo references.',
+        )
+      }
+
+      log.info(
+        {
+          number: discussion.number,
+          closed: discussion.closed,
+          candidates: refs.repoUrls.length,
+          fromTitle: refs.fromTitle,
+          fromBody: refs.fromBody,
+        },
+        'Insights Discussions: discussion processed.',
+      )
+
+      for (const repoUrl of refs.repoUrls) {
+        if (!refsByRepoUrl.has(repoUrl)) {
+          refsByRepoUrl.set(repoUrl, {
+            repoUrl,
+            discussionNumber: discussion.number,
+            discussionUrl: discussion.url,
+          })
+        }
       }
     }
 
@@ -204,14 +241,24 @@ async function fetchAllDiscussionRepoUrls(): Promise<string[]> {
       {
         pageCount,
         discussionsInPage: page.nodes.length,
-        totalUniqueUrls: allUrls.size,
+        totalUniqueUrls: refsByRepoUrl.size,
         hasNextPage,
       },
       'Insights Discussions: page processed.',
     )
   }
 
-  return Array.from(allUrls)
+  log.info(
+    {
+      discussionsSeen,
+      skippedClosed,
+      discussionsWithoutRefs,
+      totalUniqueUrls: refsByRepoUrl.size,
+    },
+    'Insights Discussions: all pages processed.',
+  )
+
+  return Array.from(refsByRepoUrl.values())
 }
 
 export class InsightsDiscussionsSource implements IDiscoverySource {
@@ -232,17 +279,14 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
     log.info({ datasetId: dataset.id }, 'Insights Discussions: fetching discussion repo URLs.')
 
-    const repoUrls = await fetchAllDiscussionRepoUrls()
+    const refs = await fetchAllDiscussionRepoUrls()
 
     log.info(
-      { datasetId: dataset.id, count: repoUrls.length },
+      { datasetId: dataset.id, count: refs.length },
       'Insights Discussions: unique repo URLs extracted.',
     )
 
-    return Readable.from(
-      repoUrls.map((url) => ({ repoUrl: url })),
-      { objectMode: true },
-    )
+    return Readable.from(refs, { objectMode: true })
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
