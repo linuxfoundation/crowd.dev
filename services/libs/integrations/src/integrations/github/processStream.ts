@@ -310,7 +310,6 @@ const processRootStream: ProcessStreamHandler = async (ctx) => {
 
   for (const repo of data.reposToCheck) {
     try {
-      // cheapest possible query, just to check if repo is available with the github token
       const repoAccessQuery = new RepoAccessQuery(repo, await getGithubToken(ctx))
       await repoAccessQuery.getSinglePage('')
       repos.push(repo)

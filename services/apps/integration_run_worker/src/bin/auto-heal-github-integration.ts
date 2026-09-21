@@ -28,7 +28,7 @@ const query = (integrationId: string) => {
                 from 
                     githubCache 
                 where 
-                    integrationId = '${integrationId}' and dbValue / remoteValue <= 0.98 and metricName != 'commitsOnMain'
+                    integrationId = '${integrationId}' and dbValue / remoteValue <= 0.98 and metricName not in ('commitsOnMain', 'stars')
                 group by
                     repoName
                 order by
