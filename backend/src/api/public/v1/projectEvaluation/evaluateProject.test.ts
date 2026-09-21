@@ -44,6 +44,7 @@ const metrics: IPublicRepoMetrics = {
   forks: 2,
   openIssues: 1,
   closedIssues: 5,
+  hasIssuesEnabled: true,
   openPullRequests: 1,
   closedPullRequests: 5,
   pushedAt: '2024-01-01',
@@ -242,6 +243,53 @@ describe('evaluateProject', () => {
 
     expect(result.outcome).toBe('onboard')
     expect(queryLlm).toHaveBeenCalledOnce()
+  })
+
+  it('does not skip deterministically when issues are disabled but closed PRs are high', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue({
+      ...metrics,
+      stars: 10,
+      closedIssues: 0,
+      hasIssuesEnabled: false,
+      closedPullRequests: 17356,
+    })
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockResolvedValue({
+      answer: '{"onboard": true}',
+      model: 'test-model',
+      inputTokenCount: 10,
+      outputTokenCount: 5,
+      responseTimeSeconds: 1.2,
+    })
+    parseLlmJson.mockReturnValue({ onboard: true })
+
+    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+
+    expect(result.outcome).toBe('onboard')
+    expect(queryLlm).toHaveBeenCalledOnce()
+  })
+
+  it('skips deterministically when issues are disabled and closed PRs are also near zero', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue({
+      ...metrics,
+      stars: 0,
+      closedIssues: 5,
+      hasIssuesEnabled: false,
+      closedPullRequests: 0,
+    })
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+
+    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+
+    expect(result).toEqual({
+      outcome: 'skip',
+      evaluationResult: 'false',
+      evaluationReason: 'project has insufficient GitHub activity to evaluate',
+      metrics: null,
+    })
+    expect(queryLlm).not.toHaveBeenCalled()
   })
 
   it('returns an unsure/error result when the LLM answer is not parseable JSON', async () => {

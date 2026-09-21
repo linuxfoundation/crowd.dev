@@ -52,7 +52,7 @@ Description: ${metrics.description ?? 'none'}
 Primary language: ${metrics.primaryLanguage ?? 'unknown'}
 Created: ${metrics.createdAt}, last pushed: ${metrics.pushedAt ?? 'unknown'}
 Stars: ${metrics.stars}, forks: ${metrics.forks}
-Open/closed issues: ${metrics.openIssues}/${metrics.closedIssues}
+Open/closed issues: ${metrics.openIssues}/${metrics.closedIssues}${metrics.hasIssuesEnabled ? '' : ' (GitHub Issues is disabled on this repo — this is always 0/0 regardless of activity, ignore it)'}
 Open/closed pull requests: ${metrics.openPullRequests}/${metrics.closedPullRequests}
 Archived: ${metrics.isArchived}, fork: ${metrics.isFork}
 
@@ -65,7 +65,7 @@ Evaluate the repository against these criteria, in order. Stop and answer as soo
 
 1. Documentation repo: the repository is a documentation site, an SDK, a website, a recipe collection, a notes repo, or a data-only repository (a curated list, a plugin/package index, generated metadata, or a dataset) with no executable application logic.
 2. Linux kernel fork: the repository is a fork of, or based on, the Linux kernel (look for kernel-specific terms like "vmlinux", "CONFIG_", "arch/x86", "drivers/", or explicit mentions of being a Linux kernel fork).
-3. Not mainly run on GitHub: the closed pull request and issue counts are low relative to the project's age and popularity (stars/forks) above, or the README explicitly states development happens elsewhere and this repository is only a mirror or read-only copy (being archived or read-only alone, without that, is not enough — a finished project fully developed on GitHub can also end up archived).
+3. Not mainly run on GitHub: the closed pull request count (and closed issue count, only when GitHub Issues is enabled) is low relative to the project's age and popularity (stars/forks) above, or the README explicitly states that development/code changes happen elsewhere and this repository is only a mirror or read-only copy. A README pointing to an external tracker for bug reports only (e.g. Launchpad, Bugzilla) is not "development happens elsewhere" — that's just where issues are filed, not where code is written. Being archived or read-only alone, without that, is not enough either — a finished project fully developed on GitHub can also end up archived.
 
 If none of the criteria match, the repository should be onboarded.
 
@@ -90,8 +90,11 @@ const MIN_STARS_FOR_EVALUATION = 25
 // LLM judgment on "not mainly run on GitHub" is unreliable for repos with near-zero
 // closed issues/PRs and stars — there's no README/description signal for it to reason
 // over, so we decide deterministically instead of spending a call on it.
+// closedIssues reads as 0 when GitHub Issues is disabled on the repo (e.g. canonical/snapd),
+// which is not an activity signal — CM-1475.
 function hasInsufficientActivity(metrics: IPublicRepoMetrics): boolean {
-  const closedActivity = metrics.closedIssues + metrics.closedPullRequests
+  const closedActivity =
+    (metrics.hasIssuesEnabled ? metrics.closedIssues : 0) + metrics.closedPullRequests
   return (
     closedActivity < MIN_CLOSED_ACTIVITY_FOR_EVALUATION && metrics.stars < MIN_STARS_FOR_EVALUATION
   )
