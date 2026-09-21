@@ -77,6 +77,18 @@ describe('primaryRepo', () => {
       'git@github.com:torvalds/linux.git',
     )
   })
+
+  it('accepts an ssh:// scp-style git@github.com: url without a port', () => {
+    expect(primaryRepo(['ssh://git@github.com:torvalds/linux.git'])).toBe(
+      'ssh://git@github.com:torvalds/linux.git',
+    )
+  })
+
+  it('does not mistake a real ssh port for a scp-style path separator', () => {
+    expect(primaryRepo(['ssh://git@github.com:2222/torvalds/linux.git'])).toBe(
+      'ssh://git@github.com:2222/torvalds/linux.git',
+    )
+  })
 })
 
 function stubFetch(handler: (input: string, init?: RequestInit) => Response) {
