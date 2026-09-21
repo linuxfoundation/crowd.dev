@@ -733,19 +733,21 @@ export async function runStarSnapshotBackfill(
           { repoUrl: repo.repoUrl, error: message },
           'star snapshot backfill retry failed for repo',
         )
-        try {
-          await recordStarBackfillFailure(
-            qx,
-            repo.repositoryId,
-            (err as Error)?.name ?? 'Error',
-            message,
-            BACKFILL_DEAD_LETTER_AFTER,
-          )
-        } catch (recordErr) {
-          log.warn(
-            { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
-            'failed to record star backfill failure marker, will stay untracked until next run',
-          )
+        if (!options.dryRun) {
+          try {
+            await recordStarBackfillFailure(
+              qx,
+              repo.repositoryId,
+              (err as Error)?.name ?? 'Error',
+              message,
+              BACKFILL_DEAD_LETTER_AFTER,
+            )
+          } catch (recordErr) {
+            log.warn(
+              { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
+              'failed to record star backfill failure marker, will stay untracked until next run',
+            )
+          }
         }
       }
     })
