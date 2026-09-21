@@ -275,11 +275,8 @@ async def test_save_maintainers_persists_emeritus_role(monkeypatch: pytest.Monke
     )
     identity_id = "identity-123"
 
-    monkeypatch.setattr(
-        service,
-        "_resolve_maintainers",
-        AsyncMock(return_value=[(item, identity_id)]),
-    )
+    resolve_mock = AsyncMock(return_value=[(item, identity_id)])
+    monkeypatch.setattr(service, "_resolve_maintainers", resolve_mock)
     upsert_mock = AsyncMock()
     monkeypatch.setattr(maintainer_service_module, "upsert_maintainer", upsert_mock)
 
@@ -290,5 +287,6 @@ async def test_save_maintainers_persists_emeritus_role(monkeypatch: pytest.Monke
         last_maintainer_run_at=None,
     )
 
+    resolve_mock.assert_called_once_with([item])
     upsert_mock.assert_called_once()
     assert upsert_mock.call_args[0][3] == "emeritus"
