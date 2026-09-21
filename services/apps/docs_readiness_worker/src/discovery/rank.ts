@@ -26,8 +26,19 @@ function hasDocsSignal(host: string, pathname: string): boolean {
   return host.startsWith('docs.') || DOCS_KEYWORDS.test(host) || DOCS_KEYWORDS.test(pathname)
 }
 
+// These methods probe for documentation directly, so they're a signal on their own —
+// a root-level llms.txt hit shouldn't need docs.*/keyword URL shape to count as one.
+const EXPLICIT_DOCS_PROBE_METHODS = new Set<IDocCandidate['method']>([
+  'llms-txt-probe',
+  'docs-subdomain',
+  'docs-path',
+])
+
 export function candidateHasDocsSignal(c: IDocCandidate): boolean {
-  return hasDocsSignal(domainOf(c.url) ?? '', pathnameOf(c.url))
+  return (
+    EXPLICIT_DOCS_PROBE_METHODS.has(c.method) ||
+    hasDocsSignal(domainOf(c.url) ?? '', pathnameOf(c.url))
+  )
 }
 
 function isOnProjectDomain(url: string, projectDomain: string): boolean {

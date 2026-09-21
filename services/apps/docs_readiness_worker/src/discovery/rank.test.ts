@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
+import { normalizedDomain } from './http'
 import { candidateHasDocsSignal, rankCandidates } from './rank'
 
 const pocOutcomes = JSON.parse(
@@ -143,6 +144,13 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     return nonSerp.some((c) => c.livenessOk && candidateHasDocsSignal(c)) ? nonSerp : allCandidates
   }
 
+  // Mirrors discoverDocs's own projectDomain derivation (ctx.website), using the fixture's
+  // project-website candidate as the stand-in for ctx.website since the POC didn't record it.
+  function replayProjectDomain(allCandidates: IDocCandidate[]): string | null {
+    const website = allCandidates.find((c) => c.method === 'project-website')
+    return website ? normalizedDomain(website.url) : null
+  }
+
   // Recorded POC outcomes for these are serp results, but a live signal-bearing candidate
   // already blocks serp from running — asserts the gate-reachable answer instead.
   const GATE_UNREACHABLE: Record<string, { url: string; method: string }> = {
@@ -153,6 +161,12 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     e4s: { url: 'https://e4s.io/documentation', method: 'docs-path' },
   }
 
+  // The POC predates domain affinity: its recorded winner is an off-domain result even though
+  // an on-domain, signal-bearing candidate exists — asserts the affinity-corrected answer instead.
+  const AFFINITY_ADJUSTED: Record<string, { url: string; method: string }> = {
+    cobaltcore: { url: 'https://cobaltcore-dev.github.io/docs', method: 'project-website' },
+  }
+
   test('fixture has real, varied outcomes to replay', () => {
     expect(fixtures.length).toBeGreaterThan(20)
     const methods = new Set(fixtures.map((f) => f.discoveryMethod))
@@ -161,16 +175,23 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
 
   for (const fixture of fixtures) {
     const gateAdjusted = GATE_UNREACHABLE[fixture.projectSlug]
+    const affinityAdjusted = AFFINITY_ADJUSTED[fixture.projectSlug]
     const testName = gateAdjusted
       ? `${fixture.projectSlug}: winner matches gate-adjusted outcome (recorded serp result is unreachable)`
-      : `${fixture.projectSlug}: winner matches recorded POC outcome`
+      : affinityAdjusted
+        ? `${fixture.projectSlug}: winner matches affinity-adjusted outcome (recorded outcome predates domain affinity)`
+        : `${fixture.projectSlug}: winner matches recorded POC outcome`
 
     test(testName, () => {
-      const winner = rankCandidates(replayCandidates(fixture.allCandidates))
-      const expected = gateAdjusted ?? {
-        url: fixture.docsUrl,
-        method: fixture.discoveryMethod,
-      }
+      const winner = rankCandidates(
+        replayCandidates(fixture.allCandidates),
+        replayProjectDomain(fixture.allCandidates),
+      )
+      const expected = gateAdjusted ??
+        affinityAdjusted ?? {
+          url: fixture.docsUrl,
+          method: fixture.discoveryMethod,
+        }
 
       if (expected.url === null) {
         expect(winner).toBeNull()
