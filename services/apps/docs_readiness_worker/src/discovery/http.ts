@@ -99,9 +99,11 @@ async function guardedFetch(url: string, timeoutMs: number): Promise<Response | 
     if (REDIRECT_STATUSES.has(response.status)) {
       const location = response.headers.get('location')
       if (!location) {
+        await response.body?.cancel()
         return null
       }
       current = new URL(location, current).toString()
+      await response.body?.cancel()
       continue
     }
     return response
