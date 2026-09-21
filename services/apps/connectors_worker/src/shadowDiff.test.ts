@@ -122,6 +122,54 @@ describe('diffShadowAgainstNango', () => {
     ])
   })
 
+  it('ignores additions/deletions/changedFiles drift on pull request attributes', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { additions: 10, deletions: 2, changedFiles: 3, state: 'open' } },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { additions: 15, deletions: 4, changedFiles: 5, state: 'open' } },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('still reports a mismatch on pull request attributes outside the snapshot fields', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { additions: 10, state: 'open' } },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { additions: 15, state: 'closed' } },
+      },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toEqual([
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        kind: 'field_mismatch',
+        severity: 'high',
+        fields: [{ field: 'attributes', shadowValue: { state: 'open' }, nangoValue: { state: 'closed' } }],
+      },
+    ])
+  })
+
   it('downgrades pull_request-review-requested one-sided mismatches to low severity', () => {
     const shadow: IDiffableRecord[] = [
       { sourceId: 'pr-1-reviewer-a', type: 'pull_request-review-requested', data: {} },
