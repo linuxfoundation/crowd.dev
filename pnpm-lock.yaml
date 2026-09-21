@@ -926,6 +926,9 @@ importers:
       '@crowd/archetype-worker':
         specifier: workspace:*
         version: link:../../archetypes/worker
+      '@crowd/common':
+        specifier: workspace:*
+        version: link:../../libs/common
       '@crowd/common_services':
         specifier: workspace:*
         version: link:../../libs/common_services
