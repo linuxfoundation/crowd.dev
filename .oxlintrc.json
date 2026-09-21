@@ -3,6 +3,5 @@
   "categories": {
     "correctness": "error"
   },
-  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node"],
   "ignorePatterns": ["frontend/**", "**/dist/**", ".github/actions/node/builder/**"]
 }

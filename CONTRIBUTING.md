@@ -137,7 +137,7 @@ Feel free to adjust the commands based on the specific services you need for you
 To ensure consistency throughout the source code, please keep these rules in mind as you are working:
 
 - All features or bug fixes must be tested by one or more specs (unit tests).
-- We use [Eslint default rule guide](https://eslint.org/docs/rules/), with minor changes. An automated formatter is available using Prettier.
+- Backend and services use [oxlint](https://oxc.rs/docs/guide/usage/linter) (`pnpm lint` from the repo root). Frontend still uses ESLint. An automated formatter is available using Prettier.
 - In-code documentation is required for every function or class that is not self-evident.  
 - All new API endpoints that are relevant to the public API must have in-code documentation to generate OpenAPI specifications.  
 - The pipeline must pass.
