@@ -1,8 +1,7 @@
 import cronGenerator from 'cron-time-generator'
 
-import { getServiceChildLogger } from '@crowd/logging'
-
 import { getUserSubscriptions } from '@/serverless/integrations/usecases/groupsio/getUserSubscriptions'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 import { CrowdJob } from '../../types/jobTypes'

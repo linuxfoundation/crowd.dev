@@ -6,7 +6,6 @@ import { IntegrationRunState } from '@crowd/types'
 import { INTEGRATION_PROCESSING_CONFIG } from '../../conf'
 import { DbIntegrationRunCreateData, IntegrationRun } from '../../types/integrationRunTypes'
 import { IntegrationStreamState } from '../../types/integrationStreamTypes'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import { RepositoryBase } from './repositoryBase'
 

@@ -1,6 +1,5 @@
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { fetchJson, isEmail, registryHeaders } from '../http'
-
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'npm-registry'

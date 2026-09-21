@@ -20,16 +20,19 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 ## Alternatives Considered
 
 ### Alternative 1: Fan out `.project` maintainers to every sibling repo
+
 - **Pros**: Preserves per-repo query semantics — consumers can still look up maintainers by any repo URL.
 - **Cons**: Bloats `maintainersInternal`; requires maintaining the sibling set on every `.project` run; adds complexity to the upsert logic.
 - **Why not**: Downstream read by sibling URL is not a current consumer requirement; keeping rows under the `.project` repo is simpler and avoids table bloat.
 
 ### Alternative 2: Project-level segment as grouping key instead of sibling URL pattern
+
 - **Pros**: Cleaner model — no URL pattern matching.
 - **Cons**: Requires a new `maintainersInternal` FK to segment; larger schema change; segment hierarchy is stable but `.project` URL convention is already established.
 - **Why not**: URL-pattern detection (`repo_name == ".project"`) is already in place from ADR-0023; extending it is lower risk than a schema change.
 
 ### Alternative 3: One-time backfill to end-date stale sibling rows
+
 - **Pros**: No runtime change to processing loop.
 - **Cons**: Doesn't prevent re-population — sibling repos would accumulate new rows again on their next processing cycle.
 - **Why not**: Same failure mode as ADR-0023 alternative 2; the problem recurs without a gate in the processing path.
@@ -37,15 +40,18 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 ## Consequences
 
 ### Positive
+
 - Eliminates over-collection from sibling repos for CNCF projects; one authoritative source per project.
 - Emeritus roles stored with `role = 'emeritus'` — visible for historical queries, excluded from active maintainer counts by all downstream consumers.
 - Skip gate is cheap: one DB query per repo per cycle, no LLM cost for skipped repos.
 - Case-insensitive handle lookup recovers maintainers whose `memberIdentities` row was stored under a different casing than the handle in `maintainers.yaml`.
 
 ### Negative
+
 - Per-repo maintainer queries against sibling repo URLs return empty; consumers that need project-level maintainers must query via the `.project` repo. The `mv_maintainer_roles` MV does not yet filter `endDate IS NULL` (tracked separately), so sibling rows remain visible downstream until that is addressed.
 - Adds a second CNCF-specific branch to `MaintainerService`, extending the surface area introduced in ADR-0023.
 
 ### Risks
+
 - Transient gap on first onboarding: if a sibling repo is processed before the `.project` repo has run, the sibling is skipped immediately (no data collected), leaving the project with no maintainers until `.project` processes. Accepted; resolves on the next cycle.
 - If the `.project` repo is removed or fails to parse on a run, sibling repos remain permanently skipped until the `.project` repo is re-onboarded or removed from the system. Monitor via `MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE` error codes in service execution logs.

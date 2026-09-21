@@ -17,12 +17,12 @@ inputs:
   prioritized:
     description: Is the service listening on prioritized queues?
     required: false
-    default: 'false'
+    default: "false"
 
   cloud_env:
     description: Which cloud environment are we deploying to?
     required: false
-    default: 'default'
+    default: "default"
 
 runs:
   using: composite
@@ -69,4 +69,4 @@ runs:
 
     - uses: ./.github/actions/slack-notify
       with:
-        message: 'Service *${{ inputs.service }}* was just deployed using docker image `${{ inputs.image }}`'
+        message: "Service *${{ inputs.service }}* was just deployed using docker image `${{ inputs.image }}`"

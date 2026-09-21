@@ -1,4 +1,5 @@
 import EventEmitter from 'events'
+
 import { createClient } from 'redis'
 
 import { IS_DEV_ENV, IS_TEST_ENV, timeout } from '@crowd/common'

@@ -3,7 +3,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
-
 import { buildBaseDeps, processRepo } from './processBatch'
 import { RepoPackage, RepoTarget } from './types'
 import { markRepoAttempted, writeContacts } from './writeContacts'

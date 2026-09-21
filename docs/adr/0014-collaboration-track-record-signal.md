@@ -32,11 +32,11 @@ score = ROUND(100 × (R + M + A) / count(non-null components))
 Components are 0–1 or **null when there is no evidence** — no data must never
 read as "unresponsive":
 
-| Component | Rule |
-| --- | --- |
-| R — issue responsiveness | median time to first response (12m): ≤72h → 1.0; ≤336h → 0.5; else 0.0; NULL median with the guard passed means no issue ever got a non-author response → 0.0. Null if `issues_opened_last_12m < 5` |
-| M — external PR acceptance | `external_prs_merged_12m / external_prs_opened_12m`. Null if fewer than 3 external PRs |
-| A — advisory response | 1.0 if any linked advisory has a `fixed_version`; 0.0 if advisories exist, the oldest is >90 days old, and none is fixed; else null |
+| Component                  | Rule                                                                                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R — issue responsiveness   | median time to first response (12m): ≤72h → 1.0; ≤336h → 0.5; else 0.0; NULL median with the guard passed means no issue ever got a non-author response → 0.0. Null if `issues_opened_last_12m < 5` |
+| M — external PR acceptance | `external_prs_merged_12m / external_prs_opened_12m`. Null if fewer than 3 external PRs                                                                                                              |
+| A — advisory response      | 1.0 if any linked advisory has a `fixed_version`; 0.0 if advisories exist, the oldest is >90 days old, and none is fixed; else null                                                                 |
 
 Tier is derived from the score in the same statement, precedence first-match:
 `inactive` (`archived` or `disabled`, score NULL) → `unknown` (score NULL) →
@@ -96,12 +96,14 @@ than loosening the guards.
 ## Consequences
 
 ### Positive
+
 - No new API budget, worker, or table: two columns, one SQL statement, one
   existing GraphQL query extended by one field.
 - Signal freshness tracks input freshness by construction (at most one sweep
   stale); steady-state UPDATE touches only rows whose tier/score changed.
 
 ### Negative
+
 - The majority of critical-package repos are `unknown`/`inactive` with NULL
   score by design — consumers must filter on `collaboration_tier`, never on
   `collaboration_score IS NOT NULL`.
@@ -110,6 +112,7 @@ than loosening the guards.
 - Scoring cadence silently follows the enricher sweep interval config.
 
 ### Risks
+
 - Equal weights and the threshold values (72h/336h, 90 days, guards) are
   judgment values, not calibrated ones — revisit against outreach response
   outcomes.

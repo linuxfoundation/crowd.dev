@@ -5,7 +5,6 @@ import { timeout } from '@crowd/common'
 import { IProcessStreamContext } from '../../../types'
 import { GitlabApiResult, GitlabMergeRequestCommitData } from '../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 
 export const getMergeRequestCommits = async ({

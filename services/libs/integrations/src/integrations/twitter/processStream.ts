@@ -4,7 +4,6 @@ import { fetchIntegrationMembersPaginated } from '@crowd/data-access-layer/src/o
 import { MemberIdentityType, PlatformType, RateLimitError } from '@crowd/types'
 
 import { ProcessStreamHandler } from '../../types'
-
 import getPostsByHashtag from './api/getPostsByHashtag'
 import getPostsByMention from './api/getPostsByMention'
 import getProfiles from './api/getProfiles'

@@ -37,6 +37,7 @@ tb --version   # expect 5.x — ignore the "upgrade to 6.x" nag, that's a differ
 ```
 
 If `.venv` doesn't exist yet:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate

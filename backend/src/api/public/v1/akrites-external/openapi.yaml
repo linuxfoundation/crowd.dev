@@ -148,7 +148,7 @@ components:
         name:
           type: string
         ecosystem:
-          $ref: '#/components/schemas/Ecosystem'
+          $ref: "#/components/schemas/Ecosystem"
         latestVersion:
           type: string
           nullable: true
@@ -165,7 +165,7 @@ components:
               minimum: 0
               maximum: 100
             band:
-              $ref: '#/components/schemas/HealthBand'
+              $ref: "#/components/schemas/HealthBand"
             subScores:
               type: object
               required: [maintainerHealth, securitySupplyChain, developmentActivity]
@@ -345,7 +345,7 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/PackageDetail'
+            - $ref: "#/components/schemas/PackageDetail"
 
     Advisory:
       type: object
@@ -382,7 +382,7 @@ components:
         advisories:
           type: array
           items:
-            $ref: '#/components/schemas/Advisory'
+            $ref: "#/components/schemas/Advisory"
 
     AdvisoryDetailBulkEntry:
       type: object
@@ -396,7 +396,7 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/AdvisoryDetail'
+            - $ref: "#/components/schemas/AdvisoryDetail"
 
     BlastRadiusJobRequest:
       type: object
@@ -475,7 +475,7 @@ components:
             workflow starts (and reachability-analysis cost) per request.
             10 is the recommended default batch size; 20 is the hard limit.
           items:
-            $ref: '#/components/schemas/BlastRadiusJobRequest'
+            $ref: "#/components/schemas/BlastRadiusJobRequest"
 
     BlastRadiusJobBatchResponse:
       type: object
@@ -488,7 +488,7 @@ components:
         results:
           type: array
           items:
-            $ref: '#/components/schemas/BlastRadiusJobEntry'
+            $ref: "#/components/schemas/BlastRadiusJobEntry"
 
     BlastRadiusJobPollBatchRequest:
       type: object
@@ -523,7 +523,7 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/BlastRadiusAnalysis'
+            - $ref: "#/components/schemas/BlastRadiusAnalysis"
 
     BlastRadiusResultConfidence:
       type: string
@@ -545,7 +545,7 @@ components:
           enum: [affected, not_affected, unclear]
           description: Raw reachability verdict. 'unclear' covers both a genuine ambiguous read and a persistent agent failure.
         confidence:
-          $ref: '#/components/schemas/BlastRadiusResultConfidence'
+          $ref: "#/components/schemas/BlastRadiusResultConfidence"
         evidence:
           type: string
           nullable: true
@@ -627,14 +627,14 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/BlastRadiusAnalysisSummary'
+            - $ref: "#/components/schemas/BlastRadiusAnalysisSummary"
           description: Null until status is 'done'.
         results:
           type: array
           nullable: true
           description: Null until status is 'done'.
           items:
-            $ref: '#/components/schemas/BlastRadiusResultItem'
+            $ref: "#/components/schemas/BlastRadiusResultItem"
 
     ContactConfidenceBand:
       type: string
@@ -666,7 +666,7 @@ components:
           enum: [security-team, maintainer, admin, committer, org-owner]
           description: Mirrors the internal SecurityContact.role enum; passed through verbatim.
         confidenceBand:
-          $ref: '#/components/schemas/ContactConfidenceBand'
+          $ref: "#/components/schemas/ContactConfidenceBand"
         confidenceScore:
           type: number
           format: float
@@ -742,9 +742,9 @@ components:
         methods:
           type: array
           items:
-            $ref: '#/components/schemas/ProjectProfilingMethod'
+            $ref: "#/components/schemas/ProjectProfilingMethod"
         guidelines:
-          $ref: '#/components/schemas/ProjectProfilingGuidelines'
+          $ref: "#/components/schemas/ProjectProfilingGuidelines"
         sources:
           type: array
           items:
@@ -772,7 +772,7 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/ProjectProfiling'
+            - $ref: "#/components/schemas/ProjectProfiling"
 
     ContactDetail:
       type: object
@@ -800,13 +800,13 @@ components:
         name:
           type: string
         ecosystem:
-          $ref: '#/components/schemas/Ecosystem'
+          $ref: "#/components/schemas/Ecosystem"
         overallConfidenceBand:
-          $ref: '#/components/schemas/OverallConfidenceBand'
+          $ref: "#/components/schemas/OverallConfidenceBand"
         contacts:
           type: array
           items:
-            $ref: '#/components/schemas/SecurityContact'
+            $ref: "#/components/schemas/SecurityContact"
         securityPolicyUrl:
           type: string
           nullable: true
@@ -854,7 +854,7 @@ components:
           type: object
           nullable: true
           allOf:
-            - $ref: '#/components/schemas/ContactDetail'
+            - $ref: "#/components/schemas/ContactDetail"
 
 paths:
   /akrites-external/packages/detail:
@@ -877,36 +877,36 @@ paths:
             type: string
             example: pkg:npm/%40angular/core
       responses:
-        '200':
+        "200":
           description: Package detail.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageDetail'
-        '400':
+                $ref: "#/components/schemas/PackageDetail"
+        "400":
           description: Malformed purl.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/packages/detail:batch:
     post:
@@ -944,7 +944,7 @@ paths:
                   maximum: 100
                   default: 20
       responses:
-        '200':
+        "200":
           description: One page of results, in request order.
           content:
             application/json:
@@ -962,25 +962,25 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PackageDetailBulkEntry'
-        '400':
+                      $ref: "#/components/schemas/PackageDetailBulkEntry"
+        "400":
           description: Validation error (empty array, >100 items, malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/project-profiling:
     get:
@@ -1005,36 +1005,36 @@ paths:
             type: string
             example: pkg:npm/%40angular/core
       responses:
-        '200':
+        "200":
           description: The assembled reporting protocol for the package's best-matched repo.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectProfiling'
-        '400':
+                $ref: "#/components/schemas/ProjectProfiling"
+        "400":
           description: Malformed purl.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found, or its best-matched repo has no assembled protocol.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/project-profiling:batch:
     post:
@@ -1075,7 +1075,7 @@ paths:
                   maximum: 100
                   default: 20
       responses:
-        '200':
+        "200":
           description: One page of results, in request order.
           content:
             application/json:
@@ -1093,25 +1093,25 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ProjectProfilingBulkEntry'
-        '400':
+                      $ref: "#/components/schemas/ProjectProfilingBulkEntry"
+        "400":
           description: Validation error (empty array, >100 items, malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/advisories/detail:
     get:
@@ -1131,36 +1131,36 @@ paths:
             type: string
             example: pkg:npm/%40angular/core
       responses:
-        '200':
+        "200":
           description: Advisories for the package (empty array when the package has none).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdvisoryDetail'
-        '400':
+                $ref: "#/components/schemas/AdvisoryDetail"
+        "400":
           description: Malformed purl.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/advisories/detail:batch:
     post:
@@ -1196,7 +1196,7 @@ paths:
                   maximum: 100
                   default: 20
       responses:
-        '200':
+        "200":
           description: One page of results, in request order.
           content:
             application/json:
@@ -1214,25 +1214,25 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/AdvisoryDetailBulkEntry'
-        '400':
+                      $ref: "#/components/schemas/AdvisoryDetailBulkEntry"
+        "400":
           description: Validation error (empty array, >100 items, malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/blast-radius/jobs:
     post:
@@ -1261,15 +1261,15 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BlastRadiusJobRequest'
+              $ref: "#/components/schemas/BlastRadiusJobRequest"
       responses:
-        '202':
+        "202":
           description: Job accepted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BlastRadiusJobEntry'
-        '400':
+                $ref: "#/components/schemas/BlastRadiusJobEntry"
+        "400":
           description: >
             Validation error (missing/empty advisoryId), or an unsupported
             ecosystem — only npm, go, maven, and cargo are supported today, so any other
@@ -1278,25 +1278,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '429':
+                $ref: "#/components/schemas/Error"
+        "429":
           description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/blast-radius/jobs:batch:
     post:
@@ -1325,38 +1325,38 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BlastRadiusJobBatchRequest'
+              $ref: "#/components/schemas/BlastRadiusJobBatchRequest"
       responses:
-        '202':
+        "202":
           description: Jobs accepted, in request order.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BlastRadiusJobBatchResponse'
-        '400':
+                $ref: "#/components/schemas/BlastRadiusJobBatchResponse"
+        "400":
           description: Validation error (empty array, >20 items, or an invalid job entry).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '429':
+                $ref: "#/components/schemas/Error"
+        "429":
           description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/blast-radius/jobs:batch/poll:
     post:
@@ -1379,9 +1379,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BlastRadiusJobPollBatchRequest'
+              $ref: "#/components/schemas/BlastRadiusJobPollBatchRequest"
       responses:
-        '200':
+        "200":
           description: One page of results, in request order.
           content:
             application/json:
@@ -1399,25 +1399,25 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/BlastRadiusAnalysisBulkEntry'
-        '400':
+                      $ref: "#/components/schemas/BlastRadiusAnalysisBulkEntry"
+        "400":
           description: Validation error (empty array, >100 items, or a non-uuid analysisId).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/blast-radius/jobs/{analysisId}:
     get:
@@ -1441,42 +1441,42 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Job status (and results, once done).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BlastRadiusAnalysis'
-        '400':
+                $ref: "#/components/schemas/BlastRadiusAnalysis"
+        "400":
           description: Malformed analysisId (not a UUID).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: No job with this analysisId.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '429':
+                $ref: "#/components/schemas/Error"
+        "429":
           description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/contacts/detail:
     get:
@@ -1499,36 +1499,36 @@ paths:
             type: string
             example: pkg:npm/%40angular/core
       responses:
-        '200':
+        "200":
           description: Security contact detail (empty contacts + NONE band when the package has none).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ContactDetail'
-        '400':
+                $ref: "#/components/schemas/ContactDetail"
+        "400":
           description: Malformed purl.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/contacts/detail:batch:
     post:
@@ -1564,7 +1564,7 @@ paths:
                   maximum: 100
                   default: 20
       responses:
-        '200':
+        "200":
           description: One page of results, in request order.
           content:
             application/json:
@@ -1582,25 +1582,25 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ContactDetailBulkEntry'
-        '400':
+                      $ref: "#/components/schemas/ContactDetailBulkEntry"
+        "400":
           description: Validation error (empty array, >100 items, malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites-external/contacts/ingest:
     post:
@@ -1654,43 +1654,43 @@ paths:
                   type: string
                   example: pkg:npm/%40angular/core
       responses:
-        '200':
+        "200":
           description: >-
             Security contact detail — either just ingested by this call, or
             returned from a prior ingest without re-triggering the workflow.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ContactDetail'
-        '400':
+                $ref: "#/components/schemas/ContactDetail"
+        "400":
           description: Malformed purl.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: >-
             Purl is unknown, or the package has no linked repo to ingest
             contacts from — returned without triggering the workflow.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '429':
+                $ref: "#/components/schemas/Error"
+        "429":
           description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"

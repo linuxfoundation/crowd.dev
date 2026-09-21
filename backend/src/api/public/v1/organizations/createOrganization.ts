@@ -1,14 +1,13 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
 import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
 import { findOrCreateOrganization } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
   name: z.string().trim().min(1),

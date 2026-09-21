@@ -2,7 +2,6 @@ import { XMLParser } from 'fast-xml-parser'
 
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { fetchText, isEmail, registryHeaders } from '../http'
-
 import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 

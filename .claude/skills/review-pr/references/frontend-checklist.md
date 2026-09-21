@@ -9,15 +9,19 @@ Vue 3 / Vite frontend review standards for the CDP repo (`frontend/`).
 Use `<script setup>` with Composition API. No Options API components.
 
 **Violation:**
+
 ```vue
 <script>
 export default {
-  data() { return { count: 0 } }
+  data() {
+    return { count: 0 }
+  },
 }
 </script>
 ```
 
 **Fix:**
+
 ```vue
 <script setup lang="ts">
 const count = ref(0)
@@ -31,6 +35,7 @@ const count = ref(0)
 Use `useQuery` / `useMutation` from TanStack Vue Query for data fetching. Do not use raw `axios` directly in `onMounted` for data that should be cached.
 
 **Violation:**
+
 ```ts
 const data = ref(null)
 onMounted(async () => {
@@ -39,11 +44,12 @@ onMounted(async () => {
 ```
 
 **Fix:**
+
 ```ts
 import { useQuery } from '@tanstack/vue-query'
 const { data } = useQuery({
   queryKey: ['members'],
-  queryFn: () => axios.get('/api/members').then(r => r.data),
+  queryFn: () => axios.get('/api/members').then((r) => r.data),
 })
 ```
 
@@ -73,11 +79,13 @@ Avoid `any`. Use proper types, `unknown` with narrowing, or generics.
 State that should trigger re-renders must use `ref()` or `computed()`.
 
 **Violation:**
+
 ```ts
 let isLoading = false // won't trigger re-render
 ```
 
 **Fix:**
+
 ```ts
 const isLoading = ref(false)
 ```

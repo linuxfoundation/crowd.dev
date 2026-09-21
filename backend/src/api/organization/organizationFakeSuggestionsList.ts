@@ -1,7 +1,6 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { Error400 } from '@crowd/common'
 import { findFakeOrganizationSuggestions } from '@crowd/data-access-layer/src/organizations'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import Permissions from '../../security/permissions'
 import OrganizationService from '../../services/organizationService'

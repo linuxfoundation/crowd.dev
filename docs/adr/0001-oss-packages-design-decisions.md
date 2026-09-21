@@ -10,22 +10,22 @@ The oss-packages domain is being built inside CDP as a new, independent capabili
 
 ## Scope and current status
 
-| Decision area                                  | Status                                              |
-| ---------------------------------------------- | --------------------------------------------------- |
-| Database placement                             | decided                                             |
-| Worker architecture                            | decided                                             |
-| Universe source and critical-package selection | decided                                             |
-| Criticality scoring methodology                | proposed (weights tunable)                                          |
-| Write semantics across sub-workers             | decided                                             |
-| Package → repository provenance                | decided                                             |
-| OSV as canonical security source               | decided                                             |
-| CVSS scoring strategy                          | decided (v4 numeric scoring deferred)               |
-| `has_critical_vulnerability` semantics         | decided                                             |
-| `advisory_affected_ranges` uniqueness scope    | decided                                             |
-| Per-source ingestion strategies                | decided (Sonatype API access pending)               |
-| Source of truth: deps.dev vs registries / OSV  | decided                                             |
-| deps.dev coverage and gaps                     | decided                                             |
-| Downloads timeline by tier                     | decided                                             |
+| Decision area                                  | Status                                |
+| ---------------------------------------------- | ------------------------------------- |
+| Database placement                             | decided                               |
+| Worker architecture                            | decided                               |
+| Universe source and critical-package selection | decided                               |
+| Criticality scoring methodology                | proposed (weights tunable)            |
+| Write semantics across sub-workers             | decided                               |
+| Package → repository provenance                | decided                               |
+| OSV as canonical security source               | decided                               |
+| CVSS scoring strategy                          | decided (v4 numeric scoring deferred) |
+| `has_critical_vulnerability` semantics         | decided                               |
+| `advisory_affected_ranges` uniqueness scope    | decided                               |
+| Per-source ingestion strategies                | decided (Sonatype API access pending) |
+| Source of truth: deps.dev vs registries / OSV  | decided                               |
+| deps.dev coverage and gaps                     | decided                               |
+| Downloads timeline by tier                     | decided                               |
 
 ---
 
@@ -100,13 +100,13 @@ This is treated as a brand-new workstream: no reuse or extension of any existing
 
 Five signals, all stored on `packages`:
 
-| Signal                       | Existing? | Source                                                                  |
-| ---------------------------- | --------- | ----------------------------------------------------------------------- |
-| `downloads_last_30d`         | yes       | weekly downloads ingestion (registry APIs)                              |
-| `dependent_packages_count`   | yes       | deps.dev `DependentsLatest`                                             |
-| `dependent_repos_count`      | yes       | derived in Postgres from `package_repos`                                |
+| Signal                       | Existing? | Source                                                                 |
+| ---------------------------- | --------- | ---------------------------------------------------------------------- |
+| `downloads_last_30d`         | yes       | weekly downloads ingestion (registry APIs)                             |
+| `dependent_packages_count`   | yes       | deps.dev `DependentsLatest`                                            |
+| `dependent_repos_count`      | yes       | derived in Postgres from `package_repos`                               |
 | `transitive_dependent_count` | **new**   | computed in the criticality sub-worker (see Implementation note below) |
-| `centrality_score`           | **new**   | computed in the criticality sub-worker (PageRank, see below)            |
+| `centrality_score`           | **new**   | computed in the criticality sub-worker (PageRank, see below)           |
 
 Direct dependent counts capture popularity. Transitive dependent count and centrality capture **blast radius** — load-bearing upstream packages with few direct dependents but massive indirect reach (the left-pad / XZ class that direct counts alone miss).
 
@@ -128,11 +128,11 @@ Weights sum to 1.0 → impact ∈ `[0, 1]`. `dependent_count` is direct dependen
 
 **Current weights** (defaults in `rank_packages()`, iterate once the ranked list is observable):
 
-| Weight          | Value | Signal                      | Rationale                                                            |
-| --------------- | ----- | --------------------------- | -------------------------------------------------------------------- |
-| `w_transitive`  | 0.50  | Indirect dependent packages | Primary blast-radius signal — captures packages invisible to direct counts |
-| `w_dep_pkgs`    | 0.25  | Direct dependent packages   | Popularity within the package graph                                  |
-| `w_downloads`   | 0.25  | 30-day downloads            | Adoption signal, balanced with dependency reach                      |
+| Weight         | Value | Signal                      | Rationale                                                                  |
+| -------------- | ----- | --------------------------- | -------------------------------------------------------------------------- |
+| `w_transitive` | 0.50  | Indirect dependent packages | Primary blast-radius signal — captures packages invisible to direct counts |
+| `w_dep_pkgs`   | 0.25  | Direct dependent packages   | Popularity within the package graph                                        |
+| `w_downloads`  | 0.25  | 30-day downloads            | Adoption signal, balanced with dependency reach                            |
 
 These are a starting point, not a recommendation we've validated. They will be revised once the first ranked list is observable and stakeholders review which packages land in / near Tier 1 — particularly for smaller ecosystems where the percentile distribution is less stable.
 
@@ -217,16 +217,16 @@ Inputs in blue are new graph-derived signals; the spotlight step in orange is th
 
 Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all writing to the same `packages-db` schema. We define per-table write rules that allow concurrent writes without distributed locking:
 
-| Table                                 | Rule                                                                                                                                                                                                                                                        |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages`                            | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice.                                                                                                                       |
-| `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                     |
+| Table                                 | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages`                            | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `repos`                               | Registry workers (npm, Maven) do **not** write `repos` enrichment metadata. They INSERT a minimal `repos(url, host)` row — `url` (canonical) and `host` (coarse classification) are both derived from the declared repository URL — solely to create the FK target their `package_repos` link needs. `owner`/`name`/`stars`/`description` and all other metadata stay NULL and remain enricher-owned; existing rows are never updated by registry workers. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
-| `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                         |
-| `advisories`                          | Upsert on `osv_id`. OSV is the source of truth for ongoing updates; deps.dev also writes this table at backfill / new-package time (see §Source of truth: deps.dev backfill vs registries / OSV) — OSV's writes are expected to overwrite deps.dev's over time, not the other way around.                                                                                                                                                                |
-| `maintainers` / `package_maintainers` | `maintainers`: upsert on `(ecosystem, username)`, never deleted — the identity history is preserved. `package_maintainers`: reflects the **current** link set — the npm worker replaces a package's links each ingest (delete + reinsert), so prior link rows are not retained.                                                                                                                                                                                     |
-| `downloads_daily`                     | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates.                                                     |
-| `downloads_last_30d`                  | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages.downloads_last_30d` column must be updated in the same pass.                                                                                                  |
+| `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `advisories`                          | Upsert on `osv_id`. OSV is the source of truth for ongoing updates; deps.dev also writes this table at backfill / new-package time (see §Source of truth: deps.dev backfill vs registries / OSV) — OSV's writes are expected to overwrite deps.dev's over time, not the other way around.                                                                                                                                                                                                                                                                                                                         |
+| `maintainers` / `package_maintainers` | `maintainers`: upsert on `(ecosystem, username)`, never deleted — the identity history is preserved. `package_maintainers`: reflects the **current** link set — the npm worker replaces a package's links each ingest (delete + reinsert), so prior link rows are not retained.                                                                                                                                                                                                                                                                                                                                   |
+| `downloads_daily`                     | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `downloads_last_30d`                  | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages.downloads_last_30d` column must be updated in the same pass.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 The column-ownership rule is a social contract, not enforced by Postgres. Code review must catch cross-ecosystem or cross-source column writes using this table as the reference.
 
@@ -379,7 +379,7 @@ Two duplication problems surfaced in Tinybird for `advisory_affected_ranges` (CM
 - Soft-delete (not hard-delete) is required because the unique key is the value tuple itself: when OSV corrects a range (e.g. narrows `fixed_version`), the corrected tuple is a different key, so the old tuple's row has no successor row to collapse into — without a `deleted_at` flag it would sit forever as a false-positive vulnerable-range match.
 - After OSV writes its structured ranges for an advisory_package, soft-delete any live deps.dev-owned row (`range_raw IS NOT NULL OR unaffected_raw IS NOT NULL`) for that same advisory_package — this is the §Source of truth overwrite rule, made to actually take effect now that raw and structured rows are reconciled instead of coexisting.
 - Tinybird: add `deletedAt` to `advisoryAffectedRanges.datasource` and filter `deletedAt IS NULL` in `ossPackages_enriched.pipe`'s join, alongside the existing `FINAL` modifier (`FINAL` only collapses rows sharing a sorting key — it does not merge two distinct PKs claiming the same real-world range, which is why this needs an explicit filter rather than relying on `FINAL` alone).
-- **Rollout note**: the `deletedAt IS NULL` filter only stops *new* duplicates. Zombie rows already replicated into Tinybird under the old hard-delete + reinsert path have no surviving Postgres row to emit a `deleted_at` update from, so they keep reading as `deletedAt IS NULL` forever. Deploying this fix must be paired with a one-time truncate + full Sequin resnapshot of the `advisoryAffectedRanges` datasource from the live Postgres table, or the existing false-positive vulnerable ranges persist.
+- **Rollout note**: the `deletedAt IS NULL` filter only stops _new_ duplicates. Zombie rows already replicated into Tinybird under the old hard-delete + reinsert path have no surviving Postgres row to emit a `deleted_at` update from, so they keep reading as `deletedAt IS NULL` forever. Deploying this fix must be paired with a one-time truncate + full Sequin resnapshot of the `advisoryAffectedRanges` datasource from the live Postgres table, or the existing false-positive vulnerable ranges persist.
 
 **Decided**: 2026-07-20
 
@@ -395,7 +395,7 @@ Two duplication problems surfaced in Tinybird for `advisory_affected_ranges` (CM
 2. Filter changed names against the `packages` table (~700k packages). Only packages already tracked in Tier 2 are re-ingested — unknown packages in the changes feed are ignored.
 3. For each matching changed name, fetch the full document from `registry.npmjs.com/<package>`.
 4. Normalize into `packages`, `versions`, `maintainers`, and `package_maintainers` using the write rules above.
-4. Downloads: two Temporal workflows — `backfillDailyDownloads` (per-day rows into `downloads_daily`) and `refreshLast30dDownloads` (rolling 30-day windows into `downloads_last_30d`). Both are self-healing: they detect and fill missing windows on each run rather than assuming continuity. Both currently source packages from a static watch list. Once the deps.dev BQ import is operational, both will source from `packages`.
+5. Downloads: two Temporal workflows — `backfillDailyDownloads` (per-day rows into `downloads_daily`) and `refreshLast30dDownloads` (rolling 30-day windows into `downloads_last_30d`). Both are self-healing: they detect and fill missing windows on each run rather than assuming continuity. Both currently source packages from a static watch list. Once the deps.dev BQ import is operational, both will source from `packages`.
 
    **Rolling-30-day window shape**: each `downloads_last_30d` window uses `end_date = 1st of calendar month, start_date = end_date − 30 days` — not a true calendar month. This ensures every window covers exactly 30 days, making download counts directly comparable across months for criticality scoring. Calendar months (28–31 days) would skew comparisons.
 
@@ -448,14 +448,14 @@ We split responsibility by lifecycle stage, not by table:
 
 Concretely:
 
-| Lifecycle event                                              | Writer              |
-| ------------------------------------------------------------ | ------------------- |
-| First-ever load of an ecosystem                              | deps.dev import     |
-| New package appears in deps.dev export                       | deps.dev import     |
-| New version published, deprecation / yank flipped            | registry worker     |
-| `latest_version`, `latest_release_at`, license drift         | registry worker     |
-| `package_repos` row added by a new registry/heuristic source | registry worker     |
-| Advisory created or modified                                 | OSV worker          |
+| Lifecycle event                                              | Writer                |
+| ------------------------------------------------------------ | --------------------- |
+| First-ever load of an ecosystem                              | deps.dev import       |
+| New package appears in deps.dev export                       | deps.dev import       |
+| New version published, deprecation / yank flipped            | registry worker       |
+| `latest_version`, `latest_release_at`, license drift         | registry worker       |
+| `package_repos` row added by a new registry/heuristic source | registry worker       |
+| Advisory created or modified                                 | OSV worker            |
 | Repo metadata refresh (stars, topics, archived, etc.)        | github-repos-enricher |
 
 The §deps.dev coverage and gaps table below remains the authoritative per-column ownership reference; this section is the lifecycle rule that sits on top of it.
@@ -464,12 +464,12 @@ The §deps.dev coverage and gaps table below remains the authoritative per-colum
 
 To make drift between deps.dev and the registry / OSV workers observable, every package carries one row per writing source in `package_source_log`. Each worker that touches a package upserts its `(package_id, source)` row in the same transaction as the data write — bumping `last_synced_at` and recording the set of `table.column` paths it owns for that package.
 
-| Column           | Purpose                                                                                       |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `package_id`     | FK to `packages(id)`. Part of PK.                                                             |
+| Column           | Purpose                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `package_id`     | FK to `packages(id)`. Part of PK.                                                                                        |
 | `source`         | Writing source: `'deps_dev'`, `'npm-registry'`, `'maven-central'`, `'osv'`, `'github-enricher'`, `'manual'`. Part of PK. |
 | `columns`        | Array of `table.column` paths this source wrote for this package (e.g. `packages.latest_version`, `versions.is_yanked`). |
-| `last_synced_at` | Timestamp of the most recent write by this source for this package.                           |
+| `last_synced_at` | Timestamp of the most recent write by this source for this package.                                                      |
 
 Primary key is `(package_id, source)` — one row per package per source, updated in place. Cardinality is bounded by `|packages| × |sources|` (a small constant per package), well under what an append-only event log would generate.
 
@@ -598,6 +598,7 @@ The writer of a `downloads_last_30d` row must also update the cached `packages.d
 - 2026-05-29 — added §Criticality scoring methodology (graph signals — transitive dependent count and PageRank centrality; per-ecosystem percentile-rank formula in `[0, 1]`; floor + ceiling tier budget policy; `package_criticality_spotlight` table).
 - 2026-06-08 — retired `packages_universe` table. Signals (`downloads_last_30d`, `centrality_score`, `rank_in_ecosystem`) migrated onto `packages`. Both `rank_packages_universe()` overloads dropped; replaced by `rank_packages()` operating directly on `packages`, scoped to ecosystems present in `critical_top_n_by_ecosystem` JSONB. §Downloads timeline by tier simplified (Tier 2/3 split removed). §Write semantics `packages_universe` row removed.
 - 2026-07-20 (CM-1258) — corrected stale §Write semantics `advisories` row (deps.dev also writes this table; OSV overwrites over time per §Source of truth, it isn't the sole writer). Added §`advisory_affected_ranges` delete/dedup strategy: diff-based upsert + soft-delete (`deleted_at`) replaces hard-delete + reinsert to stop zombie rows in Tinybird, and OSV now supersedes deps.dev's raw rows on overlap so the two sources stop coexisting as duplicates.
+
 ---
 
 ## Note on promotion to production

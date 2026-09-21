@@ -5,7 +5,6 @@ import * as path from 'path'
 import { fetchBulkPointRange, fetchPointRange } from '../npm/fetchDownloads'
 import { fetchPackument } from '../npm/fetchPackument'
 import { FetchError, FetchErrorKind, isFetchError } from '../npm/types'
-
 import { fetchAbbreviatedPackument } from './clients/npmAbbreviated'
 import { downloadAndExtractTarball } from './clients/npmTarball'
 import { NpmVersionManifest, asNpmVersionManifest } from './npmManifest'

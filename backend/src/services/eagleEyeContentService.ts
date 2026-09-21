@@ -19,7 +19,6 @@ import EagleEyeContentRepository from '../database/repositories/eagleEyeContentR
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import TenantUserRepository from '../database/repositories/tenantUserRepository'
 import track from '../segment/track'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export interface EagleEyeContentUpsertData extends EagleEyeAction {

@@ -2,7 +2,6 @@ import axios, { AxiosRequestConfig } from 'axios'
 
 import { IProcessStreamContext } from '../../../types'
 import { DiscordApiChannel } from '../types'
-
 import { handleDiscordError } from './errorHandler'
 import { retryWrapper } from './handleRateLimit'
 

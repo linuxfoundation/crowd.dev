@@ -22,7 +22,6 @@ import { QueryExecutor } from '../queryExecutor'
 import { findManyLfSegmentsByNames } from '../segments'
 import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
-
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
 import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
 import { IDbOrganization, IDbOrganizationInput, IFindOrCreateOrganizationResult } from './types'

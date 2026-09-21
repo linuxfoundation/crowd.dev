@@ -3,7 +3,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { IEnrichableMemberIdentityActivityAggregate, PageData } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import {
   IActivityRelationColumn,
   IDbActivityRelation,

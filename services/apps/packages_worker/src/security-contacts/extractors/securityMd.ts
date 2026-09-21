@@ -7,7 +7,6 @@ import {
   RawContact,
   RepoPolicies,
 } from '../types'
-
 import { githubHandleFromUrl } from './http'
 
 const SOURCE = 'security.md'

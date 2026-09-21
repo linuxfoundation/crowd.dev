@@ -1,8 +1,9 @@
-import { ApplicationFailure } from '@temporalio/client'
 import { exec, spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
-import { load as parseYaml } from 'js-yaml'
 import { promisify } from 'util'
+
+import { ApplicationFailure } from '@temporalio/client'
+import { load as parseYaml } from 'js-yaml'
 
 import {
   addControlEvaluationAssessment,

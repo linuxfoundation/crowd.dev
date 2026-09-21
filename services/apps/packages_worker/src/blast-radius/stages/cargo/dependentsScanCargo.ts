@@ -3,7 +3,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
 import { toDbCargoName } from '../../packageIdentifier'
-
 import { cargoDependencyMayIncludeVuln } from './cargoConstraint'
 
 // Cargo dependents come from our own DB (package_dependencies), same as Go — no

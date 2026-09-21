@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
-import { CronJob } from 'cron'
 import path from 'path'
+
+import { CronJob } from 'cron'
 import pidusage from 'pidusage'
 
 import { getChildLogger, getServiceChildLogger, getServiceLogger } from '@crowd/logging'
