@@ -14,7 +14,7 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 
 1. **Skip gate**: When processing any non-`.project` repo that has a `.project` sibling (determined by querying sibling repos via `segments.parentId` under the CNCF projectGroup), raise `MaintainerSkippedProjectLevelError` — no file detection, no LLM calls, no writes to `maintainersInternal`.
 2. **Sibling end-date**: After a `.project` repo successfully saves its maintainer roster, bulk-update `maintainersInternal` to set `endDate` on all active rows belonging to sibling repos in the same project.
-3. **Emeritus extraction**: Add `"emeritus"` as a third valid `normalized_title` in the LLM prompt and model. The LLM uses `"emeritus"` for any person explicitly marked as retired, inactive, or alumni (e.g. "Emeritus Maintainer", "Alumni", "Past Maintainer"). Emeritus entries are stored in `maintainersInternal` with `role = 'emeritus'` — they are never counted as active maintainers since all downstream consumers filter on `role = 'maintainer'`.
+3. **Emeritus extraction**: Add `"emeritus"` as a third valid `normalized_title` in the LLM prompt and model. The LLM uses `"emeritus"` for any person explicitly marked as retired, inactive, or alumni (e.g. "Emeritus Maintainer", "Alumni", "Past Maintainer"). Emeritus entries are stored in `maintainersInternal` with `role = 'emeritus'`. Most downstream consumers filter on `role = 'maintainer'` and therefore exclude emeritus from active counts. Health score bus factor pipes (`health_score_v2_maintainer`, `health_score_v2_raw_inputs_snapshot`) count all curated roles with recent activity — this is intentional; project alumni who remain active contributors still factor into bus factor.
 4. **Case-insensitive handle lookup**: `find_github_identity` uses `LOWER(value) = LOWER($1)` when querying `memberIdentities`. GitHub handles are case-insensitive; CDP sometimes stores the lowercase variant as the non-deleted identity (e.g. `thor-wl` active, `Thor-wl` deleted). A case-sensitive match silently misses these, leaving a maintainer with no `identityId` row in `maintainersInternal`.
 
 ## Alternatives Considered
@@ -42,7 +42,7 @@ For CNCF projects (repos whose segment has `grandparentSlug = 'cncf'`), treat th
 ### Positive
 
 - Eliminates over-collection from sibling repos for CNCF projects; one authoritative source per project.
-- Emeritus roles stored with `role = 'emeritus'` — visible for historical queries, excluded from active maintainer counts by all downstream consumers.
+- Emeritus roles stored with `role = 'emeritus'` — visible for historical queries. Active maintainer count consumers filter on `role = 'maintainer'`; health score bus factor pipes intentionally include all curated roles with recent activity.
 - Skip gate is cheap: one DB query per repo per cycle, no LLM cost for skipped repos.
 - Case-insensitive handle lookup recovers maintainers whose `memberIdentities` row was stored under a different casing than the handle in `maintainers.yaml`.
 
