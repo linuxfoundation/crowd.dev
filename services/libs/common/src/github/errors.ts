@@ -1,7 +1,5 @@
-// Thrown by GitHub REST response classification for installation-token-authenticated calls
-// (star_snapshot_worker's backfill client). err.name is stored verbatim as lastErrorClass on
-// repositoryStarBackfillStatus, so findDeadLetteredStarBackfillFailures can exclude the
-// non-actionable ones by name - kept in this one file so the two stay in sync automatically.
+// err.name is stored verbatim as lastErrorClass on repositoryStarBackfillStatus - kept in one
+// file so NON_ACTIONABLE_GITHUB_ERROR_CLASSES below stays in sync with these names.
 export class GithubRepoNotFoundError extends Error {
   constructor(message: string) {
     super(message)

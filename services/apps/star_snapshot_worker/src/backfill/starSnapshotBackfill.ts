@@ -196,6 +196,12 @@ export function createCoreRateLimiter(reservedFloor: number, log: Logger) {
 
 export type CoreRateLimiter = ReturnType<typeof createCoreRateLimiter>
 
+// Rate limiting is transient and not the repo's fault - counting it as a backfill failure
+// would dead-letter healthy repos that just got throttled.
+function isRateLimitError(message: string): boolean {
+  return message.toLowerCase().includes('rate limit')
+}
+
 // failFast=true throws synchronously instead of awaiting the wait, for a caller (a Temporal
 // activity) that can't hold its startToCloseTimeout open for GitHub's reset.
 async function acquireRateLimitSlot(
@@ -226,9 +232,8 @@ async function githubGet(url: string, token: string): Promise<Response> {
   }
 }
 
-// Cached token's own expiry, as of the moment a request against it got rejected - tells apart
-// "GitHub revoked/rotated the token early" (still fresh by our bookkeeping) from "our proactive
-// refresh missed the boundary" (already expired or expiring imminently by our own clock).
+// Cached token's own expiry as of the moment a request got rejected - tells apart a token GitHub
+// revoked early from a refresh that missed the boundary (already expired by our own clock).
 function tokenExpiryDiagnostics(): {
   tokenExpiresAt: string | null
   tokenMsUntilExpiry: number | null
@@ -293,9 +298,8 @@ async function assertOk(
     if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
-    // Neither rate-limit wording nor a retry-after header - either the org's IP allow list is
-    // blocking this installation (permanent policy, not a token problem) or a real per-repo/org
-    // permission 403 (installation restricted or suspended for that org).
+    // Neither rate-limit wording nor a retry-after header - either an org IP allow list block
+    // (permanent policy) or a real installation-permission 403.
     const isIpAllowlistBlock = bodyLower.includes('ip allow list')
     log.warn(
       {
@@ -558,6 +562,9 @@ export async function runStarSnapshotBackfill(
 
   const rateLimiter = createCoreRateLimiter(options.reservedCoreRateLimit, log)
   const failedRepos: IRepoForStarSnapshot[] = []
+  // At most one persisted failure per repo per run - otherwise a same-run retry failing again
+  // would double the dead-letter count against the documented 3-runs-to-dead-letter cadence.
+  const failuresPersistedThisRun = new Set<string>()
   let afterUrl = options.afterUrl
   // The persisted checkpoint, kept separate from `afterUrl` (the live scan cursor) so a
   // failure doesn't rewind live pagination - only frozen until the retry sweep resolves it.
@@ -612,7 +619,7 @@ export async function runStarSnapshotBackfill(
             { repoUrl: repo.repoUrl, error: message },
             'star snapshot backfill failed for repo',
           )
-          if (!options.dryRun) {
+          if (!options.dryRun && !isRateLimitError(message)) {
             try {
               await recordStarBackfillFailure(
                 qx,
@@ -621,6 +628,7 @@ export async function runStarSnapshotBackfill(
                 message,
                 BACKFILL_DEAD_LETTER_AFTER,
               )
+              failuresPersistedThisRun.add(repo.repositoryId)
             } catch (recordErr) {
               log.warn(
                 { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },
@@ -708,7 +716,11 @@ export async function runStarSnapshotBackfill(
           { repoUrl: repo.repoUrl, error: message },
           'star snapshot backfill retry failed for repo',
         )
-        if (!options.dryRun) {
+        if (
+          !options.dryRun &&
+          !isRateLimitError(message) &&
+          !failuresPersistedThisRun.has(repo.repositoryId)
+        ) {
           try {
             await recordStarBackfillFailure(
               qx,
@@ -717,6 +729,7 @@ export async function runStarSnapshotBackfill(
               message,
               BACKFILL_DEAD_LETTER_AFTER,
             )
+            failuresPersistedThisRun.add(repo.repositoryId)
           } catch (recordErr) {
             log.warn(
               { repoUrl: repo.repoUrl, error: (recordErr as Error)?.message ?? recordErr },

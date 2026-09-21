@@ -20,9 +20,8 @@ let expiration: Date | undefined
 // request; sharing one in-flight refresh keeps them on the same result instead.
 let refreshPromise: Promise<string> | undefined
 
-// Refresh a bit before actual expiry - a call that starts just under the wire can still be
-// in flight against GitHub when the token ticks over, otherwise returning a token that's
-// already expired by the time it's used.
+// Refresh before actual expiry - a call starting just under the wire can still be in flight
+// when the token ticks over, otherwise returning one that's already expired by then.
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
 
 async function refreshGithubInstallationToken(): Promise<string> {
