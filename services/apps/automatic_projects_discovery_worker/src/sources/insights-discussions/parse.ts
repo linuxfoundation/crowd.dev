@@ -13,10 +13,16 @@ const BLOCKQUOTE_LINE_RE = /^[ \t]*>.*$/gm
 
 // A link quoted in a code block, HTML comment, or blockquote is context, not a request.
 export function stripNonProseSections(markdown: string): string {
-  return markdown
+  let stripped = markdown
+  let previous: string
+  do {
+    previous = stripped
+    stripped = stripped.replace(HTML_COMMENT_RE, '')
+  } while (stripped !== previous)
+
+  return stripped
     .replace(FENCED_CODE_BLOCK_RE, '')
     .replace(INLINE_CODE_RE, '')
-    .replace(HTML_COMMENT_RE, '')
     .replace(BLOCKQUOTE_LINE_RE, '')
 }
 
