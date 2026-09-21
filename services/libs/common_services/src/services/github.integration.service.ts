@@ -16,13 +16,16 @@ const githubMaxSearchResult = 1000
 
 let token: string | undefined
 let expiration: Date | undefined
+// Concurrent callers racing the staleness check below would each fire their own refresh
+// request; sharing one in-flight refresh keeps them on the same result instead.
+let refreshPromise: Promise<string> | undefined
 
-export const getGithubInstallationToken = async (): Promise<string> => {
-  if (token && expiration && expiration.getTime() > Date.now()) {
-    return token
-  }
+// Refresh a bit before actual expiry - a call that starts just under the wire can still be
+// in flight against GitHub when the token ticks over, otherwise returning a token that's
+// already expired by the time it's used.
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
 
-  // refresh token
+async function refreshGithubInstallationToken(): Promise<string> {
   const clientId = process.env.GITHUB_TOKEN_CLIENT_ID
   const installationId = process.env.GITHUB_TOKEN_INSTALLATION_ID
   const privateKeyRaw = process.env.GITHUB_TOKEN_PRIVATE_KEY
@@ -58,6 +61,20 @@ export const getGithubInstallationToken = async (): Promise<string> => {
   expiration = new Date(response.data.expires_at)
 
   return token
+}
+
+export const getGithubInstallationToken = async (): Promise<string> => {
+  if (token && expiration && expiration.getTime() - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
+    return token
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = refreshGithubInstallationToken().finally(() => {
+      refreshPromise = undefined
+    })
+  }
+
+  return refreshPromise
 }
 
 // Diagnostic-only: lets a caller log how fresh the cached token was at the moment

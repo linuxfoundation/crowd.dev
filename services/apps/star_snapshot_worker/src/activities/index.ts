@@ -124,8 +124,22 @@ async function queryStargazerCounts(
 
     if (response.status === 403) {
       const body = await response.text()
-      if (body.toLowerCase().includes('rate limit')) {
+      const bodyLower = body.toLowerCase()
+      if (bodyLower.includes('rate limit')) {
         throw new Error('GitHub rate limit hit fetching stargazer counts')
+      }
+      if (bodyLower.includes('ip allow list')) {
+        // A per-org IP allow list block rejects this whole multi-repo query at the HTTP level
+        // before any field resolves, so which repo(s) in the batch caused it can't be told apart
+        // from here - synthesize per-alias errors so this doesn't throw and fail the whole batch
+        // (and, if every batch on the page hit this, the run) same as a real per-field GraphQL error.
+        return {
+          errors: entries.map((entry, i) => ({
+            path: [`r${i}`],
+            type: 'FORBIDDEN',
+            message: `org IP allow list may be blocking one of this batch's repos (incl. ${entry.owner}/${entry.name})`,
+          })),
+        }
       }
       throw ApplicationFailure.nonRetryable(
         'GitHub auth failure (403) fetching stargazer counts',

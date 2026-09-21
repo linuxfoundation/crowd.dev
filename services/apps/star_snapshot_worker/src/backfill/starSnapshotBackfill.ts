@@ -26,6 +26,37 @@ const REPO_PAGE_SIZE = 500
 // star/unstar landing in between would show up as drift here.
 const RECONCILIATION_TOLERANCE = 2
 
+// Named so recordStarBackfillFailure's errorClass (err.name) can tell these apart downstream -
+// findDeadLetteredStarBackfillFailures excludes GithubRepoNotFoundError/GithubIpAllowlistError
+// by this exact name, since neither is actionable (repo gone / org policy block).
+export class GithubRepoNotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GithubRepoNotFoundError'
+  }
+}
+
+export class GithubIpAllowlistError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GithubIpAllowlistError'
+  }
+}
+
+export class GithubForbiddenError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GithubForbiddenError'
+  }
+}
+
+export class GithubAuthError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GithubAuthError'
+  }
+}
+
 interface StargazerHistoryWeek {
   week: number
   total: number
@@ -257,10 +288,10 @@ async function assertOk(
       },
       'GitHub 401, token itself was rejected',
     )
-    throw new Error(`GitHub auth failure (401) fetching ${what} for ${owner}/${name}`)
+    throw new GithubAuthError(`GitHub auth failure (401) fetching ${what} for ${owner}/${name}`)
   }
   if (response.status === 404) {
-    throw new Error(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
+    throw new GithubRepoNotFoundError(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
   }
   if (response.status === 403 || response.status === 429) {
     const retryAfterHeader = response.headers.get('retry-after')
@@ -287,9 +318,10 @@ async function assertOk(
     if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
-    // Neither rate-limit wording nor a retry-after header - most likely a real per-repo/org
-    // permission 403 (installation restricted or suspended for that org), not a token problem.
-    // Logged here since the generic error message alone gives no way to tell the two apart later.
+    // Neither rate-limit wording nor a retry-after header - either the org's IP allow list is
+    // blocking this installation (permanent policy, not a token problem) or a real per-repo/org
+    // permission 403 (installation restricted or suspended for that org).
+    const isIpAllowlistBlock = bodyLower.includes('ip allow list')
     log.warn(
       {
         owner,
@@ -300,9 +332,18 @@ async function assertOk(
         ...tokenExpiryDiagnostics(),
         body: body.slice(0, 500),
       },
-      'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
+      isIpAllowlistBlock
+        ? 'GitHub 403, org IP allow list is blocking this installation'
+        : 'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
     )
-    throw new Error(`GitHub auth failure (403) fetching ${what} for ${owner}/${name}`)
+    if (isIpAllowlistBlock) {
+      throw new GithubIpAllowlistError(
+        `GitHub org IP allow list blocked (403) fetching ${what} for ${owner}/${name}`,
+      )
+    }
+    throw new GithubForbiddenError(
+      `GitHub auth failure (403) fetching ${what} for ${owner}/${name}`,
+    )
   }
   throw new Error(`GitHub API error ${response.status} fetching ${what} for ${owner}/${name}`)
 }

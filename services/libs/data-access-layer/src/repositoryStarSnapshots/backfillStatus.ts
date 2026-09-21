@@ -3,6 +3,13 @@ import { IRepositoryStarBackfillStatus } from '@crowd/types'
 import { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
 
+// Names of the error classes star_snapshot_worker's assertOk throws (err.name, stored verbatim
+// as lastErrorClass) for failures that are permanent external conditions, not our bugs - repo
+// gone (404) or org IP allow list policy (403). Kept as a WARN-level log only; excluded here so
+// they don't reach the daily dead-letter Slack report. Must stay in sync with the error class
+// names in services/apps/star_snapshot_worker/src/backfill/starSnapshotBackfill.ts.
+const NON_ACTIONABLE_ERROR_CLASSES = ['GithubRepoNotFoundError', 'GithubIpAllowlistError']
+
 export async function recordStarBackfillFailure(
   qx: QueryExecutor,
   repositoryId: string,
@@ -81,9 +88,10 @@ export async function findDeadLetteredStarBackfillFailures(
         and ($(since)::timestamptz is null or f."deadLetteredAt" > $(since))
         and r."deletedAt" is null
         and r."excluded" = false
+        and f."lastErrorClass" not in ($(nonActionableErrorClasses:csv))
       order by f."deadLetteredAt" desc
     `,
-    { since },
+    { since, nonActionableErrorClasses: NON_ACTIONABLE_ERROR_CLASSES },
   )
 
   return failures || []
@@ -108,7 +116,9 @@ export async function countDeadLetteredStarBackfillFailures(qx: QueryExecutor): 
       where f."deadLetteredAt" is not null
         and r."deletedAt" is null
         and r."excluded" = false
+        and f."lastErrorClass" not in ($(nonActionableErrorClasses:csv))
     `,
+    { nonActionableErrorClasses: NON_ACTIONABLE_ERROR_CLASSES },
   )
 
   return count
