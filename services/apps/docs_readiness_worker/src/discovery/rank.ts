@@ -22,7 +22,14 @@ function pathnameOf(url: string): string {
   }
 }
 
+// github.com/www.github.com/docs.github.com are GitHub's own shared hosts, not project-specific
+// documentation — unlike *.github.io, they must never count as a docs signal for any project.
+const GITHUB_SHARED_HOSTS = new Set(['github.com', 'www.github.com', 'docs.github.com'])
+
 function hasDocsSignal(host: string, pathname: string): boolean {
+  if (GITHUB_SHARED_HOSTS.has(host)) {
+    return false
+  }
   return host.startsWith('docs.') || DOCS_KEYWORDS.test(host) || DOCS_KEYWORDS.test(pathname)
 }
 
@@ -35,10 +42,11 @@ const EXPLICIT_DOCS_PROBE_METHODS = new Set<IDocCandidate['method']>([
 ])
 
 export function candidateHasDocsSignal(c: IDocCandidate): boolean {
-  return (
-    EXPLICIT_DOCS_PROBE_METHODS.has(c.method) ||
-    hasDocsSignal(domainOf(c.url) ?? '', pathnameOf(c.url))
-  )
+  const host = domainOf(c.url) ?? ''
+  if (GITHUB_SHARED_HOSTS.has(host)) {
+    return false
+  }
+  return EXPLICIT_DOCS_PROBE_METHODS.has(c.method) || hasDocsSignal(host, pathnameOf(c.url))
 }
 
 function isOnProjectDomain(url: string, projectDomain: string): boolean {
@@ -46,20 +54,36 @@ function isOnProjectDomain(url: string, projectDomain: string): boolean {
   return domain === projectDomain || (domain?.endsWith(`.${projectDomain}`) ?? false)
 }
 
+// When a project's website is its own GitHub repo, projectDomain has no usable anchor — derive
+// one from the repo owner so ranking isn't left fully unanchored against same-keyword domains.
+export function repoNameAnchor(url: string): string | null {
+  try {
+    return new URL(url).pathname.split('/').filter(Boolean)[0] ?? null
+  } catch {
+    return null
+  }
+}
+
 export function rankCandidates(
   candidates: IDocCandidate[],
   projectDomain: string | null = null,
+  projectNameHint: string | null = null,
 ): IDocCandidate | null {
   const live = candidates.filter((c) => c.livenessOk)
   if (live.length === 0) {
     return null
   }
 
+  const nameToken = projectNameHint ? projectNameHint.toLowerCase() : ''
+
   // A live candidate on the project's own domain only overrides off-domain results once it
   // actually carries a docs signal — otherwise a bare homepage would shadow real off-domain docs.
+  // Lacking a real domain, fall back to a looser name-token match on the host as the anchor.
   const ownDomainLive = projectDomain
     ? live.filter((c) => isOnProjectDomain(c.url, projectDomain))
-    : []
+    : nameToken
+      ? live.filter((c) => (normalizedDomain(c.url) ?? '').toLowerCase().includes(nameToken))
+      : []
   const pool = ownDomainLive.some(candidateHasDocsSignal) ? ownDomainLive : live
 
   const domainMethods: Record<string, Set<IDocCandidate['method']>> = {}
@@ -78,8 +102,10 @@ export function rankCandidates(
 
     let score = METHOD_BONUS[c.method] ?? 0
 
-    if (host.startsWith('docs.')) score += 4
-    if (DOCS_KEYWORDS.test(host)) score += 2
+    if (!GITHUB_SHARED_HOSTS.has(host)) {
+      if (host.startsWith('docs.')) score += 4
+      if (DOCS_KEYWORDS.test(host)) score += 2
+    }
     if (DOCS_KEYWORDS.test(pathname)) score += 2
 
     score += (domainMethods[domain].size - 1) * 3
