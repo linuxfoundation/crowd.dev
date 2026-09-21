@@ -179,9 +179,7 @@ async function fetchAllDiscussionRepoUrls(): Promise<IDiscussionRepoUrlRef[]> {
   const categoryId = await getDiscussionCategoryId()
   log.info({ categoryId, owner: OWNER, repo: REPO }, 'Insights Discussions: category ID resolved.')
 
-  // Keyed by repoUrl: keeps the first discussion that referenced it as the
-  // provenance, since a repo cited across multiple discussions still only needs
-  // one project-catalog row.
+  // Keyed by repoUrl: a repo cited across multiple discussions keeps the first as provenance.
   const refsByRepoUrl = new Map<string, IDiscussionRepoUrlRef>()
   let cursor: string | null = null
   let hasNextPage = true
