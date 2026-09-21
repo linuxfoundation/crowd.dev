@@ -661,15 +661,14 @@ When the user pastes results, for each row:
 
 ### Format & Lint
 
-After all files are written, run format then lint from `services/apps/snowflake_connectors`:
+After all files are written, format the connector package then lint from the repo root:
 
 ```bash
-cd services/apps/snowflake_connectors
-pnpm run format
-pnpm run lint
+pnpm --filter @crowd/snowflake-connectors run format
+pnpm lint
 ```
 
-Fix any errors or warnings and re-run `pnpm run lint` until it reports no complaints. Do not proceed to the completion checklist until lint is clean.
+Fix any errors or warnings and re-run `pnpm lint` until it reports no complaints. Do not proceed to the completion checklist until lint is clean.
 
 ### Completion Checklist
 
