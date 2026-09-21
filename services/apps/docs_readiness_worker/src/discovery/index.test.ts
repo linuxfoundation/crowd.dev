@@ -187,4 +187,21 @@ describe('discoverDocs', () => {
 
     expect(result.docsUrl).toBe('https://docs.realproject.dev')
   })
+
+  test('narrows to the repo owner name when a live candidate is actually on that domain', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://acme-widgets.io/docs', 'llms-txt-probe', true),
+      candidate('https://docs.unrelated-vendor.com/reference', 'llms-txt-probe', true),
+    ])
+
+    const result = await discoverDocs({
+      name: 'proj',
+      website: 'https://github.com/acme/real-project',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+
+    expect(result.docsUrl).toBe('https://acme-widgets.io/docs')
+  })
 })

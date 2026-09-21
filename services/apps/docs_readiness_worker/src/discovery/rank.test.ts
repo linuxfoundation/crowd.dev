@@ -127,6 +127,32 @@ describe('rankCandidates', () => {
     const second = candidate('https://b.com/docs', 'docs-path', true)
     expect(rankCandidates([first, second])).toEqual(first)
   })
+
+  test('projectNameHint (third arg) narrows the pool to hosts containing the name token', () => {
+    const ownRepo = candidate('https://acme-widgets.io/docs', 'serp', true)
+    const unrelated = candidate(
+      'https://docs.unrelated-vendor.com/reference',
+      'llms-txt-probe',
+      true,
+    )
+    expect(rankCandidates([unrelated, ownRepo], null, 'acme-widgets')).toEqual(ownRepo)
+  })
+
+  test('a short/generic projectNameHint does not narrow the pool by substring match', () => {
+    // 'ai' would coincidentally match 'ai-widgets.io' too, so a token this short/generic
+    // must be ignored rather than used as a domain anchor.
+    const coincidentalMatch = candidate('https://ai-widgets.io/docs', 'serp', true)
+    const realDocs = candidate('https://docs.realproject.dev', 'llms-txt-probe', true)
+    expect(rankCandidates([coincidentalMatch, realDocs], null, 'ai')).toEqual(realDocs)
+  })
+
+  test('a bare github.com candidate never outranks a real signal-bearing candidate, even with a strong method and multiple agreeing strategies', () => {
+    const probe = candidate('https://github.com/a', 'llms-txt-probe', true)
+    const subdomain = candidate('https://github.com/b', 'docs-subdomain', true)
+    const homepage = candidate('https://github.com/c', 'project-website', true)
+    const realDocs = candidate('https://docs.realproject.dev', 'serp', true)
+    expect(rankCandidates([probe, subdomain, homepage, realDocs])).toEqual(realDocs)
+  })
 })
 
 describe('rankCandidates — replay against real POC discovery outcomes', () => {

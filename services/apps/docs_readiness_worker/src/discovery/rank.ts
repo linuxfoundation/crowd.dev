@@ -26,6 +26,10 @@ function pathnameOf(url: string): string {
 // documentation — unlike *.github.io, they must never count as a docs signal for any project.
 const GITHUB_SHARED_HOSTS = new Set(['github.com', 'www.github.com', 'docs.github.com'])
 
+// Below any real score, so method/agreement bonuses never let a shared host outrank a real
+// docs URL — it only wins when it's the sole live candidate left in the pool.
+const GITHUB_SHARED_HOST_SCORE = -1000
+
 function hasDocsSignal(host: string, pathname: string): boolean {
   if (GITHUB_SHARED_HOSTS.has(host)) {
     return false
@@ -74,11 +78,16 @@ export function rankCandidates(
     return null
   }
 
-  const nameToken = projectNameHint ? projectNameHint.toLowerCase() : ''
+  // Below this length a token is too common/generic (e.g. a short or generic org name) to
+  // safely narrow the pool by substring match.
+  const MIN_NAME_TOKEN_LENGTH = 4
+  const nameToken =
+    projectNameHint && projectNameHint.length >= MIN_NAME_TOKEN_LENGTH
+      ? projectNameHint.toLowerCase()
+      : ''
 
-  // A live candidate on the project's own domain only overrides off-domain results once it
-  // actually carries a docs signal — otherwise a bare homepage would shadow real off-domain docs.
-  // Lacking a real domain, fall back to a looser name-token match on the host as the anchor.
+  // A live on-domain candidate only overrides off-domain results once it carries a docs signal,
+  // so a bare homepage can't shadow real docs; lacking a domain, fall back to a name-token anchor.
   const ownDomainLive = projectDomain
     ? live.filter((c) => isOnProjectDomain(c.url, projectDomain))
     : nameToken
@@ -100,12 +109,14 @@ export function rankCandidates(
     const pathname = pathnameOf(c.url)
     const domain = normalizedDomain(c.url)
 
+    if (GITHUB_SHARED_HOSTS.has(host)) {
+      return { candidate: c, score: GITHUB_SHARED_HOST_SCORE }
+    }
+
     let score = METHOD_BONUS[c.method] ?? 0
 
-    if (!GITHUB_SHARED_HOSTS.has(host)) {
-      if (host.startsWith('docs.')) score += 4
-      if (DOCS_KEYWORDS.test(host)) score += 2
-    }
+    if (host.startsWith('docs.')) score += 4
+    if (DOCS_KEYWORDS.test(host)) score += 2
     if (DOCS_KEYWORDS.test(pathname)) score += 2
 
     score += (domainMethods[domain].size - 1) * 3
