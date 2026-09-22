@@ -55,13 +55,20 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
     const otherMemberIds = memberIds.filter((id) => id !== primaryMemberId)
 
     if (otherMemberIds.length > 0) {
-      await suggestMemberMerge(
-        qx,
-        otherMemberIds.map((otherMemberId) => ({
-          members: [primaryMemberId, otherMemberId],
-          similarity: 0.95,
-        })),
-      )
+      try {
+        await suggestMemberMerge(
+          qx,
+          otherMemberIds.map((otherMemberId) => ({
+            members: [primaryMemberId, otherMemberId],
+            similarity: 0.95,
+          })),
+        )
+      } catch (error) {
+        req.log.warn(
+          { error, memberIds },
+          'Member merge suggestion was not saved',
+        )
+      }
     }
 
     const projectGroupId = await findMemberProjectGroupId(qx, primaryMemberId)

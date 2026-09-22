@@ -149,9 +149,16 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
         if (error instanceof ConflictError) {
           const conflictMemberId = error.context?.conflictMemberId
           if (typeof conflictMemberId === 'string') {
-            await suggestMemberMerge(qx, [
-              { members: [memberId, conflictMemberId], similarity: 0.95 },
-            ])
+            try {
+              await suggestMemberMerge(qx, [
+                { members: [memberId, conflictMemberId], similarity: 0.95 },
+              ])
+            } catch (suggestionError) {
+              req.log.warn(
+                { error: suggestionError, memberId, conflictMemberId },
+                'Member merge suggestion was not saved',
+              )
+            }
           }
         }
         throw error
