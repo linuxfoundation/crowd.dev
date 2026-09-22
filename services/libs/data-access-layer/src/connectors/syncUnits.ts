@@ -174,10 +174,12 @@ export async function recordRunFailure(
   errorMessage: string | null,
   deadLetterAfter: number | null,
   nextRunAt: Date,
+  watermark: Record<string, unknown> | null = null,
 ): Promise<void> {
   await qx.result(
     `UPDATE integration.sync_units
      SET "consecutiveFailures" = "consecutiveFailures" + 1,
+         watermark = COALESCE($(watermark)::jsonb, watermark),
          "lastErrorClass" = $(errorClass),
          "lastErrorMessage" = $(errorMessage),
          "lastRunComplete" = false,
@@ -195,6 +197,7 @@ export async function recordRunFailure(
       errorMessage: truncateErrorMessage(errorMessage),
       deadLetterAfter,
       nextRunAt,
+      watermark: watermark != null ? JSON.stringify(watermark) : null,
     },
   )
 }
