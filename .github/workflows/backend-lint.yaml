@@ -47,18 +47,6 @@ jobs:
       - name: Check formatting
         run: pnpm format-check
 
-      - name: Restore TypeScript build info
-        uses: actions/cache@v5
-        with:
-          path: |
-            backend/dist
-            backend/*.tsbuildinfo
-            services/**/dist
-            services/**/*.tsbuildinfo
-          key: tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'services/base.tsconfig.json', 'tsconfig.json') }}-${{ github.sha }}
-          restore-keys: |
-            tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'services/base.tsconfig.json', 'tsconfig.json') }}-
-
       - name: Check typescript
         run: pnpm tsc-check
 
