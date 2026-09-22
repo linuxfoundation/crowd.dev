@@ -50,9 +50,8 @@ function getCaptureRateLimiter(): CoreRateLimiter {
   return captureRateLimiter
 }
 
-// Distinguishes "GitHub's GraphQL quota is exhausted" from a per-repo/per-alias failure - the
-// caller backs off and retries the whole batch instead of dead-lettering repos that just got
-// throttled.
+// Distinguishes a quota-exhausted batch from a per-repo/per-alias failure - the caller backs
+// off and retries the whole batch instead of dead-lettering repos that just got throttled.
 class GraphqlRateLimitedError extends Error {}
 
 let selfHealInflightCache: RedisCache | undefined
@@ -137,9 +136,30 @@ async function queryStargazerCounts(
       throw new Error('GitHub auth failure (401) fetching stargazer counts')
     }
 
-    if (response.status === 403) {
+    if (response.status === 403 || response.status === 429) {
+      const retryAfterHeader = response.headers.get('retry-after')
+      const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
+      const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
+
+      if (response.status === 429) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError('GitHub rate limit hit (429) fetching stargazer counts')
+      }
+
       const body = await response.text()
       const bodyLower = body.toLowerCase()
+      // Only a retry-after header or explicit secondary/abuse wording signals GitHub's secondary
+      // limit; misclassifying a primary 403 here would use the short cooldown, not the real reset.
+      const isSecondaryRateLimit =
+        retryAfterMs !== undefined ||
+        bodyLower.includes('secondary rate limit') ||
+        bodyLower.includes('abuse detection')
+      if (isSecondaryRateLimit) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError(
+          'GitHub secondary rate limit hit fetching stargazer counts',
+        )
+      }
       if (bodyLower.includes('rate limit')) {
         throw new GraphqlRateLimitedError('GitHub rate limit hit fetching stargazer counts')
       }
@@ -183,9 +203,8 @@ async function fetchStargazerCounts(
     try {
       json = await queryStargazerCounts(pending)
     } catch (error) {
-      // A quota hit isn't a per-batch transient failure - flat-retrying within the same
-      // few seconds never helps here, so bail out immediately and let the caller back off
-      // until GitHub's reset instead of burning MAX_ALIAS_ATTEMPTS for nothing.
+      // Flat-retrying a quota hit within the same few seconds never helps - bail out
+      // immediately instead of burning MAX_ALIAS_ATTEMPTS for nothing.
       if (error instanceof GraphqlRateLimitedError) {
         throw error
       }
