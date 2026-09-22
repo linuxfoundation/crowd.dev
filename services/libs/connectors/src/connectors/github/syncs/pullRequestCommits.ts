@@ -55,7 +55,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
 
 export const pullRequestCommitsSync: SyncDefinition = {
   name: 'pull-request-commits',
-  cadenceMinutes: 120,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestCommitsSync,
 }
