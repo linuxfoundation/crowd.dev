@@ -16,13 +16,19 @@ const {
   updateMemberAttributes,
   createMemberBotSuggestion,
   removeMemberOrganizations,
-  updateMemberAffiliations,
-  syncMember,
   createMemberNoBot,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
 })
 
+const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
+})
+
+/**
+ * Detects bot members via LLM. High-confidence bots are marked and queued for
+ * async affiliation refresh and OpenSearch sync. Returns immediately; consistency is eventual.
+ */
 export async function processMemberBotAnalysisWithLLM(
   args: ProcessMemberBotSuggestionWithLLMInput,
 ): Promise<void> {
@@ -86,8 +92,7 @@ export async function processMemberBotAnalysisWithLLM(
   if (confidence >= THRESHOLD) {
     await updateMemberAttributes(memberId, { isBot: { default: true, system: true } })
     await removeMemberOrganizations(memberId)
-    await updateMemberAffiliations(memberId)
-    await syncMember(memberId)
+    await triggerMemberAffiliationsRefresh(memberId, [], true)
   } else {
     // Otherwise, record a bot suggestion for further review
     await createMemberBotSuggestion({ memberId, confidence })

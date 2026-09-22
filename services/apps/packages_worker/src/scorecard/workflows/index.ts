@@ -1,0 +1,1 @@
+export { ingestScorecard } from './ingestScorecard'

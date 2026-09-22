@@ -24,6 +24,7 @@ import {
 import { getChildLogger } from '@crowd/logging'
 import {
   ALL_NANGO_INTEGRATIONS,
+  NANGO_INTEGRATION_CONFIG,
   NangoIntegration,
   createNangoGithubConnection,
   deleteNangoConnection,
@@ -123,12 +124,12 @@ export async function canCreateGithubConnection(): Promise<boolean> {
 
   const lastConnectDate = await getLastConnectTs()
 
-  svc.log.info(`[GITHUB] Last connect date: ${lastConnectDate.toISOString()}`)
-
   if (!lastConnectDate) {
     svc.log.info('[GITHUB] no last connect date found - we can create a connection!')
     return true
   }
+
+  svc.log.info(`[GITHUB] Last connect date: ${lastConnectDate.toISOString()}`)
 
   const now = new Date()
   svc.log.info(`[GITHUB] Now: ${now.toISOString()}`)
@@ -164,6 +165,14 @@ export async function processNangoWebhook(
 
   if (!ALL_NANGO_INTEGRATIONS.includes(args.providerConfigKey as NangoIntegration)) {
     logger.info({ providerConfigKey: args.providerConfigKey }, 'Skipping non-Nango integration!')
+    return
+  }
+
+  if (
+    args.providerConfigKey === NangoIntegration.GITHUB &&
+    args.model === NANGO_INTEGRATION_CONFIG[NangoIntegration.GITHUB].models.STAR
+  ) {
+    logger.info('Skipping GithubStar records!')
     return
   }
 

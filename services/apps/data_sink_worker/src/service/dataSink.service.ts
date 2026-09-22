@@ -29,7 +29,6 @@ import {
 } from '@crowd/types'
 
 import { WORKER_SETTINGS } from '../conf'
-
 import ActivityService from './activity.service'
 import MemberService from './member.service'
 
@@ -128,7 +127,10 @@ export default class DataSinkService extends LoggerBase {
     // allowing retries to grow without bound. Now we respect the retry limit so the row
     // eventually reaches ERROR state instead of cycling forever.
     if (
-      errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified') &&
+      (errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified') ||
+        errorData.errorMessage.includes(
+          'uix_memberIdentities_platform_type_lower_value_verified',
+        )) &&
       resultInfo.retries + 1 <= WORKER_SETTINGS().maxStreamRetries
     ) {
       const delaySeconds = Math.floor(Math.random() * (120 - 10 + 1) + 10) * 60

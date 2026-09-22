@@ -4,7 +4,6 @@ import { timeout } from '@crowd/common'
 import { RateLimitError } from '@crowd/types'
 
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import { getChannel } from './api/getChannel'
 import getChannels from './api/getChannels'
 import getMembers from './api/getMembers'

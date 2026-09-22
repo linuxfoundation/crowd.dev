@@ -1,17 +1,17 @@
 import { generateMemberMergeSuggestions } from './workflows/generateMemberMergeSuggestions'
 import { generateOrganizationMergeSuggestions } from './workflows/generateOrganizationMergeSuggestions'
+import { generateSubprojectMemberMergeSuggestions } from './workflows/generateSubprojectMemberMergeSuggestions'
 import { mergeMembersWithLLM } from './workflows/mergeMembersWithLLM'
 import { mergeOrganizationsWithLLM } from './workflows/mergeOrganizationsWithLLM'
-import { spawnMemberMergeSuggestionsForAllTenants } from './workflows/spawnMemberMergeSuggestionsForAllTenants'
-import { spawnOrganizationMergeSuggestionsForAllTenants } from './workflows/spawnOrganizationMergeSuggestionsForAllTenants'
+import { spawnSubprojectMemberMergeSuggestions } from './workflows/spawnSubprojectMemberMergeSuggestions'
 import { testMergingEntitiesWithLLM } from './workflows/testMergingEntitiesWithLLM'
 
 export {
   generateMemberMergeSuggestions,
-  spawnMemberMergeSuggestionsForAllTenants,
   generateOrganizationMergeSuggestions,
-  spawnOrganizationMergeSuggestionsForAllTenants,
+  generateSubprojectMemberMergeSuggestions,
   testMergingEntitiesWithLLM,
   mergeOrganizationsWithLLM,
   mergeMembersWithLLM,
+  spawnSubprojectMemberMergeSuggestions,
 }

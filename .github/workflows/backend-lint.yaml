@@ -5,61 +5,68 @@ permissions:
 on:
   pull_request:
     paths:
-      - 'backend/**'
-      - 'services/**'
+      - "backend/**"
+      - "services/**"
+      - ".github/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".claude/**"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "**/*.md"
+      - "vitest.config.ts"
+      - "commitlint.config.js"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  lint-format:
+  lint-changed:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./backend
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v2
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/checkout@v4
         with:
-          node-version: 20
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+      - name: Enforce required scripts on all services packages
+        run: ./services/scripts/check_package_scripts.sh
+
+      - name: Detect shared config changes
+        id: shared_config
+        run: |
+          if git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.sha }} \
+            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
+            echo "Shared config changed (tsconfig base, lockfile or catalog) — falling back to full workspace tsc-check"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@24
+          cache: true
 
       - name: Check linting
-        run: pnpm run lint
+        run: pnpm lint
 
       - name: Check formatting
-        run: pnpm run format-check
+        run: pnpm format-check
 
-      - name: Check typescript
-        run: pnpm run tsc-check
-
-  lint-format-services:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./services
-
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v2
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
-
-      - name: Check library linting, format and typescript
-        run: ./scripts/lint_libs.sh
-
-      - name: Check app linting, format and typescript
-        run: ./scripts/lint_apps.sh
+      - name: Check typescript (changed packages + dependents)
+        run: |
+          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
+            pnpm -r --if-present --workspace-concurrency=4 run tsc-check
+          else
+            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present --workspace-concurrency=4 run tsc-check
+          fi
 
   lint-python-git-integration:
     runs-on: ubuntu-latest
@@ -77,7 +84,7 @@ jobs:
       - name: Check for Python file changes
         id: changes
         run: |
-          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -q "^services/apps/git_integration/.*\.py$"; then
+          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -qE "^services/apps/git_integration/.*(\.py|pyproject\.toml|uv\.lock)$"; then
             echo "python_changed=true" >> $GITHUB_OUTPUT
           else
             echo "python_changed=false" >> $GITHUB_OUTPUT
@@ -103,6 +110,53 @@ jobs:
         run: |
           uv run ruff check src/ --output-format=github
           uv run ruff format --check src/
+
+  lint-python-mailing-list-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./services/apps/mailing_list_integration
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Python file changes
+        id: changes
+        run: |
+          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -qE "^services/apps/mailing_list_integration/.*(\.py|pyproject\.toml|uv\.lock)$"; then
+            echo "python_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "python_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install uv
+        if: steps.changes.outputs.python_changed == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/apps/mailing_list_integration/uv.lock"
+
+      - name: Set up Python
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv sync --group dev --frozen
+
+      - name: Check Python linting and formatting
+        if: steps.changes.outputs.python_changed == 'true'
+        run: |
+          uv run ruff check src/ --output-format=github
+          uv run ruff format --check src/
+
+      - name: Run tests
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv run pytest src/test/ -v
 
       - name: Skip Python checks
         if: steps.changes.outputs.python_changed == 'false'

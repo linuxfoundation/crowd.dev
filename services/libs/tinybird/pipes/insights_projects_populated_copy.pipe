@@ -1,12 +1,18 @@
 NODE insights_projects_populated_copy_collections_slugs
 DESCRIPTION >
-    Returns collection slugs per project
+    Returns collection slugs per project, for both curated (ssoUserId IS NULL) and
+    community (ssoUserId IS NOT NULL) collections. Community collections were previously
+    excluded here, which left their slugs out of collectionsSlugs and caused
+    collection_insights_aggregate to report 0 contributors / no health for them (IN-1195).
+    Downstream leaderboard/insightsProjects_filtered pipes only apply the collectionsSlugs
+    filter when an explicit collectionSlug param is passed, so including community slugs does
+    not change any un-scoped listing.
 
 SQL >
     SELECT cip.insightsProjectId, groupArray(c.slug) AS "collectionsSlugs"
     FROM collectionsInsightsProjects cip FINAL
     JOIN collections c FINAL ON c.id = cip.collectionId
-    WHERE isNull (c.deletedAt) AND isNull (c.ssoUserId) AND isNull (cip.deletedAt)
+    WHERE isNull (c.deletedAt) AND isNull (cip.deletedAt)
     GROUP BY cip.insightsProjectId
 
 NODE insights_projects_populated_copy_segment_id_mapping
@@ -66,7 +72,7 @@ SQL >
 
 NODE insights_projects_populated_copy_flatten_projects
 SQL >
-    SELECT i.id, r.url AS repository
+    SELECT i.id, r.url AS repository, r.licenses AS licenses
     FROM insightsProjects i FINAL
     JOIN
         repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
@@ -77,6 +83,7 @@ SQL >
     SELECT
         insights_projects_populated_copy_flatten_projects.id as id,
         insights_projects_populated_copy_flatten_projects.repository as repository,
+        insights_projects_populated_copy_flatten_projects.licenses as licenses,
         insights_projects_populated_copy_criticality_scores_deduplicated.score as score,
         insights_projects_populated_copy_criticality_scores_deduplicated.rank as rank
     FROM insights_projects_populated_copy_flatten_projects
@@ -92,7 +99,8 @@ SQL >
         max(score) as projectScore,
         argMax(rank, score) AS projectRank,
         groupArray((repository, score, rank)) as repoData,
-        groupArray(repository) as repositories
+        groupArray(repository) as repositories,
+        arrayFlatten(groupArray(arrayMap(l -> tuple(repository, l), licenses))) as repoLicenses
     FROM insights_projects_populated_copy_repository_criticality
     GROUP BY id
 
@@ -186,6 +194,9 @@ SQL >
     LEFT JOIN
         vulnerability_scans vs final
         ON vs.repoUrl = insights_projects_populated_copy_flatten_projects.repository
+    WHERE
+        insights_projects_populated_copy_flatten_projects.repository
+        NOT IN (SELECT url FROM repositories FINAL WHERE archived = true)
     group by insightsProjectId
 
 NODE insights_projects_populated_copy_results
@@ -209,6 +220,7 @@ SQL >
         any (insightsProjects.twitter) as twitter,
         any (insightsProjects.widgets) as widgets,
         any (insights_projects_populated_copy_project_repo_data.repositories) as repositories,
+        any (insights_projects_populated_copy_project_repo_data.repoLicenses) as repoLicenses,
         any (insightsProjects.enabled) as enabled,
         any (insightsProjects.isLF) as isLF,
         any (insightsProjects.keywords) as keywords,
@@ -231,6 +243,7 @@ SQL >
         any (insights_projects_populated_copy_mentions.communityKeywords) as communityKeywords,
         any (insights_projects_populated_copy_mentions.communityLanguages) as communityLanguages,
         any (segments.status) as status,
+        any (segments.maturity) as maturity,
         any (last_vulnerability_scan_status.lastVulnerabilityScanStatus) as lastVulnerabilityScanStatus
     FROM insightsProjects FINAL
     LEFT JOIN
@@ -261,7 +274,7 @@ SQL >
         last_vulnerability_scan_status
         ON last_vulnerability_scan_status.insightsProjectId = insightsProjects.id
     LEFT JOIN segments ON segments.id = insightsProjects.segmentId
-    WHERE isNull (insightsProjects.deletedAt)
+    WHERE isNull (insightsProjects.deletedAt) AND insightsProjects.enabled = 1
     group by 1
 
 TYPE COPY

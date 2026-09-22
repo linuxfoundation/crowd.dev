@@ -1,0 +1,31 @@
+DESCRIPTION >
+    - `packageDependencies` stores the dependency graph between package versions.
+    - Replicated from Postgres packages-db — one row per (version, dependency) edge in the dependency graph.
+    - Partitioned by hash(depends_on_id) in Postgres for fast downstream lookups; sorted here for analytical queries.
+    - Used to answer "what depends on package X?" (downstream consumers) and to compute dependent_repos_count / dependent_packages_count.
+    - `id` is the internal primary key.
+    - `packageId` is the ID of the package that contains the depending version.
+    - `versionId` is the specific version that declares the dependency.
+    - `dependsOnId` is the package being depended upon — the hot lookup key for vulnerability blast-radius queries.
+    - `dependsOnVersionId` is the resolved specific version of the dependency (0 if the exact version is unknown).
+    - `versionConstraint` is the declared version constraint string (e.g. '^1.2.3', '>=2.0.0'); empty string if not specified.
+    - `dependencyKind` is the dependency type: 'direct', 'dev', or 'peer'.
+    - `isOptional` is 1 if the dependency is marked optional, 0 otherwise.
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `packageId` UInt64 `json:$.record.package_id`,
+    `versionId` UInt64 `json:$.record.version_id`,
+    `dependsOnId` UInt64 `json:$.record.depends_on_id`,
+    `dependsOnVersionId` UInt64 `json:$.record.depends_on_version_id` DEFAULT 0,
+    `versionConstraint` String `json:$.record.version_constraint` DEFAULT '',
+    `dependencyKind` String `json:$.record.dependency_kind`,
+    `isOptional` UInt8 `json:$.record.is_optional` DEFAULT 0,
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY dependsOnId, versionId, id
+ENGINE_VER updatedAt

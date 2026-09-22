@@ -1,7 +1,9 @@
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import { ContributorApiService } from '@/modules/contributor/services/contributor.api.service';
-import { Contributor, ContributorAffiliation, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import {
+  Contributor, ContributorAffiliation, ContributorIdentity, CreateContributorIdentity, UpdateContributorIdentityPayload,
+} from '@/modules/contributor/types/Contributor';
 import { ContributorIdentitiesApiService } from '@/modules/contributor/services/contributor.identities.api.service';
 import { MergeActionsService } from '@/shared/modules/merge/services/merge-actions.service';
 import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
@@ -68,11 +70,11 @@ export default {
     return ContributorIdentitiesApiService.list(id, [selectedProjectGroup.value?.id as string])
       .then(this.setIdentities);
   },
-  createContributorIdentities(memberId: string, identities: ContributorIdentity[]): Promise<ContributorIdentity[]> {
+  createContributorIdentities(memberId: string, identities: CreateContributorIdentity[]): Promise<ContributorIdentity[]> {
     return ContributorIdentitiesApiService.createMultiple(memberId, identities)
       .then(this.setIdentities);
   },
-  updateContributorIdentity(memberId: string, id: string, identity: Partial<ContributorIdentity>): Promise<ContributorIdentity[]> {
+  updateContributorIdentity(memberId: string, id: string, identity: UpdateContributorIdentityPayload): Promise<ContributorIdentity[]> {
     return ContributorIdentitiesApiService.update(memberId, id, identity)
       .then(this.setIdentities);
   },

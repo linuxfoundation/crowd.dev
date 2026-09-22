@@ -58,7 +58,7 @@ export async function updateMemberAttributes(
   const requestOptions = {
     method: 'PATCH',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
@@ -84,7 +84,7 @@ export async function updateMemberAttributes(
 export async function removeMemberOrganizations(memberId: string): Promise<void> {
   try {
     const qx = pgpQx(svc.postgres.writer.connection())
-    await deleteMemberOrganizations(qx, memberId, undefined, true)
+    await deleteMemberOrganizations(qx, memberId)
   } catch (error) {
     svc.log.error({ error, memberId }, `Failed to remove member organizations!`)
     throw error

@@ -1,8 +1,8 @@
 import crypto from 'crypto'
+
 import lodash from 'lodash'
 
 import Roles from '../../security/roles'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'

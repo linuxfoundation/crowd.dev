@@ -1,1 +1,0 @@
-drop index if exists "ix_segmentActivityChannels_segmentId_platform";

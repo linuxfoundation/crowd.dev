@@ -1,3 +1,5 @@
+import { OrganizationSource } from '@crowd/types'
+
 interface BaseData {
   memberId: string
   organizationId: string
@@ -15,6 +17,7 @@ export interface IManualAffiliationData extends BaseData {
 
 export interface IWorkExperienceData extends BaseData {
   id: string
+  source: OrganizationSource
 }
 
 export interface IOrganizationMemberCount {

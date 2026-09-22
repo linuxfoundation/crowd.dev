@@ -1,7 +1,7 @@
 import isEqual from 'lodash.isequal'
 import mergeWith from 'lodash.mergewith'
 
-import { connQx, updateMember } from '@crowd/data-access-layer'
+import { pgpQx, updateMember } from '@crowd/data-access-layer'
 import {
   DbConnOrTx,
   DbStore,
@@ -98,7 +98,7 @@ setImmediate(async () => {
     redisClient = await getRedisClient(REDIS_CONFIG())
     log.info('Redis connection established')
 
-    const pgQx = connQx(dbClient)
+    const pgQx = pgpQx(dbClient)
     const mas = new MemberAttributeService(redisClient, new DbStore(log, dbClient), log)
 
     let totalProcessed = 0

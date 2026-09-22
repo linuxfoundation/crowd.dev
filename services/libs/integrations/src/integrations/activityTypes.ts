@@ -13,6 +13,7 @@ import { GroupsioActivityType } from './groupsio/types'
 import { HackerNewsActivityType } from './hackernews/types'
 import { JiraActivityType } from './jira/types'
 import { LinkedinActivityType } from './linkedin/types'
+import { MailingListActivityType } from './mailinglist/types'
 import { RedditActivityType } from './reddit/types'
 import { SlackActivityType } from './slack/types'
 import { StackOverflowActivityType } from './stackoverflow/types'
@@ -228,7 +229,8 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
-    [GithubActivityType.STAR]: {
+    // literal keys: GithubActivityType.STAR/UNSTAR are gone (CM-1439), but old persisted activities still carry these
+    star: {
       display: {
         default: 'starred {channel}',
         short: 'starred',
@@ -239,7 +241,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: false,
     },
-    [GithubActivityType.UNSTAR]: {
+    unstar: {
       display: {
         default: 'unstarred {channel}',
         short: 'unstarred',
@@ -870,6 +872,16 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
         channel: '{channel}',
       },
       calculateSentiment: false,
+    },
+  },
+  [PlatformType.MAILINGLIST]: {
+    [MailingListActivityType.MESSAGE]: {
+      display: {
+        default: 'sent a message in {channel}',
+        short: 'sent a message',
+        channel: '{channel}',
+      },
+      calculateSentiment: true,
     },
   },
   [PlatformType.CONFLUENCE]: {

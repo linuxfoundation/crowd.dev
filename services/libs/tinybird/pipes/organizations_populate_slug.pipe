@@ -1,0 +1,123 @@
+DESCRIPTION >
+    Populates organizations_populated_slug with one row per organization that has contributions.
+    Carries all columns from organizations FINAL and adds a deterministic globally unique
+    slug and a total contributionCount (sourced from cdp_organization_segment_aggregates_ds).
+
+NODE organizations_slugged_contribution_counts
+DESCRIPTION >
+    Total activity count per organization summed across all segments, read from the
+    pre-aggregated AggregatingMergeTree. Much faster than scanning the bucket union.
+
+SQL >
+    SELECT organizationId, countMerge(activityCountState) AS contributionCount
+    FROM cdp_organization_segment_aggregates_ds
+    WHERE organizationId != ''
+    GROUP BY organizationId
+
+NODE organizations_slugged_enriched
+DESCRIPTION >
+    Join contribution counts with full org metadata and compute the base slug candidate.
+
+SQL >
+    SELECT
+        org.id AS id,
+        org.displayName AS displayName,
+        org.location AS location,
+        org.logo AS logo,
+        org.tags AS tags,
+        org.employees AS employees,
+        org.createdAt AS createdAt,
+        org.updatedAt AS updatedAt,
+        org.isTeamOrganization AS isTeamOrganization,
+        org.type AS type,
+        org.size AS size,
+        org.headline AS headline,
+        org.industry AS industry,
+        org.founded AS founded,
+        c.contributionCount AS contributionCount,
+        replaceRegexpAll(
+            replaceRegexpAll(lowerUTF8(org.displayName), '[^a-z0-9]+', '-'), '(^-+)|(-+$)', ''
+        ) AS generatedSlug
+    FROM organizations_slugged_contribution_counts c
+    INNER JOIN organizations org FINAL ON org.id = c.organizationId
+
+NODE organizations_slugged_base_slug
+DESCRIPTION >
+    Apply empty-slug fallback: if generatedSlug is empty, use the org id as baseSlug.
+
+SQL >
+    SELECT
+        id,
+        displayName,
+        location,
+        logo,
+        tags,
+        employees,
+        createdAt,
+        updatedAt,
+        isTeamOrganization,
+        type,
+        size,
+        headline,
+        industry,
+        founded,
+        contributionCount,
+        if(length(generatedSlug) > 0, generatedSlug, id) AS baseSlug
+    FROM organizations_slugged_enriched
+
+NODE organizations_slugged_ranked
+DESCRIPTION >
+    Assign final globally unique slugs. Orgs with a unique baseSlug keep it as-is.
+    Orgs in a collision group (>=2 share the same baseSlug) all get a '--N' suffix
+    ordered by descending contributionCount (id ASC tiebreaker). Double-dash is used
+    so synthetic suffixes never collide with natural slugs that end in a number or word
+    (e.g. 'dark-1' from 'Dark-1' vs 'dark--1' from 'Dark++' in a collision group).
+
+SQL >
+    SELECT
+        id,
+        displayName,
+        location,
+        logo,
+        tags,
+        employees,
+        createdAt,
+        updatedAt,
+        isTeamOrganization,
+        type,
+        size,
+        headline,
+        industry,
+        founded,
+        if(groupSize = 1 OR slugRank = 1, baseSlug, concat(baseSlug, '--', toString(slugRank))) AS slug,
+        contributionCount
+    FROM
+        (
+            SELECT
+                id,
+                displayName,
+                location,
+                logo,
+                tags,
+                employees,
+                createdAt,
+                updatedAt,
+                isTeamOrganization,
+                type,
+                size,
+                headline,
+                industry,
+                founded,
+                contributionCount,
+                baseSlug,
+                count() OVER (PARTITION BY baseSlug) AS groupSize,
+                row_number() OVER (
+                    PARTITION BY baseSlug ORDER BY contributionCount DESC, id ASC
+                ) AS slugRank
+            FROM organizations_slugged_base_slug
+        )
+
+TYPE COPY
+TARGET_DATASOURCE organizations_populated_slug
+COPY_MODE replace
+COPY_SCHEDULE 35 * * * *

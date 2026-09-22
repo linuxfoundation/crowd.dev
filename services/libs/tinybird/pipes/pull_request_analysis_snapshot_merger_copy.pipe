@@ -17,10 +17,10 @@ SQL >
 
 NODE merge_realtime_and_historical_snapshots
 SQL >
-    select *
+    select * REPLACE (lower(channel) AS channel)
     from realtime_snapshot
     union all
-    select *
+    select * REPLACE (lower(channel) AS channel)
     from historical_snapshot
 
 TYPE COPY

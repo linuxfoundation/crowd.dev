@@ -17,6 +17,7 @@ PostgreSQL ──► Sequin ────────┼── topic: members ─
 Sequin is a **Change Data Capture (CDC) system** that streams changes from PostgreSQL databases to various sinks (Kafka, HTTP endpoints, SQS, Redis, etc.). It uses PostgreSQL's logical replication feature to capture database changes in real-time and deliver them to configured consumers with at-least-once delivery guarantees. We're currently only using the kafka sinks.
 
 ### Key Capabilities
+
 - Real-time streaming of PostgreSQL changes via logical replication
 - Multiple sink types (HTTP, Kafka, SQS, Redis, RabbitMQ, NATS, etc.)
 - Backfill support for historical data
@@ -34,6 +35,7 @@ Sequin is a **Change Data Capture (CDC) system** that streams changes from Postg
 
 **What is a Replication Slot?**
 A PostgreSQL replication slot is a server-side mechanism that:
+
 - Tracks which WAL (Write-Ahead Log) data has been consumed
 - Prevents PostgreSQL from removing WAL segments before they're consumed
 - Provides a stable position in the WAL stream to resume from
@@ -41,6 +43,7 @@ A PostgreSQL replication slot is a server-side mechanism that:
 **File Location:** `sequin/lib/sequin/replication/postgres_replication_slot.ex`
 
 **Key Fields:**
+
 - `slot_name`: Unique identifier for the slot
 - `publication_name`: PostgreSQL publication defining which tables to replicate
 - `status`: `:active` or `:disabled`
@@ -61,6 +64,7 @@ An LSN is a 64-bit integer representing a position in the PostgreSQL WAL. Format
 **Reference:** [PostgreSQL WAL Internals — pg_lsn Type](https://www.postgresql.org/docs/current/datatype-pg-lsn.html)
 
 **Key LSN concepts:**
+
 - `commit_lsn`: LSN when a transaction committed
 - `restart_lsn`: Position from which to restart replication
 - `confirmed_flush_lsn`: LSN confirmed as processed by Sequin
@@ -115,6 +119,7 @@ This means that, long running transactions prevent the replication slot from adv
 Replica identity controls **what data PostgreSQL includes in UPDATE and DELETE WAL messages**. By default, only the primary key is sent for deletes, and only changed columns + primary key for updates.
 
 **Modes:**
+
 - `DEFAULT` — Primary key columns only (for identifying the row)
 - `FULL` — All columns, both old and new values
 - `NOTHING` — No old row identity (deletes/updates can't be identified)
@@ -135,15 +140,15 @@ Sequin uses PostgreSQL's built-in `pgoutput` logical decoding output plugin. Thi
 
 Each message starts with a single byte identifying its type. In the codebase, these are matched using Elixir's character literal syntax (`?X` = the ASCII byte value of character `X`):
 
-| Protocol byte | Elixir | Meaning |
-|---|---|---|
-| `B` (66) | `?B` | Begin transaction |
-| `C` (67) | `?C` | Commit transaction |
-| `I` (73) | `?I` | Insert |
-| `U` (85) | `?U` | Update |
-| `D` (68) | `?D` | Delete |
-| `R` (82) | `?R` | Relation (table schema) |
-| `M` (77) | `?M` | Logical message |
+| Protocol byte | Elixir | Meaning                 |
+| ------------- | ------ | ----------------------- |
+| `B` (66)      | `?B`   | Begin transaction       |
+| `C` (67)      | `?C`   | Commit transaction      |
+| `I` (73)      | `?I`   | Insert                  |
+| `U` (85)      | `?U`   | Update                  |
+| `D` (68)      | `?D`   | Delete                  |
+| `R` (82)      | `?R`   | Relation (table schema) |
+| `M` (77)      | `?M`   | Logical message         |
 
 The Processor (section 4.2) decodes these binary messages into typed Elixir structs.
 
@@ -154,6 +159,7 @@ The Processor (section 4.2) decodes these binary messages into typed Elixir stru
 A publication defines **which tables** a replication slot streams changes for. It acts as a filter on the WAL — only changes to published tables are sent to the subscriber.
 
 **Creating a publication:**
+
 ```sql
 -- Specific tables
 CREATE PUBLICATION my_pub FOR TABLE users, orders;
@@ -211,6 +217,7 @@ Sequin.Application
 ```
 
 **Key Files:**
+
 - `sequin/lib/sequin/application.ex`
 - `sequin/lib/sequin/runtime/supervisor.ex`
 - `sequin/lib/sequin/runtime/slot_supervisor.ex`
@@ -254,6 +261,7 @@ External Sink
 **Purpose:** GenStage producer that establishes a replication connection to PostgreSQL and streams WAL messages.
 
 **Key Responsibilities:**
+
 1. Connects to PostgreSQL using `Postgrex.Protocol` in replication mode
 2. Sends `START_REPLICATION` command
 3. Receives binary WAL messages from PostgreSQL
@@ -263,6 +271,7 @@ External Sink
 7. Emits batch markers for downstream batching
 
 **Important State:**
+
 ```elixir
 %State{
   protocol: Postgrex.Protocol.state(),  # Replication connection
@@ -276,13 +285,15 @@ External Sink
 ```
 
 **Buffering States:**
+
 - `:active` - Producing messages as demand arrives
 - `:buffering` - No demand, buffering incoming socket messages
 - `:disconnected` - Connection lost, will retry
 
 **Message Types Handled:**
+
 - `?B` (Begin) - Sets up transaction context
-- `?C` (Commit) - Closes transaction  
+- `?C` (Commit) - Closes transaction
 - `?I`, `?U`, `?D` (Insert/Update/Delete) - Data changes
 - `?R` (Relation) - Schema changes, forwarded to consumers
 - `?M` (Logical) - Custom messages (heartbeats, transaction annotations)
@@ -290,6 +301,7 @@ External Sink
 
 **Restart/Recovery:**
 When SlotProducer crashes and restarts:
+
 1. Fetches `restart_wal_cursor` from database
 2. Queries PostgreSQL's `pg_replication_slots` for `restart_lsn`
 3. Starts replication from that LSN
@@ -302,6 +314,7 @@ When SlotProducer crashes and restarts:
 **Purpose:** GenStage producer_consumer that decodes binary WAL messages and transforms them into `SlotProcessor.Message` structs. Runs in N parallel partitions (one per CPU core).
 
 **Key Responsibilities:**
+
 1. Decode binary payloads using `PostgresAdapter.Decoder`
 2. Cast PostgreSQL types to Elixir types
 3. Extract primary keys from row data
@@ -312,6 +325,7 @@ When SlotProducer crashes and restarts:
 **Partition Count:** `System.schedulers_online()` (typically 8-16)
 
 **Message Transformation:**
+
 ```elixir
 # Input: SlotProducer.Message (binary payload)
 %Message{
@@ -350,6 +364,7 @@ Uses `Sequin.Postgres.ValueCaster` to convert PostgreSQL wire format to Elixir t
 Messages are processed in parallel across N partitions. They may arrive out-of-order. ReorderBuffer ensures batches are delivered sequentially.
 
 **Key Responsibilities:**
+
 1. Collect messages from all N Processor partitions
 2. Group messages by `batch_idx`
 3. Wait for batch markers from ALL partitions before marking batch as ready
@@ -358,6 +373,7 @@ Messages are processed in parallel across N partitions. They may arrive out-of-o
 6. System health checks (memory, disk)
 
 **State:**
+
 ```elixir
 %State{
   pending_batches_by_idx: %{
@@ -373,6 +389,7 @@ Messages are processed in parallel across N partitions. They may arrive out-of-o
 ```
 
 **Batch Marker:**
+
 ```elixir
 %BatchMarker{
   idx: 100,  # Batch number
@@ -382,6 +399,7 @@ Messages are processed in parallel across N partitions. They may arrive out-of-o
 ```
 
 **Backpressure:**
+
 - If `ready_batches_by_idx` count exceeds `setting_max_ready_batches`, stops asking for demand
 - Resumes demand after successful batch flush
 
@@ -392,6 +410,7 @@ Messages are processed in parallel across N partitions. They may arrive out-of-o
 **Purpose:** Central coordinator GenServer that receives batches from ReorderBuffer and distributes messages to consumers.
 
 **Key Responsibilities:**
+
 1. Receive batches from ReorderBuffer (via `handle_batch/2` call)
 2. Call `MessageHandler.handle_messages/2` to filter and route messages
 3. Monitor SlotMessageStore processes (crash detection)
@@ -401,12 +420,14 @@ Messages are processed in parallel across N partitions. They may arrive out-of-o
 
 **Heartbeat Mechanism:**
 Every 15 seconds (configurable):
+
 1. Emit a logical message to PostgreSQL with heartbeat ID and timestamp
 2. Message flows through replication → SlotProducer → ... → back to SlotProcessorServer
 3. On receipt, cancel current heartbeat and schedule next one
 4. Every 30 seconds, verify heartbeat health
 
 **Heartbeat Verification States:**
+
 - `:ok` - Heartbeat received within 5 min
 - `:no_recent_heartbeat` - No heartbeat emitted recently (bug)
 - `:stale_connection` - Heartbeat sent but not received in 10 min
@@ -417,13 +438,14 @@ Every 15 seconds (configurable):
 Monitors the first partition of each consumer's SlotMessageStore. If it crashes, SlotProcessorServer crashes too (causing full restart via supervision tree).
 
 **Restart Cursor Calculation:**
+
 ```elixir
 def restart_wal_cursor!(state) do
   # Get minimum unpersisted cursor from all SlotMessageStores
   lows = Task.async_stream(consumers, fn consumer ->
     SlotMessageStore.min_unpersisted_wal_cursors(consumer)
   end)
-  
+
   # Return the minimum across all stores
   Enum.min_by(lows, &{&1.commit_lsn, &1.commit_idx})
 end
@@ -438,6 +460,7 @@ This ensures replication only advances past messages that are safely buffered in
 **Purpose:** Stateless module that transforms `SlotProcessor.Message` to `ConsumerEvent` or `ConsumerRecord` and distributes to appropriate consumers.
 
 **Key Responsibilities:**
+
 1. Match messages to consumers (via `Consumers.matches_message?/2`)
 2. Transform to consumer-specific format (Event vs Record)
 3. Handle TOAST columns (large values stored out-of-line)
@@ -446,6 +469,7 @@ This ensures replication only advances past messages that are safely buffered in
 6. Put messages into SlotMessageStores
 
 **Context:**
+
 ```elixir
 %Context{
   consumers: [%SinkConsumer{}],  # Active consumers for this slot
@@ -457,6 +481,7 @@ This ensures replication only advances past messages that are safely buffered in
 
 **Message Matching:**
 A message matches a consumer if:
+
 - Consumer's source table OIDs include the message's table OID
 - Message passes consumer's filter function (optional)
 - Consumer is not disabled
@@ -464,6 +489,7 @@ A message matches a consumer if:
 **Consumer Message Types:**
 
 **ConsumerEvent** (for event-based consumers):
+
 ```elixir
 %ConsumerEvent{
   consumer_id: "uuid",
@@ -484,6 +510,7 @@ A message matches a consumer if:
 ```
 
 **ConsumerRecord** (for stream-based consumers):
+
 ```elixir
 %ConsumerRecord{
   consumer_id: "uuid",
@@ -502,8 +529,9 @@ A message matches a consumer if:
 
 **TOAST Handling:**
 PostgreSQL stores large column values (>2KB typically) in a separate TOAST table. Updates to other columns send `:unchanged_toast` markers. MessageHandler:
+
 1. Detects `value: :unchanged_toast` in fields
-2. Looks up value from `old_fields` 
+2. Looks up value from `old_fields`
 3. Replaces `:unchanged_toast` with actual value
 
 **Backfill Coordination:**
@@ -516,6 +544,7 @@ Before handling messages, MessageHandler calls `TableReaderServer.pks_seen/2` fo
 **Purpose:** Per-consumer, per-partition GenServer that maintains an in-memory buffer of undelivered messages with overflow to PostgreSQL.
 
 **Key Responsibilities:**
+
 1. Buffer incoming messages in ETS tables
 2. Partition messages for parallel consumption
 3. Produce messages on demand (pull-based)
@@ -526,6 +555,7 @@ Before handling messages, MessageHandler calls `TableReaderServer.pks_seen/2` fo
 
 **Partitioning:**
 Each consumer can have N partitions (default 1, configurable). Messages are partitioned by:
+
 ```elixir
 partition = :erlang.phash2(message.group_id, consumer.partition_count)
 ```
@@ -533,26 +563,27 @@ partition = :erlang.phash2(message.group_id, consumer.partition_count)
 This ensures messages with the same `group_id` always go to the same partition (ordering guarantee).
 
 **State:**
+
 ```elixir
 %State{
   consumer_id: "uuid",
   partition: 0,  # Which partition this store manages
   consumer: %SinkConsumer{},
-  
+
   # In-memory buffer (ETS)
   ets_table: :ets_table_name,
   payload_size_bytes: 5_000_000,  # Current memory usage
   max_memory_bytes: 10_000_000,   # Memory limit
-  
+
   # Produced messages tracking
   produced: %{
     "ack-id-1" => %{message: ..., produced_at: ~U[...], producer_pid: pid}
   },
-  
+
   # Persistence tracking
   unflushed_messages: [],  # Messages not yet in DB
   unflushed_batch_ids: MapSet.new(),  # TableReader batches not persisted
-  
+
   # High watermark
   high_watermark_wal_cursor: %{commit_lsn: ..., commit_idx: ...}
 }
@@ -560,6 +591,7 @@ This ensures messages with the same `group_id` always go to the same partition (
 
 **ETS Table Schema:**
 The ETS table is an ordered_set with composite keys:
+
 ```elixir
 # Key structure
 {commit_lsn, commit_idx, random_suffix}
@@ -573,6 +605,7 @@ Random suffix ensures uniqueness for messages at the same WAL cursor (e.g., from
 **Message Lifecycle:**
 
 1. **Put Messages:**
+
    ```elixir
    SlotMessageStore.put_messages(consumer, messages)
    # → Insert into ETS
@@ -581,6 +614,7 @@ Random suffix ensures uniqueness for messages at the same WAL cursor (e.g., from
    ```
 
 2. **Produce Messages:**
+
    ```elixir
    SlotMessageStore.produce(consumer, count, producer_pid)
    # → Pull `count` deliverable messages from ETS
@@ -589,6 +623,7 @@ Random suffix ensures uniqueness for messages at the same WAL cursor (e.g., from
    ```
 
 3. **Acknowledge Success:**
+
    ```elixir
    SlotMessageStore.messages_succeeded(consumer, ack_ids)
    # → Remove from `produced` map
@@ -610,6 +645,7 @@ When a message is produced, it's marked with `not_visible_until = now + timeout`
 
 **Backpressure:**
 If `payload_size_bytes > max_memory_bytes`:
+
 1. Flush oldest messages to database
 2. Return `{:error, :payload_size_limit_exceeded}` to MessageHandler
 3. MessageHandler retries with exponential backoff
@@ -617,12 +653,14 @@ If `payload_size_bytes > max_memory_bytes`:
 
 **Persistence:**
 Messages are flushed to `consumer_events` or `consumer_records` tables when:
+
 - Memory limit exceeded
 - Periodic flush timer (every 15 seconds)
 - Messages older than 2 minutes
 - TableReader batch completion
 
 **High Watermark Tracking:**
+
 ```elixir
 SlotMessageStore.put_high_watermark_wal_cursor(consumer, {batch_idx, wal_cursor})
 # → Update state.high_watermark_wal_cursor
@@ -636,6 +674,7 @@ SlotMessageStore.put_high_watermark_wal_cursor(consumer, {batch_idx, wal_cursor}
 **Purpose:** Broadway producer that pulls messages from SlotMessageStore on-demand.
 
 **Key Responsibilities:**
+
 1. Pull messages from SlotMessageStore based on demand
 2. Wrap in Broadway.Message structs
 3. Configure acknowledger for success/failure handling
@@ -643,6 +682,7 @@ SlotMessageStore.put_high_watermark_wal_cursor(consumer, {batch_idx, wal_cursor}
 5. Trim idempotency sets
 
 **Demand Handling:**
+
 ```elixir
 def handle_demand(incoming_demand, state) do
   # Don't immediately produce - schedule it
@@ -653,7 +693,7 @@ end
 def handle_info(:handle_demand, state) do
   # Pull messages from SlotMessageStore
   messages = SlotMessageStore.produce(state.consumer, state.demand, self())
-  
+
   # Wrap in Broadway messages
   broadway_messages = Enum.map(messages, fn msg ->
     %Broadway.Message{
@@ -661,7 +701,7 @@ def handle_info(:handle_demand, state) do
       acknowledger: {SinkPipeline, {consumer, test_pid, store_mod}, nil}
     }
   end)
-  
+
   {:noreply, broadway_messages, state}
 end
 ```
@@ -671,6 +711,7 @@ Every 10 seconds, attempts to produce messages even if demand was previously zer
 
 **Idempotency Trimming:**
 Every 10 seconds:
+
 1. Query PostgreSQL for `confirmed_flush_lsn` of replication slot
 2. Call `MessageLedgers.trim_delivered_cursors_set/2`
 3. Remove old entries from Redis idempotency set
@@ -682,6 +723,7 @@ Every 10 seconds:
 **Purpose:** Broadway pipeline that processes and delivers messages to sinks (HTTP, Kafka, SQS, etc.).
 
 **Broadway Architecture:**
+
 ```
 ConsumerProducer
     ↓
@@ -708,13 +750,14 @@ Sink-specific handler
 
 **Acknowledger:**
 Configured to use `{SinkPipeline, {consumer, test_pid, store_mod}, nil}`:
+
 ```elixir
 def ack(_ack_ref, successful, failed) do
   # Successful messages
   ack_ids = Enum.map(successful, & &1.data.ack_id)
   MessageLedgers.wal_cursors_delivered(consumer.id, wal_cursors_from(successful))
   SlotMessageStore.messages_succeeded(consumer, ack_ids)
-  
+
   # Failed messages
   metadatas = Enum.map(failed, fn msg ->
     %{ack_id: msg.data.ack_id, ...error info...}
@@ -725,6 +768,7 @@ end
 
 **Sink-Specific Implementations:**
 Each sink type implements the SinkPipeline behavior:
+
 - `HttpPushPipeline` - HTTP POST requests
 - `KafkaPipeline` - Kafka producers
 - `SqsPipeline` - AWS SQS
@@ -732,6 +776,7 @@ Each sink type implements the SinkPipeline behavior:
 - etc.
 
 **Files:**
+
 - `sequin/lib/sequin/runtime/http_push_pipeline.ex`
 - `sequin/lib/sequin/runtime/kafka_pipeline.ex`
 - `sequin/lib/sequin/runtime/sqs_pipeline.ex`
@@ -744,6 +789,7 @@ Each sink type implements the SinkPipeline behavior:
 **Purpose:** GenStateMachine that reads historical data from tables for backfills.
 
 **Key Responsibilities:**
+
 1. Paginate through table using keyset cursor
 2. Transform rows to ConsumerEvent/ConsumerRecord
 3. Emit watermark messages to WAL
@@ -752,6 +798,7 @@ Each sink type implements the SinkPipeline behavior:
 6. Handle PRIMARY KEY deduplication
 
 **State Machine:**
+
 ```
 :initializing → :reading → :flushing → :reading → ... → :complete
 ```
@@ -778,7 +825,7 @@ Each sink type implements the SinkPipeline behavior:
 3. **Watermark Emission:**
    - After each batch, emit logical message to PostgreSQL:
      ```elixir
-     pg_logical_emit_message(true, 'sequin.backfill.batch', 
+     pg_logical_emit_message(true, 'sequin.backfill.batch',
        '{"batch_id": "...", "backfill_id": "...", "replication_slot_id": "..."}'
      )
      ```
@@ -806,11 +853,13 @@ The watermark ensures that the batch has been replicated through the WAL before 
 ### 5.1 ConsumerEvent vs ConsumerRecord
 
 **ConsumerEvent** (for push consumers - HTTP, Kafka, SQS):
+
 - Ephemeral - deleted after successful delivery
 - Simpler state machine: `:available` → `:delivered`
 - Includes full change information (old/new values)
 
 **ConsumerRecord** (for pull consumers - HTTP Pull, Sequin Stream):
+
 - Persistent - kept for consumer to fetch
 - Complex state machine: `:available` → `:delivered` → `:acked` → `:pending_redelivery`
 - Current record state only (no changes)
@@ -825,6 +874,7 @@ The watermark ensures that the batch has been replicated through the WAL before 
 ```
 
 **Comparison:**
+
 ```elixir
 def compare_wal_cursors(cursor1, cursor2) do
   case {cursor1.commit_lsn, cursor1.commit_idx} do
@@ -850,10 +900,12 @@ Sent by SlotProducer to each Processor partition, which forwards to ReorderBuffe
 ### 5.4 Message States
 
 **ConsumerEvent states:**
+
 - `:available` - Ready for delivery
 - `:delivered` - Successfully delivered
 
 **ConsumerRecord states:**
+
 - `:available` - Ready for delivery
 - `:delivered` - Sent to consumer, awaiting ack
 - `:acked` - Consumer acknowledged receipt
@@ -866,19 +918,21 @@ Sent by SlotProducer to each Processor partition, which forwards to ReorderBuffe
 ### 6.1 In-Memory State
 
 **ETS Tables:**
+
 - `SlotMessageStore` ETS table per consumer/partition (ordered_set)
   - Stores ConsumerEvent/ConsumerRecord structs
   - Key: `{commit_lsn, commit_idx, random_suffix}`
-  
+
 - `TableReaderServer` ETS multiset per backfill
   - Stores PKs for deduplication
   - Key: `batch_id`, Values: `[pk1, pk2, ...]`
-  
+
 - Global ETS table: `table_oid_to_backfill_ids`
   - Maps table OIDs to active backfill IDs
   - Enables fast lookup in MessageHandler
 
 **GenServer State:**
+
 - Each process maintains its own state struct
 - No shared mutable state between processes
 - Communication via message passing
@@ -886,6 +940,7 @@ Sent by SlotProducer to each Processor partition, which forwards to ReorderBuffe
 ### 6.2 Persistent State
 
 **PostgreSQL Tables (config schema):**
+
 - `postgres_replication_slots` - Replication slot configuration
 - `sink_consumers` - Consumer configuration
 - `backfills` - Backfill jobs
@@ -893,19 +948,22 @@ Sent by SlotProducer to each Processor partition, which forwards to ReorderBuffe
 - `postgres_databases` - Database connection info
 
 **PostgreSQL Tables (stream schema):**
+
 - `consumer_events` - Overflow/persisted events
-- `consumer_records` - Overflow/persisted records  
+- `consumer_records` - Overflow/persisted records
 - `wal_events` - WAL pipeline events
 
 **Redis:**
+
 - Delivered WAL cursors (sorted set): `message_ledgers:delivered_cursors:{consumer_id}`
   - Score: `commit_lsn * 1000000 + commit_idx`
   - Member: `"#{commit_lsn}:#{commit_idx}"`
-  
+
 - Undelivered WAL cursors (sorted set): `message_ledgers:undelivered_cursors:{consumer_id}`
 
 **restart_wal_cursor Storage:**
 Stored in `postgres_replication_slots` table in an `annotations` JSON column:
+
 ```elixir
 %{
   "restart_wal_cursor" => %{
@@ -920,6 +978,7 @@ Stored in `postgres_replication_slots` table in an `annotations` JSON column:
 Each SlotMessageStore maintains its own `high_watermark_wal_cursor`. This is the highest WAL cursor that has been flushed to this store.
 
 When SlotProcessorServer calculates `restart_wal_cursor`:
+
 1. Query ALL SlotMessageStores for their minimum unpersisted cursor
 2. Take the minimum across all stores
 3. This ensures the slot doesn't advance past any store's oldest message
@@ -934,27 +993,32 @@ Different consumers may process at different speeds. A slow consumer should not 
 ### 7.1 Supervision Strategy
 
 **SlotProducer.Supervisor:** `:one_for_all`
+
 - If any component crashes, restart entire pipeline
 - Ensures consistent state across SlotProducer, Processors, ReorderBuffer, SlotProcessorServer
 
 **SlotSupervisor (DynamicSupervisor):** `:one_for_one`
+
 - Children started dynamically (not statically in init)
 - Each consumer's SlotMessageStore + SinkPipeline is independent
 - If one consumer crashes, others continue
 
 **SlotMessageStoreSupervisor:** `:one_for_all`
+
 - All partitions of a consumer restart together
 - Ensures consistent partition state
 
 ### 7.2 Restart Strategies
 
 **SlotProducer Restart:**
+
 1. Fetch `restart_wal_cursor` from database
 2. Connect to PostgreSQL replication
 3. Send `START_REPLICATION` from `restart_lsn`
 4. Skip messages before `restart_wal_cursor` (they're already buffered)
 
 **SlotMessageStore Restart:**
+
 1. Load persisted messages from database
 2. Populate ETS table
 3. Resume producing to ConsumerProducer
@@ -989,21 +1053,25 @@ Broadway handles gracefully - drains in-flight messages before shutdown.
 ### 7.4 Backpressure Mechanisms
 
 **Level 1: ReorderBuffer → SlotProducer**
+
 - If `ready_batches_by_idx` count exceeds threshold, stop asking for demand
 - SlotProducer buffers messages in `accumulated_messages`
 - If buffer fills, SlotProducer switches to `:buffering` state
 
 **Level 2: SlotMessageStore → MessageHandler**
+
 - If `payload_size_bytes > max_memory_bytes`, return error
 - MessageHandler retries with exponential backoff
 - Eventually blocks SlotProcessorServer's batch handling
 
 **Level 3: PostgreSQL WAL Growth**
+
 - If Sequin stops ACKing, WAL accumulates on disk
 - PostgreSQL may run out of space (operator alert)
 
 **System Health Checks:**
 ReorderBuffer periodically checks:
+
 - Available memory
 - Disk space
 - If unhealthy, stops pulling messages
@@ -1015,18 +1083,21 @@ ReorderBuffer periodically checks:
 ### 8.1 Partitioning Strategy
 
 **Processor Partitions:**
+
 - One partition per CPU core (typically 8-16)
 - Messages are round-robin distributed by SlotProducer
 - Parallel decoding and type casting
 - ReorderBuffer reorders before delivery
 
 **SlotMessageStore Partitions:**
+
 - Configurable per consumer (default 1)
 - Messages partitioned by `group_id` hash
 - Enables parallel consumption for throughput
 - Maintains ordering within each partition
 
 **Partition Count Selection:**
+
 - Single partition: Full ordering, lower throughput
 - Multiple partitions: Parallel processing, ordering per partition
 - Trade-off: Throughput vs. ordering guarantees
@@ -1034,6 +1105,7 @@ ReorderBuffer periodically checks:
 ### 8.2 Memory Management
 
 **SlotMessageStore Memory Limits:**
+
 ```elixir
 max_memory_bytes = if system_max_memory_bytes do
   # Self-hosted: Divide total memory across all consumers
@@ -1046,6 +1118,7 @@ end
 
 **Overflow to Database:**
 When memory limit reached:
+
 1. Sort ETS table by age (oldest first)
 2. Flush oldest messages to PostgreSQL
 3. Remove from ETS
@@ -1058,11 +1131,15 @@ Elixir processes explicitly call `:erlang.garbage_collect()` after removing larg
 
 **Database Connections:**
 Uses `Sequin.Databases.ConnectionCache` to pool connections:
+
 - One pool per PostgreSQL database
 - Configurable pool size (default 10)
 - Connections are lazily created
 
+In production, the metadata-DB pool (`PG_POOL_SIZE`) runs at `125` rather than the default `10` — see [10.7](#107-pg_pool_size-saturation--slotprocessorserver-crash) for the rationale and the underlying `SlotProcessorServer` crash bug it mitigates.
+
 **Sink Connections:**
+
 - Kafka: `Sequin.Sinks.Kafka.ConnectionCache`
 - Redis: `Sequin.Sinks.Redis.ConnectionCache`
 - RabbitMQ: `Sequin.Sinks.RabbitMq.ConnectionCache`
@@ -1073,17 +1150,20 @@ Each maintains a GenServer-based cache of connections keyed by configuration has
 ### 8.4 Batch Processing
 
 **SlotProducer Batching:**
+
 - Configurable `batch_flush_interval` (default 1 second)
 - Accumulates messages until interval expires
 - Emits batch marker
 - Reduces batch overhead
 
 **SinkPipeline Batching:**
+
 - Broadway batchers group messages by routing key
 - Configurable batch size and timeout
 - Reduces API calls (e.g., 1 Kafka produce call for 100 messages)
 
 **TableReaderServer Batching:**
+
 - Page size dynamically adjusted by `PageSizeOptimizer`
 - Starts small, increases if fast
 - Decreases if timeouts occur
@@ -1098,6 +1178,7 @@ Each maintains a GenServer-based cache of connections keyed by configuration has
 **File:** `sequin/lib/sequin/health.ex`
 
 Health events are emitted for:
+
 - `:replication_connected` - SlotProducer connected
 - `:replication_heartbeat_verification` - Heartbeat health check
 - `:messages_ingested` - Messages written to SlotMessageStore
@@ -1112,6 +1193,7 @@ Health events are stored in `health_snapshots` table and can trigger alerts.
 **File:** `sequin/lib/sequin/prometheus.ex`
 
 Key metrics:
+
 - `sequin_messages_ingested_total` - Messages written to stores
 - `sequin_message_deliver_attempt_total` - Delivery attempts
 - `sequin_message_deliver_success_total` - Successful deliveries
@@ -1127,6 +1209,7 @@ Key metrics:
 **File:** `sequin/lib/sequin/process_metrics.ex`
 
 Each key process tracks:
+
 - Message throughput (per second)
 - Busy percentage (time spent processing vs. idle)
 - Operation timing breakdown
@@ -1139,6 +1222,7 @@ Logged periodically and exposed via Prometheus.
 **File:** `sequin/lib/sequin/runtime/trace.ex`
 
 Trace events capture message flow through the system:
+
 ```elixir
 Trace.info(consumer_id, %Trace.Event{
   message: "Delivered messages",
@@ -1153,22 +1237,29 @@ Used for debugging and audit trails.
 ## 10. COMMON FAILURE MODES & DEBUGGING
 
 **iex required:** The Elixir snippets below must be run inside an **iex** (Interactive Elixir) session. iex is Elixir's interactive shell where you can run Elixir expressions against a live running node. See the [official iex docs](https://hexdocs.pm/iex/IEx.html) for more. To connect to the running Sequin node, run:
+
 ```
 ./sequin-iex.sh
 ```
+
 Once connected, you can paste the commands directly.
 
 **Tip — live node inspection with `:observer_cli`:** Once inside iex, you can run:
+
 ```elixir
 :observer_cli.start()
 ```
+
 This launches a terminal-based dashboard (no GUI needed) that gives you a real-time view of the running Sequin node: all active processes, memory consumption, CPU usage, message queue lengths, ETS table sizes, and more. It is the fastest way to spot a stuck or overloaded process, a memory leak, or an unexpectedly large ETS table without having to know the exact process name upfront. Use arrow keys to navigate, `q` to quit.
 
 **PostgreSQL user permissions:** Querying replication slot info can be done by any user:
+
 ```sql
 SELECT slot_name, confirmed_flush_lsn, restart_lsn, active FROM pg_replication_slots;
 ```
+
 However, **dropping or recreating a slot must be run as the admin user**:
+
 ```sql
 -- Drop a slot (admin only)
 SELECT pg_drop_replication_slot('slot_name');
@@ -1184,12 +1275,14 @@ SELECT pg_create_logical_replication_slot('slot_name', 'pgoutput');
 **Cause:** Sequin not ACKing WAL (slot not advancing)
 
 **Debug:**
+
 ```sql
-SELECT slot_name, confirmed_flush_lsn, restart_lsn 
+SELECT slot_name, confirmed_flush_lsn, restart_lsn
 FROM pg_replication_slots;
 ```
 
 **Common Reasons:**
+
 1. SlotProducer disconnected - Check health events
 2. SlotMessageStore full - Check memory metrics
 3. Consumer stuck - Check SinkPipeline metrics
@@ -1199,6 +1292,7 @@ FROM pg_replication_slots;
 **Symptom:** Messages not delivered, no errors
 
 **Debug:**
+
 1. Check if message matched consumer filters:
    ```elixir
    Consumers.matches_message?(consumer, message)
@@ -1220,6 +1314,7 @@ FROM pg_replication_slots;
 **Cause:** Idempotency not working
 
 **Debug:**
+
 1. Check Redis delivered cursors set:
    ```
    ZCARD message_ledgers:delivered_cursors:{consumer_id}
@@ -1234,6 +1329,7 @@ FROM pg_replication_slots;
 **Cause:** Replication connection stale
 
 **Debug:**
+
 1. Check PostgreSQL logs for connection errors
 2. Check network latency to PostgreSQL
 3. Check if heartbeat table exists:
@@ -1250,6 +1346,7 @@ FROM pg_replication_slots;
 **Symptom:** Backfill stuck in `:active` state
 
 **Debug:**
+
 1. Check TableReaderServer state:
    ```elixir
    :sys.get_state(TableReaderServer.via_tuple(backfill_id))
@@ -1265,9 +1362,35 @@ FROM pg_replication_slots;
 **Cause:** Consumer was added/removed but monitor refs not updated
 
 **Fix:** Restart SlotProducer pipeline:
+
 ```elixir
 Sequin.Runtime.Supervisor.restart_replication(slot_supervisor(), pg_replication)
 ```
+
+### 10.7 PG_POOL_SIZE Saturation & SlotProcessorServer Crash
+
+**Symptom:** `SlotProcessorServer` for a replication slot crashes with a `MatchError`; replication slot freezes for tens of seconds to several minutes; WAL backs up on the source PostgreSQL
+
+**Root cause:** In `lib/sequin/runtime/slot_message_store.ex:921-923`, `upsert_consumer_messages/2` is called inside an `Enum.each` with a hard `{:ok, _count} = ...` match. Any transient error from the metadata DB (pool `:queue_timeout`, connection drop, lock contention, statement timeout) raises a `MatchError` that propagates up through `SlotMessageStore.handle_call` and terminates the `SlotProcessorServer` for the entire replication slot. Because that GenServer is supervised with exponential backoff, each crash freezes the slot — during which Postgres cannot release WAL — turning a routine, recoverable database blip into operational pressure on the source: replication lag accumulates, disk fills, and other sinks sharing the slot stall as collateral.
+
+**Workaround in production:** `PG_POOL_SIZE` is raised from the default `10` to `125` to prevent Sequin's metadata-DB connection pool from saturating during burst writes — particularly the cold-start ack rush from many `SlotMessageStore`s after a restart. When the pool saturates, Ecto returns `:queue_timeout` from `upsert_consumer_messages`, which triggers the `MatchError` path described above.
+
+`125` was chosen because the source databases share the same Postgres instance (`max_connections=450`). Sequin's full footprint at this pool size is approximately:
+
+- ~125 metadata-DB pool
+- ~30 source-DB pools
+- 3 replication-slot connections
+
+≈ 160 connections total, leaving comfortable headroom for application traffic and ad-hoc clients on that shared instance.
+
+**Proper fix (not yet applied):** Surface the `{:error, _}` return from `upsert_consumer_messages/2` and let the caller retry/backoff at the message level, so a brief pool stall delays a single batch of acks instead of taking down the entire slot processor. Until that is done, the pool bump is a mitigation, not a fix — it shrinks the probability of the crash, but does not eliminate the underlying fragility.
+
+**Debug:**
+
+1. Check `SlotProcessorServer` crash logs for `MatchError` referencing `upsert_consumer_messages`.
+2. Check Ecto pool metrics for `:queue_timeout` errors against the metadata DB.
+3. Check `pg_replication_slots.confirmed_flush_lsn` — if it stops advancing for tens of seconds while the source keeps writing, the slot is frozen.
+4. Check WAL size on the source (`pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)`).
 
 ---
 
@@ -1276,6 +1399,7 @@ Sequin.Runtime.Supervisor.restart_replication(slot_supervisor(), pg_replication)
 ### 11.1 Configuration Schema Tables
 
 **postgres_replication_slots:**
+
 ```sql
 CREATE TABLE postgres_replication_slots (
   id UUID PRIMARY KEY,
@@ -1293,6 +1417,7 @@ CREATE TABLE postgres_replication_slots (
 ```
 
 **sink_consumers:**
+
 ```sql
 CREATE TABLE sink_consumers (
   id UUID PRIMARY KEY,
@@ -1310,6 +1435,7 @@ CREATE TABLE sink_consumers (
 ```
 
 **backfills:**
+
 ```sql
 CREATE TABLE backfills (
   id UUID PRIMARY KEY,
@@ -1326,6 +1452,7 @@ CREATE TABLE backfills (
 ### 11.2 Stream Schema Tables
 
 **consumer_events:**
+
 ```sql
 CREATE TABLE consumer_events (
   consumer_id UUID NOT NULL,
@@ -1350,6 +1477,7 @@ CREATE TABLE consumer_events (
 ```
 
 **consumer_records:**
+
 ```sql
 CREATE TABLE consumer_records (
   consumer_id UUID NOT NULL,
@@ -1374,6 +1502,7 @@ CREATE TABLE consumer_records (
 ```
 
 **wal_events:**
+
 ```sql
 CREATE TABLE wal_events (
   id BIGSERIAL PRIMARY KEY,
@@ -1404,6 +1533,7 @@ CREATE TABLE wal_events (
 **File:** `sequin/config/config.exs`
 
 Key configurations:
+
 ```elixir
 config :sequin, Sequin.Runtime.SlotProducer,
   batch_flush_interval: [
@@ -1435,18 +1565,18 @@ Stored in `sink_consumers` table, loaded into `%SinkConsumer{}` struct:
   message_kind: :event | :record,
   partition_count: 1,
   max_storage_mb: 100,
-  
+
   # Filtering
   filter: %Function{code: "event.record.age > 18"},
   schema_filter: ["public"],
-  
+
   # Transformation
   enrichment: %Function{code: "merge(event, {extra: 'data'})"},
   routing: %Function{code: "{topic: event.table}"},
-  
+
   # Source
   source: %Source{table_oids: [16384, 16385]},
-  
+
   # Sink-specific (polymorphic)
   http_endpoint: %HttpEndpoint{url: "https://..."},
   kafka_sink: %KafkaSink{hosts: "...", topic: "..."},
@@ -1461,11 +1591,13 @@ Stored in `sink_consumers` table, loaded into `%SinkConsumer{}` struct:
 ### 13.1 Starting Sequin
 
 1. **Database Migration:**
+
    ```bash
    mix ecto.migrate
    ```
 
 2. **Start Application:**
+
    ```bash
    mix phx.server
    # Or in production:
@@ -1490,23 +1622,27 @@ Stored in `sink_consumers` table, loaded into `%SinkConsumer{}` struct:
 ### 13.3 Common Operations
 
 **Pause Consumer:**
+
 ```elixir
 Consumers.update_sink_consumer(consumer, %{status: :paused})
 # Stops SinkPipeline, keeps buffering messages
 ```
 
 **Resume Consumer:**
+
 ```elixir
 Consumers.update_sink_consumer(consumer, %{status: :active})
 Sequin.Runtime.Supervisor.start_for_sink_consumer(consumer)
 ```
 
 **Reset Consumer (clear buffer):**
+
 ```elixir
 SlotMessageStore.discard_all_messages(consumer)
 ```
 
 **Backfill Table:**
+
 ```elixir
 Consumers.create_backfill(%{
   sink_consumer_id: consumer.id,
@@ -1525,6 +1661,7 @@ Consumers.create_backfill(%{
 **File:** `sequin/test/support/`
 
 Key modules:
+
 - `AccountsSupport` - Create test accounts
 - `DatabasesSupport` - Create test PostgreSQL databases
 - `ConsumersSupport` - Create test consumers
@@ -1537,16 +1674,18 @@ Tests use `Ecto.Adapters.SQL.Sandbox` to isolate database transactions.
 
 **Mocking:**
 Uses `Mox` library for behavior mocks:
+
 - `Sequin.Runtime.MessageHandlerMock`
 - `Sequin.Runtime.SlotMessageStoreMock`
 - `Sequin.TestSupport.DateTimeMock`
 
 **Process Testing:**
+
 ```elixir
 test "SlotProducer emits messages" do
   # Start SlotProducer with test_pid
   {:ok, _} = SlotProducer.start_link(test_pid: self(), ...)
-  
+
   # Assert messages received
   assert_receive {SlotProcessorServer, :flush_messages, count}
 end
@@ -1557,14 +1696,17 @@ end
 ## 15. TROUBLESHOOTING GUIDE
 
 **iex:** The Elixir snippets below must be run inside an **iex** (Interactive Elixir) session. iex is Elixir's interactive shell — think of it like a Python REPL or a Node.js console — where you can run Elixir expressions against a live running node. See the [official iex docs](https://hexdocs.pm/iex/IEx.html) for more. To connect to the running Sequin node, run:
+
 ```
 ./sequin/sequin-iex.sh
 ```
+
 Once connected, you can paste the commands directly.
 
 ### 15.1 No Messages Flowing
 
 **Check:**
+
 1. Is replication slot created in PostgreSQL?
    ```sql
    SELECT * FROM pg_replication_slots;
@@ -1584,6 +1726,7 @@ Once connected, you can paste the commands directly.
 ### 15.2 Messages Stuck in Buffer
 
 **Check:**
+
 1. SlotMessageStore payload size:
    ```elixir
    state = :sys.get_state(SlotMessageStore.via_tuple(consumer_id, 0))
@@ -1598,6 +1741,7 @@ Once connected, you can paste the commands directly.
 ### 15.3 High Latency
 
 **Check:**
+
 1. Ingestion latency (Prometheus):
    - `sequin_ingestion_latency_microseconds`
 2. Internal latency:
@@ -1608,6 +1752,7 @@ Once connected, you can paste the commands directly.
    - `sequin_slot_processor_server_busy_percent`
 
 **Common Causes:**
+
 - Slow sink (HTTP endpoint, Kafka cluster)
 - Large payload sizes (TOAST columns)
 - Too many consumers on one slot
@@ -1620,14 +1765,16 @@ Once connected, you can paste the commands directly.
 ### 16.1 Transaction Annotations
 
 Custom metadata can be added to transactions:
+
 ```sql
-SELECT pg_logical_emit_message(true, 'sequin:transaction_annotations.set', 
+SELECT pg_logical_emit_message(true, 'sequin:transaction_annotations.set',
   '{"user_id": "123", "request_id": "abc"}');
 -- Make changes
 SELECT pg_logical_emit_message(true, 'sequin:transaction_annotations.clear', '');
 ```
 
 Annotations flow through:
+
 1. SlotProducer captures in transaction state
 2. Attached to all messages in transaction
 3. Available in consumer data
@@ -1635,6 +1782,7 @@ Annotations flow through:
 ### 16.2 Message Partitioning
 
 Consumer partitions enable parallel processing:
+
 ```elixir
 # Set partition count
 consumer = Consumers.update_sink_consumer(consumer, %{partition_count: 4})
@@ -1644,29 +1792,35 @@ partition = :erlang.phash2(message.group_id, 4)
 ```
 
 **group_id** is derived from:
+
 - Record PKs for record consumers
 - Configurable function for event consumers
 
 ### 16.3 Enrichment & Filtering
 
 **Filter Function:**
+
 ```javascript
 // Only process users over 18
 event.record.age > 18
 ```
 
 **Enrichment Function:**
+
 ```javascript
 // Add computed field
 merge(event, {
-  full_name: event.record.first_name + " " + event.record.last_name
+  full_name: event.record.first_name + ' ' + event.record.last_name,
 })
 ```
 
 **Routing Function:**
+
 ```javascript
 // Dynamic Kafka topic
-{topic: "user_" + event.record.country}
+{
+  topic: 'user_' + event.record.country
+}
 ```
 
 Functions run in `Sequin.Functions.MiniElixir` (sandboxed JavaScript-like language).
@@ -1676,6 +1830,7 @@ Functions run in `Sequin.Functions.MiniElixir` (sandboxed JavaScript-like langua
 ## 17. FILE REFERENCE
 
 ### Core Runtime Components
+
 - `sequin/lib/sequin/runtime/supervisor.ex` - Top-level runtime supervisor
 - `sequin/lib/sequin/runtime/slot_supervisor.ex` - Per-slot supervisor
 - `sequin/lib/sequin/runtime/slot_producer/slot_producer.ex` - WAL stream producer
@@ -1690,6 +1845,7 @@ Functions run in `Sequin.Functions.MiniElixir` (sandboxed JavaScript-like langua
 - `sequin/lib/sequin/runtime/table_reader_server.ex` - Backfill reader
 
 ### Data Models
+
 - `sequin/lib/sequin/replication/postgres_replication_slot.ex`
 - `sequin/lib/sequin/consumers/sink_consumer.ex`
 - `sequin/lib/sequin/consumers/consumer_event.ex`
@@ -1697,12 +1853,14 @@ Functions run in `Sequin.Functions.MiniElixir` (sandboxed JavaScript-like langua
 - `sequin/lib/sequin/replication/wal_event.ex`
 
 ### Sink Implementations
+
 - `sequin/lib/sequin/runtime/http_push_pipeline.ex`
 - `sequin/lib/sequin/runtime/kafka_pipeline.ex`
 - `sequin/lib/sequin/runtime/sqs_pipeline.ex`
 - `sequin/lib/sequin/runtime/redis_stream_pipeline.ex`
 
 ### Supporting Modules
+
 - `sequin/lib/sequin/runtime/message_ledgers.ex` - Idempotency & ALO tracking
 - `sequin/lib/sequin/postgres.ex` - PostgreSQL utilities
 - `sequin/lib/sequin/health.ex` - Health event system

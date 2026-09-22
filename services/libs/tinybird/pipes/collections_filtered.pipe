@@ -5,15 +5,34 @@ NODE collections_filtered_0
 SQL >
     %
     SELECT
-        collections.*,
+        collections.id AS id,
+        collections.name AS name,
+        collections.slug AS slug,
+        collections.description AS description,
+        collections.categoryId AS categoryId,
+        collections.starred AS starred,
+        collections.isPrivate AS isPrivate,
+        collections.ssoUserId AS ssoUserId,
+        collections.logoUrl AS logoUrl,
+        collections.createdAt AS createdAt,
+        collections.updatedAt AS updatedAt,
+        collections.deletedAt AS deletedAt,
         SUM(
-            CASE WHEN collectionsInsightsProjects.insightsProjectId != '' THEN 1 ELSE 0 END
+            CASE
+                WHEN collectionsInsightsProjects.insightsProjectId != '' AND ip.enabled = 1
+                THEN 1
+                ELSE 0
+            END
         ) as "projectCount"
     FROM collections FINAL
     left join
         collectionsInsightsProjects
         on collectionsInsightsProjects.collectionId = collections.id
         and isNull (collectionsInsightsProjects.deletedAt)
+    left join
+        insightsProjects ip FINAL
+        on ip.id = collectionsInsightsProjects.insightsProjectId
+        and isNull (ip.deletedAt)
     where
         isNull (collections.deletedAt) AND isNull (collections.ssoUserId)
         {% if defined(slug) %}

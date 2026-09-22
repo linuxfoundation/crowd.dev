@@ -31,6 +31,14 @@ const ORDER_FIELD_MAP: Record<string, string> = {
   displayName: 'm."displayName"',
 }
 
+// Hard cap on candidates considered by the activityCount top-N optimization (see
+// buildActivityCountOptimizedQuery). Kept as a shared constant because
+// canUseActivityCountOptimization has to know it too, to refuse the optimized path
+// when a requested page would extend past the cap — otherwise a large limit/offset
+// (e.g. CSV exports requesting effectively unlimited rows) would come back silently
+// truncated instead of falling back to the exhaustive path.
+const ACTIVITY_COUNT_TOP_N_CAP = 50000
+
 export const buildSearchCTE = (
   search: string,
 ): { cte: string; join: string; params: Record<string, string> } => {
@@ -187,6 +195,9 @@ const hasNonIdMemberFieldReferences = (filterString: string): boolean => {
  * @param sortField - The field being sorted by (undefined means default activityCount)
  * @param hasEnrichmentFilters - Whether filter references me.* fields
  * @param hasOrganizationFilters - Whether filter references mo.* fields
+ * @param limit - Requested page size
+ * @param offset - Requested page offset
+ * @param hasNonIdMemberFields - Whether filter uses m.* fields (drives oversampling)
  * @returns true if activityCount optimization can be used
  */
 const canUseActivityCountOptimization = ({
@@ -195,12 +206,18 @@ const canUseActivityCountOptimization = ({
   includeMemberOrgs,
   sortField,
   withAggregates,
+  limit,
+  offset,
+  hasNonIdMemberFields,
 }: {
   filterHasMe: boolean
   filterHasMo: boolean
   sortField: string | undefined
   withAggregates: boolean
   includeMemberOrgs: boolean
+  limit: number
+  offset: number
+  hasNonIdMemberFields: boolean
 }): boolean => {
   // Need aggregates to access activityCount
   if (!withAggregates) return false
@@ -212,6 +229,13 @@ const canUseActivityCountOptimization = ({
   if (filterHasMe || filterHasMo) return false
 
   if (includeMemberOrgs) return false
+
+  // The top-N CTE is capped at ACTIVITY_COUNT_TOP_N_CAP candidates. If the requested
+  // page reaches past that cap (e.g. CSV exports requesting an effectively unlimited
+  // number of rows), the optimized path would silently return an incomplete page —
+  // fall back to the exhaustive path instead.
+  const oversampleMultiplier = hasNonIdMemberFields ? 10 : 1
+  if ((limit + offset) * oversampleMultiplier > ACTIVITY_COUNT_TOP_N_CAP) return false
 
   return true
 }
@@ -316,7 +340,7 @@ const buildActivityCountOptimizedQuery = ({
 
   const baseNeeded = limit + offset
   const oversampleMultiplier = hasNonIdMemberFields ? 10 : 1 // 10x oversampling for m.* filters
-  const totalNeeded = Math.min(baseNeeded * oversampleMultiplier, 50000) // Cap at 50k
+  const totalNeeded = Math.min(baseNeeded * oversampleMultiplier, ACTIVITY_COUNT_TOP_N_CAP)
 
   ctes.push(
     `
@@ -403,6 +427,9 @@ export const buildQuery = ({
     includeMemberOrgs,
     sortField,
     withAggregates,
+    limit,
+    offset,
+    hasNonIdMemberFields: filterHasNonIdMemberFields,
   })
 
   if (useActivityCountOptimized) {
@@ -422,12 +449,14 @@ export const buildQuery = ({
     Boolean,
   )
 
+  const needsMemberEnrichments = filterHasMe || fields.includes('me.')
+
   const joins = [
     withAggregates
       ? `INNER JOIN "memberSegmentsAgg" msa ON msa."memberId" = m.id AND msa."segmentId" = $(segmentId)`
       : '',
     needsMemberOrgs ? `LEFT JOIN member_orgs mo ON mo."memberId" = m.id` : '',
-    `LEFT JOIN "memberEnrichments" me ON me."memberId" = m.id`,
+    needsMemberEnrichments ? `LEFT JOIN "memberEnrichments" me ON me."memberId" = m.id` : '',
     searchConfig.join,
   ].filter(Boolean)
 
@@ -464,9 +493,15 @@ export const buildCountQuery = ({
     searchConfig.join,
   ].filter(Boolean)
 
+  // COUNT(*) is safe only when every join is guaranteed one-to-one per member:
+  // - memberSegmentsAgg is unique on (memberId, segmentId) with segmentId fixed → safe
+  // - member_orgs CTE uses ARRAY_AGG GROUP BY memberId → one row per member → safe
+  // - memberEnrichments may have multiple rows per member → COUNT(*) would overcount
+  const countExpr = withAggregates && !filterHasMe ? 'COUNT(*)' : 'COUNT(DISTINCT m.id)'
+
   return `
     ${ctes.length > 0 ? `WITH ${ctes.join(',\n')}` : ''}
-    SELECT COUNT(DISTINCT m.id) AS count
+    SELECT ${countExpr} AS count
     FROM members m
     ${joins.join('\n')}
     WHERE (${filterString})

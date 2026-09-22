@@ -25,10 +25,10 @@ import {
   updateOrphanCleanupRun,
 } from './activities/cleanup/segments-agg'
 import {
-  calculateMemberAffiliations,
   getWorkflowsCount,
   mergeMembers,
   mergeOrganizations,
+  triggerMemberAffiliationsRefresh,
   unmergeMembers,
   unmergeMembersPreview,
   waitForTemporalWorkflowExecutionFinish,
@@ -37,6 +37,7 @@ import {
   findMemberById,
   findMemberIdentitiesGroupedByPlatform,
   findMemberMergeActions,
+  findMergeActionUnmergeBackup,
 } from './activities/dissect-member'
 import {
   getBotMembersWithOrgAffiliation,
@@ -66,6 +67,7 @@ export {
   findMembersWithSamePlatformIdentitiesDifferentCapitalization,
   mergeMembers,
   findMemberMergeActions,
+  findMergeActionUnmergeBackup,
   unmergeMembers,
   unmergeMembersPreview,
   waitForTemporalWorkflowExecutionFinish,
@@ -97,8 +99,8 @@ export {
   setOrganizationAffiliationPolicyIfNotBlocked,
   markMemberForAffiliationRecalc,
   getMembersForAffiliationRecalc,
-  calculateMemberAffiliations,
   startOrphanCleanupRun,
+  triggerMemberAffiliationsRefresh,
   updateOrphanCleanupRun,
   getOrphanMembersSegmentsAgg,
   deleteOrphanMembersSegmentsAgg,

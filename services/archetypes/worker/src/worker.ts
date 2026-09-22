@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 import {
   NativeConnection,
   Runtime,
@@ -5,8 +8,6 @@ import {
   bundleWorkflowCode,
   makeTelemetryFilterString,
 } from '@temporalio/worker'
-import fs from 'fs'
-import path from 'path'
 
 import { Config, Service } from '@crowd/archetype-standard'
 import { IS_DEV_ENV, IS_STAGING_ENV, IS_TEST_ENV } from '@crowd/common'
@@ -14,6 +15,7 @@ import { DbStore, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { OpenSearchService, getOpensearchClient } from '@crowd/opensearch'
 import { IQueue, QueueFactory } from '@crowd/queue'
+import { SlackChannel } from '@crowd/slack'
 import { getDataConverter } from '@crowd/temporal'
 
 import * as metricActivities from './activities'
@@ -51,6 +53,7 @@ Options is used to configure the worker service.
 export interface Options {
   maxTaskQueueActivitiesPerSecond?: number
   maxConcurrentActivityTaskExecutions?: number
+  alertChannel?: SlackChannel
   postgres?: {
     enabled: boolean
   }
@@ -288,7 +291,7 @@ export class ServiceWorker extends Service {
             activity: [
               (ctx) => {
                 return {
-                  inbound: new ActivityMonitoringInterceptor(ctx),
+                  inbound: new ActivityMonitoringInterceptor(ctx, this.options.alertChannel),
                 }
               },
             ],

@@ -25,6 +25,14 @@ export const PERSONA_CONFIGS: Record<SlackPersona, SlackPersonaConfig> = {
     name: 'Critical Alerter',
     icon: ':fire:',
   },
+  [SlackPersona.SUMMARY_REPORTER]: {
+    name: 'Summary Reporter',
+    icon: ':briefcase:',
+  },
+  [SlackPersona.METRICS_REPORTER]: {
+    name: 'Metrics Reporter',
+    icon: ':chart_with_upwards_trend:',
+  },
 }
 
 export function getPersonaConfig(persona: SlackPersona): SlackPersonaConfig {

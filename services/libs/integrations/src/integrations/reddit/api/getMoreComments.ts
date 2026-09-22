@@ -6,7 +6,6 @@ import { PlatformType } from '@crowd/types'
 import { IProcessStreamContext } from '../../../types'
 import { getNangoToken } from '../../nango'
 import { RedditMoreCommentsInput, RedditMoreCommentsResponse } from '../types'
-
 import { handleRedditError } from './errorHandler'
 
 /**

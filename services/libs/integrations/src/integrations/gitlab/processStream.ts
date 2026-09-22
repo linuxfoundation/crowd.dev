@@ -3,7 +3,6 @@ import { Gitlab } from '@gitbeaker/rest'
 import { timeout } from '@crowd/common'
 
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import { getForks } from './api/getForks'
 import { getIssueDiscussions } from './api/getIssueDiscussions'
 import { getIssues } from './api/getIssues'
@@ -192,7 +191,7 @@ const handleMergeRequestsStream: GitlabStreamHandler = async (ctx, api, data) =>
           data: item.data,
           user,
         },
-        type: GitlabActivityType.MERGE_REQUEST_CLOSED,
+        type: GitlabActivityType.MERGE_REQUEST_MERGED,
         projectId: data.projectId,
         pathWithNamespace: data.pathWithNamespace,
       })

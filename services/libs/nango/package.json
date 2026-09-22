@@ -1,17 +1,10 @@
 {
   "name": "@crowd/nango",
   "private": true,
-  "main": "src/index.ts",
   "type": "commonjs",
+  "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "^18.16.3",
-    "typescript": "^5.6.3"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -20,6 +13,10 @@
     "@nangohq/frontend": "^0.52.4",
     "@nangohq/node": "^0.69.22",
     "@nangohq/types": "^0.69.22",
-    "axios": "^1.8.4"
+    "axios": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

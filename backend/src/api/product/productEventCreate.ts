@@ -1,6 +1,5 @@
-import { Error403 } from '@crowd/common'
-
 import ProductAnalyticsService from '@/services/productAnalyticsService'
+import { Error403 } from '@crowd/common'
 
 export default async (req, res) => {
   if (!req.currentUser || !req.currentUser.id) {

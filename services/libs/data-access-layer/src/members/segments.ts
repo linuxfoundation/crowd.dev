@@ -10,7 +10,6 @@ import {
 import { QueryExecutor } from '../queryExecutor'
 import { buildSegmentActivityTypes, isSegmentSubproject } from '../segments'
 import { prepareBulkInsert } from '../utils'
-
 import { BLACKLISTED_MEMBER_TITLES } from './base'
 import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
 
@@ -22,6 +21,26 @@ export async function findLastSyncDate(qx: QueryExecutor, memberId: string): Pro
     { memberId },
   )
   return result?.lastSyncDate ? new Date(result.lastSyncDate) : null
+}
+
+export async function findMemberProjectGroupId(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<string | null> {
+  const row = await qx.selectOneOrNone(
+    `
+      SELECT msa."segmentId" AS "projectGroupId"
+      FROM "memberSegmentsAgg" msa
+      INNER JOIN segments s ON s.id = msa."segmentId"
+      WHERE msa."memberId" = $(memberId)
+        AND s."parentId" IS NULL
+        AND s."grandparentId" IS NULL
+      LIMIT 1
+    `,
+    { memberId },
+  )
+
+  return row?.projectGroupId ?? null
 }
 
 export async function cleanupMemberAggregates(qx: QueryExecutor, memberId: string) {
@@ -185,11 +204,13 @@ export async function findMemberManualAffiliation(
       SELECT * FROM "memberSegmentAffiliations"
       WHERE "memberId" = $(memberId)
         AND "segmentId" = $(segmentId)
+        AND "deletedAt" IS NULL
         AND (
           ("dateStart" <= $(timestamp) AND "dateEnd" >= $(timestamp))
           OR ("dateStart" <= $(timestamp) AND "dateEnd" IS NULL)
+          OR ("dateStart" IS NULL AND "dateEnd" IS NULL)
         )
-      ORDER BY "dateStart" DESC, id
+      ORDER BY "dateStart" DESC NULLS LAST, id
       LIMIT 1
     `,
     {
@@ -206,26 +227,47 @@ export async function findMemberWorkExperience(
   qx: QueryExecutor,
   memberId: string,
   timestamp: string,
+  orgDomain?: string,
 ): Promise<IWorkExperienceData[] | null> {
+  // Base date filter used across all timeline queries
+  const dateCriteria = `
+    (mo."dateStart" <= $(timestamp) AND (mo."dateEnd" >= $(timestamp) OR mo."dateEnd" IS NULL))
+  `
+
+  // When an activity has an email domain, strictly force a match against verified org domains.
+  const activeAtTimestampClause = orgDomain
+    ? `
+        AND EXISTS (
+          SELECT 1
+          FROM "organizationIdentities" oi
+          WHERE oi."organizationId" = mo."organizationId"
+            AND oi.type = 'primary-domain'
+            AND oi.verified = true
+            AND lower(oi.value) = lower($(orgDomain))
+        )
+      `
+    : `
+        AND ${dateCriteria}
+      `
+
   const result = await qx.select(
     `
       SELECT
-          mo.*,
-          coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience"
+        mo.*,
+        coalesce(ovr."isPrimaryWorkExperience", false) AS "isPrimaryWorkExperience"
       FROM "memberOrganizations" mo
-      LEFT JOIN "memberOrganizationAffiliationOverrides" ovr on ovr."memberOrganizationId" = mo."id"
+      LEFT JOIN "memberOrganizationAffiliationOverrides" ovr 
+        ON ovr."memberOrganizationId" = mo.id
       WHERE mo."memberId" = $(memberId)
-        AND (
-          (mo."dateStart" <= $(timestamp) AND mo."dateEnd" >= $(timestamp))
-          OR (mo."dateStart" <= $(timestamp) AND mo."dateEnd" IS NULL)
-        )
         AND mo."deletedAt" IS NULL
         AND coalesce(ovr."allowAffiliation", true) = true
+        ${activeAtTimestampClause}
       ORDER BY mo."dateStart" DESC, mo.id
     `,
     {
       memberId,
       timestamp,
+      orgDomain,
     },
   )
 

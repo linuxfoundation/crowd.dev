@@ -1,27 +1,42 @@
+import { NextFunction, Request, Response } from 'express'
+
+import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 import SegmentRepository from '../database/repositories/segmentRepository'
 
-export async function segmentMiddleware(req, res, next) {
+/** Resolves segment(s) from the request and sets `req.currentSegments` for downstream handlers. */
+export async function segmentMiddleware(req: Request, _res: Response, next: NextFunction) {
   try {
-    let segments: any = null
-    const segmentRepository = new SegmentRepository(req)
+    const options = req as unknown as IRepositoryOptions
+    const segmentRepository = new SegmentRepository(options)
 
-    if (req.params.segmentId) {
-      // for param requests, segments will be in the url
-      segments = { rows: await segmentRepository.findInIds([req.params.segmentId]) }
-    } else if (req.query.segments) {
-      // for get requests, segments will be in query
-      segments = { rows: await segmentRepository.findInIds(req.query.segments) }
-    } else if (req.body.segments) {
-      // for post and put requests, segments will be in body
-      segments = { rows: await segmentRepository.findInIds(req.body.segments) }
+    const querySegments = toStringArray(req.query.segments)
+    const bodySegments = toStringArray((req.body as Record<string, unknown>)?.segments)
+
+    const segmentIds = querySegments.length > 0 ? querySegments : bodySegments
+
+    if (segmentIds.length > 0) {
+      options.currentSegments = await segmentRepository.findInIds(segmentIds)
     } else {
-      segments = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
+      const { rows } = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
+      options.currentSegments = rows
     }
-
-    req.currentSegments = segments.rows
 
     next()
   } catch (error) {
     next(error)
   }
+}
+
+/**
+ * Safely extracts a string[] from an unknown query/body value.
+ */
+function toStringArray(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+
+  const items = Array.isArray(value) ? value : [value]
+
+  return items
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }

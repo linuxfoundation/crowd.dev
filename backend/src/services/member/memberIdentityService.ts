@@ -1,22 +1,21 @@
 /* eslint-disable no-continue */
 import lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { Error409 } from '@crowd/common'
-import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
+import { Error404, Error409 } from '@crowd/common'
+import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
 import {
-  checkMemberIdentityExistence,
   deleteMemberIdentity,
   fetchMemberIdentities,
   findMemberIdentityById,
-  touchMemberUpdatedAt,
+  findMemberIdentityConflict,
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
 import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
-
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -58,26 +57,25 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if identity already exists
-          const existingIdentities = await checkMemberIdentityExistence(
-            qx,
-            data.value,
-            data.platform,
-          )
-          if (existingIdentities.length > 0) {
+          const conflict = await findMemberIdentityConflict(qx, {
+            value: data.value,
+            platform: data.platform,
+            type: data.type,
+          })
+
+          if (conflict) {
             throw new Error409(
               this.options.language,
               'errors.alreadyExists',
               // @ts-ignore
               JSON.stringify({
-                memberId: existingIdentities[0].memberId,
+                memberId: conflict.memberId,
               }),
             )
           }
 
           // Create member identity
-          await createMemberIdentity(qx, { ...data, memberId })
-
-          await touchMemberUpdatedAt(qx, memberId)
+          await insertMemberIdentities(qx, [{ ...data, memberId }])
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
@@ -100,7 +98,7 @@ export default class MemberIdentityService extends LoggerBase {
     }
   }
 
-  async findById(memberId: string, id: string): Promise<IMemberIdentity> {
+  async findById(memberId: string, id: string): Promise<IMemberIdentity | null> {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
     return findMemberIdentityById(qx, memberId, id)
   }
@@ -130,30 +128,29 @@ export default class MemberIdentityService extends LoggerBase {
 
           // Check if any of the identities already exist
           for (const identity of data) {
-            const existingIdentities = await checkMemberIdentityExistence(
-              qx,
-              identity.value,
-              identity.platform,
-            )
+            const conflict = await findMemberIdentityConflict(qx, {
+              value: identity.value,
+              platform: identity.platform,
+              type: identity.type,
+            })
 
-            if (existingIdentities.length > 0) {
+            if (conflict) {
               throw new Error409(
                 this.options.language,
                 'errors.alreadyExists',
                 // @ts-ignore
                 JSON.stringify({
-                  memberId: existingIdentities[0].memberId,
+                  memberId: conflict.memberId,
                 }),
               )
             }
           }
 
           // Create member identities
-          for (const identity of data) {
-            await createMemberIdentity(qx, { ...identity, memberId })
-          }
-
-          await touchMemberUpdatedAt(qx, memberId)
+          await insertMemberIdentities(
+            qx,
+            data.map((identity) => ({ ...identity, memberId })),
+          )
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
@@ -203,28 +200,38 @@ export default class MemberIdentityService extends LoggerBase {
 
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
-          // Check if identity already exists
-          const existingIdentities = await checkMemberIdentityExistence(
-            qx,
-            data.value,
-            data.platform,
-          )
-          const filteredExistingIdentities = existingIdentities.filter((i) => i.id !== id)
-          if (filteredExistingIdentities.length > 0) {
+          const currentIdentity = memberIdentities.find((identity) => identity.id === id)
+          if (!currentIdentity) {
+            throw new Error404(this.options.language, 'errors.notFound.message')
+          }
+
+          const value = data.value ?? currentIdentity.value
+          const platform = data.platform ?? currentIdentity.platform
+          const type = data.type ?? currentIdentity.type
+
+          const conflict = await findMemberIdentityConflict(qx, {
+            value,
+            platform,
+            type,
+            excludeMemberId: memberId,
+          })
+
+          if (conflict) {
             throw new Error409(
               this.options.language,
               'errors.alreadyExists',
               // @ts-ignore
               JSON.stringify({
-                memberId: filteredExistingIdentities[0].memberId,
+                memberId: conflict.memberId,
               }),
             )
           }
 
           // Update member identity with new data
-          await updateMemberIdentity(qx, memberId, id, data)
-
-          await touchMemberUpdatedAt(qx, memberId)
+          await updateMemberIdentity(qx, memberId, id, {
+            ...data,
+            ...(data.value !== undefined ? { value } : {}),
+          })
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
@@ -261,8 +268,6 @@ export default class MemberIdentityService extends LoggerBase {
 
       // Delete member identity
       await deleteMemberIdentity(qx, memberId, id)
-
-      await touchMemberUpdatedAt(qx, memberId)
 
       // List all member identities
       const list = await fetchMemberIdentities(qx, memberId)

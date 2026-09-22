@@ -1,7 +1,16 @@
-import lodash, { chunk, uniq } from 'lodash'
+import lodash, { uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
-import { captureApiChange, memberCreateAction, memberEditProfileAction } from '@crowd/audit-logs'
+import { KUBE_MODE, SERVICE } from '@/conf'
+import { ServiceType } from '@/conf/configTypes'
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
+import {
+  captureApiChange,
+  memberCreateAction,
+  memberEditAffiliationsAction,
+  memberEditProfileAction,
+} from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
   Error400,
@@ -9,30 +18,33 @@ import {
   Error409,
   RawQueryParser,
   groupBy,
+  normalizeMemberIdentityValue,
 } from '@crowd/common'
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
-  createMemberIdentity,
   deleteMemberIdentities,
   deleteMemberIdentitiesByCombinations,
   findAlreadyExistingVerifiedIdentities,
   getLastActivitiesForMembers,
+  insertMemberIdentities,
   queryActivityRelations,
   queryOrgs,
   updateVerifiedFlag,
 } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
-import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
-  MemberField,
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+  insertMemberSegmentAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
+import {
   fetchManyMemberIdentities,
   fetchManyMemberOrgs,
   fetchManyMemberSegments,
-  fetchMemberIdentities,
-  fetchMemberOrganizations,
-  findMemberById,
+  fetchMemberProfile,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
 import {
@@ -40,8 +52,11 @@ import {
   includeMemberToSegments,
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
-import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
+import {
+  fetchManySegments,
+  getSegmentMergeSuggestionCounts,
+  getSegmentSubprojectIds,
+} from '@crowd/data-access-layer/src/segments'
 import { ActivityDisplayService } from '@crowd/integrations'
 import {
   ALL_PLATFORM_TYPES,
@@ -53,25 +68,21 @@ import {
   MemberIdentityType,
   MemberSegmentAffiliation,
   MemberSegmentAffiliationJoined,
+  MergeActionState,
+  MergeActionType,
   PlatformType,
   SegmentType,
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { KUBE_MODE, SERVICE } from '@/conf'
-import { ServiceType } from '@/conf/configTypes'
-import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
-
 import { PlatformIdentities } from '../../serverless/integrations/types/messageTypes'
 import { AttributeData } from '../attributes/attribute'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
-import MemberSegmentAffiliationRepository from './memberSegmentAffiliationRepository'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
 import TenantRepository from './tenantRepository'
-import { IMemberMergeSuggestion, mapUsernameToIdentities } from './types/memberTypes'
+import { mapUsernameToIdentities } from './types/memberTypes'
 
 const { Op } = Sequelize
 
@@ -139,10 +150,14 @@ class MemberRepository {
     )
 
     const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     if (data.identities) {
-      for (const i of data.identities as IMemberIdentity[]) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        (data.identities as IMemberIdentity[]).map((i) => ({
           memberId: record.id,
           platform: i.platform,
           type: i.type,
@@ -151,15 +166,16 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified,
           source: i.source,
-        })
-      }
+        })),
+      )
     } else if (data.username) {
       const username: PlatformIdentities = mapUsernameToIdentities(data.username)
 
+      const identitiesToInsert = []
       for (const platform of Object.keys(username) as PlatformType[]) {
         const identities: any[] = username[platform]
         for (const identity of identities) {
-          await createMemberIdentity(qx, {
+          identitiesToInsert.push({
             memberId: record.id,
             platform,
             value: identity.value ? identity.value : identity.username,
@@ -171,13 +187,13 @@ class MemberRepository {
           })
         }
       }
+
+      if (identitiesToInsert.length > 0) {
+        await insertMemberIdentities(qx, identitiesToInsert)
+      }
     }
 
-    await includeMemberToSegments(
-      qx,
-      record.id,
-      options.currentSegments.map((s) => s.id),
-    )
+    await includeMemberToSegments(qx, record.id, subprojectIds)
 
     const memberService = new CommonMemberService(optionsQx(options), options.temporal, options.log)
 
@@ -185,7 +201,7 @@ class MemberRepository {
       record.id,
       data.organizations,
       true,
-      options.currentSegments.map((s) => s.id),
+      subprojectIds,
       options,
     )
 
@@ -225,10 +241,19 @@ class MemberRepository {
 
     const bulkDeleteMemberSegments = `DELETE FROM "memberSegments" WHERE "memberId" in (:memberIds) and "segmentId" in (:segmentIds);`
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
+    if (subprojectIds.length === 0) {
+      return
+    }
+
     await seq.query(bulkDeleteMemberSegments, {
       replacements: {
         memberIds,
-        segmentIds: SequelizeRepository.getSegmentIds(options),
+        segmentIds: subprojectIds,
       },
       type: QueryTypes.DELETE,
       transaction,
@@ -265,12 +290,26 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
       `,
       {
-        replacements,
+        replacements: {
+          ...replacements,
+          mergeActionType: MergeActionType.MEMBER,
+          mergeActionState: MergeActionState.ERROR,
+        },
         type: QueryTypes.SELECT,
       },
     )
@@ -285,11 +324,18 @@ class MemberRepository {
     const HIGH_CONFIDENCE_LOWER_BOUND = 0.9
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
-    const currentSegments = SequelizeRepository.getSegmentIds(options)
+    // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
+    const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
 
-    const segmentIds = (
-      await new SegmentRepository(options).getSegmentSubprojects(currentSegments)
-    ).map((s) => s.id)
+    let segmentIds: string[]
+
+    if (args.filter?.projectIds?.length) {
+      segmentIds = args.filter.projectIds
+    } else if (args.filter?.subprojectIds?.length) {
+      segmentIds = args.filter.subprojectIds
+    } else {
+      segmentIds = [projectGroupSegment.id]
+    }
 
     let similarityFilter = ''
     const similarityConditions = []
@@ -335,8 +381,25 @@ class MemberRepository {
       order += 'mtm."memberId", mtm."toMergeId"'
     }
 
-    if (args.countOnly) {
-      const totalCount = await this.countMemberMergeSuggestions(
+    const hasProjectFilter = Boolean(
+      args.filter?.projectIds?.length || args.filter?.subprojectIds?.length,
+    )
+
+    const hasCountFilters = Boolean(
+      args.filter?.memberId || args.filter?.displayName || args.filter?.similarity?.length,
+    )
+
+    const getTotalCount = async (): Promise<number> => {
+      if (!hasCountFilters && !hasProjectFilter) {
+        const counts = await getSegmentMergeSuggestionCounts(
+          SequelizeRepository.getQueryExecutor(options),
+          projectGroupSegment.id,
+        )
+
+        return counts?.memberMergeSuggestionsCount ?? 0
+      }
+
+      return this.countMemberMergeSuggestions(
         memberFilter,
         similarityFilter,
         displayNameFilter,
@@ -347,9 +410,14 @@ class MemberRepository {
         },
         options,
       )
-
-      return { count: totalCount }
     }
+
+    if (args.countOnly) {
+      return { count: await getTotalCount() }
+    }
+
+    const pageLimit = args.limit
+    const queryLimit = pageLimit + 1
 
     const mems = await options.database.sequelize.query(
       `
@@ -373,7 +441,16 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
-        AND mtm.similarity IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -384,77 +461,31 @@ class MemberRepository {
       {
         replacements: {
           segmentIds,
-          limit: args.limit,
+          limit: queryLimit,
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           memberId: args?.filter?.memberId,
+          mergeActionType: MergeActionType.MEMBER,
+          mergeActionState: MergeActionState.ERROR,
         },
         type: QueryTypes.SELECT,
       },
     )
 
-    if (mems.length > 0) {
+    const hasMore = mems.length > pageLimit
+    const pageRows = hasMore ? mems.slice(0, pageLimit) : mems
+
+    if (pageRows.length > 0) {
       let result
 
       if (args.detail) {
+        const qx = SequelizeRepository.getQueryExecutor(options)
         const memberPromises = []
         const toMergePromises = []
 
-        const findMemberInfo = async (memberId: string) => {
-          const qx = SequelizeRepository.getQueryExecutor(options)
-
-          const [member, identities, aggregates, memberOrgs] = await Promise.all([
-            findMemberById(qx, memberId, [
-              MemberField.ID,
-              MemberField.DISPLAY_NAME,
-              MemberField.ATTRIBUTES,
-              MemberField.JOINED_AT,
-            ]),
-            fetchMemberIdentities(qx, memberId),
-            fetchAbsoluteMemberAggregates(qx, memberId),
-            fetchMemberOrganizations(qx, memberId),
-          ])
-
-          const orgIds = memberOrgs.map((o) => o.organizationId)
-
-          let orgExtraInfo = []
-          let lfxMemberships = []
-
-          if (orgIds.length > 0) {
-            orgExtraInfo = await queryOrgs(qx, {
-              filter: {
-                [OrganizationField.ID]: { in: orgIds },
-              },
-              fields: [
-                OrganizationField.ID,
-                OrganizationField.DISPLAY_NAME,
-                OrganizationField.LOGO,
-              ],
-            })
-
-            lfxMemberships = await findManyLfxMemberships(qx, {
-              organizationIds: orgIds,
-            })
-          }
-
-          return {
-            ...member,
-            identities,
-            ...{
-              activityCount: aggregates?.activityCount,
-              lastActive: aggregates?.lastActive,
-            },
-            organizations: memberOrgs.map((o) => ({
-              ...orgExtraInfo.find((oei) => oei.id === o.organizationId),
-              lfxMembership: lfxMemberships.find((lm) => lm.organizationId === o.organizationId),
-              memberOrganizations: o,
-            })),
-          }
-        }
-
-        for (const mem of mems) {
-          memberPromises.push(findMemberInfo(mem.id))
-          toMergePromises.push(findMemberInfo(mem.toMergeId))
+        for (const mem of pageRows) {
+          memberPromises.push(fetchMemberProfile(qx, mem.id))
+          toMergePromises.push(fetchMemberProfile(qx, mem.toMergeId))
         }
 
         const memberResults: { id: string }[] = await Promise.all(memberPromises)
@@ -462,10 +493,10 @@ class MemberRepository {
 
         result = memberResults.map((i, idx) => ({
           members: [i, memberToMergeResults[idx]],
-          similarity: mems[idx].similarity,
+          similarity: pageRows[idx].similarity,
         }))
       } else {
-        result = mems.map((i) => ({
+        result = pageRows.map((i) => ({
           members: [
             {
               id: i.id,
@@ -484,92 +515,14 @@ class MemberRepository {
         }))
       }
 
-      const totalCount = await this.countMemberMergeSuggestions(
-        memberFilter,
-        similarityFilter,
-        displayNameFilter,
-        {
-          segmentIds,
-          memberId: args?.filter?.memberId,
-          displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
-        },
-        options,
-      )
-
-      return { rows: result, count: totalCount, limit: args.limit, offset: args.offset }
+      return { rows: result, hasMore, limit: args.limit, offset: args.offset }
     }
 
     return {
       rows: [{ members: [], similarity: 0 }],
-      count: 0,
+      hasMore: false,
       limit: args.limit,
       offset: args.offset,
-    }
-  }
-
-  static async addToMerge(
-    suggestions: IMemberMergeSuggestion[],
-    options: IRepositoryOptions,
-  ): Promise<void> {
-    const transaction = SequelizeRepository.getTransaction(options)
-    const seq = SequelizeRepository.getSequelize(options)
-
-    // Remove possible duplicates
-    suggestions = lodash.uniqWith(suggestions, (a, b) =>
-      lodash.isEqual(lodash.sortBy(a.members), lodash.sortBy(b.members)),
-    )
-
-    // Process suggestions in chunks of 100 or less
-    const suggestionChunks = chunk(suggestions, 100)
-
-    const insertValues = (
-      memberId: string,
-      toMergeId: string,
-      similarity: number | null,
-      index: number,
-    ) => {
-      const idPlaceholder = (key: string) => `${key}${index}`
-      return {
-        query: `(:${idPlaceholder('memberId')}, :${idPlaceholder('toMergeId')}, :${idPlaceholder(
-          'similarity',
-        )}, NOW(), NOW())`,
-        replacements: {
-          [idPlaceholder('memberId')]: memberId,
-          [idPlaceholder('toMergeId')]: toMergeId,
-          [idPlaceholder('similarity')]: similarity === null ? null : similarity,
-        },
-      }
-    }
-
-    for (const suggestionChunk of suggestionChunks) {
-      const placeholders: string[] = []
-      let replacements: Record<string, unknown> = {}
-
-      suggestionChunk.forEach((suggestion, index) => {
-        const { query, replacements: chunkReplacements } = insertValues(
-          suggestion.members[0],
-          suggestion.members[1],
-          suggestion.similarity,
-          index,
-        )
-        placeholders.push(query)
-        replacements = { ...replacements, ...chunkReplacements }
-      })
-
-      const query = `
-        INSERT INTO "memberToMerge" ("memberId", "toMergeId", "similarity", "createdAt", "updatedAt")
-        VALUES ${placeholders.join(', ')} on conflict do nothing;
-      `
-      try {
-        await seq.query(query, {
-          replacements,
-          type: QueryTypes.INSERT,
-          transaction,
-        })
-      } catch (error) {
-        options.log.error('error adding members to merge', error)
-        throw error
-      }
     }
   }
 
@@ -582,7 +535,7 @@ class MemberRepository {
   static async addNoMerge(id, toMergeId, options: IRepositoryOptions) {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addMemberNoMerge(qx, id, toMergeId)
+    await insertMemberNoMerge(qx, id, toMergeId)
   }
 
   static async memberExists(
@@ -771,11 +724,11 @@ class MemberRepository {
           transaction,
         })
 
-        captureOldState(record.get({ plain: true }))
-
         if (!record) {
           throw new Error404()
         }
+
+        captureOldState(record.get({ plain: true }))
 
         // exclude syncRemote attributes, since these are populated from memberSyncRemote table
         if (data.attributes?.syncRemote) {
@@ -868,13 +821,19 @@ class MemberRepository {
       !manualChange, // no need to track for audit if it's not a manual change
     )
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const subprojectIds = await getSegmentSubprojectIds(
+      qx,
+      SequelizeRepository.getSegmentIds(options),
+    )
+
     const memberService = new CommonMemberService(optionsQx(options), options.temporal, options.log)
 
     await memberService.updateMemberOrganizations(
       record.id,
       data.organizations,
       data.organizationsReplace,
-      options.currentSegments.map((s) => s.id),
+      subprojectIds,
       options,
     )
 
@@ -895,11 +854,7 @@ class MemberRepository {
     }
 
     if (options.currentSegments && options.currentSegments.length > 0) {
-      await includeMemberToSegments(
-        optionsQx(options),
-        record.id,
-        options.currentSegments.map((s) => s.id),
-      )
+      await includeMemberToSegments(qx, record.id, subprojectIds)
     }
 
     // Before upserting identities, check if they already exist
@@ -926,12 +881,12 @@ class MemberRepository {
         })
 
         if (data.length > 0 && data[0].memberId !== record.id) {
-          let memberSegment = (await seq.query(
+          const memberSegment = (await seq.query(
             `
-            select distinct a."segmentId", a."memberId"
-        from activities a where a."memberId" = :memberId
-        limit 1
-          `,
+            select distinct ms."segmentId", ms."memberId"
+            from "memberSegments" ms where ms."memberId" = :memberId
+            limit 1
+            `,
             {
               replacements: {
                 memberId: data[0].memberId,
@@ -941,27 +896,8 @@ class MemberRepository {
             },
           )) as any[]
 
-          // if there's no activity for the member, check memberSegments table
           if (memberSegment.length === 0) {
-            memberSegment = (await seq.query(
-              `
-              select distinct ms."segmentId", ms."memberId"
-              from "memberSegments" ms where ms."memberId" = :memberId
-              limit 1
-            `,
-              {
-                replacements: {
-                  memberId: data[0].memberId,
-                },
-                type: QueryTypes.SELECT,
-                transaction,
-              },
-            )) as any[]
-
-            // still not found, throw an error
-            if (!memberSegment) {
-              throw new Error('Member with same identity already exists!')
-            }
+            throw new Error('Member with same identity already exists!')
           }
 
           const segmentInfo = (await seq.query(
@@ -997,11 +933,10 @@ class MemberRepository {
       }
     }
 
-    const qx = SequelizeRepository.getQueryExecutor(options)
-
     if (data.identitiesToCreate && data.identitiesToCreate.length > 0) {
-      for (const i of data.identitiesToCreate) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        data.identitiesToCreate.map((i) => ({
           memberId: record.id,
           platform: i.platform,
           value: i.value,
@@ -1010,8 +945,8 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified !== undefined ? i.verified : !!manualChange,
           source: i.source,
-        })
-      }
+        })),
+      )
     }
 
     if (data.identitiesToUpdate && data.identitiesToUpdate.length > 0) {
@@ -1045,6 +980,7 @@ class MemberRepository {
         const platformsToDelete: string[] = []
         const valuesToDelete: string[] = []
         const typesToDelete: MemberIdentityType[] = []
+        const identitiesToInsert = []
 
         for (const platform of platforms) {
           const identities = data.username[platform]
@@ -1063,7 +999,7 @@ class MemberRepository {
               (identity.username && identity.username !== '') ||
               (identity.value && identity.value !== '')
             ) {
-              await createMemberIdentity(qx, {
+              identitiesToInsert.push({
                 memberId: record.id,
                 platform,
                 value: identity.value ? identity.value : identity.username,
@@ -1075,6 +1011,10 @@ class MemberRepository {
               })
             }
           }
+        }
+
+        if (identitiesToInsert.length > 0) {
+          await insertMemberIdentities(qx, identitiesToInsert)
         }
 
         if (platformsToDelete.length > 0) {
@@ -1136,8 +1076,41 @@ class MemberRepository {
     data: MemberSegmentAffiliation[],
     options: IRepositoryOptions,
   ): Promise<void> {
-    const affiliationRepository = new MemberSegmentAffiliationRepository(options)
-    await affiliationRepository.setForMember(memberId, data)
+    const qx = optionsQx(options)
+    await captureApiChange(
+      options,
+      memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
+        const oldOnes = await findMemberAffiliations(qx, memberId)
+        captureOldState(
+          oldOnes.map((item) => ({
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart,
+            dateEnd: item.dateEnd,
+          })),
+        )
+
+        captureNewState(data)
+
+        await deleteMemberSegmentAffiliations(qx, { memberId })
+
+        if (data.length === 0) {
+          return
+        }
+
+        await insertMemberSegmentAffiliations(
+          qx,
+          data.map((item) => ({
+            memberId,
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart || null,
+            dateEnd: item.dateEnd || null,
+          })),
+          true,
+        )
+      }),
+    )
   }
 
   static async getAffiliations(
@@ -1163,6 +1136,7 @@ class MemberRepository {
       left join organizations o on o.id = msa."organizationId"
       join segments s on s.id = msa."segmentId"
       where msa."memberId" = :memberId
+        and msa."deletedAt" is null
     `
 
     const data = await seq.query(query, {
@@ -1190,7 +1164,7 @@ class MemberRepository {
     let memberResponse = null
 
     const qx = optionsQx(options)
-    const bgQx = optionsQx({ ...options, transaction: null })
+    const bgQx = optionsBgQx(options)
 
     memberResponse = await queryMembersAdvanced(qx, bgQx, options.redis, {
       filter: { id: { eq: id } },
@@ -1776,6 +1750,11 @@ class MemberRepository {
 
     const where = { [Op.and]: whereAnd }
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     const records = await options.database.member.findAll({
       attributes: ['id', 'displayName', 'attributes'],
       where,
@@ -1791,7 +1770,7 @@ class MemberRepository {
           model: options.database.segment,
           as: 'segments',
           where: {
-            id: SequelizeRepository.getSegmentIds(options),
+            id: subprojectIds,
           },
         },
       ],
@@ -1818,6 +1797,7 @@ class MemberRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     const seq = SequelizeRepository.getSequelize(options)
+    const normalizedValue = normalizeMemberIdentityValue(value)
 
     const query = `
       insert into "memberIdentities"("memberId", platform, type, value, "tenantId", verified)
@@ -1829,7 +1809,7 @@ class MemberRepository {
       await seq.query(query, {
         replacements: {
           memberId,
-          value,
+          value: normalizedValue,
           type,
           platform,
           tenantId: DEFAULT_TENANT_ID,

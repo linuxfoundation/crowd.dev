@@ -1,7 +1,7 @@
 import { Logger, LoggerBase } from '@crowd/logging'
 import { ICache } from '@crowd/types'
 
-import { RedisClient } from './types'
+import type { RedisClient } from './types'
 
 export class RedisCache extends LoggerBase implements ICache {
   private readonly prefixer: (key: string) => string
@@ -200,6 +200,42 @@ return cjson.encode(results)`
     }
 
     return map
+  }
+
+  /**
+   * Atomically removes members from a set and cleans up the tracking queue
+   * if the set is now empty. Prevents race conditions between SCARD and SREM.
+   *
+   * @returns 1 if the queue entry was removed, 0 otherwise.
+   */
+  public static async ackSetMembers(
+    client: RedisClient,
+    setKey: string,
+    queueKey: string,
+    queueMember: string,
+    members: string[],
+  ): Promise<number> {
+    // Guard clause: Redis errors if you call SREM with no members
+    if (members.length === 0) return 0
+
+    const script = `
+      local chunkSize = 500
+      for i = 2, #ARGV, chunkSize do
+        redis.call('SREM', KEYS[1], unpack(ARGV, i, math.min(i + chunkSize - 1, #ARGV)))
+      end
+
+      if redis.call('SCARD', KEYS[1]) == 0 then
+        return redis.call('SREM', KEYS[2], ARGV[1])
+      end
+      return 0
+    `
+
+    const result = await client.eval(script, {
+      keys: [setKey, queueKey],
+      arguments: [queueMember, ...members],
+    })
+
+    return Number(result)
   }
 
   public async setIfNotExistsOrGet(

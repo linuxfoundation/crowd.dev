@@ -9,7 +9,6 @@ import {
 } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { IDevToArticle } from './api/articles'
 import { IDevToComment } from './api/comments'
 import { DEVTO_GRID } from './grid'

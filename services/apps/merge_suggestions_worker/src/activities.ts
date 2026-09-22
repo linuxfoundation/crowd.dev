@@ -13,7 +13,7 @@ import {
   getMembers,
   getMembersForLLMConsumption,
   getRawMemberMergeSuggestions,
-  removeMemberMergeSuggestion,
+  removeMemberMergePair,
   updateMemberMergeSuggestionsLastGeneratedAt,
 } from './activities/memberMergeSuggestions'
 import {
@@ -24,9 +24,15 @@ import {
   getOrganizations,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergePair,
   updateOrganizationMergeSuggestionsLastGeneratedAt,
 } from './activities/organizationMergeSuggestions'
+import {
+  fetchCachedSubprojects,
+  fetchRecentlyOnboardedSubprojects,
+  fetchSubprojectMemberMergePairs,
+  markSubprojectDone,
+} from './activities/subprojectMemberMergeSuggestions'
 
 export {
   getAllTenants,
@@ -44,12 +50,16 @@ export {
   getMembersForLLMConsumption,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergePair,
   getRawMemberMergeSuggestions,
-  removeMemberMergeSuggestion,
+  removeMemberMergePair,
   saveLLMVerdict,
   mergeMembers,
   mergeOrganizations,
   addOrganizationSuggestionToNoMerge,
   addMemberSuggestionToNoMerge,
+  fetchRecentlyOnboardedSubprojects,
+  fetchSubprojectMemberMergePairs,
+  fetchCachedSubprojects,
+  markSubprojectDone,
 }

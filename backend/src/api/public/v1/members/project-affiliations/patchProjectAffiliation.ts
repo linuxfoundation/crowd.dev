@@ -1,23 +1,23 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
-import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { BadRequestError, NotFoundError } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
-  deleteAllMemberSegmentAffiliationsForProject,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberProjectSegments,
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
   findMemberById,
   insertMemberSegmentAffiliations,
-  optionsQx,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
-
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 
 import { mapSegmentAffiliation } from './mappers'
 
@@ -39,7 +39,7 @@ const bodySchema = z
           message: 'dateEnd must be greater than or equal to dateStart',
         }),
     ),
-    verifiedBy: z.string().max(255).optional(),
+    verifiedBy: z.string().trim().min(1).optional(),
   })
   .refine((b) => b.affiliations.length === 0 || b.verifiedBy != null, {
     message: 'verifiedBy is required when affiliations is non-empty',
@@ -62,6 +62,17 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
     throw new NotFoundError('Project not found')
   }
 
+  if (affiliations.length > 0) {
+    const policies = await fetchManyOrganizationAffiliationPolicies(
+      qx,
+      affiliations.map((a) => a.organizationId),
+    )
+
+    if ([...policies.values()].some((isBlocked) => isBlocked)) {
+      throw new BadRequestError('This organization does not allow affiliations')
+    }
+  }
+
   const existingAffiliations = await fetchMemberSegmentAffiliationsForProject(
     qx,
     memberId,
@@ -75,29 +86,33 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
     memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(existingAffiliations)
 
+      const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
+      const newOrgIds = affiliations.map((a) => a.organizationId)
+      const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
+
       await qx.tx(async (tx) => {
-        await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
+        await deleteMemberSegmentAffiliations(tx, { memberId, segmentId: projectId })
 
         if (affiliations.length > 0) {
           await insertMemberSegmentAffiliations(
             tx,
-            memberId,
-            projectId,
             affiliations.map((a) => ({
+              memberId,
+              segmentId: projectId,
               organizationId: a.organizationId,
               dateStart: a.dateStart.toISOString(),
               dateEnd: a.dateEnd?.toISOString() ?? null,
+              verified: true,
               verifiedBy: verifiedBy!,
             })),
+            true,
           )
         }
+      })
 
-        const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
-        const newOrgIds = affiliations.map((a) => a.organizationId)
-        const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
-
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, orgIdsToRecalculate)
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: orgIdsToRecalculate,
       })
 
       updatedAffiliations = await fetchMemberSegmentAffiliationsForProject(qx, memberId, projectId)

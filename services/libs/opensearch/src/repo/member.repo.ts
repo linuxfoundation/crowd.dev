@@ -146,6 +146,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
             left join organizations o on o.id = msa."organizationId"
             inner join segments s on s.id = msa."segmentId"
           where msa."memberId" = $(memberId)
+            and msa."deletedAt" is null
           group by msa."memberId")
   select
     m.id,

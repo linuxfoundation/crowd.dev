@@ -1,6 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
 import { getSubProjectsCount } from '../segments'
-
 import { IDashboardMetrics } from './types'
 
 // Helper function to safely cast values to number

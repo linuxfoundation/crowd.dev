@@ -1,5 +1,5 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import { CreateContributorIdentity, UpdateContributorIdentityPayload } from '@/modules/contributor/types/Contributor';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
@@ -22,7 +22,7 @@ export class ContributorIdentitiesApiService {
     ).then(({ data }) => Promise.resolve(data));
   }
 
-  static async createMultiple(memberId: string, identities: ContributorIdentity[]) {
+  static async createMultiple(memberId: string, identities: CreateContributorIdentity[]) {
     return authAxios.put(
       `/member/${memberId}/identity`,
       {
@@ -32,12 +32,14 @@ export class ContributorIdentitiesApiService {
     ).then(({ data }) => Promise.resolve(data));
   }
 
-  static async update(memberId: string, id: string, identity: Partial<ContributorIdentity>) {
+  static async update(memberId: string, id: string, payload: UpdateContributorIdentityPayload) {
     return authAxios.patch(
       `/member/${memberId}/identity/${id}`,
+      payload,
       {
-        ...identity,
-        segments: getSegments(),
+        params: {
+          segments: getSegments(),
+        },
       },
     ).then(({ data }) => Promise.resolve(data));
   }

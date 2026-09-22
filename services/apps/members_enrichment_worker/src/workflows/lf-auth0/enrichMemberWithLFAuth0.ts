@@ -7,7 +7,6 @@ import * as activities from '../../activities'
 import { ILFIDEnrichmentGithubProfile } from '../../sources/lfid/types'
 
 const {
-  refreshToken,
   getEnrichmentLFAuth0,
   getIdentitiesExistInOtherMembers,
   updateMemberWithEnrichmentData,
@@ -22,8 +21,7 @@ const {
   },
 })
 
-export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
-  const token = await refreshToken()
+export async function enrichMemberWithLFAuth0(token: string, member: IMember): Promise<void> {
   const enriched = await getEnrichmentLFAuth0(token, member)
 
   if (enriched) {
@@ -77,7 +75,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
       identitiesToCheck.push({
         platform: PlatformType.LFID,
         type: MemberIdentityType.USERNAME,
-        value: enriched.username.toLowerCase(),
+        value: enriched.username,
         verified: true,
         verifiedBy: 'lf-auth0',
       })
@@ -100,7 +98,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
         identitiesToCheck.push({
           type: MemberIdentityType.USERNAME,
           platform: PlatformType.GITHUB,
-          value: enrichmentGithub.profileData.nickname.toLowerCase(),
+          value: enrichmentGithub.profileData.nickname,
           verified: true,
           verifiedBy: 'lf-auth0',
         })
@@ -189,7 +187,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
         identitiesToCheck.push({
           type: MemberIdentityType.USERNAME,
           platform: PlatformType.TWITTER,
-          value: profileData.twitter_username.toLowerCase(),
+          value: profileData.twitter_username,
           verified: false,
         })
       }
@@ -206,7 +204,10 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
     const identitesToAdd = identitiesToCheck.filter(
       (i) =>
         !identitiesExistInOtherMembers.some(
-          (e) => e.type === i.type && e.platform === i.platform && e.value === i.value,
+          (e) =>
+            e.type === i.type &&
+            e.platform === i.platform &&
+            e.value.trim().toLowerCase() === i.value.trim().toLowerCase(),
         ),
     )
 

@@ -3,6 +3,7 @@ import json
 import ssl
 
 from aiokafka import AIOKafkaProducer
+from aiokafka.errors import KafkaError
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -25,7 +26,7 @@ class QueueService(BaseService):
     def __init__(self):
         super().__init__()
         self.kafka_topic = CROWD_KAFKA_TOPIC
-        self.kafka_producer = AIOKafkaProducer(**self._build_kafka_config())
+        self.kafka_producer: AIOKafkaProducer | None = None
         self._connected = False
 
     def _build_kafka_config(self):
@@ -64,7 +65,11 @@ class QueueService(BaseService):
     async def _is_connection_healthy(self) -> bool:
         """Check if the current connection is healthy"""
         try:
-            return self.kafka_producer._sender is not None and not self.kafka_producer._closed
+            producer = self.kafka_producer
+            if producer is None or producer._closed:
+                return False
+            sender_task = producer._sender.sender_task
+            return sender_task is not None and not sender_task.done()
         except Exception:
             return False
 
@@ -85,19 +90,23 @@ class QueueService(BaseService):
             return
         self.logger.info("Connecting to kafka...")
         try:
+            self.kafka_producer = AIOKafkaProducer(**self._build_kafka_config())
             await self.kafka_producer.start()
             self.logger.info("Connected to kafka")
             self._connected = True
         except Exception as e:
             self.logger.error(f"Queue connection failed: {e}")
+            await self.disconnect()
             raise QueueConnectionError() from e
 
     async def disconnect(self):
         """
         Disconnect from Kafka and close producer
         """
-        if self.kafka_producer._closed:
+        if self.kafka_producer is None or self.kafka_producer._closed:
             self.logger.debug("Producer already closed, skipping")
+            self.kafka_producer = None
+            self._connected = False
             return
 
         try:
@@ -106,6 +115,7 @@ class QueueService(BaseService):
         except Exception as e:
             self.logger.error(f"Error during disconnect: {e}")
         finally:
+            self.kafka_producer = None
             self._connected = False
 
     async def shutdown(self):
@@ -135,20 +145,15 @@ class QueueService(BaseService):
             self.logger.error(f"Failed to shutdown queue service: {repr(e)}")
             # Don't raise - allow application to continue shutdown
 
-    async def send_batch_activities(self, activities_kafka: list[dict[str, str]]):
-        """
-        Send multiple pre-prepared activities to Kafka in a non-blocking way.
-        Args:
-            activities_kafka: List of dicts with 'message_id' and 'payload' keys
-                             (prepared by CommitService.prepare_activity_for_db_and_queue)
-        """
-        if not activities_kafka:
-            return
-
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(KafkaError),
+        reraise=True,
+    )
+    async def _emit_batch(self, activities_kafka: list[dict[str, str]]):
+        """Emit a single batch, rebuilding the producer and retrying on Kafka errors."""
         await self.ensure_connected()
-
-        self.logger.info(f"Emitting {len(activities_kafka)} activities to kafka queue...")
-
         try:
             futures = [
                 self.kafka_producer.send(
@@ -160,7 +165,25 @@ class QueueService(BaseService):
             ]
             # Wait for all messages to be sent
             await asyncio.gather(*futures, return_exceptions=False)
+        except KafkaError:
+            self.logger.warning("Kafka send failed, reconnecting before retry...")
+            await self.disconnect()
+            raise
 
+    async def send_batch_activities(self, activities_kafka: list[dict[str, str]]):
+        """
+        Send multiple pre-prepared activities to Kafka in a non-blocking way.
+        Args:
+            activities_kafka: List of dicts with 'message_id' and 'payload' keys
+                             (prepared by CommitService.prepare_activity_for_db_and_queue)
+        """
+        if not activities_kafka:
+            return
+
+        self.logger.info(f"Emitting {len(activities_kafka)} activities to kafka queue...")
+
+        try:
+            await self._emit_batch(activities_kafka)
             self.logger.info(f"Successfully emitted {len(activities_kafka)} activities to queue")
         except Exception as e:
             self.logger.error(f"Failed to emit batch to queue with error: {repr(e)}")

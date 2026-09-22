@@ -1,5 +1,4 @@
 import { GenerateStreamsHandler } from '../../types'
-
 import {
   GithubBasicStream,
   GithubIntegrationSettings,
@@ -10,7 +9,6 @@ import {
 } from './types'
 
 const streamToManualStreamMap: Map<GithubStreamType, GithubManualStreamType> = new Map([
-  [GithubStreamType.STARGAZERS, GithubManualStreamType.STARGAZERS],
   [GithubStreamType.FORKS, GithubManualStreamType.FORKS],
   [GithubStreamType.PULLS, GithubManualStreamType.PULLS],
   [GithubStreamType.ISSUES, GithubManualStreamType.ISSUES],
@@ -18,7 +16,6 @@ const streamToManualStreamMap: Map<GithubStreamType, GithubManualStreamType> = n
 ])
 
 const manualStreamToStreamMap: Map<GithubManualStreamType, GithubStreamType> = new Map([
-  [GithubManualStreamType.STARGAZERS, GithubStreamType.STARGAZERS],
   [GithubManualStreamType.FORKS, GithubStreamType.FORKS],
   [GithubManualStreamType.PULLS, GithubStreamType.PULLS],
   [GithubManualStreamType.ISSUES, GithubStreamType.ISSUES],
@@ -57,7 +54,6 @@ const handler: GenerateStreamsHandler = async (ctx) => {
     if (manualSettings.orgs && manualSettings.manualSettingsType === 'default') {
       for (const repo of manualSettings.orgs.flatMap((o) => o.repos || [])) {
         for (const endpoint of [
-          GithubStreamType.STARGAZERS,
           GithubStreamType.FORKS,
           GithubStreamType.PULLS,
           GithubStreamType.ISSUES,

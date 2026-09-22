@@ -1,20 +1,24 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created, ok } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError } from '@crowd/common'
+import { ConflictError, NotFoundError, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   MemberField,
-  checkMemberIdentityExistence,
   findMemberById,
-  createMemberIdentity as insertMemberIdentity,
-  optionsQx,
-  touchMemberUpdatedAt,
+  findMemberIdByVerifiedIdentity,
+  findMemberIdentitiesByValue,
+  findMemberIdentityConflict,
+  findMemberProjectGroupId,
+  insertMemberIdentities,
+  suggestMemberMerge,
+  updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
-
-import { created } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),
@@ -27,7 +31,7 @@ const bodySchema = z
     type: z.enum(MemberIdentityType),
     source: z.string().min(1),
     verified: z.boolean(),
-    verifiedBy: z.string().optional(),
+    verifiedBy: z.string().trim().min(1).optional(),
   })
   .refine((data) => !data.verified || data.verifiedBy, {
     message: 'verifiedBy is required when verified is true',
@@ -36,71 +40,175 @@ const bodySchema = z
 
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
-  const data = validateOrThrow(bodySchema, req.body)
+  const raw = validateOrThrow(bodySchema, req.body)
+  const data = {
+    ...raw,
+    value: normalizeMemberIdentityValue(raw.value),
+  }
 
   const qx = optionsQx(req)
-
   const member = await findMemberById(qx, memberId, [MemberField.ID])
   if (!member) {
     throw new NotFoundError('Member not found')
   }
 
-  let result!: IMemberIdentity
+  const conflictContext = {
+    memberId,
+    platform: data.platform,
+    value: data.value,
+    type: data.type,
+  }
+
+  let identity!: IMemberIdentity
+  let alreadyExisted = false
 
   await captureApiChange(
     req,
     memberEditIdentitiesAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState({})
 
-      await qx.tx(async (tx) => {
-        const existing = await checkMemberIdentityExistence(
-          tx,
-          data.value,
-          data.platform,
-          data.type,
-        )
+      let outcome: { identity: IMemberIdentity; alreadyExisted: boolean }
 
-        for (const identity of existing) {
-          if (identity.memberId === memberId) {
-            throw new ConflictError('Identity already exists on this member')
-          }
-
-          if (identity.verified) {
-            throw new ConflictError('Identity already verified on another member')
-          }
-        }
-
-        result = await insertMemberIdentity(
-          tx,
-          {
-            memberId,
-            platform: data.platform,
-            value: data.value,
+      try {
+        outcome = await qx.tx(async (tx) => {
+          const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
             type: data.type,
-            source: data.source,
-            verified: data.verified,
-            verifiedBy: data.verifiedBy,
-          },
-          true,
-          true,
-        )
+          })
 
-        // touch member updated at to trigger merge suggestion
-        await touchMemberUpdatedAt(tx, memberId)
-      })
+          const exactMatch = existing.find((row) => row.platform === data.platform)
 
-      captureNewState(result)
+          let result = exactMatch
+          const existed = Boolean(exactMatch)
+
+          // Unverified identities aren't unique in the db, so reject here if
+          // someone else has it. Verified uniqueness is left to Postgres.
+          if (!result && !data.verified) {
+            const conflict = await findMemberIdentityConflict(tx, {
+              value: data.value,
+              platform: data.platform,
+              type: data.type,
+              excludeMemberId: memberId,
+            })
+
+            if (conflict) {
+              const projectGroupId = await findMemberProjectGroupId(qx, memberId)
+              throw new ConflictError('Identity already exists on another member', {
+                ...conflictContext,
+                conflictMemberId: conflict.memberId,
+                ...(projectGroupId ? { projectGroupId } : {}),
+              })
+            }
+          }
+
+          if (!result) {
+            const [inserted] = await insertMemberIdentities(
+              tx,
+              [
+                {
+                  memberId,
+                  platform: data.platform,
+                  value: data.value,
+                  type: data.type,
+                  source: data.source,
+                  verified: data.verified,
+                  verifiedBy: data.verifiedBy,
+                },
+              ],
+              true,
+              true,
+            )
+
+            result = inserted
+          }
+
+          // A verified identity confirms the same value for this member, so keep same-value
+          // identities in sync instead of leaving stale unverified duplicates behind.
+          if (data.verified && existing.length > 0) {
+            const updatedRows = await Promise.all(
+              existing.map((row) =>
+                updateMemberIdentity(tx, memberId, row.id, {
+                  verified: true,
+                  verifiedBy: data.verifiedBy,
+                }),
+              ),
+            )
+
+            const updatedExact = updatedRows.find((row) => row?.id === exactMatch?.id)
+
+            if (updatedExact) {
+              result = updatedExact
+            }
+          }
+
+          return { identity: result, alreadyExisted: existed }
+        })
+      } catch (error) {
+        if (isMemberIdentityDbConflict(error)) {
+          const existing = await findMemberIdentitiesByValue(qx, memberId, data.value, {
+            type: data.type,
+          })
+          const exactMatch = existing.find((row) => row.platform === data.platform)
+
+          // Rolled back unique error. 200 if this member already has what they
+          // asked for; asked to verify but still unverified is a failed verify (409).
+          if (exactMatch && (!data.verified || exactMatch.verified)) {
+            outcome = { identity: exactMatch, alreadyExisted: true }
+          } else {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              data.platform,
+              data.value,
+              data.type,
+            )
+
+            if (conflictMemberId) {
+              await suggestMemberMerge(qx, [
+                { members: [memberId, conflictMemberId], similarity: 0.95 },
+              ])
+            }
+
+            const projectGroupId = await findMemberProjectGroupId(qx, memberId)
+            rethrowDbConflict(error, {
+              ...conflictContext,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
+              ...(projectGroupId ? { projectGroupId } : {}),
+            })
+          }
+        } else if (error instanceof ConflictError) {
+          const conflictMemberId = error.context?.conflictMemberId
+          if (typeof conflictMemberId === 'string') {
+            await suggestMemberMerge(qx, [
+              { members: [memberId, conflictMemberId], similarity: 0.95 },
+            ])
+          }
+          throw error
+        } else {
+          throw error
+        }
+      }
+
+      identity = outcome.identity
+      alreadyExisted = outcome.alreadyExisted
+
+      captureNewState(identity)
     }),
   )
 
-  created(res, {
-    id: result.id,
-    value: result.value,
-    platform: result.platform,
-    verified: result.verified,
-    verifiedBy: result.verifiedBy ?? null,
-    source: result.source ?? null,
-    createdAt: result.createdAt,
-    updatedAt: result.updatedAt,
-  })
+  const response = {
+    id: identity.id,
+    value: identity.value,
+    platform: identity.platform,
+    type: identity.type,
+    verified: identity.verified,
+    verifiedBy: identity.verifiedBy ?? null,
+    source: identity.source ?? null,
+    createdAt: identity.createdAt,
+    updatedAt: identity.updatedAt,
+  }
+
+  if (alreadyExisted) {
+    ok(res, response)
+  } else {
+    created(res, response)
+  }
 }

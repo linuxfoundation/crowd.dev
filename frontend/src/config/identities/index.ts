@@ -16,6 +16,7 @@ import hackernews from './hackernews/config';
 import jira from './jira/config';
 import lfid from './lfx/config';
 import linkedin from './linkedin/config';
+import mailinglist from './mailinglist/config';
 import n8n from './n8n/config';
 import reddit from './reddit/config';
 import slack from './slack/config';
@@ -63,6 +64,7 @@ export const lfIdentities: Record<string, IdentityConfig> = {
   discourse,
   git,
   groupsio,
+  mailinglist,
   confluence,
   gerrit,
   jira,

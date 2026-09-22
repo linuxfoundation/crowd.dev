@@ -3,20 +3,17 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/bunyan": "^1.8.8",
-    "@types/bunyan-format": "^0.2.5",
-    "@types/node": "^18.16.3",
-    "typescript": "^5.6.3"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "bunyan": "^1.8.15",
     "bunyan-format": "^0.2.1"
+  },
+  "devDependencies": {
+    "@types/bunyan": "^1.8.8",
+    "@types/bunyan-format": "^0.2.5",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

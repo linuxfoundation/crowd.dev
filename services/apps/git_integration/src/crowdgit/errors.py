@@ -47,7 +47,7 @@ class NetworkError(CrowdGitError):
 
 
 @dataclass
-class PermissionError(CrowdGitError):
+class RepoPermissionError(CrowdGitError):
     error_message: str = "Permission denied"
     error_code: ErrorCode = ErrorCode.PERMISSION_ERROR
 
@@ -102,6 +102,34 @@ class MaintainerIntervalNotElapsedError(CrowdGitError):
     error_message: str = "Maintainer processing interval has not elapsed yet"
     error_code: ErrorCode = ErrorCode.MAINTAINER_INTERVAL_NOT_ELAPSED
     ai_cost: int = 0
+
+
+@dataclass
+class MaintainerSkippedProjectLevelError(CrowdGitError):
+    error_message: str = "Maintainer detection skipped: project-level source (.project/maintainers.yaml) is authoritative"
+    error_code: ErrorCode = ErrorCode.MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE
+    ai_cost: int = 0
+
+
+@dataclass
+class AffiliationFileNotFoundError(CrowdGitError):
+    error_message: str = "No affiliation file found in this repository"
+    error_code: ErrorCode = ErrorCode.NO_AFFILIATION_FILE
+    ai_cost: float = 0.0
+
+
+@dataclass
+class AffiliationAnalysisError(CrowdGitError):
+    error_message: str = "Could not parse the affiliation file"
+    error_code: ErrorCode = ErrorCode.AFFILIATION_ANALYSIS_FAILED
+    retain_file_hash: bool = False
+
+
+@dataclass
+class AffiliationIntervalNotElapsedError(CrowdGitError):
+    error_message: str = "Too soon since the last affiliation run"
+    error_code: ErrorCode = ErrorCode.AFFILIATION_INTERVAL_NOT_ELAPSED
+    ai_cost: float = 0.0
 
 
 @dataclass
