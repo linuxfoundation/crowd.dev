@@ -2,6 +2,7 @@ import {
   CancellationScope,
   continueAsNew,
   executeChild,
+  isCancellation,
   log,
   proxyActivities,
   workflowInfo,
@@ -20,17 +21,22 @@ const PAGE_SIZE = 200
 
 export async function runDocsReadinessSweep(args: IRunDocsReadinessSweepArgs): Promise<void> {
   const { mode, scope } = args
-  const concurrency = args.concurrency ?? DEFAULT_SWEEP_CONCURRENCY
+  const concurrency =
+    Number.isSafeInteger(args.concurrency) && args.concurrency > 0
+      ? args.concurrency
+      : DEFAULT_SWEEP_CONCURRENCY
   const info = workflowInfo()
 
   const runId =
     args.runId ??
-    (await startRun({
-      trigger: mode === 'full' ? 'scheduled-full' : 'scheduled-incremental',
-      scope,
-      workflowId: info.workflowId,
-      temporalRunId: info.runId,
-    }))
+    (await CancellationScope.nonCancellable(() =>
+      startRun({
+        trigger: mode === 'full' ? 'scheduled-full' : 'scheduled-incremental',
+        scope,
+        workflowId: info.workflowId,
+        temporalRunId: info.runId,
+      }),
+    ))
 
   let totalProjects = args.counters?.totalProjects ?? 0
   let failed = args.counters?.failed ?? 0
@@ -64,6 +70,10 @@ export async function runDocsReadinessSweep(args: IRunDocsReadinessSweepArgs): P
 
       for (const result of results) {
         if (result.status === 'rejected') {
+          if (isCancellation(result.reason)) {
+            throw result.reason
+          }
+
           failed++
           log.warn('docs readiness child workflow failed', {
             error: (result.reason as Error)?.message ?? result.reason,
