@@ -18,13 +18,13 @@ Implement API e2e tests as HTTP bash script(s) with this structure. Current entr
 
 The suite is **thin**: assert the HTTP contract and critical flows so regressions show up early. Leave exhaustive edge-case matrices to unit or focused contract tests.
 
-| Layer | Role |
-| --- | --- |
-| Helpers | `api <version> <method> <path> [body]` (call), `check` (soft status + body preds), `require` (hard fail for seed) |
-| Seed | Create shared fixtures once per run over HTTP |
-| Suites | One `suite_*` per **resource path**, not per HTTP method |
-| Cases | One exchange: `api` then `check`. Stateful resources stay ordered as a short story |
-| Registration | Call each suite from `main` |
+| Layer        | Role                                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Helpers      | `api <version> <method> <path> [body]` (call), `check` (soft status + body preds), `require` (hard fail for seed) |
+| Seed         | Create shared fixtures once per run over HTTP                                                                     |
+| Suites       | One `suite_*` per **resource path**, not per HTTP method                                                          |
+| Cases        | One exchange: `api` then `check`. Stateful resources stay ordered as a short story                                |
+| Registration | Call each suite from `main`                                                                                       |
 
 **Rules of thumb**
 

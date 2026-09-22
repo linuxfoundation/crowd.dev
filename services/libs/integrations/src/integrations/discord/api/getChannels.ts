@@ -4,7 +4,6 @@ import { timeout } from '@crowd/common'
 
 import { IProcessStreamContext } from '../../../types'
 import { DiscordApiChannel, DiscordGetChannelsInput, DiscordGetMessagesInput } from '../types'
-
 import { handleDiscordError } from './errorHandler'
 import getMessages from './getMessages'
 import { retryWrapper } from './handleRateLimit'
@@ -26,7 +25,7 @@ async function tryChannel(
       return result.limit
     }
     return false
-  } catch (err) {
+  } catch {
     return false
   }
 }

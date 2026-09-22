@@ -30,7 +30,6 @@ import { upsertSonatypePopularity } from '@crowd/data-access-layer/src/osspckgs/
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { getPackagesDbConnection } from '../../db'
-
 import { parseCsv } from './csv'
 
 const EXPECTED_HEADER = [

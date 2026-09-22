@@ -4,7 +4,6 @@ import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
-
 import {
   findLatestProjectDocReadiness,
   findProjectDocReadinessChecks,

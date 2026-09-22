@@ -1,10 +1,9 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { Error400, Error409, canonicalizeGithubRepoUrl } from '@crowd/common'
 import {
   deriveProjectIdentityFromRepoUrl,
   upsertProjectCatalogManualAction,
 } from '@crowd/data-access-layer'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'

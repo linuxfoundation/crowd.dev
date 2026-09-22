@@ -1,10 +1,9 @@
 import type { Request, Response } from 'express'
 
-import { type AkritesExternalAdvisoryRow, getAdvisoriesByPurls } from '@crowd/data-access-layer'
-
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { type AkritesExternalAdvisoryRow, getAdvisoriesByPurls } from '@crowd/data-access-layer'
 
 import {
   type AdvisoryDetailBulkEntry,

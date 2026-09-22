@@ -19,7 +19,6 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
-
 import {
   IEnrichmentAPICertificationProgAI,
   IEnrichmentAPIContributionProgAI,
@@ -165,12 +164,11 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
       }
 
       // Assign unique and ordered skills to 'member.attributes[MemberAttributeName.SKILLS].enrichment'
-      normalized.attributes[MemberAttributeName.SKILLS].enrichment = lodash.uniq([
-        // Use 'lodash.orderBy' to sort the skills by weight in descending order
-        ...lodash
+      normalized.attributes[MemberAttributeName.SKILLS].enrichment = lodash.uniq(
+        lodash
           .orderBy(data.skills || [], ['weight'], ['desc'])
           .map((s: IEnrichmentAPISkillsProgAI) => s.skill),
-      ])
+      )
     }
 
     return normalized

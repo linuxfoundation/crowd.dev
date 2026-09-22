@@ -124,8 +124,20 @@ async function queryStargazerCounts(
 
     if (response.status === 403) {
       const body = await response.text()
-      if (body.toLowerCase().includes('rate limit')) {
+      const bodyLower = body.toLowerCase()
+      if (bodyLower.includes('rate limit')) {
         throw new Error('GitHub rate limit hit fetching stargazer counts')
+      }
+      if (bodyLower.includes('ip allow list')) {
+        // Org IP allow list blocks the whole batch at the HTTP level before any field resolves,
+        // so which repo caused it can't be told apart - synthesize per-alias errors instead.
+        return {
+          errors: entries.map((entry, i) => ({
+            path: [`r${i}`],
+            type: 'FORBIDDEN',
+            message: `org IP allow list may be blocking one of this batch's repos (incl. ${entry.owner}/${entry.name})`,
+          })),
+        }
       }
       throw ApplicationFailure.nonRetryable(
         'GitHub auth failure (403) fetching stargazer counts',

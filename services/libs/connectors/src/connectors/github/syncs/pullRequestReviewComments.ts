@@ -71,7 +71,7 @@ async function fetchThreadComments(
 }
 
 async function runPullRequestReviewCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
-  return runDualPhasePrSync(ctx, async (prs, sinceDate) => {
+  return runDualPhasePrSync(ctx, async (prs) => {
     const threadsPerPr = await mapWithConcurrency(prs, ITEM_FETCH_CONCURRENCY, (pr) =>
       fetchThreads(ctx, pr.id),
     )
@@ -84,9 +84,9 @@ async function runPullRequestReviewCommentsSync(ctx: SyncContext): Promise<SyncO
     )
 
     const activities = threads.flatMap(({ thread, pullRequest }, index) =>
-      commentsPerThread[index]
-        .filter((comment) => !sinceDate || new Date(comment.createdAt) >= sinceDate)
-        .map((comment) => toReviewThreadComment(comment, thread, pullRequest)),
+      commentsPerThread[index].map((comment) =>
+        toReviewThreadComment(comment, thread, pullRequest),
+      ),
     )
     if (activities.length > 0) {
       await ctx.emit(activities)

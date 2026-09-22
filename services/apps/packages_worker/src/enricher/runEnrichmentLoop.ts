@@ -2,7 +2,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getEnricherConfig } from '../config'
-
 import { fetchActivitySnapshot } from './fetchActivitySnapshot'
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
 import { GithubAppConfig, getInstallationToken } from './githubAppAuth'

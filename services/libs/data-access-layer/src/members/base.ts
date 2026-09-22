@@ -24,18 +24,16 @@ import {
   SegmentType,
 } from '@crowd/types'
 
+import { fetchManyMemberIdentities, fetchManyMemberOrgs, fetchManyMemberSegments } from '.'
 import { findMaintainerRoles } from '../maintainers'
 import { QueryExecutor } from '../queryExecutor'
 import { fetchManySegments } from '../segments'
 import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
-
 import { getMemberAttributeSettings } from './attributeSettings'
 import { fetchOrganizationData, fetchSegmentData, sortActiveOrganizations } from './dataProcessor'
 import { buildCountQuery, buildQuery, buildSearchCTE } from './queryBuilder'
 import { MemberQueryCache } from './queryCache'
 import { IDbMemberAttributeSetting, IDbMemberData } from './types'
-
-import { fetchManyMemberIdentities, fetchManyMemberOrgs, fetchManyMemberSegments } from '.'
 
 const log = getServiceLogger()
 

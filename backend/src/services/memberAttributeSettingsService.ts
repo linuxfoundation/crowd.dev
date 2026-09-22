@@ -15,7 +15,6 @@ import {
   MemberAttributeSettingsUpdateData,
 } from '../database/repositories/types/memberAttributeSettingsTypes'
 import camelCaseNames from '../utils/camelCaseNames'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export default class MemberAttributeSettingsService {

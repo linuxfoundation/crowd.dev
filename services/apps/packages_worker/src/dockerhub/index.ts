@@ -12,7 +12,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { getDockerhubConfig } from '../config'
 import { parseGithubUrl } from '../enricher/fetchLightRepo'
 import { GithubAppConfig, getInstallationToken } from '../enricher/githubAppAuth'
-
 import { buildCandidates } from './candidates'
 import { detectDockerfile } from './detectDockerfile'
 import { fetchDockerhub } from './fetchDockerhub'

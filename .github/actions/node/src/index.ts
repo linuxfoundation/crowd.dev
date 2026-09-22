@@ -1,7 +1,8 @@
-import { buildStep, deployStep, pushStep } from './steps'
+import * as core from '@actions/core'
+
 import { getInputs } from './inputs'
 import { IS_POST } from './state'
-import * as core from '@actions/core'
+import { buildStep, deployStep, pushStep } from './steps'
 import { ActionStep } from './types'
 /**
  * Runs the action

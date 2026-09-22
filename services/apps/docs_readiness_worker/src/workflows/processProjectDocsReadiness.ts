@@ -1,4 +1,11 @@
-import { log, proxyActivities, workflowInfo } from '@temporalio/workflow'
+import {
+  CancellationScope,
+  isCancellation,
+  log,
+  proxyActivities,
+  rootCause,
+  workflowInfo,
+} from '@temporalio/workflow'
 
 import * as activities from '../activities'
 import { IProcessProjectDocsReadinessArgs } from '../types'
@@ -27,12 +34,14 @@ export async function processProjectDocsReadiness(
 
   const runId =
     args.runId ??
-    (await startRun({
-      trigger: 'on-demand',
-      scope: 'lf',
-      workflowId: info.workflowId,
-      temporalRunId: info.runId,
-    }))
+    (await CancellationScope.nonCancellable(() =>
+      startRun({
+        trigger: 'on-demand',
+        scope: 'lf',
+        workflowId: info.workflowId,
+        temporalRunId: info.runId,
+      }),
+    ))
 
   let discovered = 0
   let scored = 0
@@ -56,29 +65,36 @@ export async function processProjectDocsReadiness(
       await scoreProject(projectId, runId, resolved)
       scored = 1
     } catch (err) {
+      if (isCancellation(err)) {
+        throw err
+      }
+
       failed = 1
+      const reason = rootCause(err) ?? String(err)
       log.warn('docs readiness scoring failed, recording failure', {
         projectId,
         runId,
-        error: (err as Error).message,
+        error: reason,
       })
-      await recordFailure(projectId, runId, resolved, (err as Error).message)
+      await recordFailure(projectId, runId, resolved, reason)
     }
 
     runStatus = 'completed'
   } catch (err) {
-    errorMessage = (err as Error).message
+    errorMessage = rootCause(err) ?? String(err)
     throw err
   } finally {
     if (ownsRun) {
-      await finishRun(runId, {
-        status: runStatus,
-        totalProjects: 1,
-        discovered,
-        scored,
-        failed,
-        errorMessage,
-      })
+      await CancellationScope.nonCancellable(() =>
+        finishRun(runId, {
+          status: runStatus,
+          totalProjects: 1,
+          discovered,
+          scored,
+          failed,
+          errorMessage,
+        }),
+      )
     }
   }
 }

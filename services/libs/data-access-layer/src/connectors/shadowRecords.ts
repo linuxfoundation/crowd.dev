@@ -1,5 +1,4 @@
 import type { QueryExecutor } from '../queryExecutor'
-
 import type { IShadowRecord } from './types'
 
 export async function recordShadowRecords(

@@ -1,11 +1,10 @@
 import commandLineArgs from 'command-line-args'
 
+import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 import { signalMemberUpdate } from '@crowd/common_services'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
 import { getTemporalClient } from '@crowd/temporal'
-
-import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 
 const log = getServiceLogger()
 

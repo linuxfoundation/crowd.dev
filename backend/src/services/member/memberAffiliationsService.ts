@@ -1,6 +1,9 @@
 /* eslint-disable no-continue */
 import { uniq } from 'lodash'
 
+import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 import { Error400, dateIntersects, groupBy } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
@@ -19,12 +22,7 @@ import {
   IMemberOrganizationAffiliationOverride,
 } from '@crowd/types'
 
-import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
-
 import { IServiceOptions } from '../IServiceOptions'
-
 import MemberOrganizationsService from './memberOrganizationsService'
 
 export default class MemberAffiliationsService extends LoggerBase {

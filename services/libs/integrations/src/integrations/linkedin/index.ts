@@ -1,5 +1,4 @@
 import { IIntegrationDescriptor } from '../../types'
-
 import generateStreams from './generateStreams'
 import { LINKEDIN_MEMBER_ATTRIBUTES } from './memberAttributes'
 import processData from './processData'

@@ -7,21 +7,18 @@
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "trigger-export": "SERVICE=snowflake-connectors-worker tsx src/scripts/triggerExport.ts",
     "trigger-cleanup": "SERVICE=snowflake-connectors-worker tsx src/scripts/triggerCleanup.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
+    "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
-    "@crowd/integrations": "workspace:*",
     "@crowd/common_services": "workspace:*",
     "@crowd/database": "workspace:*",
+    "@crowd/integrations": "workspace:*",
     "@crowd/logging": "workspace:*",
-    "@crowd/archetype-worker": "workspace:*",
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",
@@ -34,8 +31,6 @@
     "typescript": "catalog:"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^3.0.1"
   }
 }

@@ -1,11 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { listPackagesForScatter } from '@crowd/data-access-layer'
-
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { listPackagesForScatter } from '@crowd/data-access-layer'
 
 import { STEWARDSHIP_STATUS_VALUES } from '../packages/types'
 

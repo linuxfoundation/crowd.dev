@@ -26,11 +26,11 @@ safe fixes locally, and hand humans a reviewed merge list via Slack.
 
 **v1 scope — only these manifests:**
 
-| Manifest | Ecosystem | Toolchain |
-|---|---|---|
-| `services/apps/git_integration/uv.lock` (+ `pyproject.toml`) | pip | uv |
-| `services/apps/git_integration/src/crowdgit/services/vulnerability_scanner/go.mod` | go | go |
-| `services/apps/git_integration/src/crowdgit/services/software_value/go.mod` | go | go |
+| Manifest                                                                           | Ecosystem | Toolchain |
+| ---------------------------------------------------------------------------------- | --------- | --------- |
+| `services/apps/git_integration/uv.lock` (+ `pyproject.toml`)                       | pip       | uv        |
+| `services/apps/git_integration/src/crowdgit/services/vulnerability_scanner/go.mod` | go        | go        |
+| `services/apps/git_integration/src/crowdgit/services/software_value/go.mod`        | go        | go        |
 
 Alerts on any other manifest (pnpm-lock.yaml, frontend, etc.) are out of
 scope: mention the count in the final report, do nothing else with them.
@@ -288,7 +288,7 @@ confirmation after staging is verified.
 ## Final report (terminal)
 
 | GHSA/CVE | Package | Manifest | Old → New | Verdict | Action | Validation |
-|---|---|---|---|---|---|---|
+| -------- | ------- | -------- | --------- | ------- | ------ | ---------- |
 
 Plus: Slack message link/status, PR opened (if any), needs-human reasoning,
 and the count of out-of-scope alerts left on other manifests.

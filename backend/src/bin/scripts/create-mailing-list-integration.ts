@@ -1,11 +1,10 @@
 /* eslint-disable no-console */
 
+import * as fs from 'fs'
+
 /* eslint-disable import/no-extraneous-dependencies */
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
-import * as fs from 'fs'
-
-import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 
 import {
   bodySchema,
@@ -15,6 +14,7 @@ import SegmentRepository from '@/database/repositories/segmentRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import IntegrationService from '@/services/integrationService'
 import { validateOrThrow } from '@/utils/validation'
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 
 const options = [
   {
