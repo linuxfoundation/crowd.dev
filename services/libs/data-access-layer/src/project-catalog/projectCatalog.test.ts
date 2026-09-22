@@ -10,6 +10,8 @@ import {
   markProjectCatalogOnboardingSkipped,
   markProjectCatalogPreCheckSkipped,
   updateProjectCatalog,
+  upsertProjectCatalog,
+  upsertProjectCatalogManualAction,
 } from './projectCatalog'
 
 const test = withQx(base)
@@ -163,5 +165,137 @@ describe('bulkInsertProjectCatalog', () => {
     const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
     expect(row?.action).toBe('skip')
     expect(row?.skipReason).toBe('repository already tracked in CDP (discovery pre-check)')
+  })
+
+  test('persists sourceUrl for a discovery row', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/42',
+      }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
+  })
+
+  test('leaves sourceUrl null when the source provides none', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({ action: 'auto', source: 'lf-criticality-score' }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBeNull()
+  })
+
+  test('does not blank an existing sourceUrl when the same repoUrl is re-sighted', async ({
+    qx,
+  }) => {
+    await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/42',
+      }),
+    )
+
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({ action: 'auto', source: 'insights-discussions' }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
+  })
+})
+
+describe('upsertProjectCatalog', () => {
+  test('keeps the first sourceUrl when a later upsert carries a different one', async ({ qx }) => {
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/1',
+      }),
+    )
+
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/2',
+      }),
+    )
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/1')
+  })
+
+  test('backfills sourceUrl when the existing row has none', async ({ qx }) => {
+    await upsertProjectCatalog(qx, catalogRow({ action: 'auto' }))
+
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/1',
+      }),
+    )
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/1')
+  })
+
+  test('keeps the existing sourceUrl when the upsert omits it', async ({ qx }) => {
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/1',
+      }),
+    )
+
+    await upsertProjectCatalog(qx, catalogRow({ action: 'auto' }))
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/1')
+  })
+})
+
+describe('upsertProjectCatalogManualAction', () => {
+  test('preserves the sourceUrl of a discovery row taken over manually', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/42',
+      }),
+    )
+
+    const updated = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+      action: 'evaluate',
+    })
+
+    expect(updated?.source).toBe('manual')
+    expect(updated?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
+  })
+
+  test('leaves sourceUrl null for a manually created row', async ({ qx }) => {
+    const row = catalogRow({ action: 'evaluate' })
+
+    const created = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: row.projectSlug,
+      repoName: row.repoName,
+      repoUrl: row.repoUrl,
+      action: row.action as 'evaluate',
+    })
+
+    expect(created?.source).toBe('manual')
+    expect(created?.sourceUrl).toBeNull()
   })
 })
