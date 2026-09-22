@@ -1,5 +1,6 @@
 import { proxyActivities } from '@temporalio/workflow'
 
+import { parseLlmJson } from '@crowd/common/src/llm'
 import { LlmQueryType } from '@crowd/types'
 
 import * as activities from '../../activities'
@@ -15,13 +16,19 @@ const {
   updateMemberAttributes,
   createMemberBotSuggestion,
   removeMemberOrganizations,
-  updateMemberAffiliations,
-  syncMember,
   createMemberNoBot,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
 })
 
+const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
+})
+
+/**
+ * Detects bot members via LLM. High-confidence bots are marked and queued for
+ * async affiliation refresh and OpenSearch sync. Returns immediately; consistency is eventual.
+ */
 export async function processMemberBotAnalysisWithLLM(
   args: ProcessMemberBotSuggestionWithLLMInput,
 ): Promise<void> {
@@ -72,7 +79,7 @@ export async function processMemberBotAnalysisWithLLM(
 
   const llm = await getLLMResult(LlmQueryType.MEMBER_BOT_VALIDATION, PROMPT, memberId)
 
-  const { isBot, signals } = JSON.parse(llm.answer) as MemberBotSuggestionResult
+  const { isBot, signals } = parseLlmJson<MemberBotSuggestionResult>(llm.answer)
 
   if (!isBot) {
     await createMemberNoBot(memberId)
@@ -85,8 +92,7 @@ export async function processMemberBotAnalysisWithLLM(
   if (confidence >= THRESHOLD) {
     await updateMemberAttributes(memberId, { isBot: { default: true, system: true } })
     await removeMemberOrganizations(memberId)
-    await updateMemberAffiliations(memberId)
-    await syncMember(memberId)
+    await triggerMemberAffiliationsRefresh(memberId, [], true)
   } else {
     // Otherwise, record a bot suggestion for further review
     await createMemberBotSuggestion({ memberId, confidence })

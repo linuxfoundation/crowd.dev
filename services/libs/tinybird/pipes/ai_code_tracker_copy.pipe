@@ -1,0 +1,145 @@
+DESCRIPTION >
+    - `ai_code_tracker_copy.pipe` materializes AI-assisted commit counts into `ai_code_tracker_ds`.
+    - Runs daily (after commits copy) reading from `ai_code_tracker_commits_ds` (only commits, not all 1B+ activities).
+    - Classifies commits by AI tool based on title, body, and attributes content.
+    - Stores monthly aggregates per tool plus total commits per month (toolKey = '__total__').
+    - Uses multiSearchAnyCaseInsensitive for fast single-pass pre-filtering before classification.
+
+TAGS "Report"
+
+NODE ai_code_tracker_copy_totals
+DESCRIPTION >
+    Total commits per month - simple count, no string scanning
+
+SQL >
+    SELECT toStartOfMonth(timestamp) AS monthStart, '__total__' AS toolKey, count() AS commitCount
+    FROM ai_code_tracker_commits_ds
+    GROUP BY monthStart
+
+NODE ai_code_tracker_copy_prefilter
+DESCRIPTION >
+    Fast pre-filter: only keep commits containing ANY AI keyword.
+    multiSearchAnyCaseInsensitive does a single pass instead of dozens of separate checks.
+
+SQL >
+    SELECT toStartOfMonth(timestamp) AS monthStart, title, body, attributes
+    FROM ai_code_tracker_commits_ds
+    WHERE
+        multiSearchAnyCaseInsensitive(
+            title,
+            [
+                'copilot',
+                'chatgpt',
+                'claude',
+                'cursor',
+                'codewhisperer',
+                'gemini',
+                'codeium',
+                'aider',
+                'devin',
+                'tabnine',
+                'ai-generated',
+                'ai generated'
+            ]
+        )
+        != 0
+        OR multiSearchAnyCaseInsensitive(
+            body,
+            [
+                'copilot',
+                'chatgpt',
+                'claude',
+                'cursor',
+                'codewhisperer',
+                'gemini',
+                'codeium',
+                'aider',
+                'devin',
+                'tabnine',
+                'ai-generated',
+                'ai generated',
+                'co-authored-by'
+            ]
+        )
+        != 0
+        OR multiSearchAnyCaseInsensitive(attributes, ['copilot', 'ai-generated']) != 0
+
+NODE ai_code_tracker_copy_classify
+DESCRIPTION >
+    Classify pre-filtered commits by AI tool
+
+SQL >
+    SELECT
+        monthStart,
+        multiIf(
+            positionCaseInsensitive(title, 'github copilot') > 0
+            OR (
+                positionCaseInsensitive(body, 'co-authored-by') > 0
+                AND positionCaseInsensitive(body, 'copilot') > 0
+            )
+            OR positionCaseInsensitive(attributes, 'copilot') > 0,
+            'github-copilot',
+            positionCaseInsensitive(title, 'cursor') > 0 OR positionCaseInsensitive(body, 'cursor') > 0,
+            'cursor',
+            positionCaseInsensitive(title, 'claude') > 0 OR positionCaseInsensitive(body, 'claude') > 0,
+            'claude',
+            positionCaseInsensitive(title, 'chatgpt') > 0
+            OR positionCaseInsensitive(body, 'chatgpt') > 0,
+            'chatgpt',
+            positionCaseInsensitive(title, 'codewhisperer') > 0
+            OR positionCaseInsensitive(body, 'codewhisperer') > 0,
+            'codewhisperer',
+            positionCaseInsensitive(title, 'gemini') > 0 OR positionCaseInsensitive(body, 'gemini') > 0,
+            'gemini',
+            positionCaseInsensitive(title, 'codeium') > 0
+            OR positionCaseInsensitive(body, 'codeium') > 0,
+            'codeium',
+            positionCaseInsensitive(title, 'copilot') > 0
+            OR positionCaseInsensitive(body, 'copilot') > 0,
+            'github-copilot',
+            positionCaseInsensitive(title, 'aider') > 0 OR positionCaseInsensitive(body, 'aider') > 0,
+            'aider',
+            positionCaseInsensitive(title, 'devin') > 0 OR positionCaseInsensitive(body, 'devin') > 0,
+            'devin',
+            positionCaseInsensitive(title, 'tabnine') > 0
+            OR positionCaseInsensitive(body, 'tabnine') > 0,
+            'tabnine',
+            positionCaseInsensitive(title, 'ai-generated') > 0
+            OR positionCaseInsensitive(title, 'ai generated') > 0
+            OR positionCaseInsensitive(body, 'ai-generated') > 0
+            OR positionCaseInsensitive(body, 'ai generated') > 0
+            OR positionCaseInsensitive(attributes, 'ai-generated') > 0
+            OR (
+                positionCaseInsensitive(body, 'co-authored-by') > 0
+                AND positionCaseInsensitive(body, 'bot') > 0
+            ),
+            'other',
+            '__none__'
+        ) AS toolKey
+    FROM ai_code_tracker_copy_prefilter
+
+NODE ai_code_tracker_copy_by_tool
+DESCRIPTION >
+    Aggregate AI commits by month and tool
+
+SQL >
+    SELECT monthStart, toolKey, count() AS commitCount
+    FROM ai_code_tracker_copy_classify
+    WHERE toolKey != '__none__'
+    GROUP BY monthStart, toolKey
+
+NODE ai_code_tracker_copy_result
+DESCRIPTION >
+    Union AI tool counts and total counts
+
+SQL >
+    SELECT monthStart, toolKey, commitCount
+    FROM ai_code_tracker_copy_by_tool
+    UNION ALL
+    SELECT monthStart, toolKey, commitCount
+    FROM ai_code_tracker_copy_totals
+
+TYPE COPY
+TARGET_DATASOURCE ai_code_tracker_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 3 * * *

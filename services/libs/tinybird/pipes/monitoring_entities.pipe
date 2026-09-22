@@ -2,14 +2,25 @@ TAGS "Monitoring"
 
 NODE activityRelations_total
 SQL >
+    -- count() per bucket (metadata-fast), then sum: a bare count() over the bucket
+    -- union subquery cannot use the trivial-count optimization and times out
     SELECT
         'rows_total' AS name,
         'Total rows in table' AS help,
         'gauge' AS type,
         map('table', 'activityRelations') AS labels,
-        count() AS value
-    FROM activityRelations_enriched_deduplicated_ds
-    where snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
+        sum(c) AS value
+    FROM
+        (
+            SELECT count() AS c
+            FROM activityRelations_enriched_deduplicated_bucket_0_ds
+            UNION ALL
+            SELECT count()
+            FROM activityRelations_enriched_deduplicated_bucket_1_ds
+            UNION ALL
+            SELECT count()
+            FROM activityRelations_enriched_deduplicated_bucket_2_ds
+        )
 
 NODE members_total
 SQL >

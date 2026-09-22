@@ -3,6 +3,7 @@ export enum LlmModelType {
   CLAUDE_3_5_SONNET_V2 = 'anthropic.claude-3-5-sonnet-20241022-v2:0',
   CLAUDE_3_OPUS = 'anthropic.claude-3-opus-20240229-v1:0',
   CLAUDE_SONNET_4 = 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+  CLAUDE_HAIKU_4_5 = 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
 }
 
 export enum LlmQueryType {
@@ -15,4 +16,6 @@ export enum LlmQueryType {
   REPO_COLLECTIONS = 'repo_collections',
   MEMBER_BOT_VALIDATION = 'member_bot_validation',
   SELECT_MOST_RELEVANT_DOMAIN = 'select_most_relevant_domain',
+  FAKE_ORGANIZATION_ANALYSIS = 'fake_organization_analysis',
+  PROJECT_EVALUATION = 'project_evaluation',
 }

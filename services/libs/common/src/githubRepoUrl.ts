@@ -1,0 +1,111 @@
+export type ICanonicalRepoUrl =
+  | { url: string; host: string; isGithub: true; owner: string; repo: string }
+  | { url: string; host: string; isGithub: false; owner: null; repo: null }
+
+const GITHUB_HOST = 'github.com'
+
+// Owners that are GitHub product surfaces, not repo owners — a link to any of
+// these is never a repo reference even though it matches /github.com/{a}/{b}/.
+const GITHUB_NON_REPO_OWNERS = new Set([
+  'user-attachments',
+  'orgs',
+  'apps',
+  'marketplace',
+  'sponsors',
+  'topics',
+  'collections',
+  'settings',
+  'login',
+  'about',
+  'features',
+  'search',
+])
+
+function toParsableUrl(raw: string): string {
+  const trimmed = raw.trim()
+  const sshRewritten = trimmed
+    // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@host:owner/repo.git —
+    // left alone when followed by digits/ (an actual port, e.g. ssh://git@host:2222/owner/repo.git).
+    .replace(/^ssh:\/\/git@([a-zA-Z0-9.-]+):(?!\d+(?:\/|$))/, 'https://$1/')
+    .replace(/^ssh:\/\/git@([a-zA-Z0-9.-]+)\//, 'https://$1/')
+    .replace(/^git@([a-zA-Z0-9.-]+):/, 'https://$1/')
+
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(sshRewritten)
+    ? sshRewritten
+    : `https://${sshRewritten}`
+}
+
+function stripSlashesAndGitSuffix(pathname: string): string {
+  return pathname
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
+}
+
+export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalRepoUrl | null {
+  if (!raw || typeof raw !== 'string') {
+    return null
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(toParsableUrl(raw))
+  } catch {
+    return null
+  }
+
+  const lowerHost = parsed.hostname.toLowerCase()
+  const host = lowerHost === `www.${GITHUB_HOST}` ? GITHUB_HOST : lowerHost
+  if (!host) {
+    return null
+  }
+
+  const path = stripSlashesAndGitSuffix(parsed.pathname)
+  if (!path) {
+    return null
+  }
+
+  if (host === GITHUB_HOST) {
+    // Deep links (/tree/<branch>, /blob/<branch>/<path>, ...) still unambiguously
+    // reference the repo at the first two segments — take those instead of rejecting.
+    const segments = path.split('/')
+    if (segments.length < 2 || !segments[0] || !segments[1]) {
+      return null
+    }
+
+    const owner = segments[0].toLowerCase()
+    const repo = segments[1].toLowerCase().replace(/\.git$/i, '')
+    if (GITHUB_NON_REPO_OWNERS.has(owner)) {
+      return null
+    }
+
+    return {
+      url: `https://${GITHUB_HOST}/${owner}/${repo}`,
+      host: GITHUB_HOST,
+      isGithub: true,
+      owner,
+      repo,
+    }
+  }
+
+  // Non-GitHub hosts keep path case and explicit port — case-sensitive upstreams,
+  // and distinct ports can mean distinct servers.
+  const authority = parsed.port ? `${host}:${parsed.port}` : host
+  return {
+    url: `https://${authority}/${path}`,
+    host,
+    isGithub: false,
+    owner: null,
+    repo: null,
+  }
+}
+
+export function canonicalizeGithubRepoUrl(raw: string | null | undefined): string | null {
+  const canonical = canonicalizeRepoUrl(raw)
+  return canonical?.isGithub ? canonical.url : null
+}
+
+export function githubRepoPath(raw: string | null | undefined): string | null {
+  const canonical = canonicalizeRepoUrl(raw)
+  return canonical?.isGithub ? `${canonical.owner}/${canonical.repo}` : null
+}

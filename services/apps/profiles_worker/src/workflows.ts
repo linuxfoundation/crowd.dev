@@ -7,6 +7,7 @@ import { processMemberBotAnalysisWithLLM } from './workflows/member/processMembe
 import { refreshMemberDisplayAggregates } from './workflows/member/refreshMemberDisplayAggregates'
 import { calculateProjectGroupOrganizationAggregates } from './workflows/organization/calculateProjectGroupOrganizationAggregates'
 import { calculateProjectOrganizationAggregates } from './workflows/organization/calculateProjectOrganizationAggregates'
+import { fakeOrganizationAnalysisWithLLM } from './workflows/organization/fakeOrganizationAnalysisWithLLM'
 import { organizationUpdate } from './workflows/organization/organizationUpdate'
 import { refreshOrganizationDisplayAggregates } from './workflows/organization/refreshOrganizationDisplayAggregates'
 
@@ -16,6 +17,7 @@ export {
   refreshMemberDisplayAggregates,
   refreshOrganizationDisplayAggregates,
   processMemberBotAnalysisWithLLM,
+  fakeOrganizationAnalysisWithLLM,
   // Child workflows for member aggregates
   calculateProjectMemberAggregates,
   calculateProjectGroupMemberAggregates,

@@ -9,7 +9,7 @@ def load_env_var(key: str, required=True, default=None):
 
 
 CROWD_DB_WRITE_HOST = load_env_var("CROWD_DB_WRITE_HOST")
-CROWD_DB_PORT = load_env_var("CROWD_DB_PORT")
+CROWD_DB_PORT = int(load_env_var("CROWD_DB_PORT"))
 CROWD_DB_USERNAME = load_env_var("CROWD_DB_USERNAME")
 CROWD_DB_PASSWORD = load_env_var("CROWD_DB_PASSWORD")
 CROWD_DB_DATABASE = load_env_var("CROWD_DB_DATABASE")
@@ -18,6 +18,7 @@ WORKER_ERROR_BACKOFF_SEC = int(load_env_var("WORKER_ERROR_BACKOFF_SEC", default=
 REPOSITORY_UPDATE_INTERVAL_HOURS = int(
     load_env_var("REPOSITORY_UPDATE_INTERVAL_HOURS", default=24)
 )
+FAILED_RETRY_INTERVAL_HOURS = int(load_env_var("FAILED_RETRY_INTERVAL_HOURS", default="6"))
 DEFAULT_TENANT_ID = load_env_var(
     "CROWD_SSO_LF_TENANT_ID", default="875c38bd-2b1b-4e91-ad07-0cfbabb4c49f"
 )
@@ -34,6 +35,12 @@ CROWD_AWS_BEDROCK_REGION = load_env_var("CROWD_AWS_BEDROCK_REGION", required=Fal
 MAINTAINER_RETRY_INTERVAL_DAYS = int(load_env_var("MAINTAINER_RETRY_INTERVAL_DAYS", default="30"))
 MAINTAINER_UPDATE_INTERVAL_HOURS = int(
     load_env_var("MAINTAINER_UPDATE_INTERVAL_HOURS", default="24")
+)
+AFFILIATION_RETRY_INTERVAL_DAYS = int(
+    load_env_var("AFFILIATION_RETRY_INTERVAL_DAYS", default="30")
+)
+AFFILIATION_UPDATE_INTERVAL_HOURS = int(
+    load_env_var("AFFILIATION_UPDATE_INTERVAL_HOURS", default="24")
 )
 WORKER_SHUTDOWN_TIMEOUT_SEC = int(load_env_var("WORKER_SHUTDOWN_TIMEOUT_SEC", default="3600"))
 MAX_CONCURRENT_ONBOARDINGS = int(load_env_var("MAX_CONCURRENT_ONBOARDINGS", default="3"))

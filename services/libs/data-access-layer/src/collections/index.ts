@@ -138,13 +138,21 @@ export async function createCollection(
   qx: QueryExecutor,
   collection: ICreateCollection,
 ): Promise<ICollection> {
+  const data = {
+    description: null,
+    slug: null,
+    logoUrl: null,
+    imageUrl: null,
+    color: null,
+    ...collection,
+  }
   return qx.selectOne(
     `
       INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
       VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
-    collection,
+    data,
   )
 }
 
@@ -186,6 +194,20 @@ export async function queryInsightsProjects<T extends InsightsProjectField>(
 ): Promise<QueryResult<T>[]> {
   opts.filter = injectSoftDeletionCriteria(opts.filter)
   return queryTable(qx, 'insightsProjects', Object.values(InsightsProjectField), opts)
+}
+
+export async function findInsightsProjectBySlugIncludingDeleted<T extends InsightsProjectField>(
+  qx: QueryExecutor,
+  slug: string,
+  fields: T[],
+): Promise<QueryResult<T> | null> {
+  const rows = await queryTable(qx, 'insightsProjects', Object.values(InsightsProjectField), {
+    fields,
+    filter: { slug: { eq: slug } },
+    limit: 1,
+  })
+
+  return rows.length > 0 ? rows[0] : null
 }
 
 export async function createInsightsProject(

@@ -1,8 +1,10 @@
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { DEFAULT_TENANT_ID, generateUUIDv1, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   IMemberIdentity,
+  MemberIdentityDbInsert,
+  MemberIdentityDbRow,
   MemberIdentityType,
-  NewMemberIdentity,
+  PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
 
@@ -10,6 +12,7 @@ import { MEMBER_SELECT_COLUMNS } from '../members/base'
 import { IDbMember } from '../old/apps/data_sink_worker/repo/member.data'
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
+import { touchMembersUpdatedAt } from './others'
 
 export async function fetchMemberIdentities(
   qx: QueryExecutor,
@@ -48,23 +51,29 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkIdentityExistance(
+interface FindMemberIdentityConflictParams {
+  value: IMemberIdentity['value']
+  platform: IMemberIdentity['platform']
+  type: IMemberIdentity['type']
+  excludeMemberId?: string
+}
+
+export async function findMemberIdentityConflict(
   qx: QueryExecutor,
-  value: string,
-  platform: string,
-): Promise<IMemberIdentity[]> {
-  return await qx.select(
+  params: FindMemberIdentityConflictParams,
+): Promise<{ id: string; memberId: string } | null> {
+  return qx.selectOneOrNone(
     `
-        SELECT id, "memberId"
-        FROM "memberIdentities"
-        WHERE "value" = $(value)
-          AND "platform" = $(platform)
-          AND "deletedAt" is null;
+      select id, "memberId"
+      from "memberIdentities"
+      where platform = $(platform)
+        and type = $(type)
+        and lower(value) = lower($(value))
+        and "deletedAt" is null
+        ${params.excludeMemberId ? 'and "memberId" <> $(excludeMemberId)' : ''}
+      limit 1;
     `,
-    {
-      value,
-      platform,
-    },
+    params,
   )
 }
 
@@ -72,8 +81,8 @@ export async function findMemberIdentityById(
   qx: QueryExecutor,
   memberId: string,
   id: string,
-): Promise<IMemberIdentity> {
-  const res = await qx.select(
+): Promise<IMemberIdentity | null> {
+  const res: IMemberIdentity[] = await qx.select(
     `
         SELECT *
         FROM "memberIdentities"
@@ -98,29 +107,50 @@ export async function findMemberIdentitiesByValue(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-        SELECT id, platform, "sourceId", type, value, verified
-        FROM "memberIdentities"
-        WHERE value = $(value) 
-          AND "memberId" = $(memberId)
-          AND "deletedAt" is null
-        ${filter.type ? 'AND type = $(type)' : ''}
+        select *
+        from "memberIdentities"
+        where lower(value) = lower($(value))
+          and "memberId" = $(memberId)
+          and "deletedAt" is null
+        ${filter.type ? 'and type = $(type)' : ''}
     `,
     { value, memberId, type: filter.type },
   )
 }
+
+const UPDATABLE_IDENTITY_FIELDS: ReadonlyArray<keyof UpdateMemberIdentity> = [
+  'platform',
+  'value',
+  'type',
+  'verified',
+  'verifiedBy',
+  'source',
+  'sourceId',
+  'integrationId',
+]
 
 export async function updateMemberIdentity(
   qx: QueryExecutor,
   memberId: string,
   id: string,
   data: Partial<UpdateMemberIdentity>,
-): Promise<IMemberIdentity> {
-  if (Object.keys(data).length === 0) return null
+): Promise<IMemberIdentity | null> {
+  const filtered = Object.fromEntries(
+    Object.entries(data).filter(
+      ([k, v]) => (UPDATABLE_IDENTITY_FIELDS as readonly string[]).includes(k) && v !== undefined,
+    ),
+  )
 
-  const setClause = Object.keys(data).map((key) => `"${key}" = $(${key})`)
+  if (Object.keys(filtered).length === 0) return null
+
+  if (typeof filtered.value === 'string') {
+    filtered.value = normalizeMemberIdentityValue(filtered.value)
+  }
+
+  const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
 
-  const params = { memberId, id, ...data }
+  const params = { memberId, id, ...filtered }
 
   const query = `
     UPDATE "memberIdentities"
@@ -131,7 +161,12 @@ export async function updateMemberIdentity(
     RETURNING *;
   `
 
-  return qx.selectOneOrNone(query, params)
+  const row = await qx.selectOneOrNone(query, params)
+  if (row) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return row
 }
 
 export async function deleteMemberIdentity(
@@ -139,7 +174,7 @@ export async function deleteMemberIdentity(
   memberId: string,
   id: string,
 ): Promise<number> {
-  return qx.result(
+  const count = await qx.result(
     `
         UPDATE "memberIdentities" SET "deletedAt" = now()
         WHERE "memberId" = $(memberId) AND "id" = $(id) AND "deletedAt" is null;
@@ -149,6 +184,11 @@ export async function deleteMemberIdentity(
       id,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return count
 }
 
 export async function moveIdentitiesBetweenMembers(
@@ -190,43 +230,89 @@ export async function moveIdentitiesBetweenMembers(
   }
 }
 
-export async function insertManyMemberIdentities(
+export async function findMemberIdByVerifiedIdentity(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
-  failOnConflict = false,
-) {
-  return qx.result(
-    prepareBulkInsert(
-      'memberIdentities',
-      [
-        'memberId',
-        'tenantId',
-        'integrationId',
-        'platform',
-        'source',
-        'sourceId',
-        'value',
-        'type',
-        'verified',
-        'verifiedBy',
-      ],
-      identities.map((i) => {
-        return {
-          tenantId: DEFAULT_TENANT_ID,
-          ...i,
-        }
-      }),
-      failOnConflict ? undefined : 'DO NOTHING',
-    ),
+  platform: string,
+  value: string,
+  type: MemberIdentityType,
+): Promise<string | null> {
+  const result = await qx.selectOneOrNone(
+    `select "memberId" from "memberIdentities"
+     where platform = $(platform)
+       and lower(value) = lower($(value))
+       and type = $(type)
+       and verified = true
+       and "deletedAt" is null
+     limit 1`,
+    { platform, value, type },
   )
+  return result?.memberId ?? null
 }
 
-export async function createMemberIdentity(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  i: NewMemberIdentity,
+  identities: MemberIdentityDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<MemberIdentityDbRow[]>
+export async function insertMemberIdentities(
+  qx: QueryExecutor,
+  identities: MemberIdentityDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertMemberIdentities(
+  qx: QueryExecutor,
+  identities: MemberIdentityDbInsert[],
   failOnConflict = false,
-) {
-  return insertManyMemberIdentities(qx, [i], failOnConflict)
+  returnRows = false,
+): Promise<MemberIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'memberIdentities',
+    [
+      'id',
+      'memberId',
+      'tenantId',
+      'integrationId',
+      'platform',
+      'source',
+      'sourceId',
+      'value',
+      'type',
+      'verified',
+      'verifiedBy',
+    ],
+    identities.map((i) => ({
+      ...i,
+      id: i.id || generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      value: normalizeMemberIdentityValue(i.value),
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  let memberIds: string[] = []
+  let rows: MemberIdentityDbRow[] = []
+  let count = 0
+
+  if (returnRows) {
+    rows = await qx.select(query)
+    memberIds = rows.map((row) => row.memberId)
+  } else {
+    count = await qx.result(query)
+    if (count > 0) {
+      memberIds = identities.map((identity) => identity.memberId)
+    }
+  }
+
+  await touchMembersUpdatedAt(qx, memberIds)
+
+  return returnRows ? rows : count
 }
 
 export async function moveToNewMember(
@@ -260,6 +346,8 @@ export async function moveToNewMember(
     )
   }
 
+  await touchMembersUpdatedAt(qx, [p.oldMemberId, p.newMemberId])
+
   return rowCount
 }
 
@@ -272,7 +360,7 @@ export async function deleteMemberIdentitiesByCombinations(
     types: MemberIdentityType[]
   },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
       where ("memberId", platform, value, type) in
@@ -295,6 +383,11 @@ export async function deleteMemberIdentitiesByCombinations(
       types: `{${p.types.join(',')}}`,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function updateVerifiedFlag(
@@ -307,36 +400,47 @@ export async function updateVerifiedFlag(
     verified: boolean
   },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities"
       set verified = $(verified)
       where
         "memberId" = $(memberId) and
         platform = $(platform) and
-        value = $(value) and
+        lower(value) = lower($(value)) and
         type = $(type) and
+        verified is distinct from $(verified) and
         "deletedAt" is null
     `,
     p,
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function deleteMemberIdentities(
   qx: QueryExecutor,
   p: { memberId: string; value: string; type: MemberIdentityType; platform: string },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
-      where "memberId" = $(memberId) 
-        and platform = $(platform) 
-        and value = $(value) 
-        and type = $(type) 
+      where "memberId" = $(memberId)
+        and platform = $(platform)
+        and lower(value) = lower($(value))
+        and type = $(type)
         and "deletedAt" is null;
     `,
     p,
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function deleteManyMemberIdentities(
@@ -357,7 +461,7 @@ export async function deleteManyMemberIdentities(
     .map((i) => `('${i.platform}', '${i.value}', '${i.type}')`)
     .join(', ')
 
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
       where "memberId" = $(memberId) and
@@ -368,6 +472,11 @@ export async function deleteManyMemberIdentities(
       formattedIdentities,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return count
 }
 
 export async function findAlreadyExistingVerifiedIdentities(
@@ -414,7 +523,7 @@ export async function findMembersByVerifiedEmails(
     return new Map()
   }
 
-  const valuesClause = emails.map((_, i) => `($(email_${i}))`).join(', ')
+  const emailsArray = emails.map((_, i) => `$(email_${i})`).join(', ')
 
   const data: Record<string, string> = {
     type: MemberIdentityType.EMAIL,
@@ -426,16 +535,13 @@ export async function findMembersByVerifiedEmails(
 
   const results = await qx.select(
     `
-    with input_emails (value_lower) as (
-      values ${valuesClause}
-    )
     select mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
     from "memberIdentities" mi
-    inner join input_emails i on lower(mi.value) = i.value_lower
     inner join "members" m on m.id = mi."memberId"
-    where mi.verified = true 
-      and mi.type = $(type) 
+    where mi.verified = true
+      and mi.type = $(type)
       and mi."deletedAt" is null
+      and lower(mi.value) = any(array[${emailsArray}])
     limit ${emails.length}
   `,
     data,
@@ -476,12 +582,12 @@ export async function findMembersByVerifiedUsernames(
       )
       select mi.platform as "identityPlatform", mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
       from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = i.value_lower
       inner join "members" m on m.id = mi."memberId"
-      where mi.verified = true 
-        and mi.type = $(type) 
+      where mi.verified = true
+        and mi.type = $(type)
         and mi."deletedAt" is null
       limit ${params.length}
     `,
@@ -516,26 +622,35 @@ export async function findMembersByIdentities(
     conditions.push('mi.verified = true')
   }
 
-  const identityParams = identities
-    .map((identity) => `('${identity.platform}', '${identity.value}', '${identity.type}')`)
-    .join(', ')
+  if (identities.length === 0) {
+    return new Map()
+  }
 
-  const result = await qx.select(
-    `
+  const identityTuples = identities.map((identity, i) => {
+    params[`ip${i}`] = identity.platform
+    params[`iv${i}`] = identity.value.trim()
+    params[`it${i}`] = identity.type
+    return `($(ip${i}), $(iv${i}), $(it${i}))`
+  })
+  const identityParams = identityTuples.join(', ')
+
+  const result: { memberId: string; platform: string; value: string; type: string }[] =
+    await qx.select(
+      `
     with input_identities (platform, value, type) as (
       values ${identityParams}
     )
     select "memberId", i.platform, i.value, i.type
     from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = lower(i.value)
         and mi.type = i.type
         and mi."deletedAt" is null
-    where ${conditions.join(' and ')}
+    ${conditions.length > 0 ? `where ${conditions.join(' and ')}` : ''}
   `,
-    params,
-  )
+      params,
+    )
 
   const resultMap = new Map<string, string>()
   result.forEach((row) => {
@@ -551,7 +666,7 @@ export async function findIdentitiesForMembers(
 ): Promise<Map<string, IMemberIdentity[]>> {
   const resultMap = new Map<string, IMemberIdentity[]>()
 
-  const results = await qx.select(
+  const results: IMemberIdentity[] = await qx.select(
     `
       select * from "memberIdentities"
       where "memberId" in ($(memberIds:csv))
@@ -607,7 +722,7 @@ export async function findMemberIdsByIdentities(
 
   if (!conditions.length) return []
 
-  const result = await qx.select(
+  const result: { memberId: string }[] = await qx.select(
     `
       SELECT DISTINCT mi."memberId"
       FROM "memberIdentities" mi
@@ -618,4 +733,96 @@ export async function findMemberIdsByIdentities(
   )
 
   return result.map((r) => r.memberId)
+}
+
+export interface IDevStatsMemberRow {
+  githubHandle: string
+  memberId: string
+  displayName: string | null
+}
+
+export async function findMembersByGithubHandles(
+  qx: QueryExecutor,
+  lowercasedHandles: string[],
+): Promise<IDevStatsMemberRow[]> {
+  return qx.select(
+    `
+      SELECT
+        mi.value       AS "githubHandle",
+        mi."memberId",
+        m."displayName"
+      FROM "memberIdentities" mi
+      JOIN members m ON m.id = mi."memberId"
+      WHERE mi.platform = $(platform)
+        AND mi.type     = $(type)
+        AND mi.verified = true
+        AND lower(mi.value) IN ($(lowercasedHandles:csv))
+        AND mi."deletedAt" IS NULL
+        AND m."deletedAt"  IS NULL
+    `,
+    {
+      platform: PlatformType.GITHUB,
+      type: MemberIdentityType.USERNAME,
+      lowercasedHandles,
+    },
+  )
+}
+
+export async function findResolvableEmailsForMembers(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string; verified: boolean }[]> {
+  if (memberIds.length === 0) return []
+  return qx.select(
+    `
+      WITH emails AS (
+        SELECT "memberId", lower(value) AS email, bool_or(verified) AS verified
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(emailType)
+          AND value NOT ILIKE '%@users.noreply.github.com'
+          AND "deletedAt" IS NULL
+        GROUP BY "memberId", lower(value)
+      ),
+      "usernameTwins" AS (
+        SELECT "memberId", lower(value) AS email
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(usernameType)
+          AND verified = true
+          AND "deletedAt" IS NULL
+      )
+      SELECT
+        e."memberId",
+        e.email,
+        (e.verified OR t.email IS NOT NULL) AS verified
+      FROM emails e
+      LEFT JOIN "usernameTwins" t ON t."memberId" = e."memberId" AND t.email = e.email
+    `,
+    {
+      memberIds,
+      emailType: MemberIdentityType.EMAIL,
+      usernameType: MemberIdentityType.USERNAME,
+    },
+  )
+}
+
+export async function findVerifiedEmailsByMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string }[]> {
+  return qx.select(
+    `
+      SELECT "memberId", value AS email
+      FROM "memberIdentities"
+      WHERE "memberId" IN ($(memberIds:csv))
+        AND type       = $(type)
+        AND verified   = true
+        AND "deletedAt" IS NULL
+    `,
+    {
+      memberIds,
+      type: MemberIdentityType.EMAIL,
+    },
+  )
 }

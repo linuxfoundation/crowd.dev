@@ -15,6 +15,6 @@ runs:
         SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
         SLACK_WEBHOOK: ${{ env.SLACK_WEBHOOK }}
         SLACK_USERNAME: Crowd.dev Deploy Notifier
-        SLACK_ICON_EMOJI: ':rocket:'
+        SLACK_ICON_EMOJI: ":rocket:"
         SLACK_TITLE: Deploy successful!
         SLACK_MESSAGE: ${{ inputs.message }}

@@ -1,0 +1,335 @@
+import {
+  IDbNuGetVersionUpsert,
+  NuGetPackageToSync,
+  QueryExecutor,
+  getOrCreateRepoByUrl,
+  listNuGetPackagesToSync,
+  logAuditFieldChange,
+  markNuGetPackageError,
+  recordNuGetDownloadSnapshot,
+  removeDeclaredPackageRepo,
+  replacePackageMaintainers,
+  setPackageDeclaredRepositoryUrl,
+  setPackageRepositoryUrl,
+  upsertMaintainer,
+  upsertNuGetPackage,
+  upsertNuGetVersionsBatch,
+  upsertPackageRepo,
+} from '@crowd/data-access-layer'
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
+import { getServiceChildLogger } from '@crowd/logging'
+
+import { getNuGetConfig } from '../config'
+import {
+  bumpDeclaredOwnershipCounts,
+  emptyDeclaredOwnershipCounts,
+  matchOwnership,
+  repoOwnerFromCanonical,
+} from '../utils/ownershipMatch'
+import { fetchNuspec, fetchRegistration, fetchSearch } from './client'
+import { normalizeNuGetPackage } from './normalize'
+import { BatchResult, isNuGetFetchError } from './types'
+
+const log = getServiceChildLogger('nuget')
+
+type NuGetConfig = ReturnType<typeof getNuGetConfig>
+type PackageRow = NuGetPackageToSync
+
+async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const code = (err as { code?: string }).code
+      const isDeadlock =
+        code === '40P01' || /deadlock detected/i.test(String((err as Error)?.message))
+      if (isDeadlock && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 50 * attempt + Math.random() * 100))
+        log.debug({ attempt }, 'Deadlock detected — retrying transaction')
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+function nugetRegistryUrl(packageId: string): string {
+  return `https://www.nuget.org/packages/${packageId}`
+}
+
+type PackageStatus = 'processed' | 'skipped' | 'error' | 'unchanged'
+
+interface ProcessPackageResult {
+  status: PackageStatus
+  ownershipMatch: PackageRepoOwnershipMatch | null
+}
+
+async function processPackage(
+  qx: QueryExecutor,
+  pkg: PackageRow,
+  config: NuGetConfig,
+  today: string,
+): Promise<ProcessPackageResult> {
+  const packageId = pkg.name
+
+  const [searchResult, registrationResult] = await Promise.all([
+    fetchSearch(packageId),
+    fetchRegistration(packageId),
+  ])
+
+  if (isNuGetFetchError(registrationResult)) {
+    if (registrationResult.kind === 'NOT_FOUND') {
+      await upsertNuGetPackage(qx, {
+        purl: pkg.purl,
+        name: pkg.name,
+        description: null,
+        homepage: null,
+        declaredRepositoryUrl: null,
+        repositoryUrl: null,
+        licenses: null,
+        licensesRaw: null,
+        keywords: null,
+        status: null,
+        latestVersion: pkg.latestVersion,
+        versionsCount: null,
+        firstReleaseAt: null,
+        latestReleaseAt: null,
+        registryUrl: nugetRegistryUrl(packageId),
+        ingestionSource: 'nuget_not_found',
+      })
+      log.warn({ purl: pkg.purl }, 'Package not found on NuGet registry — writing minimal record')
+      return { status: 'skipped', ownershipMatch: null }
+    }
+    if (registrationResult.kind === 'RATE_LIMIT') {
+      log.warn({ purl: pkg.purl }, 'Rate limited by NuGet registry — will retry next pass')
+      await markNuGetPackageError(qx, pkg.purl)
+      return { status: 'error', ownershipMatch: null }
+    }
+    throw new Error(
+      `Transient error fetching registration for ${pkg.purl}: ${registrationResult.message}`,
+    )
+  }
+
+  const searchRateLimited = isNuGetFetchError(searchResult) && searchResult.kind === 'RATE_LIMIT'
+  const searchItem = isNuGetFetchError(searchResult) ? null : searchResult
+
+  const preliminary = normalizeNuGetPackage(packageId, searchItem, registrationResult)
+
+  let nuspecXml: string | null = null
+  let nuspecRateLimited = false
+  if (preliminary.latestVersion) {
+    const nuspecResult = await fetchNuspec(packageId, preliminary.latestVersion)
+    if (isNuGetFetchError(nuspecResult)) {
+      nuspecRateLimited = nuspecResult.kind === 'RATE_LIMIT'
+    } else {
+      nuspecXml = nuspecResult
+    }
+  }
+
+  const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
+  // A rate-limited search only breaks resolution when the missing search projectUrl could
+  // still have outranked the winner — only a primary (repository/nuspec) candidate proves
+  // it couldn't, since projectUrl-tier candidates are ordered right after it.
+  const repoUnknown =
+    nuspecRateLimited || (searchRateLimited && normalized.resolvedRepo?.signal !== 'primary')
+
+  let ownershipMatch: PackageRepoOwnershipMatch | null = null
+
+  await withDeadlockRetry(() =>
+    qx.tx(async (t) => {
+      const changed = new Set<string>()
+
+      const { id: packageDbId, changedFields: pkgChanged } = await upsertNuGetPackage(t, {
+        purl: pkg.purl,
+        name: pkg.name,
+        description: normalized.description,
+        homepage: normalized.homepage,
+        // null on a rate-limited nuspec fetch — the DAL coalesces null to the stored value,
+        // so an unknown nuspec-repo result can't be overwritten by a lower-trust fallback.
+        declaredRepositoryUrl: nuspecRateLimited ? null : normalized.declaredRepositoryUrl,
+        repositoryUrl: repoUnknown ? null : (normalized.resolvedRepo?.repo.url ?? null),
+        licenses: normalized.licenses,
+        licensesRaw: normalized.licensesRaw,
+        keywords: normalized.keywords,
+        status: normalized.status,
+        latestVersion: normalized.latestVersion,
+        versionsCount: normalized.versionsCount > 0 ? normalized.versionsCount : null,
+        firstReleaseAt: normalized.firstReleaseAt,
+        latestReleaseAt: normalized.latestReleaseAt,
+        registryUrl: nugetRegistryUrl(packageId),
+        ingestionSource: 'nuget-registry',
+      })
+      pkgChanged.forEach((f) => changed.add(f))
+
+      // A rate-limited nuspec fetch means the nuspec-only repo candidate is unknown, not
+      // absent — reconciling now would downgrade or delete a link that's still valid.
+      if (!nuspecRateLimited) {
+        // upsertNuGetPackage's COALESCE can't tell "no declared repo this pass" from
+        // "unknown" — clear it explicitly so a dropped declaration doesn't stick around.
+        const declaredClearedFields = await setPackageDeclaredRepositoryUrl(
+          t,
+          packageDbId.toString(),
+          normalized.declaredRepositoryUrl,
+        )
+        declaredClearedFields.forEach((f) => changed.add(f))
+      }
+
+      // repoUnknown: only a transient rate limit separates "resolved" from "absent" here —
+      // reconciling now would downgrade or delete a link that's still valid.
+      if (!repoUnknown) {
+        if (normalized.resolvedRepo) {
+          const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+            t,
+            normalized.resolvedRepo.repo.url,
+            normalized.resolvedRepo.repo.host,
+          )
+          repoChanged.forEach((f) => changed.add(f))
+
+          ownershipMatch = matchOwnership({
+            maintainers: [...normalized.owners, ...normalized.authors],
+            repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
+          })
+
+          const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
+            source: 'declared',
+            signal: normalized.resolvedRepo.signal,
+            ownershipMatch,
+          })
+          linkChanged.forEach((f) => changed.add(f))
+
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
+          removedFields.forEach((f) => changed.add(f))
+        } else {
+          const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
+          removedFields.forEach((f) => changed.add(f))
+          const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+          clearedFields.forEach((f) => changed.add(f))
+        }
+      }
+
+      if (normalized.versions.length > 0) {
+        const versionRows: IDbNuGetVersionUpsert[] = normalized.versions.map((v) => ({
+          packageId: packageDbId,
+          name: pkg.name,
+          number: v.number,
+          publishedAt: v.publishedAt,
+          isLatest: v.isLatest,
+          isPrerelease: v.isPrerelease,
+          isYanked: v.isYanked,
+          licenses: v.licenses,
+          downloadCount: v.downloadCount !== null ? BigInt(v.downloadCount) : null,
+        }))
+        const verChanged = await upsertNuGetVersionsBatch(t, versionRows)
+        verChanged.forEach((f) => changed.add(f))
+      }
+
+      const allPeople = [
+        ...normalized.owners.map((username) => ({ username, role: 'maintainer' as const })),
+        ...normalized.authors
+          .filter((a) => !normalized.owners.includes(a))
+          .map((username) => ({ username, role: 'author' as const })),
+      ].sort((a, b) => a.username.localeCompare(b.username))
+
+      const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
+      for (const person of allPeople) {
+        if (!person.username) continue
+        const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
+          ecosystem: 'nuget',
+          username: person.username,
+          displayName: person.username,
+          url: null,
+          email: null,
+        })
+        mChanged.forEach((f) => changed.add(f))
+        maintainerLinks.push({ maintainerId, role: person.role })
+      }
+
+      if (maintainerLinks.length > 0) {
+        const pmChanged = await replacePackageMaintainers(t, packageDbId, maintainerLinks)
+        pmChanged.forEach((f) => changed.add(f))
+      }
+
+      if (normalized.totalDownloads > 0) {
+        const dlChanged = await recordNuGetDownloadSnapshot(t, {
+          packageId: packageDbId,
+          purl: pkg.purl,
+          totalDownloads: normalized.totalDownloads,
+          today,
+        })
+        dlChanged.forEach((f) => changed.add(f))
+      }
+
+      await logAuditFieldChange(t, 'nuget', pkg.purl, Array.from(changed))
+
+      log.debug(
+        {
+          purl: pkg.purl,
+          versions: normalized.versions.length,
+          maintainers: maintainerLinks.length,
+          totalDownloads: normalized.totalDownloads,
+        },
+        'ok',
+      )
+    }),
+  )
+
+  return { status: 'processed', ownershipMatch }
+}
+
+export async function processBatch(
+  qx: QueryExecutor,
+  config: NuGetConfig,
+  today: string,
+): Promise<BatchResult> {
+  const packages = await listNuGetPackagesToSync(qx, {
+    limit: config.batchSize,
+    isCritical: config.isCritical,
+  })
+
+  if (packages.length === 0)
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0, ...emptyDeclaredOwnershipCounts() }
+
+  log.info({ count: packages.length }, 'Batch started')
+
+  const counts: BatchResult = {
+    processed: 0,
+    skipped: 0,
+    error: 0,
+    unchanged: 0,
+    ...emptyDeclaredOwnershipCounts(),
+  }
+
+  for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    const group = packages.slice(batchStart, batchStart + config.concurrency)
+
+    if (config.groupDelayMs > 0 && batchStart > 0) {
+      await new Promise((r) => setTimeout(r, config.groupDelayMs))
+    }
+
+    await Promise.all(
+      group.map(async (pkg) => {
+        try {
+          const { status, ownershipMatch } = await processPackage(qx, pkg, config, today)
+          counts[status]++
+          if (ownershipMatch) bumpDeclaredOwnershipCounts(counts, ownershipMatch)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
+          try {
+            await markNuGetPackageError(qx, pkg.purl)
+          } catch {
+            // best-effort — don't let a failed mark crash the batch
+          }
+          counts.error++
+        }
+      }),
+    )
+
+    const done = batchStart + group.length
+    if (done % 1000 === 0 || done === packages.length) {
+      log.info({ done, total: packages.length, ...counts }, 'Progress')
+    }
+  }
+
+  return counts
+}

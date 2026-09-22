@@ -1,1 +1,0 @@
-alter table "segments" drop column "dashboardCacheLastRefreshedAt";

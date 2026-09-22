@@ -1,4 +1,4 @@
-import { generateUUIDv1 } from '@crowd/common'
+import { generateUUIDv1, partition } from '@crowd/common'
 import { Logger } from '@crowd/logging'
 import { CrowdQueue, IQueue } from '@crowd/queue'
 import {
@@ -58,5 +58,26 @@ export class IntegrationStreamWorkerEmitter extends QueuePriorityService {
       undefined,
       { onboarding: true },
     )
+  }
+
+  // Sends in parallel batches of 10. Uses concurrent sendMessage calls (not sendMessages)
+  // so the priority context (onboarding flag) is respected — sendMessages() has no way to
+  // pass a priority override and always routes to NORMAL.
+  public async triggerWebhookProcessingBatch(
+    webhookIds: string[],
+    onboarding: boolean,
+  ): Promise<void> {
+    for (const batch of partition(webhookIds, 10)) {
+      await Promise.all(
+        batch.map((webhookId) =>
+          this.sendMessage(
+            generateUUIDv1(),
+            new ProcessWebhookStreamQueueMessage(webhookId),
+            webhookId,
+            { onboarding },
+          ),
+        ),
+      )
+    }
   }
 }

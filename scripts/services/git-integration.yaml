@@ -1,4 +1,3 @@
-
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
@@ -22,7 +21,7 @@ services:
     networks:
       - crowd-bridge
     ports:
-      - '8085:8085'
+      - "8085:8085"
 
   git-integration-dev:
     build:
@@ -39,7 +38,7 @@ services:
       <<: *env-args
     hostname: git-integration
     ports:
-      - '8085:8085'
+      - "8085:8085"
     networks:
       - crowd-bridge
     volumes:

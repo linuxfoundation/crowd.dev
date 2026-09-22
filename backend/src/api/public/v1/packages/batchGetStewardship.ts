@@ -1,0 +1,47 @@
+import type { Request, Response } from 'express'
+
+import { getPackagesQx } from '@/db/packagesDb'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
+import { getPackagesByStewardshipPurls } from '@crowd/data-access-layer'
+
+import { normalizePurl, purlsBodySchema } from './purl'
+import type { StewardshipSummary } from './types'
+
+const bodySchema = purlsBodySchema()
+
+export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
+  const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)
+  // Normalize after parsing (not in the schema) so rawPurls keeps the client's
+  // original form — used as the response key so clients can look up their input.
+  const normalizedPurls = rawPurls.map(normalizePurl)
+
+  const qx = await getPackagesQx()
+  const rows = await getPackagesByStewardshipPurls(qx, normalizedPurls)
+
+  const byPurl = new Map(rows.map((r) => [r.purl, r]))
+
+  const packages: Record<string, StewardshipSummary | null> = {}
+  for (let i = 0; i < rawPurls.length; i++) {
+    const row = byPurl.get(normalizedPurls[i])
+    if (!row) {
+      packages[rawPurls[i]] = null
+    } else {
+      packages[rawPurls[i]] = {
+        name: row.name,
+        ecosystem: row.ecosystem,
+        lifecycle: null,
+        health: null,
+        impact:
+          row.criticalityScore != null ? Math.round(Number(row.criticalityScore) * 100) : null,
+        openVulns: null,
+        stewardship: (row.stewardshipStatus ?? 'unassigned') as StewardshipSummary['stewardship'],
+        stewards: null,
+        lastActivityAt: null,
+        lastActivityDescription: null,
+      }
+    }
+  }
+
+  ok(res, { packages })
+}

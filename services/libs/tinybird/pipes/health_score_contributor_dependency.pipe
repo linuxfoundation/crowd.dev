@@ -33,8 +33,9 @@ SQL >
         ORDER by contributionCount DESC
     {% end %}
 
-NODE health_score_contributor_dependency_contribution_percentage
+NODE health_score_contributor_dependency_pct
 SQL >
+    %
     SELECT
         segmentId,
         memberId,
@@ -45,32 +46,34 @@ SQL >
     FROM health_score_contributor_dependency_contribution_count
     ORDER BY contributionPercentage DESC
 
-NODE health_score_contributor_dependency_contribution_runnning_total
+NODE health_score_contributor_dependency_running
 SQL >
+    %
     SELECT
         segmentId,
         memberId,
-        contributionCount,
         contributionPercentage,
         SUM(contributionPercentage) OVER (
             PARTITION BY segmentId ORDER BY contributionPercentage DESC, memberId
         ) AS contributionPercentageRunningTotal
-    FROM health_score_contributor_dependency_contribution_percentage
+    FROM health_score_contributor_dependency_pct
 
 NODE health_score_contributor_dependency_score
 SQL >
+    %
     SELECT
         segmentId,
         count() AS contributorDependencyCount,
         round(sum(contributionPercentage)) AS contributorDependencyPercentage
-    FROM health_score_contributor_dependency_contribution_runnning_total
+    FROM health_score_contributor_dependency_running
     WHERE
         contributionPercentageRunningTotal < 51
         OR (contributionPercentageRunningTotal - contributionPercentage < 51)
     GROUP BY segmentId
 
-NODE health_score_contributor_dependency_with_benchmark
+NODE health_score_contributor_dependency_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         contributorDependencyCount,

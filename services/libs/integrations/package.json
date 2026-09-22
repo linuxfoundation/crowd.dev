@@ -1,17 +1,9 @@
 {
   "name": "@crowd/integrations",
+  "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/he": "^1.2.0",
-    "@types/node": "^18.16.3",
-    "@types/sanitize-html": "^2.9.0",
-    "typescript": "^5.6.3"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -19,15 +11,20 @@
     "@crowd/logging": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@gitbeaker/rest": "^43.5.0",
     "@octokit/auth-app": "^4.0.13",
     "@octokit/graphql": "^5.0.6",
-    "axios": "^1.4.0",
+    "axios": "catalog:",
     "he": "^1.2.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",
     "sanitize-html": "^2.10.0",
     "verify-github-webhook": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/he": "^1.2.0",
+    "@types/node": "catalog:",
+    "@types/sanitize-html": "^2.9.0",
+    "typescript": "catalog:"
   }
 }

@@ -1,0 +1,24 @@
+DESCRIPTION >
+    - `packageMaintainers` maps packages to their maintainers with role information.
+    - Replicated from Postgres packages-db — junction table linking packages and maintainers.
+    - Used to answer "who maintains this package?" and "what packages does this maintainer own?".
+    - `id` is the internal primary key.
+    - `packageId` links to the parent packages row.
+    - `maintainerId` links to the parent maintainers row.
+    - `role` is the maintainer's role on the package: 'author', 'maintainer', 'contributor', or empty string if not specified.
+    - `ingestionSource` identifies where this link came from (e.g. 'manual_csv'); empty string for auto-enriched rows.
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `packageId` UInt64 `json:$.record.package_id`,
+    `maintainerId` UInt64 `json:$.record.maintainer_id`,
+    `role` String `json:$.record.role` DEFAULT '',
+    `ingestionSource` String `json:$.record.ingestion_source` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY packageId, maintainerId
+ENGINE_VER updatedAt

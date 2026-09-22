@@ -1,0 +1,34 @@
+{
+  "name": "@crowd/pcc-sync-worker",
+  "private": true,
+  "scripts": {
+    "start": "CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker tsx src/index.ts",
+    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker LOG_LEVEL=debug tsx src/index.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker LOG_LEVEL=debug tsx src/index.ts",
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
+    "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
+    "tsc-check": "tsc --noEmit",
+    "trigger-export": "SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
+    "trigger-export:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
+    "trigger-cleanup": "SERVICE=pcc-sync-worker tsx src/scripts/triggerCleanup.ts",
+    "trigger-cleanup:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=pcc-sync-worker tsx src/scripts/triggerCleanup.ts"
+  },
+  "dependencies": {
+    "@crowd/archetype-standard": "workspace:*",
+    "@crowd/archetype-worker": "workspace:*",
+    "@crowd/common": "workspace:*",
+    "@crowd/database": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/slack": "workspace:*",
+    "@crowd/snowflake": "workspace:*",
+    "@crowd/temporal": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

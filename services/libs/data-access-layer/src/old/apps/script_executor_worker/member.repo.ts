@@ -116,6 +116,7 @@ class MemberRepository {
       rows = await this.connection.query(
         `
         select 
+          array_agg(mi.id) as ids,
           array_agg(mi.platform) as platforms, 
           array_agg(mi.type) as types,
           array_agg(mi.verified) as verified,
@@ -157,23 +158,6 @@ class MemberRepository {
     }
 
     return member
-  }
-
-  public async getMembersNotInSegmentAggs(perPage: number): Promise<string[]> {
-    const results = await this.connection.any(
-      `
-      select distinct a."memberId"
-      from activities a
-      left join "memberSegmentsAgg" msa
-        on a."memberId" = msa."memberId"
-        and a."segmentId" = msa."segmentId"
-      where msa."memberId" is null
-        and msa."segmentId" is null
-      limit ${perPage};
-      `,
-    )
-
-    return results.map((r: { id: string }) => r.id)
   }
 
   public async getMembersForCleanup(batchSize: number): Promise<string[]> {

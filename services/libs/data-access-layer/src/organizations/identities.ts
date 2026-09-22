@@ -1,13 +1,13 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import {
   IOrganizationIdentity,
-  NewOrganizationIdentity,
+  type OrganizationIdentityDbInsert,
+  type OrganizationIdentityDbRow,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-import { QueryOptions, QueryResult, queryTable } from '../utils'
-
+import { QueryOptions, QueryResult, prepareBulkInsert, queryTable } from '../utils'
 import { IDbOrgIdentityUpdateInput } from './types'
 
 export async function fetchOrgIdentities(
@@ -71,26 +71,54 @@ export async function updateOrgIdentityVerifiedFlag(
   )
 }
 
-export async function addOrgIdentity(qx: QueryExecutor, identity: NewOrganizationIdentity) {
-  return qx.result(
-    `
-      INSERT INTO "organizationIdentities" (
-        "organizationId",
-        "source",
-        platform,
-        value,
-        type,
-        verified,
-        "sourceId",
-        "tenantId",
-        "integrationId",
-        "createdAt"
-      )
-      VALUES ($(organizationId), $(source), $(platform), $(value), $(type), $(verified), $(sourceId), $(tenantId), $(integrationId), NOW())
-      ON CONFLICT DO NOTHING;
-    `,
-    { tenantId: DEFAULT_TENANT_ID, ...identity },
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<OrganizationIdentityDbRow[]>
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<OrganizationIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'organizationIdentities',
+    [
+      'organizationId',
+      'platform',
+      'value',
+      'type',
+      'verified',
+      'source',
+      'sourceId',
+      'tenantId',
+      'integrationId',
+    ],
+    identities.map((i) => ({
+      ...i,
+      tenantId: DEFAULT_TENANT_ID,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
 }
 
 export async function upsertOrgIdentities(
@@ -100,48 +128,116 @@ export async function upsertOrgIdentities(
   integrationId?: string,
 ): Promise<void> {
   const existingIdentities = await fetchOrgIdentities(qe, organizationId)
-  const toCreate = []
-  const toUpdate = []
+  const toCreate: OrganizationIdentityDbInsert[] = []
+  const toUpdate: Partial<IOrganizationIdentity>[] = []
 
   for (const i of identities) {
     const existing = existingIdentities.find(
       (ei) => ei.value === i.value && ei.platform === i.platform && ei.type === i.type,
     )
     if (!existing) {
-      toCreate.push(i)
-    } else if (existing && existing.verified !== i.verified) {
+      toCreate.push({
+        organizationId,
+        platform: i.platform,
+        type: i.type,
+        value: i.value,
+        // NOT NULL DEFAULT false — undefined would insert NULL
+        verified: i.verified ?? false,
+        source: i.source ?? null,
+        sourceId: i.sourceId ?? null,
+        integrationId: integrationId ?? null,
+      })
+    } else if (i.verified !== undefined && existing.verified !== i.verified) {
       toUpdate.push(i)
     }
   }
 
   if (toCreate.length > 0) {
-    for (const i of toCreate) {
-      // add the identity
-      await addOrgIdentity(qe, {
-        organizationId,
-        platform: i.platform,
-        type: i.type,
-        value: i.value,
-        verified: i.verified,
-        source: i.source,
-        sourceId: i.sourceId,
-        integrationId,
-      })
+    await insertOrganizationIdentities(qe, toCreate, false)
+  }
+
+  for (const i of toUpdate) {
+    await updateOrgIdentityVerifiedFlag(qe, {
+      organizationId,
+      platform: i.platform,
+      type: i.type,
+      value: i.value,
+      verified: i.verified,
+    })
+  }
+}
+
+export type OrganizationVerifiedPrimaryDomains = {
+  orgId: string
+  displayName: string | null
+  domains: string[]
+}
+
+/**
+ * Fetches verified primary domains grouped by organization ID.
+ * Returns both names and domains in lowercase to safely match against activity emails.
+ */
+export async function fetchManyOrganizationVerifiedPrimaryDomains(
+  qx: QueryExecutor,
+  organizationIds: string[],
+): Promise<OrganizationVerifiedPrimaryDomains[]> {
+  if (organizationIds.length === 0) {
+    return []
+  }
+
+  return qx.select(
+    `
+      SELECT
+        oi."organizationId" AS "orgId",
+        lower(o."displayName") AS "displayName",
+        array_agg(DISTINCT lower(oi.value)) AS domains
+      FROM "organizationIdentities" oi
+      JOIN organizations o ON o.id = oi."organizationId"
+      WHERE oi."organizationId" IN ($(organizationIds:csv))
+        AND oi.type = 'primary-domain'
+        AND oi.verified = true
+      GROUP BY oi."organizationId", o."displayName"
+    `,
+    { organizationIds },
+  )
+}
+
+/**
+ * Prefer companies over universities (when both exist).
+ */
+export function preferCompanyOverUniversityWhenOverlapping<T extends { organizationId: string }>(
+  candidates: T[],
+  orgDomains: OrganizationVerifiedPrimaryDomains[],
+): T[] {
+  if (candidates.length < 2) {
+    return candidates
+  }
+
+  // 1. Build a quick lookup map for the organization data
+  const orgsById = new Map(orgDomains.map((org) => [org.orgId, org]))
+
+  const companies: T[] = []
+  const universities: T[] = []
+
+  // 2. Single pass: Check the heuristic and categorize right here
+  for (const candidate of candidates) {
+    const org = orgsById.get(candidate.organizationId)
+
+    // If we find the org, check if it's a university based on name or .edu domain
+    const isUniversity = org
+      ? (org.displayName?.includes('university') ?? false) ||
+        org.domains.some((d) => d.endsWith('.edu'))
+      : false
+
+    if (isUniversity) {
+      universities.push(candidate)
+    } else {
+      companies.push(candidate)
     }
   }
 
-  if (toUpdate.length > 0) {
-    for (const i of toUpdate) {
-      // update the identity
-      await updateOrgIdentityVerifiedFlag(qe, {
-        organizationId,
-        platform: i.platform,
-        type: i.type,
-        value: i.value,
-        verified: i.verified,
-      })
-    }
-  }
+  // 3. If there's an overlap, prefer companies. Otherwise, return the original list.
+  return companies.length > 0 && universities.length > 0 ? companies : candidates
 }
 
 export async function findOrgIdByDomain(

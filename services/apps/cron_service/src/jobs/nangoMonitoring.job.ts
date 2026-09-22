@@ -214,7 +214,7 @@ const job: IJobDefinition = {
     )
 
     // Send one Slack notification per platform
-    const notificationPromises: Promise<void>[] = []
+    const notificationPromises: Promise<void | boolean>[] = []
 
     for (const nangoIntegration of ALL_NANGO_INTEGRATIONS) {
       const integrations = Array.from(statusMap.entries()).filter(

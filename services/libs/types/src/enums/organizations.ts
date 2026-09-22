@@ -7,12 +7,16 @@ export enum OrganizationAttributeName {
 
 export enum OrganizationSource {
   EMAIL_DOMAIN = 'email-domain',
+  PROJECT_REGISTRY = 'project-registry',
   ENRICHMENT_PROGAI = 'enrichment-progai',
   ENRICHMENT_CLEARBIT = 'enrichment-clearbit',
   ENRICHMENT_CRUSTDATA = 'enrichment-crustdata',
   GITHUB = 'github',
   UI = 'ui',
   CVENT = 'cvent',
+  TNC = 'tnc',
+  MEETINGS = 'meetings',
+  COMMITTEES = 'committees',
 }
 
 export enum OrganizationMergeSuggestionType {
@@ -37,9 +41,14 @@ export enum OrganizationIdentityType {
 
 export enum OrganizationAttributeSource {
   CUSTOM = 'custom',
+  LFX_SERVE = 'lfx-serve',
+  SYSTEM = 'system',
   ENRICHMENT_LFX_INTERNAL_API = 'enrichment-lfx-internal-api',
   ENRICHMENT_PEOPLEDATALABS = 'enrichment-peopledatalabs',
   CVENT = 'cvent',
+  TNC = 'tnc',
+  MEETINGS = 'meetings',
+  COMMITTEES = 'committees',
   // legacy - keeping this for backward compatibility
   ENRICHMENT = 'enrichment',
   GITHUB = 'github',

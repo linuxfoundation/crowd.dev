@@ -6,7 +6,6 @@ import EagleEyeActionRepository from '../database/repositories/eagleEyeActionRep
 import EagleEyeContentRepository from '../database/repositories/eagleEyeContentRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import track from '../segment/track'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export default class EagleEyeActionService extends LoggerBase {

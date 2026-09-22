@@ -1,0 +1,71 @@
+DESCRIPTION >
+    - `repo_health_score_copy_ds` contains comprehensive health score metrics and benchmarks per repository.
+    - Created via copy pipe with computed health metrics for repository-level analytics.
+    - Aggregates multiple health dimensions including contributors, popularity, development activity, and security.
+    - `channel` is the repository URL used as the primary key.
+    - `activeContributors` is the unique contributor count for the previous quarter.
+    - `activeContributorsBenchmark` is the benchmark score (0-5) for active contributors.
+    - `contributorDependencyCount` measures contributor concentration risk (bus factor).
+    - `contributorDependencyPercentage` is the combined contribution percentage of dependent contributors.
+    - `contributorDependencyBenchmark` is the benchmark score (0-5) for contributor dependency.
+    - `organizationDependencyCount` measures organizational concentration risk.
+    - `organizationDependencyPercentage` is the combined contribution percentage of dependent organizations.
+    - `organizationDependencyBenchmark` is the benchmark score (0-5) for organization dependency.
+    - `retentionRate` is the quarter-over-quarter contributor retention percentage.
+    - `retentionBenchmark` is the benchmark score (0-5) for retention.
+    - `stars` is the total star count for the repository.
+    - `starsBenchmark` is the benchmark score (0-5) for stars.
+    - `forks` is the total fork count for the repository.
+    - `forksBenchmark` is the benchmark score (0-5) for forks.
+    - `issueResolution` is the average days to close issues (nullable for repos without issues).
+    - `issueResolutionBenchmark` is the benchmark score (0-5) for issue resolution.
+    - `pullRequests` is the PR count in the last 365 days.
+    - `pullRequestsBenchmark` is the benchmark score (0-5) for pull requests.
+    - `mergeLeadTime` is the average days to merge PRs (nullable for repos without PRs).
+    - `mergeLeadTimeBenchmark` is the benchmark score (0-5) for merge lead time.
+    - `activeDaysCount` is the count of distinct active days in the last 365 days.
+    - `activeDaysBenchmark` is the benchmark score (0-5) for active days.
+    - `contributionsOutsideWorkHours` is the percentage of contributions outside work hours.
+    - `contributionsOutsideWorkHoursBenchmark` is the benchmark score (0-5) for outside work hours.
+    - `securityPercentage` is the health score percentage for the security category (0-100).
+    - `contributorPercentage` is the health score percentage for the contributors category (0-100).
+    - `popularityPercentage` is the health score percentage for the popularity category (0-100).
+    - `developmentPercentage` is the health score percentage for the development category (0-100).
+    - `overallScore` is the computed overall health score combining all dimensions.
+
+TAGS "Repository health", "Metrics"
+
+SCHEMA >
+    `channel` String,
+    `activeContributors` UInt64,
+    `activeContributorsBenchmark` UInt64,
+    `contributorDependencyCount` UInt64,
+    `contributorDependencyPercentage` Float64,
+    `contributorDependencyBenchmark` UInt64,
+    `organizationDependencyCount` UInt64,
+    `organizationDependencyPercentage` Float64,
+    `organizationDependencyBenchmark` UInt64,
+    `retentionRate` Float64,
+    `retentionBenchmark` UInt64,
+    `stars` UInt64,
+    `starsBenchmark` UInt64,
+    `forks` UInt64,
+    `forksBenchmark` UInt64,
+    `issueResolution` Nullable(Float64),
+    `issueResolutionBenchmark` UInt64,
+    `pullRequests` UInt64,
+    `pullRequestsBenchmark` UInt64,
+    `mergeLeadTime` Nullable(Float64),
+    `mergeLeadTimeBenchmark` UInt64,
+    `activeDaysCount` UInt64,
+    `activeDaysBenchmark` UInt64,
+    `contributionsOutsideWorkHours` Float64,
+    `contributionsOutsideWorkHoursBenchmark` UInt64,
+    `securityPercentage` Float64,
+    `contributorPercentage` Float64,
+    `popularityPercentage` Float64,
+    `developmentPercentage` Float64,
+    `overallScore` Float64
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY channel

@@ -1,0 +1,33 @@
+{
+  "name": "@crowd/automatic-projects-discovery-worker",
+  "private": true,
+  "scripts": {
+    "start": "CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker tsx src/main.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
+    "tsc-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crowd/archetype-standard": "workspace:*",
+    "@crowd/archetype-worker": "workspace:*",
+    "@crowd/common": "workspace:*",
+    "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/redis": "workspace:*",
+    "@crowd/temporal": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@temporalio/activity": "catalog:",
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "csv-parse": "^5.5.6",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "nodemon": "^3.0.1"
+  }
+}

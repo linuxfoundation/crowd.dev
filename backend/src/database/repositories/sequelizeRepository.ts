@@ -3,11 +3,7 @@ import { Sequelize, Transaction, UniqueConstraintError } from 'sequelize'
 
 import { Error400 } from '@crowd/common'
 import { DbConnection, getDbConnection } from '@crowd/data-access-layer/src/database'
-import {
-  QueryExecutor,
-  SequelizeQueryExecutor,
-  TransactionalSequelizeQueryExecutor,
-} from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { getOpensearchClient } from '@crowd/opensearch'
 import { getRedisClient } from '@crowd/redis'
@@ -23,7 +19,10 @@ import {
 } from '../../conf'
 import { IServiceOptions } from '../../services/IServiceOptions'
 import { databaseInit } from '../databaseConnection'
-
+import {
+  SequelizeQueryExecutor,
+  TransactionalSequelizeQueryExecutor,
+} from '../sequelizeQueryExecutor'
 import { IRepositoryOptions } from './IRepositoryOptions'
 
 /**
@@ -101,6 +100,20 @@ export default class SequelizeRepository {
       )
     }
     return options.currentSegments[0]
+  }
+
+  static getStrictlySingleProjectGroupSegment(
+    options: IRepositoryOptions | IServiceOptions,
+  ): SegmentData {
+    const segment = this.getStrictlySingleActiveSegment(options)
+
+    if (segment.parentId != null || segment.grandparentId != null) {
+      throw new Error400(
+        `This operation requires a project group segment. Segment ${segment.id} is not a project group.`,
+      )
+    }
+
+    return segment
   }
 
   /**

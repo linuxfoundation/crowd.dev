@@ -27,8 +27,9 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-NODE health_score_active_days_with_benchmark
+NODE health_score_active_days_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         activeDaysCount,

@@ -9,7 +9,7 @@
   >
     <template #reference>
       <el-input
-        v-model="model"
+        :model-value="selectedProjectGroup?.name ?? ''"
         class="project-groups-select-input"
         placeholder="Select project group..."
         readonly
@@ -64,7 +64,7 @@
                 {{ projectGroup.name }}
               </div>
               <div class="text-tiny text-gray-400">
-                {{ pluralize("project", projectGroup.projects.length, true) }}
+                {{ pluralize("project", projectGroup.projectCount ?? projectGroup.projects?.length ?? 0, true) }}
               </div>
             </div>
           </div>
@@ -147,15 +147,6 @@ let scrollContainer: HTMLElement | null = null;
 
 const { trackEvent } = useProductTracking();
 
-const model = computed({
-  get() {
-    return selectedProjectGroup.value?.name;
-  },
-  set(id) {
-    updateSelectedProjectGroup(id);
-  },
-});
-
 const queryKey = computed(() => [
   TanstackKey.ADMIN_PROJECT_GROUPS,
   searchValue.value,
@@ -230,18 +221,18 @@ onMounted(() => {
   });
 });
 
-const onOptionClick = ({ id, name }: ProjectGroup) => {
+const onOptionClick = (projectGroup: ProjectGroup) => {
   trackEvent({
     key: FeatureEventKey.SELECT_PROJECT_GROUP,
     type: EventType.FEATURE,
     properties: {
-      projectGroupId: id,
-      projectName: name,
+      projectGroupId: projectGroup.id,
+      projectName: projectGroup.name,
     },
   });
 
   isPopoverVisible.value = false;
-  updateSelectedProjectGroup(id);
+  updateSelectedProjectGroup(projectGroup);
 };
 
 onBeforeUnmount(() => {

@@ -2,9 +2,22 @@ DESCRIPTION >
     - `contributors_leaderboard.pipe` serves the contributors leaderboard widget showing top contributors ranked by activity count.
     - Supports both count mode (`count=true`) and data mode for pagination-friendly leaderboard display.
     - Calculates contribution counts and percentages, showing different display names based on project type (LF vs non-LF).
+    - Scopes to either a single project (via `segments_filtered`) or every project in a collection (via
+    `segments_filtered_by_collection`, through `activities_filtered`'s own `collectionSlug` branch) - exactly
+    one of `project`/`collectionSlug` must be provided by the caller, same convention as `activities_filtered.pipe`.
+    - The LF/non-LF display-name toggle (`is_request_from_non_lf_project`) only applies in project scope - a
+    collection can mix LF and non-LF projects, so collection-scope requests always use `displayName`.
+    - Total contribution count is computed as a separate scalar (`contributors_total`) and cross-joined into
+    the per-member percentage calculation, instead of a window function over the full grouped result. A
+    window function forces ClickHouse to fully materialize every distinct `memberId` group before it can
+    rank and LIMIT - fine at single-project scale, but this is the same pattern that caused a documented
+    production timeout at collection scale (`cncf`: 149,677 distinct contributors) before
+    `collection_contributors_leaderboard.pipe` was introduced with the scalar-total design. This pipe now
+    uses that same design in both scopes.
     - Primary use case: powering contributor ranking widgets in development insights.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered`)
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -20,15 +33,17 @@ DESCRIPTION >
     - Count mode (`count=true`): `count` (total number of contributors)
     - Data mode (default): `id`, `avatar`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`
 
+NODE contributors_total
+SQL >
+    %
+    SELECT count(af.id) AS total FROM activities_filtered af
+
 NODE memberId_aggregates
 SQL >
     %
     {% if Boolean(count, false) %} SELECT count(distinct af.memberId) FROM activities_filtered af
     {% else %}
-        SELECT
-            af.memberId,
-            count(af.id) as "contributionCount",
-            ROUND(COUNT(af.id) * 100.0 / SUM(COUNT(af.id)) OVER (), 2) as "contributionPercentage"
+        SELECT af.memberId, count(af.id) as "contributionCount"
         FROM activities_filtered af
         group by af.memberId
         order by contributionCount desc, af.memberId desc
@@ -39,11 +54,15 @@ SQL >
 NODE is_request_from_non_lf_project
 SQL >
     %
-    SELECT not isLF AS result
-    FROM insightsProjects final
-    WHERE
-        isNull (deletedAt)
-        and slug = {{ String(project, description="Filter by project slug", required=True) }}
+    {% if defined(project) %}
+        SELECT not isLF AS result
+        FROM insightsProjects final
+        WHERE
+            isNull (deletedAt)
+            AND enabled = 1
+            and slug = {{ String(project, description="Filter by project slug", required=False) }}
+    {% else %} SELECT 0 AS result
+    {% end %}
 
 NODE contributors_leaderboard_2
 SQL >
@@ -57,12 +76,13 @@ SQL >
             case when is_non_lf.result then m.publicName else m.displayName end as displayName,
             m.githubHandleArray,
             ma.contributionCount,
-            ma.contributionPercentage,
+            ROUND(ma.contributionCount * 100.0 / total.total, 2) as contributionPercentage,
             mr.roles
         FROM members_sorted AS m any
         inner join memberId_aggregates ma on ma.memberId = m.id
         left join member_roles mr on mr.memberId = m.id
         cross join is_request_from_non_lf_project is_non_lf
+        cross join contributors_total total
         where m.id in (select memberId from memberId_aggregates)
         order by contributionCount desc
     {% end %}

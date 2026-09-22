@@ -1,7 +1,6 @@
 import _get from 'lodash/get'
 
 import SegmentService from '../../services/segmentService'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
@@ -74,7 +73,7 @@ export default class SettingsRepository {
       return record
     }
 
-    const activityTypes = await SegmentService.getTenantActivityTypes(options.currentSegments)
+    const activityTypes = SegmentService.getTenantActivityTypes(options.currentSegments)
 
     const settings = record.get({ plain: true })
 

@@ -5,7 +5,12 @@ import { MemberEnrichmentMaterializedView } from '@crowd/types'
 import * as activities from '../activities'
 
 const { refreshMemberEnrichmentMaterializedView } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '10 minutes',
+  startToCloseTimeout: '45 minutes',
+  retry: {
+    initialInterval: '15 seconds',
+    backoffCoefficient: 2,
+    maximumAttempts: 3,
+  },
 })
 
 export async function refreshMemberEnrichmentMaterializedViews(): Promise<void> {

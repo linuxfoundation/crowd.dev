@@ -1,5 +1,6 @@
 export * from './types'
 export * from './queue'
 export * from './vendors/kafka/config'
+export * from './vendors/kafka/utils'
 export * from './prioritization'
 export * from './factory'

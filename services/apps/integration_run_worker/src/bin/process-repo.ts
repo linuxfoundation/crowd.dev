@@ -16,8 +16,6 @@ import { DB_CONFIG, QUEUE_CONFIG } from '../conf'
 
 const mapStreamTypeToEnum = (stream: string): GithubManualStreamType => {
   switch (stream) {
-    case 'stars':
-      return GithubManualStreamType.STARGAZERS
     case 'forks':
       return GithubManualStreamType.FORKS
     case 'pulls':
@@ -35,7 +33,7 @@ const mapStreamTypeToEnum = (stream: string): GithubManualStreamType => {
 }
 
 // example call
-// pnpm run script:process-repo 5f8b1a3a-0b0a-4c0a-8b0a-4c0a8b0a4c0a  CrowdDotDev/crowd.dev stars
+// pnpm run script:process-repo 5f8b1a3a-0b0a-4c0a-8b0a-4c0a8b0a4c0a  CrowdDotDev/crowd.dev forks
 
 // example call for all repos
 // pnpm run script:process-repo 5f8b1a3a-0b0a-4c0a-8b0a-4c0a8b0a4c0a all forks -- this will trigger forks streams for all repos in settings
@@ -49,7 +47,7 @@ const repoFullNames = processArguments[1] ? processArguments[1].split(',') : [] 
 
 // this is optional, if not provided we will trigger all streams
 // if provided we will trigger only this stream type
-// possible values are: stars, forks, pulls, issues, discussions, all
+// possible values are: forks, pulls, issues, discussions, all
 const streamString = processArguments.length > 2 ? processArguments[2] : null
 const streamType = streamString ? mapStreamTypeToEnum(streamString) : GithubManualStreamType.ALL
 

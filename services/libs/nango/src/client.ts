@@ -1,12 +1,10 @@
 import type Nango from '@nangohq/frontend' assert { 'resolution-mode': 'require' }
-import type {
-  Nango as BackendNango,
-  SyncStatus,
-} from '@nangohq/node' assert { 'resolution-mode': 'require' }
-import type {
-  ApiPublicConnection,
-  ApiPublicConnectionFull,
-} from '@nangohq/types' assert { 'resolution-mode': 'require' }
+import type { Nango as BackendNango, SyncStatus } from '@nangohq/node' assert {
+  'resolution-mode': 'require',
+}
+import type { ApiPublicConnection, ApiPublicConnectionFull } from '@nangohq/types' assert {
+  'resolution-mode': 'require',
+}
 import axios, { AxiosError } from 'axios'
 
 import { SERVICE, timeout } from '@crowd/common'
@@ -27,10 +25,9 @@ const MAX_RETRIES = 10
 
 export type { SyncStatus } from '@nangohq/node' assert { 'resolution-mode': 'require' }
 
-export type {
-  ApiPublicConnection,
-  ApiPublicConnectionFull,
-} from '@nangohq/types' assert { 'resolution-mode': 'require' }
+export type { ApiPublicConnection, ApiPublicConnectionFull } from '@nangohq/types' assert {
+  'resolution-mode': 'require',
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -449,6 +446,7 @@ export const getNangoCloudRecords = async (
   model: string,
   cursor?: string,
   limit?: number,
+  modifiedAfter?: string,
 ): Promise<INangoResult> => {
   ensureBackendClient()
 
@@ -467,6 +465,7 @@ export const getNangoCloudRecords = async (
     model,
     limit: limit ?? DEFAULT_NANGO_FETCH_LIMIT,
     cursor,
+    modifiedAfter,
   })
 
   const records = result.records.map(toRecord)

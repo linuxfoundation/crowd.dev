@@ -4,7 +4,7 @@ import * as activities from '../activities'
 import { IScriptBatchTestArgs } from '../types'
 import { chunkArray } from '../utils/common'
 
-const { getMembersForAffiliationRecalc, calculateMemberAffiliations } = proxyActivities<
+const { getMembersForAffiliationRecalc, triggerMemberAffiliationsRefresh } = proxyActivities<
   typeof activities
 >({
   startToCloseTimeout: '30 minutes',
@@ -21,7 +21,7 @@ export async function recalculateMemberAffiliations(args: IScriptBatchTestArgs):
   }
 
   for (const chunk of chunkArray(memberIds, 10)) {
-    await Promise.all(chunk.map((memberId) => calculateMemberAffiliations(memberId)))
+    await Promise.all(chunk.map((memberId) => triggerMemberAffiliationsRefresh(memberId)))
   }
 
   if (args.testRun) {

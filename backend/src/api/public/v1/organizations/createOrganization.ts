@@ -1,32 +1,38 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
-import { InternalError } from '@crowd/common'
-import { findOrCreateOrganization, optionsQx } from '@crowd/data-access-layer'
-import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
-
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
+import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
+import { findOrCreateOrganization } from '@crowd/data-access-layer'
+import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
 
 const bodySchema = z.object({
   name: z.string().trim().min(1),
   domain: z.string().trim().min(1),
   source: z.string().trim().min(1),
+  logo: z.string().trim().min(1).optional(),
 })
 
 export async function createOrganization(req: Request, res: Response): Promise<void> {
-  const { name, domain, source } = validateOrThrow(bodySchema, req.body)
+  const { name, domain: rawDomain, source, logo } = validateOrThrow(bodySchema, req.body)
+
+  const domain = normalizeHostname(rawDomain, false)
+
+  if (!domain) {
+    throw new BadRequestError(`Invalid domain: ${rawDomain}`)
+  }
 
   const qx = optionsQx(req)
 
-  let organizationId: string | undefined
+  const organizationId = await qx.tx(async (tx) => {
+    const orgSource = OrganizationAttributeSource.LFX_SERVE
 
-  await qx.tx(async (tx) => {
-    const orgSource = OrganizationAttributeSource.CUSTOM
-
-    organizationId = await findOrCreateOrganization(tx, orgSource, {
+    const result = await findOrCreateOrganization(tx, orgSource, {
       displayName: name,
+      logo,
       identities: [
         {
           value: domain,
@@ -38,9 +44,11 @@ export async function createOrganization(req: Request, res: Response): Promise<v
       ],
     })
 
-    if (!organizationId) {
+    if (!result) {
       throw new InternalError('Failed to create organization')
     }
+
+    const organizationId = result.id
 
     await captureApiChange(
       req,
@@ -57,7 +65,9 @@ export async function createOrganization(req: Request, res: Response): Promise<v
         })
       }),
     )
+
+    return organizationId
   })
 
-  created(res, { id: organizationId, name })
+  created(res, { id: organizationId, name, logo, domain })
 }

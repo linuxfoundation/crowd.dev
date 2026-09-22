@@ -28,7 +28,6 @@ export class GithubTokenRotator {
     private cache: ICache,
     private tokens: string[],
   ) {
-    this.cache = cache
     this.tokens = tokens ? [...new Set(tokens)] : []
     if (this.tokens.length > 0) {
       this.initializeTokens()

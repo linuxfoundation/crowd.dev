@@ -1,5 +1,6 @@
-import config from 'config'
 import * as crypto from 'crypto'
+
+import config from 'config'
 
 export interface EncryptionConfig {
   secretKey: string

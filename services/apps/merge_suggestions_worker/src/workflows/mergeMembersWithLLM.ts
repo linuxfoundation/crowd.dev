@@ -1,21 +1,28 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { LLMSuggestionVerdictType, MemberMergeSuggestionTable } from '@crowd/types'
+import { LLMSuggestionVerdictType } from '@crowd/types'
 
-import * as commonActivities from '../activities/common'
-import * as memberActivities from '../activities/memberMergeSuggestions'
+import type * as activities from '../activities'
 import { ILLMResult, IProcessMergeMemberSuggestionsWithLLM } from '../types'
 import { removeEmailLikeIdentitiesFromMember } from '../utils'
 
-const memberActivitiesProxy = proxyActivities<typeof memberActivities>({
-  startToCloseTimeout: '1 minute',
+const {
+  getRawMemberMergeSuggestions,
+  getMembersForLLMConsumption,
+  removeMemberMergePair,
+  addMemberSuggestionToNoMerge,
+} = proxyActivities<typeof activities>({
+  startToCloseTimeout: '2 minutes',
+  retry: { maximumAttempts: 3 },
 })
 
-const commonActivitiesProxy = proxyActivities<typeof commonActivities>({
-  startToCloseTimeout: '5 minute',
+const { getLLMResult, saveLLMVerdict, mergeMembers } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
   retry: {
-    initialInterval: '10 seconds',
-    maximumAttempts: 3,
+    initialInterval: '1 minute',
+    backoffCoefficient: 2,
+    maximumInterval: '4 minutes',
+    maximumAttempts: 4,
   },
 })
 
@@ -42,9 +49,10 @@ export async function mergeMembersWithLLM(
                   3. Attributes and other fields: If one member have a specific field and other member doesn't, skip that field when deciding similarity. 
                   Checking semantically instead of literally is important for such fields. Important fields here are: location, timezone, languages, programming languages. 
                   For example one member might have Berlin in location, while other can have Germany - consider such members have same location.  
-                  4. Display Name: Tokenize using both character and word tokenization. When the display name is more than one word, and the difference is a few edit distances consider it a strong indication of similarity. 
-                  When one display name is contained by the other, check other fields for the final decision. The same members on different platforms might have different display names. 
-                  Display names can be multiple words and might be sorted in different order in different platforms for the same member.
+                  4. Display Name: Tokenize using both character and word tokenization. When the display name is more than one word, and the difference is a few edit distances consider it a strong indication of similarity.
+                  When one display name is contained by the other, check other fields for the final decision. The same members on different platforms might have different display names.
+                  Display names can be multiple words and might be sorted in different order in different platforms for the same member. Display name is a supporting signal only — it is never sufficient on its own. 
+                  If display name is the only thing that matches and there are no corroborating signals from identities, organizations, or attributes, return 'false'.
                   CRITICAL RULE - NEVER MERGE IF SAME PLATFORM WITH DIFFERENT VALUES:
                   Before making any decision, you MUST check if both members have identities on the same platform.
                   If member1.identities[x].platform === member2.identities[y].platform (they share a platform), then:
@@ -59,32 +67,32 @@ export async function mergeMembersWithLLM(
                   - This check must be performed before evaluating any other similarities
                   Print 'true' if they are the same member, 'false' otherwise. No explanation required. Don't print anything else.`
 
-  const suggestions = await memberActivitiesProxy.getRawMemberMergeSuggestions(
-    args.similarity,
-    SUGGESTIONS_PER_RUN,
-  )
+  const suggestions = await getRawMemberMergeSuggestions(args.similarity, SUGGESTIONS_PER_RUN)
 
   if (suggestions.length === 0) {
     return
   }
 
-  for (const suggestion of suggestions) {
-    const members = await memberActivitiesProxy.getMembersForLLMConsumption(suggestion)
+  const mergedAwayMemberIds = new Set<string>()
 
-    if (members.length !== 2) {
-      console.log(`Failed getting members data in suggestion. Skipping suggestion: ${suggestion}`)
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW,
+  for (const suggestion of suggestions) {
+    if (mergedAwayMemberIds.has(suggestion[0]) || mergedAwayMemberIds.has(suggestion[1])) {
+      console.log(
+        `Skipping suggestion because a member was already merged away in this run: ${suggestion}`,
       )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
-      )
+      await removeMemberMergePair(suggestion)
       continue
     }
 
-    const llmResult: ILLMResult = await commonActivitiesProxy.getLLMResult(
+    const members = await getMembersForLLMConsumption(suggestion)
+
+    if (members.length !== 2) {
+      console.log(`Failed getting members data in suggestion. Skipping suggestion: ${suggestion}`)
+      await removeMemberMergePair(suggestion)
+      continue
+    }
+
+    const llmResult: ILLMResult = await getLLMResult(
       members.map((member) => removeEmailLikeIdentitiesFromMember(member)),
       MODEL_ID,
       PROMPT,
@@ -92,7 +100,7 @@ export async function mergeMembersWithLLM(
       MODEL_ARGS,
     )
 
-    await commonActivitiesProxy.saveLLMVerdict({
+    await saveLLMVerdict({
       type: LLMSuggestionVerdictType.MEMBER,
       model: MODEL_ID,
       primaryId: suggestion[0],
@@ -108,20 +116,14 @@ export async function mergeMembersWithLLM(
       console.log(
         `LLM verdict says these two members are the same. Merging members: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await commonActivitiesProxy.mergeMembers(suggestion[0], suggestion[1])
+      await mergeMembers(suggestion[0], suggestion[1])
+      mergedAwayMemberIds.add(suggestion[1])
     } else {
       console.log(
         `LLM doesn't think these members are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
-      )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW,
-      )
-      await memberActivitiesProxy.addMemberSuggestionToNoMerge(suggestion)
+      await removeMemberMergePair(suggestion)
+      await addMemberSuggestionToNoMerge(suggestion)
     }
   }
 

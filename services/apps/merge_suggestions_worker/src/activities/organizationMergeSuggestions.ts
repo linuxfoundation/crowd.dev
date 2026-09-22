@@ -4,7 +4,10 @@ import uniqBy from 'lodash.uniqby'
 import { OrganizationField, findOrgById, queryOrgs } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
-import { addOrgNoMerge } from '@crowd/data-access-layer/src/org_merge'
+import {
+  insertOrganizationNoMerge,
+  removeOrganizationToMerge,
+} from '@crowd/data-access-layer/src/org_merge'
 import { fetchOrgIdentities, findOrgAttributes } from '@crowd/data-access-layer/src/organizations'
 import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { buildFullOrgForMergeSuggestions } from '@crowd/opensearch'
@@ -17,7 +20,6 @@ import {
   IOrganizationOpensearch,
   OpenSearchIndex,
   OrganizationIdentityType,
-  OrganizationMergeSuggestionTable,
 } from '@crowd/types'
 
 import { svc } from '../main'
@@ -347,15 +349,21 @@ export async function getOrganizationMergeSuggestions(
       continue
     }
 
-    // Calculate similarity score between organizations
+    const secondaryOrg = opensearchToFullOrg(organizationToMerge._source)
+
     const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
       fullOrg,
-      opensearchToFullOrg(organizationToMerge._source),
+      secondaryOrg,
     )
 
-    // Sort organizations: primary has more identities/activity, secondary is the one to merge
-    const organizationsSorted = [fullOrg, opensearchToFullOrg(organizationToMerge._source)].sort(
-      (a, b) => {
+    let organizationsSorted: IOrganizationFullAggregatesOpensearch[]
+    if (secondaryOrgWithLfxMembership && !primaryOrgWithLfxMembership) {
+      organizationsSorted = [secondaryOrg, fullOrg]
+    } else if (primaryOrgWithLfxMembership && !secondaryOrgWithLfxMembership) {
+      organizationsSorted = [fullOrg, secondaryOrg]
+    } else {
+      // Sort organizations: primary has more identities/activity, secondary is the one to merge
+      organizationsSorted = [fullOrg, secondaryOrg].sort((a, b) => {
         if (
           a.identities.length > b.identities.length ||
           (a.identities.length === b.identities.length && a.activityCount > b.activityCount)
@@ -368,8 +376,8 @@ export async function getOrganizationMergeSuggestions(
           return 1
         }
         return 0
-      },
-    )
+      })
+    }
 
     mergeSuggestions.push({
       similarity: similarityConfidenceScore,
@@ -382,14 +390,14 @@ export async function getOrganizationMergeSuggestions(
 
 export async function addOrganizationToMerge(
   suggestions: IOrganizationMergeSuggestion[],
-  table: OrganizationMergeSuggestionTable,
+  similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length > 0) {
     const organizationMergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
       svc.postgres.writer.connection(),
       svc.log,
     )
-    await organizationMergeSuggestionsRepo.addToMerge(suggestions, table)
+    await organizationMergeSuggestionsRepo.addToMerge(suggestions, similarityThreshold)
   }
 }
 
@@ -488,15 +496,14 @@ export async function getRawOrganizationMergeSuggestions(
   return suggestions
 }
 
-export async function removeOrganizationMergeSuggestions(
-  suggestion: string[],
-  table: OrganizationMergeSuggestionTable,
-): Promise<void> {
-  const organizationMergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  await organizationMergeSuggestionsRepo.removeOrganizationMergeSuggestions(suggestion, table)
+export async function removeOrganizationMergePair(suggestion: string[]): Promise<void> {
+  if (suggestion.length !== 2) {
+    svc.log.debug(`Suggestions array must have two ids!`)
+    return
+  }
+
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await removeOrganizationToMerge(qx, suggestion[0], suggestion[1])
 }
 
 export async function addOrganizationSuggestionToNoMerge(suggestion: string[]): Promise<void> {
@@ -508,9 +515,8 @@ export async function addOrganizationSuggestionToNoMerge(suggestion: string[]): 
   const qx = pgpQx(svc.postgres.writer.connection())
 
   try {
-    await addOrgNoMerge(qx, suggestion[0], suggestion[1])
+    await insertOrganizationNoMerge(qx, suggestion[0], suggestion[1])
   } catch (error: unknown) {
-    // Handle foreign key constraint violation gracefully
     if (error instanceof Error && 'code' in error && error.code === '23503') {
       svc.log.info({ suggestion }, 'Foreign key constraint violation, skipping no merge!')
       return

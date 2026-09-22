@@ -10,7 +10,6 @@ import {
   WebhookState,
   WebhookType,
 } from '../../types/webhooks'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import { RepositoryBase } from './repositoryBase'
 
@@ -239,7 +238,7 @@ export default class IncomingWebhookRepository extends RepositoryBase<
       from "incomingWebhooks"
       where state = :pending
         and "createdAt" < now() - interval '1 hour'
-        and type not in ('GITHUB', 'DISCORD')
+        and type not in ('GITHUB')
       limit ${perPage} offset ${(page - 1) * perPage};
     `
 

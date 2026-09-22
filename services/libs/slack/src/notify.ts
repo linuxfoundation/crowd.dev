@@ -10,6 +10,7 @@ const log = getServiceLogger()
 // Slack message size limit (keeping it conservative at 30KB)
 const MAX_MESSAGE_SIZE = 30 * 1024 // 30KB in bytes
 const MAX_BLOCKS = 50
+const MAX_SECTION_TEXT = 2900 // Slack hard limit is 3000 chars per section block
 
 interface SlackBlock {
   type: string
@@ -25,32 +26,52 @@ interface SlackBlock {
 }
 
 /**
- * Build content blocks from either a simple string or an array of sections
+ * Split text into section blocks, respecting Slack's 3000 char per-section limit.
+ * Splits at line boundaries where possible; hard-truncates individual lines that
+ * are themselves longer than the limit.
+ */
+function splitIntoSectionBlocks(text: string): SlackBlock[] {
+  const blocks: SlackBlock[] = []
+  const lines = text.split('\n')
+  let current = ''
+
+  for (let line of lines) {
+    // Hard-truncate a single line that exceeds the limit on its own
+    if (line.length > MAX_SECTION_TEXT) {
+      line = `${line.slice(0, MAX_SECTION_TEXT - 1)}…`
+    }
+
+    const candidate = current ? `${current}\n${line}` : line
+    if (candidate.length > MAX_SECTION_TEXT && current) {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+      current = line
+    } else {
+      current = candidate
+    }
+  }
+
+  if (current) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+  }
+
+  return blocks
+}
+
+/**
+ * Build content blocks from either a simple string or an array of sections.
+ * Splits text that exceeds Slack's 3000 char per-section limit at line boundaries.
  */
 function buildContentBlocks(content: string | SlackMessageSection[]): SlackBlock[] {
   if (typeof content === 'string') {
-    // Simple string content - single section
-    return [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: content,
-        },
-      },
-    ]
+    return splitIntoSectionBlocks(content)
   }
 
-  // Multiple sections - create a block for each section
   const blocks: SlackBlock[] = []
   for (const section of content) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*${section.title}*\n${section.text}`,
-      },
-    })
+    const fullText = section.title ? `*${section.title}*\n${section.text}` : section.text
+    for (const block of splitIntoSectionBlocks(fullText)) {
+      blocks.push(block)
+    }
   }
   return blocks
 }
@@ -121,14 +142,15 @@ function pruneBlocksIfNeeded(blocks: SlackBlock[]): SlackBlock[] {
  * @param persona - The persona/type of the notification
  * @param title - The title of the notification
  * @param content - The markdown-formatted content (string) or an array of sections
- * @returns Promise that resolves when the message is sent
+ * @returns Promise resolving to true if the message was sent, false if delivery failed
+ *   or was skipped (e.g. no webhook configured for the channel)
  */
 export async function sendSlackNotificationAsync(
   channel: SlackChannel,
   persona: SlackPersona,
   title: string,
   content: string | SlackMessageSection[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     const client = getWebhookClient(channel)
 
@@ -137,7 +159,7 @@ export async function sendSlackNotificationAsync(
         { channel, persona, title },
         `Skipping Slack notification - webhook client not available for channel ${channel}`,
       )
-      return
+      return false
     }
 
     const personaConfig = getPersonaConfig(persona)
@@ -175,11 +197,13 @@ export async function sendSlackNotificationAsync(
       { channel, persona, title, service: SERVICE },
       `Successfully sent Slack notification to channel ${channel}`,
     )
+    return true
   } catch (error) {
     log.error(
       { error, channel, persona, title, service: SERVICE },
       `Failed to send Slack notification to channel ${channel}`,
     )
+    return false
   }
 }
 

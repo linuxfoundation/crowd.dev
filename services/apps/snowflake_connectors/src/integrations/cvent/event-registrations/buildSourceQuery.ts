@@ -24,7 +24,7 @@ const CDP_MATCHED_SEGMENTS = `
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
       s.slug
-    FROM ANALYTICS.SILVER_DIM._CROWD_DEV_SEGMENTS_UNION s
+    FROM ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS s
     WHERE s.PARENT_SLUG IS NOT NULL
       AND s.GRANDPARENTS_SLUG IS NOT NULL
       AND s.SOURCE_ID IS NOT NULL
@@ -55,7 +55,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     AND u.lf_username IS NOT NULL
   LEFT JOIN org_accounts org
     ON er.account_id = org.account_id
-  WHERE ${LFID_COALESCE} IS NOT NULL`
+  WHERE er.email IS NOT NULL
+    AND ${LFID_COALESCE} IS NOT NULL`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {
@@ -91,7 +92,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
       s.slug
-    FROM ANALYTICS.SILVER_DIM._CROWD_DEV_SEGMENTS_UNION s
+    FROM ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS s
     WHERE s.CREATED_TS >= '${sinceTimestamp}'
       AND s.PARENT_SLUG IS NOT NULL
       AND s.GRANDPARENTS_SLUG IS NOT NULL

@@ -22,6 +22,8 @@ export * from './caching'
 
 export * from './merging'
 
+export * from './db'
+
 export * from './errors'
 
 export * from './pubsub'
@@ -57,3 +59,5 @@ export * from './enrichment'
 export * from './llm'
 
 export * from './securityInsights'
+
+export * from './repositoryStarSnapshots'

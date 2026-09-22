@@ -9,6 +9,7 @@ import { watch } from 'vue';
 import config from '@/config';
 import { setRumUser } from '@/utils/datadog/rum';
 import useSessionTracking from '@/shared/modules/monitoring/useSessionTracking';
+import { boot as bootIntercom, shutdown as shutdownIntercom } from '@/utils/intercom';
 
 export default {
   init() {
@@ -36,6 +37,19 @@ export default {
       if (user) {
         setRumUser(user);
         lfxHeader.authuser = user;
+
+        const intercomJwt = user[config.intercom.auth0IntercomClaim];
+        const userId = user[config.intercom.auth0UsernameClaim];
+        if (userId && intercomJwt) {
+          bootIntercom({
+            user_id: userId,
+            name: user.name,
+            email: user.email,
+            intercom_user_jwt: intercomJwt,
+          }).catch((error: any) => {
+            console.error('Intercom: Boot failed', error);
+          });
+        }
       }
     });
   },
@@ -155,6 +169,7 @@ export default {
   },
   logout() {
     disconnectSocket();
+    shutdownIntercom();
     this.user = null;
     return Auth0Service.logout();
   },

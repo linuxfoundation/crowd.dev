@@ -1,0 +1,24 @@
+DESCRIPTION >
+    - `health_score_report_category_maximum.pipe` serves widget 07 "Repositories scoring full
+    marks" for the Health Score report (IN-1292, part of epic IN-1276 Health Score Coverage).
+    - A three-row table — Maintainer health (max 40), Development activity (max 25), Security
+    & supply chain (max 35) — with the count of tracked repos hitting each category's exact
+    maximum score.
+    - Security & supply chain requires all four of its signals present and strong at once, so
+    it is expected to be the hardest category to max out.
+    - No parameters — this pipe is not scope-filtered.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_category_maximum_endpoint
+SQL >
+    SELECT
+        countIf(rc.maintainerHealthScoreV2 = 40) AS maintainer_health_max,
+        countIf(rc.developmentActivityScoreV2 = 25) AS development_activity_max,
+        countIf(rc.securitySupplyChainScoreV2 = 35) AS security_supply_chain_max,
+        count() AS repos_tracked
+    FROM repositories AS r FINAL
+    LEFT JOIN health_score_v2_repo_copy_ds AS rc ON rc.repoUrl = r.url
+    WHERE r.deletedAt IS NULL AND r.excluded = false

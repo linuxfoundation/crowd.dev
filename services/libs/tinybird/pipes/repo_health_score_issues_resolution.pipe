@@ -1,0 +1,62 @@
+DESCRIPTION >
+    - Calculates repository-level issue resolution health score.
+    - Returns average days to close issues and benchmark (0-5) per repository.
+    - Queries `issues_analyzed` directly for optimal performance.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter for issues opened after timestamp
+    - `endDate`: Optional DateTime filter for issues opened before timestamp
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_issues_resolution_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, round(avg(closedInSeconds) / (60 * 60 * 24)) AS issueResolution
+        FROM issues_analyzed
+        WHERE
+            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND openedAt
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, round(avg(closedInSeconds) / (60 * 60 * 24)) AS issueResolution
+        FROM issues_analyzed
+        WHERE
+            openedAt >= toStartOfDay(now()) - INTERVAL 365 DAY
+            AND openedAt < toStartOfDay(now()) + INTERVAL 1 DAY
+            AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
+NODE health_score_issues_resolution_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        issueResolution,
+        CASE
+            WHEN issueResolution >= 61
+            THEN 0
+            WHEN issueResolution BETWEEN 51 AND 60
+            THEN 1
+            WHEN issueResolution BETWEEN 36 AND 50
+            THEN 2
+            WHEN issueResolution BETWEEN 22 AND 35
+            THEN 3
+            WHEN issueResolution BETWEEN 8 AND 21
+            THEN 4
+            WHEN issueResolution BETWEEN 0 AND 7
+            THEN 5
+            ELSE 0
+        END AS issueResolutionBenchmark
+    FROM repo_health_score_issues_resolution_score

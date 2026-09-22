@@ -18,7 +18,7 @@ DESCRIPTION >
     - `offset`: Optional integer for result pagination, defaults to 0
     - Response:
     - Count mode (`count=true`): `count` (total number of organizations)
-    - Data mode (default): `id`, `logo`, `displayName`, `contributionCount`, `contributionPercentage`
+    - Data mode (default): `id`, `slug`, `logo`, `displayName`, `contributionCount`, `contributionPercentage`
 
 NODE organizations_leaderboard_paginated
 SQL >
@@ -28,13 +28,14 @@ SQL >
     {% else %}
         SELECT
             org.id AS id,
+            org.slug AS slug,
             org.logo AS logo,
             org.displayName AS displayName,
             COUNT(af.id) AS contributionCount,
             ROUND(COUNT(af.id) * 100.0 / SUM(COUNT(af.id)) OVER (), 2) AS contributionPercentage
         FROM activities_filtered af
-        JOIN organizations org FINAL ON org.id = af.organizationId
-        GROUP BY org.id, org.logo, org.displayName
+        JOIN organizations_populated_slug org ON org.id = af.organizationId
+        GROUP BY org.id, org.slug, org.logo, org.displayName
         ORDER BY contributionCount DESC, id desc
         LIMIT {{ Int32(limit, 10) }}
         OFFSET {{ Int32(offset, 0) }}

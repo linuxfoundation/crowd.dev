@@ -22,7 +22,7 @@ export default class ProductAnalyticsService extends LoggerBase {
   public async createSession(data) {
     try {
       return await createSession(this.qx, data)
-    } catch (error) {
+    } catch {
       throw new Error('Error during session create!')
     }
   }
@@ -30,7 +30,7 @@ export default class ProductAnalyticsService extends LoggerBase {
   public async updateSession(id, data) {
     try {
       return await updateSession(this.qx, id, data)
-    } catch (error) {
+    } catch {
       throw new Error('Error during session update!')
     }
   }
@@ -38,7 +38,7 @@ export default class ProductAnalyticsService extends LoggerBase {
   public async createEvent(data) {
     try {
       return await createEvent(this.qx, data)
-    } catch (error) {
+    } catch {
       throw new Error('Error during event create!')
     }
   }

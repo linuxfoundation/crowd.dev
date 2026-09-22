@@ -7,11 +7,11 @@ services:
 
     policy:
       catalogs:
-        - OSPS_B
+        - osps-baseline-2026-02
       applicability:
         - Maturity Level 1
 
     vars:
-      owner: $REPO_OWNER
-      repo: $REPO_NAME
-      token: $GITHUB_TOKEN
+      owner: "$REPO_OWNER"
+      repo: "$REPO_NAME"
+      token: "$GITHUB_TOKEN"

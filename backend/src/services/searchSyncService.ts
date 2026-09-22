@@ -1,13 +1,11 @@
+import { IS_TEST_ENV } from '@/conf'
+import { getSearchSyncWorkerEmitter } from '@/serverless/utils/queueService'
 import { SearchSyncWorkerEmitter } from '@crowd/common_services'
 import { LoggerBase, logExecutionTimeV2 } from '@crowd/logging'
 import { SearchSyncApiClient } from '@crowd/opensearch'
 import { SyncMode } from '@crowd/types'
 
-import { IS_TEST_ENV } from '@/conf'
-import { getSearchSyncWorkerEmitter } from '@/serverless/utils/queueService'
-
 import { getSearchSyncApiClient } from '../utils/apiClients'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export type SearchSyncClient = SearchSyncApiClient | SearchSyncWorkerEmitter
@@ -66,11 +64,13 @@ export default class SearchSyncService extends LoggerBase {
   async triggerOrganizationMembersSync(organizationId: string) {
     const client = await this.getSearchSyncClient()
 
-    if (client instanceof SearchSyncApiClient || client instanceof SearchSyncWorkerEmitter) {
+    if (client instanceof SearchSyncApiClient) {
       await this.logExecutionTime(
-        () => client.triggerOrganizationMembersSync(organizationId, false),
+        () => client.syncOrganizationMembers(organizationId),
         `triggerOrganizationMembersSync: organization:${organizationId}`,
       )
+    } else if (client instanceof SearchSyncWorkerEmitter) {
+      await client.triggerOrganizationMembersSync(organizationId, false)
     } else {
       throw new Error('Unexpected search client type!')
     }

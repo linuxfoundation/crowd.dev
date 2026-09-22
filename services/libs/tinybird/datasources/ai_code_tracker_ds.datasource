@@ -1,0 +1,19 @@
+DESCRIPTION >
+    - `ai_code_tracker_ds` contains pre-computed monthly aggregates of AI-assisted commits by tool.
+    - Populated hourly by `ai_code_tracker_copy.pipe` which scans activities for AI tool signatures.
+    - Each row represents one (month, toolKey) combination with commit counts.
+    - Also stores total commits per month (toolKey = '__total__') for percentage calculations.
+    - `monthStart` is the first day of the month (used for both monthly and yearly aggregation at query time).
+    - `toolKey` identifies the AI tool (e.g., 'github-copilot', 'claude', 'cursor') or '__total__' for all commits.
+    - `commitCount` is the number of commits for that tool in that month.
+
+TAGS "Report"
+
+SCHEMA >
+    `monthStart` Date,
+    `toolKey` LowCardinality(String),
+    `commitCount` UInt64
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(monthStart)
+ENGINE_SORTING_KEY monthStart, toolKey

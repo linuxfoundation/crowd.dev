@@ -8,7 +8,6 @@ import {
   IEnrichmentSourceInput,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
-
 import {
   IMemberEnrichmentDataSerp,
   IMemberEnrichmentSerpApiResponse,
@@ -45,7 +44,7 @@ export default class EnrichmentServiceSerpApi extends LoggerBase implements IEnr
       input.activityCount &&
       input.activityCount > this.enrichMembersWithActivityMoreThan &&
       !!input.location &&
-      ((!!input.email && input.email.verified) ||
+      ((!!input.emails[0] && input.emails[0].verified) ||
         (!!input.github && input.github.verified) ||
         !!input.website)
     )
@@ -66,7 +65,7 @@ export default class EnrichmentServiceSerpApi extends LoggerBase implements IEnr
       return response.total_searches_left > 0
     } catch (error) {
       this.log.error('Error while checking serpapi account usage', error)
-      return false
+      throw error
     }
   }
 
@@ -81,8 +80,14 @@ export default class EnrichmentServiceSerpApi extends LoggerBase implements IEnr
       enriched = await this.querySerpApi(input.displayName, input.location, input.github.value)
     }
 
-    if (!enriched && input.displayName && input.location && input.email && input.email.value) {
-      enriched = await this.querySerpApi(input.displayName, input.location, input.email.value)
+    if (
+      !enriched &&
+      input.displayName &&
+      input.location &&
+      input.emails[0] &&
+      input.emails[0].value
+    ) {
+      enriched = await this.querySerpApi(input.displayName, input.location, input.emails[0].value)
     }
     return enriched
   }

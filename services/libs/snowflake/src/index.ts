@@ -1,3 +1,6 @@
 export * from './client'
 export * from './github'
+export * from './metadataStore'
+export * from './s3Service'
+export * from './snowflakeExporter'
 export * from './types'

@@ -1,0 +1,47 @@
+DESCRIPTION >
+    - `repo_lifecycle_v2.pipe` is the live, request-time counterpart to `project_insights_copy.pipe`'s
+    `project_insights_copy_health_v2_project` lifecycle rollup, scoped to a caller-supplied set of repo
+    URLs instead of a project's full repo set. Powers the Overview page's repo selector (IN-1253):
+    when a subset of a project's repos is selected, Lifecycle is recomputed live for just that subset.
+    - Deliberately does NOT filter on `enabled`/`excluded` — `archived` is itself a valid
+    `lifecycleLabelV2` value (per the spec's decision tree: archived flag > abandoned > inert >
+    declining > stable > active, first match wins), so an all-archived/excluded selection must still
+    produce a real lifecycle label rather than being dropped from the rollup.
+    - Reads `health_score_v2_repo_copy_ds` directly, no join with `repositories`.
+    - Same best-state-wins precedence and `if(empty(groupArray(...)), NULL, ...)` NULL-guard as
+    `project_insights_copy_health_v2_project` (see that node's DESCRIPTION for the `arrayElement` on
+    an empty array returning `''` instead of NULL rationale, IN-1196).
+    - Joins `repositories` (matched on `url` = `repoUrl`) to `insightsProjects` (matched on
+    `insightsProjectId` = `id`) and requires `insightsProjects.slug` = the caller's `slug` param, so a
+    `repos` value from a different project can't leak that project's repo-level data into this response.
+    - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project", "Health"
+
+NODE repo_lifecycle_v2_endpoint
+SQL >
+    %
+    SELECT
+        if(
+            empty(groupArray(lifecycleLabelV2)),
+            NULL,
+            toNullable(
+                arrayElement(
+                    arraySort(
+                        x -> indexOf(
+                            ['active', 'stable', 'declining', 'inert', 'abandoned', 'archived'], x
+                        ),
+                        groupArray(lifecycleLabelV2)
+                    ),
+                    1
+                )
+            )
+        ) AS lifecycleLabel
+    FROM health_score_v2_repo_copy_ds hs
+    INNER JOIN repositories rep FINAL ON rep.url = hs.repoUrl
+    INNER JOIN insightsProjects ip FINAL ON ip.id = rep.insightsProjectId
+    WHERE
+        hs.repoUrl IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
+        AND ip.slug = {{ String(slug, description="Calling project's slug", required=True) }}

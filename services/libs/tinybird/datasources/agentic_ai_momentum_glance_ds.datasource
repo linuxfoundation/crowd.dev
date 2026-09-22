@@ -1,0 +1,17 @@
+SCHEMA >
+    `collectionId` String,
+    `totalCount` UInt64,
+    `totalSoftwareValue` UInt64,
+    `totalContributorCount` UInt64,
+    `totalContributorCount30d` UInt64,
+    `commitsCount30d` UInt64,
+    `mostActiveProjects` String,
+    `medianIssueCloseTimeSeconds` Float64,
+    `medianIssueCloseTimeSeconds30d` Float64,
+    `medianPrResolutionTimeSeconds` Float64,
+    `medianPrResolutionTimeSeconds30d` Float64,
+    `projectsWithGithubPrActivity` UInt64,
+    `projectsWithGithubIssueActivity` UInt64
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY collectionId

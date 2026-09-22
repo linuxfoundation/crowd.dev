@@ -1,7 +1,6 @@
 import authAxios from '@/shared/axios/auth-axios';
 import { AuthService } from '@/modules/auth/services/auth.service'; import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { getSegmentsFromProjectGroup } from '@/utils/segments';
 
 const getSelectedProjectGroup = () => {
   const lsSegmentsStore = useLfSegmentsStore();
@@ -216,10 +215,7 @@ export class OrganizationService {
   }
 
   static async fetchMergeSuggestions(limit, offset, query) {
-    const segments = [
-      ...getSegmentsFromProjectGroup(getSelectedProjectGroup()),
-      getSelectedProjectGroup().id,
-    ];
+    const segments = [getSelectedProjectGroup().id];
 
     const data = {
       limit,
@@ -236,39 +232,25 @@ export class OrganizationService {
       .then(({ data }) => Promise.resolve(data));
   }
 
-  static async listActive({
-    platform,
-    isTeamOrganization,
-    activityTimestampFrom,
-    activityTimestampTo,
-    orderBy,
-    offset,
-    limit,
-    segments,
-  }) {
-    const params = {
-      ...(platform.length && {
-        'filter[platforms]': platform
-          .map((p) => p.value)
-          .join(','),
-      }),
-      ...(isTeamOrganization === false && {
-        'filter[isTeamOrganization]': isTeamOrganization,
-      }),
-      'filter[activityTimestampFrom]':
-        activityTimestampFrom,
-      'filter[activityTimestampTo]': activityTimestampTo,
-      orderBy,
-      offset,
-      limit,
-      segments,
-    };
+  static async fetchFakeOrganizationSuggestions(limit, offset, query = {}) {
+    const segments = [getSelectedProjectGroup().id];
 
-    const response = await authAxios.get(
-      '/organization/active',
-      {
-        params,
-      },
+    return authAxios
+      .get('/organization/fake-suggestions', {
+        params: {
+          segments,
+          offset,
+          limit,
+          detail: 'true',
+          ...query,
+        },
+      })
+      .then(({ data }) => Promise.resolve(data));
+  }
+
+  static async dismissFakeOrganizationSuggestion(organizationId) {
+    const response = await authAxios.delete(
+      `/organization/${organizationId}/fake-suggestion`,
     );
 
     return response.data;

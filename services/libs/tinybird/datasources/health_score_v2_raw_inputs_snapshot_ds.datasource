@@ -1,0 +1,69 @@
+DESCRIPTION >
+    - `health_score_v2_raw_inputs_snapshot_ds` captures raw measured inputs (not computed scores) for
+    Health Score v2 at periodic intervals for validation and historical analysis.
+    - Populated by `health_score_v2_raw_inputs_snapshot.pipe` (append-mode, monthly cadence).
+    - Each row is keyed by `repoUrl + snapshotDate + methodologyVersion` and captures all the atomic
+    measurement signals used to compute the three health score categories:
+    - Maintainer signals: bus factor (curated maintainer count), observed review/merge actors,
+    organization diversity (distinct org count), PR/issue response times (medians).
+    - Security signals: open CVE counts (critical/high/moderate), OpenSSF Scorecard score, security
+    practices flags (policy/branch-protection state), vulnerable dependencies count.
+    - Development signals: release recency/cadence, commit counts (6m windows), issue counts/closure
+    times, PR counts/merge times.
+    - Responsiveness/lifecycle signals: unanswered aged issue/PR counts and 18mo opened totals
+    (the per-repo unanswered count/ratio the compliance spec item 6 requires, and the historical
+    input the abandoned-threshold-sweep validation analysis runs against). Definitions mirror
+    health_score_v2_lifecycle.pipe: open, no non-author response, aged 90+ days, opened within
+    the 18mo window.
+    - Does NOT include computed category/overall scores — those are derived from these raw inputs via
+    the scoring logic in the respective pipes. This datasource is for tracing where scores come from.
+    - snapshotId = `toStartOfInterval(now(), INTERVAL 1 day)` at pipe execution time.
+    - Partitioned by year(snapshotDate) and month(snapshotDate) for efficient time-based queries.
+    - TTL set to 24 months (enough for trend analysis and validation studies).
+    - ReplacingMergeTree keyed on (snapshotDate, repoUrl, methodologyVersion): a same-day manual
+    re-run of the copy converges to one row per key after background merges instead of
+    accumulating duplicates (UNIQUE_KEY is not a thing in Tinybird — attempted and reverted in
+    cdf6cf263). Validation queries must still read with FINAL (or dedupe via argMax/LIMIT BY)
+    since replacement is asynchronous.
+
+SCHEMA >
+    `repoUrl` String,
+    `snapshotDate` DateTime,
+    `methodologyVersion` String,
+    `busFactorCuratedCount` Nullable(UInt64),
+    `busFactorObservedActorsCount` Nullable(UInt64),
+    `orgDiversityCount` Nullable(UInt64),
+    `medianPrResponseSeconds` Nullable(Float64),
+    `medianIssueResponseSeconds` Nullable(Float64),
+    `openCriticalVulns` Nullable(UInt64),
+    `openHighVulns` Nullable(UInt64),
+    `openModerateVulns` Nullable(UInt64),
+    `scorecardScore` Nullable(String),
+    `securityPolicyEnabled` Nullable(UInt8),
+    `branchProtectionEnabled` Nullable(UInt8),
+    `branchProtectionRequiredReviews` Nullable(Int32),
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8),
+    `branchProtectionAllowsForcePush` Nullable(UInt8),
+    `vulnerableDeps` Nullable(UInt64),
+    `daysSinceLatestRelease` Nullable(Int64),
+    `daysBetweenRecentReleases` Nullable(Int64),
+    `commitsLast6m` Nullable(UInt64),
+    `commitsPrior6m` Nullable(UInt64),
+    `lastCommitAt` Nullable(DateTime64(3)),
+    `issuesClosedLast12m` Nullable(UInt64),
+    `issuesOpenedLast12m` Nullable(UInt64),
+    `medianIssueCloseSeconds` Nullable(Float64),
+    `prsMergedLast12m` Nullable(UInt64),
+    `prsClosedUnmergedLast12m` Nullable(UInt64),
+    `medianPrMergeSeconds` Nullable(Float64),
+    `excluded` Nullable(UInt8),
+    `trackedPackageCount` Nullable(UInt64),
+    `unansweredIssuesAged90d` Nullable(UInt64),
+    `unansweredPrsAged90d` Nullable(UInt64),
+    `issuesOpenedLast18m` Nullable(UInt64),
+    `prsOpenedLast18m` Nullable(UInt64)
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYYYYMM(snapshotDate)
+ENGINE_SORTING_KEY (snapshotDate, repoUrl, methodologyVersion)
+ENGINE_TTL snapshotDate + INTERVAL 24 MONTH

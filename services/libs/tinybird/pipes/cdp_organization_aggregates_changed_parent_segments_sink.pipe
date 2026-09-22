@@ -11,7 +11,8 @@ SQL >
     select id as segmentId
     from segments
     where
-        parentId in (
+        parentId <> ''
+        and parentId in (
             select parentId
             from segments
             where
@@ -39,7 +40,8 @@ SQL >
     FROM cdp_organization_segment_aggregates_ds as cdp_aggs
     join segments s on s.id = cdp_aggs.segmentId
     where
-        cdp_aggs.segmentId in (select segmentId from segments_with_changed_aggs_previous_day)
+        s.parentId <> ''
+        and cdp_aggs.segmentId in (select segmentId from segments_with_changed_aggs_previous_day)
         and organizationId in (select organizationId from organizations_with_changed_aggs_previous_day)
     GROUP BY parentId, organizationId
 

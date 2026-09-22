@@ -6,6 +6,24 @@ import lodash from 'lodash'
 import moment from 'moment'
 import { QueryTypes, Transaction } from 'sequelize'
 
+import GithubInstallationsRepository from '@/database/repositories/githubInstallationsRepository'
+import IntegrationProgressRepository from '@/database/repositories/integrationProgressRepository'
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SegmentRepository from '@/database/repositories/segmentRepository'
+import { IntegrationProgress, Repos } from '@/serverless/integrations/types/regularTypes'
+import {
+  fetchAllGitlabGroups,
+  fetchGitlabGroupProjects,
+  fetchGitlabUserProjects,
+} from '@/serverless/integrations/usecases/gitlab/getProjects'
+import { removeGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/removeWebhooks'
+import { setupGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/setupWebhooks'
+import { getUserSubscriptions } from '@/serverless/integrations/usecases/groupsio/getUserSubscriptions'
+import {
+  GroupsioGetToken,
+  GroupsioIntegrationData,
+  GroupsioVerifyGroup,
+} from '@/serverless/integrations/usecases/groupsio/types'
 import {
   EDITION,
   Error400,
@@ -16,6 +34,12 @@ import {
 } from '@crowd/common'
 import { CommonIntegrationService, getGithubInstallationToken } from '@crowd/common_services'
 import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections'
+import {
+  findMailingListsOwnedByOtherIntegration,
+  lockMailingListSourceUrls,
+  softDeleteMailingListsByIntegrationId,
+  upsertMailingLists,
+} from '@crowd/data-access-layer/src/mailinglist'
 import {
   ICreateRepository,
   IRepository,
@@ -46,25 +70,6 @@ import { RedisCache } from '@crowd/redis'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 import { CodePlatform, Edition, PlatformType } from '@crowd/types'
 
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import GithubInstallationsRepository from '@/database/repositories/githubInstallationsRepository'
-import IntegrationProgressRepository from '@/database/repositories/integrationProgressRepository'
-import SegmentRepository from '@/database/repositories/segmentRepository'
-import { IntegrationProgress, Repos } from '@/serverless/integrations/types/regularTypes'
-import {
-  fetchAllGitlabGroups,
-  fetchGitlabGroupProjects,
-  fetchGitlabUserProjects,
-} from '@/serverless/integrations/usecases/gitlab/getProjects'
-import { removeGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/removeWebhooks'
-import { setupGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/setupWebhooks'
-import { getUserSubscriptions } from '@/serverless/integrations/usecases/groupsio/getUserSubscriptions'
-import {
-  GroupsioGetToken,
-  GroupsioIntegrationData,
-  GroupsioVerifyGroup,
-} from '@/serverless/integrations/usecases/groupsio/types'
-
 import { DISCORD_CONFIG, GITHUB_CONFIG, GITLAB_CONFIG, IS_TEST_ENV, KUBE_MODE } from '../conf/index'
 import IntegrationRepository from '../database/repositories/integrationRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
@@ -81,9 +86,8 @@ import getToken from '../serverless/integrations/usecases/nango/getToken'
 import { getIntegrationRunWorkerEmitter } from '../serverless/utils/queueService'
 import { ConfluenceIntegrationData } from '../types/confluenceTypes'
 import { JiraIntegrationData } from '../types/jiraTypes'
-
-import { IServiceOptions } from './IServiceOptions'
 import { CollectionService } from './collectionService'
+import { IServiceOptions } from './IServiceOptions'
 
 const discordToken = DISCORD_CONFIG.token || DISCORD_CONFIG.token2
 
@@ -315,6 +319,11 @@ export default class IntegrationService {
   async destroyAll(ids) {
     const toRemoveRepo = new Set<string>()
     let segmentId
+    // Collect GitLab webhook info before opening the transaction so external HTTP calls
+    // don't hold the DB connection idle long enough to trigger a connection timeout.
+    const gitlabWebhookRemovals: Array<{ token: string; projectIds: number[]; hookIds: number[] }> =
+      []
+
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
     try {
@@ -326,7 +335,7 @@ export default class IntegrationService {
           if (integration.segmentId) {
             segmentId = integration.segmentId
           }
-        } catch (err) {
+        } catch {
           throw new Error404()
         }
         // remove github/gitlab/gerrit remotes from git integration
@@ -446,11 +455,11 @@ export default class IntegrationService {
         }
 
         if (integration.platform === PlatformType.GITLAB && integration.settings.webhooks) {
-          await removeGitlabWebhooks(
-            integration.token,
-            integration.settings.webhooks.map((hook) => hook.projectId),
-            integration.settings.webhooks.map((hook) => hook.hookId),
-          )
+          gitlabWebhookRemovals.push({
+            token: integration.token,
+            projectIds: integration.settings.webhooks.map((hook) => hook.projectId),
+            hookIds: integration.settings.webhooks.map((hook) => hook.hookId),
+          })
         }
 
         if (integration.platform === PlatformType.GIT) {
@@ -458,6 +467,14 @@ export default class IntegrationService {
             ...this.options,
             transaction,
           })
+        }
+
+        if (integration.platform === PlatformType.MAILINGLIST) {
+          const qx = SequelizeRepository.getQueryExecutor({
+            ...this.options,
+            transaction,
+          })
+          await softDeleteMailingListsByIntegrationId(qx, integration.id)
         }
 
         // Soft delete from public.repositories for code integrations
@@ -495,6 +512,14 @@ export default class IntegrationService {
       await SequelizeRepository.rollbackTransaction(transaction)
       throw error
     }
+
+    // Remove GitLab webhooks after the transaction commits — these are external HTTP calls
+    // and must not hold a DB connection open.
+    await Promise.all(
+      gitlabWebhookRemovals.map(({ token, projectIds, hookIds }) =>
+        removeGitlabWebhooks(token, projectIds, hookIds),
+      ),
+    )
   }
 
   async findById(id) {
@@ -980,7 +1005,7 @@ export default class IntegrationService {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
           isGitintegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitintegrationConfigured = false
         }
 
@@ -1410,6 +1435,81 @@ export default class IntegrationService {
     return integration
   }
 
+  /**
+   * Adds/updates a mailing list (public-inbox/lore) integration and onboards
+   * its lists for processing by the mailing_list_integration worker.
+   *
+   * @param integrationData.lists - Mailing lists to onboard (name + sourceUrl)
+   * @param options - Optional repository options
+   */
+  async mailingListConnectOrUpdate(
+    integrationData: {
+      lists: Array<{ name: string; sourceUrl: string }>
+    },
+    options?: IRepositoryOptions,
+  ) {
+    const lists = integrationData.lists || []
+
+    // Both current callers (mailingListAuthenticate.ts, create-mailing-list-integration.ts)
+    // validate against bodySchema's `.min(1)` before reaching here, so this is an invariant
+    // check, not user-facing validation — fail loudly rather than silently no-op.
+    if (lists.length === 0) {
+      throw new Error400(this.options.language, 'errors.validation.message')
+    }
+
+    const currentOptions = options || this.options
+    const existingTransaction =
+      currentOptions.transaction || SequelizeRepository.getTransaction(currentOptions)
+    const transaction =
+      existingTransaction || (await SequelizeRepository.createTransaction(options || this.options))
+    let integration
+
+    try {
+      const qx = SequelizeRepository.getQueryExecutor({ ...(options || this.options), transaction })
+
+      integration = await this.createOrUpdate(
+        {
+          platform: PlatformType.MAILINGLIST,
+          settings: { lists },
+          status: 'done',
+        },
+        transaction,
+        options,
+      )
+
+      // Serialize concurrent connects touching the same sourceUrl(s) so the
+      // ownership check below and the upsert that follows it can't be
+      // straddled by another transaction re-pointing ownership in between.
+      await lockMailingListSourceUrls(
+        qx,
+        lists.map((l) => l.sourceUrl),
+      )
+
+      const conflicts = await findMailingListsOwnedByOtherIntegration(qx, integration.id, lists)
+      if (conflicts.length > 0) {
+        throw new Error400(
+          this.options.language,
+          'errors.mailingList.alreadyConnected',
+          conflicts.join(', '),
+        )
+      }
+
+      const currentSegmentId = (options || this.options).currentSegments[0].id
+      await upsertMailingLists(qx, currentSegmentId, integration.id, lists)
+
+      if (!existingTransaction) {
+        await SequelizeRepository.commitTransaction(transaction)
+      }
+    } catch (err) {
+      if (!existingTransaction) {
+        await SequelizeRepository.rollbackTransaction(transaction)
+      }
+      this.options.log.error(`mailingListConnectOrUpdate failed with error: ${err}`)
+      throw err
+    }
+    return integration
+  }
+
   async atlassianAdminConnect(adminApi: string, organizationId: string) {
     const nangoPayload = {
       params: {
@@ -1773,7 +1873,7 @@ export default class IntegrationService {
         try {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
           isGitIntegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitIntegrationConfigured = false
         }
 
@@ -1866,7 +1966,7 @@ export default class IntegrationService {
         acc[segmentId] = { remotes, integrationId: id }
         return acc
       }, {})
-    } catch (err) {
+    } catch {
       throw new Error400(this.options.language, 'errors.git.noIntegration')
     }
   }
@@ -2774,6 +2874,18 @@ export default class IntegrationService {
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (err) {
+      this.options.log.error(
+        {
+          errMessage: err?.message,
+          errName: err?.name,
+          errStack: err?.stack,
+          gitlabStatus: err?.response?.status,
+          gitlabError: err?.response?.data,
+          gitlabUrl: err?.config?.url,
+          gitlabMethod: err?.config?.method,
+        },
+        'gitlabConnect failed',
+      )
       await SequelizeRepository.rollbackTransaction(transaction)
       throw err
     }
@@ -2848,7 +2960,7 @@ export default class IntegrationService {
             await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
             isGitintegrationConfigured = true
-          } catch (err) {
+          } catch {
             isGitintegrationConfigured = false
           }
 

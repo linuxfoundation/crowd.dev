@@ -1,0 +1,243 @@
+{"country":"Afghanistan","country_code":"AF","timezone_offset":4,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Åland Islands","country_code":"AX","timezone_offset":3,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Albania","country_code":"AL","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Algeria","country_code":"DZ","timezone_offset":1,"region":"Africa","subregion":"Northern Africa"}
+{"country":"American Samoa","country_code":"AS","timezone_offset":-11,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Andorra","country_code":"AD","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Angola","country_code":"AO","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Anguilla","country_code":"AI","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Antarctica","country_code":"AQ","timezone_offset":12,"region":"Antarctic","subregion":"Unknown"}
+{"country":"Antigua and Barbuda","country_code":"AG","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Argentina","country_code":"AR","timezone_offset":-3,"region":"Americas","subregion":"South America"}
+{"country":"Armenia","country_code":"AM","timezone_offset":4,"region":"Asia","subregion":"Western Asia"}
+{"country":"Aruba","country_code":"AW","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Australia","country_code":"AU","timezone_offset":10,"region":"Oceania","subregion":"Australia and New Zealand"}
+{"country":"Austria","country_code":"AT","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Azerbaijan","country_code":"AZ","timezone_offset":4,"region":"Asia","subregion":"Western Asia"}
+{"country":"Bahamas","country_code":"BS","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Bahrain","country_code":"BH","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Bangladesh","country_code":"BD","timezone_offset":6,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Barbados","country_code":"BB","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Belarus","country_code":"BY","timezone_offset":3,"region":"Europe","subregion":"Eastern Europe"}
+{"country":"Belgium","country_code":"BE","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Belize","country_code":"BZ","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Benin","country_code":"BJ","timezone_offset":1,"region":"Africa","subregion":"Western Africa"}
+{"country":"Bermuda","country_code":"BM","timezone_offset":-3,"region":"Americas","subregion":"North America"}
+{"country":"Bhutan","country_code":"BT","timezone_offset":6,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Bolivia","country_code":"BO","timezone_offset":-4,"region":"Americas","subregion":"South America"}
+{"country":"Bosnia and Herzegovina","country_code":"BA","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Botswana","country_code":"BW","timezone_offset":2,"region":"Africa","subregion":"Southern Africa"}
+{"country":"Brazil","country_code":"BR","timezone_offset":-2,"region":"Americas","subregion":"South America"}
+{"country":"British Indian Ocean Territory","country_code":"IO","timezone_offset":6,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Brunei Darussalam","country_code":"BN","timezone_offset":8,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Bulgaria","country_code":"BG","timezone_offset":3,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Burkina Faso","country_code":"BF","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Burundi","country_code":"BI","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Cambodia","country_code":"KH","timezone_offset":7,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Cameroon","country_code":"CM","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Canada","country_code":"CA","timezone_offset":-2,"region":"Americas","subregion":"North America"}
+{"country":"Cape Verde","country_code":"CV","timezone_offset":-1,"region":"Africa","subregion":"Western Africa"}
+{"country":"Cayman Islands","country_code":"KY","timezone_offset":-5,"region":"Americas","subregion":"Caribbean"}
+{"country":"Central African Republic","country_code":"CF","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Chad","country_code":"TD","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Chile","country_code":"CL","timezone_offset":-4,"region":"Americas","subregion":"South America"}
+{"country":"China","country_code":"CN","timezone_offset":8,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Christmas Island","country_code":"CX","timezone_offset":7,"region":"Oceania","subregion":"Australia and New Zealand"}
+{"country":"Cocos (Keeling) Islands","country_code":"CC","timezone_offset":6,"region":"Oceania","subregion":"Australia and New Zealand"}
+{"country":"Colombia","country_code":"CO","timezone_offset":-5,"region":"Americas","subregion":"South America"}
+{"country":"Comoros","country_code":"KM","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Congo","country_code":"CG","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Congo, The Democratic Republic of the Congo","country_code":"CD","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Cook Islands","country_code":"CK","timezone_offset":-10,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Costa Rica","country_code":"CR","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Côte d'Ivoire","country_code":"CI","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Croatia","country_code":"HR","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Cuba","country_code":"CU","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Cyprus","country_code":"CY","timezone_offset":3,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Czech Republic","country_code":"CZ","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Denmark","country_code":"DK","timezone_offset":2,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Djibouti","country_code":"DJ","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Dominica","country_code":"DM","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Dominican Republic","country_code":"DO","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Ecuador","country_code":"EC","timezone_offset":-5,"region":"Americas","subregion":"South America"}
+{"country":"Egypt","country_code":"EG","timezone_offset":2,"region":"Africa","subregion":"Northern Africa"}
+{"country":"El Salvador","country_code":"SV","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Equatorial Guinea","country_code":"GQ","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Eritrea","country_code":"ER","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Estonia","country_code":"EE","timezone_offset":3,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Ethiopia","country_code":"ET","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Falkland Islands (Malvinas)","country_code":"FK","timezone_offset":-3,"region":"Americas","subregion":"South America"}
+{"country":"Faroe Islands","country_code":"FO","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Fiji","country_code":"FJ","timezone_offset":12,"region":"Oceania","subregion":"Melanesia"}
+{"country":"Finland","country_code":"FI","timezone_offset":3,"region":"Europe","subregion":"Northern Europe"}
+{"country":"France","country_code":"FR","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"French Guiana","country_code":"GF","timezone_offset":-3,"region":"Americas","subregion":"South America"}
+{"country":"French Polynesia","country_code":"PF","timezone_offset":-10,"region":"Oceania","subregion":"Polynesia"}
+{"country":"French Southern Territories","country_code":"TF","timezone_offset":5,"region":"Antarctic","subregion":"Unknown"}
+{"country":"Gabon","country_code":"GA","timezone_offset":1,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Gambia","country_code":"GM","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Georgia","country_code":"GE","timezone_offset":4,"region":"Asia","subregion":"Western Asia"}
+{"country":"Germany","country_code":"DE","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Ghana","country_code":"GH","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Gibraltar","country_code":"GI","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Greece","country_code":"GR","timezone_offset":3,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Greenland","country_code":"GL","timezone_offset":-1,"region":"Americas","subregion":"North America"}
+{"country":"Grenada","country_code":"GD","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Guadeloupe","country_code":"GP","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Guam","country_code":"GU","timezone_offset":10,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Guatemala","country_code":"GT","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Guernsey","country_code":"GG","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Guinea","country_code":"GN","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Guinea-Bissau","country_code":"GW","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Guyana","country_code":"GY","timezone_offset":-4,"region":"Americas","subregion":"South America"}
+{"country":"Haiti","country_code":"HT","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Holy See (Vatican City State)","country_code":"VA","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Honduras","country_code":"HN","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Hong Kong","country_code":"HK","timezone_offset":8,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Hungary","country_code":"HU","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Iceland","country_code":"IS","timezone_offset":0,"region":"Europe","subregion":"Northern Europe"}
+{"country":"India","country_code":"IN","timezone_offset":5,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Indonesia","country_code":"ID","timezone_offset":7,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Iran","country_code":"IR","timezone_offset":3,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Iraq","country_code":"IQ","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Ireland","country_code":"IE","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Isle of Man","country_code":"IM","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Israel","country_code":"IL","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Italy","country_code":"IT","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Jamaica","country_code":"JM","timezone_offset":-5,"region":"Americas","subregion":"Caribbean"}
+{"country":"Japan","country_code":"JP","timezone_offset":9,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Jersey","country_code":"JE","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Jordan","country_code":"JO","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Kazakhstan","country_code":"KZ","timezone_offset":5,"region":"Asia","subregion":"Central Asia"}
+{"country":"Kenya","country_code":"KE","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Kiribati","country_code":"KI","timezone_offset":12,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Korea, Democratic People's Republic of Korea","country_code":"KP","timezone_offset":9,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Korea, Republic of South Korea","country_code":"KR","timezone_offset":9,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Kuwait","country_code":"KW","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Kyrgyzstan","country_code":"KG","timezone_offset":6,"region":"Asia","subregion":"Central Asia"}
+{"country":"Laos","country_code":"LA","timezone_offset":7,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Latvia","country_code":"LV","timezone_offset":3,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Lebanon","country_code":"LB","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Lesotho","country_code":"LS","timezone_offset":2,"region":"Africa","subregion":"Southern Africa"}
+{"country":"Liberia","country_code":"LR","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Libyan Arab Jamahiriya","country_code":"LY","timezone_offset":2,"region":"Africa","subregion":"Northern Africa"}
+{"country":"Liechtenstein","country_code":"LI","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Lithuania","country_code":"LT","timezone_offset":3,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Luxembourg","country_code":"LU","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Macao","country_code":"MO","timezone_offset":8,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Macedonia","country_code":"MK","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Madagascar","country_code":"MG","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Malawi","country_code":"MW","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Malaysia","country_code":"MY","timezone_offset":8,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Maldives","country_code":"MV","timezone_offset":5,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Mali","country_code":"ML","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Malta","country_code":"MT","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Marshall Islands","country_code":"MH","timezone_offset":12,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Martinique","country_code":"MQ","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Mauritania","country_code":"MR","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Mauritius","country_code":"MU","timezone_offset":4,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Mayotte","country_code":"YT","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Mexico","country_code":"MX","timezone_offset":-6,"region":"Americas","subregion":"North America"}
+{"country":"Micronesia, Federated States of Micronesia","country_code":"FM","timezone_offset":10,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Moldova","country_code":"MD","timezone_offset":3,"region":"Europe","subregion":"Eastern Europe"}
+{"country":"Monaco","country_code":"MC","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Mongolia","country_code":"MN","timezone_offset":8,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Montenegro","country_code":"ME","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Montserrat","country_code":"MS","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Morocco","country_code":"MA","timezone_offset":1,"region":"Africa","subregion":"Northern Africa"}
+{"country":"Mozambique","country_code":"MZ","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Myanmar","country_code":"MM","timezone_offset":6,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Namibia","country_code":"NA","timezone_offset":2,"region":"Africa","subregion":"Southern Africa"}
+{"country":"Nauru","country_code":"NR","timezone_offset":12,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Nepal","country_code":"NP","timezone_offset":5,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Netherlands","country_code":"NL","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"New Caledonia","country_code":"NC","timezone_offset":11,"region":"Oceania","subregion":"Melanesia"}
+{"country":"New Zealand","country_code":"NZ","timezone_offset":12,"region":"Oceania","subregion":"Australia and New Zealand"}
+{"country":"Nicaragua","country_code":"NI","timezone_offset":-6,"region":"Americas","subregion":"Central America"}
+{"country":"Niger","country_code":"NE","timezone_offset":1,"region":"Africa","subregion":"Western Africa"}
+{"country":"Nigeria","country_code":"NG","timezone_offset":1,"region":"Africa","subregion":"Western Africa"}
+{"country":"Niue","country_code":"NU","timezone_offset":-11,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Norfolk Island","country_code":"NF","timezone_offset":11,"region":"Oceania","subregion":"Australia and New Zealand"}
+{"country":"Northern Mariana Islands","country_code":"MP","timezone_offset":10,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Norway","country_code":"NO","timezone_offset":2,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Oman","country_code":"OM","timezone_offset":4,"region":"Asia","subregion":"Western Asia"}
+{"country":"Pakistan","country_code":"PK","timezone_offset":5,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Palau","country_code":"PW","timezone_offset":9,"region":"Oceania","subregion":"Micronesia"}
+{"country":"Palestine","country_code":"PS","timezone_offset":2,"region":"Asia","subregion":"Western Asia"}
+{"country":"Panama","country_code":"PA","timezone_offset":-5,"region":"Americas","subregion":"Central America"}
+{"country":"Papua New Guinea","country_code":"PG","timezone_offset":10,"region":"Oceania","subregion":"Melanesia"}
+{"country":"Paraguay","country_code":"PY","timezone_offset":-4,"region":"Americas","subregion":"South America"}
+{"country":"Peru","country_code":"PE","timezone_offset":-5,"region":"Americas","subregion":"South America"}
+{"country":"Philippines","country_code":"PH","timezone_offset":8,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Pitcairn","country_code":"PN","timezone_offset":-8,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Poland","country_code":"PL","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Portugal","country_code":"PT","timezone_offset":1,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Puerto Rico","country_code":"PR","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Qatar","country_code":"QA","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Romania","country_code":"RO","timezone_offset":3,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Russia","country_code":"RU","timezone_offset":2,"region":"Europe","subregion":"Eastern Europe"}
+{"country":"Rwanda","country_code":"RW","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Reunion","country_code":"RE","timezone_offset":4,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Saint Barthelemy","country_code":"BL","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Saint Helena, Ascension and Tristan Da Cunha","country_code":"SH","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Saint Kitts and Nevis","country_code":"KN","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Saint Lucia","country_code":"LC","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Saint Martin","country_code":"MF","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Saint Pierre and Miquelon","country_code":"PM","timezone_offset":-2,"region":"Americas","subregion":"North America"}
+{"country":"Saint Vincent and the Grenadines","country_code":"VC","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Samoa","country_code":"WS","timezone_offset":13,"region":"Oceania","subregion":"Polynesia"}
+{"country":"San Marino","country_code":"SM","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Sao Tome and Principe","country_code":"ST","timezone_offset":0,"region":"Africa","subregion":"Middle Africa"}
+{"country":"Saudi Arabia","country_code":"SA","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Senegal","country_code":"SN","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Serbia","country_code":"RS","timezone_offset":2,"region":"Europe","subregion":"Southeast Europe"}
+{"country":"Seychelles","country_code":"SC","timezone_offset":4,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Sierra Leone","country_code":"SL","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Singapore","country_code":"SG","timezone_offset":8,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Slovakia","country_code":"SK","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Slovenia","country_code":"SI","timezone_offset":2,"region":"Europe","subregion":"Central Europe"}
+{"country":"Solomon Islands","country_code":"SB","timezone_offset":11,"region":"Oceania","subregion":"Melanesia"}
+{"country":"Somalia","country_code":"SO","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"South Africa","country_code":"ZA","timezone_offset":2,"region":"Africa","subregion":"Southern Africa"}
+{"country":"South Sudan","country_code":"SS","timezone_offset":2,"region":"Africa","subregion":"Middle Africa"}
+{"country":"South Georgia and the South Sandwich Islands","country_code":"GS","timezone_offset":-2,"region":"Antarctic","subregion":"Unknown"}
+{"country":"Spain","country_code":"ES","timezone_offset":2,"region":"Europe","subregion":"Southern Europe"}
+{"country":"Sri Lanka","country_code":"LK","timezone_offset":5,"region":"Asia","subregion":"Southern Asia"}
+{"country":"Sudan","country_code":"SD","timezone_offset":2,"region":"Africa","subregion":"Northern Africa"}
+{"country":"Suriname","country_code":"SR","timezone_offset":-3,"region":"Americas","subregion":"South America"}
+{"country":"Svalbard and Jan Mayen","country_code":"SJ","timezone_offset":2,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Swaziland","country_code":"SZ","timezone_offset":2,"region":"Africa","subregion":"Southern Africa"}
+{"country":"Sweden","country_code":"SE","timezone_offset":2,"region":"Europe","subregion":"Northern Europe"}
+{"country":"Switzerland","country_code":"CH","timezone_offset":2,"region":"Europe","subregion":"Western Europe"}
+{"country":"Syrian Arab Republic","country_code":"SY","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Taiwan","country_code":"TW","timezone_offset":8,"region":"Asia","subregion":"Eastern Asia"}
+{"country":"Tajikistan","country_code":"TJ","timezone_offset":5,"region":"Asia","subregion":"Central Asia"}
+{"country":"Tanzania, United Republic of Tanzania","country_code":"TZ","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Thailand","country_code":"TH","timezone_offset":7,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Timor-Leste","country_code":"TL","timezone_offset":9,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Togo","country_code":"TG","timezone_offset":0,"region":"Africa","subregion":"Western Africa"}
+{"country":"Tokelau","country_code":"TK","timezone_offset":13,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Tonga","country_code":"TO","timezone_offset":13,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Trinidad and Tobago","country_code":"TT","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Tunisia","country_code":"TN","timezone_offset":1,"region":"Africa","subregion":"Northern Africa"}
+{"country":"Turkey","country_code":"TR","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Turkmenistan","country_code":"TM","timezone_offset":5,"region":"Asia","subregion":"Central Asia"}
+{"country":"Turks and Caicos Islands","country_code":"TC","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Tuvalu","country_code":"TV","timezone_offset":12,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Uganda","country_code":"UG","timezone_offset":3,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Ukraine","country_code":"UA","timezone_offset":3,"region":"Europe","subregion":"Eastern Europe"}
+{"country":"United Arab Emirates","country_code":"AE","timezone_offset":4,"region":"Asia","subregion":"Western Asia"}
+{"country":"United Kingdom","country_code":"GB","timezone_offset":1,"region":"Europe","subregion":"Northern Europe"}
+{"country":"United States","country_code":"US","timezone_offset":-4,"region":"Americas","subregion":"North America"}
+{"country":"Uruguay","country_code":"UY","timezone_offset":-3,"region":"Americas","subregion":"South America"}
+{"country":"Uzbekistan","country_code":"UZ","timezone_offset":5,"region":"Asia","subregion":"Central Asia"}
+{"country":"Vanuatu","country_code":"VU","timezone_offset":11,"region":"Oceania","subregion":"Melanesia"}
+{"country":"Venezuela","country_code":"VE","timezone_offset":-4,"region":"Americas","subregion":"South America"}
+{"country":"Vietnam","country_code":"VN","timezone_offset":7,"region":"Asia","subregion":"South-Eastern Asia"}
+{"country":"Virgin Islands, British","country_code":"VG","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Virgin Islands, U.S.","country_code":"VI","timezone_offset":-4,"region":"Americas","subregion":"Caribbean"}
+{"country":"Wallis and Futuna","country_code":"WF","timezone_offset":12,"region":"Oceania","subregion":"Polynesia"}
+{"country":"Yemen","country_code":"YE","timezone_offset":3,"region":"Asia","subregion":"Western Asia"}
+{"country":"Zambia","country_code":"ZM","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Zimbabwe","country_code":"ZW","timezone_offset":2,"region":"Africa","subregion":"Eastern Africa"}
+{"country":"Unknown","country_code":"XX","timezone_offset":0,"region":"Unknown","subregion":"Unknown"}

@@ -1,4 +1,4 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
@@ -11,7 +11,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.nango_webhook_api
-    command: 'pnpm run start'
+    command: "pnpm run start"
     working_dir: /usr/crowd/app/services/apps/nango_webhook_api
     env_file:
       - ../../backend/.env.dist.local
@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8084:8084'
+      - "8084:8084"
     restart: always
     networks:
       - crowd-bridge
@@ -30,7 +30,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.nango_webhook_api
-    command: 'pnpm run dev'
+    command: "pnpm run dev"
     working_dir: /usr/crowd/app/services/apps/nango_webhook_api
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: nango-webhook-api
     ports:
-      - '8084:8084'
+      - "8084:8084"
     networks:
       - crowd-bridge
     volumes:

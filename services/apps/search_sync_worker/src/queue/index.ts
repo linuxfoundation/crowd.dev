@@ -96,9 +96,15 @@ export class WorkerQueueReceiver extends PrioritizedQueueReciever {
           break
         case SearchSyncWorkerQueueMessageType.SYNC_ORGANIZATION_MEMBERS:
           if (data.organizationId) {
-            this.initMemberService()
-              .syncOrganizationMembers(data.organizationId)
-              .catch((err) => this.log.error(err, 'Error while syncing organization members!'))
+            const memberService = this.initMemberService()
+            const orgId = data.organizationId as string
+            ;(async () => {
+              let lastId: string | undefined
+              do {
+                const result = await memberService.syncOrganizationMembers(orgId, { lastId })
+                lastId = result.lastId ?? undefined
+              } while (lastId)
+            })().catch((err) => this.log.error(err, 'Error while syncing organization members!'))
           }
 
           break

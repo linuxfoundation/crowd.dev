@@ -11,7 +11,7 @@ SQL >
         avgState(sentimentScore) AS averageSentimentState,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
-    FROM activityRelations_enriched_deduplicated_ds act
+    FROM activityRelations_enriched_deduplicated_bucket_union act
     GROUP BY segmentId, memberId
 
 TYPE COPY

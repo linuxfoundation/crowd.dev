@@ -1,0 +1,27 @@
+DESCRIPTION >
+    - `repositories_populated_ds` contains enriched repository data with computed metrics.
+    - Populated by `repositories_populated_copy.pipe` copy pipe.
+    - Extends base repository data with contributor counts, software valuation, and first commit timestamp.
+    - `id` is the primary key identifier for the repository record.
+    - `url` is the full repository URL.
+    - `segmentId` links to the segment this repository belongs to.
+    - `insightsProjectId` links to the insights project this repository is associated with.
+    - `contributorCount` is the total number of unique contributors for the repository.
+    - `organizationCount` is the total number of unique organizations for the repository.
+    - `softwareValue` is the estimated economic value of the repository software.
+    - `firstCommit` is the timestamp of the first commit in the repository (nullable).
+
+TAGS "Repository metadata", "Analytics enrichment"
+
+SCHEMA >
+    `id` String,
+    `url` String,
+    `segmentId` String,
+    `insightsProjectId` String,
+    `contributorCount` UInt64,
+    `organizationCount` UInt64,
+    `softwareValue` UInt64,
+    `firstCommit` Nullable(DateTime64(3))
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY id, url

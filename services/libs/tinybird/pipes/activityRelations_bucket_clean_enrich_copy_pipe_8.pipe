@@ -5,13 +5,13 @@ SQL >
 NODE activityRelations_deduplicated_cleaned_denormalized
 SQL >
     WITH
-        upperUTF8(o.location) AS search_u,
+        upperUTF8(coalesce(nullIf(o.country, ''), o.location)) AS search_u,
         (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
         (SELECT country_data FROM country_mapping_array) AS mapping,
         multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
         if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
     SELECT
-        activityRelations_bucket_MV_ds_8.*,
+        activityRelations_bucket_MV_ds_8.* REPLACE (lower(channel) AS channel),
         (gitInsertions + gitDeletions) as gitChangedLines,
         case
             when gitChangedLines > 0 and gitChangedLines < 10
@@ -36,12 +36,8 @@ SQL >
         and (
             (
                 platform IN ('git', 'gerrit', 'github', 'gitlab')
-                AND (channel, activityRelations_bucket_MV_ds_8.segmentId) IN (
-                    SELECT r.url, r.segmentId
-                    FROM repositories r FINAL
-                    INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
-                    WHERE isNull (r.deletedAt) AND isNull (i.deletedAt) AND r.enabled = true
-                )
+                AND (lower(channel), activityRelations_bucket_MV_ds_8.segmentId)
+                IN (SELECT lower(channel), segmentId FROM repos_to_channels)
             )
             OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')
         )

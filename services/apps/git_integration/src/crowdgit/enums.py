@@ -18,10 +18,18 @@ class ErrorCode(str, Enum):
     NO_MAINTAINER_FOUND = "no-maintainer-found"
     MAINTAINER_ANALYSIS_FAILED = "maintainer-analysis-failed"
     MAINTAINER_INTERVAL_NOT_ELAPSED = "maintainer-interval-not-elapsed"
+    MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE = "maintainer-skipped-project-level-source"
+    NO_AFFILIATION_FILE = "no-affiliation-file"
+    AFFILIATION_ANALYSIS_FAILED = "affiliation-analysis-failed"
+    AFFILIATION_INTERVAL_NOT_ELAPSED = "affiliation-interval-not-elapsed"
     CLEANUP_FAILED = "cleanup-failed"
     PARENT_REPO_INVALID = "parent-repo-invalid"
     REONBOARDING_REQUIRED = "reonboarding-required"
-    STUCK_REPO = "stuck-repo"
+    REPO_AUTH_REQUIRED = "repo-auth-required"
+    RATE_LIMITED = "rate-limited"
+    ACCESS_FORBIDDEN = "access-forbidden"
+    SERVER_ERROR = "server-error-remote"
+    EMPTY_REPO = "empty-repo"
 
 
 class RepositoryState(str, Enum):
@@ -32,8 +40,8 @@ class RepositoryState(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     REQUIRES_PARENT = "requires_parent"  # fork repo without valid parent repo in out system
-    STUCK = "stuck"  # requires manual resolution
     PENDING_REONBOARD = "pending_reonboard"  # re-onboarding deferred until weekend
+    AUTH_REQUIRED = "auth_required"  # private repo or repo requiring authentication
 
 
 class RepositoryPriority(int):
@@ -63,11 +71,19 @@ class ExecutionStatus(str, Enum):
     FAILURE = "failure"
 
 
+class AffiliationRegistryStatus(str, Enum):
+    SUCCESS = "success"
+    NOT_FOUND = "not_found"
+    UNUSABLE = "unusable"
+    ERROR = "error"
+
+
 class OperationType(str, Enum):
     """Service operation types for metrics tracking"""
 
     CLONE = "Clone"
     COMMIT = "Commit"
     MAINTAINER = "Maintainer"
+    AFFILIATION = "Affiliation"
     SOFTWARE_VALUE = "SoftwareValue"
     VULNERABILITY_SCAN = "VulnerabilityScanner"

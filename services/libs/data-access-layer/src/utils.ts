@@ -11,6 +11,7 @@ export function prepareBulkInsert(
   columns: string[],
   objects: object[],
   onConflict?: string,
+  returnRows = false,
 ) {
   const preparedObjects = objects.map((_, r) => {
     return `(${columns.map((_, c) => `$(rows.r${r}_c${c})`).join(',')})`
@@ -26,6 +27,7 @@ export function prepareBulkInsert(
       INSERT INTO $(table:name) (${columns.map((_, i) => `$(columns.col${i}:name)`).join(',')})
       VALUES ${preparedObjects.join(',')}
       ${onConflictClause}
+      ${returnRows ? 'RETURNING *' : ''}
     `,
     {
       table,
@@ -65,7 +67,9 @@ export function prepareInsert<T extends string>(table: string, columns: T[], dat
 
 export function checkUpdateRowCount(rowCount: number, expected: number) {
   if (rowCount !== expected) {
-    new Error(`Updated number of rows (${rowCount}) not equal to expected number (${expected})!`)
+    throw new Error(
+      `Updated number of rows (${rowCount}) not equal to expected number (${expected})!`,
+    )
   }
 }
 
@@ -199,4 +203,13 @@ export function injectSoftDeletionCriteria(filter?: QueryFilter): QueryFilter {
   }
 
   return filter
+}
+
+export const ERROR_MESSAGE_MAX_LENGTH = 500
+
+export function truncateErrorMessage(message: string | null): string | null {
+  if (!message) {
+    return null
+  }
+  return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
 }

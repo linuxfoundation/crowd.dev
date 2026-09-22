@@ -13,13 +13,13 @@ import {
 } from '@crowd/data-access-layer/src/integrations'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getReposGroupedByOrgForIntegrations } from '@crowd/data-access-layer/src/repositories'
+import { getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import { IntegrationRunState, PlatformType } from '@crowd/types'
 
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
-
-import { IRepositoryOptions } from './IRepositoryOptions'
 import QueryParser from './filters/queryParser'
 import { QueryOutput } from './filters/queryTypes'
+import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
 const { Op } = Sequelize
@@ -66,10 +66,15 @@ class IntegrationRepository {
 
     const transaction = SequelizeRepository.getTransaction(options)
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     let record = await options.database.integration.findOne({
       where: {
         id,
-        segmentId: SequelizeRepository.getSegmentIds(options),
+        segmentId: subprojectIds,
       },
       transaction,
     })
@@ -248,7 +253,7 @@ class IntegrationRepository {
    * @returns The integration object
    */
   // TODO: Test
-  static async findByIdentifier(identifier: string, platform: string): Promise<Array<Object>> {
+  static async findByIdentifier(identifier: string, platform: string): Promise<Array<object>> {
     const options = await SequelizeRepository.getDefaultIRepositoryOptions()
 
     const record = await options.database.integration.findOne({
@@ -450,6 +455,10 @@ class IntegrationRepository {
         nestedFields: {
           sentiment: 'sentiment.sentiment',
         },
+        // QueryParser filters on req.currentSegments directly (e.g., projectGroupId).
+        // Since integrations are stored per subproject, segment filtering is applied manually below
+        // after expanding to subprojectIds.
+        withSegments: false,
       },
       options,
     )
@@ -461,11 +470,19 @@ class IntegrationRepository {
       offset,
     })
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
+    const segmentWhere = { segmentId: subprojectIds }
+    const where = parsed.where ? { [Op.and]: [parsed.where, segmentWhere] } : segmentWhere
+
     let {
       rows,
       count, // eslint-disable-line prefer-const
     } = await options.database.integration.findAndCountAll({
-      ...(parsed.where ? { where: parsed.where } : {}),
+      where,
       ...(parsed.having ? { having: parsed.having } : {}),
       order: parsed.order,
       limit: limit ? parsed.limit : undefined,

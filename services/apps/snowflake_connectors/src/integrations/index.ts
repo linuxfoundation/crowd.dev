@@ -6,20 +6,67 @@
  */
 import { PlatformType } from '@crowd/types'
 
+import { buildSourceQuery as committeesCommitteesBuildQuery } from './committees/committees/buildSourceQuery'
+import { CommitteesCommitteesTransformer } from './committees/committees/transformer'
 import { buildSourceQuery as cventBuildSourceQuery } from './cvent/event-registrations/buildSourceQuery'
 import { CventTransformer } from './cvent/event-registrations/transformer'
+import { buildSourceQuery as meetingAttendanceBuildQuery } from './meetings/meeting-attendance/buildSourceQuery'
+import { MeetingAttendanceTransformer } from './meetings/meeting-attendance/transformer'
+import { buildSourceQuery as tncCertificatesBuildQuery } from './tnc/certificates/buildSourceQuery'
+import { TncCertificatesTransformer } from './tnc/certificates/transformer'
+import { buildSourceQuery as tncCoursesBuildQuery } from './tnc/courses/buildSourceQuery'
+import { TncCoursesTransformer } from './tnc/courses/transformer'
+import { buildSourceQuery as tncEnrollmentsBuildQuery } from './tnc/enrollments/buildSourceQuery'
+import { TncEnrollmentsTransformer } from './tnc/enrollments/transformer'
 import { DataSource, DataSourceName, PlatformDefinition } from './types'
 
 export type { BuildSourceQuery, DataSource, PlatformDefinition } from './types'
 export { DataSourceName } from './types'
 
 const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
+  [PlatformType.MEETINGS]: {
+    sources: [
+      {
+        name: DataSourceName.MEETINGS_MEETING_ATTENDANCE,
+        buildSourceQuery: meetingAttendanceBuildQuery,
+        transformer: new MeetingAttendanceTransformer(),
+      },
+    ],
+  },
+  [PlatformType.COMMITTEES]: {
+    sources: [
+      {
+        name: DataSourceName.COMMITTEES_COMMITTEES,
+        buildSourceQuery: committeesCommitteesBuildQuery,
+        transformer: new CommitteesCommitteesTransformer(),
+      },
+    ],
+  },
   [PlatformType.CVENT]: {
     sources: [
       {
         name: DataSourceName.CVENT_EVENT_REGISTRATIONS,
         buildSourceQuery: cventBuildSourceQuery,
         transformer: new CventTransformer(),
+      },
+    ],
+  },
+  [PlatformType.TNC]: {
+    sources: [
+      {
+        name: DataSourceName.TNC_ENROLLMENTS,
+        buildSourceQuery: tncEnrollmentsBuildQuery,
+        transformer: new TncEnrollmentsTransformer(),
+      },
+      {
+        name: DataSourceName.TNC_CERTIFICATES,
+        buildSourceQuery: tncCertificatesBuildQuery,
+        transformer: new TncCertificatesTransformer(),
+      },
+      {
+        name: DataSourceName.TNC_COURSES,
+        buildSourceQuery: tncCoursesBuildQuery,
+        transformer: new TncCoursesTransformer(),
       },
     ],
   },

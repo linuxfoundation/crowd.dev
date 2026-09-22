@@ -35,29 +35,10 @@ export default class IncomingWebhookRepository extends RepositoryBase<IncomingWe
     return result
   }
 
-  public async markWebhookProcessed(id: string): Promise<void> {
-    await this.db().none(
-      `
-        update "incomingWebhooks"
-        set 
-          state = $(state),
-          error = null,
-          "processedAt" = now()
-        where id = $(id)
-      `,
-      {
-        id,
-        state: WebhookState.PROCESSED,
-      },
-    )
-  }
-
   public async deleteWebhook(id: string): Promise<void> {
-    const result = await this.db().result(`delete from "incomingWebhooks" where id = $(id)`, {
+    await this.db().none(`delete from "incomingWebhooks" where id = $(id)`, {
       id,
     })
-
-    this.checkUpdateRowCount(result.rowCount, 1)
   }
 
   public async markWebhookPending(id: string): Promise<void> {

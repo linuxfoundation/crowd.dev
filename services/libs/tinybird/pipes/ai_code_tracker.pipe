@@ -1,0 +1,90 @@
+DESCRIPTION >
+    - `ai_code_tracker.pipe` returns AI-assisted commit counts by tool and time period.
+    - Reads from pre-computed `ai_code_tracker_ds` datasource (materialized hourly by `ai_code_tracker_copy.pipe`).
+    - Parameters:
+    - `granularity`: Required. Either 'monthly' or 'yearly'.
+    - `startDate`: Optional DateTime filter for commits after this date.
+    - `endDate`: Optional DateTime filter for commits before this date.
+    - Response: toolKey, toolName, startDate, endDate, commitCount
+
+TAGS "Report"
+
+NODE ai_code_tracker_result
+DESCRIPTION >
+    Aggregate pre-computed AI commit counts by tool and time period
+
+SQL >
+    %
+    SELECT
+        toolKey,
+        multiIf(
+            toolKey = 'github-copilot',
+            'GitHub Copilot',
+            toolKey = 'chatgpt',
+            'ChatGPT',
+            toolKey = 'claude',
+            'Claude',
+            toolKey = 'cursor',
+            'Cursor',
+            toolKey = 'codewhisperer',
+            'CodeWhisperer',
+            toolKey = 'gemini',
+            'Gemini',
+            toolKey = 'codeium',
+            'Codeium',
+            toolKey = 'aider',
+            'Aider',
+            toolKey = 'devin',
+            'Devin',
+            toolKey = 'tabnine',
+            'Tabnine',
+            toolKey = 'other',
+            'Other AI',
+            'Unknown'
+        ) AS toolName,
+        formatDateTime(
+            CASE
+                WHEN
+                    {{
+                        String(
+                            granularity,
+                            description="Time aggregation: monthly or yearly",
+                            required=True,
+                        )
+                    }} = 'monthly'
+                THEN monthStart
+                ELSE toStartOfYear(monthStart)
+            END,
+            '%Y-%m-%d'
+        ) AS startDate,
+        formatDateTime(
+            CASE
+                WHEN
+                    {{
+                        String(
+                            granularity,
+                            description="Time aggregation: monthly or yearly",
+                            required=True,
+                        )
+                    }} = 'monthly'
+                THEN monthStart + INTERVAL 1 MONTH - INTERVAL 1 DAY
+                ELSE toStartOfYear(monthStart) + INTERVAL 1 YEAR - INTERVAL 1 DAY
+            END,
+            '%Y-%m-%d'
+        ) AS endDate,
+        sum(commitCount) AS commitCount
+    FROM ai_code_tracker_ds
+    WHERE
+        toolKey != '__total__'
+        {% if defined(startDate) %}
+            AND monthStart >= toDate(
+                {{ DateTime(startDate, description="Filter commits after this date", required=False) }}
+            )
+        {% end %}
+        {% if defined(endDate) %}
+            AND monthStart < toDate(
+                {{ DateTime(endDate, description="Filter commits before this date", required=False) }}
+            )
+        {% end %}
+    GROUP BY toolKey, startDate, endDate
+    ORDER BY startDate ASC, commitCount DESC

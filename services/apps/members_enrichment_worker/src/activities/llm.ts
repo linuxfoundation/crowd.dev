@@ -272,6 +272,10 @@ export async function squashWorkExperiencesWithLLM(
             If multiple roles from the same organization overlap in time IN DIFFERENT SOURCES, squash them into one entry with a unified startDate, endDate, and picked information (e.g., job titles, descriptions).
             Preserve all unique identities and consolidate other fields appropriately.
             If necessary, ONLY merge dateRanges and NEVER merge titles together, but pick the one that best represents the role.
+          Job Titles:
+            Return only a concise professional job title (e.g. "Software Engineer", "Engineering Manager"). 
+            Do not return job descriptions, responsibilities, or full sentences. 
+            If the input is a description, infer the most appropriate professional job title.
           Handle Missing Dates:
             Use logical assumptions to fill gaps where possible, always using existing date information but nothing else.
             If there is a role with a missing startDate and a missing endDate, and there's also another role from same or similar organization with dates, you can remove the role with missing dates.
@@ -327,7 +331,7 @@ export async function squashWorkExperiencesWithLLM(
             "startDate": "2020-06-01",
             "endDate": "2021-12-31",
             "source": "LinkedIn"
-          }
+          },
           {
             "name": "Company Y",
             "title": "Manager",
@@ -338,8 +342,7 @@ export async function squashWorkExperiencesWithLLM(
         ]
   
         Ensure the response is a **valid and complete JSON**.
-        DO NOT output anything else.
-        Output ONLY valid JSON
+        Output ONLY valid JSON array. DO NOT output anything else.
     `
 
   const llmService = new LlmService(
@@ -351,8 +354,15 @@ export async function squashWorkExperiencesWithLLM(
     svc.log,
   )
 
-  const result = await llmService.squashWorkExperiencesFromMultipleSources<
+  const res = await llmService.squashWorkExperiencesFromMultipleSources<
     IMemberEnrichmentDataNormalizedOrganization[]
   >(memberId, prompt)
-  return result.result
+
+  if (!Array.isArray(res?.result)) {
+    const errorMessage = 'LLM returned invalid work experiences payload shape!'
+    svc.log.warn({ memberId, result: res?.result }, errorMessage)
+    throw new Error(errorMessage)
+  }
+
+  return res.result
 }

@@ -49,6 +49,13 @@
     "password": "PRODUCT_DB_PASSWORD",
     "database": "PRODUCT_DB_DATABASE"
   },
+  "packagesDb": {
+    "host": "CROWD_PACKAGES_DB_WRITE_HOST",
+    "port": "CROWD_PACKAGES_DB_PORT",
+    "user": "CROWD_PACKAGES_DB_USERNAME",
+    "password": "CROWD_PACKAGES_DB_PASSWORD",
+    "database": "CROWD_PACKAGES_DB_DATABASE"
+  },
   "segment": {
     "writeKey": "CROWD_SEGMENT_WRITE_KEY"
   },
@@ -59,9 +66,6 @@
       "secretAccessKey": "CROWD_COMPREHEND_AWS_SECRET_ACCESS_KEY",
       "region": "CROWD_COMPREHEND_AWS_REGION"
     }
-  },
-  "clearbit": {
-    "apiKey": "CROWD_CLEARBIT_API_KEY"
   },
   "sendgrid": {
     "key": "CROWD_SENDGRID_KEY",
@@ -154,7 +158,7 @@
   "auth0": {
     "clientId": "CROWD_AUTH0_CLIENT_ID",
     "jwks": "CROWD_AUTH0_JWKS",
-    "issuerBaseURL": "CROWD_AUTH0_ISSUER_BASE_URL",
+    "issuerBaseURLs": "CROWD_AUTH0_ISSUER_BASE_URLS",
     "audience": "CROWD_AUTH0_AUDIENCE"
   },
   "sso": {
@@ -170,6 +174,12 @@
   "temporal": {
     "serverUrl": "CROWD_TEMPORAL_SERVER_URL",
     "namespace": "CROWD_TEMPORAL_NAMESPACE",
+    "certificate": "CROWD_TEMPORAL_CERTIFICATE",
+    "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
+  },
+  "packagesTemporal": {
+    "serverUrl": "CROWD_PACKAGES_TEMPORAL_SERVER_URL",
+    "namespace": "CROWD_PACKAGES_TEMPORAL_NAMESPACE",
     "certificate": "CROWD_TEMPORAL_CERTIFICATE",
     "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
   },

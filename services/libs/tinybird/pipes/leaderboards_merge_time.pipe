@@ -68,4 +68,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE leaderboards_copy_ds
 COPY_MODE append
-COPY_SCHEDULE 15 1 * * *
+COPY_SCHEDULE 0 2 * * *

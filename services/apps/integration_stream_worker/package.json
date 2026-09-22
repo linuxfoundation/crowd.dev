@@ -1,14 +1,12 @@
 {
   "name": "@crowd/integration-stream-worker",
+  "private": true,
   "scripts": {
     "start": "SERVICE=integration-stream-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=integration-stream-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9231 src/main.ts",
     "start:debug": "SERVICE=integration-stream-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9231 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:process-stream": "SERVICE=script tsx src/bin/process-stream.ts",
     "script:process-webhook": "SERVICE=script tsx src/bin/process-webhook.ts",
@@ -29,13 +27,13 @@
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
-    "config": "^3.3.9",
-    "tsx": "^4.7.1",
-    "typescript": "^5.6.3"
+    "config": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",
-    "@types/node": "^18.16.3",
+    "@types/node": "catalog:",
     "nodemon": "^2.0.22"
   }
 }

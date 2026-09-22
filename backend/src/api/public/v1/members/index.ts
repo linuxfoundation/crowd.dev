@@ -1,9 +1,12 @@
 import { Router } from 'express'
 
+import { createRateLimiter } from '@/api/apiRateLimiter'
 import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
+import { createMember } from './createMember'
+import { createMemberIdentity } from './identities/createMemberIdentity'
 import { getMemberIdentities } from './identities/getMemberIdentities'
 import { verifyMemberIdentity } from './identities/verifyMemberIdentity'
 import { getMemberMaintainerRoles } from './maintainer-roles/getMemberMaintainerRoles'
@@ -16,15 +19,34 @@ import { getMemberWorkExperiences } from './work-experiences/getMemberWorkExperi
 import { updateMemberWorkExperience } from './work-experiences/updateMemberWorkExperience'
 import { verifyMemberWorkExperience } from './work-experiences/verifyMemberWorkExperience'
 
+const resolveMemberRateLimiter = createRateLimiter({
+  max: 200,
+  windowMs: 60 * 1000,
+  keyGenerator: (req) => req.actor.id,
+})
+
 export function membersRouter(): Router {
   const router = Router()
 
-  router.post('/resolve', requireScopes([SCOPES.READ_MEMBERS]), safeWrap(resolveMemberByIdentities))
+  router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
+
+  router.post(
+    '/resolve',
+    resolveMemberRateLimiter,
+    requireScopes([SCOPES.READ_MEMBERS]),
+    safeWrap(resolveMemberByIdentities),
+  )
 
   router.get(
     '/:memberId/identities',
     requireScopes([SCOPES.READ_MEMBER_IDENTITIES]),
     safeWrap(getMemberIdentities),
+  )
+
+  router.post(
+    '/:memberId/identities',
+    requireScopes([SCOPES.WRITE_MEMBER_IDENTITIES]),
+    safeWrap(createMemberIdentity),
   )
 
   router.patch(

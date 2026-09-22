@@ -1,1 +1,0 @@
-alter table "organizationSegmentsAgg" alter column "segmentId" set not null;

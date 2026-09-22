@@ -9,7 +9,6 @@ export default (app) => {
   app.put(`/member/:id`, safeWrap(require('./memberUpdate').default))
   app.delete(`/member`, safeWrap(require('./memberDestroy').default))
   app.post(`/member/autocomplete`, safeWrap(require('./memberAutocomplete').default))
-  app.get(`/member/active`, safeWrap(require('./memberActiveList').default))
   app.get(`/member/bot-suggestions`, safeWrap(require('./memberBotSuggestionsList').default))
 
   app.get(`/member/:id`, safeWrap(require('./memberFind').default))

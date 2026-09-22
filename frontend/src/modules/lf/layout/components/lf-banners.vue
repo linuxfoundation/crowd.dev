@@ -150,7 +150,6 @@ import {
   watch, ref, computed, onUnmounted,
 } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
-import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { useRoute } from 'vue-router';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
@@ -159,11 +158,11 @@ import LfButton from '@/ui-kit/button/Button.vue';
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
 
 const lsSegmentsStore = useLfSegmentsStore();
-const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 const integrations = ref([]);
 const fetchIntegrationTimer = ref(null);
 const loading = ref(true);
-const subProjects = ref([]);
+const subProjects = computed(() => selectedProjectGroupSubprojects.value);
 
 const route = useRoute();
 
@@ -227,7 +226,7 @@ const showBanner = computed(() => (integrationsWithErrors.value.length
 
 const fetchIntegrations = (projectGroup) => {
   if (projectGroup) {
-    IntegrationService.list(null, null, null, null, getSegmentsFromProjectGroup(projectGroup))
+    IntegrationService.list(null, null, null, null, [projectGroup.id])
       .then((response) => {
         integrations.value = response.rows;
       })
@@ -252,21 +251,6 @@ watch(selectedProjectGroup, (updatedProjectGroup, previousProjectGroup) => {
   if (previousProjectGroup?.id !== updatedProjectGroup?.id) {
     loading.value = true;
     fetchIntegrations(updatedProjectGroup);
-  }
-
-  if (!updatedProjectGroup) {
-    subProjects.value = [];
-  } else {
-    subProjects.value = updatedProjectGroup.projects
-      .reduce((acc, project) => {
-        project.subprojects.forEach((subproject) => {
-          if (subproject) {
-            acc.push(subproject);
-          }
-        });
-
-        return acc;
-      }, []);
   }
 }, {
   deep: true,

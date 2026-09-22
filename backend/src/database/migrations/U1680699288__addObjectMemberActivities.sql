@@ -1,1 +1,0 @@
-ALTER TABLE "activities" DROP COLUMN "objectMemberId";

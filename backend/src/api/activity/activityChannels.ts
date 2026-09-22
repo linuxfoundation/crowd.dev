@@ -18,7 +18,7 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.activityRead)
 
-  const payload = await new ActivityService(req).findActivityChannels(req.query.segments)
+  const payload = await new ActivityService(req).findActivityChannels()
 
   await req.responseHandler.success(req, res, payload)
 }

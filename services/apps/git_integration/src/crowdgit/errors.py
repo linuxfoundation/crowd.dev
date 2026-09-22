@@ -47,7 +47,7 @@ class NetworkError(CrowdGitError):
 
 
 @dataclass
-class PermissionError(CrowdGitError):
+class RepoPermissionError(CrowdGitError):
     error_message: str = "Permission denied"
     error_code: ErrorCode = ErrorCode.PERMISSION_ERROR
 
@@ -105,6 +105,34 @@ class MaintainerIntervalNotElapsedError(CrowdGitError):
 
 
 @dataclass
+class MaintainerSkippedProjectLevelError(CrowdGitError):
+    error_message: str = "Maintainer detection skipped: project-level source (.project/maintainers.yaml) is authoritative"
+    error_code: ErrorCode = ErrorCode.MAINTAINER_SKIPPED_PROJECT_LEVEL_SOURCE
+    ai_cost: int = 0
+
+
+@dataclass
+class AffiliationFileNotFoundError(CrowdGitError):
+    error_message: str = "No affiliation file found in this repository"
+    error_code: ErrorCode = ErrorCode.NO_AFFILIATION_FILE
+    ai_cost: float = 0.0
+
+
+@dataclass
+class AffiliationAnalysisError(CrowdGitError):
+    error_message: str = "Could not parse the affiliation file"
+    error_code: ErrorCode = ErrorCode.AFFILIATION_ANALYSIS_FAILED
+    retain_file_hash: bool = False
+
+
+@dataclass
+class AffiliationIntervalNotElapsedError(CrowdGitError):
+    error_message: str = "Too soon since the last affiliation run"
+    error_code: ErrorCode = ErrorCode.AFFILIATION_INTERVAL_NOT_ELAPSED
+    ai_cost: float = 0.0
+
+
+@dataclass
 class ParentRepoInvalidError(CrowdGitError):
     error_message: str = "Parent repository is not valid or not found"
     error_code: ErrorCode = ErrorCode.PARENT_REPO_INVALID
@@ -117,6 +145,30 @@ class ReOnboardingRequiredError(CrowdGitError):
 
 
 @dataclass
-class StuckRepoError(CrowdGitError):
-    error_message = "Repos stuck in processing state for a long time"
-    error_code: ErrorCode = ErrorCode.STUCK_REPO
+class RepoAuthRequiredError(CrowdGitError):
+    error_message: str = "Repository requires authentication (likely private or deleted)"
+    error_code: ErrorCode = ErrorCode.REPO_AUTH_REQUIRED
+
+
+@dataclass
+class RateLimitError(CrowdGitError):
+    error_message: str = "Rate limited by remote server"
+    error_code: ErrorCode = ErrorCode.RATE_LIMITED
+
+
+@dataclass
+class ForbiddenError(CrowdGitError):
+    error_message: str = "Access to repository is forbidden"
+    error_code: ErrorCode = ErrorCode.ACCESS_FORBIDDEN
+
+
+@dataclass
+class RemoteServerError(CrowdGitError):
+    error_message: str = "Remote server returned an internal error"
+    error_code: ErrorCode = ErrorCode.SERVER_ERROR
+
+
+@dataclass
+class EmptyRepoError(CrowdGitError):
+    error_message: str = "Repository is empty (no branches or commits)"
+    error_code: ErrorCode = ErrorCode.EMPTY_REPO

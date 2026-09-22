@@ -90,7 +90,7 @@ export default async (req, res) => {
     await new IntegrationService(req).twitterCallback(integrationData)
 
     res.redirect(redirectUrl)
-  } catch (error) {
+  } catch {
     res.redirect(errorURL)
   }
 }

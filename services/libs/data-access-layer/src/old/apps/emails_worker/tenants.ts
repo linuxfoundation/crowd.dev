@@ -34,27 +34,6 @@ export async function fetchTenantUsers(db: DbStore, tenantId: string) {
   )
 }
 
-export async function fetchTopActivityTypes(
-  db: DbStore,
-  tenantId: string,
-  dateTimeStartThisWeek: string,
-  dateTimeEndThisWeek: string,
-) {
-  return db.connection().query(
-    `select sum(count(*)) OVER () as "totalCount",
-      count(*) as count,
-      a.type,
-      a.platform
-    from activities a
-    where a."tenantId" = $1
-    and a.timestamp between $2 and $3
-    group by a.type, a.platform
-    order by count(*) desc
-    limit 5;`,
-    [tenantId, dateTimeStartThisWeek, dateTimeEndThisWeek],
-  )
-}
-
 export async function fetchActiveIntegrations(db: DbStore, tenantId: string) {
   return db.connection().query(
     `select * from integrations i

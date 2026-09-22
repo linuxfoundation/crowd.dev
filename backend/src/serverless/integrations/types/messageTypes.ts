@@ -28,13 +28,6 @@ export interface TwitterReachMessage extends IntegrationsMessage {
   }
 }
 
-export interface DiscordIntegrationMessage extends IntegrationsMessage {
-  args: {
-    guildId: string
-    channels?: any
-  }
-}
-
 export interface SlackIntegrationMessage extends IntegrationsMessage {
   args: {
     channels?: any
@@ -88,7 +81,7 @@ export type AddActivitiesSingle = {
 
 export type AddActivities = Array<AddActivitiesSingle>
 
-export type Update = { id: string; update: Object }
+export type Update = { id: string; update: object }
 export type Updates = Array<Update>
 
 export type DbOperations = {
