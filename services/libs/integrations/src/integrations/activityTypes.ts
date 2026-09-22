@@ -229,28 +229,6 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
-    [GithubActivityType.STAR]: {
-      display: {
-        default: 'starred {channel}',
-        short: 'starred',
-        channel: '{channel}',
-        formatter: {
-          channel: defaultGithubChannelFormatter,
-        },
-      },
-      calculateSentiment: false,
-    },
-    [GithubActivityType.UNSTAR]: {
-      display: {
-        default: 'unstarred {channel}',
-        short: 'unstarred',
-        channel: '{channel}',
-        formatter: {
-          channel: defaultGithubChannelFormatter,
-        },
-      },
-      calculateSentiment: false,
-    },
     [GithubActivityType.PULL_REQUEST_MERGED]: {
       display: {
         default: 'merged pull request {self}',
