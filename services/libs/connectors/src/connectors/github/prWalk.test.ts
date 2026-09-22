@@ -4,7 +4,6 @@ import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
 import type { SyncContext } from '../../types'
-
 import { PR_PAGE_SIZE, runDualPhasePrSync } from './prWalk'
 
 interface FakePr {
