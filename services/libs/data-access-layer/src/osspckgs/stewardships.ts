@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { buildHealthBandCondition } from './api'
 import {
   SEVERITY_RANK_EXPR,

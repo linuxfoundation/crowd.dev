@@ -3,7 +3,6 @@ import { XMLParser } from 'fast-xml-parser'
 import { resolveEndpoints } from '../../../nuget/client'
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, fetchText, registryHeaders } from '../http'
-
 import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 

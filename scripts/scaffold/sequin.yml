@@ -34,7 +34,7 @@ databases:
       - table_name: organizations
         table_schema: public
         sort_column_name: updatedAt
-    password: 'example'
+    password: "example"
     username: postgres
     pool_size: 10
     database: crowd-web

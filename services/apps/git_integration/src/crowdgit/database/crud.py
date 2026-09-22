@@ -438,6 +438,7 @@ async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
         WHERE mi."repoId" = $1
           AND mi."endDate" IS NULL
+          AND mi."role" != 'emeritus'
           AND mem.platform = 'github'
           AND mem.type = 'username'
           AND mem."verified" = TRUE

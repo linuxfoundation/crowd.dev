@@ -1,5 +1,6 @@
 <!-- Copyright The Linux Foundation and each contributor to LFX. -->
 <!-- SPDX-License-Identifier: MIT -->
+
 # Tinybird Quarantine Investigator
 
 You are a read-only investigator. Analyze why rows are being quarantined in a specific Tinybird datasource and determine what needs to change. You do NOT write code, create tickets, or open PRs. Return a single JSON bundle.
@@ -30,6 +31,7 @@ LIMIT 30
 If query errors, propagate the failure — do not swallow it into a zero-row bundle. The parent skill's error-handling block will catch it and continue with other datasources.
 
 If the query succeeds but returns 0 rows (race condition — rows expired between Phase 1 count and now), return:
+
 ```json
 {
   "datasource": "<DS_NAME>",
@@ -68,6 +70,7 @@ ORDER BY occurrences DESC
 Capture as raw error rows. Before computing uniformity or selecting the dominant error, normalize every `c__error` string: strip UUIDs (replace with `<UUID>`), timestamps (`<TS>`), raw numeric values (`<N>`), truncate to 120 chars. Then group by `(c__error_column, normalized_error)`, summing occurrences and merging `first_seen`/`last_seen` across rows that collapse to the same normalized pair. The result is `all_error_types`.
 
 **Determine uniformity** (on normalized groups):
+
 - `uniform` — one dominant `(column, normalized_error)` pair accounts for ≥ 80% of quarantined rows
 - `mixed` — multiple distinct pairs, no single one dominates
 
@@ -86,6 +89,7 @@ If query errors, set `ds_total_rows = -1`.
 Read `{REPO_ROOT}/services/libs/tinybird/datasources/{DS_NAME}.datasource`.
 
 Note column declarations: name, type, nullability. Cross-reference against `offending_columns`:
+
 - Which declared column type conflicts with what was ingested?
 - Is the column nullable or not?
 
@@ -112,16 +116,19 @@ From the producer files found in Step 5, extract the postgres table name(s) that
 For each identified postgres table, locate migration files that reference it, then read those files in full to extract complete `CREATE TABLE` and `ALTER TABLE` statements (multiline bodies included):
 
 **CDP database** (crowd.dev repo):
+
 ```bash
 grep -rl "{table_name}" {REPO_ROOT}/backend/src/database/migrations --include="*.sql" 2>/dev/null | sort
 ```
 
 **Packages database** (crowd.dev repo):
+
 ```bash
 grep -rl "{table_name}" {REPO_ROOT}/backend/src/osspckgs/migrations --include="*.sql" 2>/dev/null | sort
 ```
 
 **Insights database** (insights repo at `{REPO_ROOT}/../insights`):
+
 ```bash
 grep -rl "{table_name}" {REPO_ROOT}/../insights/database/migrations --include="*.sql" 2>/dev/null | sort
 ```
@@ -138,20 +145,21 @@ Read each matched file in full. Build the effective column definition by applyin
 The effective type is the result of applying all applicable statements in order. A later `ALTER COLUMN TYPE` supersedes `ADD COLUMN` and `CREATE TABLE`.
 
 For each offending column from `offending_columns`, compare:
+
 - **Postgres effective type** (after applying all migrations chronologically as above)
 - **Tinybird declared type** (from the `.datasource` file in Step 4)
 
 Flag mismatches where a postgres type cannot be safely mapped to the Tinybird type without casting:
 
-| Postgres type | Safe Tinybird mapping | Risky mapping |
-|---|---|---|
-| `text`, `varchar` | `String`, `Nullable(String)` | `Int64`, `Float64` |
-| `integer`, `bigint` | `Int64`, `Nullable(Int64)` | `String` |
-| `boolean` | `UInt8` | `String` |
-| `timestamptz`, `timestamp` | `DateTime`, `Nullable(DateTime)` | `Int64` |
-| `jsonb`, `json` | `String` | Any typed column |
-| `uuid` | `String` | Any non-String |
-| `numeric`, `decimal` | `Decimal(P,S)`, `Nullable(Decimal(P,S))` | `Float64` (loses precision), `Int64` |
+| Postgres type              | Safe Tinybird mapping                    | Risky mapping                        |
+| -------------------------- | ---------------------------------------- | ------------------------------------ |
+| `text`, `varchar`          | `String`, `Nullable(String)`             | `Int64`, `Float64`                   |
+| `integer`, `bigint`        | `Int64`, `Nullable(Int64)`               | `String`                             |
+| `boolean`                  | `UInt8`                                  | `String`                             |
+| `timestamptz`, `timestamp` | `DateTime`, `Nullable(DateTime)`         | `Int64`                              |
+| `jsonb`, `json`            | `String`                                 | Any typed column                     |
+| `uuid`                     | `String`                                 | Any non-String                       |
+| `numeric`, `decimal`       | `Decimal(P,S)`, `Nullable(Decimal(P,S))` | `Float64` (loses precision), `Int64` |
 
 Add a `postgres_type_conflicts` field to the output bundle listing any mismatches found. If the postgres table was not found in any migration path, set `postgres_source_table: "not_found"`.
 
@@ -159,11 +167,11 @@ Add a `postgres_type_conflicts` field to the output bundle listing any mismatche
 
 Use `ds_total_rows` to assess backfill cost:
 
-| Total rows | Risk |
-|---|---|
-| < 1M | low |
-| 1M – 50M | medium |
-| > 50M | high |
+| Total rows   | Risk   |
+| ------------ | ------ |
+| < 1M         | low    |
+| 1M – 50M     | medium |
+| > 50M        | high   |
 | -1 (unknown) | medium |
 
 Pick fix type based on the dominant error:
@@ -184,6 +192,7 @@ grep -rl "{DS_NAME}" {REPO_ROOT}/services/libs/tinybird/datasources --include="*
 ```
 
 For each file found, read it and check whether `{offending_column}` is:
+
 - Used in arithmetic, comparison, or aggregation (type-sensitive — will break if type changes)
 - Cast explicitly (safe regardless of type change)
 - Passed through as-is (may silently break downstream consumers)
@@ -195,22 +204,25 @@ Add a `downstream_impacts` field to the bundle listing each affected file, the u
 **Backfill reasoning:** Quarantined rows are real data that never landed. After any fix, they will NOT be re-processed automatically. Recovery path depends on whether the quarantined data is valid:
 
 **Schema change (quarantined data is valid — e.g. nullable column type fix):**
+
 1. Pause the Sequin sink for this datasource
 2. Update `{DS_NAME}.datasource` with the fix
 3. Delete and recreate datasource: `tb push datasources/{DS_NAME}.datasource --force`
 4. Backfill from Sequin — re-sends all rows including previously-quarantined ones (now accepted)
 5. Restart the sink
-Set `backfill_required: true`, recommend Sequin backfill.
+   Set `backfill_required: true`, recommend Sequin backfill.
 
 **Producer fix (quarantined data is bad — e.g. invalid sentinel value like -1 for UInt):**
+
 - Fix the producer, re-run the sync. Quarantined rows had bad data; discard them. The corrected values arrive via re-sync.
-Set `backfill_required: false`.
+  Set `backfill_required: false`.
 
 Note the **1-month retention window** — quarantine rows are deleted after 30 days. If `first_seen` is more than 3 weeks ago, flag urgency.
 
 `DEFAULT` values on Tinybird columns only apply when a field is **absent** from the JSON — they do not rescue explicit `null` values. Rows where the JSON contains `{"col": null}` are quarantined regardless of DEFAULT. The correct fix for an explicit-null error is `Nullable(Type)` (schema_type_change).
 
 Write `fix_description` as a precise paragraph:
+
 1. Name the specific files and the exact change needed (e.g. `services/libs/tinybird/datasources/activities.datasource line 12: change \`Int64\` to \`Nullable(Int64)\``)
 2. State `ds_total_rows` and backfill tier
 3. If `postgres_type_conflicts` found unsafe mappings, call them out explicitly — the postgres schema is the ground truth for what the producer will send
@@ -222,9 +234,11 @@ Write `fix_description` as a precise paragraph:
 Compute in-process (do not interpolate values into a shell command — normalized errors may contain shell metacharacters from ingested data):
 
 ```javascript
-const crypto = require('crypto');
-const input = [DS_NAME, offending_columns.slice().sort().join(','), normalized_dominant_error].join('|');
-const fingerprint = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
+const crypto = require('crypto')
+const input = [DS_NAME, offending_columns.slice().sort().join(','), normalized_dominant_error].join(
+  '|',
+)
+const fingerprint = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16)
 ```
 
 ## Output

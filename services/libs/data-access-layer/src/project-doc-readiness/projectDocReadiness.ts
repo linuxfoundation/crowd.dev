@@ -1,11 +1,11 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import {
   IDbProjectDocReadiness,
   IDbProjectDocReadinessCheck,
   IFindProjectsForDocsReadiness,
   IProjectDocReadinessCheckInsert,
   IProjectDocReadinessUpsert,
+  IProjectForDocsDiscovery,
   IProjectForDocsReadiness,
 } from './types'
 
@@ -234,5 +234,19 @@ export async function findProjectsForDocsReadiness(
       afterId: afterId ?? null,
       limit,
     },
+  )
+}
+
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+): Promise<IProjectForDocsDiscovery | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT "id", "slug", "name", "website"
+    FROM "insightsProjects"
+    WHERE "id" = $(projectId) AND "deletedAt" IS NULL
+    `,
+    { projectId },
   )
 }

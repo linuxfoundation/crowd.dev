@@ -4,7 +4,6 @@ import { OpenSearchIndex } from '@crowd/types'
 
 import { FieldTranslatorFactory } from '../fieldTranslatorFactory'
 import { OpensearchQueryParser } from '../opensearchQueryParser'
-
 import { OpenSearchService } from './opensearch.service'
 
 export class OrganizationSearchService {

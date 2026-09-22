@@ -4,7 +4,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getCargoConfig } from '../config'
 import { getPackagesDb, getPackagesDbConnection } from '../db'
-
 import { DUMP_DIR, downloadAndExtractDump } from './dump'
 import {
   enrichDownloadsDaily,

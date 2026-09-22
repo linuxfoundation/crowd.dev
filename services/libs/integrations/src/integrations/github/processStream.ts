@@ -11,7 +11,6 @@ import {
   IProcessWebhookStreamContext,
   ProcessStreamHandler,
 } from '../../types'
-
 import DiscussionCommentsQuery from './api/graphql/discussionComments'
 import DiscussionsQuery from './api/graphql/discussions'
 import ForksQuery from './api/graphql/forks'

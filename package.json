@@ -1,11 +1,10 @@
 {
   "private": true,
-  "engines": {
-    "node": ">=24.0.0"
-  },
   "scripts": {
     "prepare": "husky",
     "lint": "oxlint .",
+    "format": "oxfmt",
+    "format-check": "oxfmt --check",
     "test": "vitest run",
     "test:server": "vitest run --project server",
     "test:changed": "vitest --changed",
@@ -15,9 +14,13 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
     "husky": "^9.1.7",
+    "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
     "vite": "6.3.5",
     "vitest": "4.1.7"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   },
   "packageManager": "pnpm@11.22.0+sha512.1ff870c4c6133dfd88fb2afc46dd13d47f09c9794b438c6fdb47ca98caf3bc16381ee0be93a091b8e3824cf01f889f46d7d9e20910fb0be1ab0fb5baa80dd621"
 }

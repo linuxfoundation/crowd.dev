@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 /**
  * Project Onboarding Script
  *
@@ -25,8 +28,6 @@
  */
 import axios from 'axios'
 import { parse } from 'csv-parse'
-import fs from 'fs'
-import path from 'path'
 
 import { getServiceChildLogger } from '@crowd/logging'
 

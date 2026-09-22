@@ -1,6 +1,5 @@
 import type { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
-
 import type {
   IClaimedUnit,
   IShadowDiffUnit,

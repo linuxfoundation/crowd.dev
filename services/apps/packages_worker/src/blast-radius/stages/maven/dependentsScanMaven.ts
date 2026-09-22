@@ -2,7 +2,6 @@ import { getReverseDependents } from '@crowd/data-access-layer/src/packages/blas
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
-
 import { mavenDependencyMayIncludeVuln } from './mavenConstraint'
 import { highestVersion } from './mavenVersions'
 

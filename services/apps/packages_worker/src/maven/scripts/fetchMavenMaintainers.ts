@@ -1,3 +1,6 @@
+import * as fs from 'fs'
+import * as path from 'path'
+
 /**
  * Fetches maintainer data for Maven packages from Libraries.io and GitHub.
  *
@@ -18,13 +21,10 @@
  *     tsx src/maven/scripts/fetchMavenMaintainers.ts /path/to/packages_top500.csv [output.csv]
  */
 import axios, { AxiosInstance } from 'axios'
-import * as fs from 'fs'
-import * as path from 'path'
 
 import { extractArtifact, normalizeScmUrl } from '../extract'
 import { resolveLatestVersion } from '../metadata'
 import { resolveRegistryBaseUrl } from '../registry'
-
 import { parseCsv } from './csv'
 
 // ─── Config ───────────────────────────────────────────────────────────────────

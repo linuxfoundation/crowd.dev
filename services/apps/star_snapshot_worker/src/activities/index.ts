@@ -38,6 +38,22 @@ function getSelfHealRateLimiter(): CoreRateLimiter {
   return selfHealRateLimiter
 }
 
+// Separate quota bucket from the core rate limit above (graphql: 12,150/hr vs core: 15,000/hr) -
+// same ~13% reserve ratio as CM-1463's core-quota floor, applied to this worker's own quota.
+const CAPTURE_RESERVED_GRAPHQL_RATE_LIMIT = 1_500
+
+let captureRateLimiter: CoreRateLimiter | undefined
+function getCaptureRateLimiter(): CoreRateLimiter {
+  if (!captureRateLimiter) {
+    captureRateLimiter = createCoreRateLimiter(CAPTURE_RESERVED_GRAPHQL_RATE_LIMIT, svc.log)
+  }
+  return captureRateLimiter
+}
+
+// Distinguishes a quota-exhausted batch from a per-repo/per-alias failure - the caller backs
+// off and retries the whole batch instead of dead-lettering repos that just got throttled.
+class GraphqlRateLimitedError extends Error {}
+
 let selfHealInflightCache: RedisCache | undefined
 function getSelfHealInflightCache(): RedisCache {
   if (!selfHealInflightCache) {
@@ -64,9 +80,6 @@ interface BatchGraphqlResponse {
 }
 
 function isRetryableAliasError(error?: GraphqlAliasError): boolean {
-  if (error?.message?.toLowerCase().includes('rate limit')) {
-    return true
-  }
   return !error?.type || !NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(error.type)
 }
 
@@ -98,6 +111,16 @@ function buildBatchQuery(repos: Array<{ owner: string; name: string }>): {
   }
 }
 
+// Reserves before every real request (initial + each alias retry), not just once per batch -
+// concurrent batches share this limiter, so only a per-call reservation is race-free.
+function reserveGraphqlSlot(): void {
+  try {
+    getCaptureRateLimiter().reserveOrThrow()
+  } catch (error) {
+    throw new GraphqlRateLimitedError((error as Error).message)
+  }
+}
+
 async function queryStargazerCounts(
   entries: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }>,
 ): Promise<BatchGraphqlResponse> {
@@ -108,6 +131,8 @@ async function queryStargazerCounts(
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
+    reserveGraphqlSlot()
+
     const response = await fetch(GITHUB_GRAPHQL_URL, {
       method: 'POST',
       headers: {
@@ -117,15 +142,49 @@ async function queryStargazerCounts(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     })
+    getCaptureRateLimiter().observe(response.headers)
 
     if (response.status === 401) {
       throw new Error('GitHub auth failure (401) fetching stargazer counts')
     }
 
-    if (response.status === 403) {
+    if (response.status === 403 || response.status === 429) {
+      const retryAfterHeader = response.headers.get('retry-after')
+      const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
+      const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
+
+      if (response.status === 429) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError('GitHub rate limit hit (429) fetching stargazer counts')
+      }
+
       const body = await response.text()
-      if (body.toLowerCase().includes('rate limit')) {
-        throw new Error('GitHub rate limit hit fetching stargazer counts')
+      const bodyLower = body.toLowerCase()
+      // Only a retry-after header or explicit secondary/abuse wording signals GitHub's secondary
+      // limit; misclassifying a primary 403 here would use the short cooldown, not the real reset.
+      const isSecondaryRateLimit =
+        retryAfterMs !== undefined ||
+        bodyLower.includes('secondary rate limit') ||
+        bodyLower.includes('abuse detection')
+      if (isSecondaryRateLimit) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError(
+          'GitHub secondary rate limit hit fetching stargazer counts',
+        )
+      }
+      if (bodyLower.includes('rate limit')) {
+        throw new GraphqlRateLimitedError('GitHub rate limit hit fetching stargazer counts')
+      }
+      if (bodyLower.includes('ip allow list')) {
+        // Org IP allow list blocks the whole batch at the HTTP level before any field resolves,
+        // so which repo caused it can't be told apart - synthesize per-alias errors instead.
+        return {
+          errors: entries.map((entry, i) => ({
+            path: [`r${i}`],
+            type: 'FORBIDDEN',
+            message: `org IP allow list may be blocking one of this batch's repos (incl. ${entry.owner}/${entry.name})`,
+          })),
+        }
       }
       throw ApplicationFailure.nonRetryable(
         'GitHub auth failure (403) fetching stargazer counts',
@@ -156,6 +215,11 @@ async function fetchStargazerCounts(
     try {
       json = await queryStargazerCounts(pending)
     } catch (error) {
+      // Flat-retrying a quota hit within the same few seconds never helps - bail out
+      // immediately instead of burning MAX_ALIAS_ATTEMPTS for nothing.
+      if (error instanceof GraphqlRateLimitedError) {
+        throw error
+      }
       if (attempt === 1) {
         throw error
       }
@@ -176,6 +240,11 @@ async function fetchStargazerCounts(
 
     const topLevelError = json.errors?.find((error) => !error.path?.length)
     if (topLevelError) {
+      if (topLevelError.message?.toLowerCase().includes('rate limit')) {
+        throw new GraphqlRateLimitedError(
+          `GraphQL error fetching stargazer counts: ${topLevelError.message}`,
+        )
+      }
       const message = `GraphQL error fetching stargazer counts: ${topLevelError.message ?? 'unknown error'}`
       if (attempt === 1) {
         throw new Error(message)
@@ -201,6 +270,17 @@ async function fetchStargazerCounts(
       if (typeof alias === 'string') {
         errorsByAlias.set(alias, error)
       }
+    }
+
+    // A rate limit can also surface per-alias rather than as a top-level error - it still
+    // means the whole batch's quota is gone, not just this one repo's.
+    const rateLimitedAlias = [...errorsByAlias.values()].find((error) =>
+      error.message?.toLowerCase().includes('rate limit'),
+    )
+    if (rateLimitedAlias) {
+      throw new GraphqlRateLimitedError(
+        rateLimitedAlias.message ?? 'GitHub rate limit hit fetching stargazer counts',
+      )
     }
 
     const stillPending: typeof pending = []
@@ -242,10 +322,14 @@ async function fetchStargazerCounts(
   return results
 }
 
+export type FetchStarSnapshotBatchResult =
+  | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'done'; results: RepoStarFetchResult[] }
+
 export async function fetchAndSaveStarSnapshotBatch(
   repos: IRepoForStarSnapshot[],
   capturedAt: string,
-): Promise<RepoStarFetchResult[]> {
+): Promise<FetchStarSnapshotBatchResult> {
   const parsed: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }> = []
   const unparseableResults: RepoStarFetchResult[] = []
 
@@ -263,10 +347,27 @@ export async function fetchAndSaveStarSnapshotBatch(
   }
 
   if (parsed.length === 0) {
-    return unparseableResults
+    return { outcome: 'done', results: unparseableResults }
   }
 
-  const results = await fetchStargazerCounts(parsed)
+  const rateLimiter = getCaptureRateLimiter()
+  const waitMs = rateLimiter.peekWaitMs()
+  if (waitMs > 0) {
+    return { outcome: 'rate-limited', waitMs }
+  }
+
+  let results: RepoStarFetchResult[]
+  try {
+    results = await fetchStargazerCounts(parsed)
+  } catch (error) {
+    if (error instanceof GraphqlRateLimitedError) {
+      return {
+        outcome: 'rate-limited',
+        waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      }
+    }
+    throw error
+  }
 
   const qx = pgpQx(svc.postgres.writer.connection())
   for (const result of results) {
@@ -275,7 +376,7 @@ export async function fetchAndSaveStarSnapshotBatch(
     }
   }
 
-  return [...results, ...unparseableResults]
+  return { outcome: 'done', results: [...results, ...unparseableResults] }
 }
 
 export async function findReposForStarSnapshot(

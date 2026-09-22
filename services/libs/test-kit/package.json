@@ -8,8 +8,6 @@
     "./faker": "./src/faker.ts"
   },
   "scripts": {
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -24,7 +22,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "4.1.7",
-    "prettier": "catalog:"
+    "vitest": "4.1.7"
   }
 }

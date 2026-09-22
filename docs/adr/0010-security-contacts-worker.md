@@ -14,7 +14,7 @@ information is scattered across registry manifests, repo files (`SECURITY.md`,
 `SECURITY-INSIGHTS.yml`, `SECURITY_CONTACTS`, `security.txt`), and GitHub API state (private
 vulnerability reporting), with no cross-ecosystem standard. Much of it is noise: RFC 2606
 placeholder emails, templated SECURITY.md files linking to generic GitHub docs, registry usernames
-that are only *guessed* to be GitHub logins, and bot/AI-agent accounts among top committers. The
+that are only _guessed_ to be GitHub logins, and bot/AI-agent accounts among top committers. The
 data is consumed by the public `/v1/akrites/packages/detail` endpoint, so it must carry enough
 provenance and confidence signal for a downstream security team to trust — or discount — each
 contact. The worker follows the ADR-0001 §Worker architecture pattern
@@ -32,15 +32,15 @@ soft-delete semantics) plus policy columns on `repos`.
 
 ### Tiered extractor hierarchy
 
-| Tier | Source | Extractor |
-| ---- | ------ | --------- |
-| A1 | `SECURITY-INSIGHTS.yml` (root, `.github/`, `.gitlab/`) | `securityInsights.ts` |
-| A2 | GitHub private vulnerability reporting status (authed) | `pvr.ts` |
-| A3 | `SECURITY_CONTACTS` / `OWNERS` (k8s-style) | `securityContactsFile.ts` |
-| A4 | RFC 9116 `security.txt` on the project homepage | `securityTxt.ts` |
-| B1 | `SECURITY.md` (root, `.github/`, `docs/`) | `securityMd.ts` |
-| B2 | Registry manifests — npm, PyPI, Maven, Cargo, NuGet, RubyGems, Composer | `extractors/registry/` |
-| D | Top-3 committers (last 90 days) + repo owner profile; static Go ecosystem fallback | `topCommitters.ts`, `repoOwner.ts`, `registry/go.ts` |
+| Tier | Source                                                                             | Extractor                                            |
+| ---- | ---------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| A1   | `SECURITY-INSIGHTS.yml` (root, `.github/`, `.gitlab/`)                             | `securityInsights.ts`                                |
+| A2   | GitHub private vulnerability reporting status (authed)                             | `pvr.ts`                                             |
+| A3   | `SECURITY_CONTACTS` / `OWNERS` (k8s-style)                                         | `securityContactsFile.ts`                            |
+| A4   | RFC 9116 `security.txt` on the project homepage                                    | `securityTxt.ts`                                     |
+| B1   | `SECURITY.md` (root, `.github/`, `docs/`)                                          | `securityMd.ts`                                      |
+| B2   | Registry manifests — npm, PyPI, Maven, Cargo, NuGet, RubyGems, Composer            | `extractors/registry/`                               |
+| D    | Top-3 committers (last 90 days) + repo owner profile; static Go ecosystem fallback | `topCommitters.ts`, `repoOwner.ts`, `registry/go.ts` |
 
 Supporting decisions:
 
@@ -88,8 +88,8 @@ score = round(clamp(raw, 0, 1) · 1000) / 1000        -- stored as NUMERIC(4,3)
 
 1. A CDP-unverified contact (see penalty rules below) gets a flat **0.35** regardless of channel.
 2. `email`: local-part in the security set (`security`, `secure`, `psirt`, `sirt`, `cert`, `cve`,
-   `abuse`, `vuln`, `vulnerability`, `vulnerabilities`, `disclosure`) *or any local-part starting
-   with `security`* = **1.0**; local-part in the generic set (`info`, `team`, `contact`, `hello`,
+   `abuse`, `vuln`, `vulnerability`, `vulnerabilities`, `disclosure`) _or any local-part starting
+   with `security`_ = **1.0**; local-part in the generic set (`info`, `team`, `contact`, `hello`,
    `hi`, `support`, `admin`, `help`, `maintainers`, `dev`, `devs`, `opensource`, `open-source`,
    `office`, `mail`) = **0.7**; anything else (an individual's address) = **0.6**. Matching is on
    the lowercased, trimmed local-part.
@@ -148,7 +148,7 @@ display name — two people can share a name) → provenance dedup → score →
 
 Two distinct trust problems, two mechanisms:
 
-- **Registry usernames are only candidates.** RubyGems/NuGet owner names are *guessed* GitHub
+- **Registry usernames are only candidates.** RubyGems/NuGet owner names are _guessed_ GitHub
   logins; `verifyHandleCandidates.ts` confirms a candidate only when the same login owns the repo
   or appears in its top-100 contributors. Unconfirmed candidates are dropped entirely.
 - **Confirmed handles are resolved to emails through CDP's identity graph**
@@ -209,6 +209,7 @@ derived at read time as the band of the highest contact score, not stored.
 ## Alternatives Considered
 
 ### Alternative 1: Standalone polling-loop worker (the `github-repos-enricher` pattern)
+
 - **Pros**: simplest runtime; the original implementation plan specified it; proven pattern in
   this service; no Temporal coupling.
 - **Cons**: scheduling, retry, overlap protection, and run observability all hand-rolled; no
@@ -219,6 +220,7 @@ derived at read time as the band of the highest contact score, not stored.
   awaitable execution, which Temporal gives for free and a polling loop does not.
 
 ### Alternative 2: Hard `DELETE` + `INSERT` per repo (the plan's original write model)
+
 - **Pros**: simplest idempotent recompute; no `deleted_at` filtering for readers.
 - **Cons**: a partial pass (one failed extractor) wipes contacts the failed source discovered
   earlier; row identity churns every sweep; per-repo transactions at concurrency 100 overwhelm a
@@ -228,14 +230,16 @@ derived at read time as the band of the highest contact score, not stored.
   the chunked batch write removed the measured persistence bottleneck.
 
 ### Alternative 3: Trust registry owner usernames as GitHub handles directly
+
 - **Pros**: no extra GitHub API call; more contacts surfaced.
 - **Cons**: a RubyGems/NuGet username and a GitHub login are separate namespaces — an unrelated
   person or bot can hold the same name.
-- **Why not**: emitting a wrong person as a *security contact* is worse than emitting nothing.
+- **Why not**: emitting a wrong person as a _security contact_ is worse than emitting nothing.
   Corroboration against the repo's contributors/owner costs one API call per repo and removes the
   collision class entirely.
 
 ### Alternative 4: Always emit tier D committers and owner
+
 - **Pros**: maximal coverage; no gating logic.
 - **Cons**: floods well-documented repos with low-confidence individual contacts; surfaces
   individuals who never volunteered for security contact duty; wastes two GitHub calls per repo.
@@ -244,6 +248,7 @@ derived at read time as the band of the highest contact score, not stored.
   need them.
 
 ### Alternative 5: Resolve handles via GitHub public profile email only (no CDP lookup)
+
 - **Pros**: no cross-database read into CDP; single data source.
 - **Cons**: most GitHub profiles expose no public email, so most confirmed handles would remain
   handle-only contacts (channel quality 0.4) that a security team cannot actually write to.
@@ -254,6 +259,7 @@ derived at read time as the band of the highest contact score, not stored.
 ## Consequences
 
 ### Positive
+
 - One queryable, confidence-banded contact source per repo, with full per-contact provenance
   (source, path, fetch/declared timestamps) — consumers can audit why any contact exists.
 - Idempotent, self-advancing sweep: failed repos are marked attempted, failed chunks re-extract in
@@ -262,6 +268,7 @@ derived at read time as the band of the highest contact score, not stored.
 - Pure scoring/reconcile functions are unit-tested in isolation (`__tests__/`).
 
 ### Negative
+
 - GitHub API budget: tree fetch, PVR check, contributor verification, and tier D lookups consume
   the shared GitHub App token pool alongside the enricher.
 - Readers must remember `deleted_at IS NULL`; the soft-delete convention is enforced only by review.
@@ -272,6 +279,7 @@ derived at read time as the band of the highest contact score, not stored.
   from B to committers.
 
 ### Risks
+
 - **Wrong-person contact despite corroboration** — a top committer or repo owner is not
   necessarily a security contact. Mitigated by tier D's 0.2 tier score, the `committer`/`org-owner`
   roles, and confidence bands that push these to FALLBACK; consumers are expected to respect bands.
@@ -282,11 +290,10 @@ derived at read time as the band of the highest contact score, not stored.
   `stats/contributors` 202-polling behavior all change over time. Extractor isolation limits blast
   radius to one source; fixture-based tests catch parser regressions.
 
-
 ## Addendum (2026-07-29): Vulnerability reporting protocol
 
 Adds a sister data model answering "**how** does this project expect external vulnerability
-reporting?" per repo — distinct from security contacts, which answer *who*. The source of truth
+reporting?" per repo — distinct from security contacts, which answer _who_. The source of truth
 is what the project itself declared: security files from the enricher's `repo_well_known_files`
 inventory, the pages they link to, and the authoritative `pvr_enabled` flag. Inferred contacts
 from `security_contacts` never blend in as if declared; they appear only as clearly-labeled
@@ -315,7 +322,7 @@ prose fields, and a deterministic validator gates every LLM write.
   ever; a `parser_version` bump is a targeted re-parse, not a migration.
 - **`repo_reporting_protocols`** — assembled per-repo answer. PK `repo_id`, `declared`,
   `methods` JSONB (ordered array of `{type, status, endpoint, condition, confidence,
-  provenance}`), `guidelines` JSONB, `sources` JSONB, `assembled_at`. Method `type` ∈
+provenance}`), `guidelines` JSONB, `sources` JSONB, `assembled_at`. Method `type` ∈
   github-pvr | email | web-form | bounty-platform | security-txt | mailing-list; `status` ∈
   preferred | accepted | fallback | prohibited (`prohibited` captures negation language);
   `confidence` ∈ declared | inferred. Plain upsert — fully derived and recomputable, no
@@ -358,14 +365,15 @@ the ~89 no-signal repos.
 
 Direct AWS Bedrock calls (`@aws-sdk/client-bedrock-runtime`, module-local in `llmExtract.ts`)
 — deliberately **not** the legacy class-based `LlmService` in `common_services` (class pattern
-+ prompt-history DB coupling) and **not** a shared provider-agnostic lib speaking to a LiteLLM
-proxy (built during implementation, then dropped: no LiteLLM infra today; revisit if CDP
-standardizes multi-provider LLM infrastructure — schema and prompt carry over unchanged).
-Existing `CROWD_AWS_BEDROCK_ACCESS_KEY_ID`/`CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY` credentials;
-default `LlmModelType.CLAUDE_HAIKU_4_5` with region from `LLM_MODEL_REGION_MAP`. The JSON
-schema is embedded in the system prompt (Bedrock InvokeModel has no structured-output mode);
-`parseLlmJson` parses the answer. Missing credentials or any failure → `degraded` parse, never
-a thrown error. No prompt-history persistence.
+
+- prompt-history DB coupling) and **not** a shared provider-agnostic lib speaking to a LiteLLM
+  proxy (built during implementation, then dropped: no LiteLLM infra today; revisit if CDP
+  standardizes multi-provider LLM infrastructure — schema and prompt carry over unchanged).
+  Existing `CROWD_AWS_BEDROCK_ACCESS_KEY_ID`/`CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY` credentials;
+  default `LlmModelType.CLAUDE_HAIKU_4_5` with region from `LLM_MODEL_REGION_MAP`. The JSON
+  schema is embedded in the system prompt (Bedrock InvokeModel has no structured-output mode);
+  `parseLlmJson` parses the answer. Missing credentials or any failure → `degraded` parse, never
+  a thrown error. No prompt-history persistence.
 
 ### Scheduling
 

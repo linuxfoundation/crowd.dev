@@ -1,6 +1,10 @@
 import lodash, { uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
+import { KUBE_MODE, SERVICE } from '@/conf'
+import { ServiceType } from '@/conf/configTypes'
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
 import {
   captureApiChange,
   memberCreateAction,
@@ -71,14 +75,8 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { KUBE_MODE, SERVICE } from '@/conf'
-import { ServiceType } from '@/conf/configTypes'
-import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
-import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
-
 import { PlatformIdentities } from '../../serverless/integrations/types/messageTypes'
 import { AttributeData } from '../attributes/attribute'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
 import SegmentRepository from './segmentRepository'

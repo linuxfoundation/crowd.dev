@@ -106,12 +106,12 @@ components:
         stewardshipId:
           type:
             - string
-            - 'null'
-          example: '4501'
+            - "null"
+          example: "4501"
         stewardshipStatus:
           oneOf:
-            - $ref: '#/components/schemas/StewardshipStatus'
-            - type: 'null'
+            - $ref: "#/components/schemas/StewardshipStatus"
+            - type: "null"
         openVulns:
           type: integer
           description: Count of advisory_packages rows for this package.
@@ -119,7 +119,7 @@ components:
         maxVulnSeverity:
           type:
             - string
-            - 'null'
+            - "null"
           enum: [critical, high, medium, low]
           description: Worst advisory severity. Null if no advisories.
         maintainerCount:
@@ -129,19 +129,19 @@ components:
         criticalityScore:
           type:
             - number
-            - 'null'
+            - "null"
           description: Raw criticality score (0–1 float). Use `impact` for display.
           example: 0.94
         impact:
           type:
             - integer
-            - 'null'
+            - "null"
           description: Display score (0–100). criticalityScore × 100, rounded. Null if no score.
           example: 94
         scorecardScore:
           type:
             - number
-            - 'null'
+            - "null"
           description: OpenSSF Scorecard score (0–10). Null if no repo mapped.
           example: 5.2
         health:
@@ -151,7 +151,7 @@ components:
             score:
               type:
                 - integer
-                - 'null'
+                - "null"
               description: >
                 Health score (0–100). Tinybird composite score when enriched,
                 OpenSSF Scorecard × 10 otherwise. Null if neither is available.
@@ -159,7 +159,7 @@ components:
             label:
               type:
                 - string
-                - 'null'
+                - "null"
               enum: [excellent, healthy, fair, concerning, critical, null]
               description: >
                 Tinybird band when enriched (excellent ≥85, healthy 70–84,
@@ -168,14 +168,14 @@ components:
         lifecycle:
           type:
             - string
-            - 'null'
+            - "null"
           enum: [active, stable, declining, abandoned, archived, null]
           description: Tinybird-enriched lifecycle label. Null if not yet enriched.
           example: active
         latestReleaseAt:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: Used by the frontend to derive the stale flag (≥ 18 months).
         lastActivity:
@@ -187,22 +187,22 @@ components:
                 type:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   example: state_changed
                 content:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   example: Moved to active stewardship
                 at:
                   type: string
                   format: date-time
-            - type: 'null'
+            - type: "null"
         stewards:
           type: array
           description: Active stewards (deleted_at IS NULL). Empty array if none.
           items:
-            $ref: '#/components/schemas/Steward'
+            $ref: "#/components/schemas/Steward"
 
     StatusCounts:
       type: object
@@ -270,13 +270,13 @@ components:
             scorecard score only, not Tinybird health_label).
         stewardshipStatus:
           oneOf:
-            - $ref: '#/components/schemas/StewardshipStatus'
-            - type: 'null'
+            - $ref: "#/components/schemas/StewardshipStatus"
+            - type: "null"
         stewardshipId:
           type:
             - string
-            - 'null'
-          example: '4501'
+            - "null"
+          example: "4501"
         openVulns:
           type: integer
           example: 3
@@ -300,10 +300,10 @@ components:
       properties:
         id:
           type: string
-          example: '9182736'
+          example: "9182736"
         stewardshipId:
           type: string
-          example: '4501'
+          example: "4501"
         packagePurl:
           type: string
           example: pkg:npm/minimist@1.2.6
@@ -316,13 +316,13 @@ components:
         actorUserId:
           type:
             - string
-            - 'null'
+            - "null"
           description: Auth0 sub. Null for system events.
           example: auth0|abc123
         actorName:
           type:
             - string
-            - 'null'
+            - "null"
           description: >
             Display name of the actor. Currently returns actorUserId as a
             placeholder — will be resolved to a display name once the
@@ -348,15 +348,15 @@ components:
         content:
           type:
             - string
-            - 'null'
-          example: 'Escalated with resolution path: right_of_first_refusal'
+            - "null"
+          example: "Escalated with resolution path: right_of_first_refusal"
         metadata:
           type:
             - object
-            - 'null'
+            - "null"
           additionalProperties: true
         stewardshipStatus:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
         createdAt:
           type: string
           format: date-time
@@ -377,7 +377,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: KPI metrics.
           content:
             application/json:
@@ -410,7 +410,7 @@ paths:
                   coverageTrend:
                     type:
                       - number
-                      - 'null'
+                      - "null"
                     description: >
                       Percentage-point change vs. previous month. Null until
                       snapshot mechanism is implemented.
@@ -442,12 +442,12 @@ paths:
                 unassignedCritical: 1230
                 needsAttention: 47
                 escalated: 8
-        '401':
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /ossprey/activity:
     get:
@@ -476,7 +476,7 @@ paths:
             maximum: 100
             default: 25
       responses:
-        '200':
+        "200":
           description: Paginated activity feed.
           content:
             application/json:
@@ -487,7 +487,7 @@ paths:
                   rows:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ActivityFeedItem'
+                      $ref: "#/components/schemas/ActivityFeedItem"
                   total:
                     type: integer
                     example: 142
@@ -499,8 +499,8 @@ paths:
                     example: 25
               example:
                 rows:
-                  - id: '9182736'
-                    stewardshipId: '4501'
+                  - id: "9182736"
+                    stewardshipId: "4501"
                     packagePurl: pkg:maven/org.slf4j/slf4j-api
                     packageName: slf4j-api
                     packageEcosystem: maven
@@ -512,22 +512,22 @@ paths:
                       from: assessing
                       to: active
                     stewardshipStatus: active
-                    createdAt: '2026-06-14T10:23:00Z'
+                    createdAt: "2026-06-14T10:23:00Z"
                 total: 11
                 page: 1
                 pageSize: 25
-        '400':
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /ossprey/packages:
     get:
@@ -589,11 +589,11 @@ paths:
             Filter by stewardship status. `unassigned` includes packages with
             no stewardship row (s.id IS NULL).
           schema:
-            $ref: '#/components/schemas/StewardshipStatus'
+            $ref: "#/components/schemas/StewardshipStatus"
         - name: healthBand
           in: query
           schema:
-            $ref: '#/components/schemas/HealthBand'
+            $ref: "#/components/schemas/HealthBand"
         - name: vulnSeverity
           in: query
           description: >
@@ -633,7 +633,7 @@ paths:
             enum: [asc, desc]
             default: desc
       responses:
-        '200':
+        "200":
           description: Paginated package list.
           content:
             application/json:
@@ -644,7 +644,7 @@ paths:
                   rows:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PackageRow'
+                      $ref: "#/components/schemas/PackageRow"
                   total:
                     type: integer
                     example: 1842
@@ -655,7 +655,7 @@ paths:
                     type: integer
                     example: 25
                   statusCounts:
-                    $ref: '#/components/schemas/StatusCounts'
+                    $ref: "#/components/schemas/StatusCounts"
               example:
                 rows:
                   - purl: pkg:maven/org.slf4j/slf4j-api
@@ -663,7 +663,7 @@ paths:
                     ecosystem: maven
                     criticalityScore: 0.998
                     impact: 100
-                    stewardshipId: '101'
+                    stewardshipId: "101"
                     stewardshipStatus: active
                     openVulns: 0
                     maxVulnSeverity: null
@@ -673,15 +673,15 @@ paths:
                       score: 75
                       label: healthy
                     lifecycle: active
-                    latestReleaseAt: '2026-04-10T00:00:00Z'
+                    latestReleaseAt: "2026-04-10T00:00:00Z"
                     lastActivity:
                       type: state_changed
                       content: Assessment complete, moving to active
-                      at: '2026-06-01T10:00:00Z'
+                      at: "2026-06-01T10:00:00Z"
                     stewards:
                       - userId: auth0|mock-user-alice
                         role: lead
-                        assignedAt: '2026-01-15T09:00:00Z'
+                        assignedAt: "2026-01-15T09:00:00Z"
                 total: 9
                 page: 1
                 pageSize: 25
@@ -695,18 +695,18 @@ paths:
                   escalated: 1
                   blocked: 1
                   inactive: 1
-        '400':
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /ossprey/packages/scatter:
     get:
@@ -726,7 +726,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: Scatter plot data points.
           content:
             application/json:
@@ -737,7 +737,7 @@ paths:
                   points:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ScatterPoint'
+                      $ref: "#/components/schemas/ScatterPoint"
                   total:
                     type: integer
                     description: >
@@ -753,7 +753,7 @@ paths:
                     healthScore: 75
                     healthBand: healthy
                     stewardshipStatus: active
-                    stewardshipId: '101'
+                    stewardshipId: "101"
                     openVulns: 0
                     advisoryCount: 0
                   - purl: pkg:maven/com.fasterxml.jackson.core/jackson-databind
@@ -762,13 +762,13 @@ paths:
                     healthScore: 0
                     healthBand: critical
                     stewardshipStatus: needs_attention
-                    stewardshipId: '102'
+                    stewardshipId: "102"
                     openVulns: 2
                     advisoryCount: 2
                 total: 2000
-        '401':
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"

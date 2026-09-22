@@ -8,7 +8,6 @@ import {
   resolveInstallations,
 } from '../enricher/githubAppAuth'
 import { InstallationPool } from '../enricher/installationPool'
-
 import { GithubGetResult } from './types'
 
 const log = getServiceChildLogger('security-contacts:github-token')

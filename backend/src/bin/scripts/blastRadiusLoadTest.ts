@@ -28,12 +28,11 @@
 import { execSync } from 'child_process'
 import * as fs from 'fs'
 
+import { getPackagesQx } from '@/db/packagesDb'
+import { getPackagesTemporalClient } from '@/db/packagesTemporal'
 import { generateUUIDv4 } from '@crowd/common'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { TemporalWorkflowId } from '@crowd/types'
-
-import { getPackagesQx } from '@/db/packagesDb'
-import { getPackagesTemporalClient } from '@/db/packagesTemporal'
 
 function flag(name: string, fallback?: string): string | undefined {
   const arg = process.argv.find((a) => a.startsWith(`--${name}=`))

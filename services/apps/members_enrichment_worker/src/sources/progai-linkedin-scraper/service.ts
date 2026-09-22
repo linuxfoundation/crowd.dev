@@ -13,7 +13,6 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { IMemberEnrichmentDataProgAI, IMemberEnrichmentDataProgAIResponse } from '../progai/types'
-
 import { IMemberEnrichmentDataProgAILinkedinScraper } from './types'
 
 export default class EnrichmentServiceProgAILinkedinScraper

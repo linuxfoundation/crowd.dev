@@ -2,7 +2,6 @@
 import { generateUUIDv4 } from '@crowd/common'
 
 import { ProcessStreamHandler } from '../../types'
-
 import { getDiscourseCategories } from './api/getCategories'
 import { getDiscoursePostsByIds } from './api/getPostsByIds'
 import { getDiscoursePostsFromTopic } from './api/getPostsFromTopic'

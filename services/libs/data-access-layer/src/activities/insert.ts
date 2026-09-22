@@ -7,7 +7,6 @@ import { ACTIVITIES_QUEUE_SETTINGS, IQueue, QueueEmitter } from '@crowd/queue'
 import telemetry from '@crowd/telemetry'
 
 import { IDbActivityCreateData } from '../old/apps/data_sink_worker/repo/activity.data'
-
 import { ACTIVITY_ALL_COLUMNS } from './sql'
 
 const logger = getServiceChildLogger('insert-activities')

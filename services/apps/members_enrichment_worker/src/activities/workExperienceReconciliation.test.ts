@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { IMemberOrganizationData, OrganizationIdentityType, OrganizationSource } from '@crowd/types'
 
 import { IMemberEnrichmentDataNormalizedOrganization } from '../types'
-
 import {
   hasMemberOrganizationTimelineChange,
   prepareWorkExperiences,

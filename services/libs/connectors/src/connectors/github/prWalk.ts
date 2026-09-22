@@ -1,5 +1,4 @@
 import type { SyncContext, SyncOutcome } from '../../types'
-
 import { githubGraphql } from './gql'
 import type { PullRequestNode, PullRequestsPage } from './graphql/pullRequests'
 import { PULL_REQUESTS_QUERY } from './graphql/pullRequests'

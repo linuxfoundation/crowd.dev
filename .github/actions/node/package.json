@@ -14,7 +14,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@vercel/ncc": "^0.38.1",
-    "prettier": "catalog:",
     "ts-node": "^10.9.1",
     "typescript": "catalog:"
   }

@@ -1,7 +1,6 @@
+import { PACKAGES_TEMPORAL_CONFIG } from '@/conf'
 import { IS_DEV_ENV, SERVICE } from '@crowd/common'
 import { Client, Connection, getDataConverter } from '@crowd/temporal'
-
-import { PACKAGES_TEMPORAL_CONFIG } from '@/conf'
 
 let _init: Promise<Client> | undefined
 

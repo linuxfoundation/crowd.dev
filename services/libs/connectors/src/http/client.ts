@@ -41,8 +41,11 @@ export interface ConnectorHttp {
 
 type CountingHttpClientDeps = HttpClientDeps & { countRequest: () => void }
 
-const MAX_ATTEMPTS = 3
+// 8 attempts keeps the worst case (8 x 60s timeouts + 91s backoff = 571s) inside
+// the 600s the run reserves before the activity start-to-close timeout (runLimits.ts)
+const MAX_ATTEMPTS = 8
 const BACKOFF_BASE_MS = 1000
+const BACKOFF_CAP_MS = 30_000
 const RATE_LIMIT_FALLBACK_MS = 60_000
 const DEFAULT_TIMEOUT_MS = 60_000
 
@@ -74,7 +77,7 @@ async function requestWithRetry<T>(
       }
       lastError = err
       if (attempt < MAX_ATTEMPTS) {
-        const delay = BACKOFF_BASE_MS * 2 ** (attempt - 1)
+        const delay = Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS)
         deps.log.warn({ attempt, delay, reason: err.message }, 'provider unavailable, backing off')
         await timeout(delay)
       }

@@ -25,7 +25,6 @@ import { findPackageIdsByPurl } from '@crowd/data-access-layer/src/osspckgs/pack
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { getPackagesDbConnection } from '../../db'
-
 import { parseCsv } from './csv'
 
 // ─── Role normalisation ───────────────────────────────────────────────────────

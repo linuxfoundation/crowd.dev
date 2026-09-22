@@ -43,27 +43,30 @@ digraph scaffold {
 Read the current state of each file before modifying. Never modify without reading first.
 
 ### Conditional — only if platform is NEW
-| # | File | Change |
-|---|------|--------|
-| 0 | `services/libs/types/src/enums/platforms.ts` | Add `PlatformType.{PLATFORM}` enum value |
+
+| #   | File                                         | Change                                   |
+| --- | -------------------------------------------- | ---------------------------------------- |
+| 0   | `services/libs/types/src/enums/platforms.ts` | Add `PlatformType.{PLATFORM}` enum value |
 
 ### Always — structural (template-filled)
-| # | File | Change |
-|---|------|--------|
-| 1 | `services/libs/types/src/enums/organizations.ts` | Add to `OrganizationSource` + `OrganizationAttributeSource` enums |
-| 2 | `services/libs/integrations/src/integrations/{platform}/types.ts` | NEW: activity type enum + GRID |
-| 3 | `services/libs/integrations/src/integrations/index.ts` | Add `export * from './{platform}/types'` |
-| 4 | `services/libs/data-access-layer/src/organizations/attributesConfig.ts` | Add to `ORG_DB_ATTRIBUTE_SOURCE_PRIORITY` |
-| 5 | `backend/src/database/migrations/V{epoch}__add{Platform}ActivityTypes.sql` | NEW: INSERT into `activityTypes` |
-| 6 | `services/apps/snowflake_connectors/src/integrations/types.ts` | Add `DataSourceName.{PLATFORM}_{SOURCE}` |
-| 7 | `services/apps/snowflake_connectors/src/integrations/index.ts` | Import + register in `supported` |
+
+| #   | File                                                                       | Change                                                            |
+| --- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 1   | `services/libs/types/src/enums/organizations.ts`                           | Add to `OrganizationSource` + `OrganizationAttributeSource` enums |
+| 2   | `services/libs/integrations/src/integrations/{platform}/types.ts`          | NEW: activity type enum + GRID                                    |
+| 3   | `services/libs/integrations/src/integrations/index.ts`                     | Add `export * from './{platform}/types'`                          |
+| 4   | `services/libs/data-access-layer/src/organizations/attributesConfig.ts`    | Add to `ORG_DB_ATTRIBUTE_SOURCE_PRIORITY`                         |
+| 5   | `backend/src/database/migrations/V{epoch}__add{Platform}ActivityTypes.sql` | NEW: INSERT into `activityTypes`                                  |
+| 6   | `services/apps/snowflake_connectors/src/integrations/types.ts`             | Add `DataSourceName.{PLATFORM}_{SOURCE}`                          |
+| 7   | `services/apps/snowflake_connectors/src/integrations/index.ts`             | Import + register in `supported`                                  |
 
 ### Per source — business logic (generated from confirmed inputs)
-| # | File | Change |
-|---|------|--------|
-| 8 | `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/buildSourceQuery.ts` | NEW |
-| 9 | `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/transformer.ts` | NEW |
-| 10 | `services/apps/snowflake_connectors/src/integrations/{platform}/{platform}TransformerBase.ts` | NEW (optional) |
+
+| #   | File                                                                                          | Change         |
+| --- | --------------------------------------------------------------------------------------------- | -------------- |
+| 8   | `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/buildSourceQuery.ts` | NEW            |
+| 9   | `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/transformer.ts`      | NEW            |
+| 10  | `services/apps/snowflake_connectors/src/integrations/{platform}/{platform}TransformerBase.ts` | NEW (optional) |
 
 ---
 
@@ -86,13 +89,16 @@ Set `CROWD_DEV_ROOT = "."` (current directory). All file paths in this skill are
 ### Case B — File not found (running from cross-team skills repo or elsewhere)
 
 Ask the user:
+
 > "This skill needs access to the crowd.dev repository to read and modify files. Do you have a local clone?
+>
 > - If yes: provide the absolute path (e.g., `/Users/you/work/crowd.dev`)
 > - If no: I'll give you the clone command first."
 
 If the user provides a path: verify it by checking `{path}/services/apps/snowflake_connectors/src/integrations/index.ts` exists. If confirmed, set `CROWD_DEV_ROOT = {path}`. Proceed to Phase 1.
 
 If the path doesn't exist or they need to clone:
+
 > "Run: `git clone https://github.com/linuxfoundation/crowd.dev.git`
 > Then provide the path to the cloned directory."
 
@@ -111,12 +117,13 @@ Ask one question at a time. Do not bundle questions.
 Read `services/libs/types/src/enums/platforms.ts` and list all current `PlatformType` values.
 
 Ask:
+
 > "What is the platform name for this data source? It must match a `PlatformType` enum value. Current values are: [list them]. If your platform isn't listed, provide the name and I'll add it."
 
 - If the value **is** in the enum: continue.
 - If the value **is not** in the enum: warn the user explicitly:
   > "⚠️ `{name}` is not in the `PlatformType` enum. I'll need to add it to `services/libs/types/src/enums/platforms.ts`. Please confirm this is a new platform and confirm the exact string value (e.g., `my-platform`)."
-  Wait for confirmation before proceeding.
+  > Wait for confirmation before proceeding.
 
 ### Question 2 — New or existing platform?
 
@@ -128,14 +135,17 @@ Read `services/apps/snowflake_connectors/src/integrations/index.ts`.
 ### Question 3 — Source name
 
 Ask:
+
 > "What is the name for this data source? This becomes the directory name and `DataSourceName` enum suffix (e.g., `enrollments`, `event-registrations`)."
 
 ### Question 4 — Snowflake tables
 
 Ask for the main table first, then any additional tables:
+
 > "What is the main Snowflake table for this source?"
 
 Then:
+
 > "Are there any additional tables needed (e.g., for user data, org data, segment matching)? For each one, provide the table name and its purpose — what data it holds and how it relates to the main table."
 
 Do not assume a direct JOIN between tables. The relation type (JOIN, subquery, CTE, lookup) must come from the user's description of each table's purpose.
@@ -152,6 +162,7 @@ Use `ToolSearch` with query `"LFX BI Layer get_all_sources"` to check whether th
 
 - **Tools found**: proceed directly to Step 1.
 - **Tools not found**: prompt the user to authenticate:
+
   > "The LFX BI Layer MCP is not connected. To enable automatic schema lookup, run `/mcp` and select **'claude.ai LFX BI Layer'** to authenticate. Once done, say 'continue' and I'll proceed. Or say 'skip' to use the manual query approach instead."
 
   Wait for the user's response. If they authenticate: re-check with `ToolSearch` and proceed to Step 1. If they skip or authentication still fails: proceed directly to Step 2 for all tables.
@@ -190,6 +201,7 @@ Ask the user to paste the output or provide a path to an exported file (CSV, JSO
 ### Column registry
 
 After Step 1 and/or Step 2, build a column registry per table:
+
 - Column name (exact casing from schema — this is the reference for all code)
 - Data type
 - Ordinal position
@@ -232,6 +244,7 @@ LIMIT 20;
 ```
 
 Ask the user:
+
 > "Please run this query in Snowflake and paste the result or provide a path to the exported file (CSV, JSON, or TSV). I'll use the actual data values to auto-derive column mappings before asking for your confirmation."
 
 ---
@@ -250,18 +263,19 @@ Read the relevant transformer files from `services/apps/snowflake_connectors/src
 
 For columns not covered by an existing implementation, apply these heuristics:
 
-| Role | High-confidence signals |
-|------|------------------------|
-| Email | Name contains `EMAIL`; values match `x@y.z` pattern |
-| Platform username | Name is `USER_NAME`, `USERNAME`, `LOGIN`, `HANDLE`; values are non-email strings |
-| LFID | Name contains `LF_USERNAME`, `LFID`, `LF_ID` |
-| Timestamp (incremental) | Type is TIMESTAMP; name contains `UPDATED`, `MODIFIED`; nullable=NO |
-| sourceId | Name ends in `_ID`; values appear unique in sample |
-| Org name | Name contains `ACCOUNT_NAME`, `ORGANIZATION_NAME`, `COMPANY` |
-| Org website | Name contains `WEBSITE`, `DOMAIN`, `URL`; values start with `http` |
-| Domain aliases | Name contains `DOMAIN_ALIASES`, `ALIASES`; values are comma-separated or array |
+| Role                    | High-confidence signals                                                          |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| Email                   | Name contains `EMAIL`; values match `x@y.z` pattern                              |
+| Platform username       | Name is `USER_NAME`, `USERNAME`, `LOGIN`, `HANDLE`; values are non-email strings |
+| LFID                    | Name contains `LF_USERNAME`, `LFID`, `LF_ID`                                     |
+| Timestamp (incremental) | Type is TIMESTAMP; name contains `UPDATED`, `MODIFIED`; nullable=NO              |
+| sourceId                | Name ends in `_ID`; values appear unique in sample                               |
+| Org name                | Name contains `ACCOUNT_NAME`, `ORGANIZATION_NAME`, `COMPANY`                     |
+| Org website             | Name contains `WEBSITE`, `DOMAIN`, `URL`; values start with `http`               |
+| Domain aliases          | Name contains `DOMAIN_ALIASES`, `ALIASES`; values are comma-separated or array   |
 
 Assign each role a confidence level:
+
 - **HIGH** — column name + data values both match unambiguously
 - **MEDIUM** — multiple candidates exist, or name matches but data is ambiguous
 - **LOW / UNKNOWN** — no clear match
@@ -271,6 +285,7 @@ Assign each role a confidence level:
 Present all HIGH-confidence mappings at once (exception to the one-question-per-message rule — batching is intentional here for efficiency). For MEDIUM, offer choices. For LOW/UNKNOWN, ask open-ended:
 
 > "Based on the schema and sample data, here's what I identified:
+>
 > - **Email**: `USER_EMAIL` (contains email values like `user@example.com`) ✅
 > - **Username**: `USER_NAME` ✅
 > - **LFID**: `LF_USERNAME` ✅
@@ -291,18 +306,22 @@ After the user responds, record all confirmed mappings. **Skip any Phase 3 sub-s
 **Rule:** Skip sub-sections where Pre-Analysis fully resolved the mapping. For remaining sub-sections, use the propose-then-confirm pattern — never ask open-ended questions when a proposal can be made. Present choices when multiple candidates exist. Ask open-ended only when no inference is possible.
 
 **When raising any ambiguity, always include:**
+
 1. **How existing data sources handle it** — read the relevant transformer(s) from `services/apps/snowflake_connectors/src/integrations/` and show the pattern. If an existing source skips or doesn't implement the feature, say so explicitly (e.g., "TNC doesn't use a logo field — it's left undefined").
 2. **A Snowflake query to resolve it** — if the ambiguity can be answered by inspecting actual data (e.g., checking uniqueness, null rate, value distribution), provide the query so the user can run it instead of guessing.
 
 When raising any ambiguity that can be resolved by inspecting data, first try `mcp__claude_ai_LFX_BI_Layer__query_metrics` with the relevant dimensions and a `where` filter to narrow results. Only ask the user to run a manual Snowflake query if the semantic layer doesn't have dimensions covering the ambiguous columns.
 
 Example format for an ambiguity:
+
 > "I see two timestamp columns: `CREATED_AT` (nullable) and `UPDATED_AT` (not nullable).
+>
 > - Existing sources (TNC, CVENT) all use a non-nullable `updated_ts`-style column for incremental exports.
 > - To check null rates, run:
 >   ```sql
 >   SELECT COUNT(*) total, COUNT(CREATED_AT) created_not_null, COUNT(UPDATED_AT) updated_not_null FROM DB.SCHEMA.TABLE LIMIT 10000;
 >   ```
+>
 > Which column should be used as the incremental timestamp?"
 
 ---
@@ -313,29 +332,32 @@ Example format for an ambiguity:
 
 The unified method covers the standard fallback chain automatically. Full behavior by case:
 
-| `platformUsername` | `lfUsername` | Identities produced |
-|---|---|---|
-| null | null | EMAIL(platform) + USERNAME(platform, email) |
-| set | null | EMAIL(platform) + USERNAME(platform, platformUsername) |
-| null | set | EMAIL(platform) + USERNAME(LFID, lfUsername) + USERNAME(platform, lfUsername) |
-| set | set | EMAIL(platform) + USERNAME(platform, platformUsername) + USERNAME(LFID, lfUsername) |
+| `platformUsername` | `lfUsername` | Identities produced                                                                 |
+| ------------------ | ------------ | ----------------------------------------------------------------------------------- |
+| null               | null         | EMAIL(platform) + USERNAME(platform, email)                                         |
+| set                | null         | EMAIL(platform) + USERNAME(platform, platformUsername)                              |
+| null               | set          | EMAIL(platform) + USERNAME(LFID, lfUsername) + USERNAME(platform, lfUsername)       |
+| set                | set          | EMAIL(platform) + USERNAME(platform, platformUsername) + USERNAME(LFID, lfUsername) |
 
 **Critical:** Never pass `lfUsername` as `platformUsername`. When a source only has an LFID column (no platform-native username), pass `platformUsername: null` — the lfUsername-only path (row 3 above) already produces the correct USERNAME identity for the platform using the lfUsername value.
 
 If Pre-Analysis resolved email, platformUsername, and LFID columns with HIGH confidence and the user confirmed them, skip to the summary step below.
 
 For any unresolved identity field, use this pattern:
+
 - **Multiple candidates found**: "I see columns `A` and `B` that could be the email — which one?" (present choices, not open-ended)
 - **One candidate found**: "I believe `USER_EMAIL` is the email column based on its values. Confirm?" (one-tap confirmation)
 - **No candidate found**: "I couldn't identify an email column — please specify."
 
 For each confirmed identity column also confirm:
+
 - `verified: true`? (default yes — ask only if the data suggests otherwise)
 - `verifiedBy` value (default: platform type — propose it, don't ask open-ended)
 
 **Critical:** If a JOIN table for users is NOT the same table used by an existing implementation, validate every column explicitly regardless of Pre-Analysis confidence. Column name heuristics alone are not sufficient for unknown tables.
 
 After all identity fields are confirmed, summarize how `buildMemberIdentities()` will be called and ask:
+
 > "Here is how identities will be built:
 > `this.buildMemberIdentities({ email, sourceId: [col or null], platformUsername: [col or null], lfUsername: [col or null] })`
 > Does this look correct?"
@@ -345,6 +367,7 @@ After all identity fields are confirmed, summarize how `buildMemberIdentities()`
 ### 3b. Organization Mapping
 
 If Pre-Analysis determined there is no org data (no org-related columns found in any table): before asking the user, first read existing transformers in `services/apps/snowflake_connectors/src/integrations/` to check whether any of them join an org table using a key that also exists in the user's tables. If a match is found, prompt the user:
+
 > "I don't see org columns in the tables you provided, but [EXISTING_PLATFORM] sources org data from `{ORG_TABLE}` via `{join_key}` — which also appears in your table. Did you mean to include this? (Recommended)"
 
 If no existing pattern is joinable, ask: "I don't see any org columns. Does this source have org/company data?" — if yes, ask for the table; if no, skip to 3c.
@@ -372,7 +395,9 @@ After all org columns are confirmed, summarize and ask for confirmation before p
 **Rule:** Activity type names and scores come entirely from the user. Do not suggest them.
 
 Ask:
+
 > "Please list all activity types this source can produce. For each, provide:
+>
 > - A short name (e.g., `enrolled-certification`)
 > - A score from 1–10
 >
@@ -380,14 +405,14 @@ Ask:
 
 For each activity type the user provides, suggest the following **one at a time**, waiting for approval before moving to the next:
 
-| Field | Suggestion rule |
-|-------|----------------|
-| Enum key | SCREAMING_SNAKE_CASE version of the name (e.g., `ENROLLED_CERTIFICATION`) |
-| String value | The name the user provided (kebab-case) |
-| Label | Human-readable (e.g., `Enrolled in certification`) |
-| Description | One sentence describing the event (follow the style in `backend/src/database/migrations/V1771497876__addCventActivityTypes.sql` and `V1772556158__addTncActivityTypes.sql`) |
-| `isCodeContribution` | `false` unless it involves code (check existing platforms — almost always false for non-GitHub sources) |
-| `isCollaboration` | `false` unless it is a collaborative activity |
+| Field                | Suggestion rule                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enum key             | SCREAMING_SNAKE_CASE version of the name (e.g., `ENROLLED_CERTIFICATION`)                                                                                                   |
+| String value         | The name the user provided (kebab-case)                                                                                                                                     |
+| Label                | Human-readable (e.g., `Enrolled in certification`)                                                                                                                          |
+| Description          | One sentence describing the event (follow the style in `backend/src/database/migrations/V1771497876__addCventActivityTypes.sql` and `V1772556158__addTncActivityTypes.sql`) |
+| `isCodeContribution` | `false` unless it involves code (check existing platforms — almost always false for non-GitHub sources)                                                                     |
+| `isCollaboration`    | `false` unless it is a collaborative activity                                                                                                                               |
 
 Ask: "Does this look correct for `{type_name}`? Any changes?" before moving to the next type.
 
@@ -424,6 +449,7 @@ Then confirm the Pre-Analysis proposals:
 ### 3f. Project Slug for Testing
 
 Ask:
+
 > "Please provide a `project_slug` from CDP_MATCHED_SEGMENTS that has data in this Snowflake table. It should have a moderate number of records (ideally under a few thousand) and ideally cover all the activity types we're implementing. This slug will be used to restrict the test query and for the staging non-prod guard in `buildSourceQuery`."
 
 ---
@@ -431,7 +457,9 @@ Ask:
 ## Phase 4: File Generation & Review
 
 Before generating any files, ask the user:
+
 > "How would you like me to proceed with the implementation?
+>
 > - **A — Review mode:** I show each file before writing it, you approve or request changes.
 > - **B — Auto mode:** I implement all files directly, then show a summary of everything written for a final review."
 
@@ -454,6 +482,7 @@ Add `{PLATFORM} = '{platform-string}',` to the `PlatformType` enum in alphabetic
 File: `services/libs/types/src/enums/organizations.ts`
 
 Add to both enums:
+
 - `OrganizationSource.{PLATFORM} = '{platform-string}'`
 - `OrganizationAttributeSource.{PLATFORM} = '{platform-string}'`
 
@@ -486,6 +515,7 @@ export const {PLATFORM}_GRID: Record<{Platform}ActivityType, IActivityScoringGri
 File: `services/libs/integrations/src/integrations/index.ts`
 
 Add before `export * from './activityDisplayService'`:
+
 ```typescript
 export * from './{platform}/types'
 ```
@@ -524,6 +554,7 @@ Empty file — same timestamp and name as File A, prefix `U` instead of `V`. Mat
 File: `services/apps/snowflake_connectors/src/integrations/types.ts`
 
 Add to `DataSourceName` enum:
+
 ```typescript
 {PLATFORM}_{SOURCE} = '{source-name}',
 ```
@@ -535,12 +566,14 @@ Add to `DataSourceName` enum:
 File: `services/apps/snowflake_connectors/src/integrations/index.ts`
 
 Add import at top:
+
 ```typescript
 import { buildSourceQuery as {platform}{Source}BuildQuery } from './{platform}/{source}/buildSourceQuery'
 import { {Platform}{Source}Transformer } from './{platform}/{source}/transformer'
 ```
 
 Add to `supported` object under the platform key (create the key if new platform):
+
 ```typescript
 [PlatformType.{PLATFORM}]: {
   sources: [
@@ -568,6 +601,7 @@ These are AI-generated from the confirmed column mappings. Apply all rules stric
 File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/buildSourceQuery.ts`
 
 **Rules (enforced — do not deviate):**
+
 - Use explicit column names only. Do not use `table.*` or `table.* EXCLUDE (...)` in new implementations — existing sources (TNC, CVENT) use these patterns but new sources should list columns explicitly to avoid parquet encoding/decoding issues
 - If any TIMESTAMP_TZ columns exist in the schema, exclude and re-cast them as TIMESTAMP_NTZ (see CVENT pattern)
 - Do not concatenate or transform date/time columns in SQL — keep them as separate columns and let the transformer handle type coercion (see touch point 9 rules)
@@ -647,6 +681,7 @@ LIMIT 100;
 ```
 
 Instruct the user:
+
 > "Please run this query directly in Snowflake and paste the result (JSON or CSV). I'll walk through each row and verify the transformer logic produces the expected `IActivityData` before we consider this done."
 
 Note: the LFX BI Layer MCP does not support arbitrary SQL execution — the test query must be run manually in the Snowflake UI.
@@ -654,6 +689,7 @@ Note: the LFX BI Layer MCP does not support arbitrary SQL execution — the test
 ### Dry-Run Validation
 
 When the user pastes results, for each row:
+
 - Apply transformer logic in-chat (show inputs → outputs)
 - Show the resulting `IActivityData` + segment slug
 - Flag immediately: null email, missing USERNAME identity, unexpected activity type, null sourceId, null timestamp
@@ -661,10 +697,10 @@ When the user pastes results, for each row:
 
 ### Format & Lint
 
-After all files are written, format the connector package then lint from the repo root:
+After all files are written, format and lint from the repo root:
 
 ```bash
-pnpm --filter @crowd/snowflake-connectors run format
+pnpm format
 pnpm lint
 ```
 

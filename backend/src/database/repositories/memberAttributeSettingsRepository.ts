@@ -5,7 +5,6 @@ import { RedisCache } from '@crowd/redis'
 
 import { AttributeData } from '../attributes/attribute'
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 import {

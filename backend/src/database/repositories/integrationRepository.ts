@@ -17,10 +17,9 @@ import { getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import { IntegrationRunState, PlatformType } from '@crowd/types'
 
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
-
-import { IRepositoryOptions } from './IRepositoryOptions'
 import QueryParser from './filters/queryParser'
 import { QueryOutput } from './filters/queryTypes'
+import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
 const { Op } = Sequelize
