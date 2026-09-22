@@ -4,7 +4,6 @@ import { getDbConnection } from '@crowd/database'
 
 import type { QueryExecutor } from '../queryExecutor'
 import { pgpQx } from '../queryExecutor'
-
 import { insertLast30dDownloadIfAbsent } from './downloadsLast30d'
 
 // Integration test: hits the running packages-db. Skipped automatically when any of

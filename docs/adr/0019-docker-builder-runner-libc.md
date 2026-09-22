@@ -10,8 +10,8 @@ Our Node.js services use multi-stage Docker builds. Dependencies are installed i
 
 Some Node.js dependencies contain native binaries (`.node` files). These binaries are built against a specific libc:
 
-* `node:<major>-alpine` uses **musl**
-* `node:<major>-bookworm-slim` uses **glibc**
+- `node:<major>-alpine` uses **musl**
+- `node:<major>-bookworm-slim` uses **glibc**
 
 Because the runner uses the `node_modules` produced by the builder, both stages must use the same libc. Mixing Alpine and Debian can result in native modules failing at runtime — the image builds, then the process dies on boot (`Bindings not found`, missing `ld-linux-x86-64.so.2`, and similar).
 
@@ -23,9 +23,9 @@ Temporal TypeScript workers have an additional requirement. `@temporalio/core-br
 
 **Builder and runner must always use the same Node.js image family.**
 
-* **Temporal TypeScript workers:** use `node:<major>-bookworm-slim` for both builder and runner.
-* **Other services:** Alpine is fine if all dependencies support musl. Use Alpine for both builder and runner.
-* **Any other glibc-only native dependency:** use Debian for both stages.
+- **Temporal TypeScript workers:** use `node:<major>-bookworm-slim` for both builder and runner.
+- **Other services:** Alpine is fine if all dependencies support musl. Use Alpine for both builder and runner.
+- **Any other glibc-only native dependency:** use Debian for both stages.
 
 Never mix Alpine and Debian between builder and runner.
 
@@ -71,40 +71,40 @@ Temporal's Docker guidance: [Run a TypeScript Worker process](https://docs.tempo
 
 ### Mix Alpine builder and Debian runner
 
-* **Pros**: Smaller build stage; runner can stay Debian.
-* **Cons**: Natives in `node_modules` do not match the process that loads them. Failures show up at container start, not at `docker build`.
-* **Why not**: Relies on the package manager installing extras it no longer installs. Builder and runner must use the same libc.
+- **Pros**: Smaller build stage; runner can stay Debian.
+- **Cons**: Natives in `node_modules` do not match the process that loads them. Failures show up at container start, not at `docker build`.
+- **Why not**: Relies on the package manager installing extras it no longer installs. Builder and runner must use the same libc.
 
 ### Alpine for Temporal workers
 
-* **Pros**: Smaller images; one OS for the fleet.
-* **Cons**: Temporal's TypeScript native (Rust core / `@temporalio/core-bridge`) requires glibc. There is no supported musl build.
-* **Why not**: Temporal documents this as unsupported. Compiling the bridge yourself or adding `gcompat` is a workaround, not a platform we want to maintain.
+- **Pros**: Smaller images; one OS for the fleet.
+- **Cons**: Temporal's TypeScript native (Rust core / `@temporalio/core-bridge`) requires glibc. There is no supported musl build.
+- **Why not**: Temporal documents this as unsupported. Compiling the bridge yourself or adding `gcompat` is a workaround, not a platform we want to maintain.
 
 ### Debian for every service
 
-* **Pros**: One image family; no "does this need glibc?" check.
-* **Cons**: Debian slim is larger than Alpine (more disk, slower pulls on a cold node). More OS packages, so scanners can report a different / larger CVE set. `apt` vs `apk` in Dockerfiles.
-* **Why not**: Services that already run on Alpine do not need to pay that cost. Only glibc-required services should be Debian.
+- **Pros**: One image family; no "does this need glibc?" check.
+- **Cons**: Debian slim is larger than Alpine (more disk, slower pulls on a cold node). More OS packages, so scanners can report a different / larger CVE set. `apt` vs `apk` in Dockerfiles.
+- **Why not**: Services that already run on Alpine do not need to pay that cost. Only glibc-required services should be Debian.
 
 ## Consequences
 
 ### Positive
 
-* Native dependencies are built and executed against the same libc.
-* Temporal workers use a supported runtime.
-* Alpine remains available for services that do not require glibc.
-* The rule holds even if pnpm's optional-dep behavior changes again.
+- Native dependencies are built and executed against the same libc.
+- Temporal workers use a supported runtime.
+- Alpine remains available for services that do not require glibc.
+- The rule holds even if pnpm's optional-dep behavior changes again.
 
 ### Negative
 
-* The fleet intentionally uses both Alpine and Debian.
-* Developers need to keep builder and runner on the same image family.
-* Debian-based Temporal images are larger than Alpine would be, so they cost a bit more registry storage and pull time. That is accepted for Temporal compatibility.
+- The fleet intentionally uses both Alpine and Debian.
+- Developers need to keep builder and runner on the same image family.
+- Debian-based Temporal images are larger than Alpine would be, so they cost a bit more registry storage and pull time. That is accepted for Temporal compatibility.
 
 ### Risks
 
-* Someone copies an Alpine Dockerfile for a new Temporal TypeScript worker because most services are Alpine. If the process loads `@temporalio/worker` / `core-bridge`, both stages must be Debian.
+- Someone copies an Alpine Dockerfile for a new Temporal TypeScript worker because most services are Alpine. If the process loads `@temporalio/worker` / `core-bridge`, both stages must be Debian.
 
 ## Rule of Thumb
 

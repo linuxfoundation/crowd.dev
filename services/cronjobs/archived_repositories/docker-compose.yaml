@@ -10,7 +10,8 @@ services:
     ports:
       - "${CROWD_DB_PORT:-5433}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CROWD_DB_USERNAME:-postgres} -d ${CROWD_DB_DATABASE:-crowd}"]
+      test:
+        ["CMD-SHELL", "pg_isready -U ${CROWD_DB_USERNAME:-postgres} -d ${CROWD_DB_DATABASE:-crowd}"]
       interval: 3s
       timeout: 3s
       retries: 5

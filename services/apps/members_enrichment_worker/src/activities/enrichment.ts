@@ -71,7 +71,6 @@ import {
   IMemberEnrichmentDataNormalized,
   IMemberEnrichmentDataNormalizedOrganization,
 } from '../types'
-
 import {
   hasMemberOrganizationTimelineChange,
   prepareWorkExperiences,

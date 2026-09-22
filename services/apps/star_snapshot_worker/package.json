@@ -11,13 +11,12 @@
     "backfill:star-snapshot:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && tsx src/bin/star-snapshot-backfill.ts",
     "seed:star-backfill-status": "tsx src/bin/seed-star-backfill-status.ts",
     "seed:star-backfill-status:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && tsx src/bin/seed-star-backfill-status.ts",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
+    "@crowd/common": "workspace:*",
     "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
@@ -30,7 +29,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "nodemon": "^3.0.1",
-    "prettier": "catalog:"
+    "nodemon": "^3.0.1"
   }
 }

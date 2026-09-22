@@ -1,5 +1,4 @@
 import { githubRepoPath } from '../githubRepoUrl'
-
 import { GithubPublicClientError, IPublicRepoMetrics, IPublicRepoReadme } from './types'
 
 const GITHUB_API_URL = 'https://api.github.com'

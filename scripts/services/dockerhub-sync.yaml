@@ -1,23 +1,23 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
   SERVICE: dockerhub-sync
   SHELL: /bin/sh
-  SUPPRESS_NO_CONFIG_WARNING: 'true'
-  DOCKERHUB_API_BASE_URL: 'https://hub.docker.com/v2'
-  DOCKERHUB_BATCH_SIZE: '100'
-  DOCKERHUB_REFRESH_INTERVAL_HOURS: '24'
-  DOCKERHUB_DISCOVERY_INTERVAL_DAYS: '14'
-  DOCKERHUB_IDLE_SLEEP_SEC: '60'
+  SUPPRESS_NO_CONFIG_WARNING: "true"
+  DOCKERHUB_API_BASE_URL: "https://hub.docker.com/v2"
+  DOCKERHUB_BATCH_SIZE: "100"
+  DOCKERHUB_REFRESH_INTERVAL_HOURS: "24"
+  DOCKERHUB_DISCOVERY_INTERVAL_DAYS: "14"
+  DOCKERHUB_IDLE_SLEEP_SEC: "60"
 
 services:
   dockerhub-sync:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:dockerhub-sync'
+    command: "pnpm run start:dockerhub-sync"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -34,7 +34,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:dockerhub-sync'
+    command: "pnpm run dev:dockerhub-sync"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:

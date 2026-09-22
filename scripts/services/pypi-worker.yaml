@@ -1,4 +1,4 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
@@ -7,14 +7,14 @@ x-env-args: &env-args
   CROWD_TEMPORAL_TASKQUEUE: pypi-worker
   CROWD_TEMPORAL_NAMESPACE: ${CROWD_PACKAGES_TEMPORAL_NAMESPACE:-default}
   SHELL: /bin/sh
-  SUPPRESS_NO_CONFIG_WARNING: 'true'
+  SUPPRESS_NO_CONFIG_WARNING: "true"
 
 services:
   pypi-worker:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:pypi-worker'
+    command: "pnpm run start:pypi-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -31,7 +31,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:pypi-worker'
+    command: "pnpm run dev:pypi-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:

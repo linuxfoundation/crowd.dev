@@ -1,5 +1,4 @@
 import type { Manifest } from '../../types'
-
 import { createGithubTokenMinter, prepareGithubPool } from './appToken'
 import { probeGithubBudget } from './budget'
 import { discoverRepos } from './discover'

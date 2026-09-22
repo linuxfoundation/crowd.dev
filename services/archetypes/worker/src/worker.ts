@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 import {
   NativeConnection,
   Runtime,
@@ -5,8 +8,6 @@ import {
   bundleWorkflowCode,
   makeTelemetryFilterString,
 } from '@temporalio/worker'
-import fs from 'fs'
-import path from 'path'
 
 import { Config, Service } from '@crowd/archetype-standard'
 import { IS_DEV_ENV, IS_STAGING_ENV, IS_TEST_ENV } from '@crowd/common'

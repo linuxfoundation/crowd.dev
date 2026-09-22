@@ -5,9 +5,10 @@
 **Deciders**: Umberto Sgueglia
 
 ## Context
+
 Given a security advisory and a vulnerable package/version, "blast radius" answers: which
 downstream open-source projects actually pull in the vulnerable code, and is the vulnerable
-symbol *reachable* from their code (not just present as a transitive dependency)? Naive
+symbol _reachable_ from their code (not just present as a transitive dependency)? Naive
 dependency-graph counts overstate exposure — most transitive dependents never call the
 vulnerable path. The analysis needs source-level reasoning per dependent, which is expensive
 and only tractable with an LLM agent that can read code, not a static graph traversal.
@@ -17,13 +18,14 @@ generalized to go, maven, cargo, nuget, rubygems, and pypi one ecosystem at a ti
 (CM-1358). It is consumed exclusively through a public, asynchronous Public API
 (`submitBlastRadiusJob(Batch)` / `getBlastRadiusJob(Batch)` in
 `backend/src/api/public/v1/packages/`) in production — there is no CLI or batch-report
-consumer of *finished* analyses. The one exception is
+consumer of _finished_ analyses. The one exception is
 `backend/src/bin/scripts/blastRadiusLoadTest.ts`, a dev-only harness that starts
 `analyzeBlastRadius` workflows directly through the Temporal client, bypassing the HTTP
 layer (and its Zod validation/Auth0) entirely — it exists to load-test the pipeline, not
 to consume its output.
 
 ## Decision
+
 Implement blast radius as a 4-stage Temporal workflow (`analyzeBlastRadius` in
 `services/apps/packages_worker/src/blast-radius/workflows.ts`), with each stage generalized
 across ecosystems through a compile-time-checked per-ecosystem config registry, and with
@@ -32,10 +34,10 @@ developer's personal Claude Code OAuth token for local runs without AWS access.
 
 ### The 4 stages
 
-Every arrow below is a hard sequential dependency, not a fan-out: stage *N+1* only
-starts once stage *N*'s activity has returned successfully (`workflows.ts` simply
+Every arrow below is a hard sequential dependency, not a fan-out: stage _N+1_ only
+starts once stage _N_'s activity has returned successfully (`workflows.ts` simply
 `await`s each activity in order — see the workflow code after the diagram). There is no
-parallelism *between* stages. *Within* a stage, though, there's real concurrency: stage 2
+parallelism _between_ stages. _Within_ a stage, though, there's real concurrency: stage 2
 (dependents) scans candidate npm packages with `forEachWithConcurrency(..., SCAN_CONCURRENCY)`,
 32 by default (`dependentsScan.ts`), and stage 3 (reachability) downloads/judges up to 4
 dependents at once (`REACHABILITY_CONCURRENCY`). Both are bounded worker pools, not
@@ -149,7 +151,7 @@ Ecosystem-specific behavior is confined to three functions per ecosystem, declar
 interface EcosystemConfig {
   runIntel: (qx, analysisId, advisoryOsvId, onProgress?) => Promise<void>
   runDependents: (qx, analysisId, onProgress?, signal?) => Promise<void>
-  reachability: ReachabilitySourceConfig  // prompt, schema, prepareSource(dep), ...
+  reachability: ReachabilitySourceConfig // prompt, schema, prepareSource(dep), ...
 }
 ```
 
@@ -178,6 +180,7 @@ code.
 
 Both agent stages call `runClaudeAgentQuery` from `services/libs/anthropic-aws`, which
 resolves credentials in this order (`anthropic-aws/src/credentials.ts`):
+
 1. Claude on AWS Bedrock via `CROWD_AKRITES_ANTHROPIC_AWS_{REGION,WORKSPACE_ID,API_KEY}` —
    production path. This key is purchased through the AWS Marketplace (Bedrock), not a
    direct Anthropic console key. The credential itself is stored in the shared 1Password
@@ -216,8 +219,8 @@ manifests declare none, so they run under the cluster's implicit defaults) —
 
 ```yaml
 resources:
-  requests: { memory: "8Gi", cpu: "4", ephemeral-storage: "512Mi" }
-  limits:   { memory: "12Gi", cpu: "12", ephemeral-storage: "2Gi" }
+  requests: { memory: '8Gi', cpu: '4', ephemeral-storage: '512Mi' }
+  limits: { memory: '12Gi', cpu: '12', ephemeral-storage: '2Gi' }
 ```
 
 Downloading and unpacking source for up to 25 dependents per analysis (stage 3, 4
@@ -253,6 +256,7 @@ workers:
 ## Alternatives Considered
 
 ### Alternative 1: Static dependency-graph reachability (no LLM)
+
 - **Pros**: cheap, deterministic, no per-run agent cost, no prompt/model drift.
 - **Cons**: requires a call-graph/import-analysis toolchain per ecosystem (7 different
   languages' AST/bytecode tooling), and still can't reason about dynamic dispatch,
@@ -262,6 +266,7 @@ workers:
   agent approach also generalizes to new ecosystems without new analysis tooling.
 
 ### Alternative 2: Dispatch via scattered `if/switch` on ecosystem, no per-ecosystem config object
+
 - **Pros**: fewer files initially, no interface to design up front.
 - **Cons**: this was the actual starting point after npm+go; it produced 3 separate
   `ecosystem === 'go'` branches scattered across the dependents/intel/reachability call
@@ -271,6 +276,7 @@ workers:
   per call site.
 
 ### Alternative 3: Synchronous API (block until analysis completes)
+
 - **Pros**: simpler client integration, no polling.
 - **Cons**: reachability alone is budgeted up to 1 hour (25 dependents, 3 attempts each);
   intel adds up to 20 more minutes. No realistic HTTP timeout covers that.
@@ -280,6 +286,7 @@ workers:
   status to `done` for the poller.
 
 ### Alternative 4: Keep it on the shared `pg-packages` node pool
+
 - **Pros**: no extra node pool to provision/operate; consistent with every other
   packages-pipeline worker (npm, go, maven, cargo, nuget, rubygems, pypi, osv, packagist
   all run on `pg-packages`).
@@ -296,6 +303,7 @@ workers:
 ## Consequences
 
 ### Positive
+
 - Adding an 8th ecosystem requires only a new `EcosystemConfig` entry plus its 3 functions —
   no changes to `workflows.ts`, `ecosystems.ts`'s dispatch logic, or the report/finalize stage.
 - Per-stage resumability means a transient failure (rate limit, timeout) in stage 3 doesn't
@@ -309,6 +317,7 @@ workers:
   capacity of npm/go/maven/etc. workers sharing `pg-packages`.
 
 ### Negative
+
 - Stage 4's name ("report") doesn't match its behavior (aggregate + finalize, no document);
   anyone reading `blast_radius_stage_runs.stage = 'report'` without this ADR will assume a
   report artifact exists.
@@ -319,6 +328,7 @@ workers:
   hard ceiling.
 
 ### Risks
+
 - Two different models are hardcoded per stage (`claude-opus-4-8` for intel,
   `claude-sonnet-5` for reachability) rather than centrally configured; a future model
   deprecation requires touching each `intel{Ecosystem}.ts` file individually.

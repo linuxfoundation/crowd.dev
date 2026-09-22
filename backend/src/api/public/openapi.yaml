@@ -77,7 +77,7 @@ paths:
                   minItems: 1
                   description: Initial identities for the member.
                   items:
-                    $ref: '#/components/schemas/MemberIdentityInput'
+                    $ref: "#/components/schemas/MemberIdentityInput"
             example:
               displayName: Jane Doe
               identities:
@@ -88,7 +88,7 @@ paths:
                   verified: true
                   verifiedBy: jane@lfx.dev
       responses:
-        '201':
+        "201":
           description: Member created successfully.
           content:
             application/json:
@@ -102,18 +102,18 @@ paths:
                     format: uuid
               example:
                 memberId: 550e8400-e29b-41d4-a716-446655440000
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
           description: Identity already exists on another member.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: CONFLICT
@@ -160,7 +160,7 @@ paths:
               emails:
                 - user@example.com
       responses:
-        '200':
+        "200":
           description: Member resolved successfully.
           content:
             application/json:
@@ -174,21 +174,21 @@ paths:
                     format: uuid
               example:
                 memberId: 550e8400-e29b-41d4-a716-446655440000
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Profile not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: NOT_FOUND
                   message: Member not found
-        '409':
+        "409":
           description: >
             Multiple member profiles matched, or the matched member holds a
             verified LFID that is not among the supplied lfids. Distinguish the
@@ -197,7 +197,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               examples:
                 multipleMembers:
                   summary: Multiple member profiles matched
@@ -220,7 +220,7 @@ paths:
                         reason: foreign-lfid
                         lfids:
                           - other-person-lfid
-        '429':
+        "429":
           description: Per-client rate limit exceeded (200 req/min).
           headers:
             Retry-After:
@@ -242,7 +242,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: RATE_LIMITED
@@ -262,9 +262,9 @@ paths:
         - OAuth2Bearer:
             - read:member-identities
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       responses:
-        '200':
+        "200":
           description: Identities retrieved successfully.
           content:
             application/json:
@@ -276,13 +276,13 @@ paths:
                   identities:
                     type: array
                     items:
-                      $ref: '#/components/schemas/MemberIdentity'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
+                      $ref: "#/components/schemas/MemberIdentity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
 
     post:
       operationId: createMemberIdentity
@@ -296,7 +296,7 @@ paths:
         - OAuth2Bearer:
             - write:member-identities
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       requestBody:
         required: true
         content:
@@ -343,26 +343,26 @@ paths:
               verified: true
               verifiedBy: admin@lfx.dev
       responses:
-        '201':
+        "201":
           description: Identity created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MemberIdentity'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
-        '409':
+                $ref: "#/components/schemas/MemberIdentity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
+        "409":
           description: Identity already exists on another member.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: CONFLICT
@@ -382,7 +382,7 @@ paths:
         - OAuth2Bearer:
             - write:member-identities
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
         - name: identityId
           in: path
           required: true
@@ -412,7 +412,7 @@ paths:
               verified: true
               verifiedBy: admin@lfx.dev
       responses:
-        '200':
+        "200":
           description: >
             Identity updated. Returned when verifying, or when rejecting an
             identity that has linked activities (triggers unmerge).
@@ -420,7 +420,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/MemberIdentity'
+                  - $ref: "#/components/schemas/MemberIdentity"
                   - type: object
                     properties:
                       unmergedToMemberId:
@@ -429,25 +429,25 @@ paths:
                         description: >
                           Present only when rejection triggered an unmerge. The
                           new member profile ID that the identity was moved to.
-        '204':
+        "204":
           description: >
             Identity rejected and deleted (no linked activities). No response body.
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Member or identity not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
-        '409':
+                $ref: "#/components/schemas/HttpError"
+        "409":
           description: Identity already exists on another member.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: CONFLICT
@@ -467,9 +467,9 @@ paths:
         - OAuth2Bearer:
             - read:maintainer-roles
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       responses:
-        '200':
+        "200":
           description: Maintainer roles retrieved successfully.
           content:
             application/json:
@@ -481,13 +481,13 @@ paths:
                   maintainerRoles:
                     type: array
                     items:
-                      $ref: '#/components/schemas/MaintainerRole'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
+                      $ref: "#/components/schemas/MaintainerRole"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
 
   # ──────────────────────────────────────────────
   # Work Experiences
@@ -503,9 +503,9 @@ paths:
         - OAuth2Bearer:
             - read:work-experiences
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       responses:
-        '200':
+        "200":
           description: Work experiences retrieved successfully.
           content:
             application/json:
@@ -521,13 +521,13 @@ paths:
                   workExperiences:
                     type: array
                     items:
-                      $ref: '#/components/schemas/WorkExperience'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
+                      $ref: "#/components/schemas/WorkExperience"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
 
     post:
       operationId: createMemberWorkExperience
@@ -541,42 +541,42 @@ paths:
         - OAuth2Bearer:
             - write:work-experiences
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkExperienceInput'
+              $ref: "#/components/schemas/WorkExperienceInput"
             example:
               organizationId: 550e8400-e29b-41d4-a716-446655440000
               jobTitle: Senior Engineer
               verified: true
               verifiedBy: admin@lfx.dev
               source: lfxOne
-              startDate: '2020-01-01T00:00:00.000Z'
+              startDate: "2020-01-01T00:00:00.000Z"
               endDate: null
       responses:
-        '201':
+        "201":
           description: Work experience created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkExperience'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
-        '409':
+                $ref: "#/components/schemas/WorkExperience"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
+        "409":
           description: A work experience with the same dates already exists.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: CONFLICT
@@ -593,33 +593,33 @@ paths:
         - OAuth2Bearer:
             - write:work-experiences
       parameters:
-        - $ref: '#/components/parameters/MemberId'
-        - $ref: '#/components/parameters/WorkExperienceId'
+        - $ref: "#/components/parameters/MemberId"
+        - $ref: "#/components/parameters/WorkExperienceId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkExperienceInput'
+              $ref: "#/components/schemas/WorkExperienceInput"
       responses:
-        '200':
+        "200":
           description: Work experience updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkExperience'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+                $ref: "#/components/schemas/WorkExperience"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Member or work experience not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
 
     patch:
       operationId: verifyMemberWorkExperience
@@ -634,8 +634,8 @@ paths:
         - OAuth2Bearer:
             - write:work-experiences
       parameters:
-        - $ref: '#/components/parameters/MemberId'
-        - $ref: '#/components/parameters/WorkExperienceId'
+        - $ref: "#/components/parameters/MemberId"
+        - $ref: "#/components/parameters/WorkExperienceId"
       requestBody:
         required: true
         content:
@@ -658,22 +658,22 @@ paths:
               verified: true
               verifiedBy: admin@lfx.dev
       responses:
-        '200':
+        "200":
           description: Work experience updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkExperience'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+                $ref: "#/components/schemas/WorkExperience"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Member or work experience not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
 
     delete:
       operationId: deleteMemberWorkExperience
@@ -687,8 +687,8 @@ paths:
         - OAuth2Bearer:
             - write:work-experiences
       parameters:
-        - $ref: '#/components/parameters/MemberId'
-        - $ref: '#/components/parameters/WorkExperienceId'
+        - $ref: "#/components/parameters/MemberId"
+        - $ref: "#/components/parameters/WorkExperienceId"
       requestBody:
         required: true
         content:
@@ -705,20 +705,20 @@ paths:
             example:
               deletedBy: admin@lfx.dev
       responses:
-        '204':
+        "204":
           description: Work experience deleted. No response body.
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Member or work experience not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
 
   # ──────────────────────────────────────────────
   # Project Affiliations
@@ -737,9 +737,9 @@ paths:
         - OAuth2Bearer:
             - read:project-affiliations
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
       responses:
-        '200':
+        "200":
           description: Project affiliations retrieved successfully.
           content:
             application/json:
@@ -751,13 +751,13 @@ paths:
                   projectAffiliations:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ProjectAffiliation'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/MemberNotFound'
+                      $ref: "#/components/schemas/ProjectAffiliation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/MemberNotFound"
 
   /members/{memberId}/project-affiliations/{projectId}:
     patch:
@@ -773,7 +773,7 @@ paths:
         - OAuth2Bearer:
             - write:project-affiliations
       parameters:
-        - $ref: '#/components/parameters/MemberId'
+        - $ref: "#/components/parameters/MemberId"
         - name: projectId
           in: path
           required: true
@@ -810,7 +810,7 @@ paths:
                       dateEnd:
                         type:
                           - string
-                          - 'null'
+                          - "null"
                         format: date-time
                         description: End date, or null if currently active.
                 verifiedBy:
@@ -820,28 +820,28 @@ paths:
             example:
               affiliations:
                 - organizationId: 550e8400-e29b-41d4-a716-446655440000
-                  dateStart: '2020-01-01T00:00:00.000Z'
+                  dateStart: "2020-01-01T00:00:00.000Z"
                   dateEnd: null
               verifiedBy: admin@lfx.dev
       responses:
-        '200':
+        "200":
           description: Project affiliations updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectAffiliation'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+                $ref: "#/components/schemas/ProjectAffiliation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: Member or project not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
 
   # ──────────────────────────────────────────────
   # Organizations
@@ -877,27 +877,27 @@ paths:
             minLength: 1
           example: Linux Foundation
       responses:
-        '200':
+        "200":
           description: Organization found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Organization'
+                $ref: "#/components/schemas/Organization"
               example:
                 id: 550e8400-e29b-41d4-a716-446655440000
                 name: Linux Foundation
                 domain: linuxfoundation.org
                 logo: https://example.com/logo.png
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: No organization found for the given domain or name.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: NOT_FOUND
@@ -948,7 +948,7 @@ paths:
               source: lfxOne
               logo: https://example.com/logo.png
       responses:
-        '201':
+        "201":
           description: Organization created (or existing one returned).
           content:
             application/json:
@@ -970,19 +970,19 @@ paths:
                   logo:
                     type:
                       - string
-                      - 'null'
+                      - "null"
                     description: URL of the organization logo.
               example:
                 id: 550e8400-e29b-41d4-a716-446655440000
                 name: Acme Corp
                 domain: acme.com
                 logo: https://example.com/logo.png
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   # ──────────────────────────────────────────────
   # Affiliations (Static API Key)
@@ -1038,12 +1038,12 @@ paths:
             maximum: 100
             default: 20
       responses:
-        '200':
+        "200":
           description: Affiliations resolved successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BulkAffiliationsResponse'
+                $ref: "#/components/schemas/BulkAffiliationsResponse"
               example:
                 total: 2
                 totalFound: 2
@@ -1057,17 +1057,17 @@ paths:
                       - torvalds@linux-foundation.org
                     affiliations:
                       - organization: Linux Foundation
-                        startDate: '2007-01-01T00:00:00.000Z'
+                        startDate: "2007-01-01T00:00:00.000Z"
                         endDate: null
                 notFound: []
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /affiliations/{githubHandle}:
     get:
@@ -1090,12 +1090,12 @@ paths:
             minLength: 1
           example: torvalds
       responses:
-        '200':
+        "200":
           description: Developer found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Contributor'
+                $ref: "#/components/schemas/Contributor"
               example:
                 githubHandle: torvalds
                 name: Linus Torvalds
@@ -1103,24 +1103,24 @@ paths:
                   - torvalds@linux-foundation.org
                 affiliations:
                   - organization: Linux Foundation
-                    startDate: '2007-01-01T00:00:00.000Z'
+                    startDate: "2007-01-01T00:00:00.000Z"
                     endDate: null
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
           description: No LFX profile found for the given GitHub handle.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HttpError'
+                $ref: "#/components/schemas/HttpError"
               example:
                 error:
                   code: NOT_FOUND
                   message: "No LFX profile found for GitHub login 'nonexistent-user'."
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
 components:
   securitySchemes:
@@ -1240,12 +1240,12 @@ components:
         verifiedBy:
           type:
             - string
-            - 'null'
+            - "null"
           description: Identifier of who verified this identity, or null.
         source:
           type:
             - string
-            - 'null'
+            - "null"
           description: Source system that created this identity.
         createdAt:
           type: string
@@ -1276,13 +1276,13 @@ components:
         dateStart:
           type:
             - string
-            - 'null'
+            - "null"
           format: date
           description: Start date of the maintainer role.
         dateEnd:
           type:
             - string
-            - 'null'
+            - "null"
           format: date
           description: End date of the maintainer role, or null if current.
         url:
@@ -1302,7 +1302,7 @@ components:
         maintainerFile:
           type:
             - string
-            - 'null'
+            - "null"
           description: Path to the maintainer file in the repository, if applicable.
 
     WorkExperience:
@@ -1330,12 +1330,12 @@ components:
         organizationName:
           type:
             - string
-            - 'null'
+            - "null"
           description: Display name of the organization.
         organizationLogo:
           type:
             - string
-            - 'null'
+            - "null"
           description: URL of the organization logo.
         organizationDomains:
           type: array
@@ -1345,38 +1345,38 @@ components:
         jobTitle:
           type:
             - string
-            - 'null'
+            - "null"
         verified:
           type: boolean
         verifiedBy:
           type:
             - string
-            - 'null'
+            - "null"
         source:
           type:
             - string
-            - 'null'
+            - "null"
           description: Source system that created this work experience.
         startDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         endDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: End date, or null if currently active.
         createdAt:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         updatedAt:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
 
     WorkExperienceInput:
@@ -1411,7 +1411,7 @@ components:
         endDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: End date, or null if currently active.
 
@@ -1437,18 +1437,18 @@ components:
         projectLogo:
           type:
             - string
-            - 'null'
+            - "null"
         contributionCount:
           type: integer
           description: Total number of contributions in this project.
         roles:
           type: array
           items:
-            $ref: '#/components/schemas/ProjectRole'
+            $ref: "#/components/schemas/ProjectRole"
         affiliations:
           type: array
           items:
-            $ref: '#/components/schemas/ProjectAffiliationEntry'
+            $ref: "#/components/schemas/ProjectAffiliationEntry"
 
     ProjectRole:
       type: object
@@ -1468,21 +1468,21 @@ components:
         startDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         endDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         repoUrl:
           type:
             - string
-            - 'null'
+            - "null"
         repoFileUrl:
           type:
             - string
-            - 'null'
+            - "null"
 
     ProjectAffiliationEntry:
       type: object
@@ -1508,22 +1508,22 @@ components:
         organizationLogo:
           type:
             - string
-            - 'null'
+            - "null"
         verified:
           type: boolean
         verifiedBy:
           type:
             - string
-            - 'null'
+            - "null"
         startDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         endDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         type:
           type: string
@@ -1536,7 +1536,7 @@ components:
         source:
           type:
             - string
-            - 'null'
+            - "null"
           description: Present only for `work-history` type affiliations.
 
     AffiliationPeriod:
@@ -1552,13 +1552,13 @@ components:
         startDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: Start date of the affiliation period.
         endDate:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: End date, or null if currently active.
 
@@ -1576,7 +1576,7 @@ components:
         name:
           type:
             - string
-            - 'null'
+            - "null"
           description: Display name from the LFX profile.
         emails:
           type: array
@@ -1588,7 +1588,7 @@ components:
           type: array
           description: Resolved affiliation periods, most recent first.
           items:
-            $ref: '#/components/schemas/AffiliationPeriod'
+            $ref: "#/components/schemas/AffiliationPeriod"
 
     BulkAffiliationsResponse:
       type: object
@@ -1619,7 +1619,7 @@ components:
         contributors:
           type: array
           items:
-            $ref: '#/components/schemas/Contributor'
+            $ref: "#/components/schemas/Contributor"
         notFound:
           type: array
           description: Handles from the request with no matching LFX profile.
@@ -1674,7 +1674,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/HttpError'
+            $ref: "#/components/schemas/HttpError"
           example:
             error:
               code: BAD_REQUEST
@@ -1685,7 +1685,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/HttpError'
+            $ref: "#/components/schemas/HttpError"
           example:
             error:
               code: UNAUTHORIZED
@@ -1696,7 +1696,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/HttpError'
+            $ref: "#/components/schemas/HttpError"
           example:
             error:
               code: INSUFFICIENT_SCOPE
@@ -1707,7 +1707,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/HttpError'
+            $ref: "#/components/schemas/HttpError"
           example:
             error:
               code: NOT_FOUND
@@ -1718,7 +1718,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/HttpError'
+            $ref: "#/components/schemas/HttpError"
           example:
             error:
               code: RATE_LIMITED

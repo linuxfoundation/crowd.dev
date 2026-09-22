@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
+
 import { describe, expect, test } from 'vitest'
 
 import { computeScores } from './computeScores'

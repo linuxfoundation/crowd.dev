@@ -3,7 +3,6 @@ import { findPackageIdsByGroupArtifact } from '@crowd/data-access-layer/src/pack
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { toBareMavenCoordinate } from '../../packageIdentifier'
-
 import { scanMavenDependents } from './dependentsScanMaven'
 
 export async function runDependentsStageMaven(

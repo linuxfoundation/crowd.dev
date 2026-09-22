@@ -2,6 +2,11 @@ import lodash, { uniq } from 'lodash'
 import { QueryTypes } from 'sequelize'
 import validator from 'validator'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import {
+  IFetchOrganizationMergeSuggestionArgs,
+  SimilarityScoreRange,
+} from '@/types/mergeSuggestionTypes'
 import {
   captureApiChange,
   organizationCreateAction,
@@ -51,12 +56,6 @@ import {
   OrganizationIdentityType,
   SegmentData,
 } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import {
-  IFetchOrganizationMergeSuggestionArgs,
-  SimilarityScoreRange,
-} from '@/types/mergeSuggestionTypes'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
 import { OrganizationQueryCache } from './organizationsQueryCache'

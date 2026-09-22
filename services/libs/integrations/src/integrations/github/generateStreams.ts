@@ -1,5 +1,4 @@
 import { GenerateStreamsHandler } from '../../types'
-
 import {
   GithubBasicStream,
   GithubIntegrationSettings,

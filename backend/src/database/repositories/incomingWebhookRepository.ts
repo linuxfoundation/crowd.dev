@@ -10,7 +10,6 @@ import {
   WebhookState,
   WebhookType,
 } from '../../types/webhooks'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import { RepositoryBase } from './repositoryBase'
 

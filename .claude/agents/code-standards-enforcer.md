@@ -1,6 +1,6 @@
 ---
 name: code-standards-enforcer
-description: "Audits recently written or modified code against CLAUDE.md rules, patterns-in-transition, and checklist files. Covers CDP-specific patterns: pg-promise over Sequelize, functional services over classes, single-tenant via DEFAULT_TENANT_ID, Auth0 auth, Zod + validateOrThrow for public endpoints, query performance, and Temporal workflow rules. Invoked in background by review-pr."
+description: 'Audits recently written or modified code against CLAUDE.md rules, patterns-in-transition, and checklist files. Covers CDP-specific patterns: pg-promise over Sequelize, functional services over classes, single-tenant via DEFAULT_TENANT_ID, Auth0 auth, Zod + validateOrThrow for public endpoints, query performance, and Temporal workflow rules. Invoked in background by review-pr.'
 model: inherit
 color: red
 memory: none
@@ -80,7 +80,7 @@ Flag if any of these protected infrastructure files were modified — they requi
 - `scripts/cli`, `scripts/scaffold.yaml`
 - `.husky/*`, `commitlint.config.js`
 - `.github/workflows/**`, `.github/actions/**`
-- `tsconfig*.json`, `.oxlintrc*`, `.eslintrc*`, `.prettierrc*`
+- `tsconfig*.json`, `.oxlintrc*`, `.oxfmtrc*`, `.eslintrc*`, `.prettierrc*`
 - `pnpm-lock.yaml`, `package.json`, `*/package.json`
 - `CLAUDE.md`, `.claude/settings.json`
 

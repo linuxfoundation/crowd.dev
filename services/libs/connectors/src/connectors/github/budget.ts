@@ -1,7 +1,6 @@
 import axios from 'axios'
 
 import type { BudgetProbe } from '../../pool/tokenPool'
-
 import { GITHUB_REQUEST_TIMEOUT_MS } from './appToken'
 
 interface RateLimitResource {

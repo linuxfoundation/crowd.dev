@@ -1,5 +1,8 @@
 import { uniq } from 'lodash'
 
+import { ENABLE_LF_COLLECTION_MANAGEMENT, LINUX_FOUNDATION_CONFIG } from '@/conf'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { IGithubInsights } from '@/types/githubTypes'
 import { getCleanString } from '@crowd/common'
 import { GithubIntegrationService } from '@crowd/common_services'
 import { OrganizationField, QueryExecutor, findOrgById, queryOrgs } from '@crowd/data-access-layer'
@@ -41,10 +44,6 @@ import { QueryResult } from '@crowd/data-access-layer/src/utils'
 import { GithubIntegrationSettings } from '@crowd/integrations'
 import { LoggerBase } from '@crowd/logging'
 import { DEFAULT_WIDGET_VALUES, PlatformType, Widgets } from '@crowd/types'
-
-import { ENABLE_LF_COLLECTION_MANAGEMENT, LINUX_FOUNDATION_CONFIG } from '@/conf'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { IGithubInsights } from '@/types/githubTypes'
 
 import { IServiceOptions } from './IServiceOptions'
 

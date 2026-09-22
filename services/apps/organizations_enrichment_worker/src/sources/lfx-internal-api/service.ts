@@ -15,7 +15,6 @@ import {
   IOrganizationEnrichmentService,
   IOrganizationEnrichmentSourceInput,
 } from '../../types'
-
 import {
   IOrganizationEnrichmentDataInternalAPI,
   IOrganizationEnrichmentDataInternalAPIResponse,

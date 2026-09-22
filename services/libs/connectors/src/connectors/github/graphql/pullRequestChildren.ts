@@ -1,5 +1,4 @@
 import type { GithubUserNode } from '../mappers/member'
-
 import { BOT_FIELDS, ORGANIZATION_FIELDS, USER_FIELDS } from './fields'
 
 export interface PrCommentNode {

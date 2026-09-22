@@ -12,7 +12,6 @@ import { MEMBER_SELECT_COLUMNS } from '../members/base'
 import { IDbMember } from '../old/apps/data_sink_worker/repo/member.data'
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
-
 import { touchMembersUpdatedAt } from './others'
 
 export async function fetchMemberIdentities(

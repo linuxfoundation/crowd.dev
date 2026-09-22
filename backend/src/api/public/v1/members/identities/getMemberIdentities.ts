@@ -1,12 +1,11 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
-import { MemberField, fetchMemberIdentities, findMemberById } from '@crowd/data-access-layer'
-
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { NotFoundError } from '@crowd/common'
+import { MemberField, fetchMemberIdentities, findMemberById } from '@crowd/data-access-layer'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

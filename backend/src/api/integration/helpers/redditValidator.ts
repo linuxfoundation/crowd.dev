@@ -1,9 +1,8 @@
 import axios from 'axios'
 
+import { REDDIT_CONFIG } from '@/conf'
 import { Error400 } from '@crowd/common'
 import { RedisCache, RedisClient } from '@crowd/redis'
-
-import { REDDIT_CONFIG } from '@/conf'
 
 import Permissions from '../../../security/permissions'
 import track from '../../../segment/track'

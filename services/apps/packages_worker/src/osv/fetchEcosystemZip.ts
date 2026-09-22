@@ -3,6 +3,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import * as path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+
 import unzipper from 'unzipper'
 
 import { FetchError, OsvRecord } from './types'

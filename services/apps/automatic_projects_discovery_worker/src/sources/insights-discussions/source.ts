@@ -5,7 +5,6 @@ import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
-
 import { extractDiscussionRepoUrls } from './parse'
 
 const log = getServiceLogger()

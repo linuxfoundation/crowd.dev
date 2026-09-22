@@ -10,7 +10,6 @@ import {
 
 import * as activities from '../activities'
 import { ITokenInfo, ITriggerSecurityInsightsCheckForReposParams } from '../types'
-
 import { upsertOSPSBaselineSecurityInsights } from './upsertOSPSBaselineSecurityInsights'
 
 const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos, getCurrentTimeMs } =
