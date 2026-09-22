@@ -41,7 +41,9 @@ export interface ConnectorHttp {
 
 type CountingHttpClientDeps = HttpClientDeps & { countRequest: () => void }
 
-const MAX_ATTEMPTS = 10
+// 8 attempts keeps the worst case (8 x 60s timeouts + 91s backoff = 571s) inside
+// the 600s the run reserves before the activity start-to-close timeout (runLimits.ts)
+const MAX_ATTEMPTS = 8
 const BACKOFF_BASE_MS = 1000
 const BACKOFF_CAP_MS = 30_000
 const RATE_LIMIT_FALLBACK_MS = 60_000
