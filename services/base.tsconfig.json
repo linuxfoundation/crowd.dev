@@ -6,6 +6,9 @@
     "skipLibCheck": true,
     "moduleResolution": "node16",
     "experimentalDecorators": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "${configDir}/dist"
   }
 }

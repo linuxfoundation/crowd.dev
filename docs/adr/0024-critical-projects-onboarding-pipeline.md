@@ -64,8 +64,10 @@ onboarding segment lookup in step 1 as the equivalent safeguard against redoing 
 
 Schema evolved across `V1770653666__add-automatic_projects_discovery-tables.sql` (creation),
 `V1778749030__refactor-projects-catalog.sql` (`source`, `action`, `evaluatedAt`, `onboardedAt`),
-plus later additions for `evaluationResult`/`evaluationReason`, `onboardingError`, and
-`skipReason`.
+plus later additions for `evaluationResult`/`evaluationReason`, `onboardingError`,
+`skipReason`, and `sourceUrl` (provenance for a discovery source, e.g. the discussion URL
+that produced the row; write-once at insert, never blanked on a re-sight — see
+`bulkInsertProjectCatalog`/`upsertProjectCatalog` in `projectCatalog.ts`).
 
 ### Stage 1 — Discovery (`automatic_projects_discovery_worker`)
 

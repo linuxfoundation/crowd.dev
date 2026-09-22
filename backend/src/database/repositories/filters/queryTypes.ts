@@ -13,9 +13,9 @@ export interface QueryOutput {
   where?: any
   having?: any
   limit: number
-  order: Array<string[]>
+  order?: Array<string[]>
   offset: number
-  attributes?: [string]
+  attributes?: string[]
 }
 
 export interface ManyToManyType {

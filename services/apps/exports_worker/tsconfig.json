@@ -1,4 +1,24 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../archetypes/standard"
+    },
+    {
+      "path": "../../archetypes/worker"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/opensearch"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

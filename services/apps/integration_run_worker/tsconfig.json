@@ -1,4 +1,33 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/common_services"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/integrations"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/opensearch"
+    },
+    {
+      "path": "../../libs/queue"
+    },
+    {
+      "path": "../../libs/redis"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

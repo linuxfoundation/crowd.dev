@@ -68,8 +68,10 @@ export interface ThreadCommentsBatchPage {
 
 export interface PrCommitNode {
   commit: {
-    additions: number
-    deletions: number
+    // GitHub returns these as null with a SERVICE_UNAVAILABLE error when diff-stat
+    // computation times out on large diffs; not actually guaranteed non-null.
+    additions: number | null
+    deletions: number | null
     parents: { totalCount: number }
     id: string
     oid: string

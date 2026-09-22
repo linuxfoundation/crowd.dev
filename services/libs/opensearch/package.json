@@ -2,9 +2,6 @@
   "name": "@crowd/opensearch",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
@@ -19,7 +16,6 @@
     "lodash.merge": "^4.6.2"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

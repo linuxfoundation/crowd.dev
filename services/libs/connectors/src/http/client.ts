@@ -35,7 +35,7 @@ export interface HttpClientDeps {
 }
 
 export interface ConnectorHttp {
-  request<T>(config: AxiosRequestConfig): Promise<T>
+  request<T>(config: AxiosRequestConfig, log?: Logger): Promise<T>
   requestCount(): number
 }
 
@@ -58,7 +58,8 @@ export function createHttpClient(deps: HttpClientDeps): ConnectorHttp {
     },
   }
   return {
-    request: <T>(config: AxiosRequestConfig) => requestWithRetry<T>(countingDeps, config),
+    request: <T>(config: AxiosRequestConfig, log?: Logger) =>
+      requestWithRetry<T>(log ? { ...countingDeps, log } : countingDeps, config),
     requestCount: () => requests,
   }
 }

@@ -310,10 +310,13 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
     const identity = deriveProjectIdentityFromRepoUrl(repoUrl)
     if (!identity) return null
 
+    const discussionUrl = rawRow['discussionUrl'] as string | undefined
+
     return {
       projectSlug: identity.projectSlug,
       repoName: identity.repoName,
       repoUrl,
+      sourceUrl: discussionUrl,
     }
   }
 }

@@ -7,9 +7,6 @@
     "./factories": "./src/factories/index.ts",
     "./faker": "./src/faker.ts"
   },
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
@@ -21,7 +18,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "typescript": "catalog:",
     "vitest": "4.1.7"
   }
 }

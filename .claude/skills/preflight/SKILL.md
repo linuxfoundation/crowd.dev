@@ -49,13 +49,13 @@ Note whether `backend/`, `services/**`, `frontend/`, `pnpm-lock.yaml`, and/or `p
 
 ## Check 2–4: Lint, Format, TypeScript
 
-**Backend + services** — one command covers lint (root `pnpm lint` / oxlint), format-check (root `pnpm format-check` / oxfmt), and tsc-check. tsc uses dependency-graph-aware fan-out (packages that depend on a changed lib are checked too) and falls back to a full workspace check when shared config (tsconfig base, lockfile, workspace yaml) changed:
+**Backend + services** — one command covers lint (root `pnpm lint` / oxlint), format-check (root `pnpm format-check` / oxfmt), and tsc-check (`tsc -b` from the repo root):
 
 ```bash
 ./scripts/cli lint-changed
 ```
 
-Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, docs, workflows, or other oxfmt-owned files have changed. Lockfile and workspace yaml trigger `lint-changed`'s own full-workspace tsc fallback. Skip only for frontend-only changes.
+Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, docs, workflows, or other oxfmt-owned files have changed. Skip only for frontend-only changes.
 
 The three checks run in order (lint → format-check → tsc-check) and stop at the first failure — same fail-fast behavior as the CI job. If lint fails, format/tsc did not run yet; fix and re-run to see the next check, same as watching CI re-run per push.
 

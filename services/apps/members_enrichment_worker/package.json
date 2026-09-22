@@ -6,8 +6,7 @@
     "start:debug:local": "set -a && . ../../../../backend/.env.dist.local && . ../../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=members-enrichment SERVICE=members-enrichment-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=members-enrichment SERVICE=members-enrichment-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../../libs --ext ts --exec pnpm run start:debug:local",
-    "dev": "nodemon --watch src --watch ../../../libs --ext ts --exec pnpm run start:debug",
-    "tsc-check": "tsc --noEmit"
+    "dev": "nodemon --watch src --watch ../../../libs --ext ts --exec pnpm run start:debug"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
@@ -26,8 +25,7 @@
     "axios": "catalog:",
     "lodash": "~4.17.21",
     "moment": "~2.29.4",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

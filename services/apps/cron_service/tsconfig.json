@@ -1,4 +1,39 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/common_services"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/nango"
+    },
+    {
+      "path": "../../libs/queue"
+    },
+    {
+      "path": "../../libs/redis"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/telemetry"
+    },
+    {
+      "path": "../../libs/temporal"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

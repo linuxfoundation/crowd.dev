@@ -1,4 +1,36 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "references": [
+    {
+      "path": "../../libs/anthropic-aws"
+    },
+    {
+      "path": "../../archetypes/standard"
+    },
+    {
+      "path": "../../archetypes/worker"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/database"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/temporal"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

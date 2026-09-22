@@ -19,6 +19,7 @@ on:
       - "**/*.md"
       - "vitest.config.ts"
       - "commitlint.config.js"
+      - "tsconfig.json"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -30,23 +31,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Enforce required scripts on all services packages
-        run: ./services/scripts/check_package_scripts.sh
-
-      - name: Detect shared config changes
-        id: shared_config
-        run: |
-          if git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.sha }} \
-            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
-            echo "Shared config changed (tsconfig base, lockfile or catalog) — falling back to full workspace tsc-check"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+        uses: actions/checkout@v5
 
       - name: Setup pnpm and node
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
@@ -60,13 +45,8 @@ jobs:
       - name: Check formatting
         run: pnpm format-check
 
-      - name: Check typescript (changed packages + dependents)
-        run: |
-          if [[ "${{ steps.shared_config.outputs.changed }}" == "true" ]]; then
-            pnpm -r --if-present --workspace-concurrency=4 run tsc-check
-          else
-            pnpm --filter="...[${{ github.event.pull_request.base.sha }}]" --if-present --workspace-concurrency=4 run tsc-check
-          fi
+      - name: Check typescript
+        run: pnpm tsc-check
 
   lint-python-git-integration:
     runs-on: ubuntu-latest
@@ -77,7 +57,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -120,7 +100,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
