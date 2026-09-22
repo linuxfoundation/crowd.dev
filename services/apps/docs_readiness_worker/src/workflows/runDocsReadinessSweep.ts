@@ -9,7 +9,6 @@ import {
 
 import * as activities from '../activities'
 import { DEFAULT_SWEEP_CONCURRENCY, IRunDocsReadinessSweepArgs } from '../types'
-
 import { processProjectDocsReadiness } from './processProjectDocsReadiness'
 
 const { startRun, finishRun, findProjectsForSweep } = proxyActivities<typeof activities>({
