@@ -1,14 +1,14 @@
-import commandLineArgs from 'command-line-args'
-import commandLineUsage from 'command-line-usage'
 import * as fs from 'fs'
 import path from 'path'
 
+import commandLineArgs from 'command-line-args'
+import commandLineUsage from 'command-line-usage'
+
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { generateUUIDv1 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members'
 import { getServiceLogger } from '@crowd/logging'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 

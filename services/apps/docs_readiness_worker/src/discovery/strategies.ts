@@ -45,6 +45,7 @@ function isBadgeOrGithubHost(host: string | null): boolean {
   }
   return (
     host === 'github.com' ||
+    host === 'www.github.com' ||
     BADGE_HOSTS.some((badge) => host === badge || host.endsWith(`.${badge}`))
   )
 }
@@ -56,14 +57,21 @@ export const llmsTxtProbe: DiscoveryStrategy = async (ctx) => {
 
   try {
     const domain = normalizedDomain(ctx.website)
+    if (!domain) {
+      return []
+    }
+
+    const isValid = (body: string | null): body is string =>
+      !!body && body.length > 50 && !/^\s*</.test(body)
+
     let body = await fetchText(`https://docs.${domain}/llms.txt`, 5_000)
     let host = `https://docs.${domain}`
-    if (!body) {
+    if (!isValid(body)) {
       body = await fetchText(`https://${domain}/llms.txt`, 5_000)
       host = `https://${domain}`
     }
 
-    if (!body || body.length <= 50 || /^\s*</.test(body)) {
+    if (!isValid(body)) {
       return []
     }
 
@@ -96,11 +104,14 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
     if (!normalized) {
       return []
     }
-    const base = normalized.endsWith('/') ? normalized.slice(0, -1) : normalized
+    const parsed = new URL(normalized)
+    parsed.search = ''
+    const basePath = parsed.pathname.endsWith('/') ? parsed.pathname.slice(0, -1) : parsed.pathname
 
     const candidates: IDocCandidate[] = []
     for (const suffix of ['/docs', '/documentation', '/doc']) {
-      const url = `${base}${suffix}`
+      parsed.pathname = `${basePath}${suffix}`
+      const url = parsed.toString()
       if (await isLiveDocs(url)) {
         candidates.push(candidate(url, 'docs-path', true))
       }
@@ -280,7 +291,7 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
         return false
       }
       const host = domainOf(result.link)
-      if (!host || host === 'github.com') {
+      if (!host || host === 'github.com' || host === 'www.github.com') {
         return false
       }
       return (

@@ -7,9 +7,6 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=merge-suggestions SERVICE=merge-suggestions-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -33,8 +30,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "nodemon": "^3.0.1",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^3.0.1"
   }
 }

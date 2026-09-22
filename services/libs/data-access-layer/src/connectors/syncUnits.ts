@@ -1,6 +1,5 @@
 import type { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
-
 import type {
   IClaimedUnit,
   IShadowDiffUnit,
@@ -20,24 +19,28 @@ export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]
   }
 
   return qx.result(
-    `INSERT INTO integration.sync_units
-       ("integrationId", platform, "channelId", "channelName", "syncName", "nextRunAt")
+    `INSERT INTO integration.sync_units AS su
+       ("integrationId", platform, "channelId", "channelName", "syncName", watermark, "nextRunAt")
      SELECT u.*, now() + ($(minDelaySeconds) + random() * $(delaySpanSeconds)) * interval '1 second'
      FROM unnest(
        $(integrationIds)::uuid[],
        $(platforms)::text[],
        $(channelIds)::text[],
        $(channelNames)::text[],
-       $(syncNames)::text[]
+       $(syncNames)::text[],
+       $(watermarks)::jsonb[]
      ) u
      ON CONFLICT ("integrationId", "channelId", "syncName")
-     DO UPDATE SET "channelName" = EXCLUDED."channelName", "updatedAt" = now()`,
+     DO UPDATE SET "channelName" = EXCLUDED."channelName",
+                   watermark = COALESCE(EXCLUDED.watermark, su.watermark),
+                   "updatedAt" = now()`,
     {
       integrationIds: units.map((u) => u.integrationId),
       platforms: units.map((u) => u.platform),
       channelIds: units.map((u) => u.channelId),
       channelNames: units.map((u) => u.channelName),
       syncNames: units.map((u) => u.syncName),
+      watermarks: units.map((u) => (u.watermark != null ? JSON.stringify(u.watermark) : null)),
       minDelaySeconds: MIN_INITIAL_DELAY_SECONDS,
       delaySpanSeconds: MAX_INITIAL_DELAY_SECONDS - MIN_INITIAL_DELAY_SECONDS,
     },

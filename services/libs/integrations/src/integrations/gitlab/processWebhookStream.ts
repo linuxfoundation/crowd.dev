@@ -7,7 +7,6 @@ import {
   IProcessWebhookStreamContext,
   ProcessWebhookStreamHandler,
 } from '../../types'
-
 import { getUser } from './api/getUser'
 import {
   handleMergeRequestCommitsStream,

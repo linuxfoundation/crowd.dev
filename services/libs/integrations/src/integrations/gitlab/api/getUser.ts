@@ -2,7 +2,6 @@ import { Gitlab, SimpleUserSchema, UserSchema } from '@gitbeaker/rest'
 
 import type { IProcessStreamContext } from '../../../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 
 const GITLAB_API_BASE_URL = 'https://gitlab.com/api/v4'

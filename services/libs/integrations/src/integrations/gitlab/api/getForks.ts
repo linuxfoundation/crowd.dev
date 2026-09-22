@@ -4,7 +4,6 @@ import { IProcessStreamContext } from '../../../types'
 import { GitlabForkData } from '../types'
 import { GitlabApiResult } from '../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 import { getUser } from './getUser'
 

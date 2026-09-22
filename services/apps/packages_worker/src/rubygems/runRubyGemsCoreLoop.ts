@@ -20,7 +20,6 @@ import {
   matchOwnership,
   repoOwnerFromCanonical,
 } from '../utils/ownershipMatch'
-
 import { fetchGem } from './client'
 import { normalizeRubyGemsPackage } from './normalize'
 import { BatchResult, isRubyGemsFetchError } from './types'

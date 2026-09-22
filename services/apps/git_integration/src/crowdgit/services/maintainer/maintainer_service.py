@@ -311,7 +311,6 @@ class MaintainerService(BaseService):
         """
         add/update maintainers in database
         """
-        maintainers = [m for m in maintainers if m.normalized_title != "emeritus"]
         if not last_maintainer_run_at:
             # 1st time processing maintainer for this repo
             self.logger.info(f"1st time processing maintainers for repo {repo_id}")

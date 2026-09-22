@@ -7,19 +7,18 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=connectors SERVICE=connectors-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9243 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:seed-github-sync-units": "tsx src/bin/seed-github-sync-units.ts",
-    "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts"
+    "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts",
+    "script:diff-nango-shadow": "tsx src/bin/diff-nango-shadow.ts",
+    "script:diff-shadow-unit-detail": "tsx src/bin/diff-shadow-unit-detail.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
-    "@crowd/data-access-layer": "workspace:*",
     "@crowd/connectors": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
     "@crowd/redis": "workspace:*",

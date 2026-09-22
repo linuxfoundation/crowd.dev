@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { noContent, ok } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
+import { validateOrThrow } from '@/utils/validation'
 import {
   captureApiChange,
   memberUnmergeAction,
@@ -30,11 +34,6 @@ import {
   IUnmergePreviewResult,
   MemberUnmergeResult,
 } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { noContent, ok } from '@/utils/api'
-import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

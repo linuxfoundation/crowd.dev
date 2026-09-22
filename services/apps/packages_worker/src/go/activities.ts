@@ -18,7 +18,6 @@ import {
   matchOwnership,
   repoOwnerFromCanonical,
 } from '../utils/ownershipMatch'
-
 import { fetchStatus } from './pkgGoDevClient'
 import { fetchLatest } from './proxyClient'
 import { isFetchError } from './types'

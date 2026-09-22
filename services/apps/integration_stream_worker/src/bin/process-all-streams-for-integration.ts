@@ -33,7 +33,7 @@ async function processStream(
 ): Promise<boolean> {
   try {
     return await service.processStream(streamId)
-  } catch (err) {
+  } catch {
     return false
   }
 }

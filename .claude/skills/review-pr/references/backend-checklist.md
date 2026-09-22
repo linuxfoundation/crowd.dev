@@ -9,12 +9,14 @@ Express.js / pg-promise API review standards for the CDP repo (`backend/`).
 All new database code must use `queryExecutor` from `@crowd/data-access-layer`, not Sequelize. Sequelize is legacy and limited to existing usage in `backend/src/database/repositories/` and `backend/src/services/`.
 
 **Violation:**
+
 ```ts
 import { Sequelize } from 'sequelize'
 const result = await Model.findAll({ where: { id } })
 ```
 
 **Fix:**
+
 ```ts
 // Use an existing DAL function from services/libs/data-access-layer/src/
 // or add a new one using queryExecutor
@@ -29,6 +31,7 @@ Do **not** flag existing Sequelize in `backend/src/database/repositories/` or `b
 All new public API endpoints must validate input with a Zod schema using `validateOrThrow`.
 
 **Violation:**
+
 ```ts
 router.post('/members', async (req, res) => {
   const { name, email } = req.body // no validation
@@ -36,6 +39,7 @@ router.post('/members', async (req, res) => {
 ```
 
 **Fix:**
+
 ```ts
 import { z } from 'zod'
 import { validateOrThrow } from '@crowd/common'
@@ -54,6 +58,7 @@ router.post('/members', async (req, res) => {
 Multi-tenancy is being phased out. New code must use `DEFAULT_TENANT_ID` from `@crowd/common` rather than introducing new multi-tenant logic.
 
 **Fix:**
+
 ```ts
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 ```
@@ -65,6 +70,7 @@ import { DEFAULT_TENANT_ID } from '@crowd/common'
 New code should use plain functions, not class-based patterns.
 
 **Violation:**
+
 ```ts
 export class MemberService {
   async findById(id: string) { ... }
@@ -72,6 +78,7 @@ export class MemberService {
 ```
 
 **Fix:**
+
 ```ts
 export async function findMemberById(id: string) { ... }
 ```

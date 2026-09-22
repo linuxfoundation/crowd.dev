@@ -1,6 +1,7 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
-import { rankCandidates } from './rank'
+import { normalizedDomain } from './http'
+import { candidateHasDocsSignal, methodPriority, rankCandidates, repoNameAnchor } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -10,15 +11,21 @@ export interface IDiscoverDocsResult {
   allCandidates: IDocCandidate[]
 }
 
+// A live duplicate always wins over a dead one; between two live duplicates, keep the one whose
+// method ranking treats as more authoritative rather than whichever strategy happened to run first.
 function dedupeByUrl(candidates: IDocCandidate[]): IDocCandidate[] {
-  const seen = new Set<string>()
-  return candidates.filter((c) => {
-    if (seen.has(c.url)) {
-      return false
+  const byUrl = new Map<string, IDocCandidate>()
+  for (const c of candidates) {
+    const existing = byUrl.get(c.url)
+    const dominatesOnLiveness = c.livenessOk && !existing?.livenessOk
+    const dominatesOnMethod =
+      c.livenessOk === existing?.livenessOk &&
+      methodPriority(c.method) > methodPriority(existing.method)
+    if (!existing || dominatesOnLiveness || dominatesOnMethod) {
+      byUrl.set(c.url, c)
     }
-    seen.add(c.url)
-    return true
-  })
+  }
+  return [...byUrl.values()]
 }
 
 async function runStrategies(
@@ -38,13 +45,19 @@ async function runStrategies(
 export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDocsResult> {
   const baseCandidates = dedupeByUrl(await runStrategies(STRATEGIES, ctx))
 
-  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk)
+  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk && candidateHasDocsSignal(c))
   const allCandidates =
     !hasLiveCandidate && ctx.serpApiKey
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])
       : baseCandidates
 
-  const winner = rankCandidates(allCandidates)
+  // github.com is a shared host, not a project domain — using it for affinity would wrongly
+  // treat GitHub's own docs as on-domain when a project's website is just its repo URL.
+  const websiteDomain = ctx.website ? normalizedDomain(ctx.website) : null
+  const isGithubWebsite = websiteDomain === 'github.com'
+  const projectDomain = isGithubWebsite ? null : websiteDomain
+  const projectNameHint = ctx.website && isGithubWebsite ? repoNameAnchor(ctx.website) : null
+  const winner = rankCandidates(allCandidates, projectDomain, projectNameHint)
 
   return {
     docsUrl: winner?.url ?? null,

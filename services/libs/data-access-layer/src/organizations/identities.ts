@@ -8,7 +8,6 @@ import {
 
 import { QueryExecutor } from '../queryExecutor'
 import { QueryOptions, QueryResult, prepareBulkInsert, queryTable } from '../utils'
-
 import { IDbOrgIdentityUpdateInput } from './types'
 
 export async function fetchOrgIdentities(

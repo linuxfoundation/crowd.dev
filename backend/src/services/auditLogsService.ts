@@ -1,7 +1,6 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { queryAuditLogs } from '@crowd/data-access-layer'
 import { LoggerBase } from '@crowd/logging'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import { IServiceOptions } from './IServiceOptions'
 

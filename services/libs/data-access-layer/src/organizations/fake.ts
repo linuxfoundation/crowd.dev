@@ -95,7 +95,7 @@ export async function findFakeOrganizationSuggestions(
   segmentId: string,
   limit: number,
   offset: number,
-): Promise<PageData<FakeOrganizationSuggestion>> {
+): Promise<PageData<FakeOrganizationSuggestion> & { hasMore: boolean }> {
   const params = { segmentId, limit, offset }
 
   const from = `
@@ -125,10 +125,13 @@ export async function findFakeOrganizationSuggestions(
     qx.selectOne(`SELECT COUNT(*) ${from}`, params),
   ])
 
+  const count = parseInt(countRow.count, 10)
+
   return {
     rows,
-    count: parseInt(countRow.count, 10),
+    count,
     limit,
     offset,
+    hasMore: offset + rows.length < count,
   }
 }

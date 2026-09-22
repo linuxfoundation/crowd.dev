@@ -46,16 +46,16 @@ against `abcdef` stays `unmatched`.
 
 ### Per-ecosystem evidence
 
-| Ecosystem | Namespace evidence | Maintainer evidence |
-| --- | --- | --- |
-| npm | package scope | `maintainers` |
-| pypi | — | maintainer/author names |
-| packagist | vendor from `name` | maintainers |
-| nuget | — | owners + authors |
-| maven | groupId | developer/contributor usernames |
-| cargo | — | maintainer GitHub logins |
-| go | module path owner, VCS hosts only | — |
-| rubygems | — | none at the link-writing loop |
+| Ecosystem | Namespace evidence                | Maintainer evidence             |
+| --------- | --------------------------------- | ------------------------------- |
+| npm       | package scope                     | `maintainers`                   |
+| pypi      | —                                 | maintainer/author names         |
+| packagist | vendor from `name`                | maintainers                     |
+| nuget     | —                                 | owners + authors                |
+| maven     | groupId                           | developer/contributor usernames |
+| cargo     | —                                 | maintainer GitHub logins        |
+| go        | module path owner, VCS hosts only | —                               |
+| rubygems  | —                                 | none at the link-writing loop   |
 
 Go derives an owner only for module paths rooted at a known VCS host
 (`github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`, `gitea.com`,

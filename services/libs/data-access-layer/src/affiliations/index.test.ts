@@ -17,7 +17,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QueryExecutor } from '../queryExecutor'
-
 import { buildTimeline, resolveAffiliationsByMemberIds, selectPrimaryWorkExperience } from './index'
 import type { IWorkExperienceResolution } from './index'
 

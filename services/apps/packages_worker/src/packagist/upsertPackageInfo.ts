@@ -15,7 +15,6 @@ import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
 import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
-
 import type { NormalizedPackagistStats } from './types'
 
 const WORKER = 'packagist'

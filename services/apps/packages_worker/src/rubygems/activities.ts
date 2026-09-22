@@ -4,7 +4,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getRubyGemsConfig, getRubyGemsCriticalConfig } from '../config'
 import { getPackagesDb } from '../db'
-
 import { processBatch as processCoreBatch } from './runRubyGemsCoreLoop'
 import { processBatch as processCriticalBatch } from './runRubyGemsCriticalLoop'
 import { BatchResult } from './types'

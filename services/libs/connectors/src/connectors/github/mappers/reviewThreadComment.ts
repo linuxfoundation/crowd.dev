@@ -3,7 +3,6 @@ import { GITHUB_GRID, GithubActivityType } from '@crowd/integrations'
 import type { ReviewThreadNode, ThreadCommentNode } from '../graphql/pullRequestChildren'
 import type { PullRequestNode } from '../graphql/pullRequests'
 import type { GithubActivity } from '../schemas'
-
 import { toMember } from './member'
 
 export function toReviewThreadComment(

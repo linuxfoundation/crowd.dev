@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 /**
  * Project Onboarding Script
  *
@@ -25,8 +28,6 @@
  */
 import axios from 'axios'
 import { parse } from 'csv-parse'
-import fs from 'fs'
-import path from 'path'
 
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -528,7 +529,7 @@ async function main() {
   const resolvedPath = path.resolve(csvFilePath)
   try {
     fs.accessSync(resolvedPath, fs.constants.F_OK)
-  } catch (error) {
+  } catch {
     log.error(`Error: CSV file not found at path: ${resolvedPath}`)
     process.exit(1)
   }

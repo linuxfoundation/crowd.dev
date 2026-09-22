@@ -7,7 +7,6 @@ import {
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { removeMemberNoMerge } from './noMerge'
 
 export async function upsertMemberMergeSuggestions(

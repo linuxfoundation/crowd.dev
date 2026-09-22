@@ -17,10 +17,9 @@ import { getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import { IntegrationRunState, PlatformType } from '@crowd/types'
 
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
-
-import { IRepositoryOptions } from './IRepositoryOptions'
 import QueryParser from './filters/queryParser'
 import { QueryOutput } from './filters/queryTypes'
+import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
 const { Op } = Sequelize
@@ -254,7 +253,7 @@ class IntegrationRepository {
    * @returns The integration object
    */
   // TODO: Test
-  static async findByIdentifier(identifier: string, platform: string): Promise<Array<Object>> {
+  static async findByIdentifier(identifier: string, platform: string): Promise<Array<object>> {
     const options = await SequelizeRepository.getDefaultIRepositoryOptions()
 
     const record = await options.database.integration.findOne({

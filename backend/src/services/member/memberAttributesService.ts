@@ -1,6 +1,8 @@
 /* eslint-disable no-continue */
 import * as lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { captureApiChange, memberEditProfileAction } from '@crowd/audit-logs'
 import { Error404, getAttributeValue, getCountry, hasAttributeValue } from '@crowd/common'
 import {
@@ -14,9 +16,6 @@ import {
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
 import { IAttributes } from '@crowd/types'
-
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import { IServiceOptions } from '../IServiceOptions'
 

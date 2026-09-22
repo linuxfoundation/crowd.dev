@@ -26,7 +26,6 @@ import {
   matchOwnership,
   repoOwnerFromCanonical,
 } from '../utils/ownershipMatch'
-
 import { fetchNuspec, fetchRegistration, fetchSearch } from './client'
 import { normalizeNuGetPackage } from './normalize'
 import { BatchResult, isNuGetFetchError } from './types'

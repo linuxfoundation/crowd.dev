@@ -99,7 +99,6 @@ export enum GithubWehookEvent {
 
 export enum GithubStreamType {
   ROOT = 'root',
-  STARGAZERS = 'stargazers',
   FORKS = 'forks',
   PULLS = 'pulls',
   PULL_COMMENTS = 'pull-comments',
@@ -114,7 +113,6 @@ export enum GithubStreamType {
 
 export enum GithubManualStreamType {
   ALL = 'all',
-  STARGAZERS = 'stargazers',
   FORKS = 'forks',
   PULLS = 'pulls',
   ISSUES = 'issues',

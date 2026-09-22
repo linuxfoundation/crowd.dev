@@ -11,7 +11,6 @@ import {
 } from '@crowd/types'
 
 import { ProcessDataHandler } from '../../types'
-
 import { DISCOURSE_GRID } from './grid'
 import {
   DiscourseActivityType,

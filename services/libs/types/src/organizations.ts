@@ -250,8 +250,7 @@ export interface IOrganizationIdentityOpensearch {
   string_source: string
 }
 
-export interface IOrganizationFullAggregatesOpensearch
-  extends IOrganizationBaseForMergeSuggestions {
+export interface IOrganizationFullAggregatesOpensearch extends IOrganizationBaseForMergeSuggestions {
   ticker: string
   identities: IOrganizationIdentity[]
   activityCount: number

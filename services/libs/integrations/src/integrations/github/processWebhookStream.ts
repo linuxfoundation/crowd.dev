@@ -6,7 +6,6 @@ import {
   IProcessWebhookStreamContext,
   ProcessWebhookStreamHandler,
 } from '../../types'
-
 import getMember from './api/graphql/members'
 import getOrganization from './api/graphql/organizations'
 import TeamsQuery from './api/graphql/teams'

@@ -14,7 +14,6 @@ import { getPackagesDb } from '../db'
 import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
 import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
-
 import { fetchProject } from './fetchProject'
 import { pypiNameFromPurl } from './normalize'
 import { pypiProxyPool } from './proxies'

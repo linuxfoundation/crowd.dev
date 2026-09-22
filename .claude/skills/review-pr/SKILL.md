@@ -105,6 +105,7 @@ Prompt for the agent:
 > Also read `.claude/hooks/guard-protected-files.sh` and parse its `case`/`if` patterns. For every changed file matching a protected pattern, emit a NIT finding with the hook's warning reason.
 >
 > **Severity calibration:**
+>
 > - **CRITICAL** — runtime bugs, security issues, new Sequelize usage in non-legacy files, new public endpoint without `validateOrThrow`/Zod schema, multi-tenant logic beyond `DEFAULT_TENANT_ID`, secrets hardcoded
 > - **SHOULD_FIX** — documented style/structure violations (new class-based service/repo, `any` types in new code, DAL function added without checking for existing equivalents, missing license headers)
 > - **NIT** — minor improvements, naming, protected-file awareness
@@ -129,10 +130,10 @@ Check whether previously raised review comments were actually addressed in code.
 4. Build a markdown table:
 
 ```markdown
-| #   | Comment Summary                    | File                                     | Status    | Evidence                              |
-| --- | ---------------------------------- | ---------------------------------------- | --------- | ------------------------------------- |
-| 1   | Use queryExecutor not Sequelize    | services/libs/data-access-layer/foo.ts   | FIXED     | Line 12 now uses queryExecutor        |
-| 2   | Missing validateOrThrow on endpoint | backend/src/api/members.ts              | NOT FIXED | Route still has no Zod schema         |
+| #   | Comment Summary                     | File                                   | Status    | Evidence                       |
+| --- | ----------------------------------- | -------------------------------------- | --------- | ------------------------------ |
+| 1   | Use queryExecutor not Sequelize     | services/libs/data-access-layer/foo.ts | FIXED     | Line 12 now uses queryExecutor |
+| 2   | Missing validateOrThrow on endpoint | backend/src/api/members.ts             | NOT FIXED | Route still has no Zod schema  |
 ```
 
 If no previous review comments, note "No previous review comments found" and move on.
@@ -153,9 +154,11 @@ Validates PR metadata against `commit-workflow.md`.
 3. **Branch name format** — should match `type/CM-<number>` (e.g. `feat/CM-1164-github-discussions`). Flag as NIT if non-conforming but otherwise well-formed.
 
 4. **Branch rebased on main**:
+
    ```bash
    git merge-base --is-ancestor origin/main origin/<headRefName>
    ```
+
    If non-zero exit code, flag SHOULD FIX: branch needs a rebase.
 
 5. **PR size** — if `additions > 1000`, note per `commit-workflow.md`'s 1000-line target.
@@ -184,6 +187,7 @@ Wait for the Phase 2 enforcer Agent to complete. Then compile all findings.
 ### Apply false-positive filter
 
 Before surfacing any finding, drop it if:
+
 - The `rule` field cannot be matched by string search in the loaded rule files, checklists, or CLAUDE.md
 - It relates to patterns from other codebases (Angular, Nuxt, Go-specific rules, etc.)
 - It flags legacy Sequelize/class usage in files that are clearly already legacy (`backend/src/database/repositories/`, `backend/src/services/`) — only flag NEW usage

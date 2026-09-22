@@ -1,6 +1,10 @@
 import lodash, { uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
+import { KUBE_MODE, SERVICE } from '@/conf'
+import { ServiceType } from '@/conf/configTypes'
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
 import {
   captureApiChange,
   memberCreateAction,
@@ -37,13 +41,10 @@ import {
   insertMemberSegmentAffiliations,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
-  MemberField,
   fetchManyMemberIdentities,
   fetchManyMemberOrgs,
   fetchManyMemberSegments,
-  fetchMemberIdentities,
-  fetchMemberOrganizations,
-  findMemberById,
+  fetchMemberProfile,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
 import {
@@ -74,14 +75,8 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { KUBE_MODE, SERVICE } from '@/conf'
-import { ServiceType } from '@/conf/configTypes'
-import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
-import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
-
 import { PlatformIdentities } from '../../serverless/integrations/types/messageTypes'
 import { AttributeData } from '../attributes/attribute'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
 import SegmentRepository from './segmentRepository'
@@ -484,64 +479,13 @@ class MemberRepository {
       let result
 
       if (args.detail) {
+        const qx = SequelizeRepository.getQueryExecutor(options)
         const memberPromises = []
         const toMergePromises = []
 
-        const findMemberInfo = async (memberId: string) => {
-          const qx = SequelizeRepository.getQueryExecutor(options)
-
-          const [member, identities, aggregates, memberOrgs] = await Promise.all([
-            findMemberById(qx, memberId, [
-              MemberField.ID,
-              MemberField.DISPLAY_NAME,
-              MemberField.ATTRIBUTES,
-              MemberField.JOINED_AT,
-            ]),
-            fetchMemberIdentities(qx, memberId),
-            fetchAbsoluteMemberAggregates(qx, memberId),
-            fetchMemberOrganizations(qx, memberId),
-          ])
-
-          const orgIds = memberOrgs.map((o) => o.organizationId)
-
-          let orgExtraInfo = []
-          let lfxMemberships = []
-
-          if (orgIds.length > 0) {
-            orgExtraInfo = await queryOrgs(qx, {
-              filter: {
-                [OrganizationField.ID]: { in: orgIds },
-              },
-              fields: [
-                OrganizationField.ID,
-                OrganizationField.DISPLAY_NAME,
-                OrganizationField.LOGO,
-              ],
-            })
-
-            lfxMemberships = await findManyLfxMemberships(qx, {
-              organizationIds: orgIds,
-            })
-          }
-
-          return {
-            ...member,
-            identities,
-            ...{
-              activityCount: aggregates?.activityCount,
-              lastActive: aggregates?.lastActive,
-            },
-            organizations: memberOrgs.map((o) => ({
-              ...orgExtraInfo.find((oei) => oei.id === o.organizationId),
-              lfxMembership: lfxMemberships.find((lm) => lm.organizationId === o.organizationId),
-              memberOrganizations: o,
-            })),
-          }
-        }
-
         for (const mem of pageRows) {
-          memberPromises.push(findMemberInfo(mem.id))
-          toMergePromises.push(findMemberInfo(mem.toMergeId))
+          memberPromises.push(fetchMemberProfile(qx, mem.id))
+          toMergePromises.push(fetchMemberProfile(qx, mem.toMergeId))
         }
 
         const memberResults: { id: string }[] = await Promise.all(memberPromises)

@@ -6,7 +6,6 @@ import { withQx } from '@crowd/test-kit/db'
 import { createSegments } from '@crowd/test-kit/factories'
 
 import { createInsightsProject } from '../collections'
-
 import { findRepoUrlsInCdp, insertRepositories } from './index'
 
 const test = withQx(base)

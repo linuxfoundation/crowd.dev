@@ -1,5 +1,4 @@
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
-
 import {
   NormalizedRubyGemsOwner,
   NormalizedRubyGemsPackage,

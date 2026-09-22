@@ -4,7 +4,6 @@ import { graphql } from '@octokit/graphql'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { GithubTokenRotator } from '../../tokenRotator'
-
 import BaseQuery from './baseQuery'
 import { Limiter } from './baseQuery'
 
