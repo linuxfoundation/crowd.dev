@@ -2,25 +2,25 @@
 
 /* eslint-disable no-console */
 
+import * as fs from 'fs'
+import path from 'path'
+
 /* eslint-disable import/no-extraneous-dependencies */
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
 import { parse } from 'csv-parse/sync'
-import * as fs from 'fs'
 import uniq from 'lodash/uniq'
 import moment from 'moment'
-import path from 'path'
 
+import { databaseInit } from '@/database/databaseConnection'
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { LfxMembership, insertLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
   findOrgIdByDisplayName,
   findOrgIdByDomain,
 } from '@crowd/data-access-layer/src/organizations'
 import { findProjectGroupByName } from '@crowd/data-access-layer/src/segments'
-
-import { databaseInit } from '@/database/databaseConnection'
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 const options = [
   {

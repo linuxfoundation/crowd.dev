@@ -262,3 +262,31 @@ async def test_process_maintainers_end_dates_siblings_when_all_emeritus(
     end_date_mock.assert_called_once()
     call_args = end_date_mock.call_args[0]
     assert call_args[0] == [SIBLING_REPO_ID]
+
+
+@pytest.mark.asyncio
+async def test_save_maintainers_persists_emeritus_role(monkeypatch: pytest.MonkeyPatch):
+    service = MaintainerService()
+    item = MaintainerInfoItem(
+        github_username="alice",
+        name="Alice",
+        title="Emeritus Maintainer",
+        normalized_title="emeritus",
+    )
+    identity_id = "identity-123"
+
+    resolve_mock = AsyncMock(return_value=[(item, identity_id)])
+    monkeypatch.setattr(service, "_resolve_maintainers", resolve_mock)
+    upsert_mock = AsyncMock()
+    monkeypatch.setattr(maintainer_service_module, "upsert_maintainer", upsert_mock)
+
+    await service.save_maintainers(
+        repo_id="repo-1",
+        repo_url="https://github.com/cri-o/.project",
+        maintainers=[item],
+        last_maintainer_run_at=None,
+    )
+
+    resolve_mock.assert_called_once_with([item])
+    upsert_mock.assert_called_once()
+    assert upsert_mock.call_args[0][3] == "emeritus"

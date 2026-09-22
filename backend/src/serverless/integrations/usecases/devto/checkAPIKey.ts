@@ -10,7 +10,7 @@ export const checkAPIKey = async (apiKey: string): Promise<boolean> => {
     })
 
     return response.status === 200
-  } catch (error) {
+  } catch {
     return false
   }
 }

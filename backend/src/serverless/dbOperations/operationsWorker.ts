@@ -1,8 +1,7 @@
-import { IServiceOptions } from '../../services/IServiceOptions'
 import ActivityService from '../../services/activityService'
 import IntegrationService from '../../services/integrationService'
+import { IServiceOptions } from '../../services/IServiceOptions'
 import MemberService from '../../services/memberService'
-
 import Operations from './operations'
 
 /**

@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { RedisCache, RedisClient } from '@crowd/redis'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbMemberAttributeSetting } from './types'
 
 const log = getServiceChildLogger('db/members/attributeSettings')

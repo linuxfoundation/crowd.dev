@@ -15,6 +15,17 @@ export const PASS_THROUGH_FIELDS = [
 const LOW_SEVERITY_TYPES = new Set(['pull_request-review-requested'])
 const MAX_FIELD_VALUE_LENGTH = 500
 
+const SNAPSHOT_AT_EXTRACTION_ATTRIBUTE_FIELDS = new Set(['additions', 'deletions', 'changedFiles'])
+const TYPES_WITH_SNAPSHOT_ATTRIBUTES = new Set([
+  'pull_request-opened',
+  'pull_request-closed',
+  'pull_request-review-requested',
+  'pull_request-reviewed',
+  'pull_request-assigned',
+  'pull_request-merged',
+  'pull_request-review-thread-comment',
+])
+
 export type ShadowDiffSeverity = 'high' | 'low'
 
 export type ShadowDiffMismatchKind =
@@ -41,6 +52,7 @@ export interface IShadowDiffMismatch {
   kind: ShadowDiffMismatchKind
   severity: ShadowDiffSeverity
   fields?: IFieldMismatch[]
+  syncName?: string
 }
 
 function severityForType(type: string): ShadowDiffSeverity {
@@ -55,14 +67,36 @@ function truncateFieldValue(value: unknown): unknown {
   return `${serialized.slice(0, MAX_FIELD_VALUE_LENGTH)}… [truncated]`
 }
 
+function withoutSnapshotAttributeFields(attributes: unknown, type: string): unknown {
+  if (
+    !TYPES_WITH_SNAPSHOT_ATTRIBUTES.has(type) ||
+    typeof attributes !== 'object' ||
+    attributes === null
+  ) {
+    return attributes
+  }
+  return Object.fromEntries(
+    Object.entries(attributes as Record<string, unknown>).filter(
+      ([key]) => !SNAPSHOT_AT_EXTRACTION_ATTRIBUTE_FIELDS.has(key),
+    ),
+  )
+}
+
 function comparePassThroughFields(
   shadowData: Record<string, unknown>,
   nangoData: Record<string, unknown>,
+  type: string,
 ): IFieldMismatch[] {
   const mismatches: IFieldMismatch[] = []
   for (const field of PASS_THROUGH_FIELDS) {
-    const shadowValue = shadowData[field]
-    const nangoValue = nangoData[field]
+    const shadowValue =
+      field === 'attributes'
+        ? withoutSnapshotAttributeFields(shadowData[field], type)
+        : shadowData[field]
+    const nangoValue =
+      field === 'attributes'
+        ? withoutSnapshotAttributeFields(nangoData[field], type)
+        : nangoData[field]
     if (!isDeepStrictEqual(shadowValue, nangoValue)) {
       mismatches.push({
         field,
@@ -98,7 +132,7 @@ export function diffShadowAgainstNango(
       continue
     }
 
-    const fields = comparePassThroughFields(shadowRecord.data, nangoRecord.data)
+    const fields = comparePassThroughFields(shadowRecord.data, nangoRecord.data, shadowRecord.type)
     if (fields.length > 0) {
       mismatches.push({
         sourceId: shadowRecord.sourceId,

@@ -9,7 +9,6 @@ import {
 } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { SLACK_GRID } from './grid'
 import { ISlackAPIData, SlackActivityType, SlackMember, SlackMessage } from './types'
 

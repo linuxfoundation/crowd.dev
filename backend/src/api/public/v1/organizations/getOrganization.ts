@@ -1,12 +1,11 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { BadRequestError, NotFoundError, normalizeHostname } from '@crowd/common'
-import { findOrganizationByNameOrDomain } from '@crowd/data-access-layer'
-
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { BadRequestError, NotFoundError, normalizeHostname } from '@crowd/common'
+import { findOrganizationByNameOrDomain } from '@crowd/data-access-layer'
 
 const querySchema = z
   .object({

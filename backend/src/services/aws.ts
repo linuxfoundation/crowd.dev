@@ -5,8 +5,6 @@ import { trimUtf8ToMaxByteLength } from '@crowd/common'
 import { COMPREHEND_CONFIG, IS_DEV_ENV, S3_CONFIG } from '../conf'
 
 let s3Instance
-let lambdaInstance
-let notLocalLambdaInstance
 
 if (S3_CONFIG.aws) {
   s3Instance = IS_DEV_ENV
@@ -106,5 +104,5 @@ export async function detectSentimentBatch(textArray) {
 }
 
 export const s3 = s3Instance
-export const lambda = lambdaInstance
-export const notLocalLambda = notLocalLambdaInstance
+export const lambda = undefined
+export const notLocalLambda = undefined

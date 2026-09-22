@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express'
 
+import { getPackagesQx } from '@/db/packagesDb'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { NotFoundError } from '@crowd/common'
 import {
   computeHealthBand,
@@ -8,10 +11,6 @@ import {
   getStewardshipSummary,
   securityContactConfidenceBand,
 } from '@crowd/data-access-layer'
-
-import { getPackagesQx } from '@/db/packagesDb'
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 import { repoMappingLabel, snakeToCamelKeys, toNullableNumber } from './mappers'
 import { purlQuerySchema } from './purl'

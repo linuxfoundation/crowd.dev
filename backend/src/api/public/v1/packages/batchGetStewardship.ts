@@ -1,10 +1,9 @@
 import type { Request, Response } from 'express'
 
-import { getPackagesByStewardshipPurls } from '@crowd/data-access-layer'
-
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+import { getPackagesByStewardshipPurls } from '@crowd/data-access-layer'
 
 import { normalizePurl, purlsBodySchema } from './purl'
 import type { StewardshipSummary } from './types'

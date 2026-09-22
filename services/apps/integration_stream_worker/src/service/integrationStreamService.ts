@@ -27,7 +27,6 @@ import {
 } from '@crowd/types'
 
 import { NANGO_CONFIG, PLATFORM_CONFIG, WORKER_SETTINGS } from '../conf'
-
 import IntegrationDataService from './integrationDataService'
 
 export default class IntegrationStreamService extends LoggerBase {

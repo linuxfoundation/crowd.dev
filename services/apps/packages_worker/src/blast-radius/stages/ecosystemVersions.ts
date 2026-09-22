@@ -1,6 +1,5 @@
 import { compareVersion } from '../../osv/versionCompare'
 import { OsvAffectedPackage } from '../clients/osvClient'
-
 import { compareNuGetVersion } from './nuget/nugetVersionCompare'
 
 // Shared range type for Maven and NuGet (ecosystems with ECOSYSTEM-typed OSV ranges).

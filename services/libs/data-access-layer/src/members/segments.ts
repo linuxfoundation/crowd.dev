@@ -10,7 +10,6 @@ import {
 import { QueryExecutor } from '../queryExecutor'
 import { buildSegmentActivityTypes, isSegmentSubproject } from '../segments'
 import { prepareBulkInsert } from '../utils'
-
 import { BLACKLISTED_MEMBER_TITLES } from './base'
 import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
 

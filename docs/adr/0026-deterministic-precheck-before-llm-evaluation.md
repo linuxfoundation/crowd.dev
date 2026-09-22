@@ -88,7 +88,7 @@ independent pre-check runs as its own activity (`precheckPendingProjects`) right
 and most certain first, so a row is skipped for the first reason that actually applies:
 
 1. **Not GitHub** — `canonicalizeRepoUrl` returns `isGithub: false` (or fails to parse a URL at
-   all is *not* a skip; it falls through to the agent, since a parse failure means we don't
+   all is _not_ a skip; it falls through to the agent, since a parse failure means we don't
    actually know, not that we know it's a non-GitHub host).
 2. **Already in CDP** — same `findRepoUrlsInCdp` lookup CM-1451 uses, as a safety net for rows
    that skipped the discovery stage.

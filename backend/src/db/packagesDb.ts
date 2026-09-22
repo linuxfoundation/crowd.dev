@@ -1,7 +1,6 @@
+import { PACKAGES_DB_CONFIG } from '@/conf'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
-
-import { PACKAGES_DB_CONFIG } from '@/conf'
 
 let _init: Promise<QueryExecutor> | undefined
 

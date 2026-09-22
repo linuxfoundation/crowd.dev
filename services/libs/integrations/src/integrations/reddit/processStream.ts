@@ -1,7 +1,6 @@
 import { partition } from '@crowd/common'
 
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import getComments from './api/getComments'
 import getMoreComments from './api/getMoreComments'
 import getPosts from './api/getPosts'

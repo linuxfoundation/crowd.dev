@@ -4,7 +4,6 @@ import { createIngestJob, findPendingJobByKind, markJobStatus } from '@crowd/dat
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb, getPackagesDbConnection } from '../db'
-
 import { buildGraph, computePageRank } from './graph'
 import { loadDirectEdges, mergeCentralityScores } from './queries'
 import { CentralityInput, CentralityResult } from './types'

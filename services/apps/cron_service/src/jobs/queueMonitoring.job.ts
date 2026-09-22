@@ -130,7 +130,7 @@ async function isConsumerListeningToTopic(
                 return true
               }
             }
-          } catch (metadataErr) {
+          } catch {
             // log.error(
             //   metadataErr,
             //   `Failed to parse metadata for group ${groupId}! - "${member.memberMetadata.toString()}"`,

@@ -1,7 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
-
 import {
   NormalizedNuGetPackage,
   NormalizedNuGetVersion,

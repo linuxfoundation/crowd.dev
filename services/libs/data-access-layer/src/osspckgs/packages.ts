@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbPackageUniverse, IDbPackageUpsert, IDbSonatypePopularityUpsert } from './types'
 
 export async function findPackageIdsByPurl(

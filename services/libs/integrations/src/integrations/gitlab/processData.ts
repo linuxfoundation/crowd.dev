@@ -20,7 +20,6 @@ import {
 
 import { generateSourceIdHash } from '../../helpers'
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { GITLAB_GRID } from './grid'
 import {
   GitlabActivityType,

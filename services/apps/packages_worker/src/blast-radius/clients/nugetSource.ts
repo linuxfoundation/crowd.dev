@@ -1,10 +1,10 @@
-import { XMLParser } from 'fast-xml-parser'
 import * as fs from 'fs'
+
+import { XMLParser } from 'fast-xml-parser'
 
 import { fetchNuspec } from '../../nuget/client'
 import { isNuGetFetchError } from '../../nuget/types'
 import { canonicalizeRepoUrl } from '../../utils/canonicalizeRepoUrl'
-
 import { downloadAndExtractTarball } from './npmTarball'
 
 // Thrown when no GitHub source could be resolved for a dependent at all — the
