@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { noContent } from '@/utils/api'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
@@ -10,11 +14,6 @@ import {
   fetchMemberOrganizations,
   findMemberById,
 } from '@crowd/data-access-layer'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { noContent } from '@/utils/api'
-import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

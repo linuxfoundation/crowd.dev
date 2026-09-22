@@ -21,7 +21,6 @@ import {
 } from '../old/apps/data_sink_worker/repo/activity.data'
 import { findOrgsByIds } from '../organizations'
 import { QueryExecutor } from '../queryExecutor'
-
 import { buildActivitiesParams } from './tinybirdAdapter'
 import {
   IActivitySentiment,

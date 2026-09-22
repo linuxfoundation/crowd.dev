@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto'
+
 import lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 import {
   captureApiChange,
   organizationMergeAction,
@@ -60,22 +65,16 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
-
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
 import OrganizationRepository from '../database/repositories/organizationRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import telemetryTrack from '../segment/telemetryTrack'
-
-import { IServiceOptions } from './IServiceOptions'
 import {
   keepPrimary,
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
+import { IServiceOptions } from './IServiceOptions'
 import SearchSyncService from './searchSyncService'
 
 export default class OrganizationService extends LoggerBase {

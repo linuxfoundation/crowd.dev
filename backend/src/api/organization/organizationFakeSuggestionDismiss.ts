@@ -1,6 +1,5 @@
-import { deleteFakeOrganizationSuggestion } from '@crowd/data-access-layer/src/organizations'
-
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { deleteFakeOrganizationSuggestion } from '@crowd/data-access-layer/src/organizations'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'

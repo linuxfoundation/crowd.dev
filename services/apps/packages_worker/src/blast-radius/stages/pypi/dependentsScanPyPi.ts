@@ -3,7 +3,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
 import { toPypiNormalizedName } from '../../packageIdentifier'
-
 import { pypiDependencyMayIncludeVuln } from './pypiConstraint'
 
 // PyPI is a deps.dev EDGE ecosystem, same as npm/Maven/Cargo — dependents come from our

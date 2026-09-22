@@ -12,7 +12,6 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
-
 import {
   collectMaintainers,
   isPrerelease,

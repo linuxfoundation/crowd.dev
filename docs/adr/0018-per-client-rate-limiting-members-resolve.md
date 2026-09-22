@@ -15,11 +15,13 @@ Add a dedicated `express-rate-limit` middleware on `POST /v1/members/resolve` ke
 ## Alternatives Considered
 
 ### Alternative 1: Redis-backed distributed store (`rate-limit-redis`)
+
 - **Pros**: Accurate counter across all k8s replicas; true 200 req/min ceiling regardless of HPA scale-out.
 - **Cons**: New npm dependency; Redis connection at rate-limit middleware layer; added operational surface.
 - **Why not**: The Auth0 Action has its own per-instance pacer. Overshoot is bounded by replica count, which is stable under normal HPA conditions. Deferred until the endpoint is live and replica behaviour is observable under real load.
 
 ### Alternative 2: Raise global IP limit, rely on per-instance pacer
+
 - **Pros**: No new middleware.
 - **Cons**: No isolation between M2M consumers; any single client can exhaust the shared ceiling.
 - **Why not**: Does not satisfy the per-client isolation requirement in workspace-segments#15.
@@ -27,12 +29,15 @@ Add a dedicated `express-rate-limit` middleware on `POST /v1/members/resolve` ke
 ## Consequences
 
 ### Positive
+
 - Each M2M consumer gets an isolated 200 req/min budget keyed on a stable identity that survives credential rotation.
 - `Retry-After` and `RateLimit-*` headers are emitted on 429, giving callers actionable backoff signals.
 - Global IP limiter remains unchanged for all other endpoints.
 
 ### Negative
+
 - Effective per-client limit is `200 × replica_count` under HPA scale-out — not a hard ceiling.
 
 ### Risks
+
 - If replica count grows significantly before a Redis store is added, the soft ceiling may be exceeded. Monitor replica count alongside the Datadog resolve-rate dashboard; add `rate-limit-redis` if ceiling violations are observed.

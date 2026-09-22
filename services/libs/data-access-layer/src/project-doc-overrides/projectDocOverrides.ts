@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbProjectDocOverride, IProjectDocOverrideCreate } from './types'
 
 const OVERRIDE_COLUMNS = [

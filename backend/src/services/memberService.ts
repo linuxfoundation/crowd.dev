@@ -3,6 +3,7 @@ import lodash from 'lodash'
 import moment from 'moment-timezone'
 import validator from 'validator'
 
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
 import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
 import {
   Error400,
@@ -49,8 +50,6 @@ import {
   SyncMode,
 } from '@crowd/types'
 
-import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
-
 import MemberAttributeSettingsRepository from '../database/repositories/memberAttributeSettingsRepository'
 import MemberRepository from '../database/repositories/memberRepository'
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
@@ -60,7 +59,6 @@ import {
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
 import telemetryTrack from '../segment/telemetryTrack'
-
 import { IServiceOptions } from './IServiceOptions'
 import MemberAttributeSettingsService from './memberAttributeSettingsService'
 import OrganizationService from './organizationService'

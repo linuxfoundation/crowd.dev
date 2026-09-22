@@ -6,8 +6,4 @@ import { IOpenSearchRequest } from './opensearch'
 import { IRedisRequest } from './redis'
 
 export interface ApiRequest
-  extends Request,
-    ILoggingRequest,
-    IOpenSearchRequest,
-    IRedisRequest,
-    IDatabaseRequest {}
+  extends Request, ILoggingRequest, IOpenSearchRequest, IRedisRequest, IDatabaseRequest {}

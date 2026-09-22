@@ -3,11 +3,11 @@ import * as path from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web'
+
 import * as tar from 'tar'
 import unzipper from 'unzipper'
 
 import type { PyPiProject, PyPiUrlInfo } from '../../pypi/types'
-
 import {
   FETCH_TIMEOUT_MS,
   MAX_EXTRACTED_BYTES,

@@ -1,5 +1,4 @@
 import { Repo } from '../../types'
-
 import BaseQuery from './baseQuery'
 
 export interface PullRequestCommit {

@@ -16,6 +16,7 @@ project. ADRs live in `docs/adr/` at the repo root.
 ## When to record
 
 **Record these decisions:**
+
 - Technology selections (frameworks, libraries, databases, cloud providers)
 - Architectural patterns (state management, caching strategy, API design)
 - Data modeling choices (schema design, indexing, query approach)
@@ -37,14 +38,17 @@ Every ADR file must include all of these sections:
 **Deciders**: [who was involved]
 
 ## Context
+
 [2–5 sentences describing the situation, constraints, and forces at play]
 
 ## Decision
+
 [1–3 sentences stating the change clearly and unambiguously]
 
 ## Alternatives Considered
 
 ### Alternative 1: [Name]
+
 - **Pros**: [benefits]
 - **Cons**: [drawbacks]
 - **Why not**: [specific rejection reason]
@@ -52,12 +56,15 @@ Every ADR file must include all of these sections:
 ## Consequences
 
 ### Positive
+
 - [benefit 1]
 
 ### Negative
+
 - [trade-off 1]
 
 ### Risks
+
 - [risk and mitigation]
 ```
 

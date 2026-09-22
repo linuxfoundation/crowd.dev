@@ -2,7 +2,6 @@ import { GITHUB_GRID, GithubActivityType } from '@crowd/integrations'
 
 import type { ForkNode } from '../graphql/forks'
 import type { GithubActivity } from '../schemas'
-
 import { toMember } from './member'
 
 export function toFork(node: ForkNode): GithubActivity {

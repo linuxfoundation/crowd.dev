@@ -1,5 +1,4 @@
 import { GenerateStreamsHandler } from '../../types'
-
 import { DiscordRootStreamData, DiscordStreamType, IDiscordIntegrationSettings } from './types'
 
 const handler: GenerateStreamsHandler = async (ctx) => {

@@ -1,13 +1,11 @@
+import { IS_TEST_ENV } from '@/conf'
+import { getSearchSyncWorkerEmitter } from '@/serverless/utils/queueService'
 import { SearchSyncWorkerEmitter } from '@crowd/common_services'
 import { LoggerBase, logExecutionTimeV2 } from '@crowd/logging'
 import { SearchSyncApiClient } from '@crowd/opensearch'
 import { SyncMode } from '@crowd/types'
 
-import { IS_TEST_ENV } from '@/conf'
-import { getSearchSyncWorkerEmitter } from '@/serverless/utils/queueService'
-
 import { getSearchSyncApiClient } from '../utils/apiClients'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export type SearchSyncClient = SearchSyncApiClient | SearchSyncWorkerEmitter

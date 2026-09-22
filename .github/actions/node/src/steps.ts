@@ -1,11 +1,13 @@
-import { getInputs } from './inputs'
-import { ActionStep, CloudEnvironment, IBuilderDefinition } from './types'
-import * as core from '@actions/core'
-import * as exec from '@actions/exec'
-import { getBuilderDefinitions } from './utils'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+
+import * as core from '@actions/core'
+import * as exec from '@actions/exec'
+
+import { getInputs } from './inputs'
+import { ActionStep, CloudEnvironment, IBuilderDefinition } from './types'
+import { getBuilderDefinitions } from './utils'
 
 const imageTagMap = new Map<string, string>()
 

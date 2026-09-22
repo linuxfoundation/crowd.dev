@@ -7,8 +7,6 @@
     "start:debug": "SERVICE=kafka-connect-monitor LOG_LEVEL=trace tsx --inspect=0.0.0.0:9240 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,7 +20,6 @@
     "typescript": "catalog:"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22",
-    "prettier": "catalog:"
+    "nodemon": "^2.0.22"
   }
 }

@@ -5,7 +5,6 @@ import { getDbConnection } from '@crowd/database'
 import { BEST_REPO_LINK_JOIN } from '../osspckgs/sqlFragments'
 import type { QueryExecutor } from '../queryExecutor'
 import { pgpQx } from '../queryExecutor'
-
 import { upsertPackageRepo } from './repos'
 
 // Integration test: hits the running packages-db, where V1788307300 defines

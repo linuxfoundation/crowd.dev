@@ -3,7 +3,6 @@ import sanitizeHtml from 'sanitize-html'
 import { IMemberData, MemberAttributeName, MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { STACKOVERFLOW_GRID } from './grid'
 import { IStackOverflowPublishData, StackOverflowActivityType, StackOverflowUser } from './types'
 

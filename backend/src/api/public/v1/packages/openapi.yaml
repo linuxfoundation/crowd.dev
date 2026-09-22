@@ -94,13 +94,13 @@ components:
         username:
           type:
             - string
-            - 'null'
+            - "null"
           description: Username of the steward. Null if not available.
           example: jrodriguez
         displayName:
           type:
             - string
-            - 'null'
+            - "null"
           description: Display name of the steward. Null if not available.
           example: Jonathan R.
         role:
@@ -126,41 +126,41 @@ components:
         lifecycle:
           type:
             - string
-            - 'null'
+            - "null"
           enum: [active, stable, declining, abandoned, archived, null]
         health:
           type:
             - integer
-            - 'null'
+            - "null"
           example: 52
         impact:
           type:
             - integer
-            - 'null'
+            - "null"
           example: 94
         openVulns:
           oneOf:
-            - $ref: '#/components/schemas/OpenVulns'
-            - type: 'null'
+            - $ref: "#/components/schemas/OpenVulns"
+            - type: "null"
         stewardship:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
         stewards:
           description: Assigned stewards or null. Empty in v1.
           oneOf:
             - type: array
               items:
-                $ref: '#/components/schemas/Steward'
-            - type: 'null'
+                $ref: "#/components/schemas/Steward"
+            - type: "null"
         lastActivityAt:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: Null in v1.
         lastActivityDescription:
           type:
             - string
-            - 'null'
+            - "null"
           description: Null in v1.
 
     # ── Package list item ────────────────────────────────────────────────────────
@@ -186,46 +186,46 @@ components:
             score:
               type:
                 - integer
-                - 'null'
+                - "null"
               description: Health score (0–100). Tinybird composite score when enriched, OpenSSF Scorecard × 10 otherwise. Null if neither is available.
               example: 18
             label:
               type: string
               enum: [excellent, healthy, fair, concerning, critical]
-              description: 'Tinybird band when enriched (excellent ≥85, healthy 70–84, fair 50–69, concerning 30–49, critical <30), scorecard band otherwise.'
+              description: "Tinybird band when enriched (excellent ≥85, healthy 70–84, fair 50–69, concerning 30–49, critical <30), scorecard band otherwise."
               example: critical
         impact:
           type:
             - integer
-            - 'null'
+            - "null"
           example: 71
         lifecycle:
           type:
             - string
-            - 'null'
+            - "null"
           enum: [active, stable, declining, abandoned, archived, null]
         maintainerBusFactor:
           type:
             - integer
-            - 'null'
+            - "null"
           example: 1
         openVulns:
           oneOf:
-            - $ref: '#/components/schemas/OpenVulns'
-            - type: 'null'
+            - $ref: "#/components/schemas/OpenVulns"
+            - type: "null"
         stewardshipId:
           type:
             - string
-            - 'null'
+            - "null"
           description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status). Null if no stewardship row exists.
-          example: '42'
+          example: "42"
         stewardship:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
         stewards:
           description: Assigned stewards. Empty array if none.
           type: array
           items:
-            $ref: '#/components/schemas/Steward'
+            $ref: "#/components/schemas/Steward"
 
     # ── Package detail ───────────────────────────────────────────────────────────
 
@@ -243,7 +243,7 @@ components:
         resolution:
           type:
             - string
-            - 'null'
+            - "null"
           description: Resolution status. TBD.
 
     SecurityContact:
@@ -253,11 +253,11 @@ components:
         name:
           type:
             - string
-            - 'null'
+            - "null"
         email:
           type:
             - string
-            - 'null'
+            - "null"
           format: email
 
     PackageDetail:
@@ -279,106 +279,106 @@ components:
             healthScore:
               type:
                 - integer
-                - 'null'
+                - "null"
               description: Composite health score (0–100). Tinybird-enriched when available, null otherwise.
               example: 18
             healthScoreDetails:
               type:
                 - object
-                - 'null'
+                - "null"
               description: Breakdown of the composite health score. Null until Tinybird enrichment runs.
               properties:
                 total:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 18
                 label:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   example: Good
                 maintainerHealth:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 4
                 securitySupplyChain:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 8
                 developmentActivity:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 6
             healthBand:
               type:
                 - string
-                - 'null'
+                - "null"
               enum: [excellent, healthy, fair, concerning, critical, null]
               description: Derived from Tinybird health score when available, OpenSSF Scorecard otherwise.
               example: concerning
             impact:
               type:
                 - object
-                - 'null'
+                - "null"
               properties:
                 impactScore:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 71
                 downloadsLastMonth:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   description: Null for Maven (Sonatype data not yet ingested).
                   example: 52142891
                 dependentPackages:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 142312
                 dependentRepos:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 39104
                 transitiveReach:
                   type:
                     - string
-                    - 'null'
-                  example: 'Top 0.4%'
+                    - "null"
+                  example: "Top 0.4%"
             riskSignals:
               type:
                 - object
-                - 'null'
+                - "null"
               properties:
                 lifecycle:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   enum: [active, stable, declining, abandoned, archived, null]
                 maintainerBusFactor:
                   type:
                     - integer
-                    - 'null'
+                    - "null"
                   example: 1
                 lastRelease:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   format: date-time
                 hasSecurityFile:
                   type:
                     - boolean
-                    - 'null'
+                    - "null"
                 openSSFScorecard:
                   type:
                     - number
-                    - 'null'
+                    - "null"
                   format: float
                   example: 5.2
         assessment:
@@ -390,13 +390,13 @@ components:
             securityContacts:
               type:
                 - array
-                - 'null'
+                - "null"
               items:
-                $ref: '#/components/schemas/SecurityContact'
+                $ref: "#/components/schemas/SecurityContact"
             advisories:
               type: array
               items:
-                $ref: '#/components/schemas/Advisory'
+                $ref: "#/components/schemas/Advisory"
             cvd:
               type: object
               description: Coordinated Vulnerability Disclosure readiness signals.
@@ -404,22 +404,22 @@ components:
                 isPvrEnabled:
                   type:
                     - boolean
-                    - 'null'
+                    - "null"
                   description: Private Vulnerability Reporting enabled. Null in v1.
                 hasSecurityPolicyEnabled:
                   type:
                     - boolean
-                    - 'null'
+                    - "null"
                   description: SECURITY.md present in repo. Null until enricher captures this.
                 tier0Steward:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   description: Name of the Tier 0 steward if assigned. Null in v1.
                 criticalVulnerabilityFlag:
                   type:
                     - boolean
-                    - 'null'
+                    - "null"
                   description: True if any open advisory has cvss >= 7.0.
         provenance:
           type: object
@@ -427,24 +427,24 @@ components:
             repositoryMapping:
               type:
                 - object
-                - 'null'
+                - "null"
               properties:
                 declaredRepo:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   format: uri
                   example: https://github.com/lodash/lodash
                 mappingConfidence:
                   type:
                     - number
-                    - 'null'
+                    - "null"
                   format: float
                   example: 0.98
                 lastCommitAt:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                   format: date-time
             supplyChainIntegrity:
               type: object
@@ -453,11 +453,11 @@ components:
                 buildProvenance:
                   type:
                     - string
-                    - 'null'
+                    - "null"
                 signedReleases:
                   type:
                     - string
-                    - 'null'
+                    - "null"
         stewardship:
           type: object
           description: Stewardship state.
@@ -465,32 +465,32 @@ components:
             id:
               type:
                 - string
-                - 'null'
+                - "null"
               description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status).
-              example: '42'
+              example: "42"
             status:
-              $ref: '#/components/schemas/StewardshipStatus'
+              $ref: "#/components/schemas/StewardshipStatus"
             stewards:
               description: Assigned stewards or null.
               oneOf:
                 - type: array
                   items:
-                    $ref: '#/components/schemas/Steward'
-                - type: 'null'
+                    $ref: "#/components/schemas/Steward"
+                - type: "null"
             lastActivityAt:
               type:
                 - string
-                - 'null'
+                - "null"
               format: date-time
             resolutionPath:
               type:
                 - string
-                - 'null'
+                - "null"
               description: Set on `escalated` status. Null for all other statuses.
             statusNote:
               type:
                 - string
-                - 'null'
+                - "null"
               description: Free-text note for the current status.
         history:
           type: object
@@ -498,7 +498,7 @@ components:
         signalCoverageHealth:
           type:
             - object
-            - 'null'
+            - "null"
           description: Signal coverage health data enriched by Tinybird. Null until enriched.
           additionalProperties: true
 
@@ -583,7 +583,7 @@ paths:
             enum: [asc, desc]
             default: asc
       responses:
-        '200':
+        "200":
           description: Paginated list of packages.
           content:
             application/json:
@@ -603,11 +603,11 @@ paths:
                       ecosystem:
                         type:
                           - string
-                          - 'null'
+                          - "null"
                       lifecycle:
                         type:
                           - string
-                          - 'null'
+                          - "null"
                       busFactor1Only:
                         type: boolean
                       staleOnly:
@@ -624,25 +624,25 @@ paths:
                   packages:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PackageListItem'
-        '400':
+                      $ref: "#/components/schemas/PackageListItem"
+        "400":
           description: Validation error (e.g. invalid query parameters).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Insufficient scopes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /packages/metrics:
     get:
@@ -655,24 +655,24 @@ paths:
             - read:packages
             - read:stewardships
       responses:
-        '200':
+        "200":
           description: Aggregate package metrics.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackagesMetrics'
-        '401':
+                $ref: "#/components/schemas/PackagesMetrics"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Insufficient scopes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /packages/detail:
     get:
@@ -694,14 +694,14 @@ paths:
           required: true
           schema:
             type: string
-          example: 'pkg:npm/lodash@4.17.21'
+          example: "pkg:npm/lodash@4.17.21"
       responses:
-        '200':
+        "200":
           description: Package found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageDetail'
+                $ref: "#/components/schemas/PackageDetail"
               example:
                 purl: pkg:npm/lodash
                 name: lodash
@@ -720,11 +720,11 @@ paths:
                     downloadsLastMonth: 52142891
                     dependentPackages: 142312
                     dependentRepos: 39104
-                    transitiveReach: 'Top 0.4%'
+                    transitiveReach: "Top 0.4%"
                   riskSignals:
                     lifecycle: declining
                     maintainerBusFactor: 1
-                    lastRelease: '2021-02-20T00:00:00Z'
+                    lastRelease: "2021-02-20T00:00:00Z"
                     hasSecurityFile: null
                     openSSFScorecard: 5.2
                 assessment: {}
@@ -743,7 +743,7 @@ paths:
                   repositoryMapping:
                     declaredRepo: https://github.com/lodash/lodash
                     mappingConfidence: 0.98
-                    lastCommitAt: '2024-09-14T00:00:00Z'
+                    lastCommitAt: "2024-09-14T00:00:00Z"
                   supplyChainIntegrity:
                     buildProvenance: null
                     signedReleases: null
@@ -752,24 +752,24 @@ paths:
                   stewards: null
                   lastActivityAt: null
                 history: {}
-        '404':
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Insufficient scopes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /packages:batch-stewardship:
     post:
@@ -802,7 +802,7 @@ paths:
                     - pkg:npm/express
                     - pkg:pypi/requests
       responses:
-        '200':
+        "200":
           description: >
             Stewardship state keyed by purl.
             Unknown or invalid purls return `null`.
@@ -816,8 +816,8 @@ paths:
                     type: object
                     additionalProperties:
                       oneOf:
-                        - $ref: '#/components/schemas/StewardshipSummary'
-                        - type: 'null'
+                        - $ref: "#/components/schemas/StewardshipSummary"
+                        - type: "null"
               example:
                 packages:
                   pkg:npm/lodash@4.17.21:
@@ -838,21 +838,21 @@ paths:
                     lastActivityAt: null
                     lastActivityDescription: null
                   pkg:pypi/requests: null
-        '400':
+        "400":
           description: Validation error (e.g. more than 100 purls).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '403':
+                $ref: "#/components/schemas/Error"
+        "403":
           description: Insufficient scopes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"

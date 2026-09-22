@@ -3,14 +3,7 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "format": "prettier --write .",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "prettier": "catalog:"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -24,5 +17,9 @@
     "@opensearch-project/opensearch": "^2.11.0",
     "axios": "catalog:",
     "lodash.merge": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

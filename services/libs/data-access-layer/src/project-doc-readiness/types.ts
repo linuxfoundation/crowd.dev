@@ -83,3 +83,10 @@ export interface IFindProjectsForDocsReadiness {
   afterId?: string | null
   limit: number
 }
+
+export interface IProjectForDocsDiscovery {
+  id: string
+  slug: string
+  name: string
+  website: string | null
+}

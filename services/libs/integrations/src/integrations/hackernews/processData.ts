@@ -9,7 +9,6 @@ import {
 } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { HACKERNEWS_GRID } from './grid'
 import { HackerNewsActivityType, HackerNewsPublishData } from './types'
 

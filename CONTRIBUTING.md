@@ -65,7 +65,6 @@ Any contributions you make are **greatly appreciated**. ❤️
   </tr>
 </table>
 
-
 ## How to contribute to development
 
 We welcome any contribution to crowd.dev. Before you start with your first issue, please consider the following points:
@@ -79,7 +78,6 @@ We welcome any contribution to crowd.dev. Before you start with your first issue
 
 - Node v16.16.0
 - Docker and docker-compose
-
 
 #### Setup the project
 
@@ -99,6 +97,7 @@ cd scripts
 ```
 
 For hot reloading, you can run:
+
 ```shell
 cd scripts
 ./cli clean-start-dev
@@ -110,25 +109,24 @@ For more information on development, you can <a href="https://docs.crowd.dev/doc
 
 #### Running services individually
 
-To optimize resource usage during development, we would suggest starting only the necessary services and leveraging hot reloading where applicable. 
+To optimize resource usage during development, we would suggest starting only the necessary services and leveraging hot reloading where applicable.
 
 1. Start the scaffold service, including the necessary components like the database, etc:
 
 ```shell
-./cli scaffold up 
+./cli scaffold up
 ```
 
 This will set up the foundational services required for the project.
 
 2. If you are primarily working on the frontend but also need the API without hot reloading:
 
-
 ```shell
 DEV=1 ./cli service frontend up
 ./cli service api up
 ```
 
-By selectively starting the frontend and API services without enabling hot reloading, helps reduce resource usage. 
+By selectively starting the frontend and API services without enabling hot reloading, helps reduce resource usage.
 
 Feel free to adjust the commands based on the specific services you need for your development tasks.
 
@@ -137,16 +135,17 @@ Feel free to adjust the commands based on the specific services you need for you
 To ensure consistency throughout the source code, please keep these rules in mind as you are working:
 
 - All features or bug fixes must be tested by one or more specs (unit tests).
-- Backend and services use [oxlint](https://oxc.rs/docs/guide/usage/linter) (`pnpm lint` from the repo root). Frontend still uses ESLint. An automated formatter is available using Prettier.
-- In-code documentation is required for every function or class that is not self-evident.  
-- All new API endpoints that are relevant to the public API must have in-code documentation to generate OpenAPI specifications.  
+- Backend and services use [oxlint](https://oxc.rs/docs/guide/usage/linter) (`pnpm lint`) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter) (`pnpm format` / `pnpm format-check`) from the repo root. Frontend still uses ESLint.
+- In-code documentation is required for every function or class that is not self-evident.
+- All new API endpoints that are relevant to the public API must have in-code documentation to generate OpenAPI specifications.
 - The pipeline must pass.
 
 ##### Commit Message Guidelines
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint. 
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint.
 
 **Documentation:**
+
 - [Official Conventional Commits Specification](https://www.conventionalcommits.org/)
 - [LFX Internal Conventional Commits Guide](https://linuxfoundation.atlassian.net/wiki/spaces/PROD/pages/759726128/Conventional+Commits)
 
@@ -155,10 +154,12 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 ##### Pull Request Guidelines
 
 **PR Title Requirements:**
+
 - Must follow conventional commit format: `type(scope): description`
 - Should include JIRA ticket key in title: `feat: add new feature (CDP-123)`
 
 **PR Process:**
+
 1. Ensure your commits follow the conventional commit format
 2. Include JIRA ticket key in PR title
 3. Provide clear description of changes
@@ -171,9 +172,11 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 Leverage the JIRA MCP server for efficient ticket management during development.
 
 **Documentation:**
+
 - [JIRA MCP Server Guide](https://github.com/linuxfoundation/lfx-engineering/blob/main/mcp/jira.md)
 
 **Ticket Linking:**
+
 - When possible reference JIRA tickets in commit messages and PR titles
 - Use format: `type: conventional commit message (TICKET-KEY)`
 - This enables automatic linking between code changes and tickets
@@ -184,13 +187,14 @@ Leverage the JIRA MCP server for efficient ticket management during development.
 The Linux Foundation provides guidelines and best practices for using AI in development workflows.
 
 **Documentation:**
+
 - [LFX AI Development Guidelines](https://github.com/linuxfoundation/lfx-engineering/tree/main/ai)
 
 **Best Practices:**
+
 - Follow LFX guidelines when using AI tools for code generation
 - Ensure AI-generated code meets our quality standards
 - Review and test all AI-assisted contributions thoroughly
-
 
 ## Need help? 🛟
 

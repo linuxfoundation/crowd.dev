@@ -2,7 +2,6 @@ import { LoggerBase } from '@crowd/logging'
 
 import IntegrationRunRepository from '../../../database/repositories/integrationRunRepository'
 import { IServiceOptions } from '../../../services/IServiceOptions'
-
 import { IntegrationTickProcessor } from './integrationTickProcessor'
 
 export class IntegrationProcessor extends LoggerBase {

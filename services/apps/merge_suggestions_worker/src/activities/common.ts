@@ -1,7 +1,8 @@
+import { performance } from 'perf_hooks'
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
 import axios from 'axios'
-import { performance } from 'perf_hooks'
 
 import { Error404, IS_LLM_ENABLED } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'

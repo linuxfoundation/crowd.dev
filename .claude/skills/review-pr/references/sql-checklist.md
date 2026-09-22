@@ -25,6 +25,7 @@ Migration files must follow: `V{epoch}__{description}.sql` and `U{epoch}__{descr
 ### 3. Migrations must be safe for production (CRITICAL)
 
 Avoid:
+
 - `DROP TABLE` without verifying data is no longer needed
 - `ALTER TABLE ... NOT NULL` without a default or two-step migration (add nullable first, backfill, then add constraint)
 - Renaming columns without updating all code references first
@@ -39,11 +40,13 @@ Avoid:
 All queries must use parameterized placeholders (`$1`, `$2`, etc.). Never interpolate user input directly into SQL.
 
 **Violation:**
+
 ```ts
 await queryExecutor.query(`SELECT * FROM members WHERE email = '${email}'`)
 ```
 
 **Fix:**
+
 ```ts
 await queryExecutor.query('SELECT * FROM members WHERE email = $1', [email])
 ```
