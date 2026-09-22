@@ -56,7 +56,7 @@ async function runPullRequestCommentsSync(ctx: SyncContext): Promise<SyncOutcome
 
 export const pullRequestCommentsSync: SyncDefinition = {
   name: 'pull-request-comments',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestCommentsSync,
 }

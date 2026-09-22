@@ -159,7 +159,7 @@ async function runDiscussionsSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const discussionsSync: SyncDefinition = {
   name: 'discussions',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runDiscussionsSync,
 }

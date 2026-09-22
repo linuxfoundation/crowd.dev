@@ -134,7 +134,7 @@ async function runIssueCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const issueCommentsSync: SyncDefinition = {
   name: 'issue-comments',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runIssueCommentsSync,
 }
