@@ -18,6 +18,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
       let hasMore = true
 
       while (hasMore) {
+        const log = ctx.log.child({ prNumber: pullRequest.number, cursor })
         const data = await githubGraphql<PrCommitsPage>(
           ctx.http,
           PR_COMMITS_QUERY,
@@ -28,7 +29,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
             first: COMMITS_PAGE_SIZE,
             cursor,
           },
-          ctx.log,
+          log,
         )
 
         const commits = data.repository.pullRequest?.commits

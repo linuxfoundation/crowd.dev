@@ -19,11 +19,14 @@ export async function githubGraphql<T>(
   log: Logger,
 ): Promise<T> {
   for (let attempt = 1; ; attempt++) {
-    const body = await http.request<GraphqlEnvelope<T>>({
-      method: 'post',
-      url: 'https://api.github.com/graphql',
-      data: { query, variables },
-    })
+    const body = await http.request<GraphqlEnvelope<T>>(
+      {
+        method: 'post',
+        url: 'https://api.github.com/graphql',
+        data: { query, variables },
+      },
+      log,
+    )
     if (body.errors?.length) {
       const details = body.errors.map((e) => `${e.type ?? 'ERROR'}: ${e.message ?? ''}`).join('; ')
       const isForbidden = body.errors.some((e) => e.type?.includes('FORBIDDEN'))
