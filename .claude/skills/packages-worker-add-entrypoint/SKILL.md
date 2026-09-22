@@ -113,8 +113,10 @@ NEW_WORKER_API_KEY=
 
 ## Step 4 — TypeScript check
 
+From the repo root:
+
 ```bash
-cd services/apps/packages_worker && pnpm tsc --noEmit
+pnpm exec tsc -b services/apps/packages_worker
 ```
 
 Fix any errors before proceeding.
@@ -128,6 +130,6 @@ Fix any errors before proceeding.
 - [ ] `package.json` — `start:<name>` and `dev:<name>` scripts added
 - [ ] `backend/.env.dist.local` and `.env.dist.composed` — new vars documented
 - [ ] No new files in `services/libs/data-access-layer` (packages-db uses inline SQL)
-- [ ] `pnpm tsc --noEmit` passes
+- [ ] `pnpm tsc-check` passes
 
 Use `/preflight` before opening a PR and `/commit` to sign off.

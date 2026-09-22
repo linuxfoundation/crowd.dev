@@ -20,7 +20,7 @@
     "tsx": "^4.20.3"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "catalog:",
     "nodemon": "^3.0.1"
   }
 }

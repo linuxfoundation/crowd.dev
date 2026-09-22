@@ -1,18 +1,8 @@
+// `tsc -b` project. backend/tsconfig.json still emits JavaScript for sequelize-cli.
+// Delete this file once sequelize-cli is gone.
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "lib": ["es2018", "dom", "ES2021.String", "ES2022.Object"],
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "target": "es2018",
-    "types": ["node", "express"],
-    "baseUrl": "./src",
-    "paths": {
-      "@/*": ["./*"]
-    },
-    "skipLibCheck": true,
     "composite": true,
     "emitDeclarationOnly": true,
     "outDir": "dist"
