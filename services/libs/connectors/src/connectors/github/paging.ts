@@ -21,7 +21,13 @@ export function readWatermark(raw: Record<string, unknown> | null): GithubWaterm
       coveredUntil: typeof raw.coveredUntil === 'string' ? raw.coveredUntil : null,
     }
   }
-  return { phase: 'backfill', since: null, cursor: null, confirmedThrough: null, coveredUntil: null }
+  return {
+    phase: 'backfill',
+    since: null,
+    cursor: null,
+    confirmedThrough: null,
+    coveredUntil: null,
+  }
 }
 
 export function parseRepoChannel(channelName: string): { owner: string; repo: string } {
