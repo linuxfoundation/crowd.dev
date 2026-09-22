@@ -97,6 +97,37 @@ export async function findRepoIdsWithStarSnapshotGaps(
   return (rows || []).map((row) => row.repositoryId)
 }
 
+export interface IRepoStarSnapshotGapDays {
+  repositoryId: string
+  missingDays: number
+}
+
+// Caller must pass only repositoryIds already confirmed gapped (e.g. via
+// findRepoIdsWithStarSnapshotGaps) - this doesn't re-check gap membership, just sizes it.
+export async function findStarSnapshotGapDaysForRepos(
+  qx: QueryExecutor,
+  repositoryIds: string[],
+): Promise<IRepoStarSnapshotGapDays[]> {
+  if (repositoryIds.length === 0) {
+    return []
+  }
+
+  const rows: IRepoStarSnapshotGapDays[] = await qx.select(
+    `
+      select
+          "repositoryId",
+          ((now() at time zone 'UTC')::date - min(("capturedAt" at time zone 'UTC')::date) + 1)
+            - count(distinct ("capturedAt" at time zone 'UTC')::date) as "missingDays"
+      from "repositoryStarSnapshots"
+      where "repositoryId" in ($(repositoryIds:csv))
+      group by "repositoryId"
+    `,
+    { repositoryIds },
+  )
+
+  return rows || []
+}
+
 export async function upsertStarSnapshot(
   qx: QueryExecutor,
   repositoryId: string,
