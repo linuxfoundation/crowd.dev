@@ -116,7 +116,10 @@ export async function findStarSnapshotGapDaysForRepos(
     `
       select
           "repositoryId",
-          (((now() at time zone 'UTC')::date - min(("capturedAt" at time zone 'UTC')::date) + 1)
+          ((greatest(
+              max(("capturedAt" at time zone 'UTC')::date),
+              (now() at time zone 'UTC')::date - 1
+            ) - min(("capturedAt" at time zone 'UTC')::date) + 1)
             - count(distinct ("capturedAt" at time zone 'UTC')::date))::int as "missingDays"
       from "repositoryStarSnapshots"
       where "repositoryId" in ($(repositoryIds:csv))
