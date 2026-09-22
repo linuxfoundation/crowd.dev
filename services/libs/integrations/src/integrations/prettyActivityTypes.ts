@@ -7,6 +7,9 @@ import { RedditActivityType } from './reddit/types'
 export const prettyActivityTypes = {
   [PlatformType.GITHUB]: {
     [GithubActivityType.FORK]: 'forked',
+    // literal keys: GithubActivityType.STAR/UNSTAR are gone (CM-1439), but old persisted activities still carry these
+    star: 'starred',
+    unstar: 'unstarred',
     'pull_request-open': 'opened a new pull request',
     [GithubActivityType.PULL_REQUEST_OPENED]: 'opened a new pull request',
     'pull_request-close': 'closed a pull request',

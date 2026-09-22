@@ -229,6 +229,29 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    // literal keys: GithubActivityType.STAR/UNSTAR are gone (CM-1439), but old persisted activities still carry these
+    star: {
+      display: {
+        default: 'starred {channel}',
+        short: 'starred',
+        channel: '{channel}',
+        formatter: {
+          channel: defaultGithubChannelFormatter,
+        },
+      },
+      calculateSentiment: false,
+    },
+    unstar: {
+      display: {
+        default: 'unstarred {channel}',
+        short: 'unstarred',
+        channel: '{channel}',
+        formatter: {
+          channel: defaultGithubChannelFormatter,
+        },
+      },
+      calculateSentiment: false,
+    },
     [GithubActivityType.PULL_REQUEST_MERGED]: {
       display: {
         default: 'merged pull request {self}',
