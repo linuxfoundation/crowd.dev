@@ -9,7 +9,6 @@
     "pg-promise": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

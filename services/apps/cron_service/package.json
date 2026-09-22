@@ -29,8 +29,7 @@
     "js-yaml": "^4.1.0",
     "p-queue": "^8.1.0",
     "pidusage": "^3.0.2",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

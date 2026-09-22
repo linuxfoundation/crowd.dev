@@ -25,7 +25,6 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "tsx": "catalog:",
-    "typescript": "catalog:",
     "verify-github-webhook": "^1.0.1"
   },
   "devDependencies": {

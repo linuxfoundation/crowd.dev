@@ -38,8 +38,7 @@
     "lodash.mergewith": "^4.6.2",
     "lodash.uniqby": "^4.7.0",
     "moment-timezone": "^0.5.34",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"

@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@crowd/test-kit": "workspace:*",
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

@@ -7,7 +7,6 @@
     "dd-trace": "^5.63.0"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

@@ -10,7 +10,6 @@
   "devDependencies": {
     "@types/bunyan": "^1.8.8",
     "@types/bunyan-format": "^0.2.5",
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

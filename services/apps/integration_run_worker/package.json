@@ -25,8 +25,7 @@
     "@crowd/types": "workspace:*",
     "axios": "catalog:",
     "config": "catalog:",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",

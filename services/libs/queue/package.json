@@ -10,7 +10,6 @@
     "kafkajs": "^2.2.4"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }
