@@ -5,7 +5,6 @@
     "lib": ["es6", "es7", "es2017", "es2017.object", "es2015.promise", "ES2021.String"],
     "skipLibCheck": true,
     "moduleResolution": "node16",
-    "typeRoots": ["${configDir}/node_modules/@types"],
     "experimentalDecorators": true,
     "esModuleInterop": true,
     "composite": true,
