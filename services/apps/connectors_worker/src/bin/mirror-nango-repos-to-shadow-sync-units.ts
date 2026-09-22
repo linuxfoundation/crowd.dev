@@ -57,8 +57,8 @@ async function getNangoMappingForOwnerRepo(
     `SELECT nm."integrationId", nm."connectionId"
      FROM integration.nango_mapping nm
      JOIN integrations i ON i.id = nm."integrationId"
-     WHERE nm.owner = $(owner)
-       AND nm."repoName" = $(repoName)
+     WHERE lower(nm.owner) = lower($(owner))
+       AND lower(nm."repoName") = lower($(repoName))
        AND i.platform = 'github-nango'
        AND i."deletedAt" IS NULL
      ORDER BY nm."updatedAt" DESC
@@ -85,7 +85,10 @@ setImmediate(async () => {
       log.warn('github manifest has no syncs registered yet - mirroring channels only')
     }
 
-    const since = new Date(Date.now() - MIRROR_INITIAL_LOOKBACK_MS).toISOString()
+    const cutoff = new Date(Date.now() - MIRROR_INITIAL_LOOKBACK_MS)
+    const since = new Date(
+      Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth(), cutoff.getUTCDate()),
+    ).toISOString()
     const watermark = { phase: 'incremental', since, cursor: null }
 
     const units: SyncUnitUpsert[] = []

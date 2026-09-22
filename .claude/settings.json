@@ -42,9 +42,6 @@
       "Bash(git cherry-pick*)",
       "Bash(git push*)"
     ],
-    "deny": [
-      "Bash(git reset --hard*)",
-      "Bash(rm -rf*)"
-    ]
+    "deny": ["Bash(git reset --hard*)", "Bash(rm -rf*)"]
   }
 }

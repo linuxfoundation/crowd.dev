@@ -1,6 +1,9 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
@@ -10,10 +13,6 @@ import {
   findMaintainerRoles,
   findMemberById,
 } from '@crowd/data-access-layer'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 import { mapSegmentAffiliation, mapWorkExperienceAffiliation } from './mappers'
 

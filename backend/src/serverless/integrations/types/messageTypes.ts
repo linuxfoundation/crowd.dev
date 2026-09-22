@@ -81,7 +81,7 @@ export type AddActivitiesSingle = {
 
 export type AddActivities = Array<AddActivitiesSingle>
 
-export type Update = { id: string; update: Object }
+export type Update = { id: string; update: object }
 export type Updates = Array<Update>
 
 export type DbOperations = {

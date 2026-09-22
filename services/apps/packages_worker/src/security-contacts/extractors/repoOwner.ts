@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
 import { ExtractorDeps, ProvenanceEntry, RawContact, RepoTarget } from '../types'
-
 import { isEmail } from './http'
 
 const log = getServiceChildLogger('security-contacts:repo-owner')

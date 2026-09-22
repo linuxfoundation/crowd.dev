@@ -1,10 +1,9 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { auth } from 'express-oauth2-jwt-bearer'
 
-import { UnauthorizedError } from '@crowd/common'
-
 import type { Auth0Configuration } from '@/conf/configTypes'
 import type { Auth0TokenPayload } from '@/types/api'
+import { UnauthorizedError } from '@crowd/common'
 
 function resolveIssuer(req: Request): string | undefined {
   const token = req.headers.authorization?.split(' ')[1]

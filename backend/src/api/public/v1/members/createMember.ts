@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, normalizeDisplayName } from '@crowd/common'
 import {
@@ -10,11 +14,6 @@ import {
   insertMemberIdentities,
 } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created } from '@/utils/api'
-import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
-import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
   displayName: z.string().trim().min(1),

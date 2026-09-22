@@ -9,7 +9,6 @@ import {
 } from '@temporalio/workflow'
 
 import * as activities from '../activities'
-
 import { backfillStarHistoryBatch } from './backfillStarHistoryBatch'
 
 const { findReposNeedingStarBackfill } = proxyActivities<typeof activities>({

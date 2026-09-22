@@ -30,7 +30,7 @@ export default async (req, res) => {
           total: responses.reduce((acc, response) => acc + response.data.total, 0),
         })
       }
-    } catch (e) {
+    } catch {
       return req.responseHandler.error(req, res, new Error400(req.language))
     }
   }

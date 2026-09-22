@@ -19,7 +19,6 @@ import { getServiceLogger } from '@crowd/logging'
 import { svc } from '../main'
 import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
 import { OnboardAndUpdateProjectOutcome } from '../types'
-
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
 
 const log = getServiceLogger()

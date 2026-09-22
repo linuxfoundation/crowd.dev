@@ -1,13 +1,15 @@
 <!-- Copyright The Linux Foundation and each contributor to LFX. -->
 <!-- SPDX-License-Identifier: MIT -->
+
 ---
+
 name: tb-quarantine-triage
 description: >
-  On-demand Tinybird quarantine investigator. Detects datasources with live
-  quarantined rows, runs per-datasource root-cause analysis, presents a
-  diagnosis plan for human review, then creates IN Jira tickets and git
-  worktrees for approved datasources. No automation — always requires human
-  sign-off before any Jira or Git action.
+On-demand Tinybird quarantine investigator. Detects datasources with live
+quarantined rows, runs per-datasource root-cause analysis, presents a
+diagnosis plan for human review, then creates IN Jira tickets and git
+worktrees for approved datasources. No automation — always requires human
+sign-off before any Jira or Git action.
 allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__searchJiraIssuesUsingJql, mcp__mcp-atlassian__createJiraIssue
 ---
 
@@ -30,6 +32,7 @@ Detection is two-pass. Do not include a `FORMAT` clause in any Tinybird query.
 Call the `list_datasources` MCP tool. The result may be large and saved to a file path rather than returned inline. If a file path is returned, use `ctx_execute` (language: `javascript`) to read and parse the file — never load it raw into conversation. The response is a **JSON array** of objects with a `name` field (not a `{datasources: [...]}` wrapper).
 
 Extract all datasource `name` values. Exclude any where the name:
+
 - starts with `raul_` or `test_`
 - ends with `_old` or contains `_backup`
 - ends with `_MV` or `_MV_ds` or `_copy_ds`, or matches `*_MV_ds_\d+` (materialized views, numbered MV shards, and copy targets — they do not receive direct ingestion)
@@ -50,9 +53,11 @@ FROM {DS_NAME}_quarantine
 Skip datasources where the query errors (many will — quarantine tables that have never received rows may still error). Keep only those with `live_quarantined > 0`.
 
 If no datasources remain after filtering, report:
+
 ```
 No live quarantined rows found. Nothing to investigate.
 ```
+
 And stop.
 
 ---
@@ -173,6 +178,7 @@ Recovery path depends on fix type and whether the quarantined data itself is val
 ```
 
 If `error_uniformity` is `"mixed"`, add a warning:
+
 > ⚠ Multiple distinct error types. The fix may not resolve all quarantined rows. Review each error type before proceeding.
 
 ---
@@ -203,6 +209,7 @@ For each datasource approved by the user:
 - **priority**: High
 
 **Jira description format:**
+
 ```
 h2. Problem
 

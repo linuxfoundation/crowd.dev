@@ -3,7 +3,6 @@ import { Gitlab } from '@gitbeaker/rest'
 import { timeout } from '@crowd/common'
 
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import { getForks } from './api/getForks'
 import { getIssueDiscussions } from './api/getIssueDiscussions'
 import { getIssues } from './api/getIssues'

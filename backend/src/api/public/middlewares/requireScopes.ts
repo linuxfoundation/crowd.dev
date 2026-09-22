@@ -1,8 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 
-import { InsufficientScopeError, UnauthorizedError } from '@crowd/common'
-
 import { Scope } from '@/security/scopes'
+import { InsufficientScopeError, UnauthorizedError } from '@crowd/common'
 
 export const requireScopes =
   (required: Scope[], mode: 'all' | 'any' = 'all') =>

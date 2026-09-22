@@ -5,7 +5,6 @@ import {
 } from '../../agent/rubygemsPrompts'
 import { downloadAndExtractRubyGemsSource } from '../../clients/rubygemsSource'
 import { ReachabilitySourceConfig } from '../reachabilityStage'
-
 import { resolveGemPlatform } from './rubygemsPlatform'
 
 // Unlike Go/NuGet, RubyGems dependent rows carry the dependent's own declared version

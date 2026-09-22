@@ -1,12 +1,12 @@
-import commandLineArgs from 'command-line-args'
-import commandLineUsage from 'command-line-usage'
 import * as fs from 'fs'
 import path from 'path'
 
-import { getServiceLogger } from '@crowd/logging'
+import commandLineArgs from 'command-line-args'
+import commandLineUsage from 'command-line-usage'
 
 import OrganizationRepository from '@/database/repositories/organizationRepository'
 import OrganizationService from '@/services/organizationService'
+import { getServiceLogger } from '@crowd/logging'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 

@@ -3,10 +3,10 @@ import * as os from 'os'
 import * as path from 'path'
 import type { ReadableStreamDefaultController as WebReadableStreamDefaultController } from 'stream/web'
 import { ReadableStream } from 'stream/web'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { downloadAndExtractMavenSources } from '../mavenSourcesJar'
-
 import { buildStoredZip } from './zipFixture'
 
 const GROUP_ID = 'com.example'

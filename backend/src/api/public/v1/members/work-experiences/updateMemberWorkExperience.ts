@@ -1,6 +1,15 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import {
+  getOverlappingGroupedMemberOrganizations,
+  groupMemberOrganizations,
+  isCollapsibleMemberOrganization,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import {
   BadRequestError,
@@ -24,16 +33,6 @@ import type {
   MemberOrganizationDateRange,
   MemberOrganizationUpdate,
 } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import {
-  getOverlappingGroupedMemberOrganizations,
-  groupMemberOrganizations,
-  isCollapsibleMemberOrganization,
-  toMemberWorkExperience,
-} from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 /** Matches the active unique index on memberOrganizations (org + date range). */
 function sameUniqueKey(
@@ -78,7 +77,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
 
   try {
     dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
-  } catch (error) {
+  } catch {
     throw new BadRequestError('Invalid work experience date range')
   }
 
