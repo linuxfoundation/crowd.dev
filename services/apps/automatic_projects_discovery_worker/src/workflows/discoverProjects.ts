@@ -71,7 +71,7 @@ export async function discoverProjects(
       if (watermarked) {
         const watermark = await watermarkActivities.readSourceWatermark(sourceName)
         capturedAt = watermark.capturedAt
-        since = mode === 'incremental' ? watermark.since ?? undefined : undefined
+        since = mode === 'incremental' ? (watermark.since ?? undefined) : undefined
       }
 
       let allDatasets: Awaited<ReturnType<typeof listActivities.listDatasets>>
