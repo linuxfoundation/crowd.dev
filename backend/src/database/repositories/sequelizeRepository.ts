@@ -23,7 +23,6 @@ import {
   SequelizeQueryExecutor,
   TransactionalSequelizeQueryExecutor,
 } from '../sequelizeQueryExecutor'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 
 /**

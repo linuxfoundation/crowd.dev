@@ -6,7 +6,7 @@ import { RateLimitError } from '@crowd/types'
 import type { DiscourseConnectionParams } from '../../types/discourseTypes'
 import { DiscoursePostsByIdsInput, DiscoursePostsByIdsResponse } from '../../types/discourseTypes'
 
-const serializeObjectToQueryString = (params: Object) =>
+const serializeObjectToQueryString = (params: object) =>
   Object.entries(params)
     .map(([key, value]) => {
       if (Array.isArray(value)) {

@@ -28,7 +28,7 @@ const query = (integrationId: string) => {
                 from 
                     githubCache 
                 where 
-                    integrationId = '${integrationId}' and dbValue / remoteValue <= 0.98 and metricName != 'commitsOnMain'
+                    integrationId = '${integrationId}' and dbValue / remoteValue <= 0.98 and metricName not in ('commitsOnMain', 'stars')
                 group by
                     repoName
                 order by
@@ -52,8 +52,6 @@ type Rows = Array<Array<DataItem>>
 
 const lokiMetricToStreamType = (metric: string): GithubManualStreamType => {
   switch (metric) {
-    case 'stars':
-      return GithubManualStreamType.STARGAZERS
     case 'forks':
       return GithubManualStreamType.FORKS
     case 'totalIssues':

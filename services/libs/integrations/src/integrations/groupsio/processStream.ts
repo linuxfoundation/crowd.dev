@@ -1,6 +1,5 @@
 // processStream.ts content
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import { getActivityLogs } from './api/getActivityLogs'
 import { getGroupMembers } from './api/getGroupMembers'
 import { getMessagesFromTopic } from './api/getMessagesFromTopic'

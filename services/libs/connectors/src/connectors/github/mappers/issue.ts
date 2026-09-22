@@ -2,7 +2,6 @@ import { GITHUB_GRID, GithubActivityType } from '@crowd/integrations'
 
 import type { IssueNode } from '../graphql/issues'
 import type { GithubActivity } from '../schemas'
-
 import { toMember } from './member'
 
 const DEFAULT_TIMESTAMP = '1970-01-01T00:00:00Z'

@@ -4,14 +4,14 @@ on:
   pull_request:
     # Only trigger when relevant files change to save CI minutes
     paths-ignore:
-      - 'frontend/**'
-      - '**.md'
-      - '.gitignore'
-      - '.editorconfig'
-      - '**/.eslintrc*'
-      - '.prettierrc'
-      - '.prettierignore'
-      - 'LICENSE'
+      - "frontend/**"
+      - "**.md"
+      - ".gitignore"
+      - ".editorconfig"
+      - "**/.eslintrc*"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - "LICENSE"
 
 # Automatically cancel in-progress runs if you push new code to the same PR
 concurrency:

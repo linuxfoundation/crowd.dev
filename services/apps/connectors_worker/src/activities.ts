@@ -6,11 +6,7 @@ import {
   startRun,
   touchHeartbeat,
 } from './activities/dispatcherActivities'
-import {
-  listShadowDiffChannels,
-  reportShadowDiffResults,
-  runShadowDiffForChannel,
-} from './activities/shadowDiffActivities'
+import { listShadowDiffChannels, runShadowDiffForChannel } from './activities/shadowDiffActivities'
 import { executeSync } from './activities/syncRunActivities'
 
 export {
@@ -20,7 +16,6 @@ export {
   executeSync,
   listShadowDiffChannels,
   logDispatchSummary,
-  reportShadowDiffResults,
   runShadowDiffForChannel,
   startRun,
   touchHeartbeat,

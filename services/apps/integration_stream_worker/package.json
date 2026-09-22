@@ -7,9 +7,6 @@
     "start:debug": "SERVICE=integration-stream-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9231 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "script:process-stream": "SERVICE=script tsx src/bin/process-stream.ts",
     "script:process-webhook": "SERVICE=script tsx src/bin/process-webhook.ts",
@@ -37,8 +34,6 @@
   "devDependencies": {
     "@types/config": "^3.3.0",
     "@types/node": "catalog:",
-    "nodemon": "^2.0.22",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^2.0.22"
   }
 }

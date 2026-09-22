@@ -1,5 +1,4 @@
 import type { QueryExecutor } from '../queryExecutor'
-
 import type { IShadowRecord } from './types'
 
 export async function recordShadowRecords(
@@ -49,5 +48,36 @@ export async function getShadowRecordsInWindow(
        AND "occurredAt" >= $(windowStart)
        AND "occurredAt" < $(windowEnd)`,
     { unitId, windowStart, windowEnd },
+  )
+}
+
+export async function pruneMatchingShadowRecords(
+  qx: QueryExecutor,
+  unitId: string,
+  windowStart: Date,
+  windowEnd: Date,
+  keysToDelete: { type: string; sourceId: string }[],
+): Promise<number> {
+  if (keysToDelete.length === 0) {
+    return 0
+  }
+
+  return qx.result(
+    `DELETE FROM integration.sync_shadow_records sr
+     WHERE sr."unitId" = $(unitId)
+       AND sr."occurredAt" >= $(windowStart)
+       AND sr."occurredAt" < $(windowEnd)
+       AND EXISTS (
+         SELECT 1
+         FROM unnest($(deleteTypes)::text[], $(deleteSourceIds)::text[]) AS k(type, "sourceId")
+         WHERE k.type = sr.type AND k."sourceId" = sr."sourceId"
+       )`,
+    {
+      unitId,
+      windowStart,
+      windowEnd,
+      deleteTypes: keysToDelete.map((k) => k.type),
+      deleteSourceIds: keysToDelete.map((k) => k.sourceId),
+    },
   )
 }

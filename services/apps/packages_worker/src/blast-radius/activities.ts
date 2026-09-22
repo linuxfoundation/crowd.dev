@@ -4,7 +4,6 @@ import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadi
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
-
 import { runDependentsStage } from './stages/dependents'
 import { runIntelStage } from './stages/intel'
 import { runReachabilityStage } from './stages/reachability'

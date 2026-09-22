@@ -50,7 +50,7 @@ export const getChildLogger = (
 ): Logger => {
   const options = {
     component: name,
-    ...(logProperties || {}),
+    ...logProperties,
   }
 
   return parent.child(options, true)

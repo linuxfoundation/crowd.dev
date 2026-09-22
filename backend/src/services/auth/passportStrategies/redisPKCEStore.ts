@@ -16,9 +16,9 @@ import { RedisCache } from '@crowd/redis'
  *
  */
 class RedisPKCEStore {
-  verifier: String
+  verifier: string
 
-  state: String
+  state: string
 
   cache: RedisCache
 

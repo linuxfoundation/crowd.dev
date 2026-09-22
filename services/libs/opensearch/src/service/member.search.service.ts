@@ -6,7 +6,6 @@ import { IMemberAttributeData, OpenSearchIndex, PageData } from '@crowd/types'
 import { FieldTranslatorFactory } from '../fieldTranslatorFactory'
 import { OpensearchQueryParser } from '../opensearchQueryParser'
 import { MemberRepository } from '../repo/member.repo'
-
 import { OpenSearchService } from './opensearch.service'
 
 export class MemberSearchService {

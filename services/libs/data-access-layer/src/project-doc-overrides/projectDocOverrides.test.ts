@@ -3,7 +3,6 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
-
 import {
   createProjectDocOverride,
   deactivateProjectDocOverride,

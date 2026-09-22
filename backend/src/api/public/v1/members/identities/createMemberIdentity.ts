@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created, ok } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, NotFoundError, normalizeMemberIdentityValue } from '@crowd/common'
 import {
@@ -15,11 +19,6 @@ import {
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created, ok } from '@/utils/api'
-import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

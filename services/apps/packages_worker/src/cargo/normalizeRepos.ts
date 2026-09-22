@@ -3,7 +3,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { CanonicalRepo, canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
 import { repoOwnerFromCanonical } from '../utils/ownershipMatch'
-
 import { STAGING_SCHEMA } from './loadDump'
 import { NormalizeReposResult } from './types'
 

@@ -1,15 +1,14 @@
-import { CronJob } from 'cron'
 import fs from 'fs'
 import path from 'path'
+
+import { CronJob } from 'cron'
 import { QueryTypes, Sequelize } from 'sequelize'
 
+import { databaseInit } from '@/database/databaseConnection'
 import { getServiceLogger } from '@crowd/logging'
 import { RedisClient, getRedisClient } from '@crowd/redis'
 
-import { databaseInit } from '@/database/databaseConnection'
-
 import { REDIS_CONFIG } from '../conf'
-
 import jobs from './jobs'
 
 const log = getServiceLogger()

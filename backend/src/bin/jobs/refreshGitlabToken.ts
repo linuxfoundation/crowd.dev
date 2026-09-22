@@ -1,10 +1,9 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
 import cronGenerator from 'cron-time-generator'
 
+import { GITLAB_CONFIG } from '@/conf'
 import { timeout } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
-
-import { GITLAB_CONFIG } from '@/conf'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 import { CrowdJob } from '../../types/jobTypes'

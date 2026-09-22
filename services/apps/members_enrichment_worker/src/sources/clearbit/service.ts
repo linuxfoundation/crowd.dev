@@ -18,7 +18,6 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
-
 import {
   IMemberEnrichmentClearbitAPIErrorResponse,
   IMemberEnrichmentClearbitAPIResponse,

@@ -16,7 +16,7 @@ export type parseOutput = {
 export type BaseOutput = { status: number; msg?: string }
 
 export interface TwitterOutput extends BaseOutput {
-  tweetCount: Number
+  tweetCount: number
   followers: Array<string>
 }
 
@@ -24,7 +24,7 @@ export interface TwitterReachOutput extends BaseOutput {}
 
 export interface SlackOutput extends BaseOutput {
   channels: any[]
-  users: Object
+  users: object
 }
 
 export interface DevtoOutput extends BaseOutput {}

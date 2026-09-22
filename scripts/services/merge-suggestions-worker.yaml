@@ -1,4 +1,4 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
@@ -12,7 +12,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.merge_suggestions_worker
-    command: 'pnpm run start'
+    command: "pnpm run start"
     working_dir: /usr/crowd/app/services/apps/merge_suggestions_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -29,7 +29,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.merge_suggestions_worker
-    command: 'pnpm run dev'
+    command: "pnpm run dev"
     working_dir: /usr/crowd/app/services/apps/merge_suggestions_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:

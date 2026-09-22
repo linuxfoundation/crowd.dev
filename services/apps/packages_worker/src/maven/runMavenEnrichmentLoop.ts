@@ -29,7 +29,6 @@ import {
   matchOwnership,
 } from '../utils/ownershipMatch'
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
-
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'

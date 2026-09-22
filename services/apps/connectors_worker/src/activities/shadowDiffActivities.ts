@@ -1,30 +1,22 @@
 import { parseRepoChannel } from '@crowd/connectors/src/connectors/github/paging'
 import {
   IShadowDiffUnit,
-  getShadowRecordsInWindow,
+  getUnitIdsWithSummary,
   listShadowDiffUnits,
+  pruneMatchingShadowRecords,
+  upsertSyncDiffSummary,
 } from '@crowd/data-access-layer/src/connectors'
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
-import {
-  INangoRecord,
-  NangoIntegration,
-  NangoMetadataLastAction,
-  getNangoCloudRecords,
-  initNangoCloudClient,
-} from '@crowd/nango'
-import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
-import { getNangoModelForSync } from '../nangoModelMapping'
-import { fetchNangoRecordsInWindow } from '../nangoWindowFetch'
-import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from '../shadowDiff'
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000
-const MAX_REPORTED_MISMATCHES = 50
-const SLACK_HEADER_MAX_LENGTH = 150
-const SLACK_ICON_PREFIX_MAX_LENGTH = 18 // longest persona icon used below, ':rotating_light: '
-const SLACK_TITLE_MAX_LENGTH = SLACK_HEADER_MAX_LENGTH - SLACK_ICON_PREFIX_MAX_LENGTH
+import {
+  IShadowDiffUnitResult,
+  countMismatchesByKind,
+  diffUnit,
+  diffableRecordKey,
+  resolveDiffWindow,
+} from '../shadowDiffUnit'
 
 export interface IShadowDiffChannel {
   channelName: string
@@ -38,15 +30,7 @@ export interface IShadowDiffChannelResult {
   channelName: string
   integrationId: string
   status: ShadowDiffChannelStatus
-  mismatches: IShadowDiffMismatch[]
-  totalMismatchCount: number
   errorMessage?: string
-}
-
-export function previousDayWindow(now: Date = new Date()): { windowStart: Date; windowEnd: Date } {
-  const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  const windowStart = new Date(windowEnd.getTime() - MS_PER_DAY)
-  return { windowStart, windowEnd }
 }
 
 export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
@@ -70,91 +54,49 @@ export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
   return [...byChannel.values()]
 }
 
-function toDiffableShadowRecord(record: {
-  type: string
-  sourceId: string
-  data: Record<string, unknown>
-}): IDiffableRecord {
-  return { sourceId: record.sourceId, type: record.type, data: record.data }
-}
-
-function isDeletedNangoRecord(record: INangoRecord): boolean {
-  return (
-    record.metadata.lastAction === NangoMetadataLastAction.DELETED ||
-    Boolean(record.metadata.deletedAt)
-  )
-}
-
-function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
-  const activity = record.activity as Record<string, unknown> | null | undefined
-  if (!activity || typeof activity.sourceId !== 'string' || typeof activity.type !== 'string') {
-    return null
-  }
-  return { sourceId: activity.sourceId, type: activity.type, data: activity }
-}
-
-function diffableRecordKey(record: IDiffableRecord): string {
-  return `${record.type}::${record.sourceId}`
-}
-
-async function diffUnit(
+async function persistUnitDiffResult(
   qx: ReturnType<typeof dbStoreQx>,
+  channel: IShadowDiffChannel,
   unit: IShadowDiffUnit,
-  connectionId: string,
+  day: string,
   windowStart: Date,
   windowEnd: Date,
-): Promise<IShadowDiffMismatch[]> {
-  const model = getNangoModelForSync(unit.syncName)
-  if (!model) {
-    return [
-      {
-        sourceId: unit.id,
-        type: unit.syncName,
-        kind: 'unsupported_sync',
-        severity: 'high',
-      },
-    ]
+  { mismatches, shadowKeys }: IShadowDiffUnitResult,
+): Promise<void> {
+  const counts = countMismatchesByKind(mismatches)
+
+  await upsertSyncDiffSummary(qx, {
+    unitId: unit.id,
+    day,
+    integrationId: channel.integrationId,
+    channelName: channel.channelName,
+    missingInNangoCount: counts.missing_in_nango,
+    missingInShadowCount: counts.missing_in_shadow,
+    fieldMismatchCount: counts.field_mismatch,
+    unsupportedSyncCount: counts.unsupported_sync,
+    highSeverityCount: mismatches.filter((m) => m.severity === 'high').length,
+  })
+
+  if (counts.unsupported_sync > 0) {
+    return
   }
 
-  const shadowRecords = await getShadowRecordsInWindow(qx, unit.id, windowStart, windowEnd)
-
-  await initNangoCloudClient()
-  const nangoRecords = await fetchNangoRecordsInWindow<INangoRecord>(
-    (cursor) =>
-      getNangoCloudRecords(
-        NangoIntegration.GITHUB,
-        connectionId,
-        model,
-        cursor,
-        undefined,
-        windowStart.toISOString(),
-      ),
-    windowStart,
-    windowEnd,
+  const keysWithUnresolvedMismatch = new Set(
+    mismatches
+      .filter((m) => m.kind === 'field_mismatch' || m.kind === 'missing_in_nango')
+      .map((m) => diffableRecordKey(m)),
   )
 
-  const diffableNangoRecords = nangoRecords
-    .map(toDiffableNangoRecord)
-    .filter((r): r is IDiffableRecord => r !== null)
-
-  const deletedNangoKeys = new Set(
-    nangoRecords
-      .filter(isDeletedNangoRecord)
-      .map(toDiffableNangoRecord)
-      .filter((r): r is IDiffableRecord => r !== null)
-      .map(diffableRecordKey),
+  const keysToDelete = shadowKeys.filter(
+    (key) => !keysWithUnresolvedMismatch.has(diffableRecordKey(key)),
   )
 
-  return diffShadowAgainstNango(
-    shadowRecords
-      .map(toDiffableShadowRecord)
-      .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
-    diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
-  )
+  await pruneMatchingShadowRecords(qx, unit.id, windowStart, windowEnd, keysToDelete)
 }
 
 export async function runShadowDiffForChannel(
   channel: IShadowDiffChannel,
+  targetDay?: string,
 ): Promise<IShadowDiffChannelResult> {
   const qx = dbStoreQx(svc.postgres.writer)
 
@@ -166,104 +108,33 @@ export async function runShadowDiffForChannel(
       channelName: channel.channelName,
       integrationId: channel.integrationId,
       status: 'mapping_missing',
-      mismatches: [],
-      totalMismatchCount: 0,
     }
   }
 
-  const { windowStart, windowEnd } = previousDayWindow()
-  const mismatches: IShadowDiffMismatch[] = []
-  let totalMismatchCount = 0
+  const { day, windowStart, windowEnd } = resolveDiffWindow(targetDay)
 
-  for (const unit of channel.units) {
-    const unitMismatches = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
-    totalMismatchCount += unitMismatches.length
-    if (mismatches.length < MAX_REPORTED_MISMATCHES) {
-      mismatches.push(...unitMismatches.slice(0, MAX_REPORTED_MISMATCHES - mismatches.length))
-    }
+  const alreadySummarized = await getUnitIdsWithSummary(
+    qx,
+    channel.units.map((unit) => unit.id),
+    day,
+  )
+  const pendingUnits = channel.units.filter((unit) => !alreadySummarized.has(unit.id))
+
+  const unitDiffs: { unit: IShadowDiffUnit; result: IShadowDiffUnitResult }[] = []
+  for (const unit of pendingUnits) {
+    const result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    unitDiffs.push({ unit, result })
   }
+
+  await qx.tx(async (txQx) => {
+    for (const { unit, result } of unitDiffs) {
+      await persistUnitDiffResult(txQx, channel, unit, day, windowStart, windowEnd, result)
+    }
+  })
 
   return {
     channelName: channel.channelName,
     integrationId: channel.integrationId,
     status: 'ok',
-    mismatches,
-    totalMismatchCount,
-  }
-}
-
-function formatMismatch(mismatch: IShadowDiffMismatch): string {
-  if (mismatch.kind === 'field_mismatch') {
-    const fields = (mismatch.fields ?? [])
-      .map(
-        (f) =>
-          `${f.field}: shadow=${JSON.stringify(f.shadowValue)} nango=${JSON.stringify(f.nangoValue)}`,
-      )
-      .join(', ')
-    return `[${mismatch.severity}] ${mismatch.type}/${mismatch.sourceId} field mismatch — ${fields}`
-  }
-  return `[${mismatch.severity}] ${mismatch.type}/${mismatch.sourceId} ${mismatch.kind}`
-}
-
-function describeChannel(result: IShadowDiffChannelResult): string {
-  return `${result.channelName} (integration ${result.integrationId})`
-}
-
-function truncateSlackTitle(title: string): string {
-  if (title.length <= SLACK_TITLE_MAX_LENGTH) {
-    return title
-  }
-  return `${title.slice(0, SLACK_TITLE_MAX_LENGTH - 1)}…`
-}
-
-export async function reportShadowDiffResults(results: IShadowDiffChannelResult[]): Promise<void> {
-  const failedChannels: string[] = []
-
-  for (const result of results) {
-    if (result.status === 'error') {
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        truncateSlackTitle(`Shadow diff failed for ${describeChannel(result)}`),
-        result.errorMessage ?? 'unknown error',
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
-      continue
-    }
-
-    if (result.status === 'mapping_missing') {
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.WARNING_PROPAGATOR,
-        truncateSlackTitle(`Shadow diff: no nango mapping for ${describeChannel(result)}`),
-        'This channel is in shadow mode but has no matching integration.nango_mapping row, so it could not be compared against nango.',
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
-      continue
-    }
-
-    if (result.mismatches.length > 0) {
-      const truncatedNotice =
-        result.totalMismatchCount > result.mismatches.length
-          ? `\n… ${result.totalMismatchCount - result.mismatches.length} more mismatch(es) not shown`
-          : ''
-      const sent = await sendSlackNotificationAsync(
-        SlackChannel.CDP_INTEGRATIONS_ALERTS,
-        SlackPersona.WARNING_PROPAGATOR,
-        truncateSlackTitle(`Shadow diff mismatches for ${describeChannel(result)}`),
-        result.mismatches.map(formatMismatch).join('\n') + truncatedNotice,
-      )
-      if (!sent) {
-        failedChannels.push(describeChannel(result))
-      }
-    }
-  }
-
-  if (failedChannels.length > 0) {
-    throw new Error(`Failed to deliver shadow diff Slack alerts for: ${failedChannels.join(', ')}`)
   }
 }

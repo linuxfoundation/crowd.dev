@@ -39,7 +39,7 @@ export async function exportOrganizationsToCSV(input: ITriggerCSVExport): Promis
   let upload: ResultS3Upload
   try {
     upload = await buildAndUploadOrganizationsCSV(input)
-  } catch (err) {
+  } catch {
     hasFailed = true
   }
 
@@ -47,7 +47,7 @@ export async function exportOrganizationsToCSV(input: ITriggerCSVExport): Promis
   if (!hasFailed) {
     try {
       result = await getPresignedUrl(upload)
-    } catch (err) {
+    } catch {
       hasFailed = true
     }
   }

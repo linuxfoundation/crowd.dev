@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { createHash } from 'crypto'
+
 import { Admin, Consumer, EachMessagePayload, Kafka, KafkaMessage, Producer } from 'kafkajs'
 
 import { SERVICE, groupBy, timeout } from '@crowd/common'
@@ -15,7 +16,6 @@ import {
   IQueueSendBulkResult,
   IQueueSendResult,
 } from '../../types'
-
 import { configMap } from './config'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
 import { getKafkaMessageCounts } from './utils'

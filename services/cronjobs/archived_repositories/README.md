@@ -14,10 +14,11 @@ BullMQ requires a Redis instance to be running, which it uses as storage.
 It is meant to be run as a recurring Job in a Kubernetes cluster.
 
 It has two main processes:
+
 - The main process, which is responsible for fetching the repositories from the database and adding them to the
   BullMQ queue.
 - The workers process, which is responsible for processing the jobs in the queue, which, for each queued repository,
-  involves calling the GitHub and GitLab APIs to check if the repository is archived, and updating the repositories in 
+  involves calling the GitHub and GitLab APIs to check if the repository is archived, and updating the repositories in
   the database.
 
 ## Configuration
@@ -33,9 +34,8 @@ For easier local development, the dotenv package can load environment variables 
 
 You just need to copy the file `.env.example` to `.env` and fill in the required environment variables.
 
-You need access to a PostgreSQL database with the necessary repositories table, a Redis instance for the tasks queue, 
+You need access to a PostgreSQL database with the necessary repositories table, a Redis instance for the tasks queue,
 and the GitHub and GitLab API tokens.
-
 
 ## Building and Running
 
@@ -74,7 +74,6 @@ And this for the worker process:
 pnpm dev-workers
 ```
 
-
 ## Deployment
 
 There's a Dockerfile that can be used to build a container image.
@@ -93,6 +92,7 @@ docker build --platform linux/amd64 -f ./Dockerfile \
   --tag archived-repositories-checker:"${DATE_TAG}" \
   --tag sjc.ocir.io/axbydjxa5zuh/archived-repositories-checker:"${DATE_TAG}" .
 ```
+
 To push the Docker image to the OCI registry, run:
 
 ```bash

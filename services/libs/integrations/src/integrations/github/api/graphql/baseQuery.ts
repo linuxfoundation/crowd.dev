@@ -279,7 +279,7 @@ export default BaseQuery
 export const process = async () => {
   try {
     return process()
-  } catch (err) {
+  } catch {
     // some logic here
   }
 }

@@ -1,5 +1,4 @@
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
-
 import {
   AssembledProtocol,
   ParseRowStatus,
