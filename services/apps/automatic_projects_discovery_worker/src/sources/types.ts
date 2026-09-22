@@ -27,6 +27,7 @@ export interface IDiscoverySourceRow {
   projectSlug: string
   repoName: string
   repoUrl: string
+  sourceUrl?: string
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }
