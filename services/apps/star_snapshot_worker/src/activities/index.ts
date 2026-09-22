@@ -111,6 +111,16 @@ function buildBatchQuery(repos: Array<{ owner: string; name: string }>): {
   }
 }
 
+// Reserves before every real request (initial + each alias retry), not just once per batch -
+// concurrent batches share this limiter, so only a per-call reservation is race-free.
+function reserveGraphqlSlot(): void {
+  try {
+    getCaptureRateLimiter().reserveOrThrow()
+  } catch (error) {
+    throw new GraphqlRateLimitedError((error as Error).message)
+  }
+}
+
 async function queryStargazerCounts(
   entries: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }>,
 ): Promise<BatchGraphqlResponse> {
@@ -121,6 +131,8 @@ async function queryStargazerCounts(
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
+    reserveGraphqlSlot()
+
     const response = await fetch(GITHUB_GRAPHQL_URL, {
       method: 'POST',
       headers: {
