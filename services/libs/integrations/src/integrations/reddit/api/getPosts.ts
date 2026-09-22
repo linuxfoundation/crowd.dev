@@ -6,7 +6,6 @@ import { PlatformType } from '@crowd/types'
 import { IProcessStreamContext } from '../../../types'
 import { getNangoToken } from '../../nango'
 import { REDDIT_MAX_RETROSPECT_IN_HOURS, RedditGetPostsInput, RedditPostsResponse } from '../types'
-
 import { handleRedditError } from './errorHandler'
 
 /**

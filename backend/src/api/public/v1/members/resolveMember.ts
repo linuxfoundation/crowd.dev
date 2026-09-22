@@ -1,6 +1,9 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   fetchMemberIdentities,
@@ -9,10 +12,6 @@ import {
   suggestMemberMerge,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
   lfids: z.array(z.string().trim()).min(1, 'At least one lfid is required'),

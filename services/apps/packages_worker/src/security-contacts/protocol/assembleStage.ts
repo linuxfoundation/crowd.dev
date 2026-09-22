@@ -3,7 +3,6 @@ import { prepareBulkInsert } from '@crowd/data-access-layer/src/utils'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getReportingProtocolConfig } from '../../config'
-
 import { AssembleInput, assembleProtocol } from './assemble'
 import { AssembleStageResult } from './types'
 

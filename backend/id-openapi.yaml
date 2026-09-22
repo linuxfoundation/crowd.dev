@@ -33,17 +33,17 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Successful operation
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Organization'
-        '400':
+                  $ref: "#/components/schemas/Organization"
+        "400":
           description: Bad request
-        '404':
+        "404":
           description: Member not found
 
     post:
@@ -71,39 +71,39 @@ paths:
               properties:
                 organizationId:
                   type: string
-                  example: '550e8400-e29b-41d4-a716-446655440000'
+                  example: "550e8400-e29b-41d4-a716-446655440000"
                   description: Organization ID
                 source:
                   type: string
-                  enum: ['ui', 'email-domain', 'enrichment', 'github']
-                  example: 'ui'
+                  enum: ["ui", "email-domain", "enrichment", "github"]
+                  example: "ui"
                   description: Data source. For manual updates, always use 'ui'
                 title:
                   type: string
-                  example: 'Software Engineer'
+                  example: "Software Engineer"
                   description: Member role within the organization
                 dateStart:
                   type: string
                   format: date-time
-                  example: '2023-01-01T00:00:00.000Z'
+                  example: "2023-01-01T00:00:00.000Z"
                   description: Organization role start date
                 dateEnd:
                   type: string
                   format: date-time
-                  example: '2024-01-01T00:00:00.000Z'
+                  example: "2024-01-01T00:00:00.000Z"
                   description: Organization role end date
       responses:
-        '200':
+        "200":
           description: Successful operation
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Organization'
-        '400':
+                  $ref: "#/components/schemas/Organization"
+        "400":
           description: Bad request
-        '404':
+        "404":
           description: Member not found
 
   /member/{memberId}/organization/{workHistoryId}:
@@ -138,43 +138,43 @@ paths:
               properties:
                 id:
                   type: string
-                  example: '550e8400-e29b-41d4-a716-446655440000'
+                  example: "550e8400-e29b-41d4-a716-446655440000"
                   description: Work experience ID
                 organizationId:
                   type: string
-                  example: '550e8400-e29b-41d4-a716-446655440000'
+                  example: "550e8400-e29b-41d4-a716-446655440000"
                   description: Organization ID
                 source:
                   type: string
-                  enum: ['ui', 'email-domain', 'enrichment', 'github']
-                  example: 'ui'
+                  enum: ["ui", "email-domain", "enrichment", "github"]
+                  example: "ui"
                   description: Data source. For manual updates, always use 'ui'
                 title:
                   type: string
-                  example: 'Software Engineer'
+                  example: "Software Engineer"
                   description: Member role within the organization
                 dateStart:
                   type: string
                   format: date-time
-                  example: '2023-01-01T00:00:00.000Z'
+                  example: "2023-01-01T00:00:00.000Z"
                   description: Organization role start date
                 dateEnd:
                   type: string
                   format: date-time
-                  example: '2024-01-01T00:00:00.000Z'
+                  example: "2024-01-01T00:00:00.000Z"
                   description: Organization role end date
       responses:
-        '200':
+        "200":
           description: Successful operation
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Organization'
-        '400':
+                  $ref: "#/components/schemas/Organization"
+        "400":
           description: Bad request
-        '404':
+        "404":
           description: Organization or member not found
 
     delete:
@@ -196,15 +196,15 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Successful operation
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Organization'
-        '404':
+                  $ref: "#/components/schemas/Organization"
+        "404":
           description: Organization or member not found
 
   /member/{memberId}/affiliation:
@@ -222,17 +222,17 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Successful operation
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Affiliation'
-        '400':
+                  $ref: "#/components/schemas/Affiliation"
+        "400":
           description: Bad request
-        '404':
+        "404":
           description: Member not found
 
     patch:
@@ -280,17 +280,17 @@ paths:
                         format: date-time
                         description: Start date of the affiliation
       responses:
-        '200':
+        "200":
           description: Affiliations updated successfully
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Affiliation'
-        '400':
+                  $ref: "#/components/schemas/Affiliation"
+        "400":
           description: Bad request
-        '404':
+        "404":
           description: Member not found
 
 components:
@@ -307,53 +307,53 @@ components:
       properties:
         id:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Unique identifier for the organization
         displayName:
           type: string
-          example: 'The Linux Foundation'
+          example: "The Linux Foundation"
           description: Display name of the organization
         logo:
           type: string
-          example: 'https://avatars.githubusercontent.com/u/1040002?v=4'
+          example: "https://avatars.githubusercontent.com/u/1040002?v=4"
           description: URL of the organization's logo
         memberOrganizations:
           type: array
           items:
-            $ref: '#/components/schemas/MemberOrganization'
+            $ref: "#/components/schemas/MemberOrganization"
 
     MemberOrganization:
       type: object
       properties:
         id:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Unique identifier for the organization
         organizationId:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Organization ID associated with this affiliation
         dateEnd:
           type: string
-          example: '2024-01-01T00:00:00.000Z'
+          example: "2024-01-01T00:00:00.000Z"
           format: date-time
           description: End date of the affiliation
         dateStart:
           type: string
-          example: '2023-01-01T00:00:00.000Z'
+          example: "2023-01-01T00:00:00.000Z"
           format: date-time
           description: Start date of the affiliation
         memberId:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Member ID associated with this affiliation
         source:
           type: string
-          example: 'ui'
+          example: "ui"
           description: Data source. For manual updates, always use 'ui'
         title:
           type: string
-          example: 'Software Engineer'
+          example: "Software Engineer"
           description: Member role within the organization
 
     Affiliation:
@@ -361,43 +361,43 @@ components:
       properties:
         id:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Unique identifier for the affiliation
         organizationId:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: Organization ID associated with this affiliation
         organizationLogo:
           type: string
-          example: 'https://avatars.githubusercontent.com/u/1040002?v=4'
+          example: "https://avatars.githubusercontent.com/u/1040002?v=4"
           description: URL of the organization's logo
         organizationName:
           type: string
-          example: 'The Linux Foundation'
+          example: "The Linux Foundation"
           description: Name of the organization
         segmentId:
           type: string
-          example: '550e8400-e29b-41d4-a716-446655440000'
+          example: "550e8400-e29b-41d4-a716-446655440000"
           description: ID of the segment
         segmentName:
           type: string
-          example: 'Kubernetes'
+          example: "Kubernetes"
           description: Name of the segment
         segmentParentName:
           type: string
-          example: 'Cloud Native Computing Foundation'
+          example: "Cloud Native Computing Foundation"
           description: Name of the parent segment
         segmentSlug:
           type: string
-          example: 'kubernetes'
+          example: "kubernetes"
           description: Slug identifier for the segment
         dateStart:
           type: string
-          example: '2023-01-01T00:00:00.000Z'
+          example: "2023-01-01T00:00:00.000Z"
           format: date-time
           description: Start date of the affiliation
         dateEnd:
           type: string
-          example: '2024-01-01T00:00:00.000Z'
+          example: "2024-01-01T00:00:00.000Z"
           format: date-time
           description: End date of the affiliation

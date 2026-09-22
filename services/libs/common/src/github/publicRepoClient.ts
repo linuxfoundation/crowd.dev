@@ -1,5 +1,4 @@
 import { githubRepoPath } from '../githubRepoUrl'
-
 import { GithubPublicClientError, IPublicRepoMetrics, IPublicRepoReadme } from './types'
 
 const GITHUB_API_URL = 'https://api.github.com'
@@ -16,6 +15,7 @@ const METRICS_QUERY = `
       createdAt
       isArchived
       isFork
+      hasIssuesEnabled
       openIssues: issues(states: OPEN) { totalCount }
       closedIssues: issues(states: CLOSED) { totalCount }
       openPullRequests: pullRequests(states: OPEN) { totalCount }
@@ -35,6 +35,7 @@ interface MetricsGraphqlResponse {
       createdAt: string
       isArchived: boolean
       isFork: boolean
+      hasIssuesEnabled: boolean
       openIssues: { totalCount: number }
       closedIssues: { totalCount: number }
       openPullRequests: { totalCount: number }
@@ -174,6 +175,7 @@ export async function fetchPublicRepoMetrics(
     forks: repo.forkCount,
     openIssues: repo.openIssues.totalCount,
     closedIssues: repo.closedIssues.totalCount,
+    hasIssuesEnabled: repo.hasIssuesEnabled,
     openPullRequests: repo.openPullRequests.totalCount,
     closedPullRequests: repo.closedPullRequests.totalCount,
     pushedAt: repo.pushedAt,

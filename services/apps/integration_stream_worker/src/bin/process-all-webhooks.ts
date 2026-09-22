@@ -24,7 +24,7 @@ async function processWebhook(
 ): Promise<boolean> {
   try {
     return await service.processWebhookStream(webhookId)
-  } catch (err) {
+  } catch {
     return false
   }
 }

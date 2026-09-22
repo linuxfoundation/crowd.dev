@@ -7,9 +7,6 @@
     "start:debug": "SERVICE=search-sync-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,8 +27,6 @@
     "@types/config": "^3.3.0",
     "@types/express": "^4.17.17",
     "@types/node": "catalog:",
-    "nodemon": "^2.0.22",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^2.0.22"
   }
 }

@@ -1,3 +1,6 @@
+import * as fs from 'fs'
+import * as path from 'path'
+
 /**
  * Fetches maintainer data for Maven packages from Libraries.io and GitHub.
  *
@@ -18,13 +21,10 @@
  *     tsx src/maven/scripts/fetchMavenMaintainers.ts /path/to/packages_top500.csv [output.csv]
  */
 import axios, { AxiosInstance } from 'axios'
-import * as fs from 'fs'
-import * as path from 'path'
 
 import { extractArtifact, normalizeScmUrl } from '../extract'
 import { resolveLatestVersion } from '../metadata'
 import { resolveRegistryBaseUrl } from '../registry'
-
 import { parseCsv } from './csv'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -631,7 +631,7 @@ async function main() {
   const CSV_HEADER =
     'package_purl,package_namespace,package_name,github_repo,repo_source,maintainer_github_login,maintainer_display_name,maintainer_email,maintainer_url,role,source,contributions,notes'
 
-  const resultsByIndex: MaintainerRow[][] = new Array(rows.length)
+  const resultsByIndex: MaintainerRow[][] = []
   const stats = { codeowners: 0, maintainers_file: 0, contributors: 0, none: 0 }
   let completed = 0
 

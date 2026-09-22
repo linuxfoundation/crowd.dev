@@ -1,6 +1,8 @@
-import dotenv from 'dotenv'
-import { IBuilderDefinition } from './types'
 import fs from 'fs'
+
+import dotenv from 'dotenv'
+
+import { IBuilderDefinition } from './types'
 
 let definitions: IBuilderDefinition[] | undefined
 

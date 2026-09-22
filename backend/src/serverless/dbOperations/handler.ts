@@ -3,7 +3,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { KUBE_MODE } from '../../conf/index'
 import SegmentRepository from '../../database/repositories/segmentRepository'
 import getUserContext from '../../database/utils/getUserContext'
-
 import bulkOperations from './operationsWorker'
 
 const log = getServiceChildLogger('dbOperations.handler')

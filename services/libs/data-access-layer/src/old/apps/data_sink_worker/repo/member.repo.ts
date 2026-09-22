@@ -6,7 +6,6 @@ import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 import { deleteManyMemberIdentities, insertMemberIdentities } from '../../../../members/identities'
 import { touchMembersUpdatedAt } from '../../../../members/others'
 import { PgPromiseQueryExecutor } from '../../../../queryExecutor'
-
 import { IDbMember, getInsertMemberColumnSet, getSelectMemberColumnSet } from './member.data'
 
 export default class MemberRepository extends RepositoryBase<MemberRepository> {

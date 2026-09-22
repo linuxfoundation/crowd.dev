@@ -1,7 +1,6 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { findEntityMergeActions } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { LoggerBase } from '@crowd/logging'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import { IServiceOptions } from './IServiceOptions'
 

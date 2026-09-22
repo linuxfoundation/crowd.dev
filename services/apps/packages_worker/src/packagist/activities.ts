@@ -42,7 +42,6 @@ import { getPackagesDb } from '../db'
 import { mapWithConcurrency } from '../utils/concurrency'
 import { isClientError } from '../utils/isClientError'
 import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
-
 import { persistPackagist30dWindow } from './downloads'
 import { expandComposerMetadata } from './expandMetadata'
 import { fetchPackagistP2, fetchPackagistStats } from './fetchPackage'

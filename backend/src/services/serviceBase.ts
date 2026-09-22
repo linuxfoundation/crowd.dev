@@ -3,7 +3,6 @@ import { PageData, SearchCriteria } from '@crowd/types'
 
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export abstract class ServiceBase<TData, TId, TCreate, TUpdate, TCriteria extends SearchCriteria> {

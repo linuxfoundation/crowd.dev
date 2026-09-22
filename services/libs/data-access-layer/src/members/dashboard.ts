@@ -3,7 +3,6 @@ import { DbStore } from '@crowd/database'
 import { IMember, IQueryTimeseriesParams, ITimeseriesDatapoint } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { IQueryNumberOfNewMembers } from './types'
 
 const s3Url = `https://${

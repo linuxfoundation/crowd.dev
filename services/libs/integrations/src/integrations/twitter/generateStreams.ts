@@ -2,7 +2,6 @@ import axios from 'axios'
 
 import { GenerateStreamsHandler } from '../../types'
 import { IGenerateStreamsContext } from '../../types'
-
 import {
   TwitterHashtagStreamData,
   TwitterIntegrationsSettings,

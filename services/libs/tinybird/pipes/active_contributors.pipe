@@ -64,23 +64,8 @@ SQL >
             AND repoUrl
             IN {{ Array(repos, 'String', description="Filter maintainer repo list", required=False) }}
         {% end %}
-        AND (
-            startDate = toDateTime64('1970-01-01 00:00:00', 3)
-            OR startDate
-            <= {% if defined(endDate) %}
-                {{ DateTime(endDate, description="Filter maintainer end date", required=False) }}
-            {% else %} now()
-            {% end %}
-        )
-        AND (
-            endDate = toDateTime64('1970-01-01 00:00:00', 3)
-            OR endDate
-            >= {% if defined(startDate) %}
-                {{ DateTime(startDate, description="Filter maintainer start date", required=False) }}
-            {% elif defined(endDate) %} toDateTime64('1970-01-01 00:00:00', 3)
-            {% else %} now()
-            {% end %}
-        )
+        AND startDate <= now()
+        AND (endDate = toDateTime64('1970-01-01 00:00:00', 3) OR endDate >= now())
 
 NODE reviewers_count
 SQL >

@@ -1,6 +1,5 @@
-import { findRepositoriesForSegment } from '@crowd/data-access-layer/src/integrations'
-
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { findRepositoriesForSegment } from '@crowd/data-access-layer/src/integrations'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'

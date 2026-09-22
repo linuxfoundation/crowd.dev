@@ -13,9 +13,6 @@
     "recalculate-enrichment-affiliations": "tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "tsx src/bin/recalculate-all-affiliations.ts",
     "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -27,8 +24,8 @@
     "@crowd/logging": "workspace:*",
     "@crowd/opensearch": "workspace:*",
     "@crowd/redis": "workspace:*",
-    "@crowd/types": "workspace:*",
     "@crowd/temporal": "workspace:*",
+    "@crowd/types": "workspace:*",
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
@@ -39,8 +36,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "nodemon": "^3.0.1",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^3.0.1"
   }
 }

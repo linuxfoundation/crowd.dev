@@ -8,7 +8,12 @@ export function parseGithubRepo(url: string): { owner: string; repo: string } | 
 }
 
 function isGithubUrl(repo: string): boolean {
-  const rewritten = repo.trim().replace(/^git@([a-zA-Z0-9.-]+):/, 'https://$1/')
+  const rewritten = repo
+    .trim()
+    // scp-style path wrapped in an ssh:// scheme, e.g. ssh://git@host:owner/repo.git —
+    // left alone when followed by digits/ (an actual port, e.g. ssh://git@host:2222/owner/repo.git).
+    .replace(/^ssh:\/\/git@([a-zA-Z0-9.-]+):(?!\d+(?:\/|$))/, 'https://$1/')
+    .replace(/^git@([a-zA-Z0-9.-]+):/, 'https://$1/')
   const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(rewritten)
     ? rewritten
     : `https://${rewritten}`
@@ -27,7 +32,7 @@ export function primaryRepo(repos: string[]): string | null {
     return null
   }
 
-  return githubRepos.find((repo) => repo.split('/').length >= 5) ?? githubRepos[0]
+  return githubRepos.find((repo) => parseGithubRepo(repo)) ?? githubRepos[0]
 }
 
 async function githubRequest(path: string, token: string, accept: string): Promise<Response> {

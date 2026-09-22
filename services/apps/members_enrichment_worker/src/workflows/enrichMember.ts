@@ -11,7 +11,6 @@ import { IEnrichableMember, MemberEnrichmentSource } from '@crowd/types'
 import * as activities from '../activities'
 import { IEnrichmentSourceInput } from '../types'
 import { sourceHasDifferentDataComparedToCache } from '../utils/common'
-
 import { processMemberSources } from './processMemberSources'
 
 const {

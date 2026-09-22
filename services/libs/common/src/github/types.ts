@@ -28,6 +28,7 @@ export interface IPublicRepoMetrics {
   forks: number
   openIssues: number
   closedIssues: number
+  hasIssuesEnabled: boolean
   openPullRequests: number
   closedPullRequests: number
   pushedAt: string | null

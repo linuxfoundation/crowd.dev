@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbProjectDocDiscovery, IProjectDocDiscoveryUpsert } from './types'
 
 const DISCOVERY_COLUMNS = [

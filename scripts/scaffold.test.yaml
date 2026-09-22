@@ -9,12 +9,12 @@ services:
       POSTGRES_PASSWORD: example
       POSTGRES_DB: postgres
     ports:
-      - '5434:5432'
+      - "5434:5432"
     volumes:
       # Creates the `sequin` DB and role required before Flyway runs.
       - ./scaffold/sequin/postgres-docker-entrypoint-initdb.d/create-sequin-database.sql:/docker-entrypoint-initdb.d/create-sequin-database.sql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 2s
       timeout: 5s
       retries: 15

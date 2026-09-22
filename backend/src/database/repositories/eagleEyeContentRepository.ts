@@ -4,10 +4,10 @@ import { Op } from 'sequelize'
 import { Error404 } from '@crowd/common'
 import { EagleEyeContent } from '@crowd/types'
 
-import { IRepositoryOptions } from './IRepositoryOptions'
 import EagleEyeActionRepository from './eagleEyeActionRepository'
 import QueryParser from './filters/queryParser'
 import { QueryOutput } from './filters/queryTypes'
+import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 
 export default class EagleEyeContentRepository {

@@ -25,7 +25,6 @@ import { downloadAndExtractRubyGemsSource } from '../../clients/rubygemsSource'
 import { toBareGemName } from '../../packageIdentifier'
 import { ecosystemRangeEvents, highestVersion, versionsInRanges } from '../ecosystemVersions'
 import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
-
 import { pickPlatform } from './rubygemsPlatform'
 
 const OSV_RUBYGEMS_ECOSYSTEM = 'RubyGems'

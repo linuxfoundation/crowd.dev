@@ -1,17 +1,16 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { groupMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
   fetchManyMemberOrgsWithOrgData,
   findMemberById,
 } from '@crowd/data-access-layer'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import { groupMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

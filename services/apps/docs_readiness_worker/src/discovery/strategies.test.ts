@@ -104,6 +104,67 @@ describe('llmsTxtProbe', () => {
     ).toEqual([])
   })
 
+  it('returns [] when the website does not resolve to a domain', async () => {
+    expect(
+      await llmsTxtProbe({
+        name: 'proj',
+        website: '::not a url::',
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+
+  it('falls back to the root domain when the docs subdomain has no llms.txt', async () => {
+    routeFetch([
+      ['https://docs.example.com/llms.txt', notFound],
+      ['https://example.com/llms.txt', () => new Response('x'.repeat(60), { status: 200 })],
+    ])
+
+    const result = await llmsTxtProbe({
+      name: 'proj',
+      website: 'https://example.com',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://example.com',
+        method: 'llms-txt-probe',
+        confidence: 'high',
+        livenessOk: true,
+      },
+    ])
+  })
+
+  it('falls back to the root domain when the docs subdomain serves an html shell instead of a 404', async () => {
+    routeFetch([
+      [
+        'https://docs.example.com/llms.txt',
+        () => new Response('<html>' + 'x'.repeat(60), { status: 200 }),
+      ],
+      ['https://example.com/llms.txt', () => new Response('x'.repeat(60), { status: 200 })],
+    ])
+
+    const result = await llmsTxtProbe({
+      name: 'proj',
+      website: 'https://example.com',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://example.com',
+        method: 'llms-txt-probe',
+        confidence: 'high',
+        livenessOk: true,
+      },
+    ])
+  })
+
   it('returns [] on a fetch error', async () => {
     throwingFetch()
     expect(
@@ -227,6 +288,33 @@ describe('docsPath', () => {
         livenessOk: true,
       },
     ])
+  })
+
+  it('probes the path instead of appending after a query string', async () => {
+    const fetchMock = routeFetch([
+      ['https://example.com/docs', html],
+      ['https://example.com/documentation', notFound],
+      ['https://example.com/doc', notFound],
+    ])
+
+    const result = await docsPath({
+      name: 'proj',
+      website: 'https://example.com?ref=x',
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://example.com/docs',
+        method: 'docs-path',
+        confidence: 'medium',
+        livenessOk: true,
+      },
+    ])
+    expect(fetchMock.mock.calls.map(([input]) => input.toString())).toContain(
+      'https://example.com/docs',
+    )
   })
 
   it('returns [] when website is missing', async () => {
@@ -433,6 +521,25 @@ describe('githubHomepage', () => {
     ).toEqual([])
   })
 
+  it('skips a homepage pointing at www.github.com', async () => {
+    routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://www.github.com/torvalds/linux' }),
+      ],
+    ])
+
+    expect(
+      await githubHomepage({
+        name: 'proj',
+        website: null,
+        repos,
+        githubToken: 'token',
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+
   it('returns [] when there is no github repo', async () => {
     expect(
       await githubHomepage({
@@ -558,6 +665,27 @@ describe('serpStrategy', () => {
     expect(result).toEqual([
       { url: 'https://docs.example.com/', method: 'serp', confidence: 'low', livenessOk: true },
     ])
+  })
+
+  it('filters out www.github.com results', async () => {
+    routeFetch([
+      [
+        'https://serpapi.com/search.json',
+        () =>
+          Response.json({
+            organic_results: [{ link: 'https://www.github.com/example/proj', title: 'proj repo' }],
+          }),
+      ],
+    ])
+
+    const result = await serpStrategy({
+      name: 'proj',
+      website: null,
+      repos: [],
+      githubToken: null,
+      serpApiKey: 'key123',
+    })
+    expect(result).toEqual([])
   })
 
   it('returns [] on a fetch error', async () => {
