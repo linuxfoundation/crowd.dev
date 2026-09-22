@@ -36,6 +36,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 
 | [ADR-0027](./0027-nomerge-is-evidence-bound.md) | noMerge is a veto against evidence, not against member IDs forever | accepted | 2026-09-16 |
 | [ADR-0028](./0028-cncf-project-wide-maintainer-authority.md) | CNCF `.project` repo as project-wide maintainer authority | accepted | 2026-09-16 |
+| [ADR-0029](./0029-typescript-project-references.md) | TypeScript project references | accepted | 2026-09-22 |
 
 ## Why ADRs?
 
