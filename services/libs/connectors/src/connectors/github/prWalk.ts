@@ -46,9 +46,9 @@ function mergeConfirmedWindow(
   if (!prior) {
     return { confirmedThrough: oldestSeen, coveredUntil: newestSeen }
   }
-  // an attempt that died above the prior window leaves an unwalked gap between the
-  // two regions — claiming the union would silently skip the gap on the next resume
-  if (new Date(oldestSeen).getTime() > new Date(prior.coveredUntil).getTime()) {
+  // merge only once the walk passed strictly below the prior ceiling: dying above it leaves
+  // an unwalked gap, dying exactly on it may split a timestamp tie — both would be claimed covered
+  if (new Date(oldestSeen).getTime() >= new Date(prior.coveredUntil).getTime()) {
     return prior
   }
   return {
