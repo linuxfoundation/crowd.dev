@@ -3,9 +3,6 @@
   "private": true,
   "type": "commonjs",
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",

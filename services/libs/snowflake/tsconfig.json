@@ -1,12 +1,12 @@
 {
-  "compilerOptions": {
-    "target": "es2017",
-    "module": "Node16",
-    "lib": ["es6", "es7", "es2017", "es2017.object", "es2015.promise", "ES2021.String"],
-    "skipLibCheck": true,
-    "moduleResolution": "node16",
-    "experimentalDecorators": true,
-    "esModuleInterop": true
-  },
-  "include": ["src/**/*"]
+  "extends": "../../base.tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../logging"
+    }
+  ]
 }

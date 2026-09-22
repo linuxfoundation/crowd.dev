@@ -33,6 +33,8 @@ and helpers. If a piece of logic is reusable (not business logic), it belongs th
 database query functions. Check here before writing new ones — duplicates are
 already a problem.
 
+Typecheck is `pnpm tsc-check` (`tsc -b` on the root `tsconfig.json`). A new `services/` package must be added to that file's `references`, and its own tsconfig must reference the `@crowd` packages it imports. Say so when you add one.
+
 ## Patterns in transition
 
 Old and new patterns coexist. Always use the new pattern.

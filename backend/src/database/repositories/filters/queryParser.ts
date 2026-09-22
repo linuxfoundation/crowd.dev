@@ -1,14 +1,12 @@
 import lodash from 'lodash'
-import Sequelize from 'sequelize'
+import Sequelize, { Op } from 'sequelize'
 import validator from 'validator'
 
 import { generateUUIDv4 as uuid } from '@crowd/common'
 
 import { IRepositoryOptions } from '../IRepositoryOptions'
 import SequelizeRepository from '../sequelizeRepository'
-import { ManyToManyType, QueryInput } from './queryTypes'
-
-const { Op } = Sequelize
+import { ManyToManyType, QueryInput, QueryOutput } from './queryTypes'
 
 /**
  * Pass `db` connection object which has `Sequelize.Op`
@@ -68,7 +66,7 @@ class QueryParser {
     // any: Op.any                     // ANY ARRAY[2, 3]::INTEGER (PG only)
   }
 
-  static complexOperators = {
+  static complexOperators: Record<string, (value: any, args?: any) => any> = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     textContains: (value, _args = {}) => {
       const result = {
@@ -404,7 +402,7 @@ class QueryParser {
       include: false,
       fields: false,
     },
-  ) {
+  ): QueryOutput {
     // eslint-disable-next-line prefer-const
     let { filter, orderBy, limit, offset, include, fields } = query
 

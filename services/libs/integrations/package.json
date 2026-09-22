@@ -2,12 +2,8 @@
   "name": "@crowd/integrations",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
-    "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",

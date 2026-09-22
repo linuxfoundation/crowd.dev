@@ -8,7 +8,8 @@
     "test": "vitest run",
     "test:server": "vitest run --project server",
     "test:changed": "vitest --changed",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tsc-check": "tsc -b"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",

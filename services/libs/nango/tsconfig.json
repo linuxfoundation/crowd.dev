@@ -1,4 +1,15 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../common"
+    },
+    {
+      "path": "../logging"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

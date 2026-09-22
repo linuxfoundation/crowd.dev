@@ -1,0 +1,65 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "lib": ["es2018", "dom", "ES2021.String", "ES2022.Object"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2018",
+    "types": ["node", "express"],
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "skipLibCheck": true,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "references": [
+    {
+      "path": "../services/libs/audit-logs"
+    },
+    {
+      "path": "../services/libs/common"
+    },
+    {
+      "path": "../services/libs/common_services"
+    },
+    {
+      "path": "../services/libs/data-access-layer"
+    },
+    {
+      "path": "../services/libs/integrations"
+    },
+    {
+      "path": "../services/libs/logging"
+    },
+    {
+      "path": "../services/libs/nango"
+    },
+    {
+      "path": "../services/libs/opensearch"
+    },
+    {
+      "path": "../services/libs/queue"
+    },
+    {
+      "path": "../services/libs/redis"
+    },
+    {
+      "path": "../services/libs/slack"
+    },
+    {
+      "path": "../services/libs/telemetry"
+    },
+    {
+      "path": "../services/libs/temporal"
+    },
+    {
+      "path": "../services/libs/types"
+    }
+  ]
+}

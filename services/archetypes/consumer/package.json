@@ -2,9 +2,6 @@
   "name": "@crowd/archetype-consumer",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "kafkajs": "~2.2.4"

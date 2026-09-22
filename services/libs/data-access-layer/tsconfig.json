@@ -1,12 +1,15 @@
 {
   "extends": "../../base.tsconfig.json",
-  // target/lib raised over base's es2017 for the BigInt literals in the packagist
-  // transitive integration test (include pulls *.test.ts into tsc-check). Consumers
-  // compile DAL sources under their own (es2017) configs, so src itself must stay
-  // free of post-es2017 syntax.
-  "compilerOptions": {
-    "target": "es2020",
-    "lib": ["es2020", "ES2021.String"]
-  },
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "references": [
+    { "path": "../common" },
+    { "path": "../database" },
+    { "path": "../integrations" },
+    { "path": "../logging" },
+    { "path": "../queue" },
+    { "path": "../redis" },
+    { "path": "../telemetry" },
+    { "path": "../types" }
+  ]
 }

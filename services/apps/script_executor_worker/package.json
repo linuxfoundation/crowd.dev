@@ -12,8 +12,7 @@
     "cleanup-activities-by-platform-and-type": "tsx src/bin/cleanup-activities-by-platform-and-type.ts",
     "recalculate-enrichment-affiliations": "tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "tsx src/bin/recalculate-all-affiliations.ts",
-    "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts",
-    "tsc-check": "tsc --noEmit"
+    "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

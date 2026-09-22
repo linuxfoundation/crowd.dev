@@ -2,9 +2,6 @@
   "name": "@crowd/types",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:"

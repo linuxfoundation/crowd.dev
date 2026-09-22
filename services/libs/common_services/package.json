@@ -2,9 +2,6 @@
   "name": "@crowd/common_services",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.572.0",
     "@crowd/audit-logs": "workspace:*",

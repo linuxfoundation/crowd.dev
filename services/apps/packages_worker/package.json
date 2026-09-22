@@ -78,7 +78,6 @@
     "monitor:osspckgs:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
     "dedup-package-deps": "SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
     "dedup-package-deps:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
-    "tsc-check": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

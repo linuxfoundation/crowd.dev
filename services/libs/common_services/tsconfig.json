@@ -1,4 +1,33 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../audit-logs"
+    },
+    {
+      "path": "../common"
+    },
+    {
+      "path": "../data-access-layer"
+    },
+    {
+      "path": "../integrations"
+    },
+    {
+      "path": "../logging"
+    },
+    {
+      "path": "../queue"
+    },
+    {
+      "path": "../redis"
+    },
+    {
+      "path": "../temporal"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }
