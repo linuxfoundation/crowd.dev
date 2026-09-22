@@ -162,16 +162,9 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             )
 
             if (conflictMemberId) {
-              try {
-                await suggestMemberMerge(qx, [
-                  { members: [memberId, conflictMemberId], similarity: 0.95 },
-                ])
-              } catch (suggestionError) {
-                req.log.warn(
-                  { error: suggestionError, memberId, conflictMemberId },
-                  'Member merge suggestion was not saved',
-                )
-              }
+              await suggestMemberMerge(qx, [
+                { members: [memberId, conflictMemberId], similarity: 0.95 },
+              ])
             }
 
             const projectGroupId = await findMemberProjectGroupId(qx, memberId)
@@ -184,16 +177,9 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
         } else if (error instanceof ConflictError) {
           const conflictMemberId = error.context?.conflictMemberId
           if (typeof conflictMemberId === 'string') {
-            try {
-              await suggestMemberMerge(qx, [
-                { members: [memberId, conflictMemberId], similarity: 0.95 },
-              ])
-            } catch (suggestionError) {
-              req.log.warn(
-                { error: suggestionError, memberId, conflictMemberId },
-                'Member merge suggestion was not saved',
-              )
-            }
+            await suggestMemberMerge(qx, [
+              { members: [memberId, conflictMemberId], similarity: 0.95 },
+            ])
           }
           throw error
         } else {
