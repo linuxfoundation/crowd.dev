@@ -26,10 +26,12 @@ function isCovered(window: ConfirmedWindow | null, updatedAt: string): boolean {
   if (!window) {
     return false
   }
+  // updatedAt has second precision and is not unique — both edges stay exclusive so
+  // PRs tied with a boundary timestamp are replayed instead of silently skipped
   const updated = new Date(updatedAt).getTime()
   return (
-    updated >= new Date(window.confirmedThrough).getTime() &&
-    updated <= new Date(window.coveredUntil).getTime()
+    updated > new Date(window.confirmedThrough).getTime() &&
+    updated < new Date(window.coveredUntil).getTime()
   )
 }
 
