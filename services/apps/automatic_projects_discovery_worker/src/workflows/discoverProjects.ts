@@ -30,8 +30,7 @@ const watermarkActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
-// Only these sources are watermarked today. lf-criticality-score keeps doing a full
-// fetch every run — its interface accepts `since` but the workflow never supplies one.
+// lf-criticality-score's `since` param is wired but unused — the workflow never watermarks it.
 const WATERMARKED_SOURCES = ['insights-discussions']
 
 interface ISourceBreakdown {

@@ -221,14 +221,9 @@ export async function processDataset(
     }
   }
 
-  // Flush a final partial chunk. If the limit was already hit, it's dropped —
-  // that's also truncation, not just the two breaks above.
-  if (chunk.length > 0) {
-    if (accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
-      await acceptNewRows(chunk)
-    } else {
-      truncated = true
-    }
+  // Flush a final partial chunk, unless the limit was already hit above.
+  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+    await acceptNewRows(chunk)
   }
 
   records.destroy()
