@@ -51,10 +51,14 @@ describe('upsertDiscoverySourceWatermark', () => {
     await upsertDiscoverySourceWatermark(qx, 'lf-criticality-score', '2026-02-01T00:00:00.000Z')
 
     expect(
-      new Date((await findDiscoverySourceWatermark(qx, 'insights-discussions')) as string).toISOString(),
+      new Date(
+        (await findDiscoverySourceWatermark(qx, 'insights-discussions')) as string,
+      ).toISOString(),
     ).toBe('2026-01-01T00:00:00.000Z')
     expect(
-      new Date((await findDiscoverySourceWatermark(qx, 'lf-criticality-score')) as string).toISOString(),
+      new Date(
+        (await findDiscoverySourceWatermark(qx, 'lf-criticality-score')) as string,
+      ).toISOString(),
     ).toBe('2026-02-01T00:00:00.000Z')
   })
 })
