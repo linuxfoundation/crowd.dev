@@ -1,6 +1,10 @@
-import lodash, { chunk, uniq } from 'lodash'
+import lodash, { uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
+import { KUBE_MODE, SERVICE } from '@/conf'
+import { ServiceType } from '@/conf/configTypes'
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
 import {
   captureApiChange,
   memberCreateAction,
@@ -14,35 +18,33 @@ import {
   Error409,
   RawQueryParser,
   groupBy,
+  normalizeMemberIdentityValue,
 } from '@crowd/common'
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
-  createMemberIdentity,
   deleteMemberIdentities,
   deleteMemberIdentitiesByCombinations,
   findAlreadyExistingVerifiedIdentities,
   getLastActivitiesForMembers,
+  insertMemberIdentities,
   queryActivityRelations,
   queryOrgs,
   updateVerifiedFlag,
 } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
-import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
-  insertMemberAffiliations,
+  insertMemberSegmentAffiliations,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
-  MemberField,
   fetchManyMemberIdentities,
   fetchManyMemberOrgs,
   fetchManyMemberSegments,
-  fetchMemberIdentities,
-  fetchMemberOrganizations,
-  findMemberById,
+  fetchMemberProfile,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
 import {
@@ -50,7 +52,6 @@ import {
   includeMemberToSegments,
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
-import { optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   fetchManySegments,
   getSegmentMergeSuggestionCounts,
@@ -74,19 +75,14 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { KUBE_MODE, SERVICE } from '@/conf'
-import { ServiceType } from '@/conf/configTypes'
-import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
-
 import { PlatformIdentities } from '../../serverless/integrations/types/messageTypes'
 import { AttributeData } from '../attributes/attribute'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
 import TenantRepository from './tenantRepository'
-import { IMemberMergeSuggestion, mapUsernameToIdentities } from './types/memberTypes'
+import { mapUsernameToIdentities } from './types/memberTypes'
 
 const { Op } = Sequelize
 
@@ -159,8 +155,9 @@ class MemberRepository {
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     if (data.identities) {
-      for (const i of data.identities as IMemberIdentity[]) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        (data.identities as IMemberIdentity[]).map((i) => ({
           memberId: record.id,
           platform: i.platform,
           type: i.type,
@@ -169,15 +166,16 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified,
           source: i.source,
-        })
-      }
+        })),
+      )
     } else if (data.username) {
       const username: PlatformIdentities = mapUsernameToIdentities(data.username)
 
+      const identitiesToInsert = []
       for (const platform of Object.keys(username) as PlatformType[]) {
         const identities: any[] = username[platform]
         for (const identity of identities) {
-          await createMemberIdentity(qx, {
+          identitiesToInsert.push({
             memberId: record.id,
             platform,
             value: identity.value ? identity.value : identity.username,
@@ -188,6 +186,10 @@ class MemberRepository {
             source: identity.source || 'ui',
           })
         }
+      }
+
+      if (identitiesToInsert.length > 0) {
+        await insertMemberIdentities(qx, identitiesToInsert)
       }
     }
 
@@ -243,6 +245,10 @@ class MemberRepository {
     const currentSegments = SequelizeRepository.getSegmentIds(options)
 
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
+    if (subprojectIds.length === 0) {
+      return
+    }
 
     await seq.query(bulkDeleteMemberSegments, {
       replacements: {
@@ -473,64 +479,13 @@ class MemberRepository {
       let result
 
       if (args.detail) {
+        const qx = SequelizeRepository.getQueryExecutor(options)
         const memberPromises = []
         const toMergePromises = []
 
-        const findMemberInfo = async (memberId: string) => {
-          const qx = SequelizeRepository.getQueryExecutor(options)
-
-          const [member, identities, aggregates, memberOrgs] = await Promise.all([
-            findMemberById(qx, memberId, [
-              MemberField.ID,
-              MemberField.DISPLAY_NAME,
-              MemberField.ATTRIBUTES,
-              MemberField.JOINED_AT,
-            ]),
-            fetchMemberIdentities(qx, memberId),
-            fetchAbsoluteMemberAggregates(qx, memberId),
-            fetchMemberOrganizations(qx, memberId),
-          ])
-
-          const orgIds = memberOrgs.map((o) => o.organizationId)
-
-          let orgExtraInfo = []
-          let lfxMemberships = []
-
-          if (orgIds.length > 0) {
-            orgExtraInfo = await queryOrgs(qx, {
-              filter: {
-                [OrganizationField.ID]: { in: orgIds },
-              },
-              fields: [
-                OrganizationField.ID,
-                OrganizationField.DISPLAY_NAME,
-                OrganizationField.LOGO,
-              ],
-            })
-
-            lfxMemberships = await findManyLfxMemberships(qx, {
-              organizationIds: orgIds,
-            })
-          }
-
-          return {
-            ...member,
-            identities,
-            ...{
-              activityCount: aggregates?.activityCount,
-              lastActive: aggregates?.lastActive,
-            },
-            organizations: memberOrgs.map((o) => ({
-              ...orgExtraInfo.find((oei) => oei.id === o.organizationId),
-              lfxMembership: lfxMemberships.find((lm) => lm.organizationId === o.organizationId),
-              memberOrganizations: o,
-            })),
-          }
-        }
-
         for (const mem of pageRows) {
-          memberPromises.push(findMemberInfo(mem.id))
-          toMergePromises.push(findMemberInfo(mem.toMergeId))
+          memberPromises.push(fetchMemberProfile(qx, mem.id))
+          toMergePromises.push(fetchMemberProfile(qx, mem.toMergeId))
         }
 
         const memberResults: { id: string }[] = await Promise.all(memberPromises)
@@ -571,72 +526,6 @@ class MemberRepository {
     }
   }
 
-  static async addToMerge(
-    suggestions: IMemberMergeSuggestion[],
-    options: IRepositoryOptions,
-  ): Promise<void> {
-    const transaction = SequelizeRepository.getTransaction(options)
-    const seq = SequelizeRepository.getSequelize(options)
-
-    // Remove possible duplicates
-    suggestions = lodash.uniqWith(suggestions, (a, b) =>
-      lodash.isEqual(lodash.sortBy(a.members), lodash.sortBy(b.members)),
-    )
-
-    // Process suggestions in chunks of 100 or less
-    const suggestionChunks = chunk(suggestions, 100)
-
-    const insertValues = (
-      memberId: string,
-      toMergeId: string,
-      similarity: number | null,
-      index: number,
-    ) => {
-      const idPlaceholder = (key: string) => `${key}${index}`
-      return {
-        query: `(:${idPlaceholder('memberId')}, :${idPlaceholder('toMergeId')}, :${idPlaceholder(
-          'similarity',
-        )}, NOW(), NOW())`,
-        replacements: {
-          [idPlaceholder('memberId')]: memberId,
-          [idPlaceholder('toMergeId')]: toMergeId,
-          [idPlaceholder('similarity')]: similarity === null ? null : similarity,
-        },
-      }
-    }
-
-    for (const suggestionChunk of suggestionChunks) {
-      const placeholders: string[] = []
-      let replacements: Record<string, unknown> = {}
-
-      suggestionChunk.forEach((suggestion, index) => {
-        const { query, replacements: chunkReplacements } = insertValues(
-          suggestion.members[0],
-          suggestion.members[1],
-          suggestion.similarity,
-          index,
-        )
-        placeholders.push(query)
-        replacements = { ...replacements, ...chunkReplacements }
-      })
-
-      const query = `
-        INSERT INTO "memberToMerge" ("memberId", "toMergeId", "similarity", "createdAt", "updatedAt")
-        VALUES ${placeholders.join(', ')} on conflict do nothing;
-      `
-      try {
-        await seq.query(query, {
-          replacements,
-          type: QueryTypes.INSERT,
-          transaction,
-        })
-      } catch (error) {
-        options.log.error('error adding members to merge', error)
-        throw error
-      }
-    }
-  }
-
   static async removeToMerge(id, toMergeId, options: IRepositoryOptions) {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
@@ -646,7 +535,7 @@ class MemberRepository {
   static async addNoMerge(id, toMergeId, options: IRepositoryOptions) {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addMemberNoMerge(qx, id, toMergeId)
+    await insertMemberNoMerge(qx, id, toMergeId)
   }
 
   static async memberExists(
@@ -835,11 +724,11 @@ class MemberRepository {
           transaction,
         })
 
-        captureOldState(record.get({ plain: true }))
-
         if (!record) {
           throw new Error404()
         }
+
+        captureOldState(record.get({ plain: true }))
 
         // exclude syncRemote attributes, since these are populated from memberSyncRemote table
         if (data.attributes?.syncRemote) {
@@ -1045,8 +934,9 @@ class MemberRepository {
     }
 
     if (data.identitiesToCreate && data.identitiesToCreate.length > 0) {
-      for (const i of data.identitiesToCreate) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        data.identitiesToCreate.map((i) => ({
           memberId: record.id,
           platform: i.platform,
           value: i.value,
@@ -1055,8 +945,8 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified !== undefined ? i.verified : !!manualChange,
           source: i.source,
-        })
-      }
+        })),
+      )
     }
 
     if (data.identitiesToUpdate && data.identitiesToUpdate.length > 0) {
@@ -1090,6 +980,7 @@ class MemberRepository {
         const platformsToDelete: string[] = []
         const valuesToDelete: string[] = []
         const typesToDelete: MemberIdentityType[] = []
+        const identitiesToInsert = []
 
         for (const platform of platforms) {
           const identities = data.username[platform]
@@ -1108,7 +999,7 @@ class MemberRepository {
               (identity.username && identity.username !== '') ||
               (identity.value && identity.value !== '')
             ) {
-              await createMemberIdentity(qx, {
+              identitiesToInsert.push({
                 memberId: record.id,
                 platform,
                 value: identity.value ? identity.value : identity.username,
@@ -1120,6 +1011,10 @@ class MemberRepository {
               })
             }
           }
+        }
+
+        if (identitiesToInsert.length > 0) {
+          await insertMemberIdentities(qx, identitiesToInsert)
         }
 
         if (platformsToDelete.length > 0) {
@@ -1203,7 +1098,17 @@ class MemberRepository {
           return
         }
 
-        await insertMemberAffiliations(qx, memberId, data)
+        await insertMemberSegmentAffiliations(
+          qx,
+          data.map((item) => ({
+            memberId,
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart || null,
+            dateEnd: item.dateEnd || null,
+          })),
+          true,
+        )
       }),
     )
   }
@@ -1892,6 +1797,7 @@ class MemberRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     const seq = SequelizeRepository.getSequelize(options)
+    const normalizedValue = normalizeMemberIdentityValue(value)
 
     const query = `
       insert into "memberIdentities"("memberId", platform, type, value, "tenantId", verified)
@@ -1903,7 +1809,7 @@ class MemberRepository {
       await seq.query(query, {
         replacements: {
           memberId,
-          value,
+          value: normalizedValue,
           type,
           platform,
           tenantId: DEFAULT_TENANT_ID,

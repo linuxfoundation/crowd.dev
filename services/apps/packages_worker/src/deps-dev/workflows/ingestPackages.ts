@@ -2,7 +2,13 @@ import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 import { buildPackagesFullSql, buildPackagesIncrementalSql } from '../queries/packagesSql'
+import { packageNameSplitSql } from '../queries/pgIdentity'
 import { toSystemsFilter } from '../queries/systems'
+
+const { namespace: NAMESPACE_SPLIT_SQL, name: NAME_SPLIT_SQL } = packageNameSplitSql(
+  's',
+  'raw_name',
+)
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
@@ -52,16 +58,8 @@ INSERT INTO packages (
 )
 SELECT
   s.ecosystem,
-  CASE
-    WHEN s.ecosystem = 'maven' THEN SPLIT_PART(s.raw_name, ':', 1)
-    WHEN s.raw_name LIKE '@%/%'  THEN SPLIT_PART(s.raw_name, '/', 1)
-    ELSE NULL
-  END,
-  CASE
-    WHEN s.ecosystem = 'maven' THEN SPLIT_PART(s.raw_name, ':', 2)
-    WHEN s.raw_name LIKE '@%/%'  THEN SPLIT_PART(s.raw_name, '/', 2)
-    ELSE s.raw_name
-  END,
+  ${NAMESPACE_SPLIT_SQL},
+  ${NAME_SPLIT_SQL},
   s.purl, s.description, s.licenses,
   s.latest_version, s.declared_repo_url, s.homepage,
   s.first_release_at, s.latest_release_at, s.versions_count,

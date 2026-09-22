@@ -121,43 +121,6 @@ export async function fetchMemberSegmentAffiliationsForProject(
   )
 }
 
-export interface ISegmentAffiliationInsert {
-  organizationId: string
-  dateStart: string | null
-  dateEnd: string | null
-  verifiedBy: string
-}
-
-/**
- * Insert multiple segment affiliations for a member + project (segment) combination.
- * All inserted affiliations are marked as verified.
- */
-export async function insertMemberSegmentAffiliations(
-  qx: QueryExecutor,
-  memberId: string,
-  segmentId: string,
-  affiliations: ISegmentAffiliationInsert[],
-): Promise<void> {
-  for (const aff of affiliations) {
-    await qx.result(
-      `
-        INSERT INTO "memberSegmentAffiliations"
-          (id, "memberId", "segmentId", "organizationId", "dateStart", "dateEnd", verified, "verifiedBy")
-        VALUES
-          (gen_random_uuid(), $(memberId), $(segmentId), $(organizationId), $(dateStart), $(dateEnd), true, $(verifiedBy))
-      `,
-      {
-        memberId,
-        segmentId,
-        organizationId: aff.organizationId,
-        dateStart: aff.dateStart,
-        dateEnd: aff.dateEnd,
-        verifiedBy: aff.verifiedBy,
-      },
-    )
-  }
-}
-
 /**
  * Fetch work experiences for a member with organization details.
  * Used as fallback affiliations when no segment affiliations exist for a project.

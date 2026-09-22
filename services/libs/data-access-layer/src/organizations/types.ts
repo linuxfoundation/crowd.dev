@@ -15,6 +15,7 @@ export interface IDbOrganization {
   revenueRange?: IOrganizationRevenueRange
   importHash?: string
   location?: string
+  country?: string
   isTeamOrganization: boolean
   isAffiliationBlocked?: boolean
   type?: string
@@ -36,6 +37,7 @@ export interface IDbOrganizationInput {
   revenueRange?: IOrganizationRevenueRange
   importHash?: string
   location?: string
+  country?: string
   isTeamOrganization: boolean
   isAffiliationBlocked?: boolean
   type?: string
@@ -64,8 +66,7 @@ export interface IDbOrgAttributeInput {
 }
 
 export interface IDbOrganizationAggregateData
-  extends IOrganizationActivityCoreAggregates,
-    IOrganizationDisplayAggregates {}
+  extends IOrganizationActivityCoreAggregates, IOrganizationDisplayAggregates {}
 
 export interface IOrganizationActivityCoreAggregates {
   organizationId: string
@@ -117,6 +118,11 @@ export interface IQueryNumberOfNewOrganizations {
   after?: Date
   before?: Date
   platform?: string
+}
+
+export interface IFindOrCreateOrganizationResult {
+  id: string
+  created: boolean
 }
 
 export interface IQueryTimeseriesOfNewOrganizations {

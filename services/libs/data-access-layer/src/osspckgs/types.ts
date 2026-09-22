@@ -35,6 +35,24 @@ export type IDbPackageUpsert = {
   repositoryUrl?: string | null
 }
 
+// ─── sonatype popularity ──────────────────────────────────────────────────────
+
+/**
+ * Sonatype popularity signal for a single Maven component (one row per
+ * groupId:artifactId). Only the sonatype_* fields plus the identity columns are
+ * carried — deps.dev / Maven enrichment backfills everything else later.
+ */
+export type IDbSonatypePopularityUpsert = {
+  purl: string
+  ecosystem: string
+  namespace: string // Maven groupId
+  name: string // Maven artifactId
+  sonatypePopularityScore: number
+  sonatypeRank: number
+  sonatypeTier: string
+  sonatypeSnapshotAt: Date
+}
+
 // ─── maintainers ──────────────────────────────────────────────────────────────
 
 export type IDbMaintainerUpsert = {
@@ -43,6 +61,7 @@ export type IDbMaintainerUpsert = {
   displayName: string | null
   url: string | null
   email: string | null
+  githubLogin?: string | null
 }
 
 // ─── package_maintainers ──────────────────────────────────────────────────────
@@ -50,7 +69,8 @@ export type IDbMaintainerUpsert = {
 export type IDbPackageMaintainerUpsert = {
   packageId: number
   maintainerId: number
-  role: 'author' | 'maintainer' | null
+  role: 'author' | 'maintainer' | 'contributor' | null
+  ingestionSource?: string | null
 }
 
 // ─── versions ─────────────────────────────────────────────────────────────────
@@ -64,6 +84,7 @@ export type IDbVersionUpsert = {
   isLatest: boolean
   isPrerelease: boolean
   license: string | null
+  publishedAt?: Date | null
 }
 
 // ─── repos ────────────────────────────────────────────────────────────────────
@@ -75,11 +96,5 @@ export type IDbRepoUpsert = {
   name: string | null
 }
 
-// ─── package_repos ────────────────────────────────────────────────────────────
-
-export type IDbPackageRepoUpsert = {
-  packageId: number
-  repoId: number
-  source: 'declared' | 'deps_dev' | 'heuristic' | 'manual'
-  confidence: number
-}
+// package_repos claim types live in packages/repoConfidence.ts, next to the scoring
+// function they feed.

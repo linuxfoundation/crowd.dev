@@ -14,6 +14,7 @@ const { cargoDownloadAndLoad } = proxyActivities<typeof activities>({
 })
 
 const {
+  cargoNormalizeRepos,
   cargoEnrichPackages,
   cargoEnrichVersions,
   cargoEnrichRepos,
@@ -31,6 +32,8 @@ export async function cargoSyncWorkflow(): Promise<void> {
   const load = await cargoDownloadAndLoad()
   log.info('cargoSync loaded dump', { ...load })
 
+  const normalizedRepos = await cargoNormalizeRepos()
+  log.info('cargoSync normalized repos', { ...normalizedRepos })
   const packages = await cargoEnrichPackages()
   const versions = await cargoEnrichVersions()
   const repos = await cargoEnrichRepos()
@@ -41,6 +44,7 @@ export async function cargoSyncWorkflow(): Promise<void> {
 
   log.info('cargoSync complete', {
     matched: load.matched,
+    normalizedRepos,
     packages,
     versions,
     repos,

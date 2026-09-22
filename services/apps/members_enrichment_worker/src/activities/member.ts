@@ -1,9 +1,11 @@
+import { Error404 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
   PgPromiseQueryExecutor,
-  createMemberIdentity,
   findMemberById,
+  findMembersByIdentities,
+  insertMemberIdentities,
   pgpQx,
 } from '@crowd/data-access-layer'
 import {
@@ -88,15 +90,36 @@ export async function updateMemberWithEnrichmentData(
   attributes?: IAttributes,
 ): Promise<void> {
   await svc.postgres.writer.connection().tx(async (tx) => {
-    for (const identity of identities) {
-      await createMemberIdentity(new PgPromiseQueryExecutor(tx), {
-        memberId,
-        platform: identity.platform,
-        value: identity.value,
-        type: identity.type,
-        verified: identity.verified || false,
-        source: 'enrichment',
-      })
+    if (identities.length > 0) {
+      const qx = new PgPromiseQueryExecutor(tx)
+
+      // Unverified identities aren't unique in the db, so the same handle or
+      // email can sit on several members. Skip the ones already taken.
+      const unverified = identities.filter((identity) => !identity.verified)
+
+      const owners =
+        unverified.length > 0
+          ? await findMembersByIdentities(qx, unverified, memberId)
+          : new Map<string, string>()
+
+      const identitiesToInsert = identities
+        .filter(
+          (identity) =>
+            Boolean(identity.verified) ||
+            !owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+        )
+        .map((identity) => ({
+          memberId,
+          platform: identity.platform,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified || false,
+          source: 'enrichment',
+        }))
+
+      if (identitiesToInsert.length > 0) {
+        await insertMemberIdentities(qx, identitiesToInsert)
+      }
     }
     if (attributes) {
       await updateMemberAttributes(tx, memberId, attributes)
@@ -114,6 +137,14 @@ export async function mergeMembers(
   try {
     await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
+    if (error instanceof Error404) {
+      svc.log.info(
+        { primaryMemberId, secondaryMemberId },
+        'Skipping merge, member no longer exists',
+      )
+      return
+    }
+
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
   }

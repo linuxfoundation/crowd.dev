@@ -1,4 +1,4 @@
-import type { FetchError } from './types'
+import { type FetchError, FetchErrorKind } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
@@ -21,21 +21,23 @@ export async function fetchChangesSince(since: string): Promise<ChangesResult | 
       signal: abort.signal,
     })
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let body: { results?: unknown[]; last_seq?: unknown }
   try {
     body = (await res.json()) as { results?: unknown[]; last_seq?: unknown }
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
-  if (!Array.isArray(body.results)) return { kind: 'MALFORMED', message: 'missing results' }
+  if (!Array.isArray(body.results))
+    return { kind: FetchErrorKind.MALFORMED, message: 'missing results' }
 
   const names = new Set<string>()
   for (const row of body.results as Array<{ id?: unknown }>) {
@@ -58,20 +60,21 @@ export async function fetchCurrentSeq(): Promise<string | FetchError> {
       signal: abort.signal,
     })
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}` }
+  if (!res.ok) return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}` }
 
   let body: { update_seq?: unknown }
   try {
     body = (await res.json()) as { update_seq?: unknown }
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
-  if (body.update_seq === undefined) return { kind: 'MALFORMED', message: 'missing update_seq' }
+  if (body.update_seq === undefined)
+    return { kind: FetchErrorKind.MALFORMED, message: 'missing update_seq' }
   return String(body.update_seq)
 }

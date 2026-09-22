@@ -1,26 +1,35 @@
+import { cancellationSignal, heartbeat } from '@temporalio/activity'
+
+import { classifyEmailReachability } from '@crowd/common'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
+import { parseGithubUrl } from '../enricher/fetchLightRepo'
 import { mapWithConcurrency } from '../utils/concurrency'
-
+import { fetchRepoTree } from './extractors/gitTree'
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'
+import { fetchRepoOwner } from './extractors/repoOwner'
 import { extractSecurityContactsFile } from './extractors/securityContactsFile'
 import { extractSecurityInsights } from './extractors/securityInsights'
 import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
+import { fetchTopCommitters } from './extractors/topCommitters'
 import { githubApiGet } from './githubToken'
-import { reconcile } from './reconcile'
+import { isJunkContact, reconcile } from './reconcile'
+import { deriveGithubHandlesFromNoreplyEmails, resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
   ExtractorDeps,
+  ProcessRepoResult,
   RawContact,
   RepoPackage,
   RepoPolicies,
   RepoTarget,
 } from './types'
-import { markRepoAttempted, writeContacts } from './writeContacts'
+import { verifyHandleCandidates } from './verifyHandleCandidates'
+import { writeContactsBatch } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
 
@@ -31,18 +40,11 @@ export interface BatchResult {
   processed: number
 }
 
-// Two-tier refresh cadence (the worker runs on a daily cron). Just under 24h/168h so a repo
-// processed at ~06:00 is eligible again at the next daily/weekly tick rather than slipping a day.
-const DAILY_INTERVAL_HOURS = 20 // repos never evaluated or with no contacts yet
-const WEEKLY_INTERVAL_HOURS = 156 // already-enriched repos (have contacts)
+// Just under 24h/168h so a repo processed at ~06:00 is still eligible at the next tick.
+const DAILY_INTERVAL_HOURS = 20 // no contacts found yet
+const WEEKLY_INTERVAL_HOURS = 156 // already has contacts
 
-// Tuned for throughput within the platform ceilings:
-//  - CONCURRENCY: parallel repos. GitHub calls go through the authed Contents API via a
-//    rate-limit-aware pool (per-installation budget parking + app-wide concurrency gate +
-//    Retry-After backoff in githubToken), so high repo concurrency won't trip GitHub limits.
-//  - FETCH_TIMEOUT_MS: generous enough for slow registries (Maven metadata/POM) without hanging slots.
-//  - BATCH_SIZE: bounded by the 30-min activity timeout (worst case: an all-cargo batch throttled
-//    to crates.io's 1 req/s finishes ~8 min).
+// GitHub calls are rate-limit-aware (see githubToken.ts), so high repo concurrency is safe.
 const CONCURRENCY = 100
 const FETCH_TIMEOUT_MS = 15000
 const BATCH_SIZE = 500
@@ -75,18 +77,17 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host = 'github'
-      AND (
+    WHERE (
         -- never evaluated → always eligible
         r.contacts_last_refreshed IS NULL
         -- evaluated but no contacts found yet → retry on the daily cadence
         OR (
-          NOT EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          NOT EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id AND sc.deleted_at IS NULL)
           AND r.contacts_last_refreshed < NOW() - INTERVAL '$(dailyIntervalHours) hours'
         )
         -- already enriched (has contacts) → refresh on the weekly cadence
         OR (
-          EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id AND sc.deleted_at IS NULL)
           AND r.contacts_last_refreshed < NOW() - INTERVAL '$(weeklyIntervalHours) hours'
         )
       )
@@ -112,31 +113,51 @@ function toTarget(row: SweepRow): RepoTarget {
   }
 }
 
-async function processRepo(
+export function buildBaseDeps(config: Config): Omit<ExtractorDeps, 'repoTree'> {
+  return {
+    fetchTimeoutMs: FETCH_TIMEOUT_MS,
+    userAgent: config.userAgent,
+    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
+  }
+}
+
+export async function processRepo(
   target: RepoTarget,
-  deps: ExtractorDeps,
-  qx: QueryExecutor,
-): Promise<void> {
+  baseDeps: Omit<ExtractorDeps, 'repoTree'>,
+  cdpQx: QueryExecutor,
+): Promise<ProcessRepoResult> {
+  // One tree fetch per repo, shared by extractors that probe well-known paths.
+  let repoTree: ExtractorDeps['repoTree'] = { paths: null }
+  try {
+    const { owner, name } = parseGithubUrl(target.url)
+    repoTree = await fetchRepoTree(owner, name, baseDeps.githubGet)
+  } catch {
+    // not a github.com URL
+  }
+  const deps: ExtractorDeps = { ...baseDeps, repoTree }
+
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // Replace the repo's contacts only when every extractor succeeded. If any failed (transient
-  // error — non-200s throw), a destructive rewrite would drop contacts a failed tier-A/B extractor
-  // still has, so preserve existing data and just record the attempt; retried next cadence.
-  const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
-  if (failed) {
+  let failedCount = 0
+  results.forEach((r, i) => {
+    if (r.status !== 'rejected') return
+    failedCount++
     log.warn(
-      { repoId: target.repoId, errMsg: failed.reason?.message },
-      'Extractor failed — preserving existing data',
+      { repoId: target.repoId, extractor: EXTRACTORS[i].name, errMsg: r.reason?.message },
+      'Extractor failed — keeping contacts from remaining sources',
     )
-    await markRepoAttempted(qx, target.repoId)
-    return
+  })
+  if (failedCount === results.length) {
+    return { repoId: target.repoId, status: 'extractor-failed' }
   }
 
   let contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
+  const handleCandidates: RawContact[] = []
   for (const r of results) {
     if (r.status !== 'fulfilled') continue
     contacts.push(...r.value.contacts)
+    handleCandidates.push(...(r.value.handleCandidates ?? []))
     for (const [key, value] of Object.entries(r.value.policies)) {
       if (!(policies as Record<string, unknown>)[key] && value != null) {
         ;(policies as Record<string, unknown>)[key] = value
@@ -144,40 +165,145 @@ async function processRepo(
     }
   }
 
-  // A2 veto: B1 may emit a github-pvr contact from redirect language; drop it when A2
-  // authoritatively reports PVR disabled (Option C from the design discussion).
+  // A2 veto: drop B1's github-pvr guess when A2 authoritatively reports PVR disabled.
   if (policies.pvrEnabled === false) {
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
 
+  contacts.push(...(await verifyHandleCandidates(target, deps, handleCandidates)))
+  contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
+
+  const isUsableRaw = (c: RawContact): boolean => {
+    if (isJunkContact(c)) return false
+    return c.channel !== 'email' || classifyEmailReachability(c.value).reachable
+  }
+  const hasUsableHigherTierContact = contacts.some((c) => c.tier !== 'D' && isUsableRaw(c))
+  if (!hasUsableHigherTierContact) {
+    const [committers, ownerContacts] = await Promise.all([
+      fetchTopCommitters(target, deps),
+      fetchRepoOwner(target, deps),
+    ])
+    contacts.push(...committers, ...ownerContacts)
+  }
+
+  const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
+  if (handleContacts.length > 0) {
+    try {
+      contacts.push(...(await resolveCdpEmails(cdpQx, handleContacts)))
+    } catch (err) {
+      log.warn(
+        { repoId: target.repoId, errMsg: (err as Error).message },
+        'CDP email resolution failed — proceeding without resolved emails',
+      )
+    }
+  }
+
   const scored = reconcile(contacts)
-  await writeContacts(qx, target.repoId, scored, policies)
+  return {
+    repoId: target.repoId,
+    status: failedCount > 0 ? 'partial' : 'ok',
+    contacts: scored,
+    policies,
+  }
 }
 
-export async function processBatch(qx: QueryExecutor, config: Config): Promise<BatchResult> {
+export async function processBatch(
+  qx: QueryExecutor,
+  cdpQx: QueryExecutor,
+  config: Config,
+): Promise<BatchResult> {
   const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
-  const deps: ExtractorDeps = {
-    fetchTimeoutMs: FETCH_TIMEOUT_MS,
-    userAgent: config.userAgent,
-    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
-  }
+  const deps = buildBaseDeps(config)
 
   const targets = batch.map(toTarget)
-  // Isolate per-repo failures: mapWithConcurrency is fail-fast, so a single repo's DB error must
-  // not abort the batch (and, across Temporal retries, halt the whole sweep). Unmarked repos on
-  // error are simply retried next sweep.
-  await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+  log.info({ repos: targets.length }, 'Security contacts batch started')
+  const progress = { completed: 0, ok: 0, partial: 0, failed: 0 }
+  const extractionStartedAt = Date.now()
+  // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
+  // every concurrency slot is still busy, so this can't rely on task completions alone. The
+  // progress line rides the same cadence, bounding visibility logging to 2 lines/minute.
+  const heartbeatTimer = setInterval(() => {
     try {
-      await processRepo(target, deps, qx)
+      heartbeat()
     } catch (err) {
-      log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
-      // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
-      // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
-      await markRepoAttempted(qx, target.repoId).catch(() => undefined)
+      log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
     }
-  })
+    if (progress.completed < targets.length) {
+      const elapsedMs = Date.now() - extractionStartedAt
+      log.info(
+        {
+          ...progress,
+          total: targets.length,
+          elapsedMs,
+          reposPerSec: Number((progress.completed / (elapsedMs / 1000)).toFixed(1)),
+        },
+        'Security contacts batch progress',
+      )
+    }
+  }, 30_000)
+  let outcomes: ProcessRepoResult[]
+  try {
+    // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
+    // scheduling further repos instead of racing the new attempt.
+    //
+    // Extraction is collected here and persisted afterward in one batched call (below) rather
+    // than per-repo, since per-repo writes meant up to CONCURRENCY concurrent transactions
+    // against a packages-db pool sized for far fewer connections — the actual sweep bottleneck.
+    outcomes = await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+      if (cancellationSignal().aborted) {
+        throw new Error(
+          'Security contacts batch cancelled — superseded by a newer activity attempt',
+        )
+      }
+      let outcome: ProcessRepoResult
+      try {
+        outcome = await processRepo(target, deps, cdpQx)
+      } catch (err) {
+        log.error(
+          { repoId: target.repoId, errMsg: (err as Error).message },
+          'Repo processing failed',
+        )
+        outcome = { repoId: target.repoId, status: 'extractor-failed' as const }
+      }
+      progress.completed++
+      if (outcome.status === 'ok') progress.ok++
+      else if (outcome.status === 'partial') progress.partial++
+      else progress.failed++
+      return outcome
+    })
+
+    const extractionDurationMs = Date.now() - extractionStartedAt
+    const ok = outcomes.filter((o) => o.status === 'ok').length
+    const partial = outcomes.filter((o) => o.status === 'partial').length
+    log.info(
+      {
+        ok,
+        partial,
+        failed: outcomes.length - ok - partial,
+        durationMs: extractionDurationMs,
+        reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
+      },
+      'Security contacts batch extraction complete — persisting',
+    )
+
+    // Heartbeat is kept alive through persistence too: a slow/lock-blocked write can outlast the
+    // 2-minute heartbeat timeout just like extraction can, and letting the timer stop early would
+    // let Temporal retry this activity while the original attempt is still writing.
+    const writeStartedAt = Date.now()
+    await writeContactsBatch(qx, outcomes)
+    const writeDurationMs = Date.now() - writeStartedAt
+    log.info(
+      {
+        durationMs: writeDurationMs,
+        reposPerSec: Number((outcomes.length / (writeDurationMs / 1000)).toFixed(1)),
+      },
+      'Security contacts batch persistence complete',
+    )
+  } finally {
+    clearInterval(heartbeatTimer)
+  }
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }

@@ -11,7 +11,6 @@ import { IEnrichableMember, MemberEnrichmentSource } from '@crowd/types'
 import * as activities from '../activities'
 import { IEnrichmentSourceInput } from '../types'
 import { sourceHasDifferentDataComparedToCache } from '../utils/common'
-
 import { processMemberSources } from './processMemberSources'
 
 const {
@@ -86,8 +85,7 @@ export async function enrichMember(
 
   const changeInEnrichmentSourceData = sourceResults.some(Boolean)
 
-  if (changeInEnrichmentSourceData && input.activityCount > 100) {
-    // Member enrichment data has been updated, use squasher again!
+  if (changeInEnrichmentSourceData) {
     await executeChild(processMemberSources, {
       workflowId: 'member-enrichment/' + input.id + '/processMemberSources',
       cancellationType: ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED,
@@ -102,6 +100,7 @@ export async function enrichMember(
       args: [
         {
           memberId: input.id,
+          activityCount: input.activityCount ?? 0,
           sources,
         },
       ],

@@ -3,12 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "test": "vitest run",
-    "test:affiliations": "vitest run src/affiliations",
-    "test:affiliations:watch": "vitest src/affiliations",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -25,20 +19,19 @@
     "lodash": "^4.17.21",
     "lodash.clonedeep": "^4.5.0",
     "lodash.map": "^4.6.0",
-    "lodash.merge": "^4.6.2",
-    "lodash.pickby": "^4.6.0",
     "lodash.max": "^4.0.1",
+    "lodash.merge": "^4.6.2",
     "lodash.min": "^4.0.1",
+    "lodash.pickby": "^4.6.0",
     "moment": "~2.29.4",
-    "pg-promise": "^11.4.3",
+    "pg-promise": "catalog:",
     "pg-query-stream": "^4.7.0",
     "uuid": "^9.0.1",
     "validator": "^13.7.0"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
-    "sequelize": "6.37.8",
-    "typescript": "^5.6.3",
-    "vitest": "^3.2.4"
+    "@crowd/test-kit": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

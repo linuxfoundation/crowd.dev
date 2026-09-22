@@ -67,9 +67,6 @@
       "region": "CROWD_COMPREHEND_AWS_REGION"
     }
   },
-  "clearbit": {
-    "apiKey": "CROWD_CLEARBIT_API_KEY"
-  },
   "sendgrid": {
     "key": "CROWD_SENDGRID_KEY",
     "emailFrom": "CROWD_SENDGRID_EMAIL_FROM",
@@ -177,6 +174,12 @@
   "temporal": {
     "serverUrl": "CROWD_TEMPORAL_SERVER_URL",
     "namespace": "CROWD_TEMPORAL_NAMESPACE",
+    "certificate": "CROWD_TEMPORAL_CERTIFICATE",
+    "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
+  },
+  "packagesTemporal": {
+    "serverUrl": "CROWD_PACKAGES_TEMPORAL_SERVER_URL",
+    "namespace": "CROWD_PACKAGES_TEMPORAL_NAMESPACE",
     "certificate": "CROWD_TEMPORAL_CERTIFICATE",
     "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
   },

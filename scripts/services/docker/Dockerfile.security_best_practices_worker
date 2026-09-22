@@ -1,4 +1,4 @@
-ARG PVTR_VERSION=v0.23.2
+ARG PVTR_VERSION=v0.24.0
 
 FROM alpine:3.21 AS core
 RUN apk add --no-cache wget tar unzip
@@ -10,30 +10,29 @@ ARG PLATFORM=Linux_x86_64
 RUN wget https://github.com/privateerproj/privateer/releases/download/v${VERSION}/privateer_${PLATFORM}.tar.gz
 RUN tar -xzf privateer_${PLATFORM}.tar.gz
 
-FROM golang:1.26.3-alpine3.23 AS plugin
+FROM golang:1.26.4-alpine3.22 AS plugin
 RUN apk add --no-cache make git
 WORKDIR /plugin
-ARG PVTR_COMMIT=c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+ARG PVTR_COMMIT=c1095c95a1b399ec63e4f4e2b7880b0ef55e604f
 ARG PVTR_VERSION
 # To run the latest version of the plugin, we need to use the latest commit of the pvtr-github-repo-scanner repository.
-# Currently using v0.23.2: https://github.com/ossf/pvtr-github-repo-scanner/commit/c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+# Currently using v0.24.0+2fixes: https://github.com/ossf/pvtr-github-repo-scanner/commit/c1095c95a1b399ec63e4f4e2b7880b0ef55e604f
 RUN git clone https://github.com/ossf/pvtr-github-repo-scanner.git && cd pvtr-github-repo-scanner && git checkout ${PVTR_COMMIT}
 RUN cd pvtr-github-repo-scanner && make binary && cp github-repo ../github-repo
 
-FROM node:20-alpine as builder
+FROM node:24-bookworm-slim as builder
 
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y python3 make g++ --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/crowd/app
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
-
-COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+COPY ./package.json ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare --activate
 RUN pnpm fetch
 
 COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
-FROM node:20-bookworm-slim as runner
+FROM node:24-bookworm-slim as runner
 
 RUN mkdir -p /.privateer/bin
 WORKDIR /.privateer/bin
@@ -44,7 +43,9 @@ RUN echo "{\"plugins\":[{\"name\":\"github-repo\",\"version\":\"${PVTR_VERSION}\
 COPY ./services/apps/security_best_practices_worker/example-config.yml /.privateer/example-config.yml
 
 WORKDIR /usr/crowd/app
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+ENV pnpm_config_verify_deps_before_run=false
+COPY ./package.json ./
+RUN corepack enable && corepack prepare --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/crowd/app/node_modules ./node_modules
 COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json

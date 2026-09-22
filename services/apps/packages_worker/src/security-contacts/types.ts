@@ -1,31 +1,28 @@
+import type { EmailReachabilityReason } from '@crowd/common'
+import type { SecurityContactConfidence } from '@crowd/data-access-layer/src/osspckgs/api'
+
 export type ContactChannel = 'email' | 'github-pvr' | 'url' | 'github-handle' | 'web-form'
 
 export type ContactRole = 'security-team' | 'maintainer' | 'admin' | 'committer' | 'org-owner'
-
-export type ConfidenceBand = 'PRIMARY' | 'SECONDARY' | 'FALLBACK' | 'NONE'
 
 export type SourceTier = 'A' | 'B' | 'C' | 'D'
 
 /** Where a single contact value was observed, for auditability and corroboration scoring. */
 export interface ProvenanceEntry {
-  /** Human-readable source identifier, e.g. 'security-insights', 'pvr', 'security.md'. */
   source: string
   sourceTier: SourceTier
-  /** Path or URL the value was read from, when applicable. */
   path?: string
-  /** When this worker fetched the source. ISO-8601. */
   fetchedAt: string
-  /** When the source itself declared the value (e.g. SECURITY-INSIGHTS last-updated). ISO-8601. */
+  /** When the source itself declared the value, if different from fetchedAt. ISO-8601. */
   declaredAt?: string
 }
 
-/** Extractor output, before reconciliation and scoring. */
 export interface RawContact {
   channel: ContactChannel
   value: string
   role: ContactRole
   name?: string
-  /** Username an A3 email was resolved from — used only to identity-link a bare github-handle. */
+  /** Username an email was resolved from — used to identity-link a bare github-handle. */
   handle?: string
   tier: SourceTier
   provenance: ProvenanceEntry[]
@@ -33,7 +30,9 @@ export interface RawContact {
 
 export interface ScoredContact extends RawContact {
   score: number
-  confidence: ConfidenceBand
+  confidence: SecurityContactConfidence
+  reachable: boolean
+  reachabilityReason: EmailReachabilityReason | null
 }
 
 export interface RepoPolicies {
@@ -47,6 +46,9 @@ export interface RepoPolicies {
 export interface ExtractorResult {
   contacts: RawContact[]
   policies: Partial<RepoPolicies>
+  /** Registry usernames that only *might* be GitHub logins — never written without
+   *  corroboration (see verifyHandleCandidates.ts). */
+  handleCandidates?: RawContact[]
 }
 
 export interface RepoPackage {
@@ -63,22 +65,34 @@ export interface RepoTarget {
   packages: RepoPackage[]
 }
 
-/** Result of a GitHub API GET routed through the rate-limit-aware pool. */
 export interface GithubGetResult {
   status: number
-  /** Response body (raw file text or JSON string); null for absent resources (404/410/422). */
+  /** Null for absent resources (404/410/422/451) or a status listed in extraOkStatuses. */
   text: string | null
 }
 
 export interface ExtractorDeps {
   fetchTimeoutMs: number
-  /** Sent on registry calls; required (crates.io rejects requests without an identifying UA). */
+  /** Required — crates.io rejects requests without an identifying UA. */
   userAgent: string
-  /**
-   * Pool-aware, rate-limit-safe GitHub API GET. Handles installation selection, budget parking,
-   * and 429/secondary-limit backoff internally. `raw` selects the raw media type (file contents).
-   */
-  githubGet: (path: string, opts?: { raw?: boolean }) => Promise<GithubGetResult>
+  /** extraOkStatuses: additional statuses to return as {status, text: null} instead of throwing —
+   *  e.g. 202 for endpoints (like /stats/contributors) that mean "still computing", not absent. */
+  githubGet: (
+    path: string,
+    opts?: { raw?: boolean; extraOkStatuses?: number[] },
+  ) => Promise<GithubGetResult>
+  /** Default-branch file paths from one git-tree call; null means unresolved — probe as before. */
+  repoTree: { paths: Set<string> | null }
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>
+
+export type ProcessRepoResult =
+  | { repoId: string; status: 'ok'; contacts: ScoredContact[]; policies: Partial<RepoPolicies> }
+  | {
+      repoId: string
+      status: 'partial'
+      contacts: ScoredContact[]
+      policies: Partial<RepoPolicies>
+    }
+  | { repoId: string; status: 'extractor-failed' }

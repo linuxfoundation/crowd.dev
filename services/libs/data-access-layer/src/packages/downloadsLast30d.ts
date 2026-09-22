@@ -133,6 +133,48 @@ export async function markLast30dHistoryBackfilled(
   )
 }
 
+// Atomic "first observation wins" insert: the window row and its packages mirror are
+// written by one statement via ON CONFLICT (purl, end_date) DO NOTHING, so concurrent
+// callers for the same purl+month (overlapping Temporal retries, or two lanes racing)
+// can never both pass a check-then-insert gap and have the later one clobber the
+// earlier one's count — only the writer that actually inserts the row also mirrors.
+export async function insertLast30dDownloadIfAbsent(
+  qx: QueryExecutor,
+  purl: string,
+  startDate: string,
+  endDate: string,
+  count: number,
+  mirrorToPackages: boolean,
+): Promise<string[]> {
+  const row: { inserted: boolean; mirrored: boolean } = await qx.selectOne(
+    `WITH ins AS (
+       INSERT INTO downloads_last_30d (purl, start_date, end_date, count, created_at, updated_at)
+       VALUES ($(purl), $(startDate)::date, $(endDate)::date, $(count), NOW(), NOW())
+       ON CONFLICT (purl, end_date) DO NOTHING
+       RETURNING purl, count
+     ),
+     pkg AS (
+       UPDATE packages p
+          SET downloads_last_30d = ins.count,
+              last_synced_at     = NOW()
+         FROM ins
+        WHERE p.purl = ins.purl
+          AND $(mirrorToPackages)
+          AND p.downloads_last_30d IS DISTINCT FROM ins.count
+        RETURNING p.id
+     )
+     SELECT
+       EXISTS (SELECT 1 FROM ins) AS inserted,
+       EXISTS (SELECT 1 FROM pkg) AS mirrored`,
+    { purl, startDate, endDate, count, mirrorToPackages },
+  )
+
+  if (!row.inserted) return []
+  const changed = ['downloads_last_30d.start_date', 'downloads_last_30d.count']
+  if (row.mirrored) changed.push('packages.downloads_last_30d')
+  return changed
+}
+
 export async function upsertLast30dDownload(
   qx: QueryExecutor,
   purl: string,
@@ -163,9 +205,12 @@ export async function upsertLast30dDownload(
   )
   const changed = row.changed_fields
   if (mirrorToPackages) {
+    // last_synced_at is the Tinybird ENGINE_VER for the packages datasource — it must
+    // move whenever a real column changes, or Tinybird can keep serving a stale row.
     const rowCount = await qx.result(
       `UPDATE packages
-          SET downloads_last_30d = $(count)
+          SET downloads_last_30d = $(count),
+              last_synced_at     = NOW()
         WHERE purl = $(purl) AND downloads_last_30d IS DISTINCT FROM $(count)`,
       { count, purl },
     )

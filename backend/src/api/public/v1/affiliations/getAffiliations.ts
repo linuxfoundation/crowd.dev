@@ -1,15 +1,14 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import {
   findMembersByGithubHandles,
   findVerifiedEmailsByMemberIds,
-  optionsQx,
   resolveAffiliationsByMemberIds,
 } from '@crowd/data-access-layer'
-
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const MAX_HANDLES = 100
 const DEFAULT_PAGE_SIZE = 20

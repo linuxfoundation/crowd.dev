@@ -1,10 +1,10 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { buildHealthBandCondition } from './api'
 import {
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
+  bestRepoLinkOrderBy,
 } from './sqlFragments'
 
 export interface ActivityActor {
@@ -629,7 +629,7 @@ export async function listMyPackages(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ${bestRepoLinkOrderBy('pr')}
       LIMIT 1
     ) r_sc ON true
     LEFT JOIN LATERAL (

@@ -13,9 +13,10 @@ SQL >
         now() AS updatedAt
     FROM cdp_member_segment_aggregates_ds cdp_aggs
     join segments s on s.id = cdp_aggs.segmentId
-    {% if defined(bucket_id) %}
-        WHERE
-            cityHash64(parentId) % 5
+    WHERE
+        s.parentId <> ''
+        {% if defined(bucket_id) %}
+            AND cityHash64(parentId) % 5
             = {{
                 UInt8(
                     bucket_id,
@@ -24,7 +25,7 @@ SQL >
                     required=False,
                 )
             }}
-    {% end %}
+        {% end %}
     GROUP BY parentId, memberId
 
 TYPE SINK

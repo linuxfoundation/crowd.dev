@@ -1,10 +1,14 @@
 /* eslint-disable no-continue */
 import { uniq } from 'lodash'
 
+import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 import { Error400, dateIntersects, groupBy } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
 } from '@crowd/data-access-layer'
@@ -18,12 +22,7 @@ import {
   IMemberOrganizationAffiliationOverride,
 } from '@crowd/types'
 
-import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getOverlappingEmailDomainMemberOrganizations } from '@/utils/mapper'
-
 import { IServiceOptions } from '../IServiceOptions'
-
 import MemberOrganizationsService from './memberOrganizationsService'
 
 export default class MemberAffiliationsService extends LoggerBase {
@@ -67,6 +66,18 @@ export default class MemberAffiliationsService extends LoggerBase {
     memberId: string,
     data: Partial<IMemberAffiliation>[],
   ): Promise<IMemberAffiliation[]> {
+    if (data?.length > 0) {
+      const qx = SequelizeRepository.getQueryExecutor(this.options)
+      const organizationIds = data
+        .map((a) => a.organizationId)
+        .filter((id): id is string => Boolean(id))
+      const policies = await fetchManyOrganizationAffiliationPolicies(qx, organizationIds)
+
+      if ([...policies.values()].some((isBlocked) => isBlocked)) {
+        throw new Error400(this.options.language, 'This organization does not allow affiliations')
+      }
+    }
+
     return MemberAffiliationsRepository.upsertMultiple(memberId, data, this.options)
   }
 
@@ -113,13 +124,13 @@ export default class MemberAffiliationsService extends LoggerBase {
     const memberOrgs = await fetchMemberOrganizations(qx, data.memberId)
     const memberOrg = memberOrgs.find((mo) => mo.id === data.memberOrganizationId)
 
-    const overlappingEmailDomainRows = memberOrg
-      ? getOverlappingEmailDomainMemberOrganizations(memberOrgs, memberOrg)
+    const overlappingGroupedRows = memberOrg
+      ? getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
       : []
 
     const memberOrgIds = [
       data.memberOrganizationId,
-      ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+      ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
     ]
 
     // Apply the override to hidden grouped rows so the merged work experience has one decision

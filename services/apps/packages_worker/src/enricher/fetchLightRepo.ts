@@ -1,6 +1,12 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { FetchError, LightRepoResult } from './types'
+import {
+  RepoTrees,
+  TreeEntryNode,
+  classifyWellKnownFiles,
+  deriveSecurityFileEnabled,
+} from './wellKnownFiles'
 
 const log = getServiceChildLogger('fetch-light-repo')
 
@@ -24,6 +30,15 @@ const REPO_QUERY = `
       createdAt
       isSecurityPolicyEnabled
       defaultBranchRef { name }
+      rootTree: object(expression: "HEAD:") {
+        ... on Tree { entries { name type oid } }
+      }
+      githubTree: object(expression: "HEAD:.github") {
+        ... on Tree { entries { name type oid } }
+      }
+      docsTree: object(expression: "HEAD:docs") {
+        ... on Tree { entries { name type oid } }
+      }
     }
   }
 `
@@ -32,67 +47,6 @@ export function parseGithubUrl(url: string): { owner: string; name: string } {
   const match = url.match(/https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
   if (!match) throw new FetchError('MALFORMED', `Cannot parse GitHub URL: ${url}`)
   return { owner: match[1], name: match[2] }
-}
-
-// community/profile API doesn't reliably return files.security — use Contents API instead.
-async function fetchSecurityFileEnabled(
-  url: string,
-  owner: string,
-  name: string,
-  token: string,
-  timeoutMs: number,
-): Promise<boolean | null> {
-  const headers = { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' }
-  const check = async (path: string): Promise<boolean> => {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-    try {
-      const response = await fetch(`${GITHUB_API_URL}/repos/${owner}/${name}/contents/${path}`, {
-        headers,
-        signal: controller.signal,
-      })
-      if (response.status === 200) return true
-      if (response.status === 404) return false
-      if (response.status === 403) {
-        const body = await response.text()
-        if (body.toLowerCase().includes('rate limit')) {
-          // REST secondary limits send retry-after; primary limits send x-ratelimit-reset
-          const retryAfterSec = parseInt(response.headers.get('retry-after') ?? '0', 10)
-          const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
-          const resetMs = retryAfterSec
-            ? Date.now() + retryAfterSec * 1000
-            : resetSec
-              ? resetSec * 1000 + 5_000
-              : Date.now() + 65_000
-          throw new FetchError('RATE_LIMIT', `Contents API rate limited on ${path}`, resetMs)
-        }
-      }
-      throw new Error(`Unexpected status ${response.status} for ${path}`)
-    } finally {
-      clearTimeout(timeoutId)
-    }
-  }
-
-  try {
-    const [root, dotGithub] = await Promise.all([
-      check('SECURITY.md'),
-      check('.github/SECURITY.md'),
-    ])
-    return root || dotGithub
-  } catch (err) {
-    // Rate limits propagate so the caller can park the installation and requeue the repo
-    if (err instanceof FetchError && err.kind === 'RATE_LIMIT') throw err
-    log.warn(
-      {
-        url,
-        errName: (err as Error).name,
-        errMsg: (err as Error).message,
-        errStack: (err as Error).stack,
-      },
-      'Security file check failed — securityFileEnabled will be null',
-    )
-    return null
-  }
 }
 
 interface BranchProtection {
@@ -214,6 +168,9 @@ interface RepoGraphqlResponse {
       createdAt: string
       isSecurityPolicyEnabled: boolean
       defaultBranchRef: { name: string } | null
+      rootTree: { entries?: TreeEntryNode[] } | null
+      githubTree: { entries?: TreeEntryNode[] } | null
+      docsTree: { entries?: TreeEntryNode[] } | null
     } | null
   }
   errors?: Array<{ type?: string; message?: string }>
@@ -262,10 +219,7 @@ export async function fetchLightRepo(
   if (response.status === 404) throw new FetchError('NOT_FOUND', `404 for ${url}`)
   if (response.status >= 500) throw new FetchError('TRANSIENT', `${response.status} for ${url}`)
 
-  const [json, securityFileEnabled] = await Promise.all([
-    response.json() as Promise<RepoGraphqlResponse>,
-    fetchSecurityFileEnabled(url, owner, name, token, timeoutMs),
-  ])
+  const json = (await response.json()) as RepoGraphqlResponse
 
   if (json.errors?.length) {
     const err = json.errors[0]
@@ -279,6 +233,12 @@ export async function fetchLightRepo(
 
   const repo = json.data?.repository
   if (!repo) throw new FetchError('NOT_FOUND', `No repository data for ${url}`)
+
+  const trees: RepoTrees = {
+    root: repo.rootTree?.entries ?? null,
+    github: repo.githubTree?.entries ?? null,
+    docs: repo.docsTree?.entries ?? null,
+  }
 
   const defaultBranch = repo.defaultBranchRef?.name ?? null
   const branchProtection = defaultBranch
@@ -305,7 +265,8 @@ export async function fetchLightRepo(
     isFork: repo.isFork ?? null,
     createdAt: repo.createdAt ?? null,
     securityPolicyEnabled: repo.isSecurityPolicyEnabled ?? null,
-    securityFileEnabled,
+    securityFileEnabled: deriveSecurityFileEnabled(trees),
+    wellKnownFiles: classifyWellKnownFiles(trees),
     branchProtectionEnabled: branchProtection.enabled,
     branchProtectionRequiredReviews: branchProtection.requiredReviews,
     branchProtectionRequiresStatusChecks: branchProtection.requiresStatusChecks,

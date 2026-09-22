@@ -1,0 +1,45 @@
+DESCRIPTION >
+    - `health_score_report_kpis.pipe` serves the top-line Health Score v2 coverage KPIs for the
+    Health Score report (IN-1285, part of epic IN-1276 Health Score Coverage). Returns exactly one row.
+    - `repos_tracked` — count of tracked repositories (`type = 'repo'` rows in `project_insights_copy_ds`).
+    - `repos_scored` — count of tracked repositories with a non-null Health Score v2 (`healthScoreV2 IS NOT NULL`).
+    - `projects_tracked` — count of tracked projects (`type = 'project'` rows).
+    - `projects_scored` — count of tracked projects with a non-null Health Score v2.
+    - `projects_partial` — count of tracked projects with a non-null Health Score v2 but
+    `coveredCategoryCount < 3` (fewer than all three health-v2 categories present, i.e. partially scored).
+    - `updated_at` — freshness timestamp: max `timestamp` from `tinybird.datasources_ops_log` for the
+    last successful (`event_type = 'copy'`) copy into `project_insights_copy_ds`.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_kpis_counts
+SQL >
+    SELECT
+        countIf(type = 'repo') AS repos_tracked,
+        countIf(type = 'repo' AND healthScoreV2 IS NOT NULL) AS repos_scored,
+        countIf(type = 'project') AS projects_tracked,
+        countIf(type = 'project' AND healthScoreV2 IS NOT NULL) AS projects_scored,
+        countIf(
+            type = 'project' AND healthScoreV2 IS NOT NULL AND coveredCategoryCount < 3
+        ) AS projects_partial
+    FROM project_insights_copy_ds
+
+NODE health_score_report_kpis_updated_at
+SQL >
+    SELECT max(timestamp) AS updated_at
+    FROM tinybird.datasources_ops_log
+    WHERE datasource_name = 'project_insights_copy_ds' AND event_type = 'copy'
+
+NODE health_score_report_kpis_endpoint
+SQL >
+    SELECT
+        c.repos_tracked AS repos_tracked,
+        c.repos_scored AS repos_scored,
+        c.projects_tracked AS projects_tracked,
+        c.projects_scored AS projects_scored,
+        c.projects_partial AS projects_partial,
+        u.updated_at AS updated_at
+    FROM health_score_report_kpis_counts AS c
+    CROSS JOIN health_score_report_kpis_updated_at AS u

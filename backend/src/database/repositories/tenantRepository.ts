@@ -5,7 +5,6 @@ import { Error400, Error404, getCleanString } from '@crowd/common'
 
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
 import { isUserInTenant } from '../utils/userTenantUtils'
-
 import { IRepositoryOptions } from './IRepositoryOptions'
 import SequelizeRepository from './sequelizeRepository'
 

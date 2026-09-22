@@ -3,7 +3,6 @@ import { RedisCache } from '@crowd/redis'
 import { DashboardTimeframe } from '@crowd/types'
 
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
-
 import { IServiceOptions } from './IServiceOptions'
 
 interface IDashboardQueryParams {

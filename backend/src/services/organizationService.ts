@@ -1,17 +1,28 @@
 import { randomUUID } from 'crypto'
+
 import lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 import {
   captureApiChange,
   organizationMergeAction,
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import {
+  Error400,
+  Error404,
+  Error409,
+  generateOrganizationNameVariants,
+  mergeObjects,
+  normalizeHostname,
+} from '@crowd/common'
 import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
-  optionsQx,
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
@@ -22,16 +33,18 @@ import {
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
+import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src/org_merge'
 import {
   OrganizationField,
   addOrgsToSegments,
+  deleteFakeOrganizationSuggestion,
   findOrgAttributes,
   findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
 import {
   decrementOrganizationMergeSuggestionCounts,
-  findLfSegmentByName,
+  findManyLfSegmentsByNames,
   getOrganizationsCommonProjectGroupSegmentIds,
 } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
@@ -52,21 +65,16 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
-import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
-
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
 import OrganizationRepository from '../database/repositories/organizationRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import telemetryTrack from '../segment/telemetryTrack'
-
-import { IServiceOptions } from './IServiceOptions'
 import {
   keepPrimary,
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
+import { IServiceOptions } from './IServiceOptions'
 import SearchSyncService from './searchSyncService'
 
 export default class OrganizationService extends LoggerBase {
@@ -526,6 +534,7 @@ export default class OrganizationService extends LoggerBase {
 
           if (originalWithLfxMembership && toMergeWithLfxMembership) {
             await OrganizationRepository.addNoMerge(originalId, toMergeId, this.options)
+            await OrganizationRepository.removeToMerge(originalId, toMergeId, this.options)
             this.log.info(
               { originalId, toMergeId },
               '[Merge Organizations] - Skipping merge of two LFX membership orgs!',
@@ -724,6 +733,9 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
 
+          // Drop leftover suggestions that still mention the secondary.
+          await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
+
           await SequelizeRepository.commitTransaction(tx)
 
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
@@ -829,9 +841,7 @@ export default class OrganizationService extends LoggerBase {
 
     try {
       await OrganizationRepository.addNoMerge(organizationId, noMergeId, txOptions)
-      await OrganizationRepository.addNoMerge(noMergeId, organizationId, txOptions)
       await OrganizationRepository.removeToMerge(organizationId, noMergeId, txOptions)
-      await OrganizationRepository.removeToMerge(noMergeId, organizationId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {
@@ -924,8 +934,11 @@ export default class OrganizationService extends LoggerBase {
         if (data.displayName) {
           // Block organization affiliation if a LF segment (project, subproject, or project group)
           // has the same name as the organization when creating one.
-          const lfSegment = await findLfSegmentByName(qx, data.displayName)
-          if (lfSegment) {
+          const lfSegments = await findManyLfSegmentsByNames(
+            qx,
+            generateOrganizationNameVariants(data.displayName),
+          )
+          if (lfSegments.length > 0) {
             this.log.info(
               { displayName: data.displayName },
               'Found segment with the same name as the organization, blocking affiliation!',
@@ -1091,6 +1104,10 @@ export default class OrganizationService extends LoggerBase {
           await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
         }
         recalculateAffiliations = true
+      }
+
+      if (data.isAffiliationBlocked === true) {
+        await deleteFakeOrganizationSuggestion(qx, record.id)
       }
 
       await SequelizeRepository.commitTransaction(tx)

@@ -8,7 +8,6 @@ import {
 
 import * as activities from '../../activities'
 import { IRefreshDisplayAggregatesArgs } from '../../types/common'
-
 import { calculateProjectGroupMemberAggregates } from './calculateProjectGroupMemberAggregates'
 import { calculateProjectMemberAggregates } from './calculateProjectMemberAggregates'
 

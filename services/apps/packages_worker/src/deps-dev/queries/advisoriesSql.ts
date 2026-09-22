@@ -13,26 +13,20 @@ SELECT
 FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\`
 `
 
+// No purl here — package_id is resolved in Postgres against the already-ingested `packages`
+// table (see ADVISORY_PACKAGES_MERGE_SQL in workflows/ingestAdvisories.ts). Pulling purl from
+// BigQuery required scanning all of PackageVersionsLatest (~1.5 TB) just for a join key we
+// already have locally (CM-1362).
 export function buildAdvisoryPackagesSql(systems: string): string {
   return `
-WITH purl_map AS (
-  SELECT System, Name, ANY_VALUE(REGEXP_REPLACE(Purl, r'@[^@]*$', '')) AS purl
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
-  WHERE System IN (${systems})
-    AND Purl IS NOT NULL
-    AND Name NOT LIKE '%>%'
-  GROUP BY System, Name
-)
 SELECT
   a.SourceID             AS osv_id,
   LOWER(pkg.System)      AS ecosystem,
   pkg.Name               AS package_name,
-  pm.purl                AS purl,
   pkg.AffectedVersions   AS range_raw,
   pkg.UnaffectedVersions AS unaffected_raw
 FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\` a,
 UNNEST(a.Packages) AS pkg
-LEFT JOIN purl_map pm ON pm.System = pkg.System AND pm.Name = pkg.Name
 WHERE pkg.System IN (${systems})
   AND pkg.Name NOT LIKE '%>%'
 `

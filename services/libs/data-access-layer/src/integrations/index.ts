@@ -560,6 +560,32 @@ export async function addGithubNangoConnection(
   )
 }
 
+export async function getNangoMappingForRepo(
+  qx: QueryExecutor,
+  integrationId: string,
+  owner: string,
+  repoName: string,
+): Promise<INangoMappingRow | null> {
+  const rows = await qx.select(
+    `
+    SELECT nm.*
+    FROM integration.nango_mapping nm
+    JOIN integrations nango_integration ON nango_integration.id = nm."integrationId"
+    JOIN integrations new_integration ON new_integration."segmentId" = nango_integration."segmentId"
+    WHERE new_integration.id = $(integrationId)
+      AND nango_integration.platform = $(nangoPlatform)
+      AND nango_integration."deletedAt" IS NULL
+      AND nm.owner = $(owner)
+      AND nm."repoName" = $(repoName)
+    ORDER BY nm."updatedAt" DESC
+    LIMIT 1
+    `,
+    { integrationId, nangoPlatform: PlatformType.GITHUB_NANGO, owner, repoName },
+  )
+
+  return rows[0] ?? null
+}
+
 export async function addRepoToGitIntegration(
   qx: QueryExecutor,
   integrationId: string,

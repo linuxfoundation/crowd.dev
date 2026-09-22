@@ -9,8 +9,11 @@ import aiofiles.os
 from slugify import slugify
 
 from crowdgit.database.crud import (
+    end_date_maintainers_for_repos,
     find_github_identity,
     find_maintainer_identity_by_email,
+    find_project_repo_sibling,
+    get_github_maintainer_usernames_for_repo,
     get_maintainers_for_repo,
     save_service_execution,
     set_maintainer_end_date,
@@ -23,6 +26,7 @@ from crowdgit.errors import (
     CrowdGitError,
     MaintainerFileNotFoundError,
     MaintainerIntervalNotElapsedError,
+    MaintainerSkippedProjectLevelError,
     MaintanerAnalysisError,
 )
 from crowdgit.models import CloneBatchInfo, Repository
@@ -37,7 +41,12 @@ from crowdgit.models.maintainer_info import (
 )
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
-from crowdgit.services.maintainer.bedrock import invoke_bedrock
+from crowdgit.services.llm.bedrock import invoke_bedrock
+from crowdgit.services.maintainer.cncf_maintainers import (
+    find_cncf_maintainers_file,
+    is_cncf_repo,
+    parse_cncf_maintainers_yaml,
+)
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
@@ -55,6 +64,8 @@ class MaintainerService(BaseService):
         "maintainers",
         "maintainers.md",
         "maintainer.md",
+        "maintainers.yml",
+        "maintainers.yaml",
         "codeowners",
         "codeowners.md",
         "contributors",
@@ -69,6 +80,8 @@ class MaintainerService(BaseService):
         ".github/contributors.md",
         ".github/codeowners",
         "security-insights.md",
+        "security-insights.yml",
+        "security-insights.yaml",
         "readme.md",
     }
 
@@ -153,43 +166,58 @@ class MaintainerService(BaseService):
         )
         return slugify(title)
 
+    async def _resolve_identity(
+        self, github_username: str | None, email: str | None
+    ) -> str | None:
+        # Fall back to email when github_username is missing/"unknown" — the AI
+        # extractor emits "unknown" for ~4k entries on the linux MAINTAINERS file.
+        if github_username and github_username != "unknown":
+            identity_id = await find_github_identity(github_username)
+            if identity_id:
+                return identity_id
+        if email and email != "unknown":
+            return await find_maintainer_identity_by_email(email)
+        return None
+
+    async def _resolve_maintainers(
+        self, maintainers: list[MaintainerInfoItem]
+    ) -> list[tuple[MaintainerInfoItem, str]]:
+        # Shared by first-run and incremental paths so lookup semantics stay identical.
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
+
+        async def resolve(m: MaintainerInfoItem) -> tuple[MaintainerInfoItem, str | None]:
+            async with semaphore:
+                identity_id = await self._resolve_identity(m.github_username, m.email)
+                return m, identity_id
+
+        results = await asyncio.gather(*[resolve(m) for m in maintainers])
+
+        resolved: list[tuple[MaintainerInfoItem, str]] = []
+        for m, identity_id in results:
+            if identity_id is None:
+                self.logger.warning(f"Identity not found for maintainer: {m}")
+                continue
+            resolved.append((m, identity_id))
+        return resolved
+
     async def insert_new_maintainers(
         self, repo_url: str, repo_id: str, maintainers: list[MaintainerInfoItem]
     ):
-        async def process_maintainer(maintainer: MaintainerInfoItem):
-            self.logger.info(f"Processing maintainer: {maintainer.github_username}")
-            role = maintainer.normalized_title
-            original_role = self.make_role(maintainer.title)
-            # Find the identity in the database
-            github_username = maintainer.github_username
-            email = maintainer.email
+        resolved = await self._resolve_maintainers(maintainers)
+        # Concurrent upserts: large MAINTAINERS files carry thousands of entries.
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
 
-            if github_username == "unknown" and email == "unknown":
-                self.logger.warning("username & email with value 'unknown' aborting")
-                return
-            identity_id = (
-                await find_github_identity(github_username)
-                if github_username != "unknown"
-                else await find_maintainer_identity_by_email(email)
-            )
-            self.logger.debug(
-                f"Found identity_id for {github_username}: {identity_id} (type: {type(identity_id)})"
-            )
-            if identity_id:
+        async def upsert(maintainer: MaintainerInfoItem, identity_id: str) -> None:
+            async with semaphore:
+                role = maintainer.normalized_title
+                original_role = self.make_role(maintainer.title)
                 await upsert_maintainer(repo_id, identity_id, repo_url, role, original_role)
                 self.logger.info(
-                    f"Successfully upserted maintainer {github_username} with identity_id {identity_id}"
+                    f"Successfully upserted maintainer {maintainer.github_username} "
+                    f"with identity_id {identity_id}"
                 )
-            else:
-                self.logger.warning(f"Identity not found for GitHub user: {maintainer}")
 
-        semaphore = asyncio.Semaphore(3)
-
-        async def process_with_semaphore(maintainer: MaintainerInfoItem):
-            async with semaphore:
-                await process_maintainer(maintainer)
-
-        await asyncio.gather(*[process_with_semaphore(maintainer) for maintainer in maintainers])
+        await asyncio.gather(*[upsert(m, identity_id) for m, identity_id in resolved])
 
     async def compare_and_update_maintainers(
         self,
@@ -200,63 +228,78 @@ class MaintainerService(BaseService):
     ):
         self.logger.info(f"Comparing and updating maintainers for repo: {repo_id}")
         current_maintainers = await get_maintainers_for_repo(repo_id)
-        current_maintainers_dict = {m["github_username"]: m for m in current_maintainers}
-        new_maintainers_dict = {m.github_username: m for m in maintainers}
 
-        for github_username, maintainer in new_maintainers_dict.items():
-            role = maintainer.normalized_title
+        # Key by (identityId, role) — keying by github_username collapsed every
+        # "unknown" extraction into one slot, silently dropping most email-only
+        # maintainers (~4k of 4216 entries on the linux MAINTAINERS file).
+        current_by_key: dict[tuple[str, str], dict] = {
+            (m["identityId"], m["role"]): m for m in current_maintainers
+        }
+
+        # Resolve before keying so the comparison is identity-based: the same
+        # person may extract with different github_username values across runs.
+        resolved = await self._resolve_maintainers(maintainers)
+        new_by_key: dict[tuple[str, str], MaintainerInfoItem] = {
+            (identity_id, m.normalized_title): m for m, identity_id in resolved
+        }
+
+        for (identity_id, role), maintainer in new_by_key.items():
+            if (identity_id, role) in current_by_key:
+                continue
             original_role = self.make_role(maintainer.title)
-            if github_username == "unknown" and maintainer.email in ("unknown", None):
+            await upsert_maintainer(
+                repo_id, identity_id, repo_url, role, original_role, start_date=change_date
+            )
+            self.logger.info(
+                f"Inserted new maintainer {maintainer.github_username} "
+                f"with identity_id {identity_id} role {role}"
+            )
+
+        # Safety guard scoped to entries whose identity resolution FAILED this run.
+        # A maintainer who resolves but ends up under a different (identityId, role)
+        # — i.e. a role change — must still be end-dated on the old role row, so we
+        # only protect values from extractor entries that did not resolve. Matching
+        # is kind-aware so a GitHub username "foo" cannot collide with a same-named
+        # handle on another platform (different person).
+        resolved_ids = {id(m) for m, _ in resolved}
+        unresolved_usernames: set[str] = set()
+        unresolved_emails: set[str] = set()
+        for m in maintainers:
+            if id(m) in resolved_ids:
+                continue
+            if m.github_username and m.github_username != "unknown":
+                unresolved_usernames.add(m.github_username.lower())
+            if m.email and m.email != "unknown":
+                unresolved_emails.add(m.email.lower())
+
+        for (identity_id, role), current in current_by_key.items():
+            if (identity_id, role) in new_by_key:
+                continue
+            current_value = (current.get("identity_value") or "").lower()
+            current_platform = current.get("platform")
+            current_type = current.get("type")
+            identity_deleted = current.get("identity_deleted_at") is not None
+            is_github_username = current_platform == "github" and current_type == "username"
+            is_email = current_type == "email"
+            skip_end_date = (
+                not identity_deleted
+                and bool(current_value)
+                and (
+                    (is_github_username and current_value in unresolved_usernames)
+                    or (is_email and current_value in unresolved_emails)
+                )
+            )
+            if skip_end_date:
                 self.logger.warning(
-                    f"Skipping unknown github_username & email with title {maintainer.title}"
+                    f"Maintainer with identity {identity_id} role {role} could not be "
+                    f"re-resolved but is still mentioned in the source; skipping end-date"
                 )
                 continue
-            elif github_username not in current_maintainers_dict:
-                # New maintainer
-                identity_id = (
-                    await find_github_identity(github_username)
-                    if github_username != "unknown"
-                    else await find_maintainer_identity_by_email(maintainer.email)
-                )
-                self.logger.info(f"Found new maintainer {github_username} to be inserted")
-                if identity_id:
-                    await upsert_maintainer(
-                        repo_id, identity_id, repo_url, role, original_role, start_date=change_date
-                    )
-                    self.logger.info(
-                        f"Successfully inserted new maintainer {github_username} with identity_id {identity_id}"
-                    )
-                else:
-                    # will happen for new users if their identity isn't created yet but should be fixed on the next iteration
-                    self.logger.warning(f"Identity not found for username: {github_username}")
-            else:
-                # Existing maintainer
-                current_maintainer = current_maintainers_dict[github_username]
-                if current_maintainer["role"] != role:
-                    # Role has changed: we update maintainer
-                    self.logger.info(
-                        f"Role changed from {current_maintainer['role']} to {role} for maintainer {current_maintainer['identityId']}"
-                    )
-                    await upsert_maintainer(
-                        repo_id,
-                        current_maintainer["identityId"],
-                        repo_url,
-                        role,
-                        original_role,
-                        change_date,
-                    )
-
-        for github_username, current_maintainer in current_maintainers_dict.items():
-            if github_username not in new_maintainers_dict:
-                self.logger.info(
-                    f"Maintainer {github_username} with identity {current_maintainer['identityId']} no longer exists, updating its endDate..."
-                )
-                await set_maintainer_end_date(
-                    repo_id,
-                    current_maintainer["identityId"],
-                    current_maintainer["role"],
-                    change_date,
-                )
+            self.logger.info(
+                f"Maintainer with identity {identity_id} role {role} no longer exists, "
+                f"updating its endDate..."
+            )
+            await set_maintainer_end_date(repo_id, identity_id, role, change_date)
 
     async def save_maintainers(
         self,
@@ -309,7 +352,8 @@ class MaintainerService(BaseService):
             - Do not include filler words like "repository", "project", or "active".
             - **If the content does not assign an explicit individual role to each person** (e.g. a flat list with no per-person labels), set the title to the capitalized form of `normalized_title` (i.e. "Maintainer" or "Contributor"). Every person in the same response MUST receive the same derived title.
         4.  `normalized_title`:
-            - Must be exactly "maintainer" or "contributor". Reviewers and designated reviewers map to "maintainer". If the role is ambiguous, use the `{filename}` as the primary hint:
+            - Must be exactly "maintainer", "contributor", or "emeritus". Use "emeritus" for any person explicitly marked as emeritus, retired, or inactive (e.g. "Emeritus Maintainer", "Alumni", "Past Maintainer"). Otherwise:
+              - Reviewers and designated reviewers map to "maintainer". If the role is ambiguous, use the `{filename}` as the primary hint:
               - Filenames containing `MAINTAINERS`, `CODEOWNERS`, `OWNERS`, or `REVIEWERS` → "maintainer"
               - All other filenames (AUTHORS, CONTRIBUTORS, CREDITS, COMMITTERS, etc.) → "contributor"
         5.  `email`:
@@ -761,6 +805,26 @@ class MaintainerService(BaseService):
             result.ai_suggested_file = ai_suggested_file
             return result
 
+        # Runs before the saved-file shortcut so a repo already locked
+        # onto another file self-corrects.
+        if is_cncf_repo(repo_url):
+            cncf_file = find_cncf_maintainers_file(repo_path)
+            if cncf_file:
+                try:
+                    content = await self._read_text_file(str(cncf_file))
+                    cncf_maintainers = parse_cncf_maintainers_yaml(content)
+                except Exception as e:
+                    self.logger.warning(f"CNCF maintainer file processing failed: {repr(e)}")
+                    cncf_maintainers = None
+                if cncf_maintainers is not None:
+                    return _attach_metadata(
+                        MaintainerResult(
+                            maintainer_file=cncf_file.name,
+                            maintainer_info=cncf_maintainers,
+                            cncf_authoritative=True,
+                        )
+                    )
+
         # Step 1: Try the previously saved maintainer file
         if saved_maintainer_file:
             self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
@@ -941,12 +1005,15 @@ class MaintainerService(BaseService):
         if not parent_repo or not extracted_maintainers:
             return extracted_maintainers
 
-        parent_repo_maintainers = await get_maintainers_for_repo(parent_repo.id)
-        if not parent_repo_maintainers:
-            self.logger.info(f"No maintainers found for parent repo {parent_repo.url}")
+        # Dedicated github-username lookup: get_maintainers_for_repo now returns any
+        # identity type (email-linked rows included), but this filter compares against
+        # extracted github_username values, so we must narrow to platform='github'/type='username'.
+        parent_github_usernames = await get_github_maintainer_usernames_for_repo(parent_repo.id)
+        if not parent_github_usernames:
+            self.logger.info(
+                f"No github-username maintainers found for parent repo {parent_repo.url}"
+            )
             return extracted_maintainers
-
-        parent_github_usernames = {m["github_username"] for m in parent_repo_maintainers}
 
         fork_only_maintainers = [
             maintainer
@@ -986,6 +1053,13 @@ class MaintainerService(BaseService):
                     f"Interval not elapsed yet. Remaining: {remaining_hours:.2f} hours"
                 )
 
+            if not is_cncf_repo(repository.url):
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx:
+                    raise MaintainerSkippedProjectLevelError(
+                        f"Skipping: project-level source at {project_ctx.project_repo_url}"
+                    )
+
             self.logger.info(f"Starting maintainers processing for repo: {batch_info.remote}")
             maintainers = await self.extract_maintainers(
                 batch_info.repo_path,
@@ -1019,7 +1093,36 @@ class MaintainerService(BaseService):
                 repository.last_maintainer_run_at,
             )
             await update_maintainer_run(repository.id, latest_maintainer_file)
+
+            if not is_cncf_repo(repository.url):
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx and project_ctx.project_repo_id:
+                    today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+                    await end_date_maintainers_for_repos([repository.id], today_midnight)
+                    self.logger.info(
+                        f"End-dated own maintainer rows for {repository.url}: "
+                        f".project authority at {project_ctx.project_repo_url} "
+                        f"appeared during processing"
+                    )
+
+            if is_cncf_repo(repository.url) and maintainers.cncf_authoritative:
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx and project_ctx.sibling_repo_ids:
+                    today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+                    await end_date_maintainers_for_repos(
+                        project_ctx.sibling_repo_ids, today_midnight
+                    )
+                    self.logger.info(
+                        f"End-dated sibling maintainer rows for project "
+                        f"{project_ctx.project_segment_id} after processing {repository.url}"
+                    )
+
         except MaintainerIntervalNotElapsedError as e:
+            execution_status = ExecutionStatus.FAILURE
+            error_message = e.error_message
+            error_code = e.error_code.value
+        except MaintainerSkippedProjectLevelError as e:
+            await update_maintainer_run(repository.id, maintainer_file=None)
             execution_status = ExecutionStatus.FAILURE
             error_message = e.error_message
             error_code = e.error_code.value

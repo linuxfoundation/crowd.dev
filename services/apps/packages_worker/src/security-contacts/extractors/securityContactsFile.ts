@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
 import { Extractor, ExtractorDeps, ProvenanceEntry, RawContact } from '../types'
-
 import { isEmail } from './http'
 
 const log = getServiceChildLogger('security-contacts:security_contacts-file')
@@ -54,6 +53,8 @@ export const extractSecurityContactsFile: Extractor = async (target, deps) => {
   } catch {
     return { contacts: [], policies: {} }
   }
+
+  if (deps.repoTree.paths && !deps.repoTree.paths.has(PATH)) return { contacts: [], policies: {} }
 
   const { text } = await deps.githubGet(`/repos/${owner}/${name}/contents/${PATH}`, { raw: true })
   if (!text) return { contacts: [], policies: {} }

@@ -5,13 +5,13 @@ SQL >
 NODE activityRelations_deduplicated_cleaned_denormalized
 SQL >
     WITH
-        upperUTF8(o.location) AS search_u,
+        upperUTF8(coalesce(nullIf(o.country, ''), o.location)) AS search_u,
         (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
         (SELECT country_data FROM country_mapping_array) AS mapping,
         multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
         if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
     SELECT
-        activityRelations_bucket_MV_ds_1.*,
+        activityRelations_bucket_MV_ds_1.* REPLACE (lower(channel) AS channel),
         (gitInsertions + gitDeletions) as gitChangedLines,
         case
             when gitChangedLines > 0 and gitChangedLines < 10

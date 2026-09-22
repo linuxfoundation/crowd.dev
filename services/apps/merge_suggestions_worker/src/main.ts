@@ -1,7 +1,10 @@
 import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
 
-import { scheduleGenerateMemberMergeSuggestions } from './schedules/memberMergeSuggestions'
+import {
+  scheduleGenerateMemberMergeSuggestions,
+  scheduleGenerateSubprojectMemberMergeSuggestions,
+} from './schedules/memberMergeSuggestions'
 import { scheduleGenerateOrganizationMergeSuggestions } from './schedules/organizationMergeSuggestions'
 
 const config: Config = {
@@ -19,7 +22,7 @@ const config: Config = {
     enabled: true,
   },
   redis: {
-    enabled: false,
+    enabled: true,
   },
 }
 
@@ -39,6 +42,7 @@ setImmediate(async () => {
 
   await scheduleGenerateMemberMergeSuggestions()
   await scheduleGenerateOrganizationMergeSuggestions()
+  await scheduleGenerateSubprojectMemberMergeSuggestions()
 
   await svc.start()
 })

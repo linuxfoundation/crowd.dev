@@ -1,0 +1,23 @@
+DESCRIPTION >
+    - Consolidated contributors aggregate table — one row per (collectionSlug, snapshotId) pair.
+    - Built by 10 separate copy pipes (collection_insights_aggregate_copy_pipe_N.pipe for N=0..9),
+    each scanning only its own bucket table to bound read volume and avoid massive union/join timeouts.
+    - Each copy pipe (bucket N) appends its rows to this shared table with the same snapshotId timestamp.
+    Bucket N's enrich finishes ~2:00-2:05 UTC, aggregate copy runs 2:05+5N UTC (staggered).
+    - Rows are tagged with snapshotId for versioning; queries filter to max(snapshotId) for latest data.
+    - TTL of 2 days cleans up old snapshots automatically (argMax-filtering on snapshotId is the
+    correctness mechanism; TTL is just to prevent unbounded growth).
+    - Columns:
+    - `collectionSlug`: The collection identifier (String).
+    - `uniqueContributorCount`: Unique contributors in this collection across all bucket scans (UInt64).
+    - `snapshotId`: Timestamp marking when this snapshot was created (daily granularity) (DateTime).
+
+SCHEMA >
+    `collectionSlug` String,
+    `uniqueContributorCount` UInt64,
+    `snapshotId` DateTime
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(snapshotId)
+ENGINE_SORTING_KEY collectionSlug, snapshotId
+ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(2)

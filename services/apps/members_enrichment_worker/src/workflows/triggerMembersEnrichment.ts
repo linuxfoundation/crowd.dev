@@ -9,7 +9,6 @@ import { IEnrichableMember, MemberEnrichmentSource } from '@crowd/types'
 
 import * as activities from '../activities'
 import { chunkArray } from '../utils/common'
-
 import { enrichMember } from './enrichMember'
 
 const { getEnrichableMembers, getMaxConcurrentRequests } = proxyActivities<typeof activities>({

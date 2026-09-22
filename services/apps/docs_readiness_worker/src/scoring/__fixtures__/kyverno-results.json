@@ -1,0 +1,140 @@
+[
+  {
+    "id": "llms-txt-exists",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt found at any candidate location (https://kyverno.io/docs/llms.txt, https://kyverno.io/llms.txt)"
+  },
+  {
+    "id": "llms-txt-valid",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "llms-txt-size",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "llms-txt-links-resolve",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "llms-txt-links-markdown",
+    "category": "content-discoverability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "llms-txt-directive-html",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt directive found in HTML of any of 1 pages"
+  },
+  {
+    "id": "llms-txt-directive-md",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "Could not fetch markdown for any of 1 pages; 1 had no markdown version"
+  },
+  {
+    "id": "markdown-url-support",
+    "category": "markdown-availability",
+    "status": "fail",
+    "message": "No pages support .md URLs (0/1 tested)"
+  },
+  {
+    "id": "content-negotiation",
+    "category": "markdown-availability",
+    "status": "fail",
+    "message": "Server ignores Accept: text/markdown header (0/1 pages return markdown)"
+  },
+  {
+    "id": "rendering-strategy",
+    "category": "page-size",
+    "status": "pass",
+    "message": "All 1 pages contain server-rendered content"
+  },
+  {
+    "id": "page-size-markdown",
+    "category": "page-size",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "page-size-html",
+    "category": "page-size",
+    "status": "pass",
+    "message": "All 1 pages under 50K chars (median 64K HTML \u2192 9K markdown (86% boilerplate))"
+  },
+  {
+    "id": "content-start-position",
+    "category": "page-size",
+    "status": "fail",
+    "message": "1 of 1 pages have content starting past 50% (worst 71%)"
+  },
+  {
+    "id": "tabbed-content-serialization",
+    "category": "content-structure",
+    "status": "pass",
+    "message": "No tabbed content detected across 1 pages"
+  },
+  {
+    "id": "section-header-quality",
+    "category": "content-structure",
+    "status": "pass",
+    "message": "No tabbed content found; header quality check not applicable"
+  },
+  {
+    "id": "markdown-code-fence-validity",
+    "category": "content-structure",
+    "status": "skip",
+    "message": "Site does not serve markdown content; nothing to analyze"
+  },
+  {
+    "id": "http-status-codes",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "All 1 pages return proper error codes for bad URLs"
+  },
+  {
+    "id": "redirect-behavior",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "All 1 redirect(s) across 1 pages are same-host HTTP redirects"
+  },
+  {
+    "id": "llms-txt-coverage",
+    "category": "observability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "markdown-content-parity",
+    "category": "observability",
+    "status": "skip",
+    "message": "Skipped: dependency check did not pass"
+  },
+  {
+    "id": "cache-header-hygiene",
+    "category": "observability",
+    "status": "pass",
+    "message": "All 1 endpoints have appropriate cache headers"
+  },
+  {
+    "id": "auth-gate-detection",
+    "category": "authentication",
+    "status": "pass",
+    "message": "All 1 pages are publicly accessible"
+  },
+  {
+    "id": "auth-alternative-access",
+    "category": "authentication",
+    "status": "skip",
+    "message": "All docs pages are publicly accessible; no alternative access paths needed"
+  }
+]

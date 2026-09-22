@@ -28,6 +28,24 @@ export async function markNpmPackageScanned(
   )
 }
 
+// Of the given purls, the ones whose metadata scan ran at/after `since`. Used by activity
+// retries to skip purls an earlier attempt of the same activity already settled.
+export async function getNpmPurlsScannedSince(
+  qx: QueryExecutor,
+  purls: string[],
+  since: Date,
+): Promise<string[]> {
+  if (purls.length === 0) return []
+  const rows: Array<{ purl: string }> = await qx.select(
+    `SELECT purl
+       FROM npm_package_state
+      WHERE purl = ANY($(purls)::text[])
+        AND metadata_last_run_at >= $(since)`,
+    { purls, since },
+  )
+  return rows.map((r) => r.purl)
+}
+
 // Critical npm packages in the `packages` table whose metadata has never been scanned.
 // Only is_critical packages are enriched — metadata is deep, per-package work, so it is
 // scoped to the critical set (matching the daily-downloads pass).

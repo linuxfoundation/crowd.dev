@@ -1,7 +1,10 @@
+import { generateUUIDv1 } from '@crowd/common'
 import {
   IMemberOrganization,
   IMemberOrganizationAffiliationOverride,
   IMemberRoleWithOrganization,
+  MemberOrganizationDbInsert,
+  MemberOrganizationDbRow,
   MemberOrganizationUpdate,
   OrganizationSource,
 } from '@crowd/types'
@@ -14,7 +17,7 @@ import {
 import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
-
+import { prepareBulkInsert } from '../utils'
 import { EmailDomainMemberOrganizationActivityDate } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,7 +31,7 @@ export async function fetchMemberOrganizations(
 ): Promise<IMemberOrganization[]> {
   return qx.select(
     `
-      SELECT "id", "organizationId", "dateStart", "dateEnd", "title", "memberId", "source"
+      SELECT *
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
       AND "deletedAt" IS NULL
@@ -79,7 +82,8 @@ export async function fetchMemberOrganizationsBySource(
         "title",
         "memberId",
         "source",
-        "deletedAt"
+        "deletedAt",
+        "deletedBy"
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
         AND "source" = $(source)
@@ -184,18 +188,19 @@ export async function fetchManyMemberOrgs(
   qx: QueryExecutor,
   memberIds: string[],
 ): Promise<{ memberId: string; organizations: IMemberOrganization[] }[]> {
+  // Include affiliation override flags. Order by id so equal createdAt stays stable.
   return qx.select(
     `
       SELECT
         mo."memberId",
         JSONB_AGG(
           TO_JSONB(mo) || JSONB_BUILD_OBJECT(
-            'affiliationOverride', 
-            CASE WHEN moao."isPrimaryWorkExperience" IS NOT NULL 
-                 THEN JSONB_BUILD_OBJECT('isPrimaryWorkExperience', moao."isPrimaryWorkExperience")
-                 ELSE NULL 
-            END
-          ) ORDER BY mo."createdAt"
+            'affiliationOverride',
+            JSONB_BUILD_OBJECT(
+              'isPrimaryWorkExperience', COALESCE(moao."isPrimaryWorkExperience", false),
+              'allowAffiliation', COALESCE(moao."allowAffiliation", true)
+            )
+          ) ORDER BY mo."createdAt", mo.id
         ) AS "organizations"
       FROM "memberOrganizations" mo
       LEFT JOIN "memberOrganizationAffiliationOverrides" moao 
@@ -213,27 +218,63 @@ export async function fetchManyMemberOrgs(
 export async function fetchManyMemberOrgsWithOrgData(
   qx: QueryExecutor,
   memberIds: string[],
+  { withDomains = false }: { withDomains?: boolean } = {},
 ): Promise<Map<string, IMemberRoleWithOrganization[]>> {
-  const memberRoles = (await qx.select(
-    `
-      SELECT mo.*, o."displayName" as "organizationName", o.logo as "organizationLogo"
-      FROM "memberOrganizations" mo
-      join "organizations" o on mo."organizationId" = o.id
-      WHERE mo."memberId" in ($(memberIds:csv))
-      AND mo."deletedAt" IS NULL;
-    `,
-    {
-      memberIds,
-    },
-  )) as IMemberRoleWithOrganization[]
+  const domainSelect = withDomains
+    ? `,
+      COALESCE(oid.domains, '{}'::text[]) AS "organizationDomains"`
+    : ''
 
-  const resultMap = new Map<string, IMemberRoleWithOrganization[]>()
+  const domainJoin = withDomains
+    ? `
+      LEFT JOIN (
+        SELECT
+          oi."organizationId",
+          array_agg(DISTINCT lower(oi.value) ORDER BY lower(oi.value)) AS domains
+        FROM "organizationIdentities" oi
+        WHERE oi.type = 'primary-domain'
+          AND oi.verified = true
+          AND oi."organizationId" IN (
+            SELECT DISTINCT mo2."organizationId"
+            FROM "memberOrganizations" mo2
+            WHERE mo2."memberId" IN ($(memberIds:csv))
+              AND mo2."deletedAt" IS NULL
+          )
+        GROUP BY oi."organizationId"
+      ) oid ON oid."organizationId" = mo."organizationId"`
+    : ''
+
+  const sql = `
+    SELECT
+      mo.*,
+      o."displayName" AS "organizationName",
+      o.logo AS "organizationLogo"
+      ${domainSelect}
+    FROM "memberOrganizations" mo
+    JOIN organizations o ON o.id = mo."organizationId"
+    ${domainJoin}
+    WHERE mo."memberId" IN ($(memberIds:csv))
+      AND mo."deletedAt" IS NULL;
+  `
+
+  const memberRoles = (await qx.select(sql, {
+    memberIds,
+  })) as IMemberRoleWithOrganization[]
+
+  const result = new Map<string, IMemberRoleWithOrganization[]>()
+
   for (const memberId of memberIds) {
-    const roles = memberRoles.filter((r) => r.memberId === memberId)
-    resultMap.set(memberId, roles)
+    result.set(memberId, [])
   }
 
-  return resultMap
+  for (const role of memberRoles) {
+    const roles = result.get(role.memberId)
+    if (roles) {
+      roles.push(role)
+    }
+  }
+
+  return result
 }
 
 export async function fetchManyOrganizationAffiliationPolicies(
@@ -257,53 +298,89 @@ export async function fetchManyOrganizationAffiliationPolicies(
   )
 }
 
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<MemberOrganizationDbRow[]>
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<MemberOrganizationDbRow[] | number> {
+  const ts = new Date()
+
+  if (organizations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'memberOrganizations',
+    [
+      'id',
+      'memberId',
+      'organizationId',
+      'dateStart',
+      'dateEnd',
+      'title',
+      'source',
+      'verified',
+      'verifiedBy',
+      'createdAt',
+      'updatedAt',
+    ],
+    organizations.map((o) => ({
+      ...o,
+      id: o.id ?? generateUUIDv1(),
+      // NOT NULL, no DB default
+      createdAt: ts,
+      updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      verified: o.verified ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
+}
+
 export async function createMemberOrganization(
   qx: QueryExecutor,
   memberId: string,
   data: Partial<IMemberOrganization>,
 ): Promise<string | undefined> {
-  const result = await qx.selectOneOrNone(
-    `
-      INSERT INTO "memberOrganizations"(
-        "memberId",
-        "organizationId",
-        "dateStart",
-        "dateEnd",
-        "title",
-        "source",
-        "verified",
-        "verifiedBy",
-        "createdAt",
-        "updatedAt"
-      )
-      VALUES(
-        $(memberId),
-        $(organizationId),
-        $(dateStart),
-        $(dateEnd),
-        $(title),
-        $(source),
-        $(verified),
-        $(verifiedBy),
-        now(),
-        now()
-      )
-      ON CONFLICT DO NOTHING
-      RETURNING id
-    `,
-    {
-      memberId,
-      organizationId: data.organizationId,
-      dateStart: data.dateStart ?? null,
-      dateEnd: data.dateEnd ?? null,
-      title: data.title ?? null,
-      source: data.source ?? null,
-      verified: data.verified ?? false,
-      verifiedBy: data.verifiedBy ?? null,
-    },
+  const rows = await insertMemberOrganizations(
+    qx,
+    [
+      {
+        memberId,
+        organizationId: data.organizationId,
+        dateStart: data.dateStart != null ? toIsoString(data.dateStart) : null,
+        dateEnd: data.dateEnd != null ? toIsoString(data.dateEnd) : null,
+        title: data.title,
+        source: data.source,
+        verified: data.verified,
+        verifiedBy: data.verifiedBy,
+      },
+    ],
+    false,
+    true,
   )
 
-  return result?.id
+  return rows[0]?.id
 }
 
 export async function createOrUpdateMemberOrganizations(
@@ -432,20 +509,30 @@ export async function updateMemberOrganization(
   return qx.selectOneOrNone(query, params)
 }
 
+type DeleteMemberOrganizationsOptions = {
+  ids?: string[]
+  softDelete?: boolean
+  deletedBy?: string
+  skipMsaCleanup?: boolean
+}
+
 export async function deleteMemberOrganizations(
   qx: QueryExecutor,
   memberId: string,
-  ids?: string[],
-  softDelete = true,
+  options: DeleteMemberOrganizationsOptions = {},
 ): Promise<void> {
-  // Base query depends on soft vs hard delete
+  const { ids, softDelete = true, deletedBy, skipMsaCleanup = false } = options
+  // deletedBy marks a human delete; the enrichment worker's own rebuild deletes must
+  // never set it, since only a human delete permanently blocks recreation.
   const baseQuery = softDelete
-    ? 'UPDATE "memberOrganizations" SET "deletedAt" = NOW()'
+    ? deletedBy
+      ? 'UPDATE "memberOrganizations" SET "deletedAt" = NOW(), "deletedBy" = $(deletedBy)'
+      : 'UPDATE "memberOrganizations" SET "deletedAt" = NOW()'
     : 'DELETE FROM "memberOrganizations"'
 
   // Build WHERE clause
   const conditions = ['"memberId" = $(memberId)']
-  const params: Record<string, unknown> = { memberId }
+  const params: Record<string, unknown> = { memberId, deletedBy }
 
   if (ids?.length) {
     conditions.push(`"id" IN ($(ids:csv))`)
@@ -477,22 +564,33 @@ export async function deleteMemberOrganizations(
     // Then perform the soft/hard delete on memberOrganizations
     await tx.result(query, params)
 
-    // Clean up segment affiliations for orgs that no longer have any active work experiences
-    if (affectedOrgIds.length > 0) {
-      await tx.result(
-        `DELETE FROM "memberSegmentAffiliations" msa
-         WHERE msa."memberId" = $(memberId)
-           AND msa."organizationId" IN ($(orgIds:csv))
-           AND NOT EXISTS (
-             SELECT 1 FROM "memberOrganizations" mo
-             WHERE mo."memberId" = $(memberId)
-               AND mo."organizationId" = msa."organizationId"
-               AND mo."deletedAt" IS NULL
-           )`,
-        { memberId, orgIds: affectedOrgIds },
-      )
+    // Replacement cleanup deletes leftovers before the new UI row exists; keep MSAs for that org.
+    if (affectedOrgIds.length > 0 && !skipMsaCleanup) {
+      await cleanupOrphanMemberSegmentAffiliations(tx, memberId, affectedOrgIds)
     }
   })
+}
+
+export async function cleanupOrphanMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  memberId: string,
+  organizationIds: string[],
+): Promise<void> {
+  if (organizationIds.length === 0) {
+    return
+  }
+  await qx.result(
+    `DELETE FROM "memberSegmentAffiliations" msa
+     WHERE msa."memberId" = $(memberId)
+       AND msa."organizationId" IN ($(orgIds:csv))
+       AND NOT EXISTS (
+         SELECT 1 FROM "memberOrganizations" mo
+         WHERE mo."memberId" = $(memberId)
+           AND mo."organizationId" = msa."organizationId"
+           AND mo."deletedAt" IS NULL
+       )`,
+    { memberId, orgIds: organizationIds },
+  )
 }
 
 export async function deleteUndatedMemberOrganizations(
@@ -767,6 +865,24 @@ export async function addMemberRole(
   return row?.id
 }
 
+async function relocateSoftDeletedRoles(
+  qx: QueryExecutor,
+  primaryId: string,
+  secondaryId: string,
+  entityIdField: EntityField,
+): Promise<void> {
+  await qx.result(
+    `
+      UPDATE "memberOrganizations"
+      SET "${entityIdField}" = $(primaryId),
+          "updatedAt" = NOW()
+      WHERE "${entityIdField}" = $(secondaryId)
+        AND "deletedAt" IS NOT NULL
+    `,
+    { primaryId, secondaryId },
+  )
+}
+
 async function moveRolesBetweenEntities(
   qx: QueryExecutor,
   primaryId: string,
@@ -913,6 +1029,10 @@ async function moveRolesBetweenEntities(
       shouldRecalculateAffiliations = true
     }
   }
+
+  // Active roles were moved above; re-point deleted roles to the primary
+  // without restoring them so their tombstones are preserved.
+  await relocateSoftDeletedRoles(qx, primaryId, secondaryId, mergeStrat.entityIdField)
 
   return { shouldRecalculateAffiliations }
 }

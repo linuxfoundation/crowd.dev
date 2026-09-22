@@ -3,9 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,13 +15,13 @@
     "@crowd/slack": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/temporal": "workspace:*",
-    "@temporalio/activity": "~1.17.2",
-    "@temporalio/worker": "~1.17.2",
-    "@temporalio/workflow": "~1.17.2"
+    "@temporalio/activity": "catalog:",
+    "@temporalio/worker": "catalog:",
+    "@temporalio/workflow": "catalog:"
   },
   "devDependencies": {
     "@types/config": "^3.3.1",
-    "@types/node": "^20.8.2",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

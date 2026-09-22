@@ -8,24 +8,19 @@ import {
   resolveInstallations,
 } from '../enricher/githubAppAuth'
 import { InstallationPool } from '../enricher/installationPool'
-
 import { GithubGetResult } from './types'
 
 const log = getServiceChildLogger('security-contacts:github-token')
 
 const GITHUB_API = 'https://api.github.com'
 
-// Genuinely-absent / not-determinable → null body (see http.ts for the same set). 422 covers the
-// PVR endpoint returning "can't determine" per-repo; it must read as unknown, not a hard failure.
-const ABSENT_STATUSES = new Set([404, 410, 422])
+// Genuinely-absent / not-determinable → null body, not a failure (see http.ts for the same set).
+// 422 covers GitHub's PVR endpoint returning "can't determine" per-repo; 451 is permanent removal.
+const ABSENT_STATUSES = new Set([404, 410, 422, 451])
 
-// App-wide ceiling on concurrent GitHub requests. GitHub's secondary limit rejects bursts of
-// >100 concurrent requests from one app; staying under that (across all installations) is the
-// single most effective guard against secondary-limit 429s at high repo concurrency.
+// App-wide ceiling on concurrent requests — GitHub's secondary limit rejects bursts >100/app.
 const MAX_CONCURRENT_GITHUB_REQUESTS = 50
 
-// Bound the park/switch/backoff retry loop so a persistently-limited request eventually surfaces
-// as a failure (which the pipeline treats as transient and preserves existing data).
 const MAX_RATE_LIMIT_RETRIES = 6
 
 /** Minimal async semaphore with fair FIFO hand-off, used to cap concurrent GitHub requests. */
@@ -126,27 +121,26 @@ async function fetchOnce(
 }
 
 /**
- * Rate-limit-safe GitHub API GET. Selects an installation from the pool, sleeps if all are parked,
- * feeds response budget headers back so exhausted installations get parked before they 403, and on
- * a rate-limit response parks (primary) or waits out Retry-After (secondary, app-wide) then retries
- * on another installation. Falls back to a single unauthenticated request when no App is configured.
- *
- * Returns text on 200; null body for absent resources (404/410/422); throws on other non-200s and
- * once the retry budget is exhausted (callers treat throws as transient and preserve existing data).
+ * Rate-limit-safe GitHub API GET. Rotates across installations in the pool, parking exhausted
+ * or rate-limited ones and retrying, up to MAX_RATE_LIMIT_RETRIES. Falls back to a single
+ * unauthenticated request when no App is configured.
  */
 export async function githubApiGet(
   path: string,
   timeoutMs: number,
-  opts: { raw?: boolean } = {},
+  opts: { raw?: boolean; extraOkStatuses?: number[] } = {},
 ): Promise<GithubGetResult> {
   const accept = opts.raw ? 'application/vnd.github.raw' : 'application/vnd.github+json'
+  const okStatuses = opts.extraOkStatuses
+    ? new Set([...ABSENT_STATUSES, ...opts.extraOkStatuses])
+    : ABSENT_STATUSES
   const url = `${GITHUB_API}${path}`
   const resolved = await ensurePool()
 
   if (!resolved) {
     const res = await fetchOnce(url, timeoutMs, { Accept: accept })
     if (res.status === 200) return { status: 200, text: await res.text() }
-    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, text: null }
+    if (okStatuses.has(res.status)) return { status: res.status, text: null }
     throw new Error(`githubApiGet ${path} failed: HTTP ${res.status}`)
   }
 
@@ -174,7 +168,7 @@ export async function githubApiGet(
       Accept: accept,
     })
 
-    if (res.status === 200 || ABSENT_STATUSES.has(res.status)) {
+    if (res.status === 200 || okStatuses.has(res.status)) {
       pool.parkIfBudgetLow(
         installationId,
         numOrNull(res.headers.get('x-ratelimit-remaining')),

@@ -1,6 +1,14 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import {
+  getOverlappingGroupedMemberOrganizations,
+  groupMemberOrganizations,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberVerifyWorkExperienceAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
@@ -10,18 +18,9 @@ import {
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
-
-import { ok } from '@/utils/api'
-import {
-  getOverlappingEmailDomainMemberOrganizations,
-  groupMemberOrganizations,
-  toMemberWorkExperience,
-} from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),
@@ -30,7 +29,7 @@ const paramsSchema = z.object({
 
 const bodySchema = z.object({
   verified: z.boolean(),
-  verifiedBy: z.string(),
+  verifiedBy: z.string().trim().min(1),
 })
 
 export async function verifyMemberWorkExperience(req: Request, res: Response): Promise<void> {
@@ -52,15 +51,22 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
-    memberOrgs,
-    memberOrg,
+  // Stash org fields for response fallback when reject soft-deletes the row.
+  const memberOrgsWithOrgDataBeforeChange = verified
+    ? []
+    : ((
+        await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+          withDomains: true,
+        })
+      ).get(memberId) ?? [])
+
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
+
+  const overlappingRowsWithIds = overlappingGroupedRows.filter(
+    (row): row is typeof row & { id: string } => !!row.id,
   )
 
-  const memberOrgIdsToDelete = [
-    workExperienceId,
-    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
-  ]
+  const memberOrgIdsToDelete = [workExperienceId, ...overlappingRowsWithIds.map((row) => row.id)]
 
   const verifiedUpdate = { verified, verifiedBy }
 
@@ -81,14 +87,16 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingEmailDomainRows.filter(
-            (row): row is typeof row & { id: string } => !!row.id,
-          )) {
+          for (const overlappingRow of overlappingRowsWithIds) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
           }
         } else {
-          // Unverifying removes the grouped work experience from both visible and hidden rows
-          await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete, true)
+          // Unverifying removes the grouped work experience from both visible and hidden rows.
+          // This is a human decision, so deletedBy is set — enrichment must never recreate it.
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: memberOrgIdsToDelete,
+            deletedBy: verifiedBy,
+          })
         }
       })
 
@@ -99,17 +107,26 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
         })
       }
 
-      captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
+      captureNewState(updatedMemberOrg ?? { ...memberOrg, ...verifiedUpdate })
     }),
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const groupedMemberOrgs = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
+  const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
+
+  const fallbackMo = groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId)
 
   const responseMo: IMemberRoleWithOrganization =
-    groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
-      (mo) => mo.id === workExperienceId,
-    ) ??
-    ({ ...memberOrg, ...updatedMemberOrg, verified, verifiedBy } as IMemberRoleWithOrganization)
+    groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
+    (fallbackMo ? { ...fallbackMo, ...verifiedUpdate } : undefined)
+
+  if (!responseMo) {
+    throw new NotFoundError('Work experience not found')
+  }
 
   ok(res, toMemberWorkExperience(responseMo))
 }

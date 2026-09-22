@@ -1,3 +1,5 @@
+import { WellKnownFileEntry } from './wellKnownFiles'
+
 export interface LightRepoResult {
   url: string
   host: 'github'
@@ -17,6 +19,7 @@ export interface LightRepoResult {
   createdAt: string | null
   securityPolicyEnabled: boolean | null
   securityFileEnabled: boolean | null
+  wellKnownFiles: WellKnownFileEntry[]
   branchProtectionEnabled: boolean | null
   branchProtectionRequiredReviews: number | null
   branchProtectionRequiresStatusChecks: boolean | null
@@ -27,6 +30,12 @@ export interface LightRepoResult {
     remaining: number
     resetAt: string
   } | null
+}
+
+export interface RepoWellKnownFilesUpdate {
+  repoId: string
+  checkedAt: string
+  files: WellKnownFileEntry[]
 }
 
 export interface RepoActivitySnapshot {
@@ -41,6 +50,8 @@ export interface RepoActivitySnapshot {
   prsClosedUnmerged12m: number | null
   prMedianTimeToMergeHours: number | null
   prMedianTimeToFirstResponseHours: number | null
+  externalPrsOpened12m: number | null
+  externalPrsMerged12m: number | null
   issuesOpenedLast12m: number | null
   issuesClosedLast12m: number | null
   issuesOpenedLast6m: number | null

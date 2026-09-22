@@ -22,6 +22,62 @@ describe('canonicalizeRepoUrl', () => {
     ['gitlab:group/project', 'https://gitlab.com/group/project', 'gitlab'],
     ['bitbucket:team/repo', 'https://bitbucket.org/team/repo', 'bitbucket'],
     ['https://example.com/owner/repo', 'https://example.com/owner/repo', 'other'],
+    ['git+https://github.com/1aGh/md-claude.git', 'https://github.com/1agh/md-claude', 'github'],
+    [
+      'ssh://git@github.com:1inch/limit-order-protocol-utils.git',
+      'https://github.com/1inch/limit-order-protocol-utils',
+      'github',
+    ],
+    ['ssh://git@github.com:2222/foo/bar.git', 'https://github.com/foo/bar', 'github'],
+    [
+      'https://gitlab.com/group/subgroup/project',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/subsubgroup/project.git',
+      'https://gitlab.com/group/subgroup/subsubgroup/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/project/-/tree/master/src',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/-/blob/main/README.md',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
+    [
+      // Pre-2018 GitLab / shorthand copies: no `/-/` marker ahead of the deep-link.
+      'https://gitlab.com/group/project/tree/master/src',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/blob/main/README.md',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
+    [
+      // The reviewer's exact regression example: `raw` was missing from the legacy
+      // route list, so this previously resolved as the bogus nested repo
+      // `group/project/raw`.
+      'https://gitlab.com/group/project/raw/main/file.php',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/project/blame/main/file.php',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/issues/42',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
@@ -44,10 +100,14 @@ describe('canonicalizeRepoUrl', () => {
     })
   })
 
-  it.each([['not a url'], ['https://github.com/onlyowner'], [''], ['   ']])(
-    'returns null for unparseable input %s',
-    (input) => {
-      expect(canonicalizeRepoUrl(input)).toBeNull()
-    },
-  )
+  it.each([
+    ['not a url'],
+    ['https://github.com/onlyowner'],
+    [''],
+    ['   '],
+    ['123'],
+    ['https://github.com/Wscats'],
+  ])('returns null for unparseable input %s', (input) => {
+    expect(canonicalizeRepoUrl(input)).toBeNull()
+  })
 })

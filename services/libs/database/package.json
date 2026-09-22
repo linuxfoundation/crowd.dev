@@ -3,19 +3,16 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "^20.8.2",
-    "typescript": "^5.6.3"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
-    "axios": "^1.11.0",
-    "pg-promise": "^11.4.3"
+    "axios": "catalog:",
+    "pg-promise": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

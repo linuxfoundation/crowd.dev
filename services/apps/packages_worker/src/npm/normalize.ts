@@ -1,6 +1,4 @@
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
-import type { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
-
+import { ResolvedManifestRepo, resolveManifestRepo } from '../utils/resolveManifestRepo'
 import type { Packument } from './types'
 
 export function parseNpmName(raw: string): { namespace: string | null; name: string } {
@@ -11,27 +9,6 @@ export function parseNpmName(raw: string): { namespace: string | null; name: str
     }
   }
   return { namespace: null, name: raw }
-}
-
-// Postgres text columns cannot store NUL (U+0000); npm packuments occasionally
-// carry them (e.g. mojibake descriptions). Strip them in place from every string
-// in the packument before persisting — otherwise the inlined value breaks the
-// PostgreSQL wire protocol ("invalid message format").
-export function stripNullBytesDeep<T>(value: T): T {
-  if (typeof value === 'string') {
-    // eslint-disable-next-line no-control-regex
-    return value.replace(/\u0000/g, '') as T
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) value[i] = stripNullBytesDeep(value[i])
-    return value
-  }
-  if (value !== null && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    for (const k of Object.keys(obj)) obj[k] = stripNullBytesDeep(obj[k])
-    return value
-  }
-  return value
 }
 
 export function normalizeLicenses(packument: Packument): string[] {
@@ -91,12 +68,24 @@ function dedup(arr: string[]): string[] {
   return [...new Set(arr)]
 }
 
-export function extractRepo(packument: Packument): CanonicalRepo | null {
+export function npmRepositoryField(packument: Packument): string | null {
   const repo = packument.repository
   if (!repo) return null
-  const raw = typeof repo === 'string' ? repo : repo.url
-  if (!raw) return null
-  return canonicalizeRepoUrl(raw)
+  return (typeof repo === 'string' ? repo : repo.url) || null
+}
+
+function npmBugsUrl(packument: Packument): string | null {
+  const bugs = packument.bugs
+  if (!bugs) return null
+  return (typeof bugs === 'string' ? bugs : bugs.url) || null
+}
+
+export function resolveNpmRepo(packument: Packument): ResolvedManifestRepo | null {
+  return resolveManifestRepo([
+    { field: 'repository', url: npmRepositoryField(packument) },
+    { field: 'homepage', url: packument.homepage },
+    { field: 'bugs.url', url: npmBugsUrl(packument) },
+  ])
 }
 
 export function collectMaintainers(packument: Packument): Array<{

@@ -3,13 +3,14 @@ import max from 'lodash.max'
 import min from 'lodash.min'
 import moment from 'moment'
 
+import { normalizeMemberIdentityValue } from '@crowd/common'
 import {
   ActivityRelations,
   ActivityTimeseriesDatapoint,
   Counter,
   TinybirdClient,
 } from '@crowd/database'
-import { ActivityDisplayService } from '@crowd/integrations'
+import { ActivityDisplayService } from '@crowd/integrations/src/integrations/activityDisplayService'
 import { ActivityTypeSettings, ITimeseriesDatapoint, PageData } from '@crowd/types'
 
 import { getLatestMemberActivityRelations } from '../activityRelations'
@@ -20,7 +21,6 @@ import {
 } from '../old/apps/data_sink_worker/repo/activity.data'
 import { findOrgsByIds } from '../organizations'
 import { QueryExecutor } from '../queryExecutor'
-
 import { buildActivitiesParams } from './tinybirdAdapter'
 import {
   IActivitySentiment,
@@ -448,6 +448,11 @@ export async function createOrUpdateRelations(
       continue
     }
 
+    data.username = normalizeMemberIdentityValue(data.username)
+    if (data.objectMemberUsername != null) {
+      data.objectMemberUsername = normalizeMemberIdentityValue(data.objectMemberUsername)
+    }
+
     if (data.platform === undefined || data.platform === null) {
       continue
     }
@@ -479,7 +484,7 @@ export async function createOrUpdateRelations(
                 `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value)
+          WHERE lower(value) = lower($(value))
             and platform = $(platform)
             and verified = true
             and "deletedAt" is null
@@ -588,7 +593,7 @@ export async function createOrUpdateRelations(
             `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value)
+        WHERE lower(value) = lower($(value))
           and platform = $(platform)
           and verified = true
           and "deletedAt" is null
@@ -777,6 +782,13 @@ export async function updateActivityRelationsById(
   qe: QueryExecutor,
   data: IActivityRelationUpdateById,
 ): Promise<void> {
+  if (typeof data.username === 'string') {
+    data.username = normalizeMemberIdentityValue(data.username)
+  }
+  if (typeof data.objectMemberUsername === 'string') {
+    data.objectMemberUsername = normalizeMemberIdentityValue(data.objectMemberUsername)
+  }
+
   const fields: string[] = []
 
   for (const [key, value] of Object.entries(data)) {

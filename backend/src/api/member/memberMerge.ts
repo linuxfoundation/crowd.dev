@@ -1,5 +1,5 @@
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { CommonMemberService, invalidateMemberQueryCache } from '@crowd/common_services'
-import { optionsQx } from '@crowd/data-access-layer'
 
 import Permissions from '../../security/permissions'
 import track from '../../segment/track'

@@ -110,7 +110,7 @@ export async function fetchMembersWithTooManyIdentitiesPerPlatform(
                 FROM "memberIdentities" mi
                 WHERE mi.type = 'username'
                   AND mi.verified = true
-                  AND mi.platform IN ('linkedin', 'github', 'twitter', 'lfx', 'slack', 'cvent', 'tnc', 'groupsio')
+                  AND mi.platform IN ('linkedin', 'github', 'twitter', 'lfx', 'slack', 'cvent', 'tnc', 'groupsio', 'mailinglist')
                   AND mi."deletedAt" is null
                 GROUP BY mi."memberId", mi.platform
                 HAVING COUNT(*) > ${threshold}

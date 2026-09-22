@@ -82,7 +82,7 @@ class OrganizationMergeSuggestionsRepository {
 
   async addToMerge(
     suggestions: IOrganizationMergeSuggestion[],
-    table: OrganizationMergeSuggestionTable,
+    similarityThreshold = 0.75,
   ): Promise<void> {
     // Remove possible duplicates
     suggestions = removeDuplicateSuggestions<IOrganizationMergeSuggestion>(
@@ -99,9 +99,9 @@ class OrganizationMergeSuggestionsRepository {
       }, new Set<string>()),
     )
 
-    // filter non existing organization ids from suggestions
     const nonExistingIds = await this.findNonExistingIds(uniqueOrganizationIds)
 
+    // filter non existing organization ids from suggestions
     suggestions = suggestions.filter(
       (s) =>
         !nonExistingIds.includes(s.organizations[0]) &&
@@ -131,27 +131,19 @@ class OrganizationMergeSuggestionsRepository {
       }
     }
 
-    for (const suggestionChunk of suggestionChunks) {
-      const placeholders: string[] = []
-      let replacements: Record<string, unknown> = {}
+    const upsertTable = async (
+      table: OrganizationMergeSuggestionTable,
+      placeholders: string[],
+      replacements: Record<string, unknown>,
+      onlyAboveThreshold: boolean,
+    ) => {
+      const thresholdFilter = onlyAboveThreshold ? 'and v.similarity > $(similarityThreshold)' : ''
 
-      suggestionChunk.forEach((suggestion, index) => {
-        const { query, replacements: chunkReplacements } = insertValues(
-          suggestion.organizations[0],
-          suggestion.organizations[1],
-          suggestion.similarity,
-          index,
-        )
-        placeholders.push(query)
-        replacements = { ...replacements, ...chunkReplacements }
-      })
-
-      try {
-        // 1. Update existing rows if they already exist
-        await this.connection.none(
-          `
+      // Update existing rows if they already exist
+      await this.connection.none(
+        `
             update "${table}" t
-            set 
+            set
               similarity = v.similarity,
               "updatedAt" = now()
             from (
@@ -159,16 +151,19 @@ class OrganizationMergeSuggestionsRepository {
                 ${placeholders.join(', ')}
             ) as v("organizationId", "toMergeId", "similarity", "createdAt", "updatedAt")
             where
-              (t."organizationId" = v."organizationId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
-              or
-              (t."organizationId" = v."toMergeId"::uuid and t."toMergeId" = v."organizationId"::uuid);
+              (
+                (t."organizationId" = v."organizationId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
+                or
+                (t."organizationId" = v."toMergeId"::uuid and t."toMergeId" = v."organizationId"::uuid)
+              )
+              ${thresholdFilter};
           `,
-          replacements,
-        )
+        replacements,
+      )
 
-        // 2. insert only new rows and enforce bidirectional uniqueness
-        await this.connection.none(
-          `
+      // insert only new rows and enforce bidirectional uniqueness
+      await this.connection.none(
+        `
             insert into "${table}"
               ("organizationId", "toMergeId", "similarity", "createdAt", "updatedAt")
             select v.*
@@ -183,7 +178,61 @@ class OrganizationMergeSuggestionsRepository {
                 (t."organizationId" = v."organizationId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
                 or
                 (t."organizationId" = v."toMergeId"::uuid and t."toMergeId" = v."organizationId"::uuid)
-            );
+            )
+            ${thresholdFilter};
+          `,
+        replacements,
+      )
+    }
+
+    for (const suggestionChunk of suggestionChunks) {
+      const placeholders: string[] = []
+      let replacements: Record<string, unknown> = {
+        similarityThreshold,
+      }
+
+      suggestionChunk.forEach((suggestion, index) => {
+        const { query, replacements: chunkReplacements } = insertValues(
+          suggestion.organizations[0],
+          suggestion.organizations[1],
+          suggestion.similarity,
+          index,
+        )
+        placeholders.push(query)
+        replacements = { ...replacements, ...chunkReplacements }
+      })
+
+      try {
+        // organizationToMerge is the high-confidence slice of raw (score > similarityThreshold).
+        // A later run can score the same pair lower, so drop it from UI when it falls to or below the cutoff.
+        await upsertTable(
+          OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
+          placeholders,
+          replacements,
+          false,
+        )
+
+        await upsertTable(
+          OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
+          placeholders,
+          replacements,
+          true,
+        )
+
+        await this.connection.none(
+          `
+            delete from "organizationToMerge" t
+            using (
+              values
+                ${placeholders.join(', ')}
+            ) as v("organizationId", "toMergeId", "similarity", "createdAt", "updatedAt")
+            where
+              (
+                (t."organizationId" = v."organizationId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
+                or
+                (t."organizationId" = v."toMergeId"::uuid and t."toMergeId" = v."organizationId"::uuid)
+              )
+              and v.similarity <= $(similarityThreshold);
           `,
           replacements,
         )
@@ -322,31 +371,6 @@ class OrganizationMergeSuggestionsRepository {
     )
 
     return results.map((r) => [r.organizationId, r.toMergeId])
-  }
-
-  async removeOrganizationMergeSuggestions(
-    suggestion: string[],
-    table: OrganizationMergeSuggestionTable,
-  ): Promise<void> {
-    const query = `
-      delete from "${table}" 
-      where 
-        ("organizationId" = $(organizationId) and "toMergeId" = $(toMergeId))
-        or 
-        ("organizationId" = $(toMergeId) and "toMergeId" = $(organizationId))
-    `
-
-    const replacements = {
-      organizationId: suggestion[0],
-      toMergeId: suggestion[1],
-    }
-
-    try {
-      await this.connection.none(query, replacements)
-    } catch (error) {
-      this.log.error(`Error removing organization suggestions rom ${table}!`, error)
-      throw error
-    }
   }
 }
 

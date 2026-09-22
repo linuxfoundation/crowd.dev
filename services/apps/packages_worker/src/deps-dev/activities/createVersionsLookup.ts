@@ -4,7 +4,7 @@ import { getPackagesDb } from '../../db'
 
 const log = getServiceChildLogger('createVersionsLookup')
 
-const VALID_ECOSYSTEMS = new Set(['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo'])
+const VALID_ECOSYSTEMS = new Set(['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo', 'rubygems'])
 
 // Builds a persistent UNLOGGED lookup table in the staging schema for the root-version JOIN in
 // ingestDependencies. Using a temp table per chunk would rebuild 4GB for every chunk on npm

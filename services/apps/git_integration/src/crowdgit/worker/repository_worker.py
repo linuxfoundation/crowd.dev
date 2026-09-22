@@ -19,6 +19,7 @@ from crowdgit.errors import (
 from crowdgit.logger import logger
 from crowdgit.models import Repository
 from crowdgit.services import (
+    AffiliationService,
     CloneService,
     CommitService,
     LicenseService,
@@ -44,6 +45,7 @@ class RepositoryWorker:
         software_value_service: SoftwareValueService,
         vulnerability_scanner_service: VulnerabilityScannerService,
         maintainer_service: MaintainerService,
+        affiliation_service: AffiliationService,
         license_service: LicenseService,
         queue_service: QueueService,
     ):
@@ -52,6 +54,7 @@ class RepositoryWorker:
         self.software_value_service = software_value_service
         self.vulnerability_scanner_service = vulnerability_scanner_service
         self.maintainer_service = maintainer_service
+        self.affiliation_service = affiliation_service
         self.license_service = license_service
         self.queue_service = queue_service
         self._shutdown = False
@@ -129,6 +132,7 @@ class RepositoryWorker:
             (self.clone_service, "cloning"),
             (self.commit_service, "commit_processing"),
             (self.maintainer_service, "maintainer_processing"),
+            (self.affiliation_service, "affiliation_processing"),
             (self.software_value_service, "software_value_processing"),
             (self.vulnerability_scanner_service, "vulnerability_scan_processing"),
             (self.license_service, "license_detection"),
@@ -145,6 +149,7 @@ class RepositoryWorker:
             self.clone_service,
             self.commit_service,
             self.maintainer_service,
+            self.affiliation_service,
             self.software_value_service,
             self.vulnerability_scanner_service,
             self.license_service,
@@ -210,6 +215,7 @@ class RepositoryWorker:
                         repository.id, batch_info.repo_path, repository.url
                     )
                     await self.maintainer_service.process_maintainers(repository, batch_info)
+                    await self.affiliation_service.process_affiliations(repository, batch_info)
                     licenses = await self.license_service.detect(batch_info.repo_path)
                     await update_repository_licenses(repository.id, licenses)
                 if batch_info.is_final_batch:

@@ -1,0 +1,27 @@
+{
+  "name": "@crowd/test-kit",
+  "private": true,
+  "sideEffects": false,
+  "exports": {
+    "./db": "./src/db/index.ts",
+    "./factories": "./src/factories/index.ts",
+    "./faker": "./src/faker.ts"
+  },
+  "scripts": {
+    "tsc-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crowd/common": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/database": "workspace:*",
+    "@crowd/integrations": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@faker-js/faker": "^9.9.0",
+    "pg-promise": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "4.1.7"
+  }
+}

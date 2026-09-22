@@ -44,7 +44,7 @@ SQL >
         country_data .3 AS country_code,
         COUNT(id) AS contributorCount,
         round(
-            (count(id) / (select "contributorCount" from active_contributors)) * 100
+            (count(id) / (select "contributorCount" from active_contributors)) * 100, 2
         ) as "contributorPercentage"
     FROM parsed_country
     GROUP BY country, flag, country_code

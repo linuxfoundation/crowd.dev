@@ -10,7 +10,6 @@ import {
 import * as activities from '../activities'
 import { IBlockOrganizationAffiliationArgs } from '../types'
 import { chunkArray } from '../utils/common'
-
 import { recalculateMemberAffiliations } from './recalculate-member-affiliations'
 
 const {

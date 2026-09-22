@@ -77,8 +77,9 @@ export async function upsertNuGetPackage(
         description              = COALESCE(EXCLUDED.description,              packages.description),
         homepage                 = COALESCE(EXCLUDED.homepage,                 packages.homepage),
         declared_repository_url  = COALESCE(EXCLUDED.declared_repository_url,  packages.declared_repository_url),
-        repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url,
-                                            packages.declared_repository_url),
+        -- No declared_repository_url fallback: the caller passes NULL to mean "unknown,
+        -- preserve" on a rate limit — falling back would leak the raw, uncanonicalized value in.
+        repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url),
         licenses                 = COALESCE(EXCLUDED.licenses,                 packages.licenses),
         licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
         keywords                 = COALESCE(EXCLUDED.keywords,                 packages.keywords),

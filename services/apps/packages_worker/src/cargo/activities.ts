@@ -4,7 +4,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getCargoConfig } from '../config'
 import { getPackagesDb, getPackagesDbConnection } from '../db'
-
 import { DUMP_DIR, downloadAndExtractDump } from './dump'
 import {
   enrichDownloadsDaily,
@@ -15,6 +14,7 @@ import {
   flushAudit,
 } from './enrich'
 import { STAGING_SCHEMA, loadDump } from './loadDump'
+import { normalizeRepos } from './normalizeRepos'
 import {
   EnrichDownloadsDailyResult,
   EnrichMaintainersResult,
@@ -22,6 +22,7 @@ import {
   EnrichReposResult,
   EnrichVersionsResult,
   LoadResult,
+  NormalizeReposResult,
 } from './types'
 
 const log = getServiceChildLogger('cargo-activity')
@@ -35,6 +36,10 @@ export async function cargoDownloadAndLoad(): Promise<LoadResult> {
   const result = await loadDump(qx, conn, dumpDir)
   log.info({ ...result }, 'cargo dump loaded')
   return result
+}
+
+export async function cargoNormalizeRepos(): Promise<NormalizeReposResult> {
+  return normalizeRepos(await getPackagesDb())
 }
 
 export async function cargoEnrichPackages(): Promise<EnrichPackagesResult> {

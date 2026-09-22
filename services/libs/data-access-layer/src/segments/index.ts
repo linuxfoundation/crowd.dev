@@ -1,18 +1,22 @@
 import lodash from 'lodash'
 import cloneDeep from 'lodash.clonedeep'
 
-import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations'
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
+import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations/src/integrations/activityTypes'
 import {
   ActivityTypeSettings,
   MergeActionState,
   MergeActionType,
   PlatformType,
   SegmentData,
+  SegmentDbInsert,
+  SegmentDbRow,
   SegmentRawData,
+  SegmentStatus,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+import { prepareBulkInsert } from '../utils'
 
 export async function findProjectGroupByName(
   qx: QueryExecutor,
@@ -30,19 +34,30 @@ export async function findProjectGroupByName(
   )
 }
 
-export async function findLfSegmentByName(
+export async function findManyLfSegmentsByNames(
   qx: QueryExecutor,
-  name: string,
-): Promise<SegmentData | null> {
-  return qx.selectOneOrNone(
+  names: string[],
+): Promise<SegmentData[]> {
+  const normalized = names
+    .map((name) => name?.trim().toLowerCase())
+    .filter((name): name is string => Boolean(name))
+
+  if (normalized.length === 0) {
+    return []
+  }
+
+  return qx.select(
     `
       SELECT *
       FROM segments
       WHERE "isLF" = true
-        AND trim(lower(name)) = trim(lower($(name)))
-      LIMIT 1;
+        AND (
+          trim(lower(name)) IN ($(names:csv))
+          OR trim(both FROM regexp_replace(trim(lower(name)), '\\s*\\([^)]*\\)\\s*$', ''))
+            IN ($(names:csv))
+        )
     `,
-    { name },
+    { names: normalized },
   )
 }
 
@@ -162,6 +177,71 @@ export function isSegmentProject(segment: SegmentData | SegmentRawData): boolean
 
 export function isSegmentSubproject(segment: SegmentData | SegmentRawData): boolean {
   return segment.slug != null && segment.parentSlug != null && segment.grandparentSlug != null
+}
+
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<SegmentDbRow[]>
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<SegmentDbRow[] | number> {
+  if (segments.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'segments',
+    [
+      'id',
+      'slug',
+      'name',
+      'url',
+      'status',
+      'isLF',
+      'parentName',
+      'grandparentName',
+      'parentSlug',
+      'grandparentSlug',
+      'description',
+      'sourceId',
+      'sourceParentId',
+      'customActivityTypes',
+      'activityChannels',
+      'parentId',
+      'grandparentId',
+      // `type` is GENERATED ALWAYS from parentSlug/grandparentSlug — do not insert
+      'maturity',
+      'tenantId',
+    ],
+    segments.map((s) => ({
+      ...s,
+      id: s.id ?? generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      // NOT NULL with defaults — must set while column is in INSERT list
+      status: s.status ?? SegmentStatus.ACTIVE,
+      isLF: s.isLF ?? true,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
 }
 
 export async function getSegmentSubprojects(

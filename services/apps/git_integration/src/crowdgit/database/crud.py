@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -5,6 +6,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 
 from crowdgit.enums import RepositoryPriority, RepositoryState
 from crowdgit.errors import RepoLockingError
+from crowdgit.models.affiliation_info import RepoAffiliationRegistry
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
@@ -333,7 +335,8 @@ async def find_github_identity(github_username: str):
         FROM "memberIdentities"
     WHERE
         platform = 'github'
-        AND value = $1
+        AND LOWER(value) = LOWER($1)
+        AND "verified" = TRUE
         AND "deletedAt" is null
     LIMIT 1
     """
@@ -405,16 +408,44 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 
 
 async def get_maintainers_for_repo(repo_id: str):
+    # Active rows only (endDate IS NULL) — reappearing maintainers hit the "new"
+    # branch and get reactivated by upsert_maintainer's ON CONFLICT clause.
+    # Deleted identities included regardless of verified flag so orphaned rows are
+    # visible to the diff loop and get end-dated (unverify flow clears verified before deletedAt).
+    # platform/type are returned so the diff's safety guard can match identifiers
+    # by kind and avoid cross-platform value collisions (e.g. a GitHub username
+    # "foo" colliding with a same-named handle on another platform).
     maintainers_sql_query = """
-        SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
+        SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId",
+               mem.value as identity_value, mem.platform, mem.type, mem."deletedAt" as identity_deleted_at
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
-        WHERE mi."repoId" = $1 AND mem.platform = 'github' AND mem.type = 'username' and mem.verified = True AND mem."deletedAt" is null
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND (mem."verified" = TRUE OR mem."deletedAt" IS NOT NULL)
         """
     return await query(
         maintainers_sql_query,
         (repo_id,),
     )
+
+
+async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
+    """Return GitHub usernames of active maintainers for fork/parent-repo filtering."""
+    sql_query = """
+        SELECT mem.value
+            FROM "maintainersInternal" mi
+            JOIN "memberIdentities" mem ON mi."identityId" = mem.id
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND mi."role" != 'emeritus'
+          AND mem.platform = 'github'
+          AND mem.type = 'username'
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
+        """
+    rows = await query(sql_query, (repo_id,))
+    return {row["value"] for row in rows}
 
 
 async def set_maintainer_end_date(
@@ -435,6 +466,69 @@ async def set_maintainer_end_date(
             role,
         ),
     )
+
+
+@dataclass
+class ProjectContext:
+    project_segment_id: str
+    project_repo_id: str
+    project_repo_url: str
+    sibling_repo_ids: list[str] = field(default_factory=list)
+
+
+async def find_project_repo_sibling(repo_id: str, segment_id: str | None) -> ProjectContext | None:
+    """
+    For a given repo, find the sibling .project repo within the same CNCF project segment,
+    and list all other sibling repo IDs.
+
+    Returns None if the repo's segment is not a CNCF subproject (grandparentSlug != 'cncf')
+    or no .project sibling exists.
+    """
+    if not segment_id:
+        return None
+    sql = """
+        WITH project_id_cte AS (
+            SELECT "parentId" AS project_id
+            FROM public.segments
+            WHERE id = $1::uuid AND type = 'subproject' AND "grandparentSlug" = 'cncf'
+        ),
+        project_repos AS (
+            SELECT r.id, r.url
+            FROM public.repositories r
+            JOIN public.segments s ON s.id = r."segmentId"
+            WHERE (SELECT project_id FROM project_id_cte) IS NOT NULL
+              AND s.type = 'subproject'
+              AND s."parentId" = (SELECT project_id FROM project_id_cte)
+              AND r."deletedAt" IS NULL
+        )
+        SELECT
+            (SELECT project_id::text FROM project_id_cte)                                           AS project_segment_id,
+            (SELECT id::text  FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_id,
+            (SELECT url       FROM project_repos WHERE url ~* '/\\.project(\\.git)?$' LIMIT 1)      AS project_repo_url,
+            ARRAY(SELECT id::text FROM project_repos WHERE url !~* '/\\.project(\\.git)?$')         AS sibling_repo_ids
+    """
+    row = await fetchrow(sql, (segment_id,))
+    if not row or not row.get("project_segment_id") or not row.get("project_repo_id"):
+        return None
+    return ProjectContext(
+        project_segment_id=row["project_segment_id"],
+        project_repo_id=row["project_repo_id"],
+        project_repo_url=row["project_repo_url"],
+        sibling_repo_ids=list(row["sibling_repo_ids"] or []),
+    )
+
+
+async def end_date_maintainers_for_repos(repo_ids: list[str], end_date: datetime) -> None:
+    """Bulk end-date all active maintainer rows for a list of repo IDs."""
+    if not repo_ids:
+        return
+    sql = """
+        UPDATE "maintainersInternal"
+           SET "endDate" = $1, "updatedAt" = NOW()
+         WHERE "repoId" = ANY($2::uuid[])
+           AND "endDate" IS NULL
+    """
+    await execute(sql, (end_date, repo_ids))
 
 
 async def batch_check_parent_activities(
@@ -524,3 +618,367 @@ async def save_service_execution(service_execution: ServiceExecution) -> None:
             f"error: {e}"
         )
         # Do not re-raise - we don't want metrics saving to disrupt main operations
+
+
+async def get_repo_affiliation_registry(repo_id: str) -> RepoAffiliationRegistry | None:
+    sql_query = """
+        SELECT "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt"
+        FROM git."repoAffiliationRegistry"
+        WHERE "repoId" = $1
+    """
+    result = await fetchrow(sql_query, (repo_id,))
+    if not result:
+        return None
+
+    return RepoAffiliationRegistry.from_db(dict(result))
+
+
+async def upsert_repo_affiliation_registry(registry: RepoAffiliationRegistry) -> None:
+    snapshot_json = registry.snapshot_for_db()
+    sql_query = """
+        INSERT INTO git."repoAffiliationRegistry" (
+            "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt", "updatedAt"
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW())
+        ON CONFLICT ("repoId") DO UPDATE SET
+            "filePath" = EXCLUDED."filePath",
+            "fileHash" = EXCLUDED."fileHash",
+            "status" = EXCLUDED."status",
+            "snapshot" = EXCLUDED."snapshot",
+            "lastRunAt" = NOW(),
+            "updatedAt" = NOW()
+    """
+    await execute(
+        sql_query,
+        (
+            registry.repo_id,
+            registry.file_path,
+            registry.file_hash,
+            registry.status,
+            snapshot_json,
+        ),
+    )
+
+
+async def find_many_member_ids_by_identities(identities: list[dict]) -> list[dict]:
+    if not identities:
+        return []
+
+    values_parts: list[str] = []
+    params: list[str | bool | int] = []
+    param_index = 1
+    for idx, identity in enumerate(identities):
+        values_parts.append(
+            f"(${param_index}::int, ${param_index + 1}::text, ${param_index + 2}::boolean,"
+            f" ${param_index + 3}::text, ${param_index + 4}::text)"
+        )
+        params.extend(
+            [
+                idx,
+                identity["type"],
+                identity.get("verified", True),
+                identity.get("platform"),
+                identity["value"],
+            ]
+        )
+        param_index += 5
+
+    matches_by_idx: dict[int, set[str]] = {}
+    rows = await query(
+        f"""
+        WITH input_identities (idx, identity_type, verified, platform, value) AS (
+            VALUES {", ".join(values_parts)}
+        )
+        SELECT i.idx, mi."memberId"
+        FROM input_identities i
+        LEFT JOIN "memberIdentities" mi
+            ON mi.type = i.identity_type
+            AND mi.verified = i.verified
+            AND lower(mi.value) = lower(i.value)
+            AND mi.platform = i.platform
+            AND mi."deletedAt" IS NULL
+        ORDER BY i.idx
+        """,
+        tuple(params),
+    )
+    for row in rows:
+        if row["memberId"] is None:
+            continue
+        matches_by_idx.setdefault(row["idx"], set()).add(str(row["memberId"]))
+
+    results: list[dict] = []
+    for idx, identity in enumerate(identities):
+        member_ids = matches_by_idx.get(idx, set())
+        member_id = next(iter(member_ids)) if len(member_ids) == 1 else None
+        results.append(
+            {
+                "type": identity["type"],
+                "platform": identity.get("platform"),
+                "value": identity["value"],
+                "verified": identity.get("verified", True),
+                "member_id": member_id,
+            }
+        )
+
+    return results
+
+
+async def find_many_organization_ids_by_identities(identities: list[dict]) -> list[dict]:
+    if not identities:
+        return []
+
+    values_parts: list[str] = []
+    params: list[str | bool | int] = []
+    param_index = 1
+    for idx, identity in enumerate(identities):
+        values_parts.append(
+            f"(${param_index}::int, ${param_index + 1}::text, ${param_index + 2}::boolean,"
+            f" ${param_index + 3}::text, ${param_index + 4}::text)"
+        )
+        params.extend(
+            [
+                idx,
+                identity["type"],
+                identity.get("verified", True),
+                identity["platform"],
+                identity["value"],
+            ]
+        )
+        param_index += 5
+
+    matches_by_idx: dict[int, set[str]] = {}
+    rows = await query(
+        f"""
+        WITH input_identities (idx, identity_type, verified, platform, value) AS (
+            VALUES {", ".join(values_parts)}
+        )
+        SELECT i.idx, oi."organizationId"
+        FROM input_identities i
+        LEFT JOIN "organizationIdentities" oi
+            ON oi.type = i.identity_type
+            AND oi.verified = i.verified
+            AND oi.platform = i.platform
+            AND lower(oi.value) = lower(i.value)
+        ORDER BY i.idx
+        """,
+        tuple(params),
+    )
+    for row in rows:
+        if row["organizationId"] is None:
+            continue
+        matches_by_idx.setdefault(row["idx"], set()).add(str(row["organizationId"]))
+
+    results: list[dict] = []
+    for idx, identity in enumerate(identities):
+        organization_ids = matches_by_idx.get(idx, set())
+        organization_id = next(iter(organization_ids)) if len(organization_ids) == 1 else None
+        results.append(
+            {
+                "type": identity["type"],
+                "platform": identity["platform"],
+                "value": identity["value"],
+                "verified": identity.get("verified", True),
+                "organization_id": organization_id,
+            }
+        )
+
+    return results
+
+
+async def fetch_organizations(org_ids: list[str]) -> list[dict]:
+    if not org_ids:
+        return []
+
+    return await query(
+        """
+        SELECT id, "isAffiliationBlocked"
+        FROM organizations
+        WHERE id = ANY($1::uuid[])
+        """,
+        (org_ids,),
+    )
+
+
+async def fetch_member_organizations(member_ids: list[str]) -> list[dict]:
+    if not member_ids:
+        return []
+
+    return await query(
+        """
+        SELECT "memberId", "organizationId", "dateStart", "dateEnd", source, "deletedAt"
+        FROM "memberOrganizations"
+        WHERE "memberId" = ANY($1::uuid[])
+        """,
+        (member_ids,),
+    )
+
+
+async def fetch_segment_affiliations(member_ids: list[str], segment_id: str) -> list[dict]:
+    """MSA rows are per segment — filter by segment_id so guards match this repo's project."""
+    if not member_ids:
+        return []
+
+    return await query(
+        """
+        SELECT "memberId", "segmentId", "organizationId", "dateStart", "dateEnd", verified, "deletedAt"
+        FROM "memberSegmentAffiliations"
+        WHERE "memberId" = ANY($1::uuid[])
+            AND "segmentId" = $2::uuid
+            AND "organizationId" IS NOT NULL
+        """,
+        (member_ids, segment_id),
+    )
+
+
+async def insert_member_organizations(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    undated_rows: list[tuple] = []
+    open_ended_rows: list[tuple] = []
+    dated_rows: list[tuple] = []
+
+    for row in rows:
+        params = (
+            row["member_id"],
+            row["organization_id"],
+            row.get("date_start"),
+            row.get("date_end"),
+            row["source"],
+        )
+
+        date_start = row.get("date_start")
+        date_end = row.get("date_end")
+
+        if date_start is None and date_end is None:
+            undated_rows.append(params)
+        elif date_end is None:
+            open_ended_rows.append(params)
+        else:
+            dated_rows.append(params)
+
+    insert_sql = """
+        INSERT INTO "memberOrganizations"(
+            "memberId",
+            "organizationId",
+            "dateStart",
+            "dateEnd",
+            title,
+            source,
+            "createdAt",
+            "updatedAt"
+        )
+    """
+
+    returning_sql = """
+        RETURNING id, "memberId", "organizationId"
+    """
+
+    buckets = [
+        (
+            undated_rows,
+            """
+            ON CONFLICT ("memberId", "organizationId")
+                WHERE ("dateStart" IS NULL AND "dateEnd" IS NULL AND "deletedAt" IS NULL)
+            DO NOTHING
+            """,
+        ),
+        (
+            open_ended_rows,
+            """
+            ON CONFLICT ("memberId", "organizationId", "dateStart")
+                WHERE ("dateEnd" IS NULL AND "deletedAt" IS NULL)
+            DO NOTHING
+            """,
+        ),
+        (
+            dated_rows,
+            """
+            ON CONFLICT ("memberId", "organizationId", "dateStart", "dateEnd")
+                WHERE ("deletedAt" IS NULL)
+            DO NOTHING
+            """,
+        ),
+    ]
+
+    created_rows: list[dict] = []
+
+    for bucket_rows, conflict_sql in buckets:
+        if not bucket_rows:
+            continue
+
+        values_parts: list[str] = []
+        params: list = []
+        param_index = 1
+
+        for member_id, organization_id, date_start, date_end, source in bucket_rows:
+            values_parts.append(
+                f"(${param_index}, ${param_index + 1}, ${param_index + 2}, "
+                f"${param_index + 3}, NULL, ${param_index + 4}, NOW(), NOW())"
+            )
+            params.extend([member_id, organization_id, date_start, date_end, source])
+            param_index += 5
+
+        created_rows.extend(
+            await query(
+                insert_sql + f" VALUES {', '.join(values_parts)}" + conflict_sql + returning_sql,
+                tuple(params),
+            )
+        )
+
+    return created_rows
+
+
+async def insert_member_organization_affiliation_overrides(rows: list[dict]) -> None:
+    if not rows:
+        return
+
+    await executemany(
+        """
+        INSERT INTO "memberOrganizationAffiliationOverrides"(
+            id,
+            "memberId",
+            "memberOrganizationId",
+            "allowAffiliation"
+        )
+        VALUES (gen_random_uuid(), $1, $2, $3)
+        ON CONFLICT ("memberId", "memberOrganizationId") DO NOTHING
+        """,
+        [
+            (
+                row["member_id"],
+                row["member_organization_id"],
+                row["allow_affiliation"],
+            )
+            for row in rows
+        ],
+    )
+
+
+async def insert_member_segment_affiliations(rows: list[dict]) -> None:
+    if not rows:
+        return
+
+    await executemany(
+        """
+        INSERT INTO "memberSegmentAffiliations"(
+            id,
+            "memberId",
+            "segmentId",
+            "organizationId",
+            "dateStart",
+            "dateEnd"
+        )
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+        """,
+        [
+            (
+                row["member_id"],
+                row["segment_id"],
+                row["organization_id"],
+                row.get("date_start"),
+                row.get("date_end"),
+            )
+            for row in rows
+        ],
+    )

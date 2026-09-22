@@ -14,6 +14,21 @@ import {
   OrganizationSource,
 } from '@crowd/types'
 
+function truncateTitle(title: string | null | undefined) {
+  const maxLength = 255
+
+  if (title == null) {
+    return title
+  }
+
+  const codePoints = [...title]
+  if (codePoints.length <= maxLength) {
+    return title
+  }
+
+  return codePoints.slice(0, maxLength).join('')
+}
+
 export async function fetchMemberDataForLLMSquashing(
   db: DbConnOrTx,
   memberId: string,
@@ -29,6 +44,8 @@ export async function fetchMemberDataForLLMSquashing(
                             mo."dateStart",
                             mo."dateEnd",
                             mo.source,
+                            mo.verified,
+                            mo."verifiedBy",
                             jsonb_agg(jsonb_build_object(
                               'organizationId', oi."organizationId",
                               'platform', oi.platform,
@@ -42,7 +59,13 @@ export async function fetchMemberDataForLLMSquashing(
                         where mo."memberId" = $(memberId)
                           and mo."deletedAt" is null
                           and o."deletedAt" is null
-                        group by mo."memberId", mo."organizationId", o."displayName", mo.id)
+                        group by mo."memberId", mo."organizationId", o."displayName", mo.id),
+    deleted_member_orgs as (select distinct
+                              mo."organizationId" as "orgId"
+                            from "memberOrganizations" mo
+                            where mo."memberId" = $(memberId)
+                              and mo."deletedAt" is not null
+                              and mo."deletedBy" is not null)
     select m."displayName",
           m.attributes,
           m."manuallyChangedFields",
@@ -69,13 +92,18 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mo."dateStart",
                                                 mo."dateEnd",
                                                 mo.source,
+                                                mo.verified,
+                                                mo."verifiedBy",
                                                 coalesce(mo.identities, '[]'::jsonb) as identities) r)
                           )
                   from member_orgs mo
                   where mo."memberId" = m.id
               )
               else '[]'::json
-              end as organizations
+              end as organizations,
+          coalesce(
+                  (select json_agg(jsonb_build_object('orgId', d."orgId") order by d."orgId") from deleted_member_orgs d), '[]'::json
+          ) as "deletedOrganizations"
     from members m
     where m.id = $(memberId)
       and m."deletedAt" is null
@@ -122,7 +150,7 @@ export async function fetchMembersForEnrichment(
           SELECT 1 FROM "memberEnrichmentCache" mec
           WHERE mec."memberId" = members.id
           AND mec.source = '${input.source}'
-          AND EXTRACT(EPOCH FROM (now() - mec."updatedAt")) < ${input.cacheObsoleteAfterSeconds})
+          AND mec."updatedAt" > now() - make_interval(secs => ${input.cacheObsoleteAfterSeconds}))
       )`,
       )
     }
@@ -130,19 +158,40 @@ export async function fetchMembersForEnrichment(
     enrichableBySqlConditions.push(`(${input.enrichableBySql})`)
   })
 
-  let enrichableBySqlJoined = ''
+  const enrichableBySqlJoined =
+    enrichableBySqlConditions.length > 0 ? `(${enrichableBySqlConditions.join(' OR ')})` : 'TRUE'
 
-  if (enrichableBySqlConditions.length > 0) {
-    enrichableBySqlJoined = `(${enrichableBySqlConditions.join(' OR ')}) `
-  }
-
+  // Pick top-N by activity first, then load identities for those rows only.
   return db.connection().query(
     `
+    WITH candidates AS (
+      SELECT
+           members.id,
+           members."displayName",
+           members.attributes->'location'->>'default' AS location,
+           members.attributes->'websiteUrl'->>'default' AS website,
+           coalesce("membersGlobalActivityCount".total_count, 0) AS "activityCount"
+      FROM "membersGlobalActivityCount"
+           INNER JOIN members ON members.id = "membersGlobalActivityCount"."memberId"
+      WHERE members."deletedAt" IS NULL
+        AND coalesce((members.attributes ->'isBot'->>'default')::boolean, false) = false
+        AND coalesce((members.attributes ->'isOrganization'->>'default')::boolean, false) = false
+        AND EXISTS (
+          SELECT 1
+          FROM "memberIdentities" mi
+          WHERE mi."memberId" = members.id
+            AND mi."deletedAt" IS NULL
+            AND ${enrichableBySqlJoined}
+        )
+        AND (${cacheAgeInnerQueryItems.join(' OR ')})
+      ORDER BY "membersGlobalActivityCount".total_count DESC
+      LIMIT $1
+    )
     SELECT
-         members."id",
-         members."displayName",
-         members.attributes->'location'->>'default' AS location,
-         members.attributes->'websiteUrl'->>'default' AS website,
+         c.id,
+         c."displayName",
+         c.location,
+         c.website,
          JSON_AGG(
            JSON_BUILD_OBJECT(
              'platform', mi.platform,
@@ -151,19 +200,18 @@ export async function fetchMembersForEnrichment(
              'verified', mi.verified
            )
          ) AS identities,
-         MAX(coalesce("membersGlobalActivityCount".total_count, 0)) AS "activityCount"
-    FROM members
-         INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id and mi."deletedAt" is null
-         LEFT JOIN "membersGlobalActivityCount" ON "membersGlobalActivityCount"."memberId" = members.id
-    WHERE
-      ${enrichableBySqlJoined}
-      AND coalesce((members.attributes ->'isBot'->>'default')::boolean, false) = false 
-      AND coalesce((members.attributes ->'isOrganization'->>'default')::boolean, false) = false
-      AND members."deletedAt" IS NULL
-      AND (${cacheAgeInnerQueryItems.join(' OR ')})
-    GROUP BY members.id
-    ORDER BY "activityCount" DESC
-    LIMIT $1;
+         c."activityCount"
+    FROM candidates c
+         INNER JOIN members ON members.id = c.id
+         INNER JOIN "memberIdentities" mi
+           ON mi."memberId" = c.id
+          AND mi."deletedAt" IS NULL
+         CROSS JOIN LATERAL (
+           SELECT c."activityCount" AS total_count
+         ) AS "membersGlobalActivityCount"
+    WHERE ${enrichableBySqlJoined}
+    GROUP BY c.id, c."displayName", c.location, c.website, c."activityCount"
+    ORDER BY c."activityCount" DESC;
     `,
     [limit],
   )
@@ -350,14 +398,6 @@ export async function findExistingMember(
   return results.map((r) => r.memberId)
 }
 
-export async function addMemberToMerge(tx: DbTransaction, memberId: string, toMergeId: string) {
-  await tx.query(
-    `INSERT INTO "memberToMerge" ("memberId", "toMergeId", similarity)
-                VALUES ($1, $2, $3);"`,
-    [memberId, toMergeId, 0.9],
-  )
-}
-
 export async function findOrganizationIdentities(
   tx: DbTransaction,
   organizationId: string,
@@ -483,6 +523,11 @@ export async function updateMemberOrg(
     return null
   }
 
+  const normalizedToUpdate = { ...toUpdate }
+  if (typeof normalizedToUpdate.title === 'string') {
+    normalizedToUpdate.title = truncateTitle(normalizedToUpdate.title)
+  }
+
   // First check if another row like this exists so that we don't get unique index violations.
   // We compute the "target" state after applying toUpdate to decide what to look for.
   const params = {
@@ -490,8 +535,12 @@ export async function updateMemberOrg(
     id: original.id,
     organizationId: original.orgId,
     // Use updated value if provided, otherwise keep original
-    dateStart: toUpdate.dateStart !== undefined ? toUpdate.dateStart : original.dateStart,
-    dateEnd: toUpdate.dateEnd !== undefined ? toUpdate.dateEnd : original.dateEnd,
+    dateStart:
+      normalizedToUpdate.dateStart !== undefined
+        ? normalizedToUpdate.dateStart
+        : original.dateStart,
+    dateEnd:
+      normalizedToUpdate.dateEnd !== undefined ? normalizedToUpdate.dateEnd : original.dateEnd,
   }
 
   let dateEndFilter = `and "dateEnd" = $(dateEnd)`
@@ -526,7 +575,7 @@ export async function updateMemberOrg(
     return null
   }
 
-  const sets = keys.map((k) => `"${k}" = $(${k})`)
+  const sets = [...keys.map((k) => `"${k}" = $(${k})`), `"updatedAt" = now()`]
 
   const result = await tx.oneOrNone(
     `
@@ -538,7 +587,7 @@ export async function updateMemberOrg(
     {
       memberId,
       id: original.id,
-      ...toUpdate,
+      ...normalizedToUpdate,
     },
   )
 
@@ -554,6 +603,8 @@ export async function insertWorkExperience(
   dateEnd: string | null,
   source: OrganizationSource,
 ): Promise<string | null> {
+  const truncatedTitle = truncateTitle(title)
+
   let conflictCondition = `("memberId", "organizationId", "dateStart", "dateEnd")`
   if (!dateEnd) {
     conflictCondition = `("memberId", "organizationId", "dateStart") WHERE "dateEnd" IS NULL`
@@ -574,7 +625,7 @@ export async function insertWorkExperience(
               ${onConflict}
               RETURNING id;
             `,
-    [memberId, orgId, title, dateStart, dateEnd, source],
+    [memberId, orgId, truncatedTitle, dateStart, dateEnd, source],
   )
 
   return result?.id ?? null

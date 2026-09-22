@@ -4,6 +4,7 @@ import { DEFAULT_TENANT_ID } from '@crowd/common'
 
 import { svc } from '../main'
 import { generateMemberMergeSuggestions } from '../workflows/generateMemberMergeSuggestions'
+import { spawnSubprojectMemberMergeSuggestions } from '../workflows/spawnSubprojectMemberMergeSuggestions'
 
 export const scheduleGenerateMemberMergeSuggestions = async () => {
   try {
@@ -25,6 +26,34 @@ export const scheduleGenerateMemberMergeSuggestions = async () => {
             tenantId: DEFAULT_TENANT_ID,
           },
         ],
+      },
+    })
+  } catch (err) {
+    if (err instanceof ScheduleAlreadyRunning) {
+      svc.log.info('Schedule already registered in Temporal.')
+      svc.log.info('Configuration may have changed since. Please make sure they are in sync.')
+    } else {
+      throw new Error(err)
+    }
+  }
+}
+
+export const scheduleGenerateSubprojectMemberMergeSuggestions = async () => {
+  try {
+    await svc.temporal.schedule.create({
+      scheduleId: 'spawn-subproject-member-merge-suggestions',
+      spec: {
+        cronExpressions: ['0 6 * * *'],
+      },
+      policies: {
+        overlap: ScheduleOverlapPolicy.SKIP,
+        catchupWindow: '1 minute',
+      },
+      action: {
+        type: 'startWorkflow',
+        workflowType: spawnSubprojectMemberMergeSuggestions,
+        taskQueue: 'merge-suggestions',
+        args: [],
       },
     })
   } catch (err) {

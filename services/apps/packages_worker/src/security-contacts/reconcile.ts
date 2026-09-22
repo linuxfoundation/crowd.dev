@@ -1,3 +1,5 @@
+import { type EmailReachabilityReason, classifyEmailReachability } from '@crowd/common'
+
 import { scoreContact } from './score'
 import {
   ContactChannel,
@@ -8,8 +10,6 @@ import {
   SourceTier,
 } from './types'
 
-const MAX_CONTACTS = 5
-
 const ROLE_PRIORITY: Record<ContactRole, number> = {
   'security-team': 5,
   maintainer: 4,
@@ -19,6 +19,53 @@ const ROLE_PRIORITY: Record<ContactRole, number> = {
 }
 
 const TIER_RANK: Record<SourceTier, number> = { A: 4, B: 3, C: 2, D: 1 }
+
+// RFC 2606 reserved domains — always unedited template placeholders (e.g. security@example.com).
+const PLACEHOLDER_EMAIL_DOMAINS = new Set([
+  'example.com',
+  'example.org',
+  'example.net',
+  'example.edu',
+])
+
+// Generic GitHub/Dependabot help pages that templated SECURITY.md files link to — never a
+// project-specific contact, unlike an actual github.com/<owner>/<repo>/... URL.
+const GENERIC_URL_HOSTS = new Set(['docs.github.com', 'dependabot.com', 'www.dependabot.com'])
+
+const HAS_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i
+
+// Some upstream sources (e.g. SECURITY-INSIGHTS {type:"url"} entries) don't enforce a scheme —
+// only add one to resolve the host, never mutate the stored contact value.
+function urlHost(value: string): string | null {
+  const candidate = HAS_SCHEME_RE.test(value) ? value : `https://${value}`
+  try {
+    return new URL(candidate).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+export function isJunkContact(c: RawContact): boolean {
+  if (c.channel === 'email') {
+    const domain = c.value.split('@')[1]?.toLowerCase().trim()
+    return domain != null && PLACEHOLDER_EMAIL_DOMAINS.has(domain)
+  }
+  if (c.channel === 'url' || c.channel === 'web-form') {
+    const host = urlHost(c.value)
+    if (host == null) return true
+    return GENERIC_URL_HOSTS.has(host) || host === 'localhost' || host.startsWith('127.')
+  }
+  return false
+}
+
+function classifyReachability(c: RawContact): {
+  reachable: boolean
+  reachabilityReason: EmailReachabilityReason | null
+} {
+  if (c.channel !== 'email') return { reachable: true, reachabilityReason: null }
+  const r = classifyEmailReachability(c.value)
+  return { reachable: r.reachable, reachabilityReason: r.reason }
+}
 
 function normalizeValue(channel: ContactChannel, value: string): string {
   const v = value.trim()
@@ -90,11 +137,11 @@ function identityLinkMerge(contacts: RawContact[]): RawContact[] {
 }
 
 export function reconcile(contacts: RawContact[], now: Date = new Date()): ScoredContact[] {
-  const merged = identityLinkMerge(exactMatchMerge(contacts))
+  const merged = identityLinkMerge(exactMatchMerge(contacts.filter((c) => !isJunkContact(c))))
 
   const scored: ScoredContact[] = merged.map((c) => {
     const contact = { ...c, provenance: dedupeProvenance(c.provenance) }
-    return { ...contact, ...scoreContact(contact, now) }
+    return { ...contact, ...scoreContact(contact, now), ...classifyReachability(contact) }
   })
 
   scored.sort(
@@ -105,5 +152,5 @@ export function reconcile(contacts: RawContact[], now: Date = new Date()): Score
       a.value.localeCompare(b.value),
   )
 
-  return scored.slice(0, MAX_CONTACTS)
+  return scored
 }

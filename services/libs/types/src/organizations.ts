@@ -38,6 +38,7 @@ export interface IOrganization {
   employees?: number
   revenueRange?: IOrganizationRevenueRange
   location?: string
+  country?: string
   type?: string
   size?: string
   industry?: string
@@ -62,6 +63,7 @@ export interface IMemberOrganization {
   verified?: boolean
   verifiedBy?: string
   deletedAt?: string
+  deletedBy?: string
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
@@ -94,6 +96,7 @@ export interface IRenderFriendlyMemberOrganization {
 export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationName: string
   organizationLogo: string
+  organizationDomains?: string[]
 }
 
 export interface MemberOrgDate {
@@ -139,17 +142,6 @@ export interface IOrganizationSyncRemoteData {
   syncFrom: string
   metaData: string
   lastSyncedAt?: string
-}
-
-export interface NewOrganizationIdentity {
-  organizationId: string
-  platform: string
-  value: string
-  type: OrganizationIdentityType
-  verified: boolean
-  source: string
-  sourceId?: string | null
-  integrationId?: string | null
 }
 
 export interface IOrganizationIdentity {
@@ -258,8 +250,7 @@ export interface IOrganizationIdentityOpensearch {
   string_source: string
 }
 
-export interface IOrganizationFullAggregatesOpensearch
-  extends IOrganizationBaseForMergeSuggestions {
+export interface IOrganizationFullAggregatesOpensearch extends IOrganizationBaseForMergeSuggestions {
   ticker: string
   identities: IOrganizationIdentity[]
   activityCount: number

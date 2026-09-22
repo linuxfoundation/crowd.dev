@@ -11,6 +11,8 @@ import {
   generateUUIDv1,
   isDomainExcluded,
   isValidEmail,
+  normalizeMemberIdentities,
+  normalizeMemberIdentityValue,
   parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
@@ -18,6 +20,7 @@ import {
 } from '@crowd/common'
 import { CommonMemberService, SearchSyncWorkerEmitter } from '@crowd/common_services'
 import {
+  IFindOrCreateOrganizationResult,
   createOrUpdateRelations,
   findIdentitiesForMembers,
   findMembersByIdentities,
@@ -287,7 +290,16 @@ export default class ActivityService extends LoggerBase {
       }
 
       let member = activity.member
-      const username = activity.username ? activity.username.trim() : undefined
+      if (member?.identities) {
+        member.identities = normalizeMemberIdentities(member.identities)
+      }
+
+      const username = activity.username
+        ? normalizeMemberIdentityValue(activity.username)
+        : undefined
+      if (username) {
+        activity.username = username
+      }
       if (!member && username) {
         member = {
           identities: [
@@ -317,17 +329,19 @@ export default class ActivityService extends LoggerBase {
         )
         if (platformIdentity && platformIdentity.value !== username) {
           this.log.debug(
-            { platform, originalUsername: username, correctedUsername: platformIdentity.value },
+            {
+              platform,
+              originalUsername: username,
+              correctedUsername: platformIdentity.value,
+            },
             'Overriding activity.username with member platform identity value',
           )
           activity.username = platformIdentity.value
         }
       }
 
-      member.identities = member.identities.filter((i) => i.value)
-
-      if (!username) {
-        const identities = activity.member.identities.filter(
+      if (!activity.username) {
+        const identities = (member?.identities ?? []).filter(
           (i) => i.platform === platform && i.type === MemberIdentityType.USERNAME,
         )
 
@@ -337,12 +351,12 @@ export default class ActivityService extends LoggerBase {
           // Fall back to same-platform email identity — handles old gerrit records where
           // only a type:email identity was stored (before the gerrit integration
           // gained the email-as-username fallback).
-          const emailFallback = activity.member.identities.find(
+          const emailFallback = (member?.identities ?? []).find(
             (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
           if (emailFallback && emailFallback.verified) {
             activity.username = emailFallback.value
-            activity.member.identities.push({
+            member.identities.push({
               platform,
               type: MemberIdentityType.USERNAME,
               value: emailFallback.value,
@@ -388,12 +402,15 @@ export default class ActivityService extends LoggerBase {
       }
 
       const objectMemberUsername = activity.objectMemberUsername
-        ? activity.objectMemberUsername.trim()
+        ? normalizeMemberIdentityValue(activity.objectMemberUsername)
         : undefined
+      if (objectMemberUsername) {
+        activity.objectMemberUsername = objectMemberUsername
+      }
       let objectMember = activity.objectMember
 
-      if (objectMember) {
-        objectMember.identities = objectMember.identities.filter((i) => i.value)
+      if (objectMember?.identities) {
+        objectMember.identities = normalizeMemberIdentities(objectMember.identities)
       }
 
       if (objectMember && !objectMemberUsername) {
@@ -441,6 +458,11 @@ export default class ActivityService extends LoggerBase {
             } as IMemberIdentity,
           ],
         }
+      }
+
+      activity.member = member
+      if (objectMember) {
+        activity.objectMember = objectMember
       }
 
       results.set(resultId, { success: true })
@@ -521,10 +543,16 @@ export default class ActivityService extends LoggerBase {
       const toEraseMemberIdentities = toErase.filter((e) =>
         member.identities.some((i) => {
           if (i.type === MemberIdentityType.EMAIL) {
-            return e.type === i.type && e.value === i.value
+            return (
+              e.type === i.type && e.value.trim().toLowerCase() === i.value.trim().toLowerCase()
+            )
           }
 
-          return e.type === i.type && e.value === i.value && e.platform === i.platform
+          return (
+            e.type === i.type &&
+            e.value.trim().toLowerCase() === i.value.trim().toLowerCase() &&
+            e.platform === i.platform
+          )
         }),
       )
 
@@ -550,7 +578,7 @@ export default class ActivityService extends LoggerBase {
             const maybeToErase = toEraseMemberIdentities.find(
               (e) =>
                 e.type === i.type &&
-                e.value === i.value &&
+                e.value.trim().toLowerCase() === i.value.trim().toLowerCase() &&
                 (e.type === MemberIdentityType.EMAIL || e.platform === i.platform),
             )
 
@@ -1135,7 +1163,7 @@ export default class ActivityService extends LoggerBase {
     // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
     // unique org per batch. Concurrent member creates that reference the same org await the
     // same promise instead of firing redundant DB round trips.
-    const orgPromiseCache = new Map<string, Promise<string | undefined>>()
+    const orgPromiseCache = new Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>()
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -1761,7 +1789,8 @@ export default class ActivityService extends LoggerBase {
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        error.constraint === 'uix_memberIdentities_platform_value_type_verified'
+        (error.constraint === 'uix_memberIdentities_platform_value_type_verified' ||
+          error.constraint === 'uix_memberIdentities_platform_type_lower_value_verified')
       ) {
         return true
       }
@@ -2004,7 +2033,10 @@ export default class ActivityService extends LoggerBase {
 
     for (const i1 of m1Identities) {
       for (const i2 of m2Identities) {
-        if (i1.type === i2.type && i1.value === i2.value) {
+        if (
+          i1.type === i2.type &&
+          i1.value.trim().toLowerCase() === i2.value.trim().toLowerCase()
+        ) {
           return true
         }
       }

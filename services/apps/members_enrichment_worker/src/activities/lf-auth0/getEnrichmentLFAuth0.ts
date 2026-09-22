@@ -1,5 +1,6 @@
-import { GetUsers200ResponseOneOfInner, ManagementClient } from 'auth0'
 import { randomUUID } from 'crypto'
+
+import { GetUsers200ResponseOneOfInner, ManagementClient } from 'auth0'
 
 import { RedisCache, acquireLock, releaseLock } from '@crowd/redis'
 import { IMember, MemberIdentityType, PlatformType } from '@crowd/types'

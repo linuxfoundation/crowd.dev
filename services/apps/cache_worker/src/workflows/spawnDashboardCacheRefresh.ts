@@ -9,7 +9,6 @@ import {
 import { ISegment } from '@crowd/data-access-layer/src/old/apps/cache_worker/types'
 
 import * as activities from '../activities/getSegmentInfo'
-
 import { refreshDashboardCache } from './refreshDashboardCache'
 
 const activity = proxyActivities<typeof activities>({ startToCloseTimeout: '1 minute' })
