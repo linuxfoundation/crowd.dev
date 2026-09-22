@@ -1,6 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
-
 import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,
@@ -318,6 +317,7 @@ export async function bulkInsertProjectCatalog(
     source: item.source ?? null,
     action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
+    skipReason: item.skipReason ?? null,
   }))
 
   await qx.result(
@@ -329,6 +329,7 @@ export async function bulkInsertProjectCatalog(
       "source",
       "action",
       "lfCriticalityScore",
+      "skipReason",
       "createdAt",
       "updatedAt",
       "syncedAt"
@@ -340,6 +341,7 @@ export async function bulkInsertProjectCatalog(
       v."source",
       v."action",
       v."lfCriticalityScore"::double precision,
+      v."skipReason",
       NOW(),
       NOW(),
       NOW()
@@ -349,7 +351,8 @@ export async function bulkInsertProjectCatalog(
       "repoUrl" text,
       "source" text,
       "action" text,
-      "lfCriticalityScore" double precision
+      "lfCriticalityScore" double precision,
+      "skipReason" text
     )
     ON CONFLICT ("repoUrl") DO NOTHING
     `,
@@ -595,6 +598,24 @@ export async function finalizeProjectCatalogEvaluation(
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     { id, ...data },
+  )
+}
+
+// Guarded like finalizeProjectCatalogEvaluation. Explicitly nulls the verdict columns
+// (clearing any stale prior verdict) so this skip stays out of the agent's skip alert.
+export async function markProjectCatalogPreCheckSkipped(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'skip', "skipReason" = $(reason), "evaluatedAt" = NOW(),
+        "evaluationResult" = NULL, "evaluationReason" = NULL, "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    `,
+    { id, reason },
   )
 }
 

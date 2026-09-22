@@ -93,7 +93,7 @@ Dev mode uses hot reload — edits to `services/apps/packages_worker/src/` and
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
+| Symptom                             | Likely cause       | Fix                                                      |
+| ----------------------------------- | ------------------ | -------------------------------------------------------- |
 | `Connection refused` on packages-db | Docker not running | `docker compose -f scripts/scaffold.yaml up -d packages` |
-| `permission denied: scripts/cli` | CLI not executable | `chmod +x scripts/cli` |
+| `permission denied: scripts/cli`    | CLI not executable | `chmod +x scripts/cli`                                   |

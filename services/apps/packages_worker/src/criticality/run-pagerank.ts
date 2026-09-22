@@ -8,7 +8,6 @@
  *   pnpm run:pagerank cargo --graph-only   ← build + validate graph, skip iterations
  */
 import { getPackagesDb } from '../db'
-
 import { criticalityComputePageRank } from './activities'
 import { buildGraph, getDependents } from './graph'
 import { loadDirectEdges } from './queries'

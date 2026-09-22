@@ -12,7 +12,6 @@ import {
   RawContact,
   RepoPolicies,
 } from '../types'
-
 import { fetchText, githubHandleFromUrl, isEmail } from './http'
 
 const log = getServiceChildLogger('security-contacts:security-insights')

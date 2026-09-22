@@ -1,9 +1,8 @@
+import CustomViewRepository from '@/database/repositories/customViewRepository'
+import { defaultCustomViews } from '@/types/customView'
 import { DEFAULT_TENANT_ID, Error400, Error404 } from '@crowd/common'
 import { DEFAULT_MEMBER_ATTRIBUTES } from '@crowd/integrations'
 import { SegmentData, SegmentStatus } from '@crowd/types'
-
-import CustomViewRepository from '@/database/repositories/customViewRepository'
-import { defaultCustomViews } from '@/types/customView'
 
 import { TenantMode } from '../conf/configTypes'
 import { TENANT_MODE } from '../conf/index'
@@ -12,7 +11,6 @@ import TenantRepository from '../database/repositories/tenantRepository'
 import TenantUserRepository from '../database/repositories/tenantUserRepository'
 import Permissions from '../security/permissions'
 import Roles from '../security/roles'
-
 import { IServiceOptions } from './IServiceOptions'
 import MemberAttributeSettingsService from './memberAttributeSettingsService'
 import SegmentService from './segmentService'

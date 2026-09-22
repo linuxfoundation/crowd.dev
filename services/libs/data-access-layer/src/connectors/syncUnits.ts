@@ -1,7 +1,8 @@
 import type { QueryExecutor } from '../queryExecutor'
-
+import { truncateErrorMessage } from '../utils'
 import type {
   IClaimedUnit,
+  IShadowDiffUnit,
   ISyncRunProgress,
   ISyncRunSuccess,
   ISyncUnit,
@@ -11,14 +12,6 @@ import type {
 const MIN_INITIAL_DELAY_SECONDS = 10
 const MAX_INITIAL_DELAY_SECONDS = 900
 const CLAIM_LEASE_MINUTES = 5
-const ERROR_MESSAGE_MAX_LENGTH = 500
-
-function truncateErrorMessage(message: string | null): string | null {
-  if (!message) {
-    return null
-  }
-  return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
-}
 
 export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]): Promise<number> {
   if (units.length === 0) {
@@ -26,24 +19,28 @@ export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]
   }
 
   return qx.result(
-    `INSERT INTO integration.sync_units
-       ("integrationId", platform, "channelId", "channelName", "syncName", "nextRunAt")
+    `INSERT INTO integration.sync_units AS su
+       ("integrationId", platform, "channelId", "channelName", "syncName", watermark, "nextRunAt")
      SELECT u.*, now() + ($(minDelaySeconds) + random() * $(delaySpanSeconds)) * interval '1 second'
      FROM unnest(
        $(integrationIds)::uuid[],
        $(platforms)::text[],
        $(channelIds)::text[],
        $(channelNames)::text[],
-       $(syncNames)::text[]
+       $(syncNames)::text[],
+       $(watermarks)::jsonb[]
      ) u
      ON CONFLICT ("integrationId", "channelId", "syncName")
-     DO UPDATE SET "channelName" = EXCLUDED."channelName", "updatedAt" = now()`,
+     DO UPDATE SET "channelName" = EXCLUDED."channelName",
+                   watermark = COALESCE(EXCLUDED.watermark, su.watermark),
+                   "updatedAt" = now()`,
     {
       integrationIds: units.map((u) => u.integrationId),
       platforms: units.map((u) => u.platform),
       channelIds: units.map((u) => u.channelId),
       channelNames: units.map((u) => u.channelName),
       syncNames: units.map((u) => u.syncName),
+      watermarks: units.map((u) => (u.watermark != null ? JSON.stringify(u.watermark) : null)),
       minDelaySeconds: MIN_INITIAL_DELAY_SECONDS,
       delaySpanSeconds: MAX_INITIAL_DELAY_SECONDS - MIN_INITIAL_DELAY_SECONDS,
     },
@@ -176,10 +173,12 @@ export async function recordRunFailure(
   errorMessage: string | null,
   deadLetterAfter: number | null,
   nextRunAt: Date,
+  watermark: Record<string, unknown> | null = null,
 ): Promise<void> {
   await qx.result(
     `UPDATE integration.sync_units
      SET "consecutiveFailures" = "consecutiveFailures" + 1,
+         watermark = COALESCE($(watermark)::jsonb, watermark),
          "lastErrorClass" = $(errorClass),
          "lastErrorMessage" = $(errorMessage),
          "lastRunComplete" = false,
@@ -197,6 +196,7 @@ export async function recordRunFailure(
       errorMessage: truncateErrorMessage(errorMessage),
       deadLetterAfter,
       nextRunAt,
+      watermark: watermark != null ? JSON.stringify(watermark) : null,
     },
   )
 }
@@ -207,5 +207,22 @@ export async function getUnitById(qx: QueryExecutor, id: string): Promise<ISyncU
      FROM integration.sync_units
      WHERE id = $(id)`,
     { id },
+  )
+}
+
+export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
+  return qx.select(
+    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
+     FROM integration.sync_units su
+     WHERE su."emitEnabled" = false
+       AND su.status = 'active'
+       AND su.platform = 'github'
+       AND su.watermark->>'phase' = 'incremental'
+       AND EXISTS (
+         SELECT 1
+         FROM public.integrations i
+         WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
+       )
+     ORDER BY su."channelName", su."syncName"`,
   )
 }

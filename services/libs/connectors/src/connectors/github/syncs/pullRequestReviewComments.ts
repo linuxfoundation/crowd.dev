@@ -27,6 +27,7 @@ async function fetchThreads(ctx: SyncContext, prId: string): Promise<ReviewThrea
       ctx.http,
       REVIEW_THREADS_FOR_PRS_QUERY,
       { ids: [prId], first: THREADS_PAGE_SIZE, after: cursor },
+      ctx.log,
     )
     const connection = data.nodes[0]?.reviewThreads
     if (!connection?.edges) {
@@ -53,6 +54,7 @@ async function fetchThreadComments(
       ctx.http,
       COMMENTS_FOR_THREADS_QUERY,
       { ids: [threadId], first: COMMENTS_PAGE_SIZE, after: cursor },
+      ctx.log,
     )
     const connection = data.nodes[0]?.comments
     if (!connection?.edges) {
@@ -69,7 +71,7 @@ async function fetchThreadComments(
 }
 
 async function runPullRequestReviewCommentsSync(ctx: SyncContext): Promise<SyncOutcome> {
-  return runDualPhasePrSync(ctx, async (prs, sinceDate) => {
+  return runDualPhasePrSync(ctx, async (prs) => {
     const threadsPerPr = await mapWithConcurrency(prs, ITEM_FETCH_CONCURRENCY, (pr) =>
       fetchThreads(ctx, pr.id),
     )
@@ -82,9 +84,9 @@ async function runPullRequestReviewCommentsSync(ctx: SyncContext): Promise<SyncO
     )
 
     const activities = threads.flatMap(({ thread, pullRequest }, index) =>
-      commentsPerThread[index]
-        .filter((comment) => !sinceDate || new Date(comment.createdAt) >= sinceDate)
-        .map((comment) => toReviewThreadComment(comment, thread, pullRequest)),
+      commentsPerThread[index].map((comment) =>
+        toReviewThreadComment(comment, thread, pullRequest),
+      ),
     )
     if (activities.length > 0) {
       await ctx.emit(activities)
@@ -94,7 +96,7 @@ async function runPullRequestReviewCommentsSync(ctx: SyncContext): Promise<SyncO
 
 export const pullRequestReviewCommentsSync: SyncDefinition = {
   name: 'pull-request-review-comments',
-  cadenceMinutes: 120,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestReviewCommentsSync,
 }

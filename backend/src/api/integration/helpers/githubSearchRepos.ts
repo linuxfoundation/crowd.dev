@@ -1,7 +1,6 @@
-import { GithubIntegrationService } from '@crowd/common_services'
-
 import Permissions from '@/security/permissions'
 import PermissionChecker from '@/services/user/permissionChecker'
+import { GithubIntegrationService } from '@crowd/common_services'
 
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.integrationEdit)

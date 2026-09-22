@@ -12,6 +12,7 @@ import { MEMBER_SELECT_COLUMNS } from '../members/base'
 import { IDbMember } from '../old/apps/data_sink_worker/repo/member.data'
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
+import { touchMembersUpdatedAt } from './others'
 
 export async function fetchMemberIdentities(
   qx: QueryExecutor,
@@ -80,8 +81,8 @@ export async function findMemberIdentityById(
   qx: QueryExecutor,
   memberId: string,
   id: string,
-): Promise<IMemberIdentity> {
-  const res = await qx.select(
+): Promise<IMemberIdentity | null> {
+  const res: IMemberIdentity[] = await qx.select(
     `
         SELECT *
         FROM "memberIdentities"
@@ -133,7 +134,7 @@ export async function updateMemberIdentity(
   memberId: string,
   id: string,
   data: Partial<UpdateMemberIdentity>,
-): Promise<IMemberIdentity> {
+): Promise<IMemberIdentity | null> {
   const filtered = Object.fromEntries(
     Object.entries(data).filter(
       ([k, v]) => (UPDATABLE_IDENTITY_FIELDS as readonly string[]).includes(k) && v !== undefined,
@@ -160,7 +161,12 @@ export async function updateMemberIdentity(
     RETURNING *;
   `
 
-  return qx.selectOneOrNone(query, params)
+  const row = await qx.selectOneOrNone(query, params)
+  if (row) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return row
 }
 
 export async function deleteMemberIdentity(
@@ -168,7 +174,7 @@ export async function deleteMemberIdentity(
   memberId: string,
   id: string,
 ): Promise<number> {
-  return qx.result(
+  const count = await qx.result(
     `
         UPDATE "memberIdentities" SET "deletedAt" = now()
         WHERE "memberId" = $(memberId) AND "id" = $(id) AND "deletedAt" is null;
@@ -178,6 +184,11 @@ export async function deleteMemberIdentity(
       id,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return count
 }
 
 export async function moveIdentitiesBetweenMembers(
@@ -285,11 +296,23 @@ export async function insertMemberIdentities(
     returnRows,
   )
 
+  let memberIds: string[] = []
+  let rows: MemberIdentityDbRow[] = []
+  let count = 0
+
   if (returnRows) {
-    return qx.select(query)
+    rows = await qx.select(query)
+    memberIds = rows.map((row) => row.memberId)
+  } else {
+    count = await qx.result(query)
+    if (count > 0) {
+      memberIds = identities.map((identity) => identity.memberId)
+    }
   }
 
-  return qx.result(query)
+  await touchMembersUpdatedAt(qx, memberIds)
+
+  return returnRows ? rows : count
 }
 
 export async function moveToNewMember(
@@ -323,6 +346,8 @@ export async function moveToNewMember(
     )
   }
 
+  await touchMembersUpdatedAt(qx, [p.oldMemberId, p.newMemberId])
+
   return rowCount
 }
 
@@ -335,7 +360,7 @@ export async function deleteMemberIdentitiesByCombinations(
     types: MemberIdentityType[]
   },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
       where ("memberId", platform, value, type) in
@@ -358,6 +383,11 @@ export async function deleteMemberIdentitiesByCombinations(
       types: `{${p.types.join(',')}}`,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function updateVerifiedFlag(
@@ -370,7 +400,7 @@ export async function updateVerifiedFlag(
     verified: boolean
   },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities"
       set verified = $(verified)
@@ -379,17 +409,23 @@ export async function updateVerifiedFlag(
         platform = $(platform) and
         lower(value) = lower($(value)) and
         type = $(type) and
+        verified is distinct from $(verified) and
         "deletedAt" is null
     `,
     p,
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function deleteMemberIdentities(
   qx: QueryExecutor,
   p: { memberId: string; value: string; type: MemberIdentityType; platform: string },
 ) {
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
       where "memberId" = $(memberId)
@@ -400,6 +436,11 @@ export async function deleteMemberIdentities(
     `,
     p,
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [p.memberId])
+  }
+
+  return count
 }
 
 export async function deleteManyMemberIdentities(
@@ -420,7 +461,7 @@ export async function deleteManyMemberIdentities(
     .map((i) => `('${i.platform}', '${i.value}', '${i.type}')`)
     .join(', ')
 
-  return qx.result(
+  const count = await qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
       where "memberId" = $(memberId) and
@@ -431,6 +472,11 @@ export async function deleteManyMemberIdentities(
       formattedIdentities,
     },
   )
+  if (count > 0) {
+    await touchMembersUpdatedAt(qx, [memberId])
+  }
+
+  return count
 }
 
 export async function findAlreadyExistingVerifiedIdentities(
@@ -588,8 +634,9 @@ export async function findMembersByIdentities(
   })
   const identityParams = identityTuples.join(', ')
 
-  const result = await qx.select(
-    `
+  const result: { memberId: string; platform: string; value: string; type: string }[] =
+    await qx.select(
+      `
     with input_identities (platform, value, type) as (
       values ${identityParams}
     )
@@ -602,8 +649,8 @@ export async function findMembersByIdentities(
         and mi."deletedAt" is null
     ${conditions.length > 0 ? `where ${conditions.join(' and ')}` : ''}
   `,
-    params,
-  )
+      params,
+    )
 
   const resultMap = new Map<string, string>()
   result.forEach((row) => {
@@ -619,7 +666,7 @@ export async function findIdentitiesForMembers(
 ): Promise<Map<string, IMemberIdentity[]>> {
   const resultMap = new Map<string, IMemberIdentity[]>()
 
-  const results = await qx.select(
+  const results: IMemberIdentity[] = await qx.select(
     `
       select * from "memberIdentities"
       where "memberId" in ($(memberIds:csv))
@@ -675,7 +722,7 @@ export async function findMemberIdsByIdentities(
 
   if (!conditions.length) return []
 
-  const result = await qx.select(
+  const result: { memberId: string }[] = await qx.select(
     `
       SELECT DISTINCT mi."memberId"
       FROM "memberIdentities" mi

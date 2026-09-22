@@ -1,5 +1,4 @@
 import type { Manifest } from '../../types'
-
 import { createGithubTokenMinter, prepareGithubPool } from './appToken'
 import { probeGithubBudget } from './budget'
 import { discoverRepos } from './discover'
@@ -13,8 +12,6 @@ import { pullRequestCommitsSync } from './syncs/pullRequestCommits'
 import { pullRequestReviewCommentsSync } from './syncs/pullRequestReviewComments'
 import { pullRequestsSync } from './syncs/pullRequests'
 
-// import { starsSync } from './syncs/stars'
-
 export const githubConnector: Manifest = {
   platform: 'github',
   syncs: [
@@ -26,7 +23,6 @@ export const githubConnector: Manifest = {
     pullRequestCommentsSync,
     pullRequestReviewCommentsSync,
     pullRequestCommitsSync,
-    // starsSync,
   ],
   discover: discoverRepos,
   preparePool: prepareGithubPool,

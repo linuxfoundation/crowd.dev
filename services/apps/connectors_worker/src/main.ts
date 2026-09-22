@@ -6,6 +6,7 @@ import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
 
 import { scheduleDispatcher } from './schedules/dispatcher'
+import { scheduleShadowDiff } from './schedules/shadowDiff'
 
 const config: Config = {
   envvars: [],
@@ -42,6 +43,7 @@ setImmediate(async () => {
   await svc.init()
 
   await scheduleDispatcher()
+  await scheduleShadowDiff()
 
   await svc.start()
 })

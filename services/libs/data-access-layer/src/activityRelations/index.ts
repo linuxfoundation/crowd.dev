@@ -3,7 +3,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { IEnrichableMemberIdentityActivityAggregate, PageData } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import {
   IActivityRelationColumn,
   IDbActivityRelation,
@@ -403,7 +402,7 @@ export async function fetchActivityRelationsDuplicateGroups(
     )
     SELECT * FROM grouped_activity_relations LIMIT $(limit);
     `,
-    { limit, ...(cursor || {}) },
+    { limit, ...cursor },
   )
 }
 

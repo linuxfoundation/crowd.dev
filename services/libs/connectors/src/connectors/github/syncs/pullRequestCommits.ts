@@ -18,13 +18,18 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
       let hasMore = true
 
       while (hasMore) {
-        const data = await githubGraphql<PrCommitsPage>(ctx.http, PR_COMMITS_QUERY, {
-          owner,
-          repo,
-          prNumber: pullRequest.number,
-          first: COMMITS_PAGE_SIZE,
-          cursor,
-        })
+        const data = await githubGraphql<PrCommitsPage>(
+          ctx.http,
+          PR_COMMITS_QUERY,
+          {
+            owner,
+            repo,
+            prNumber: pullRequest.number,
+            first: COMMITS_PAGE_SIZE,
+            cursor,
+          },
+          ctx.log,
+        )
 
         const commits = data.repository.pullRequest?.commits
         if (!commits) {
@@ -50,7 +55,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
 
 export const pullRequestCommitsSync: SyncDefinition = {
   name: 'pull-request-commits',
-  cadenceMinutes: 120,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestCommitsSync,
 }

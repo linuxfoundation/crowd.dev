@@ -1,14 +1,17 @@
 import {
   findProjectCatalogById,
   findProjectCatalogPendingOnboarding,
+  finishPipelineRun,
   markProjectCatalogOnboardingFailed,
   markProjectCatalogOnboardingSkipped,
+  startPipelineRun,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
 import {
   InsightsProjectField,
   findInsightsProjectBySlugIncludingDeleted,
 } from '@crowd/data-access-layer/src/collections'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -16,7 +19,6 @@ import { getServiceLogger } from '@crowd/logging'
 import { svc } from '../main'
 import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
 import { OnboardAndUpdateProjectOutcome } from '../types'
-
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
 
 const log = getServiceLogger()
@@ -142,4 +144,24 @@ export async function markProjectOnboardingFailed(
   }
 
   log.error({ id: projectId, reason }, 'Onboarding permanently failed, marked as error.')
+}
+
+export async function startOnboardingPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'onboarding', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishOnboardingPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }

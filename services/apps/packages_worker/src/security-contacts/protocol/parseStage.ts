@@ -3,7 +3,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getReportingProtocolConfig } from '../../config'
 import type { githubApiGet } from '../githubToken'
-
 import { PARSER_VERSION, classifySecurityPolicy } from './classify'
 import { fetchBlob, fetchLinkedPage, sha256Hex } from './fetchContent'
 import { llmExtractProtocol } from './llmExtract'

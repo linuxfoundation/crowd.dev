@@ -6,6 +6,24 @@ import lodash from 'lodash'
 import moment from 'moment'
 import { QueryTypes, Transaction } from 'sequelize'
 
+import GithubInstallationsRepository from '@/database/repositories/githubInstallationsRepository'
+import IntegrationProgressRepository from '@/database/repositories/integrationProgressRepository'
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SegmentRepository from '@/database/repositories/segmentRepository'
+import { IntegrationProgress, Repos } from '@/serverless/integrations/types/regularTypes'
+import {
+  fetchAllGitlabGroups,
+  fetchGitlabGroupProjects,
+  fetchGitlabUserProjects,
+} from '@/serverless/integrations/usecases/gitlab/getProjects'
+import { removeGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/removeWebhooks'
+import { setupGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/setupWebhooks'
+import { getUserSubscriptions } from '@/serverless/integrations/usecases/groupsio/getUserSubscriptions'
+import {
+  GroupsioGetToken,
+  GroupsioIntegrationData,
+  GroupsioVerifyGroup,
+} from '@/serverless/integrations/usecases/groupsio/types'
 import {
   EDITION,
   Error400,
@@ -52,25 +70,6 @@ import { RedisCache } from '@crowd/redis'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 import { CodePlatform, Edition, PlatformType } from '@crowd/types'
 
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import GithubInstallationsRepository from '@/database/repositories/githubInstallationsRepository'
-import IntegrationProgressRepository from '@/database/repositories/integrationProgressRepository'
-import SegmentRepository from '@/database/repositories/segmentRepository'
-import { IntegrationProgress, Repos } from '@/serverless/integrations/types/regularTypes'
-import {
-  fetchAllGitlabGroups,
-  fetchGitlabGroupProjects,
-  fetchGitlabUserProjects,
-} from '@/serverless/integrations/usecases/gitlab/getProjects'
-import { removeGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/removeWebhooks'
-import { setupGitlabWebhooks } from '@/serverless/integrations/usecases/gitlab/setupWebhooks'
-import { getUserSubscriptions } from '@/serverless/integrations/usecases/groupsio/getUserSubscriptions'
-import {
-  GroupsioGetToken,
-  GroupsioIntegrationData,
-  GroupsioVerifyGroup,
-} from '@/serverless/integrations/usecases/groupsio/types'
-
 import { DISCORD_CONFIG, GITHUB_CONFIG, GITLAB_CONFIG, IS_TEST_ENV, KUBE_MODE } from '../conf/index'
 import IntegrationRepository from '../database/repositories/integrationRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
@@ -87,9 +86,8 @@ import getToken from '../serverless/integrations/usecases/nango/getToken'
 import { getIntegrationRunWorkerEmitter } from '../serverless/utils/queueService'
 import { ConfluenceIntegrationData } from '../types/confluenceTypes'
 import { JiraIntegrationData } from '../types/jiraTypes'
-
-import { IServiceOptions } from './IServiceOptions'
 import { CollectionService } from './collectionService'
+import { IServiceOptions } from './IServiceOptions'
 
 const discordToken = DISCORD_CONFIG.token || DISCORD_CONFIG.token2
 
@@ -337,7 +335,7 @@ export default class IntegrationService {
           if (integration.segmentId) {
             segmentId = integration.segmentId
           }
-        } catch (err) {
+        } catch {
           throw new Error404()
         }
         // remove github/gitlab/gerrit remotes from git integration
@@ -1007,7 +1005,7 @@ export default class IntegrationService {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
           isGitintegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitintegrationConfigured = false
         }
 
@@ -1875,7 +1873,7 @@ export default class IntegrationService {
         try {
           await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
           isGitIntegrationConfigured = true
-        } catch (err) {
+        } catch {
           isGitIntegrationConfigured = false
         }
 
@@ -1968,7 +1966,7 @@ export default class IntegrationService {
         acc[segmentId] = { remotes, integrationId: id }
         return acc
       }, {})
-    } catch (err) {
+    } catch {
       throw new Error400(this.options.language, 'errors.git.noIntegration')
     }
   }
@@ -2962,7 +2960,7 @@ export default class IntegrationService {
             await IntegrationRepository.findByPlatform(PlatformType.GIT, segmentOptions)
 
             isGitintegrationConfigured = true
-          } catch (err) {
+          } catch {
             isGitintegrationConfigured = false
           }
 

@@ -30,12 +30,6 @@ export const GITHUB_GRID: Record<GithubActivityType, IActivityScoringGrid> = {
   [GithubActivityType.PULL_REQUEST_COMMENT]: {
     score: 6,
   },
-  [GithubActivityType.STAR]: {
-    score: 2,
-  },
-  [GithubActivityType.UNSTAR]: {
-    score: -2,
-  },
   [GithubActivityType.PULL_REQUEST_MERGED]: {
     score: 6,
   },

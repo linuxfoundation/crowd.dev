@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "sortImports": {
+    "internalPattern": ["@crowd/", "@/", "~/", "#"]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.yml", "**/*.yaml"],
+      "options": {
+        "singleQuote": false
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "frontend/**",
+    "services/apps/git_integration/**",
+    "services/apps/mailing_list_integration/**",
+    "**/dist/**",
+    ".github/actions/node/builder/**"
+  ]
+}

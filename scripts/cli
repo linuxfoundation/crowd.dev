@@ -878,6 +878,65 @@ function install_libs() {
     (cd $CLI_HOME/.. && pnpm i --frozen-lockfile)
 }
 
+function lint_backend() {
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && cd backend && pnpm run tsc-check)
+}
+
+function lint_services() {
+    (cd $CLI_HOME/.. && \
+        ./services/scripts/check_package_scripts.sh && \
+        pnpm lint && \
+        pnpm format-check && \
+        pnpm --filter="./services/**" --if-present --workspace-concurrency=4 run tsc-check)
+}
+
+function _lint_changed_packages_with_script() {
+    local root="$1" list="$2" script="$3" p
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        if jq -e --arg s "$script" '(.scripts[$s] // null) != null' "$p/package.json" >/dev/null 2>&1; then
+            [[ "$p" == "$root" ]] && echo "(root)" || echo "${p#$root/}"
+        fi
+    done <<< "$list"
+}
+
+function _lint_changed_run() {
+    local label="$1" packages="$2"
+    shift 2
+    say "Checking $label for:" && whisper "$packages" && "$@"
+}
+
+function lint_changed() {
+    if ! command -v jq &>/dev/null; then
+        error "jq is required for lint-changed but is not installed. Install it: brew install jq (macOS) / apt-get install jq (Debian/Ubuntu) / dnf install jq (Fedora)."
+        return 1
+    fi
+    (cd $CLI_HOME/.. && \
+        git fetch origin main && \
+        ./services/scripts/check_package_scripts.sh && \
+        say "Checking lint" && \
+        pnpm lint && \
+        say "Checking format" && \
+        pnpm format-check && \
+        if git diff --name-only "$(git merge-base origin/main HEAD)" \
+            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
+            yell "Shared config changed (tsconfig base, lockfile or catalog) - falling back to full workspace tsc-check" && \
+            say "Checking typescript for entire workspace" && \
+            pnpm -r --if-present --workspace-concurrency=4 run tsc-check
+        else
+            local root packages_all changed_packages && \
+            root="$(pwd)" && \
+            packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
+            changed_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
+            if [[ -z "$changed_packages" ]]; then
+                whisper "Skipping typescript - no relevant packages changed"
+            else
+                _lint_changed_run "typescript" "$changed_packages" \
+                    pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
+            fi
+        fi)
+}
+
 function install_tinybird_cli() {    
     say "Setting up Tinybird CLI..."
     
@@ -1092,7 +1151,7 @@ ${YELLOW}Build & Deploy:${RESET}
 ${YELLOW}Database:${RESET}
   db-backup <name> | db-restore <name> | migrate-env\n
 ${YELLOW}Lint:${RESET}
-  lint-backend | lint-services\n"
+  lint-backend | lint-services | lint-changed\n"
 
 [[ -z "$1" ]] && say "$SCRIPT_USAGE" && exit 1
 while test $# -gt 0; do
@@ -1183,14 +1242,14 @@ while test $# -gt 0; do
         exit
         ;;
     service-restart-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker" "star-snapshot-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker" "star-snapshot-worker" "docs-readiness-worker")
         DEV=1
         kill_all_containers
         service_start
         exit
         ;;
     clean-start-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "mailing-list-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "connectors-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker" "star-snapshot-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "mailing-list-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "connectors-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker" "star-snapshot-worker" "docs-readiness-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
         CLEAN_START=1
         DEV=1
         start
@@ -1267,11 +1326,15 @@ while test $# -gt 0; do
         exit
         ;;
     lint-backend)
-        (cd $CLI_HOME/../backend && pnpm run lint && pnpm run format-check && pnpm run tsc-check)
+        lint_backend
         exit
         ;;
     lint-services)
-        (cd $CLI_HOME/../services/scripts && ./lint_apps.sh && ./lint_libs.sh)
+        lint_services
+        exit
+        ;;
+    lint-changed)
+        lint_changed
         exit
         ;;
     *)

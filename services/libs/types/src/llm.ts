@@ -11,6 +11,8 @@ export interface ILlmResponse {
   prompt: string
   answer: string
   inputTokenCount: number
+  outputTokenCount: number
+  responseTimeSeconds: number
 }
 
 export interface ILlmResult<T> extends ILlmResponse {
@@ -57,6 +59,22 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
     costPer1000InputTokens: 0.001,
     costPer1000OutputTokens: 0.005,
   },
+}
+
+export function estimateLlmCostUsd(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+): number | null {
+  if (!Object.prototype.hasOwnProperty.call(LLM_MODEL_PRICING_MAP, modelId)) {
+    return null
+  }
+  const pricing = LLM_MODEL_PRICING_MAP[modelId as LlmModelType]
+
+  return (
+    (inputTokens / 1000) * pricing.costPer1000InputTokens +
+    (outputTokens / 1000) * pricing.costPer1000OutputTokens
+  )
 }
 
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
@@ -133,6 +151,14 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.FAKE_ORGANIZATION_ANALYSIS]: {
+    modelId: LlmModelType.CLAUDE_SONNET_4,
+    arguments: {
+      max_tokens: 2000,
+      anthropic_version: 'bedrock-2023-05-31',
+      temperature: 0,
+    },
+  },
+  [LlmQueryType.PROJECT_EVALUATION]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 2000,

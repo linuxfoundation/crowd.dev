@@ -81,7 +81,7 @@ export class ActivityDisplayService {
     for (const key of splitted) {
       try {
         attribute = attribute[key]
-      } catch (error) {
+      } catch {
         return null
       }
     }

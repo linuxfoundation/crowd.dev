@@ -4,7 +4,6 @@ import { timeout } from '@crowd/common'
 
 import { IProcessStreamContext } from '../../../types'
 import { SlackChannels, SlackGetChannelsInput } from '../types'
-
 import { handleSlackError } from './errorHandler'
 
 async function getChannels(input: SlackGetChannelsInput, ctx: IProcessStreamContext) {

@@ -5,7 +5,6 @@ import { getDbConnection } from '@crowd/database'
 import { createIngestJob, findPendingJobByKind, markJobStatus } from '../osspckgs/ingestJobs'
 import type { QueryExecutor } from '../queryExecutor'
 import { pgpQx } from '../queryExecutor'
-
 import {
   createPackagistTransitiveRun,
   failPackagistTransitiveRun,

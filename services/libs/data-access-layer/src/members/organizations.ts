@@ -18,7 +18,6 @@ import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
-
 import { EmailDomainMemberOrganizationActivityDate } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

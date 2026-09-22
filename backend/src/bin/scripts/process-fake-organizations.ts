@@ -1,5 +1,6 @@
 import commandLineArgs from 'command-line-args'
 
+import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { fetchFakeOrganizationAnalysisCandidates, pgpQx } from '@crowd/data-access-layer'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
@@ -7,8 +8,6 @@ import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggesti
 import { getServiceLogger } from '@crowd/logging'
 import { getTemporalClient } from '@crowd/temporal'
 import { TemporalWorkflowId } from '@crowd/types'
-
-import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 
 const CONCURRENCY = 100
 

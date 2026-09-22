@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created } from '@/utils/api'
+import { getOverlappingGroupedMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import {
   BadRequestError,
@@ -26,11 +30,6 @@ import type {
   IMemberRoleWithOrganization,
   MemberOrganizationDateRange,
 } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created } from '@/utils/api'
-import { getOverlappingGroupedMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),
@@ -69,7 +68,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
 
       try {
         dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
-      } catch (error) {
+      } catch {
         throw new BadRequestError('Invalid work experience date range')
       }
 

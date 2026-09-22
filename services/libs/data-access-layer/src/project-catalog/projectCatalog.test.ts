@@ -3,9 +3,12 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import {
+  bulkInsertProjectCatalog,
   findProjectCatalogById,
+  findProjectCatalogByRepoUrl,
   insertProjectCatalog,
   markProjectCatalogOnboardingSkipped,
+  markProjectCatalogPreCheckSkipped,
   updateProjectCatalog,
 } from './projectCatalog'
 
@@ -69,5 +72,96 @@ describe('markProjectCatalogOnboardingSkipped', () => {
     expect(updatedRows).toBe(0)
     expect(row?.action).toBe('onboarded')
     expect(row?.skipReason).toBeNull()
+  })
+})
+
+describe('markProjectCatalogPreCheckSkipped', () => {
+  test('transitions a pending evaluate row to skip with the reason, leaving evaluationResult unset', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(
+      qx,
+      inserted.id,
+      'evaluation pre-check: repository already tracked in CDP',
+    )
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(updatedRows).toBe(1)
+    expect(row?.action).toBe('skip')
+    expect(row?.skipReason).toBe('evaluation pre-check: repository already tracked in CDP')
+    expect(row?.evaluationResult).toBeNull()
+    expect(row?.evaluationReason).toBeNull()
+    expect(row?.evaluatedAt).not.toBeNull()
+  })
+
+  test('clears a stale evaluationResult from a prior verdict on a manually re-queued row', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+    await updateProjectCatalog(qx, inserted.id, {
+      evaluationResult: 'false',
+      evaluationReason: 'not a real open source project',
+    })
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(
+      qx,
+      inserted.id,
+      'evaluation pre-check: repository already tracked in CDP',
+    )
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(updatedRows).toBe(1)
+    expect(row?.action).toBe('skip')
+    expect(row?.evaluationResult).toBeNull()
+    expect(row?.evaluationReason).toBeNull()
+  })
+
+  test('does not touch a row already evaluated', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+    await updateProjectCatalog(qx, inserted.id, {
+      action: 'onboard',
+      evaluationResult: 'true',
+      evaluationReason: null,
+      evaluatedAt: new Date().toISOString(),
+    })
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(
+      qx,
+      inserted.id,
+      'evaluation pre-check: repository already tracked in CDP',
+    )
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(updatedRows).toBe(0)
+    expect(row?.action).toBe('onboard')
+    expect(row?.skipReason).toBeNull()
+  })
+
+  test('does not touch a row whose action is no longer evaluate', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'auto' }))
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(qx, inserted.id, 'some reason')
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(updatedRows).toBe(0)
+    expect(row?.action).toBe('auto')
+    expect(row?.skipReason).toBeNull()
+  })
+})
+
+describe('bulkInsertProjectCatalog', () => {
+  test('inserts a row with action=skip and its skipReason', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({
+        action: 'skip',
+        skipReason: 'repository already tracked in CDP (discovery pre-check)',
+      }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.action).toBe('skip')
+    expect(row?.skipReason).toBe('repository already tracked in CDP (discovery pre-check)')
   })
 })

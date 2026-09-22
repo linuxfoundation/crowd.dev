@@ -112,7 +112,7 @@ components:
         packageId:
           type: string
         status:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
         origin:
           type: string
         version:
@@ -126,10 +126,10 @@ components:
           format: date-time
           nullable: true
         inactiveReason:
-          $ref: '#/components/schemas/InactiveReason'
+          $ref: "#/components/schemas/InactiveReason"
           nullable: true
         resolutionPath:
-          $ref: '#/components/schemas/EscalationResolutionPath'
+          $ref: "#/components/schemas/EscalationResolutionPath"
           nullable: true
         statusNote:
           type: string
@@ -248,7 +248,7 @@ components:
           nullable: true
           additionalProperties: true
         stewardshipStatus:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
         createdAt:
           type: string
           format: date-time
@@ -281,7 +281,7 @@ components:
           type: string
           nullable: true
         stewardshipStatus:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
           nullable: true
         openVulns:
           type: integer
@@ -296,7 +296,7 @@ components:
           format: float
           nullable: true
         healthBand:
-          $ref: '#/components/schemas/HealthBand'
+          $ref: "#/components/schemas/HealthBand"
         latestReleaseAt:
           type: string
           format: date-time
@@ -317,7 +317,7 @@ components:
         stewards:
           type: array
           items:
-            $ref: '#/components/schemas/StewardEntry'
+            $ref: "#/components/schemas/StewardEntry"
 
     StatusCounts:
       type: object
@@ -377,9 +377,9 @@ components:
           type: integer
           description: OpenSSF Scorecard score scaled to 0–100.
         healthBand:
-          $ref: '#/components/schemas/HealthBand'
+          $ref: "#/components/schemas/HealthBand"
         stewardshipStatus:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
           nullable: true
         stewardshipId:
           type: string
@@ -415,7 +415,7 @@ components:
           type: string
           enum: [security-team, maintainer, admin, committer, org-owner]
         confidence:
-          $ref: '#/components/schemas/SecurityContactConfidence'
+          $ref: "#/components/schemas/SecurityContactConfidence"
         score:
           type: number
           format: float
@@ -489,7 +489,7 @@ components:
               nullable: true
               description: OpenSSF Scorecard score scaled to 0–100 (scorecardScore × 10, rounded).
             healthBand:
-              $ref: '#/components/schemas/HealthBand'
+              $ref: "#/components/schemas/HealthBand"
             impact:
               type: object
               properties:
@@ -552,10 +552,10 @@ components:
                 pipeline; empty array when swept with no contacts found. Provenance and
                 internal scoring metadata are never included.
               items:
-                $ref: '#/components/schemas/SecurityContact'
+                $ref: "#/components/schemas/SecurityContact"
             packageConfidence:
               allOf:
-                - $ref: '#/components/schemas/SecurityContactConfidence'
+                - $ref: "#/components/schemas/SecurityContactConfidence"
               nullable: true
               description: Confidence band of the highest-scoring contact in securityContacts.
             securityPolicies:
@@ -576,7 +576,7 @@ components:
             advisories:
               type: array
               items:
-                $ref: '#/components/schemas/Advisory'
+                $ref: "#/components/schemas/Advisory"
             cvd:
               type: object
               properties:
@@ -628,7 +628,7 @@ components:
               type: string
               nullable: true
             status:
-              $ref: '#/components/schemas/StewardshipStatus'
+              $ref: "#/components/schemas/StewardshipStatus"
             origin:
               type: string
               nullable: true
@@ -644,7 +644,7 @@ components:
               format: date-time
               nullable: true
             resolutionPath:
-              $ref: '#/components/schemas/EscalationResolutionPath'
+              $ref: "#/components/schemas/EscalationResolutionPath"
               nullable: true
             statusNote:
               type: string
@@ -653,7 +653,7 @@ components:
               type: array
               nullable: true
               items:
-                $ref: '#/components/schemas/StewardEntry'
+                $ref: "#/components/schemas/StewardEntry"
             lastActivityAt:
               type: string
               format: date-time
@@ -697,13 +697,13 @@ components:
             critical:
               type: integer
         stewardship:
-          $ref: '#/components/schemas/StewardshipStatus'
+          $ref: "#/components/schemas/StewardshipStatus"
           nullable: true
         stewards:
           type: array
           nullable: true
           items:
-            $ref: '#/components/schemas/Steward'
+            $ref: "#/components/schemas/Steward"
         lastActivityAt:
           type: string
           format: date-time
@@ -739,18 +739,18 @@ paths:
       tags:
         - Dashboard
       responses:
-        '200':
+        "200":
           description: Metrics snapshot.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OsspreyMetrics'
-        '401':
+                $ref: "#/components/schemas/OsspreyMetrics"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/activity:
     get:
@@ -776,32 +776,32 @@ paths:
             maximum: 100
             default: 25
       responses:
-        '200':
+        "200":
           description: Paginated activity feed.
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/PaginationMeta'
+                  - $ref: "#/components/schemas/PaginationMeta"
                   - type: object
                     required: [rows]
                     properties:
                       rows:
                         type: array
                         items:
-                          $ref: '#/components/schemas/ActivityEntry'
-        '400':
+                          $ref: "#/components/schemas/ActivityEntry"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   # ── Packages (ossprey-derived read endpoints) ──────────────────────────────
 
@@ -846,11 +846,11 @@ paths:
         - name: status
           in: query
           schema:
-            $ref: '#/components/schemas/StewardshipStatus'
+            $ref: "#/components/schemas/StewardshipStatus"
         - name: healthBand
           in: query
           schema:
-            $ref: '#/components/schemas/HealthBand'
+            $ref: "#/components/schemas/HealthBand"
         - name: vulnSeverity
           in: query
           description: >
@@ -888,34 +888,34 @@ paths:
             enum: [asc, desc]
             default: desc
       responses:
-        '200':
+        "200":
           description: Paginated package list.
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/PaginationMeta'
+                  - $ref: "#/components/schemas/PaginationMeta"
                   - type: object
                     required: [rows, statusCounts]
                     properties:
                       rows:
                         type: array
                         items:
-                          $ref: '#/components/schemas/PackageListRow'
+                          $ref: "#/components/schemas/PackageListRow"
                       statusCounts:
-                        $ref: '#/components/schemas/StatusCounts'
-        '400':
+                        $ref: "#/components/schemas/StatusCounts"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages/scatter:
     get:
@@ -928,7 +928,7 @@ paths:
       tags:
         - Packages
       responses:
-        '200':
+        "200":
           description: Scatter plot dataset.
           content:
             application/json:
@@ -939,15 +939,15 @@ paths:
                   points:
                     type: array
                     items:
-                      $ref: '#/components/schemas/ScatterPoint'
+                      $ref: "#/components/schemas/ScatterPoint"
                   total:
                     type: integer
-        '401':
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages/metrics:
     get:
@@ -959,18 +959,18 @@ paths:
       tags:
         - Packages
       responses:
-        '200':
+        "200":
           description: Package count metrics.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageMetrics'
-        '401':
+                $ref: "#/components/schemas/PackageMetrics"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages/detail:
     get:
@@ -993,30 +993,30 @@ paths:
             type: string
             example: pkg:npm/%40angular/core@17.0.0
       responses:
-        '200':
+        "200":
           description: Package detail.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageDetail'
-        '400':
+                $ref: "#/components/schemas/PackageDetail"
+        "400":
           description: Validation error (malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages/advisories:
     get:
@@ -1078,7 +1078,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Paginated advisory list.
           content:
             application/json:
@@ -1095,25 +1095,25 @@ paths:
                   advisories:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Advisory'
-        '400':
+                      $ref: "#/components/schemas/Advisory"
+        "400":
           description: Validation error (malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages/history:
     get:
@@ -1134,7 +1134,7 @@ paths:
             type: string
             example: pkg:npm/%40angular/core@17.0.0
       responses:
-        '200':
+        "200":
           description: Stewardship activity history.
           content:
             application/json:
@@ -1145,27 +1145,27 @@ paths:
                   events:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PackageHistoryEvent'
+                      $ref: "#/components/schemas/PackageHistoryEvent"
                   total:
                     type: integer
-        '400':
+        "400":
           description: Validation error (malformed purl).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/packages:batch-stewardship:
     post:
@@ -1194,7 +1194,7 @@ paths:
                     description: Must start with `pkg:`.
                     example: pkg:npm/%40angular/core@17.0.0
       responses:
-        '200':
+        "200":
           description: Per-purl stewardship map.
           content:
             application/json:
@@ -1209,20 +1209,20 @@ paths:
                       Values are null when the package is not found in CDP.
                     additionalProperties:
                       oneOf:
-                        - $ref: '#/components/schemas/PackageStewardshipSummary'
-                        - type: 'null'
-        '400':
+                        - $ref: "#/components/schemas/PackageStewardshipSummary"
+                        - type: "null"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   # ── Stewardships ───────────────────────────────────────────────────────────
 
@@ -1294,7 +1294,7 @@ paths:
             enum: [asc, desc]
             default: desc
       responses:
-        '200':
+        "200":
           description: Paginated list of the user's stewarded packages.
           content:
             application/json:
@@ -1355,7 +1355,7 @@ paths:
                           nullable: true
                         stewardshipId:
                           type: string
-                          example: '42'
+                          example: "42"
                         stewardshipStatus:
                           type: string
                           enum: [assessing, active, needs_attention, escalated, blocked]
@@ -1386,18 +1386,18 @@ paths:
                             type: integer
                           blocked:
                             type: integer
-        '400':
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/stewardships/me/activity:
     get:
@@ -1435,7 +1435,7 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Deduplicated activity feed for the user's stewardships.
           content:
             application/json:
@@ -1458,7 +1458,7 @@ paths:
                       properties:
                         stewardshipId:
                           type: string
-                          example: '42'
+                          example: "42"
                         packageName:
                           type: string
                           example: jackson-databind
@@ -1506,18 +1506,18 @@ paths:
                         type: integer
                       pageSize:
                         type: integer
-        '400':
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/stewardships/open:
     post:
@@ -1542,7 +1542,7 @@ paths:
                   description: Must start with `pkg:`.
                   example: pkg:npm/%40angular/core@17.0.0
       responses:
-        '200':
+        "200":
           description: Stewardship opened.
           content:
             application/json:
@@ -1551,25 +1551,25 @@ paths:
                 required: [stewardship]
                 properties:
                   stewardship:
-                    $ref: '#/components/schemas/StewardshipRecord'
-        '400':
+                    $ref: "#/components/schemas/StewardshipRecord"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Package not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/stewardships/{id}/assign:
     post:
@@ -1613,7 +1613,7 @@ paths:
                     When true, automatically transitions stewardship status to
                     `assessing` after assignment.
       responses:
-        '200':
+        "200":
           description: Steward assigned.
           content:
             application/json:
@@ -1622,29 +1622,29 @@ paths:
                 required: [stewardship, stewards]
                 properties:
                   stewardship:
-                    $ref: '#/components/schemas/StewardshipRecord'
+                    $ref: "#/components/schemas/StewardshipRecord"
                   stewards:
                     type: array
                     items:
-                      $ref: '#/components/schemas/StewardEntry'
-        '400':
+                      $ref: "#/components/schemas/StewardEntry"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Stewardship not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/stewardships/{id}/escalate:
     post:
@@ -1670,12 +1670,12 @@ paths:
               required: [resolutionPath]
               properties:
                 resolutionPath:
-                  $ref: '#/components/schemas/EscalationResolutionPath'
+                  $ref: "#/components/schemas/EscalationResolutionPath"
                 notes:
                   type: string
                   minLength: 1
       responses:
-        '200':
+        "200":
           description: Stewardship escalated.
           content:
             application/json:
@@ -1684,25 +1684,25 @@ paths:
                 required: [stewardship]
                 properties:
                   stewardship:
-                    $ref: '#/components/schemas/StewardshipRecord'
-        '400':
+                    $ref: "#/components/schemas/StewardshipRecord"
+        "400":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Stewardship not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /akrites/stewardships/{id}/status:
     patch:
@@ -1732,13 +1732,13 @@ paths:
                   type: string
                   enum: [assessing, active, needs_attention, blocked, inactive]
                 inactiveReason:
-                  $ref: '#/components/schemas/InactiveReason'
+                  $ref: "#/components/schemas/InactiveReason"
                   description: Required when status is `inactive`.
                 notes:
                   type: string
                   minLength: 1
       responses:
-        '200':
+        "200":
           description: Stewardship status updated.
           content:
             application/json:
@@ -1747,24 +1747,24 @@ paths:
                 required: [stewardship]
                 properties:
                   stewardship:
-                    $ref: '#/components/schemas/StewardshipRecord'
-        '400':
+                    $ref: "#/components/schemas/StewardshipRecord"
+        "400":
           description: >
             Validation error. Also returned when `status` is `inactive` but
             `inactiveReason` is missing.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Missing or invalid bearer token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '404':
+                $ref: "#/components/schemas/Error"
+        "404":
           description: Stewardship not found.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"

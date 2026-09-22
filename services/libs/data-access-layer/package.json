@@ -3,9 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,10 +19,10 @@
     "lodash": "^4.17.21",
     "lodash.clonedeep": "^4.5.0",
     "lodash.map": "^4.6.0",
-    "lodash.merge": "^4.6.2",
-    "lodash.pickby": "^4.6.0",
     "lodash.max": "^4.0.1",
+    "lodash.merge": "^4.6.2",
     "lodash.min": "^4.0.1",
+    "lodash.pickby": "^4.6.0",
     "moment": "~2.29.4",
     "pg-promise": "catalog:",
     "pg-query-stream": "^4.7.0",
@@ -35,8 +32,6 @@
   "devDependencies": {
     "@crowd/test-kit": "workspace:*",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "typescript": "catalog:"
   }
 }

@@ -3,7 +3,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
 import { highestVersion } from '../../semverRange'
-
 import { goConstraintMayInclude } from './goConstraint'
 
 // Go dependents come straight from our own DB (package_dependencies, populated via

@@ -1,6 +1,8 @@
 import lodash from 'lodash'
 import { Transaction } from 'sequelize'
 
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getOverlappingGroupedMemberOrganizations, groupMemberOrganizations } from '@/utils/mapper'
 import { Error404, sanitizeMemberOrganizationDateRange } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
@@ -25,9 +27,6 @@ import {
   MemberOrganizationUpdate,
   OrganizationSource,
 } from '@crowd/types'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getOverlappingGroupedMemberOrganizations, groupMemberOrganizations } from '@/utils/mapper'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -116,9 +115,9 @@ export default class MemberOrganizationsService extends LoggerBase {
         const resolvedOverrides = relatedOverrides.filter((override) => !!override)
 
         // Merge override flags from rows that are displayed as one work experience
-        const allowAffiliation =
-          resolvedOverrides.length === 0 ||
-          resolvedOverrides.every((override) => override.allowAffiliation !== false)
+        const allowAffiliation = resolvedOverrides.every(
+          (override) => override.allowAffiliation !== false,
+        )
 
         const isPrimaryWorkExperience = resolvedOverrides.some(
           (override) => override.isPrimaryWorkExperience,

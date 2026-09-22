@@ -1,16 +1,14 @@
 import { Router } from 'express'
 
-import { NotFoundError } from '@crowd/common'
-
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
+import { NotFoundError } from '@crowd/common'
 
 import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { requireScopes } from '../middlewares/requireScopes'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
-
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { akritesRouter } from './akrites'
 import { akritesExternalRouter } from './akrites-external'
@@ -19,6 +17,7 @@ import { organizationsRouter } from './organizations'
 import { osspreyRouter } from './ossprey'
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
+import { projectEvaluationRouter } from './projectEvaluation'
 import { stewardshipsRouter } from './stewardships'
 
 const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
@@ -29,6 +28,7 @@ export function v1Router(): Router {
   router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter())
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
+  router.use('/project-evaluation', staticApiKeyMiddleware(), projectEvaluationRouter())
 
   // TODO[deprecate]: /packages, /stewardships, /ossprey are superseded by /akrites — remove once consumers have migrated
   router.post(

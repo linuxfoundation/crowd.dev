@@ -17,7 +17,6 @@ import {
 } from '@crowd/types'
 
 import { OrganizationRepository } from '../repo/organization.repo'
-
 import { ISearchHit } from './opensearch.data'
 import { OpenSearchService } from './opensearch.service'
 import { IOrganizationSyncResult } from './organization.sync.data'

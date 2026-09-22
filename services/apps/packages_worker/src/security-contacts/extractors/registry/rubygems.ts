@@ -1,6 +1,5 @@
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, isEmail, registryHeaders } from '../http'
-
 import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 

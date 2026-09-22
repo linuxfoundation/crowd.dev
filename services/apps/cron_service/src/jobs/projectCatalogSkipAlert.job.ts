@@ -18,9 +18,11 @@ import {
 import { IJobDefinition } from '../types'
 
 // evaluationReason is free-text from an external API and can change wording anytime;
-// only these two are DB-verifiable — the third ("not on GitHub") gave a false alarm on gcc/gcc.
+// only this one is DB-verifiable — the others ("not on GitHub", the old "already part
+// of LF") either gave false alarms (gcc/gcc) or are no longer produced by the evaluator.
 const ONBOARDED_REASON = 'project is already onboarded'
-const LF_REASON = 'project is already part of LF'
+
+const CONTRADICTIONS_ONLY_REASONS = new Set<string>([ONBOARDED_REASON])
 
 const MAX_ROWS_PER_SECTION = 25
 
@@ -38,8 +40,6 @@ interface ISkipRow {
   repoUrl: string
   reason: string
   repoInCdp: boolean
-  matchedProject: string | null
-  matchedIsLf: boolean | null
   suspicious: boolean | null
 }
 
@@ -83,44 +83,73 @@ const job: IJobDefinition = {
       WITH skipped AS (
         SELECT
           pc."repoUrl", COALESCE(pc."evaluationReason", '(no reason provided)') AS reason,
-          lower(regexp_replace(regexp_replace(pc."repoUrl",
-            '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))     AS repo_path,
+          -- host-agnostic matching is only safe within the known GitHub/Gerrit-mirror
+          -- group; a generic multi-tenant host (gitlab.com, ...) keeps its own host
+          -- in the key, since a shared org/repo path there is pure coincidence
+          CASE WHEN pc.host = 'github.com' OR pc.host = 'review.opendev.org' OR pc.host LIKE 'gerrit.%'
+            THEN 'gh:' || lower(pc.path)
+            ELSE pc.host || '/' || pc.path
+          END                                                                 AS repo_path,
           lower(regexp_replace(regexp_replace(regexp_replace(pc."projectSlug",
             '[^a-zA-Z0-9-]+', '-', 'g'), '-+', '-', 'g'), '^-|-$', '', 'g')) AS derived_slug
-        FROM "projectCatalog" pc
-        WHERE pc.action = 'skip'
-          AND pc."evaluationResult" = 'false'
-          AND pc."evaluatedAt"::date = CURRENT_DATE
+        FROM (
+          SELECT pc.*,
+            lower(regexp_replace(pc."repoUrl", '^https?://(www\\.)?([^/]+)/.*$', '\\2')) AS host,
+            regexp_replace(regexp_replace(pc."repoUrl",
+              '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')                      AS path
+          FROM "projectCatalog" pc
+          WHERE pc.action = 'skip'
+            AND pc."evaluationResult" = 'false'
+            AND pc."evaluatedAt"::date = CURRENT_DATE
+        ) pc
       ),
       repos_norm AS (
-        SELECT DISTINCT ON (repo_path) repo_path, id, "insightsProjectId"
+        SELECT
+          repo_path,
+          bool_or(true)                                              AS repo_exists,
+          -- multiple unrelated projects can share a generic Gerrit path
+          -- (e.g. "r/ci-management"); only trust the match when it's unambiguous
+          CASE WHEN count(DISTINCT "insightsProjectId") = 1
+            THEN (array_agg("insightsProjectId") FILTER (WHERE "insightsProjectId" IS NOT NULL))[1]
+          END                                                         AS "insightsProjectId"
         FROM (
           SELECT id, "insightsProjectId",
-            lower(regexp_replace(regexp_replace(url,
-              '^https?://(www\\.)?github\\.com/', ''), '(\\.git)?/*$', ''))  AS repo_path
-          FROM public.repositories
-          WHERE "deletedAt" IS NULL
+            CASE WHEN host = 'github.com' OR host = 'review.opendev.org' OR host LIKE 'gerrit.%'
+              THEN 'gh:' || lower(path)
+              ELSE host || '/' || path
+            END                                                        AS repo_path
+          FROM (
+            SELECT id, "insightsProjectId",
+              lower(regexp_replace(url, '^https?://(www\\.)?([^/]+)/.*$', '\\2')) AS host,
+              regexp_replace(regexp_replace(url,
+                '^https?://(www\\.)?[^/]+/', ''), '(\\.git)?/*$', '')             AS path
+            FROM public.repositories
+            WHERE "deletedAt" IS NULL
+          ) h
         ) x
-        ORDER BY repo_path, id
+        GROUP BY repo_path
+      ),
+      matched AS (
+        SELECT
+          s."repoUrl", s.reason, r.repo_exists,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END AS matched_id
+        FROM skipped s
+        LEFT JOIN repos_norm r           ON r.repo_path = s.repo_path
+        LEFT JOIN "insightsProjects" ipr ON ipr.id = r."insightsProjectId"
+        LEFT JOIN "insightsProjects" ips ON ips.slug = s.derived_slug
       )
       SELECT
-        s."repoUrl"                                   AS "repoUrl",
-        s.reason                                       AS reason,
-        (r.id IS NOT NULL)                             AS "repoInCdp",
-        COALESCE(ipr.name, ips.name)                   AS "matchedProject",
-        COALESCE(ipr."isLF", ips."isLF")               AS "matchedIsLf",
-        CASE s.reason
-          WHEN $1 THEN (r.id IS NULL AND ips.id IS NULL)
-          WHEN $2 THEN NOT COALESCE(ipr."isLF", ips."isLF", false)
+        m."repoUrl"          AS "repoUrl",
+        m.reason              AS reason,
+        COALESCE(m.repo_exists, false) AS "repoInCdp",
+        CASE m.reason
+          WHEN $1 THEN (NOT COALESCE(m.repo_exists, false) AND m.matched_id IS NULL)
           ELSE NULL
         END                                             AS suspicious
-      FROM skipped s
-      LEFT JOIN repos_norm r           ON r.repo_path = s.repo_path
-      LEFT JOIN "insightsProjects" ipr ON ipr.id = r."insightsProjectId" AND ipr."deletedAt" IS NULL
-      LEFT JOIN "insightsProjects" ips ON ips.slug = s.derived_slug      AND ips."deletedAt" IS NULL
-      ORDER BY suspicious DESC NULLS LAST, s.reason, s."repoUrl"
+      FROM matched m
+      ORDER BY suspicious DESC NULLS LAST, m.reason, m."repoUrl"
       `,
-      [ONBOARDED_REASON, LF_REASON],
+      [ONBOARDED_REASON],
     )
 
     const flagged = rows.filter((row) => row.suspicious)
@@ -142,14 +171,48 @@ const job: IJobDefinition = {
     }
 
     for (const [reason, reasonRows] of byReason) {
-      const visibleRows = reasonRows.slice(0, MAX_ROWS_PER_SECTION)
-      const lines = visibleRows.map((row) => formatLine(row))
-      if (reasonRows.length > visibleRows.length) {
-        lines.push(`… and ${reasonRows.length - visibleRows.length} more`)
+      const contradictionsOnly = CONTRADICTIONS_ONLY_REASONS.has(reason)
+      const listedRows = contradictionsOnly
+        ? reasonRows.filter((row) => row.suspicious)
+        : reasonRows
+
+      if (contradictionsOnly && listedRows.length === 0) {
+        continue
       }
+
+      const visibleRows = listedRows.slice(0, MAX_ROWS_PER_SECTION)
+      const lines = visibleRows.map((row) => formatLine(row))
+      if (listedRows.length > visibleRows.length) {
+        lines.push(`… and ${listedRows.length - visibleRows.length} more`)
+      }
+
       sections.push({
         title: `Reason: "${reason}"`,
-        text: [`Total: ${reasonRows.length}`, ...lines].join('\n'),
+        text: [
+          `Total: ${reasonRows.length}`,
+          ...(contradictionsOnly ? [`Contradicting: ${listedRows.length}`] : []),
+          ...lines,
+        ].join('\n'),
+      })
+    }
+
+    const precheckRows = await dbConnection.any<{ skipReason: string; total: string }>(
+      `
+      SELECT "skipReason", count(*) AS total
+      FROM "projectCatalog"
+      WHERE action = 'skip'
+        AND "evaluationResult" IS NULL
+        AND "skipReason" LIKE 'evaluation pre-check:%'
+        AND "evaluatedAt"::date = CURRENT_DATE
+      GROUP BY "skipReason"
+      ORDER BY total DESC
+      `,
+    )
+
+    if (precheckRows.length > 0) {
+      sections.push({
+        title: 'Deterministic pre-check (never reached the agent)',
+        text: precheckRows.map((row) => `${row.skipReason}: ${row.total}`).join('\n'),
       })
     }
 
@@ -171,14 +234,7 @@ function formatLine(row: ISkipRow): string {
     return row.repoUrl
   }
 
-  const reasoning =
-    row.reason === ONBOARDED_REASON
-      ? 'not found in CDP at all'
-      : row.matchedProject
-        ? `matched to "${row.matchedProject}", which is not flagged as LF`
-        : 'no matching project found in CDP'
-
-  return `⚠️ *${row.repoUrl}* — ${reasoning}`
+  return `⚠️ *${row.repoUrl}* — not found in CDP at all`
 }
 
 export default job

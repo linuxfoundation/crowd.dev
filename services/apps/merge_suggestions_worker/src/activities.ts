@@ -27,6 +27,12 @@ import {
   removeOrganizationMergePair,
   updateOrganizationMergeSuggestionsLastGeneratedAt,
 } from './activities/organizationMergeSuggestions'
+import {
+  fetchCachedSubprojects,
+  fetchRecentlyOnboardedSubprojects,
+  fetchSubprojectMemberMergePairs,
+  markSubprojectDone,
+} from './activities/subprojectMemberMergeSuggestions'
 
 export {
   getAllTenants,
@@ -52,4 +58,8 @@ export {
   mergeOrganizations,
   addOrganizationSuggestionToNoMerge,
   addMemberSuggestionToNoMerge,
+  fetchRecentlyOnboardedSubprojects,
+  fetchSubprojectMemberMergePairs,
+  fetchCachedSubprojects,
+  markSubprojectDone,
 }

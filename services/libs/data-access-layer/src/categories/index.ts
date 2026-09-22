@@ -129,7 +129,7 @@ export async function listCategoryGroups(
     {
       type: filters.type || null,
       query: filters.query || '',
-      searchPattern: `%${filters.query}%` || '',
+      searchPattern: `%${filters.query || ''}%`,
       limit: filters.limit || 20,
       offset: filters.offset || 0,
     },
@@ -183,7 +183,7 @@ export async function listCategoryGroupsCount(
     {
       type: filters.type || null,
       query: filters.query || '',
-      searchPattern: `%${filters.query}%` || '',
+      searchPattern: `%${filters.query || ''}%`,
     },
   )
   return parseInt(result.count, 10)
@@ -491,7 +491,7 @@ export async function listCategories(
           OFFSET $(offset)
         `,
     {
-      query: `%${filters.query}%` || '',
+      query: `%${filters.query || ''}%`,
       limit: filters.limit || 20,
       offset: filters.offset || 0,
       groupType: filters.groupType || null,

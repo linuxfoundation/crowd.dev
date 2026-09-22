@@ -14,12 +14,17 @@ async function runForksSync(ctx: SyncContext): Promise<SyncOutcome> {
   let cursor = watermark.cursor
 
   while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<ForksPage>(ctx.http, FORKS_QUERY, {
-      owner,
-      repo,
-      first: PAGE_SIZE,
-      cursor,
-    })
+    const data = await githubGraphql<ForksPage>(
+      ctx.http,
+      FORKS_QUERY,
+      {
+        owner,
+        repo,
+        first: PAGE_SIZE,
+        cursor,
+      },
+      ctx.log,
+    )
 
     const { pageInfo, nodes } = data.repository.forks
     const forks = nodes
@@ -44,7 +49,7 @@ async function runForksSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const forksSync: SyncDefinition = {
   name: 'forks',
-  cadenceMinutes: 360,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runForksSync,
 }

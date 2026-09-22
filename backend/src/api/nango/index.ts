@@ -1,6 +1,5 @@
-import { NANGO_CLOUD_CONFIG, getNangoCloudSessionToken, initNangoCloudClient } from '@crowd/nango'
-
 import { safeWrap } from '@/middlewares/errorMiddleware'
+import { NANGO_CLOUD_CONFIG, getNangoCloudSessionToken, initNangoCloudClient } from '@crowd/nango'
 
 export default async (app) => {
   if (NANGO_CLOUD_CONFIG()) {

@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created, ok } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, NotFoundError, normalizeMemberIdentityValue } from '@crowd/common'
 import {
@@ -9,17 +13,12 @@ import {
   findMemberIdByVerifiedIdentity,
   findMemberIdentitiesByValue,
   findMemberIdentityConflict,
+  findMemberProjectGroupId,
   insertMemberIdentities,
   suggestMemberMerge,
-  touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created, ok } from '@/utils/api'
-import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),
@@ -92,9 +91,11 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             })
 
             if (conflict) {
+              const projectGroupId = await findMemberProjectGroupId(qx, memberId)
               throw new ConflictError('Identity already exists on another member', {
                 ...conflictContext,
                 conflictMemberId: conflict.memberId,
+                ...(projectGroupId ? { projectGroupId } : {}),
               })
             }
           }
@@ -139,8 +140,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
 
-          await touchMemberUpdatedAt(tx, memberId)
-
           return { identity: result, alreadyExisted: existed }
         })
       } catch (error) {
@@ -168,9 +167,11 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
               ])
             }
 
+            const projectGroupId = await findMemberProjectGroupId(qx, memberId)
             rethrowDbConflict(error, {
               ...conflictContext,
               ...(conflictMemberId ? { conflictMemberId } : {}),
+              ...(projectGroupId ? { projectGroupId } : {}),
             })
           }
         } else if (error instanceof ConflictError) {

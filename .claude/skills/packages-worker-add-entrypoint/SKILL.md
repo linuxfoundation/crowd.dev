@@ -67,6 +67,7 @@ Add any additional files the worker needs (e.g. an API client, a DB query helper
 ### 3b. Entry point — `services/apps/packages_worker/src/bin/<name>.ts`
 
 Follow the structure of `github-repos-enricher.ts`:
+
 - Import `getServiceLogger` from `@crowd/logging`
 - Import your worker's config getter from `../config` and `getPackagesDb` from `../db`
 - Import your worker's main function from `../<worker>/index`
@@ -78,12 +79,14 @@ Follow the structure of `github-repos-enricher.ts`:
 ### 3c. Config additions — `services/apps/packages_worker/src/config.ts`
 
 Read the file first, then add a `get<Worker>Config()` function:
+
 - Use `requireEnv(name)` for string vars, `requireEnvInt(name)` for integers
 - No defaults, no `?? undefined` — the process must refuse to start on missing config
 
 ### 3d. Docker-compose service — `scripts/services/<name>.yaml`
 
 Copy `scripts/services/github-repos-enricher.yaml` and adapt:
+
 - Service names: `<name>` (prod) and `<name>-dev` (dev)
 - `command` (prod): `pnpm run start:<name>`
 - `command` (dev): `pnpm run dev:<name>`
@@ -94,6 +97,7 @@ Copy `scripts/services/github-repos-enricher.yaml` and adapt:
 ### 3e. package.json scripts — `services/apps/packages_worker/package.json`
 
 Read the file first, then add:
+
 ```json
 "start:<name>": "tsx src/bin/<name>.ts",
 "dev:<name>": "tsx watch src/bin/<name>.ts"
@@ -102,6 +106,7 @@ Read the file first, then add:
 ### 3f. Env var files — `backend/.env.dist.local` and `backend/.env.dist.composed`
 
 Append new required vars with empty-string defaults (or sensible local values for non-secrets):
+
 ```
 NEW_WORKER_API_KEY=
 ```

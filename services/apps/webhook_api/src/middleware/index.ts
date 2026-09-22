@@ -6,8 +6,4 @@ import { ILoggingRequest } from './logging'
 import { IQueueRequest } from './queue'
 
 export interface ApiRequest
-  extends Request,
-    ILoggingRequest,
-    IDatabaseRequest,
-    IQueueRequest,
-    IEmittersRequest {}
+  extends Request, ILoggingRequest, IDatabaseRequest, IQueueRequest, IEmittersRequest {}

@@ -1,13 +1,12 @@
 import type { Request, Response } from 'express'
 
+import { getPackagesQx } from '@/db/packagesDb'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import {
   type AkritesExternalPackageDetailRow,
   getPackageDetailsByPurls,
 } from '@crowd/data-access-layer'
-
-import { getPackagesQx } from '@/db/packagesDb'
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 import {
   type PackageDetailBulkEntry,

@@ -1,17 +1,17 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   fetchMemberIdentities,
   findMemberIdsByIdentities,
+  findMemberProjectGroupId,
   suggestMemberMerge,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
   lfids: z.array(z.string().trim()).min(1, 'At least one lfid is required'),
@@ -64,9 +64,11 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
       )
     }
 
+    const projectGroupId = await findMemberProjectGroupId(qx, primaryMemberId)
     throw new ConflictError('Multiple member profiles matched', {
       reason: 'multi-match',
       memberIds,
+      ...(projectGroupId ? { projectGroupId } : {}),
     })
   }
 

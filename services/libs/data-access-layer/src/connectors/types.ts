@@ -18,17 +18,29 @@ export interface ISyncUnit {
   lastRunComplete: boolean | null
   watermark: Record<string, unknown> | null
   emittedCount: number | null
+  emitEnabled: boolean
+}
+
+export interface IShadowRecord {
+  type: string
+  sourceId: string
+  occurredAt: string
+  data: Record<string, unknown>
 }
 
 export type SyncUnitUpsert = Pick<
   ISyncUnit,
   'integrationId' | 'platform' | 'channelId' | 'channelName' | 'syncName'
->
+> & {
+  watermark?: Record<string, unknown> | null
+}
 
 export type IClaimedUnit = Pick<
   ISyncUnit,
   'id' | 'integrationId' | 'platform' | 'syncName' | 'channelId' | 'channelName'
 >
+
+export type IShadowDiffUnit = Pick<ISyncUnit, 'id' | 'integrationId' | 'channelName' | 'syncName'>
 
 export interface ISyncRunProgress {
   watermark: Record<string, unknown>

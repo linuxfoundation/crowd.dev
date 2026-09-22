@@ -6,7 +6,6 @@ import type {
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { type AdvisoryAffectedRange, resolveAdvisory } from './advisoryResolution'
 import {
   ADVISORY_RESOLUTION_EXPR,
@@ -876,7 +875,8 @@ export async function getPackageDetailsByPurls(
 // live on the repo, not the package). A missing purl yields no row → "not found"; a found
 // package with no contacts yields a row with securityContacts null → resolves to [].
 export interface AkritesExternalContactDetailRow
-  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
+  extends
+    Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
     Pick<
       RepoDbRow,
       | 'securityPolicyUrl'

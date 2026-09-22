@@ -4,8 +4,8 @@ import { Logger } from '@crowd/logging'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
 import { deleteManyMemberIdentities, insertMemberIdentities } from '../../../../members/identities'
+import { touchMembersUpdatedAt } from '../../../../members/others'
 import { PgPromiseQueryExecutor } from '../../../../queryExecutor'
-
 import { IDbMember, getInsertMemberColumnSet, getSelectMemberColumnSet } from './member.data'
 
 export default class MemberRepository extends RepositoryBase<MemberRepository> {
@@ -59,6 +59,8 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
       ' where t."memberId" = v."memberId"::uuid and t.platform = v.platform and t.type = v.type and t.value = v.value and t."deletedAt" is null'
 
     await this.db().none(query)
+
+    await touchMembersUpdatedAt(new PgPromiseQueryExecutor(this.db()), [memberId])
   }
 
   public async destroyMemberAfterError(id: string, clearIdentities = false): Promise<void> {

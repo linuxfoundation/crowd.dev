@@ -14,11 +14,16 @@ async function fetchComments(ctx: SyncContext, prId: string): Promise<PrCommentN
   const comments: PrCommentNode[] = []
   let cursor: string | null = null
   do {
-    const data = await githubGraphql<PrCommentsBatchPage>(ctx.http, COMMENTS_FOR_PRS_QUERY, {
-      ids: [prId],
-      first: COMMENTS_PAGE_SIZE,
-      after: cursor,
-    })
+    const data = await githubGraphql<PrCommentsBatchPage>(
+      ctx.http,
+      COMMENTS_FOR_PRS_QUERY,
+      {
+        ids: [prId],
+        first: COMMENTS_PAGE_SIZE,
+        after: cursor,
+      },
+      ctx.log,
+    )
     const connection = data.nodes[0]?.comments
     if (!connection?.edges) {
       break
@@ -51,7 +56,7 @@ async function runPullRequestCommentsSync(ctx: SyncContext): Promise<SyncOutcome
 
 export const pullRequestCommentsSync: SyncDefinition = {
   name: 'pull-request-comments',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestCommentsSync,
 }

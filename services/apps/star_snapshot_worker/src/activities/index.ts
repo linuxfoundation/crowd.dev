@@ -3,12 +3,64 @@ import { ApplicationFailure } from '@temporalio/client'
 import { getGithubInstallationToken } from '@crowd/common_services'
 import {
   findReposForStarSnapshot as findReposForStarSnapshotQx,
+  findReposNeedingStarBackfill as findReposNeedingStarBackfillQx,
+  recordStarBackfillFailure,
+  recordStarBackfillSuccess,
   upsertStarSnapshot,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { RedisCache } from '@crowd/redis'
 import { IRepoForStarSnapshot } from '@crowd/types'
 
+import {
+  CoreRateLimiter,
+  RepoBackfillResult,
+  SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+  backfillRepo,
+  createCoreRateLimiter,
+} from '../backfill/starSnapshotBackfill'
+import { parseGithubRepoUrl } from '../githubRepoUrl'
 import { svc } from '../main'
+
+const SELF_HEAL_RESERVED_CORE_RATE_LIMIT = 2_000
+const SELF_HEAL_DEAD_LETTER_AFTER = 3
+// Covers a batch's full processing time (incl. rate-limit backoffs) while still auto-releasing
+// a crashed/stuck claim before the next daily schedule tick could double-dispatch it.
+const SELF_HEAL_INFLIGHT_TTL_SECONDS = 6 * 60 * 60
+
+let selfHealRateLimiter: CoreRateLimiter | undefined
+// Lazy (svc.log isn't ready at module load) singleton per worker process - the reserved
+// floor is a real GitHub quota shared across every concurrent activity call, not per-call.
+function getSelfHealRateLimiter(): CoreRateLimiter {
+  if (!selfHealRateLimiter) {
+    selfHealRateLimiter = createCoreRateLimiter(SELF_HEAL_RESERVED_CORE_RATE_LIMIT, svc.log)
+  }
+  return selfHealRateLimiter
+}
+
+// Separate quota bucket from the core rate limit above (graphql: 12,150/hr vs core: 15,000/hr) -
+// same ~13% reserve ratio as CM-1463's core-quota floor, applied to this worker's own quota.
+const CAPTURE_RESERVED_GRAPHQL_RATE_LIMIT = 1_500
+
+let captureRateLimiter: CoreRateLimiter | undefined
+function getCaptureRateLimiter(): CoreRateLimiter {
+  if (!captureRateLimiter) {
+    captureRateLimiter = createCoreRateLimiter(CAPTURE_RESERVED_GRAPHQL_RATE_LIMIT, svc.log)
+  }
+  return captureRateLimiter
+}
+
+// Distinguishes a quota-exhausted batch from a per-repo/per-alias failure - the caller backs
+// off and retries the whole batch instead of dead-lettering repos that just got throttled.
+class GraphqlRateLimitedError extends Error {}
+
+let selfHealInflightCache: RedisCache | undefined
+function getSelfHealInflightCache(): RedisCache {
+  if (!selfHealInflightCache) {
+    selfHealInflightCache = new RedisCache('starBackfillInflight', svc.redis, svc.log)
+  }
+  return selfHealInflightCache
+}
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 const FETCH_TIMEOUT_MS = 30_000
@@ -28,9 +80,6 @@ interface BatchGraphqlResponse {
 }
 
 function isRetryableAliasError(error?: GraphqlAliasError): boolean {
-  if (error?.message?.toLowerCase().includes('rate limit')) {
-    return true
-  }
   return !error?.type || !NON_RETRYABLE_GRAPHQL_ERROR_TYPES.has(error.type)
 }
 
@@ -62,30 +111,14 @@ function buildBatchQuery(repos: Array<{ owner: string; name: string }>): {
   }
 }
 
-export function parseGithubRepoUrl(url: string): { owner: string; name: string } {
-  let parsed: URL
+// Reserves before every real request (initial + each alias retry), not just once per batch -
+// concurrent batches share this limiter, so only a per-call reservation is race-free.
+function reserveGraphqlSlot(): void {
   try {
-    parsed = new URL(url.replace('git@github.com:', 'https://github.com/'))
-  } catch {
-    throw ApplicationFailure.nonRetryable(`Cannot parse GitHub URL: ${url}`, 'INVALID_URL')
+    getCaptureRateLimiter().reserveOrThrow()
+  } catch (error) {
+    throw new GraphqlRateLimitedError((error as Error).message)
   }
-
-  const pathParts = parsed.pathname
-    .replace(/^\//, '')
-    .replace(/\/$/, '')
-    .replace(/\.git$/, '')
-    .split('/')
-
-  if (
-    parsed.hostname !== 'github.com' ||
-    pathParts.length !== 2 ||
-    !pathParts[0] ||
-    !pathParts[1]
-  ) {
-    throw ApplicationFailure.nonRetryable(`Cannot parse GitHub URL: ${url}`, 'INVALID_URL')
-  }
-
-  return { owner: pathParts[0], name: pathParts[1] }
 }
 
 async function queryStargazerCounts(
@@ -98,6 +131,8 @@ async function queryStargazerCounts(
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
+    reserveGraphqlSlot()
+
     const response = await fetch(GITHUB_GRAPHQL_URL, {
       method: 'POST',
       headers: {
@@ -107,15 +142,49 @@ async function queryStargazerCounts(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     })
+    getCaptureRateLimiter().observe(response.headers)
 
     if (response.status === 401) {
       throw new Error('GitHub auth failure (401) fetching stargazer counts')
     }
 
-    if (response.status === 403) {
+    if (response.status === 403 || response.status === 429) {
+      const retryAfterHeader = response.headers.get('retry-after')
+      const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
+      const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
+
+      if (response.status === 429) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError('GitHub rate limit hit (429) fetching stargazer counts')
+      }
+
       const body = await response.text()
-      if (body.toLowerCase().includes('rate limit')) {
-        throw new Error('GitHub rate limit hit fetching stargazer counts')
+      const bodyLower = body.toLowerCase()
+      // Only a retry-after header or explicit secondary/abuse wording signals GitHub's secondary
+      // limit; misclassifying a primary 403 here would use the short cooldown, not the real reset.
+      const isSecondaryRateLimit =
+        retryAfterMs !== undefined ||
+        bodyLower.includes('secondary rate limit') ||
+        bodyLower.includes('abuse detection')
+      if (isSecondaryRateLimit) {
+        getCaptureRateLimiter().noteSecondaryRateLimit(retryAfterMs)
+        throw new GraphqlRateLimitedError(
+          'GitHub secondary rate limit hit fetching stargazer counts',
+        )
+      }
+      if (bodyLower.includes('rate limit')) {
+        throw new GraphqlRateLimitedError('GitHub rate limit hit fetching stargazer counts')
+      }
+      if (bodyLower.includes('ip allow list')) {
+        // Org IP allow list blocks the whole batch at the HTTP level before any field resolves,
+        // so which repo caused it can't be told apart - synthesize per-alias errors instead.
+        return {
+          errors: entries.map((entry, i) => ({
+            path: [`r${i}`],
+            type: 'FORBIDDEN',
+            message: `org IP allow list may be blocking one of this batch's repos (incl. ${entry.owner}/${entry.name})`,
+          })),
+        }
       }
       throw ApplicationFailure.nonRetryable(
         'GitHub auth failure (403) fetching stargazer counts',
@@ -146,6 +215,11 @@ async function fetchStargazerCounts(
     try {
       json = await queryStargazerCounts(pending)
     } catch (error) {
+      // Flat-retrying a quota hit within the same few seconds never helps - bail out
+      // immediately instead of burning MAX_ALIAS_ATTEMPTS for nothing.
+      if (error instanceof GraphqlRateLimitedError) {
+        throw error
+      }
       if (attempt === 1) {
         throw error
       }
@@ -166,6 +240,11 @@ async function fetchStargazerCounts(
 
     const topLevelError = json.errors?.find((error) => !error.path?.length)
     if (topLevelError) {
+      if (topLevelError.message?.toLowerCase().includes('rate limit')) {
+        throw new GraphqlRateLimitedError(
+          `GraphQL error fetching stargazer counts: ${topLevelError.message}`,
+        )
+      }
       const message = `GraphQL error fetching stargazer counts: ${topLevelError.message ?? 'unknown error'}`
       if (attempt === 1) {
         throw new Error(message)
@@ -191,6 +270,17 @@ async function fetchStargazerCounts(
       if (typeof alias === 'string') {
         errorsByAlias.set(alias, error)
       }
+    }
+
+    // A rate limit can also surface per-alias rather than as a top-level error - it still
+    // means the whole batch's quota is gone, not just this one repo's.
+    const rateLimitedAlias = [...errorsByAlias.values()].find((error) =>
+      error.message?.toLowerCase().includes('rate limit'),
+    )
+    if (rateLimitedAlias) {
+      throw new GraphqlRateLimitedError(
+        rateLimitedAlias.message ?? 'GitHub rate limit hit fetching stargazer counts',
+      )
     }
 
     const stillPending: typeof pending = []
@@ -232,10 +322,14 @@ async function fetchStargazerCounts(
   return results
 }
 
+export type FetchStarSnapshotBatchResult =
+  | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'done'; results: RepoStarFetchResult[] }
+
 export async function fetchAndSaveStarSnapshotBatch(
   repos: IRepoForStarSnapshot[],
   capturedAt: string,
-): Promise<RepoStarFetchResult[]> {
+): Promise<FetchStarSnapshotBatchResult> {
   const parsed: Array<{ repo: IRepoForStarSnapshot; owner: string; name: string }> = []
   const unparseableResults: RepoStarFetchResult[] = []
 
@@ -253,10 +347,27 @@ export async function fetchAndSaveStarSnapshotBatch(
   }
 
   if (parsed.length === 0) {
-    return unparseableResults
+    return { outcome: 'done', results: unparseableResults }
   }
 
-  const results = await fetchStargazerCounts(parsed)
+  const rateLimiter = getCaptureRateLimiter()
+  const waitMs = rateLimiter.peekWaitMs()
+  if (waitMs > 0) {
+    return { outcome: 'rate-limited', waitMs }
+  }
+
+  let results: RepoStarFetchResult[]
+  try {
+    results = await fetchStargazerCounts(parsed)
+  } catch (error) {
+    if (error instanceof GraphqlRateLimitedError) {
+      return {
+        outcome: 'rate-limited',
+        waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      }
+    }
+    throw error
+  }
 
   const qx = pgpQx(svc.postgres.writer.connection())
   for (const result of results) {
@@ -265,7 +376,7 @@ export async function fetchAndSaveStarSnapshotBatch(
     }
   }
 
-  return [...results, ...unparseableResults]
+  return { outcome: 'done', results: [...results, ...unparseableResults] }
 }
 
 export async function findReposForStarSnapshot(
@@ -274,4 +385,122 @@ export async function findReposForStarSnapshot(
 ): Promise<IRepoForStarSnapshot[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
   return findReposForStarSnapshotQx(qx, limit, afterUrl)
+}
+
+export async function findReposNeedingStarBackfill(
+  limit?: number,
+  afterUrl?: string,
+): Promise<IRepoForStarSnapshot[]> {
+  const qx = pgpQx(svc.postgres.reader.connection())
+  return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
+}
+
+// A leftover claim only costs a repo one skipped run before the TTL clears it - not worth
+// forcing a full activity retry (re-fetching the entire stargazer history) over.
+async function releaseInflightClaim(cache: RedisCache, repositoryId: string): Promise<void> {
+  try {
+    await cache.delete(repositoryId)
+  } catch (err) {
+    svc.log.warn(
+      { repositoryId, error: (err as Error)?.message ?? err },
+      'failed to release star backfill in-flight claim, will auto-expire via TTL',
+    )
+  }
+}
+
+export type BackfillRepoStarHistoryResult =
+  | { outcome: 'rate-limited'; waitMs: number }
+  | { outcome: 'in-flight' }
+  | { outcome: 'done' }
+
+export async function backfillRepoStarHistory(
+  repo: IRepoForStarSnapshot,
+  ownerId: string,
+): Promise<BackfillRepoStarHistoryResult> {
+  const inflightCache = getSelfHealInflightCache()
+  // Claims the repo for this batch (ownerId) so a different day's batch backs off instead of
+  // re-processing it; re-claiming with the same ownerId is a no-op that confirms it.
+  const holder = await inflightCache.setIfNotExistsOrGet(
+    repo.repositoryId,
+    ownerId,
+    SELF_HEAL_INFLIGHT_TTL_SECONDS,
+  )
+  if (holder !== ownerId) {
+    return { outcome: 'in-flight' }
+  }
+  // SETNX only sets the TTL on the first claim - renew it every attempt too, or a repo
+  // that bounces through backoffs longer than the TTL loses its claim mid-processing.
+  await inflightCache.set(repo.repositoryId, ownerId, SELF_HEAL_INFLIGHT_TTL_SECONDS)
+
+  const rateLimiter = getSelfHealRateLimiter()
+  const waitMs = rateLimiter.peekWaitMs()
+  if (waitMs > 0) {
+    return { outcome: 'rate-limited', waitMs }
+  }
+
+  const qx = pgpQx(svc.postgres.writer.connection())
+  let result: RepoBackfillResult
+  try {
+    result = await backfillRepo(qx, repo, rateLimiter, svc.log, { dryRun: false, failFast: true })
+  } catch (err) {
+    const message = (err as Error)?.message ?? String(err)
+    if (message.toLowerCase().includes('rate limit')) {
+      return {
+        outcome: 'rate-limited',
+        waitMs: rateLimiter.peekWaitMs() || SECONDARY_RATE_LIMIT_COOLDOWN_MS,
+      }
+    }
+    try {
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        (err as Error)?.name ?? 'Error',
+        message,
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
+    } catch (recordErr) {
+      // Failure is already known here - don't let a transient marker-write error also fail the
+      // activity and force a full retry (re-fetching all stargazer history) just to log it.
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (recordErr as Error)?.message ?? recordErr },
+        'failed to record star backfill failure marker, will retry on next self-heal run',
+      )
+    }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
+    return { outcome: 'done' }
+  }
+
+  if (result.status === 'skipped-negative-count') {
+    // Deterministic for this repo's actual GitHub data - retrying it plain would refetch its
+    // full history every run forever, so it's dead-lettered like any other failure.
+    try {
+      await recordStarBackfillFailure(
+        qx,
+        repo.repositoryId,
+        'NegativeStarCountAnomaly',
+        'backward-anchored reconstruction produced a negative star count',
+        SELF_HEAL_DEAD_LETTER_AFTER,
+      )
+    } catch (err) {
+      svc.log.warn(
+        { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+        'failed to record star backfill anomaly marker, will retry on next self-heal run',
+      )
+    }
+    await releaseInflightClaim(inflightCache, repo.repositoryId)
+    return { outcome: 'done' }
+  }
+
+  try {
+    await recordStarBackfillSuccess(qx, repo.repositoryId)
+  } catch (err) {
+    // Fetch and row writes already succeeded - don't let a transient marker-write error force
+    // a full retry (re-fetching all stargazer history); it just stays a candidate till next run.
+    svc.log.warn(
+      { repositoryId: repo.repositoryId, error: (err as Error)?.message ?? err },
+      'failed to record star backfill completion marker, will retry on next self-heal run',
+    )
+  }
+  await releaseInflightClaim(inflightCache, repo.repositoryId)
+  return { outcome: 'done' }
 }

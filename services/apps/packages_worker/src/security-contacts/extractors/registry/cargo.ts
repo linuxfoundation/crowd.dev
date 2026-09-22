@@ -1,6 +1,5 @@
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { fetchJson, registryHeaders } from '../http'
-
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'crates.io'
