@@ -11,7 +11,29 @@ SQL >
                 SELECT repositoryId, argMax(starCount, capturedAt) AS starCount
                 FROM repositoryStarSnapshots
                 WHERE
-                    1
+                    repositoryId IN (
+                        SELECT r2.id
+                        FROM repositories r2 FINAL
+                        INNER JOIN insightsProjects i2 FINAL ON r2.insightsProjectId = i2.id
+                        WHERE
+                            isNull (r2.deletedAt)
+                            AND r2.enabled = true
+                            AND r2.excluded = false
+                            AND isNull (i2.deletedAt)
+                            AND i2.enabled = 1
+                            AND r2.segmentId = (SELECT segmentId FROM segments_filtered)
+                            {% if defined(repos) %}
+                                AND r2.url
+                                IN {{
+                                    Array(
+                                        repos,
+                                        'String',
+                                        description="Repository URLs",
+                                        required=False,
+                                    )
+                                }}
+                            {% end %}
+                    )
                     {% if defined(startDate) %}
                         AND capturedAt
                         >= {{ DateTime(startDate, description="Snapshot from date", required=False) }}
