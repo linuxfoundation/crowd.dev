@@ -9,7 +9,7 @@ interface GraphqlEnvelope<T> {
   errors?: { type?: string; message?: string }[]
 }
 
-const NO_DATA_MAX_ATTEMPTS = 3
+const NO_DATA_MAX_ATTEMPTS = 5
 const NO_DATA_BACKOFF_MS = 2000
 
 export async function githubGraphql<T>(
@@ -29,9 +29,9 @@ export async function githubGraphql<T>(
       log,
       maxAttempts,
     )
+    const isForbidden = body.errors?.some((e) => e.type?.includes('FORBIDDEN')) ?? false
     if (body.errors?.length) {
       const details = body.errors.map((e) => `${e.type ?? 'ERROR'}: ${e.message ?? ''}`).join('; ')
-      const isForbidden = body.errors.some((e) => e.type?.includes('FORBIDDEN'))
       if (isForbidden) {
         log.warn({ errors: body.errors }, `github graphql errors: ${details}`)
       } else {
@@ -41,7 +41,7 @@ export async function githubGraphql<T>(
     if (body.data) {
       return body.data
     }
-    if (body.errors?.length || attempt >= NO_DATA_MAX_ATTEMPTS) {
+    if (isForbidden || attempt >= NO_DATA_MAX_ATTEMPTS) {
       throw new ProviderContractError('github graphql response has no data')
     }
     log.warn({ attempt }, 'github graphql empty data response, retrying')
