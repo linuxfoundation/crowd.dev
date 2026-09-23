@@ -96,7 +96,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
 
   // patched() keeps an execution already in flight on its old command sequence so a
   // mid-deploy replay doesn't hit a nondeterminism error.
-  const gapHealPatched = patched('gap-heal-scan')
+  const gapHealPatched = patched('CM-1441-gap-heal-scan')
   let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
   if (!gapHealDone && gapHealPatched) {
     gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
