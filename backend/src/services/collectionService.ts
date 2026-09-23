@@ -5,7 +5,14 @@ import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { IGithubInsights } from '@/types/githubTypes'
 import { getCleanString } from '@crowd/common'
 import { GithubIntegrationService } from '@crowd/common_services'
-import { OrganizationField, QueryExecutor, findOrgById, queryOrgs } from '@crowd/data-access-layer'
+import {
+  OrganizationField,
+  QueryExecutor,
+  createProjectDocOverride,
+  deactivateProjectDocOverride,
+  findOrgById,
+  queryOrgs,
+} from '@crowd/data-access-layer'
 import { listCategoriesByIds } from '@crowd/data-access-layer/src/categories'
 import {
   CollectionField,
@@ -43,6 +50,7 @@ import { findSegmentById, hasMappedRepos } from '@crowd/data-access-layer/src/se
 import { QueryResult } from '@crowd/data-access-layer/src/utils'
 import { GithubIntegrationSettings } from '@crowd/integrations'
 import { LoggerBase } from '@crowd/logging'
+import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import { DEFAULT_WIDGET_VALUES, PlatformType, Widgets } from '@crowd/types'
 
 import { IServiceOptions } from './IServiceOptions'
@@ -267,6 +275,37 @@ export class CollectionService extends LoggerBase {
       const qx = SequelizeRepository.getQueryExecutor({ ...this.options, transaction: tx })
       await disconnectProjectsAndCollections(qx, { insightsProjectId: id })
       await deleteInsightsProject(qx, id)
+    })
+  }
+
+  async createInsightsProjectDocOverride(projectId: string, docsUrl: string) {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const override = await createProjectDocOverride(qx, {
+      projectId,
+      docsUrl,
+      submittedBy: this.options.currentUser.id,
+    })
+
+    await this.startDocsReadinessWorkflow(projectId)
+
+    return override
+  }
+
+  async revertInsightsProjectDocOverride(projectId: string) {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const override = await deactivateProjectDocOverride(qx, projectId)
+
+    await this.startDocsReadinessWorkflow(projectId)
+
+    return override
+  }
+
+  async startDocsReadinessWorkflow(projectId: string) {
+    await this.options.temporal.workflow.start('processProjectDocsReadiness', {
+      taskQueue: 'docs-readiness',
+      workflowId: `docsReadinessProject/${projectId}`,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+      args: [{ projectId }],
     })
   }
 
