@@ -1,6 +1,7 @@
 import axios from 'axios'
 import * as jwt from 'jsonwebtoken'
 
+import { summarizeBody } from '../../http/client'
 import {
   ConnectorError,
   ProviderAuthError,
@@ -31,16 +32,30 @@ function classifyAppApiError(err: unknown, operation: string): ConnectorError | 
   const body = err.response?.data as { message?: string } | undefined
   const detail = body?.message ?? err.message
   const options = { status, cause: err }
+  const context = {
+    request: {
+      method: (err.config?.method ?? 'get').toUpperCase(),
+      url: err.config?.url ?? '',
+    },
+    response:
+      status === undefined ? undefined : { status, body: summarizeBody(err.response?.data) },
+  }
   if (status === 401) {
-    return new ProviderAuthError(`github app ${operation} unauthorized: ${detail}`, options)
+    return new ProviderAuthError(
+      `github app ${operation} unauthorized: ${detail}`,
+      options,
+    ).withContext(context)
   }
   if (status === undefined || status >= 500) {
-    return new ProviderUnavailableError(`github app ${operation} failed: ${detail}`, options)
+    return new ProviderUnavailableError(
+      `github app ${operation} failed: ${detail}`,
+      options,
+    ).withContext(context)
   }
   return new ProviderContractError(
     `github app ${operation} returned status ${status}: ${detail}`,
     options,
-  )
+  ).withContext(context)
 }
 
 export async function mintInstallationToken(
