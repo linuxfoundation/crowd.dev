@@ -3,8 +3,8 @@ DESCRIPTION >
     - Returns star count and benchmark (0-5) per repository.
     - Parameters:
     - `repoUrl`: Optional repository URL for single-repo mode
-    - `startDate`: Optional DateTime filter
-    - `endDate`: Optional DateTime filter
+    - `startDate`: Unused - stars is a cumulative total, not a period count
+    - `endDate`: Optional DateTime, returns cumulative stars as of this date
 
 TAGS "Repository health", "Metrics"
 
@@ -36,14 +36,6 @@ SQL >
                                         }}
                                     )
                             )
-                            {% if defined(startDate) %}
-                                AND capturedAt
-                                >= {{
-                                    DateTime(
-                                        startDate, description="Snapshot from date", required=False
-                                    )
-                                }}
-                            {% end %}
                             {% if defined(endDate) %}
                                 AND capturedAt
                                 <= {{
@@ -69,13 +61,9 @@ SQL >
                     AND platform != 'github'
                     AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-                    {% if defined(startDate) %}
-                        AND timestamp
-                        > {{ DateTime(startDate, description="Filter after date", required=False) }}
-                    {% end %}
                     {% if defined(endDate) %}
                         AND timestamp
-                        < {{ DateTime(endDate, description="Filter before date", required=False) }}
+                        <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
                     {% end %}
                 GROUP BY channel
             {% else %}
