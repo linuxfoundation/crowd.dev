@@ -1,41 +1,25 @@
 {
   "compilerOptions": {
-    "target": "esnext",
+    "target": "es2022",
     "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["vite/client"],
     "strict": true,
-    "jsx": "preserve",
-    "importHelpers": true,
-    "moduleResolution": "node",
+    "noImplicitThis": true,
     "allowJs": true,
+    "jsx": "preserve",
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
-    "noImplicitThis": true,
     "baseUrl": ".",
-    "types": [
-      "webpack-env"
-    ],
-    "paths": {
-      "@/*": [
-        "src/*"
-      ]
-    },
-    "lib": [
-      "esnext",
-      "dom",
-      "dom.iterable",
-      "scripthost"
-    ]
+    "paths": { "@/*": ["src/*"] }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.vue",
-    "tests/**/*.ts",
-    "tests/**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.*", ".storybook/**/*.ts"],
+  "exclude": ["node_modules", "dist", "storybook-static"]
 }
