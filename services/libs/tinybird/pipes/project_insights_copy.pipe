@@ -108,9 +108,13 @@ DESCRIPTION >
 SQL >
     SELECT
         repositoryId,
-        argMax(starCount, capturedAt) AS totalNow,
-        argMaxIf(starCount, capturedAt, capturedAt <= now() - INTERVAL 365 DAY) AS totalAt365,
-        argMaxIf(starCount, capturedAt, capturedAt <= now() - INTERVAL 730 DAY) AS totalAt730
+        argMax(starCount, (capturedAt, updatedAt)) AS totalNow,
+        argMaxIf(
+            starCount, (capturedAt, updatedAt), capturedAt <= now() - INTERVAL 365 DAY
+        ) AS totalAt365,
+        argMaxIf(
+            starCount, (capturedAt, updatedAt), capturedAt <= now() - INTERVAL 730 DAY
+        ) AS totalAt730
     FROM repositoryStarSnapshots
     GROUP BY repositoryId
 
@@ -122,8 +126,12 @@ DESCRIPTION >
 SQL >
     SELECT
         r.segmentId AS segmentId,
-        sum(coalesce(s.totalNow, 0)) - sum(coalesce(s.totalAt365, 0)) AS starsLast365DaysSnapshot,
-        sum(coalesce(s.totalAt365, 0)) - sum(coalesce(s.totalAt730, 0)) AS starsPrevious365DaysSnapshot
+        greatest(
+            sum(coalesce(s.totalNow, 0)) - sum(coalesce(s.totalAt365, 0)), 0
+        ) AS starsLast365DaysSnapshot,
+        greatest(
+            sum(coalesce(s.totalAt365, 0)) - sum(coalesce(s.totalAt730, 0)), 0
+        ) AS starsPrevious365DaysSnapshot
     FROM project_insights_copy_star_snapshot_totals s
     INNER JOIN repositories r FINAL ON r.id = s.repositoryId
     WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
@@ -137,8 +145,10 @@ DESCRIPTION >
 SQL >
     SELECT
         r.url AS repoUrl,
-        coalesce(s.totalNow, 0) - coalesce(s.totalAt365, 0) AS starsLast365DaysSnapshot,
-        coalesce(s.totalAt365, 0) - coalesce(s.totalAt730, 0) AS starsPrevious365DaysSnapshot
+        greatest(coalesce(s.totalNow, 0) - coalesce(s.totalAt365, 0), 0) AS starsLast365DaysSnapshot,
+        greatest(
+            coalesce(s.totalAt365, 0) - coalesce(s.totalAt730, 0), 0
+        ) AS starsPrevious365DaysSnapshot
     FROM project_insights_copy_star_snapshot_totals s
     INNER JOIN repositories r FINAL ON r.id = s.repositoryId
     WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
@@ -277,11 +287,12 @@ SQL >
         dep.developmentPercentage AS developmentHealthScore,
         dep.securityPercentage AS securityHealthScore,
         base.firstCommit AS firstCommit,
-        pm.starsLast365Days + COALESCE(sd.starsLast365DaysSnapshot, 0) AS starsLast365Days,
+        COALESCE(pm.starsLast365Days, 0) + COALESCE(sd.starsLast365DaysSnapshot, 0) AS starsLast365Days,
         pm.forksLast365Days AS forksLast365Days,
         pm.activeContributorsLast365Days AS activeContributorsLast365Days,
         pm.activeOrganizationsLast365Days AS activeOrganizationsLast365Days,
-        pm.starsPrevious365Days + COALESCE(sd.starsPrevious365DaysSnapshot, 0) AS starsPrevious365Days,
+        COALESCE(pm.starsPrevious365Days, 0)
+        + COALESCE(sd.starsPrevious365DaysSnapshot, 0) AS starsPrevious365Days,
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
@@ -335,7 +346,7 @@ SQL >
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
-    LEFT JOIN project_insights_copy_star_deltas AS sd USING (segmentId)
+    LEFT JOIN project_insights_copy_star_deltas AS sd ON base.segmentId = sd.segmentId
     LEFT JOIN project_insights_copy_health_v2_project AS hv2 ON base.id = hv2.insightsProjectId
 
 NODE project_insights_copy_repo_base
