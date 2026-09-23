@@ -1,9 +1,6 @@
 # CDP — Community Data Platform
 
-CDP is a community data platform by the Linux Foundation. It ingests millions of
-activities and events daily from platforms like GitHub, GitLab, and many others
-(not just code hosting). Open-source projects get onboarded by connecting
-integrations, and data flows continuously at scale.
+CDP is a community data platform by the Linux Foundation. It ingests millions of activities and events daily from platforms like GitHub, GitLab, and many others (not just code hosting). Open-source projects get onboarded by connecting integrations, and data flows continuously at scale.
 
 The ingested data is often messy. A big part of what CDP does is improve data quality: deduplicating member and organization profiles through merge and unmerge operations, enriching data via third-party providers, and resolving identities across sources. The cleaned data powers analytics and insights for LFX products.
 
@@ -26,12 +23,9 @@ services/apps/    -> Microservices — Temporal workers, Node.js workers, webhoo
 services/libs/    -> Shared libraries used across services
 ```
 
-`services/libs/common` holds shared utilities, error classes,
-and helpers. If a piece of logic is reusable (not business logic), it belongs there.
+`services/libs/common` holds shared utilities, error classes, and helpers. If a piece of logic is reusable (not business logic), it belongs there.
 
-`services/libs/data-access-layer` holds all
-database query functions. Check here before writing new ones — duplicates are
-already a problem.
+`services/libs/data-access-layer` holds all database query functions. Check here before writing new ones — duplicates are already a problem.
 
 Typecheck is `pnpm tsc-check` (`tsc -b` on the root `tsconfig.json`). A new `services/` package must be added to that file's `references`, and its own tsconfig must reference the `@crowd` packages it imports. Say so when you add one.
 
@@ -44,48 +38,33 @@ Typecheck is `pnpm tsc-check` (`tsc -b` on the root `tsconfig.json`). A new `ser
 
 Old and new patterns coexist. Always use the new pattern.
 
-- **Sequelize -> pg-promise**: Sequelize is legacy (backend only). Use
-  `queryExecutor` from `@crowd/data-access-layer` for all new database code.
-- **Classes -> functions**: Class-based services and repos are legacy. Write
-  plain functions — composable, modular, easy to test.
-- **Multi-tenancy -> single tenant**: Multi-tenancy is being phased out. The
-  tenant table still exists. Code uses `DEFAULT_TENANT_ID` from `@crowd/common`.
-  Don't add new multi-tenant logic.
-- **Legacy auth -> Auth0**: Auth0 is the current auth system. Ignore old JWT
-  patterns.
-- **Zod for validation**: Public API endpoints use Zod schemas with
-  `validateOrThrow`. Follow this pattern for all new endpoints.
+- **Sequelize -> pg-promise**: Sequelize is legacy (backend only). Use `queryExecutor` from `@crowd/data-access-layer` for all new database code.
+- **Classes -> functions**: Class-based services and repos are legacy. Write plain functions — composable, modular, easy to test.
+- **Multi-tenancy -> single tenant**: Multi-tenancy is being phased out. The tenant table still exists. Code uses `DEFAULT_TENANT_ID` from `@crowd/common`. Don't add new multi-tenant logic.
+- **Legacy auth -> Auth0**: Auth0 is the current auth system. Ignore old JWT patterns.
+- **Zod for validation**: Public API endpoints use Zod schemas with `validateOrThrow`. Follow this pattern for all new endpoints.
 
 ## Working with the database
 
 Millions of rows. Every query matters.
 
-- Look up the table schema and indexes before writing any query. Don't select
-  or touch columns blindly.
-- Check existing functions in `data-access-layer` before writing new ones.
-  Weigh the blast radius of modifying a shared function — sometimes a new
-  function is safer.
-- Write queries with performance in mind. Think about what indexes exist, what
-  the query plan looks like, and whether you're scanning more rows than needed.
+- Look up the table schema and indexes before writing any query. Don't select or touch columns blindly.
+- Check existing functions in `data-access-layer` before writing new ones. Weigh the blast radius of modifying a shared function — sometimes a new function is safer.
+- Write queries with performance in mind. Think about what indexes exist, what the query plan looks like, and whether you're scanning more rows than needed.
 
 ## Code quality
 
-- Functional and modular. Code should be easy to plug in, pull out, and test
-  independently.
+- Functional and modular. Code should be easy to plug in, pull out, and test independently.
 - Think about performance at scale, even for small changes.
 - Define types properly — extend and reuse existing types. Don't sprinkle `any`.
 - Don't touch working code outside the scope of the current task.
 - Prefer doing less over introducing risk. Weigh trade-offs before acting.
-- No comments. Code must be self-explanatory: name things well and extract
-  functions instead of explaining them.
-- A comment is allowed ONLY if one of these is true, and the reason cannot be
-  expressed in code:
+- No comments. Code must be self-explanatory: name things well and extract functions instead of explaining them.
+- A comment is allowed ONLY if one of these is true, and the reason cannot be expressed in code:
   - workaround for an external bug/API quirk (link it)
   - non-obvious invariant or ordering the caller must respect
   - performance/concurrency constraint that looks removable but isn't
-  - genuinely convoluted logic (e.g. inherited/legacy complexity) that can't
-    be simplified or extracted right now — prefer refactoring over commenting
+  - genuinely convoluted logic (e.g. inherited/legacy complexity) that can't be simplified or extracted right now — prefer refactoring over commenting
   - `TODO(CM-XXX):` with a ticket
-- Never comment: what the code does, section headers, JSDoc on obvious
-  functions, notes about the change you just made.
+- Never comment: what the code does, section headers, JSDoc on obvious functions, notes about the change you just made.
 - When allowed: 2 lines max.
