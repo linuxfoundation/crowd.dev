@@ -21,3 +21,14 @@
 ## JIRA ticket
 
 <!-- Link to the JIRA ticket, e.g. https://linuxfoundation.atlassian.net/browse/CDP-123 -->
+
+## Frontend checklist
+
+<!-- Delete this section if the PR does not touch frontend/ -->
+
+- [ ] `npm run lint` passes with 0 warnings
+- [ ] `npm run typecheck` error count: before `___`, after `___` (must not rise; skip until the script exists)
+- [ ] `npm run build:production` passes
+- [ ] Screenshots for UI changes (side by side for Element Plus → ui-kit swaps)
+- [ ] Bundle size delta for dependency bumps (`npm run analyze`, once the script exists)
+- [ ] Other open tickets touching the same files: `___`
