@@ -879,11 +879,11 @@ function install_libs() {
 }
 
 function lint_backend() {
-    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && pnpm tsc-check)
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && ./scripts/check-tsconfig-references.sh && pnpm tsc-check)
 }
 
 function lint_services() {
-    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && pnpm tsc-check)
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && ./scripts/check-tsconfig-references.sh && pnpm tsc-check)
 }
 
 function lint_changed() {
@@ -892,6 +892,8 @@ function lint_changed() {
         pnpm lint && \
         say "Checking format" && \
         pnpm format-check && \
+        say "Checking tsconfig references" && \
+        ./scripts/check-tsconfig-references.sh && \
         say "Checking typescript" && \
         pnpm tsc-check)
 }

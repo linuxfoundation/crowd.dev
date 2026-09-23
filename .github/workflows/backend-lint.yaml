@@ -33,6 +33,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v5
 
+      - name: Check tsconfig references
+        run: ./scripts/check-tsconfig-references.sh
+
       - name: Setup pnpm and node
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
