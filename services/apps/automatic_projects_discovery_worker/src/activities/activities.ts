@@ -1,6 +1,7 @@
 import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
+import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
 import {
   bulkInsertProjectCatalog,
   findDiscoverySourceWatermark,
@@ -15,7 +16,6 @@ import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-ca
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
-import { DISCOVERY_NEW_PROJECTS_LIMIT } from '../config'
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'

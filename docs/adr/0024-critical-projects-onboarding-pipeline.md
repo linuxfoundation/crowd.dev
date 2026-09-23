@@ -161,7 +161,7 @@ right pattern, not a shortcut to revisit.
 ### The numbers: 20 projects a day, by design
 
 - Discovery caps new projects at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default **20**) **per
-  source, per `processDataset` call** (`src/config.ts:11-16`); rows the source returns that
+  source, per `processDataset` call** (`services/libs/common/src/env.ts`); rows the source returns that
   already exist in `projectCatalog` don't count against the cap. The scheduled workflow always
   runs in `incremental` mode, processing exactly one dataset per source, so in practice this is
   20 per source per day — up to 40 new rows in `action = 'auto'` with both sources enabled. A
