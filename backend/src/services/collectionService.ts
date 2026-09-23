@@ -271,13 +271,19 @@ export class CollectionService extends LoggerBase {
       return txSvc.findInsightsProjectById(createdProject.id)
     })
 
-    // Skip inside a nested transaction — the row isn't committed yet and the workflow would race it.
-    if (!isNestedTransaction) {
+    const dispatchDocsReadiness = async () => {
       try {
         await this.startDocsReadinessWorkflow(createdProject.id)
       } catch (err) {
         this.log.error(err, 'Failed to start docs readiness workflow for new insights project')
       }
+    }
+
+    if (isNestedTransaction) {
+      // Defer until the outer transaction commits so the workflow doesn't race the uncommitted row.
+      this.options.transaction.afterCommit(dispatchDocsReadiness)
+    } else {
+      await dispatchDocsReadiness()
     }
 
     return createdProject
