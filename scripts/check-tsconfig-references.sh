@@ -4,7 +4,6 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
-source "$SCRIPT_DIR/utils"
 
 refs="$(
   grep -v '^[[:space:]]*//' tsconfig.json \
@@ -33,9 +32,9 @@ done
 shopt -u nullglob
 
 if (( ${#missing[@]} )); then
-  error "Missing from tsconfig.json references:"
+  printf 'Missing from tsconfig.json references:\n'
   printf '  %s\n' "${missing[@]}"
   exit 1
 fi
 
-say "All packages are in tsconfig.json references."
+printf 'All packages are in tsconfig.json references.\n'
