@@ -63,9 +63,8 @@ const job: IJobDefinition = {
     }
     const missingDaysByRepoId = new Map(gapDays.map((gap) => [gap.repositoryId, gap.missingDays]))
     const totalMissingDays = gapDays.reduce((sum, gap) => sum + gap.missingDays, 0)
-    // The two queries above run seconds apart, so a repo can close its gap in between
-    // (e.g. self-heal writing yesterday's snapshot) and come back with 0 missing days -
-    // drop those instead of reporting a gap count the day list can't back up.
+    // The two queries above run seconds apart, so a repo can close its gap in between and
+    // come back with 0 missing days - drop those instead of over-reporting the gap count.
     const currentlyGappedRepoIds = gapDays
       .filter((gap) => gap.missingDays > 0)
       .map((gap) => gap.repositoryId)
