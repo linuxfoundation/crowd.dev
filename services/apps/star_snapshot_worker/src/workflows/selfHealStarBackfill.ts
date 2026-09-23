@@ -42,15 +42,25 @@ function fnv1a32Hex(input: string): string {
 }
 
 // Content-addressed (not positional) so a workflow retry with a reshuffled candidate list can't
-// collide two different batches under REJECT_DUPLICATE and silently skip one.
-function batchWorkflowId(batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>): string {
+// collide two different batches under REJECT_DUPLICATE and silently skip one. Namespaced by scan
+// kind so a gap-heal batch can never collide with a main-scan batch under REJECT_DUPLICATE and
+// get silently skipped as an already-started duplicate. The main-scan ID format is already live,
+// so `namespaced` (gated by patched()) keeps an in-flight main-scan batch dispatched under the
+// old, un-namespaced format from getting a different-looking ID on replay.
+function batchWorkflowId(
+  scanKind: 'main' | 'gap-heal',
+  batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
+  namespaced: boolean,
+): string {
   const digest = fnv1a32Hex(
     batch
       .map((repo) => repo.repositoryId)
       .sort()
       .join(','),
   )
-  return `${workflowInfo().workflowId}/batch-${digest}`
+  return namespaced
+    ? `${workflowInfo().workflowId}/${scanKind}-batch-${digest}`
+    : `${workflowInfo().workflowId}/batch-${digest}`
 }
 
 async function startBatchChild(
@@ -84,12 +94,17 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
   const mainScanDone = args.mainScanDone ?? false
   const gapHealDone = args.gapHealDone ?? false
 
+  // patched() keeps a main-scan batch already dispatched in this run's history on its old,
+  // un-namespaced child-workflow ID so a replay after this deploy doesn't compute a
+  // different-looking ID for that call and hit a nondeterminism error.
+  const namespacedBatchIds = patched('CM-1441-namespaced-batch-ids')
+
   let repos: Awaited<ReturnType<typeof findReposNeedingStarBackfill>> = []
   if (!mainScanDone) {
     repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
     for (let i = 0; i < repos.length; i += BATCH_SIZE) {
       const batch = repos.slice(i, i + BATCH_SIZE)
-      await startBatchChild(batch, batchWorkflowId(batch))
+      await startBatchChild(batch, batchWorkflowId('main', batch, namespacedBatchIds))
       batchesDispatched++
     }
   }
@@ -102,7 +117,9 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
     gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
     for (let i = 0; i < gapHealPage.gappedRepos.length; i += BATCH_SIZE) {
       const batch = gapHealPage.gappedRepos.slice(i, i + BATCH_SIZE)
-      await startBatchChild(batch, batchWorkflowId(batch))
+      // Gap-heal batches are a brand-new call site introduced by this PR (no prior deployed
+      // format to preserve), so they're always namespaced.
+      await startBatchChild(batch, batchWorkflowId('gap-heal', batch, true))
       batchesDispatched++
     }
   }
