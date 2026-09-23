@@ -20,7 +20,7 @@
     "oxlint": "^1.83.0",
     "typescript": "catalog:",
     "vite": "6.3.5",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=24.0.0"
