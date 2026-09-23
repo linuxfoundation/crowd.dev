@@ -204,10 +204,13 @@ export function summarizeBody(data: unknown): string | undefined {
   if (data === undefined || data === null) {
     return undefined
   }
-  let text: string
+  let text: string | undefined
   try {
     text = typeof data === 'string' ? data : JSON.stringify(data)
   } catch {
+    return '[unserializable body]'
+  }
+  if (text === undefined) {
     return '[unserializable body]'
   }
   return text.length > CONTEXT_BODY_MAX_LENGTH ? `${text.slice(0, CONTEXT_BODY_MAX_LENGTH)}…` : text
