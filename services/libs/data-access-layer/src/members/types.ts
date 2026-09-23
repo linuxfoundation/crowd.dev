@@ -32,8 +32,7 @@ export interface IMemberSegmentDisplayAggregates {
 }
 
 export interface IMemberSegmentAggregates
-  extends IMemberSegmentCoreAggregates,
-    IMemberSegmentDisplayAggregates {}
+  extends IMemberSegmentCoreAggregates, IMemberSegmentDisplayAggregates {}
 
 export interface IMemberActivitySummary {
   activityCount: number

@@ -1,45 +1,63 @@
-import { IEvaluationInput, IEvaluationResult } from './types'
+import { getErrorMessage } from '@crowd/common'
 
-interface IApiResponseContent {
-  onboard: boolean
-  non_onboard_reason?: string
+import { IEvaluationInput, IEvaluationMetrics, IEvaluationResult } from './types'
+
+function isValidMetrics(metrics: unknown): metrics is IEvaluationMetrics | null {
+  if (metrics === null) {
+    return true
+  }
+  const candidate = metrics as Partial<IEvaluationMetrics>
+  return (
+    typeof candidate === 'object' &&
+    typeof candidate.model === 'string' &&
+    typeof candidate.inputTokens === 'number' &&
+    typeof candidate.outputTokens === 'number' &&
+    typeof candidate.seconds === 'number'
+  )
+}
+
+function isValidResult(result: unknown): result is IEvaluationResult {
+  const candidate = result as Partial<IEvaluationResult> | null
+  return (
+    !!candidate &&
+    typeof candidate === 'object' &&
+    ['onboard', 'skip', 'unsure'].includes(candidate.outcome) &&
+    typeof candidate.evaluationResult === 'string' &&
+    (candidate.evaluationReason === null || typeof candidate.evaluationReason === 'string') &&
+    isValidMetrics(candidate.metrics)
+  )
 }
 
 export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluationResult> {
-  const endpoint = process.env.CROWD_PROJECT_EVALUATION_API_ENDPOINT
-  const userId = process.env.CROWD_PROJECT_EVALUATION_API_USER_ID
-  const secret = process.env.CROWD_PROJECT_EVALUATION_API_SECRET
+  const apiUrl = process.env.CROWD_API_SERVICE_URL
+  const apiKey = process.env.CROWD_PROJECT_EVALUATION_STATIC_API_KEY
 
-  if (!endpoint || !userId || !secret) {
+  if (!apiUrl || !apiKey) {
     return {
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason:
-        'Missing API configuration: CROWD_PROJECT_EVALUATION_API_ENDPOINT, CROWD_PROJECT_EVALUATION_API_USER_ID, or CROWD_PROJECT_EVALUATION_API_SECRET',
+        'Missing API configuration: CROWD_API_SERVICE_URL or CROWD_PROJECT_EVALUATION_STATIC_API_KEY',
+      metrics: null,
     }
   }
 
-  const body = new URLSearchParams()
-  body.append('message', JSON.stringify({ repo_url: input.repoUrl }))
-  body.append('stream', 'false')
-  body.append('user_id', userId)
-
   let response: Response
   try {
-    response = await fetch(endpoint, {
+    response = await fetch(`${apiUrl}/v1/project-evaluation`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Bearer ${secret}`,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
-      body,
+      body: JSON.stringify(input),
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
     return {
       outcome: 'unsure',
       evaluationResult: 'error',
-      evaluationReason: `API request failed: ${message}`,
+      evaluationReason: `API request failed: ${getErrorMessage(err)}`,
+      metrics: null,
     }
   }
 
@@ -48,39 +66,30 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
       outcome: 'unsure',
       evaluationResult: 'error',
       evaluationReason: `API returned HTTP ${response.status}: ${response.statusText}`,
+      metrics: null,
     }
   }
 
-  let responseBody: unknown
+  let result: unknown
   try {
-    responseBody = await response.json()
+    result = await response.json()
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
     return {
       outcome: 'unsure',
       evaluationResult: 'error',
-      evaluationReason: `Failed to parse API response: ${message}`,
+      evaluationReason: `Failed to parse API response: ${getErrorMessage(err)}`,
+      metrics: null,
     }
   }
 
-  const content = (responseBody as { content?: unknown } | null)?.content
-  if (
-    !content ||
-    typeof content !== 'object' ||
-    typeof (content as IApiResponseContent).onboard !== 'boolean'
-  ) {
+  if (!isValidResult(result)) {
     return {
       outcome: 'unsure',
       evaluationResult: 'error',
-      evaluationReason: `Unexpected API response shape: ${JSON.stringify(responseBody)}`,
+      evaluationReason: `Unexpected API response shape: ${JSON.stringify(result)}`,
+      metrics: null,
     }
   }
 
-  const { onboard, non_onboard_reason } = content as IApiResponseContent
-
-  return {
-    outcome: onboard ? 'onboard' : 'skip',
-    evaluationResult: String(onboard),
-    evaluationReason: non_onboard_reason ?? null,
-  }
+  return result
 }

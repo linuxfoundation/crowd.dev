@@ -10,6 +10,9 @@ DESCRIPTION >
     (most repos) having lastCommitAt from GitHub enrichment — the fallback covers the vast majority.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
     health_score_v2_maintainer.pipe description for why.
+    - All joins against activityRelations, pull_requests_analyzed, and issues_analyzed route through
+    `repos_channels_ds` (populated by repos_channels_copy.pipe), which expands each Gerrit repo URL
+    to both its plain URL and /q/project: channel variant.
 
 NODE health_score_v2_development_calc
 SQL >
@@ -147,7 +150,12 @@ SQL >
                     FROM
                         (
                             SELECT base.url AS repoUrl, rc.lastCommitAt AS lastCommitAt
-                            FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS base
+                            FROM
+                                (
+                                    SELECT DISTINCT url
+                                    FROM repositories FINAL
+                                    WHERE deletedAt IS NULL AND archived = false AND excluded = false
+                                ) AS base
                             LEFT JOIN
                                 (
                                     SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
@@ -192,37 +200,46 @@ SQL >
                     LEFT JOIN
                         (
                             SELECT
-                                channel AS repoUrl,
-                                countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m
-                            FROM activityRelations_deduplicated_cleaned_bucket_union
-                            WHERE type = 'authored-commit'
-                            GROUP BY channel
+                                ch.repoUrl AS repoUrl,
+                                countIf(ar.timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m
+                            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+                            WHERE ar.type = 'authored-commit'
+                            GROUP BY ch.repoUrl
                         ) AS c
                         ON c.repoUrl = rp.repoUrl
                     LEFT JOIN
                         (
                             SELECT
-                                channel AS repoUrl,
-                                countIf(closedAt IS NOT NULL) AS closed12m,
+                                ch.repoUrl AS repoUrl,
+                                countIf(ia.closedAt IS NOT NULL) AS closed12m,
                                 count() AS opened12m,
                                 quantileIf(0.5)
-                                (closedInSeconds, closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
-                            FROM issues_analyzed
-                            WHERE openedAt > now() - INTERVAL 12 MONTH
-                            GROUP BY channel
+                                (
+                                    ia.closedInSeconds, ia.closedAt > now() - INTERVAL 12 MONTH
+                                ) AS medianCloseS
+                            FROM issues_analyzed ia
+                            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
+                            WHERE ia.openedAt > now() - INTERVAL 12 MONTH
+                            GROUP BY ch.repoUrl
                         ) AS ist
                         ON ist.repoUrl = rp.repoUrl
                     LEFT JOIN
                         (
                             SELECT
-                                channel AS repoUrl,
-                                countIf(mergedAt IS NOT NULL) AS merged12m,
-                                countIf(closedAt IS NOT NULL AND mergedAt IS NULL) AS closedUnmerged12m,
+                                ch.repoUrl AS repoUrl,
+                                countIf(pra.mergedAt IS NOT NULL) AS merged12m,
+                                countIf(
+                                    pra.closedAt IS NOT NULL AND pra.mergedAt IS NULL
+                                ) AS closedUnmerged12m,
                                 quantileIf(0.5)
-                                (mergedInSeconds, mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
-                            FROM pull_requests_analyzed
-                            WHERE openedAt > now() - INTERVAL 12 MONTH
-                            GROUP BY channel
+                                (
+                                    pra.mergedInSeconds, pra.mergedAt > now() - INTERVAL 12 MONTH
+                                ) AS medianMergeS
+                            FROM pull_requests_analyzed pra
+                            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
+                            WHERE pra.openedAt > now() - INTERVAL 12 MONTH
+                            GROUP BY ch.repoUrl
                         ) AS prs
                         ON prs.repoUrl = rp.repoUrl
                 )

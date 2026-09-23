@@ -3,7 +3,6 @@ import { findPackageIdsByName } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { toDbCargoName } from '../../packageIdentifier'
-
 import { scanCargoDependents } from './dependentsScanCargo'
 
 export async function runDependentsStageCargo(

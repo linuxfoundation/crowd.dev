@@ -756,6 +756,7 @@ function migrate_tinybird_local() {
     tb push datasources/activities_deduplicated_ds.datasource
     tb push datasources/activities.datasource
     tb push datasources/activityRelations.datasource
+    tb push datasources/activityRelations_by_member_ds.datasource
 
     tb push pipes/activities_relations_filtered.pipe
     tb push pipes/activities_daily_counts.pipe
@@ -875,6 +876,26 @@ function source_edition() {
 
 function install_libs() {
     (cd $CLI_HOME/.. && pnpm i --frozen-lockfile)
+}
+
+function lint_backend() {
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && ./scripts/check-tsconfig-references.sh && pnpm tsc-check)
+}
+
+function lint_services() {
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && ./scripts/check-tsconfig-references.sh && pnpm tsc-check)
+}
+
+function lint_changed() {
+    (cd $CLI_HOME/.. && \
+        say "Checking lint" && \
+        pnpm lint && \
+        say "Checking format" && \
+        pnpm format-check && \
+        say "Checking tsconfig references" && \
+        ./scripts/check-tsconfig-references.sh && \
+        say "Checking typescript" && \
+        pnpm tsc-check)
 }
 
 function install_tinybird_cli() {    
@@ -1091,7 +1112,7 @@ ${YELLOW}Build & Deploy:${RESET}
 ${YELLOW}Database:${RESET}
   db-backup <name> | db-restore <name> | migrate-env\n
 ${YELLOW}Lint:${RESET}
-  lint-backend | lint-services\n"
+  lint-backend | lint-services | lint-changed\n"
 
 [[ -z "$1" ]] && say "$SCRIPT_USAGE" && exit 1
 while test $# -gt 0; do
@@ -1182,14 +1203,14 @@ while test $# -gt 0; do
         exit
         ;;
     service-restart-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker" "star-snapshot-worker" "docs-readiness-worker")
         DEV=1
         kill_all_containers
         service_start
         exit
         ;;
     clean-start-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "mailing-list-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "mailing-list-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "connectors-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker" "star-snapshot-worker" "docs-readiness-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "packagist-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
         CLEAN_START=1
         DEV=1
         start
@@ -1266,11 +1287,15 @@ while test $# -gt 0; do
         exit
         ;;
     lint-backend)
-        (cd $CLI_HOME/../backend && pnpm run lint && pnpm run format-check && pnpm run tsc-check)
+        lint_backend
         exit
         ;;
     lint-services)
-        (cd $CLI_HOME/../services/scripts && ./lint_apps.sh && ./lint_libs.sh)
+        lint_services
+        exit
+        ;;
+    lint-changed)
+        lint_changed
         exit
         ;;
     *)

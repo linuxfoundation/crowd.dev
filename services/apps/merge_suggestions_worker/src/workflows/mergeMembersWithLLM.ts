@@ -9,7 +9,7 @@ import { removeEmailLikeIdentitiesFromMember } from '../utils'
 const {
   getRawMemberMergeSuggestions,
   getMembersForLLMConsumption,
-  removeMemberMergeSuggestion,
+  removeMemberMergePair,
   addMemberSuggestionToNoMerge,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -80,7 +80,7 @@ export async function mergeMembersWithLLM(
       console.log(
         `Skipping suggestion because a member was already merged away in this run: ${suggestion}`,
       )
-      await removeMemberMergeSuggestion(suggestion)
+      await removeMemberMergePair(suggestion)
       continue
     }
 
@@ -88,7 +88,7 @@ export async function mergeMembersWithLLM(
 
     if (members.length !== 2) {
       console.log(`Failed getting members data in suggestion. Skipping suggestion: ${suggestion}`)
-      await removeMemberMergeSuggestion(suggestion)
+      await removeMemberMergePair(suggestion)
       continue
     }
 
@@ -122,7 +122,7 @@ export async function mergeMembersWithLLM(
       console.log(
         `LLM doesn't think these members are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await removeMemberMergeSuggestion(suggestion)
+      await removeMemberMergePair(suggestion)
       await addMemberSuggestionToNoMerge(suggestion)
     }
   }

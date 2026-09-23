@@ -14,6 +14,17 @@ SQL >
         AND isNull (r.deletedAt)
         AND r.enabled = true
         AND r.insightsProjectId != ''
+    UNION ALL
+    -- Lowercase channel variant: matches activities ingested with lowercased repo casing
+    SELECT lower(r.url) AS url, r.segmentId, r.insightsProjectId
+    FROM collectionsRepositories cr FINAL
+    JOIN repositories r FINAL ON cr.repoId = r.id
+    WHERE
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
+        AND isNull (cr.deletedAt)
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+        AND r.insightsProjectId != ''
 
 NODE ai_projects
 SQL >
@@ -23,18 +34,25 @@ SQL >
         p.name,
         p.slug,
         p.softwareValue,
-        groupArray(ar.url) AS repoUrls,
-        arrayFilter(x -> x LIKE '%github.com%', groupArray(ar.url)) AS githubRepos
+        arrayDistinct(groupArray(ar.url)) AS repoUrls,
+        arrayDistinct(arrayFilter(x -> x LIKE '%github.com%', groupArray(ar.url))) AS githubRepos
     FROM insights_projects_populated_ds p
     JOIN ai_repos ar ON ar.insightsProjectId = p.id
     GROUP BY p.id, p.segmentId, p.name, p.slug, p.softwareValue
 
 NODE activity_counts
+DESCRIPTION >
+    Stars excludes github (platform != 'github') - github stars are no longer emitted as
+    activity events (CM-1419), sourced instead from repositoryStarSnapshots via
+    ai_star_snapshot_totals below. Forks/commits are unaffected, still all-platform.
+
 SQL >
     SELECT
         segmentId,
-        countIf(type = 'star') AS stars,
-        countIf(type = 'star' AND timestamp >= now() - INTERVAL 30 DAY) AS stars30d,
+        countIf(type = 'star' AND platform != 'github') AS stars,
+        countIf(
+            type = 'star' AND platform != 'github' AND timestamp >= now() - INTERVAL 30 DAY
+        ) AS stars30d,
         countIf(type = 'fork') AS forks,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 30 DAY) AS forks30d,
         countIf(type IN ('authored-commit', 'committed-commit')) AS commits,
@@ -46,6 +64,36 @@ SQL >
         segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
         AND channel IN (SELECT url FROM ai_repos)
         AND type IN ('star', 'fork', 'authored-commit', 'committed-commit')
+    GROUP BY segmentId
+
+NODE ai_star_snapshot_repo_totals
+SQL >
+    SELECT
+        r.segmentId AS segmentId,
+        s.repositoryId AS repositoryId,
+        argMax(s.starCount, (s.capturedAt, s.updatedAt)) AS totalNow,
+        argMaxIf(
+            s.starCount, (s.capturedAt, s.updatedAt), s.capturedAt <= now() - INTERVAL 30 DAY
+        ) AS totalAt30
+    FROM repositoryStarSnapshots s
+    INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+    WHERE r.url IN (SELECT url FROM ai_repos)
+    GROUP BY r.segmentId, s.repositoryId
+
+NODE ai_star_snapshot_totals
+DESCRIPTION >
+    Rolls repo-level snapshot totals up to project level: current total (stars) and its
+    30-day-ago total, giving stars30d as a delta of cumulative snapshots (same pattern as
+    ai_package_metrics' downloads30d above). Coalesced to 0 per-repo before summing, so a
+    repo with no snapshot yet 30d ago overstates stars30d rather than understating it
+    (partial CM-1463 backfill) - acceptable per CM-1441, revisit if numbers look inflated.
+
+SQL >
+    SELECT
+        segmentId,
+        sum(coalesce(totalNow, 0)) AS starsSnapshot,
+        greatest(sum(coalesce(totalNow, 0)) - sum(coalesce(totalAt30, 0)), 0) AS stars30dSnapshot
+    FROM ai_star_snapshot_repo_totals
     GROUP BY segmentId
 
 NODE contributor_counts_alltime
@@ -214,8 +262,8 @@ SQL >
         p.name AS name,
         p.slug AS slug,
         if(length(p.githubRepos) > 0, p.githubRepos[1], '') AS githubRepoLink,
-        coalesce(ac.stars, 0) AS stars,
-        coalesce(ac.stars30d, 0) AS stars30d,
+        coalesce(ac.stars, 0) + coalesce(ss.starsSnapshot, 0) AS stars,
+        coalesce(ac.stars30d, 0) + coalesce(ss.stars30dSnapshot, 0) AS stars30d,
         coalesce(ac.forks, 0) AS forks,
         coalesce(ac.forks30d, 0) AS forks30d,
         pm.downloads AS downloads,
@@ -244,6 +292,7 @@ SQL >
         p.softwareValue AS cocomoValue
     FROM ai_projects p
     LEFT JOIN activity_counts ac ON ac.segmentId = p.segmentId
+    LEFT JOIN ai_star_snapshot_totals ss ON ss.segmentId = p.segmentId
     LEFT JOIN contributor_counts_alltime ca ON ca.segmentId = p.segmentId
     LEFT JOIN contributor_counts cc ON cc.segmentId = p.segmentId
     LEFT JOIN new_contributor_counts nc ON nc.segmentId = p.segmentId

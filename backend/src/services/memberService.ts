@@ -3,15 +3,17 @@ import lodash from 'lodash'
 import moment from 'moment-timezone'
 import validator from 'validator'
 
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
 import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
 import {
   Error400,
   calculateReach,
+  firstIdentityValue,
   getAttributeValue,
   getCountry,
-  getProperDisplayName,
   hasAttributeValue,
   isDomainExcluded,
+  normalizeDisplayName,
 } from '@crowd/common'
 import {
   CommonMemberService,
@@ -23,7 +25,6 @@ import {
   unmergeMember,
 } from '@crowd/common_services'
 import {
-  fetchMemberBotSuggestionsBySegment,
   fetchMemberIdentities,
   findMemberIdentityById,
   insertMemberSegmentAggregates,
@@ -49,8 +50,6 @@ import {
   SyncMode,
 } from '@crowd/types'
 
-import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
-
 import MemberAttributeSettingsRepository from '../database/repositories/memberAttributeSettingsRepository'
 import MemberRepository from '../database/repositories/memberRepository'
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
@@ -60,7 +59,6 @@ import {
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
 import telemetryTrack from '../segment/telemetryTrack'
-
 import { IServiceOptions } from './IServiceOptions'
 import MemberAttributeSettingsService from './memberAttributeSettingsService'
 import OrganizationService from './organizationService'
@@ -279,7 +277,7 @@ export default class MemberService extends LoggerBase {
     }
 
     if (!data.displayName) {
-      data.displayName = getProperDisplayName(data.username[data.platform][0].username)
+      data.displayName = normalizeDisplayName(firstIdentityValue(data.username[data.platform]))
     }
 
     if (!(data.platform in data.username)) {
@@ -770,7 +768,6 @@ export default class MemberService extends LoggerBase {
 
     try {
       await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
-      await MemberRepository.addNoMerge(memberTwoId, memberOneId, txOptions)
 
       // Removes from either order of the pair
       await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)
@@ -816,7 +813,7 @@ export default class MemberService extends LoggerBase {
       transaction = repoOptions.transaction
 
       if (data.displayName) {
-        data.displayName = getProperDisplayName(data.displayName)
+        data.displayName = normalizeDisplayName(data.displayName)
       }
 
       if (data.attributes) {
@@ -1026,18 +1023,5 @@ export default class MemberService extends LoggerBase {
 
   async findMembersWithMergeSuggestions(args) {
     return MemberRepository.findMembersWithMergeSuggestions(args, this.options)
-  }
-
-  async findMembersWithBotSuggestions(args) {
-    const segments = SequelizeRepository.getSegmentIds(this.options)
-
-    const segmentId = segments?.length > 0 ? segments[0] : null
-
-    if (!segmentId) {
-      throw new Error400(this.options.language, 'member.segmentsRequired')
-    }
-
-    const qx = SequelizeRepository.getQueryExecutor(this.options)
-    return fetchMemberBotSuggestionsBySegment(qx, segmentId, args.limit ?? 10, args.offset ?? 0)
   }
 }

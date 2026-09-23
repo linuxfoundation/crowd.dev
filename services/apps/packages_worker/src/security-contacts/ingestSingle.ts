@@ -1,8 +1,8 @@
+import { bestRepoLinkOrderBy } from '@crowd/data-access-layer/src/osspckgs/sqlFragments'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
-
 import { buildBaseDeps, processRepo } from './processBatch'
 import { RepoPackage, RepoTarget } from './types'
 import { markRepoAttempted, writeContacts } from './writeContacts'
@@ -53,7 +53,7 @@ async function findBestRepoForPurl(qx: QueryExecutor, purl: string): Promise<Sin
       SELECT pr.repo_id
       FROM package_repos pr
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
+      ${bestRepoLinkOrderBy('pr')}
       LIMIT 1
     ) best ON true
     JOIN repos r ON r.id = best.repo_id

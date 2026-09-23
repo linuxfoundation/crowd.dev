@@ -1,3 +1,4 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { getCleanString } from '@crowd/common'
 import {
   ICategoryFilters,
@@ -21,8 +22,6 @@ import {
   updateCategoryGroup,
 } from '@crowd/data-access-layer/src/categories'
 import { LoggerBase } from '@crowd/logging'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 
 import { IServiceOptions } from './IServiceOptions'
 

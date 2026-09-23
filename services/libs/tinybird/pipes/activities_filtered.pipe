@@ -16,6 +16,9 @@ DESCRIPTION >
     - `activity_types`: Optional array of activity types (e.g., ['authored-commit', 'co-authored-commit'])
     - `includeCodeContributions`: Optional boolean to include code contribution activities. Defaults to 1. Set to 0 to exclude. Inherited from activityTypes_filtered.
     - `includeCollaborations`: Optional boolean to include or exclude collaboration activities. Inherited from activityTypes_filtered.
+    - `bucketId`: Pre-resolved collection bucket id (from `collection_buckets.pipe`), required alongside `collectionSlug`.
+    Routes directly to the single matching bucket table. If `collectionSlug` is given without `bucketId`, the pipe
+    returns no rows rather than falling back to a 10-way union scan — callers must resolve `bucketId` first.
     - Response: `id` (activityId), `timestamp`, `type`, `platform`, `memberId`, `organizationId`, `segmentId`.
     - This pipe is consumed by many of downstream pipes and widgets across the platform for consistent activity filtering.
     - Performance is optimized through proper sorting keys on `segmentId`, `timestamp`, `type`, `platform`, and `memberId` in the source datasource.
@@ -27,12 +30,16 @@ SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
     FROM
-        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
         {% else %} activityRelations_bucket_routing
         {% end %} as a
     where
         {% if defined(collectionSlug) %}
-            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+            {% if defined(bucketId) %}
+                segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                AND a.collectionSlug = {{ String(collectionSlug) }}
+            {% else %} 1 = 0
+            {% end %}
         {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
         {% end %}
         {% if defined(startDate) %}

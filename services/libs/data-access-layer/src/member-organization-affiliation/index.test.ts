@@ -29,7 +29,6 @@ import { queryActivityRelations } from '../activityRelations'
 import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { deleteMemberOrganizations } from '../members/organizations'
 import { insertOrganizationSegments } from '../organizations/segments'
-
 import {
   prepareMemberOrganizationAffiliationTimeline,
   refreshMemberOrganizationAffiliations,
@@ -542,7 +541,7 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
       },
     ])
 
-    await deleteMemberOrganizations(qx, member.id, [deletedMo.id])
+    await deleteMemberOrganizations(qx, member.id, { ids: [deletedMo.id] })
 
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
     const orgIds = baseItems(timeline).map((item) => item.organizationId)

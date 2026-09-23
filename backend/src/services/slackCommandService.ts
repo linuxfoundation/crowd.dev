@@ -13,7 +13,6 @@ import {
   SlackCommandParameterType,
   SlackParameterParseResult,
 } from '../types/slackTypes'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export default class SlackCommandService {

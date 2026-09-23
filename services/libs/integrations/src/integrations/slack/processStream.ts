@@ -1,5 +1,4 @@
 import { IProcessStreamContext, ProcessStreamHandler } from '../../types'
-
 import getChannels from './api/getChannels'
 import getMember from './api/getMember'
 import getMembers from './api/getMembers'

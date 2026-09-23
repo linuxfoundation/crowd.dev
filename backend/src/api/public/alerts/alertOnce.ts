@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+
 import type { Request } from 'express'
 
 import { generateUUIDv4 } from '@crowd/common'

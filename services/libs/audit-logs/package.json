@@ -2,18 +2,11 @@
   "name": "@crowd/audit-logs",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/data-access-layer": "workspace:*",
     "deep-object-diff": "^1.1.9"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
-    "typescript": "^5.6.3"
+    "@types/node": "catalog:"
   }
 }

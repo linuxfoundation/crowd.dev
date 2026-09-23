@@ -12,15 +12,9 @@
     "dotenv": "8.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.6",
-    "@typescript-eslint/eslint-plugin": "^6.7.4",
-    "@typescript-eslint/parser": "^6.7.4",
+    "@types/node": "catalog:",
     "@vercel/ncc": "^0.38.1",
-    "eslint": "^8.50.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-plugin-prettier": "^5.0.0",
-    "prettier": "^3.0.3",
     "ts-node": "^10.9.1",
-    "typescript": "^5.6.3"
+    "typescript": "catalog:"
   }
 }

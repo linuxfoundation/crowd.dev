@@ -15,6 +15,7 @@ import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
+  findMembersByIdentities,
   insertMemberIdentities,
   updateMemberAttributes,
   updateMemberContributions,
@@ -58,7 +59,6 @@ import {
   MemberIdentityType,
   OrganizationAttributeSource,
   OrganizationIdentityType,
-  OrganizationMergeSuggestionTable,
   PlatformType,
 } from '@crowd/types'
 
@@ -71,7 +71,6 @@ import {
   IMemberEnrichmentDataNormalized,
   IMemberEnrichmentDataNormalizedOrganization,
 } from '../types'
-
 import {
   hasMemberOrganizationTimelineChange,
   prepareWorkExperiences,
@@ -314,20 +313,35 @@ export async function updateMemberUsingSquashedPayload(
 
     // process identities
     if (squashedPayload.identities.length > 0) {
-      svc.log.debug({ memberId }, 'Adding to member identities!')
-      didUpdate = true
-      await insertMemberIdentities(
-        qx,
-        squashedPayload.identities.map((i) => ({
+      // Unverified identities aren't unique in the db, so the same handle or
+      // email can sit on several members. Skip the ones already taken.
+      const unverified = squashedPayload.identities.filter((identity) => !identity.verified)
+
+      const owners =
+        unverified.length > 0
+          ? await findMembersByIdentities(qx, unverified, memberId)
+          : new Map<string, string>()
+
+      const identitiesToInsert = squashedPayload.identities
+        .filter(
+          (identity) =>
+            identity.verified ||
+            !owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+        )
+        .map((identity) => ({
           memberId,
-          platform: i.platform,
-          type: i.type,
-          value: i.value,
-          verified: i.verified,
+          platform: identity.platform,
+          type: identity.type,
+          value: identity.value,
+          verified: identity.verified,
           source: 'enrichment',
-        })),
-        true,
-      )
+        }))
+
+      if (identitiesToInsert.length > 0) {
+        svc.log.debug({ memberId }, 'Adding to member identities!')
+        didUpdate = true
+        await insertMemberIdentities(qx, identitiesToInsert, true)
+      }
     }
 
     // process contributions
@@ -457,7 +471,7 @@ export async function updateMemberUsingSquashedPayload(
         try {
           // Keep the org write in a savepoint: if this identity is already verified
           // on another org, we can recover without aborting the member update transaction.
-          orgId = await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload))
+          orgId = (await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload)))?.id
         } catch (error) {
           const constraint = 'uix_organizationIdentities_plat_val_typ_tenantId_verified'
           const dbError = error as { constraint?: string; detail?: string }
@@ -520,12 +534,14 @@ export async function updateMemberUsingSquashedPayload(
               ),
           )
 
-          orgId = await qx.tx((trnx) =>
-            findOrCreateOrganization(trnx, orgSource, {
-              ...orgPayload,
-              identities: retryIdentities,
-            }),
-          )
+          orgId = (
+            await qx.tx((trnx) =>
+              findOrCreateOrganization(trnx, orgSource, {
+                ...orgPayload,
+                identities: retryIdentities,
+              }),
+            )
+          )?.id
 
           if (orgId) {
             const mergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
@@ -571,14 +587,7 @@ export async function updateMemberUsingSquashedPayload(
             if (mergeSuggestions.length > 0) {
               // A shared verified identity is a strong merge signal, unless the pair was
               // explicitly marked as no-merge by a reviewer.
-              await mergeSuggestionsRepo.addToMerge(
-                mergeSuggestions,
-                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
-              )
-              await mergeSuggestionsRepo.addToMerge(
-                mergeSuggestions,
-                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
-              )
+              await mergeSuggestionsRepo.addToMerge(mergeSuggestions)
             }
           }
         }

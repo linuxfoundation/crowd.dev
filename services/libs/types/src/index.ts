@@ -59,3 +59,5 @@ export * from './enrichment'
 export * from './llm'
 
 export * from './securityInsights'
+
+export * from './repositoryStarSnapshots'

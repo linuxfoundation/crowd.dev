@@ -202,6 +202,132 @@ export async function getRepositoriesByUrl(
   )
 }
 
+export async function findEnabledRepositoriesForProject(
+  qx: QueryExecutor,
+  insightsProjectId: string,
+): Promise<{ url: string }[]> {
+  return qx.select(
+    `
+    SELECT url
+    FROM public.repositories
+    WHERE "insightsProjectId" = $(insightsProjectId)
+      AND enabled
+      AND NOT excluded
+      AND "deletedAt" IS NULL
+    `,
+    { insightsProjectId },
+  )
+}
+
+// Mirrors the URL forms canonicalizeRepoUrl accepts: https, ssh://git@ with an optional
+// numeric port, ssh://git@host:owner/repo (colon with no port), scp-style git@host:, and
+// a bare host with no scheme at all. Order matters: the port alternative must be tried
+// before the bare-colon one, or a numeric port would be swallowed as part of the owner.
+const GITHUB_URL_PREFIX_PATTERN =
+  '(https?://(www\\.)?github\\.com/|ssh://git@github\\.com(:\\d+)?/|ssh://git@github\\.com:|git@github\\.com:|github\\.com/)'
+
+// Expects canonicalGithubRepoUrls in canonicalizeGithubRepoUrl's output form; non-GitHub URLs never match.
+export async function findRepoUrlsInCdp(
+  qx: QueryExecutor,
+  canonicalGithubRepoUrls: string[],
+): Promise<Set<string>> {
+  if (canonicalGithubRepoUrls.length === 0) {
+    return new Set()
+  }
+
+  const rows: { repoUrl: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT unnest($(repoUrls)::text[]) AS url
+    ),
+    normalized AS (
+      SELECT DISTINCT 'https://github.com/' || lower(
+        regexp_replace(regexp_replace(url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i'), '(\\.git)?/*$', '', 'i')
+      ) AS url
+      FROM public.repositories
+      WHERE "deletedAt" IS NULL
+        AND url ~* '^${GITHUB_URL_PREFIX_PATTERN}'
+    )
+    SELECT DISTINCT c.url AS "repoUrl"
+    FROM candidates c
+    JOIN normalized n ON n.url = c.url
+    `,
+    { repoUrls: canonicalGithubRepoUrls },
+  )
+
+  return new Set(rows.map((row) => row.repoUrl))
+}
+
+// Returned owners are lowercased regardless of input case, matching canonicalizeRepoUrl's `owner`.
+export async function findGithubOwnersWithLfProjects(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "lfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId"
+      WHERE r."deletedAt" IS NULL
+        AND ip."deletedAt" IS NULL
+        AND ip."isLF"
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "lfOwners" l ON l.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
+}
+
+// Symmetric to findGithubOwnersWithLfProjects: a repo with no insightsProjectId,
+// or mapped to a non-LF project, counts as non-LF evidence for its owner.
+export async function findGithubOwnersWithNonLfRepos(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<Set<string>> {
+  if (owners.length === 0) {
+    return new Set()
+  }
+
+  const rows: { owner: string }[] = await qx.select(
+    `
+    WITH candidates AS (
+      SELECT DISTINCT lower(unnest($(owners)::text[])) AS owner
+    ),
+    "nonLfOwners" AS (
+      SELECT DISTINCT split_part(
+        lower(regexp_replace(r.url, '${GITHUB_URL_PREFIX_PATTERN}', '', 'i')), '/', 1
+      ) AS owner
+      FROM public.repositories r
+      LEFT JOIN "insightsProjects" ip ON ip.id = r."insightsProjectId" AND ip."deletedAt" IS NULL
+      WHERE r."deletedAt" IS NULL
+        AND r.url ~* '^${GITHUB_URL_PREFIX_PATTERN}[^/]+/[^/]+'
+        AND COALESCE(ip."isLF", false) = false
+    )
+    SELECT c.owner AS owner
+    FROM candidates c
+    JOIN "nonLfOwners" n ON n.owner = c.owner
+    `,
+    { owners },
+  )
+
+  return new Set(rows.map((row) => row.owner))
+}
+
 /**
  * Soft deletes repositories by setting deletedAt = NOW()
  * Only deletes repos matching both the URLs and sourceIntegrationId
@@ -413,10 +539,9 @@ function getRepoSegmentLookupCache(redis: RedisClient, log: Logger): RedisCache 
 }
 
 /**
- * Find segment IDs for repositories by sourceIntegrationId and URL (no caching)
- * @param qx - Query executor
- * @param toFind - Array of { integrationId, url } to look up (integrationId = sourceIntegrationId)
- * @returns Array of { integrationId, url, segmentId } results
+ * Find segment IDs for repositories by URL (no caching).
+ * The repository URL is the authoritative key: segmentId in public.repositories
+ * is the project mapping and does not depend on which integration is ingesting.
  */
 async function findSegmentsForReposFromDb(
   qx: QueryExecutor,
@@ -426,41 +551,24 @@ async function findSegmentsForReposFromDb(
     return []
   }
 
-  const orConditions: string[] = []
-  const params: Record<string, string> = {}
+  const distinctUrls = Array.from(new Set(toFind.map((r) => r.url)))
 
-  let index = 0
-  for (const repo of toFind) {
-    const urlKey = `url_${index}`
-    const integrationKey = `integration_${index}`
-    index++
-
-    orConditions.push(`(url = $(${urlKey}) AND "sourceIntegrationId" = $(${integrationKey}))`)
-    params[urlKey] = repo.url
-    params[integrationKey] = repo.integrationId
-  }
-
-  const dbResults: { integrationId: string; url: string; segmentId: string }[] = await qx.select(
+  const dbResults: { url: string; segmentId: string }[] = await qx.select(
     `
-    SELECT "sourceIntegrationId" AS "integrationId", url, "segmentId"
+    SELECT url, "segmentId"
     FROM public.repositories
-    WHERE "deletedAt" IS NULL AND (${orConditions.join(' OR ')})
-    LIMIT ${toFind.length}
+    WHERE "deletedAt" IS NULL AND url IN ($(urls:csv))
     `,
-    params,
+    { urls: distinctUrls },
   )
 
-  // Build results with undefined for not found repos
-  return toFind.map((repo) => {
-    const found = dbResults.find(
-      (r) => r.integrationId === repo.integrationId && r.url === repo.url,
-    )
-    return {
-      integrationId: repo.integrationId,
-      url: repo.url,
-      segmentId: found?.segmentId,
-    }
-  })
+  const byUrl = new Map(dbResults.map((r) => [r.url, r.segmentId]))
+
+  return toFind.map((repo) => ({
+    integrationId: repo.integrationId,
+    url: repo.url,
+    segmentId: byUrl.get(repo.url),
+  }))
 }
 
 /**
@@ -511,8 +619,7 @@ export async function findSegmentsForRepos(
   for (const repo of toFind) {
     cachePromises.push(
       (async () => {
-        const key = `${repo.integrationId}:${repo.url}`
-        const cached = await cache.get(key)
+        const cached = await cache.get(repo.url)
         if (cached) {
           results.push({
             integrationId: repo.integrationId,
@@ -526,18 +633,14 @@ export async function findSegmentsForRepos(
 
   await Promise.all(cachePromises)
 
-  // Find repos that weren't in cache
-  const remainingRepos = toFind.filter(
-    (r) =>
-      results.find((e) => e.integrationId === r.integrationId && e.url === r.url) === undefined,
-  )
+  const remainingRepos = toFind.filter((r) => results.find((e) => e.url === r.url) === undefined)
 
   if (remainingRepos.length > 0) {
     const dbResults = await findSegmentsForReposFromDb(qx, remainingRepos)
 
     const setCachePromises: Promise<void>[] = []
     for (const result of dbResults) {
-      const key = `${result.integrationId}:${result.url}`
+      const key = result.url
       results.push(result)
 
       if (result.segmentId) {

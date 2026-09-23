@@ -1,14 +1,13 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { created } from '@/utils/api'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
 import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
 import { findOrCreateOrganization } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { created } from '@/utils/api'
-import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
   name: z.string().trim().min(1),
@@ -31,7 +30,7 @@ export async function createOrganization(req: Request, res: Response): Promise<v
   const organizationId = await qx.tx(async (tx) => {
     const orgSource = OrganizationAttributeSource.LFX_SERVE
 
-    const organizationId = await findOrCreateOrganization(tx, orgSource, {
+    const result = await findOrCreateOrganization(tx, orgSource, {
       displayName: name,
       logo,
       identities: [
@@ -45,9 +44,11 @@ export async function createOrganization(req: Request, res: Response): Promise<v
       ],
     })
 
-    if (!organizationId) {
+    if (!result) {
       throw new InternalError('Failed to create organization')
     }
+
+    const organizationId = result.id
 
     await captureApiChange(
       req,

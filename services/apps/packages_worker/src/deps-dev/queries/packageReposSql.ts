@@ -23,14 +23,17 @@ path_computed AS (
       ELSE
         REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(TRIM(pvp.ProjectName), r'^https?://[^/]+/', ''), r'\\.git$', ''), r'/$', '')
     END AS path,
+    pvp.RelationProvenance AS provenance,
+    -- Dedup ordering only. The stored confidence comes from package_repo_confidence()
+    -- during the staging merge, which reads the exported provenance.
     CASE pvp.RelationProvenance
-      WHEN 'SLSA_ATTESTATION'              THEN 0.99
-      WHEN 'RUBYGEMS_PUBLISH_ATTESTATION'  THEN 0.95
-      WHEN 'PYPI_PUBLISH_ATTESTATION'      THEN 0.95
-      WHEN 'GO_ORIGIN'                     THEN 0.9
-      WHEN 'UNVERIFIED_METADATA'           THEN 0.5
-      ELSE 0.4
-    END AS confidence
+      WHEN 'SLSA_ATTESTATION'              THEN 5
+      WHEN 'RUBYGEMS_PUBLISH_ATTESTATION'  THEN 4
+      WHEN 'PYPI_PUBLISH_ATTESTATION'      THEN 4
+      WHEN 'GO_ORIGIN'                     THEN 3
+      WHEN 'UNVERIFIED_METADATA'           THEN 2
+      ELSE 1
+    END AS provenance_rank
   FROM \`bigquery-public-data.deps_dev_v1.PackageVersionToProject\` pvp
   JOIN purl_map pm ON pm.System = pvp.System AND pm.Name = pvp.Name
   WHERE pvp.SnapshotAt >= TIMESTAMP('${snapshotDate}')
@@ -42,9 +45,9 @@ path_computed AS (
 SELECT
   purl,
   CONCAT('https://', CASE host WHEN 'github' THEN 'github.com' WHEN 'gitlab' THEN 'gitlab.com' WHEN 'bitbucket' THEN 'bitbucket.org' END, '/', path) AS canonical_url,
-  confidence
+  provenance
 FROM path_computed
 WHERE REGEXP_CONTAINS(path, r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._/-]+$')
-QUALIFY ROW_NUMBER() OVER (PARTITION BY purl, host, path ORDER BY confidence DESC) = 1
+QUALIFY ROW_NUMBER() OVER (PARTITION BY purl, host, path ORDER BY provenance_rank DESC) = 1
 `
 }

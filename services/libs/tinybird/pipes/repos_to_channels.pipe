@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `repos_to_channels.pipe` expands repository URLs to all possible activity channel formats.
+    - Every repo also expands to a lowercase channel variant, since some activities were ingested with lowercased repo casing.
     - For Gerrit repos, generates both the original URL and the /q/project: variant since activity channels use this format.
-    - Non-Gerrit repos are passed through unchanged.
     - Used by activity filtering pipes to match repos against activity channels.
     - Parameters:
     - `repos`: Optional array of repository URLs to expand. If not provided, defaults to all enabled repositories.
@@ -56,6 +56,10 @@ DESCRIPTION >
 SQL >
     -- Original URLs (all repos)
     SELECT url AS channel, segmentId
+    FROM repos_to_expand
+    UNION ALL
+    -- Lowercase channel variant: matches activities ingested with lowercased repo casing
+    SELECT lower(url) AS channel, segmentId
     FROM repos_to_expand
     UNION ALL
     -- Gerrit channel variants: insert q/project: after the base path

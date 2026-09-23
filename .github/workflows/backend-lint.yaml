@@ -5,61 +5,51 @@ permissions:
 on:
   pull_request:
     paths:
-      - 'backend/**'
-      - 'services/**'
+      - "backend/**"
+      - "services/**"
+      - ".github/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".claude/**"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "**/*.md"
+      - "vitest.config.ts"
+      - "commitlint.config.js"
+      - "tsconfig.json"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  lint-format:
+  lint-changed:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./backend
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Check tsconfig references
+        run: ./scripts/check-tsconfig-references.sh
+
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+          runtime: node@24
+          cache: true
 
       - name: Check linting
-        run: pnpm run lint
+        run: pnpm lint
 
       - name: Check formatting
-        run: pnpm run format-check
+        run: pnpm format-check
 
       - name: Check typescript
-        run: pnpm run tsc-check
-
-  lint-format-services:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./services
-
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v2
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
-
-      - name: Check library linting, format and typescript
-        run: ./scripts/lint_libs.sh
-
-      - name: Check app linting, format and typescript
-        run: ./scripts/lint_apps.sh
+        run: pnpm tsc-check
 
   lint-python-git-integration:
     runs-on: ubuntu-latest
@@ -70,7 +60,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -113,7 +103,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

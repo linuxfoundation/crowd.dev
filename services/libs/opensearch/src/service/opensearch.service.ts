@@ -10,7 +10,6 @@ import {
   OPENSEARCH_INDEX_SETTINGS,
   OpenSearchIndex,
 } from '../types'
-
 import { IIndexRequest, ISearchHit } from './opensearch.data'
 
 export class OpenSearchService extends LoggerBase {

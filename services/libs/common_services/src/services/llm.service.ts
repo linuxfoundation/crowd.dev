@@ -1,9 +1,10 @@
+import { performance } from 'perf_hooks'
+
 import {
   BedrockRuntimeClient,
   InvokeModelCommand,
   InvokeModelCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime'
-import { performance } from 'perf_hooks'
 
 import { IS_LLM_ENABLED, parseLlmJson } from '@crowd/common'
 import { insertPromptHistoryEntry } from '@crowd/data-access-layer'

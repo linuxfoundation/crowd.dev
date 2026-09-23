@@ -1,19 +1,19 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { getProperDisplayName } from '@crowd/common'
-import {
-  findMemberIdByVerifiedIdentity,
-  createMember as insertMember,
-  insertMemberIdentities,
-} from '@crowd/data-access-layer'
-import { MemberIdentityType } from '@crowd/types'
-
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
+import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
+import { ConflictError, normalizeDisplayName } from '@crowd/common'
+import {
+  findMemberIdByVerifiedIdentity,
+  findMembersByIdentities,
+  createMember as insertMember,
+  insertMemberIdentities,
+} from '@crowd/data-access-layer'
+import { MemberIdentityType } from '@crowd/types'
 
 const bodySchema = z.object({
   displayName: z.string().trim().min(1),
@@ -26,7 +26,7 @@ const bodySchema = z.object({
           type: z.enum(MemberIdentityType),
           source: z.string().min(1),
           verified: z.boolean(),
-          verifiedBy: z.string().optional(),
+          verifiedBy: z.string().trim().min(1).optional(),
         })
         .refine((data) => !data.verified || data.verifiedBy, {
           message: 'verifiedBy is required when verified is true',
@@ -40,9 +40,30 @@ export async function createMember(req: Request, res: Response): Promise<void> {
   const { displayName, identities } = validateOrThrow(bodySchema, req.body)
   const qx = optionsQx(req)
 
-  const normalizedDisplayName = getProperDisplayName(displayName)
+  const normalizedDisplayName = normalizeDisplayName(displayName)
 
   const { dbMember, dbIdentities } = await qx.tx(async (tx) => {
+    // Unverified identities aren't unique in the db, so the same handle or
+    // email can sit on several members. Reject it here if someone else has it.
+    const unverified = identities.filter((identity) => !identity.verified)
+
+    if (unverified.length > 0) {
+      const owners = await findMembersByIdentities(tx, unverified)
+
+      const hit = unverified.find((identity) =>
+        owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+      )
+
+      if (hit) {
+        throw new ConflictError('Identity already exists on another member', {
+          conflictMemberId: owners.get(`${hit.platform}:${hit.type}:${hit.value.trim()}`),
+          platform: hit.platform,
+          value: hit.value,
+          type: hit.type,
+        })
+      }
+    }
+
     try {
       const dbMember = await insertMember(tx, {
         displayName: normalizedDisplayName,

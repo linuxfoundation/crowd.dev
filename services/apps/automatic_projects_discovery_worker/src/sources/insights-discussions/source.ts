@@ -1,15 +1,16 @@
 import https from 'https'
 import { Readable } from 'stream'
 
+import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
+import { extractDiscussionRepoUrls } from './parse'
 
 const log = getServiceLogger()
 
 const CATEGORY_SLUG = 'project-onboardings'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
-const GITHUB_NON_REPO_OWNERS = new Set(['user-attachments', 'orgs', 'apps', 'marketplace'])
 const OWNER = 'linuxfoundation'
 const REPO = 'insights'
 
@@ -20,8 +21,11 @@ interface GraphQLResponse<T> {
 
 interface DiscussionNode {
   number: number
+  title: string
+  url: string
   body: string
   closed: boolean
+  updatedAt: string
 }
 
 interface DiscussionsPage {
@@ -93,28 +97,10 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
-// Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
-function extractRepoUrls(text: string): string[] {
-  const urls = new Set<string>()
-  const regex = /https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/gi
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(text)) !== null) {
-    const owner = match[1].toLowerCase()
-    const repo = match[2]
-      .replace(/[.,;:!?]+$/, '')
-      .replace(/\.git$/, '')
-      .toLowerCase()
-    if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner)) {
-      urls.add(`https://github.com/${owner}/${repo}`)
-    }
-  }
-  return Array.from(urls)
-}
-
 async function getDiscussionCategoryId(): Promise<string> {
   const query = `
-    query {
-      repository(owner: "${OWNER}", name: "${REPO}") {
+    query GetDiscussionCategoryId($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
         discussionCategories(first: 25) {
           nodes {
             id
@@ -134,7 +120,7 @@ async function getDiscussionCategoryId(): Promise<string> {
     }
   }
 
-  const data = await graphqlRequest<CategoriesData>(query, {})
+  const data = await graphqlRequest<CategoriesData>(query, { owner: OWNER, name: REPO })
   const categories = data.repository.discussionCategories.nodes
   const category = categories.find((c) => c.slug === CATEGORY_SLUG)
 
@@ -153,8 +139,8 @@ async function fetchDiscussionsPage(
   cursor: string | null,
 ): Promise<DiscussionsPage> {
   const query = `
-    query GetDiscussions($categoryId: ID!, $cursor: String) {
-      repository(owner: "${OWNER}", name: "${REPO}") {
+    query GetDiscussions($owner: String!, $name: String!, $categoryId: ID!, $cursor: String) {
+      repository(owner: $owner, name: $name) {
         discussions(first: 100, categoryId: $categoryId, after: $cursor) {
           pageInfo {
             hasNextPage
@@ -162,34 +148,98 @@ async function fetchDiscussionsPage(
           }
           nodes {
             number
+            title
+            url
             body
             closed
+            updatedAt
           }
         }
       }
     }
   `
 
-  const data = await graphqlRequest<DiscussionsData>(query, { categoryId, cursor })
+  const data = await graphqlRequest<DiscussionsData>(query, {
+    owner: OWNER,
+    name: REPO,
+    categoryId,
+    cursor,
+  })
   return data.repository.discussions
 }
 
-async function fetchAllDiscussionRepoUrls(): Promise<string[]> {
-  const categoryId = await getDiscussionCategoryId()
-  log.info({ categoryId, owner: OWNER, repo: REPO }, 'Insights Discussions: category ID resolved.')
+interface IDiscussionRepoUrlRef {
+  repoUrl: string
+  discussionNumber: number
+  discussionUrl: string
+}
 
-  const allUrls = new Set<string>()
+async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRepoUrlRef[]> {
+  const categoryId = await getDiscussionCategoryId()
+  log.info(
+    { categoryId, owner: OWNER, repo: REPO, since: since ?? 'none (full walk)' },
+    'Insights Discussions: category ID resolved.',
+  )
+
+  // Keyed by repoUrl: a repo cited across multiple discussions keeps the first as provenance.
+  const refsByRepoUrl = new Map<string, IDiscussionRepoUrlRef>()
+  const sinceMs = since ? new Date(since).getTime() : null
   let cursor: string | null = null
   let hasNextPage = true
   let pageCount = 0
+  let discussionsSeen = 0
+  let skippedClosed = 0
+  let skippedUnchanged = 0
+  let discussionsWithoutRefs = 0
 
   while (hasNextPage) {
     pageCount++
     const page = await fetchDiscussionsPage(categoryId, cursor)
 
     for (const discussion of page.nodes) {
-      for (const url of extractRepoUrls(discussion.body)) {
-        allUrls.add(url)
+      discussionsSeen++
+
+      if (discussion.closed) {
+        skippedClosed++
+        continue
+      }
+
+      // Client-side, not an early-stop: pagination isn't ordered by updatedAt, so a
+      // stable walk of every page is required to not silently miss edited discussions.
+      if (sinceMs !== null && new Date(discussion.updatedAt).getTime() < sinceMs) {
+        skippedUnchanged++
+        continue
+      }
+
+      const refs = extractDiscussionRepoUrls(discussion)
+
+      if (refs.repoUrls.length === 0) {
+        discussionsWithoutRefs++
+        log.warn(
+          { number: discussion.number, url: discussion.url },
+          'Insights Discussions: open discussion produced no repo references.',
+        )
+      }
+
+      log.info(
+        {
+          number: discussion.number,
+          closed: discussion.closed,
+          candidates: refs.repoUrls.length,
+          fromTitle: refs.fromTitle,
+          fromBody: refs.fromBody,
+        },
+        'Insights Discussions: discussion processed.',
+      )
+
+      for (const repoUrl of refs.repoUrls) {
+        if (!refsByRepoUrl.has(repoUrl)) {
+          refsByRepoUrl.set(repoUrl, {
+            repoUrl,
+            discussionNumber: discussion.number,
+            discussionUrl: discussion.url,
+          })
+        }
       }
     }
 
@@ -200,67 +250,73 @@ async function fetchAllDiscussionRepoUrls(): Promise<string[]> {
       {
         pageCount,
         discussionsInPage: page.nodes.length,
-        totalUniqueUrls: allUrls.size,
+        totalUniqueUrls: refsByRepoUrl.size,
         hasNextPage,
       },
       'Insights Discussions: page processed.',
     )
   }
 
-  return Array.from(allUrls)
+  log.info(
+    {
+      discussionsSeen,
+      skippedClosed,
+      skippedUnchanged,
+      discussionsWithoutRefs,
+      totalUniqueUrls: refsByRepoUrl.size,
+    },
+    'Insights Discussions: all pages processed.',
+  )
+
+  return Array.from(refsByRepoUrl.values())
 }
 
 export class InsightsDiscussionsSource implements IDiscoverySource {
   public readonly name = 'insights-discussions'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {
     const today = new Date().toISOString().slice(0, 10)
     return [
       {
         id: today,
         date: today,
         url: `https://github.com/${OWNER}/${REPO}/discussions/categories/${CATEGORY_SLUG}`,
+        since: options?.since,
       },
     ]
   }
 
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
-    log.info({ datasetId: dataset.id }, 'Insights Discussions: fetching discussion repo URLs.')
+    log.info(
+      { datasetId: dataset.id, since: dataset.since ?? 'none (full walk)' },
+      'Insights Discussions: fetching discussion repo URLs.',
+    )
 
-    const repoUrls = await fetchAllDiscussionRepoUrls()
+    const refs = await fetchAllDiscussionRepoUrls(dataset.since)
 
     log.info(
-      { datasetId: dataset.id, count: repoUrls.length },
+      { datasetId: dataset.id, count: refs.length },
       'Insights Discussions: unique repo URLs extracted.',
     )
 
-    return Readable.from(
-      repoUrls.map((url) => ({ repoUrl: url })),
-      { objectMode: true },
-    )
+    return Readable.from(refs, { objectMode: true })
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
     const repoUrl = rawRow['repoUrl'] as string | undefined
     if (!repoUrl) return null
 
-    let projectSlug = ''
-    let repoName = ''
-    try {
-      const urlPath = new URL(repoUrl).pathname.replace(/^\//, '').replace(/\/$/, '')
-      projectSlug = urlPath
-      repoName = urlPath.split('/').pop() || ''
-    } catch {
-      return null
-    }
+    const identity = deriveProjectIdentityFromRepoUrl(repoUrl)
+    if (!identity) return null
 
-    if (!projectSlug || !repoName) return null
+    const discussionUrl = rawRow['discussionUrl'] as string | undefined
 
     return {
-      projectSlug,
-      repoName,
+      projectSlug: identity.projectSlug,
+      repoName: identity.repoName,
       repoUrl,
+      sourceUrl: discussionUrl,
     }
   }
 }

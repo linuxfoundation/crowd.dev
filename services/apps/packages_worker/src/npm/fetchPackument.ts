@@ -25,16 +25,14 @@ export async function fetchPackument(
   const combinedSignal = combineSignals(abort.signal, signal)
   let res: Response
   try {
-    // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
-    const init: RequestInit & { dispatcher?: Dispatcher } = {
+    res = await fetch(url, {
       headers: {
         Accept: 'application/json',
         'User-Agent': USER_AGENT,
       },
       signal: combinedSignal,
-    }
-    if (dispatcher) init.dispatcher = dispatcher
-    res = await fetch(url, init as RequestInit)
+      dispatcher,
+    })
   } catch (err) {
     return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {

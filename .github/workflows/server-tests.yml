@@ -4,14 +4,14 @@ on:
   pull_request:
     # Only trigger when relevant files change to save CI minutes
     paths-ignore:
-      - 'frontend/**'
-      - '**.md'
-      - '.gitignore'
-      - '.editorconfig'
-      - '**/.eslintrc*'
-      - '.prettierrc'
-      - '.prettierignore'
-      - 'LICENSE'
+      - "frontend/**"
+      - "**.md"
+      - ".gitignore"
+      - ".editorconfig"
+      - "**/.eslintrc*"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - "LICENSE"
 
 # Automatically cancel in-progress runs if you push new code to the same PR
 concurrency:
@@ -52,19 +52,13 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm i --frozen-lockfile
+          runtime: node@24
+          cache: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

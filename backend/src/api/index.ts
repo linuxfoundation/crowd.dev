@@ -1,12 +1,15 @@
+import * as http from 'http'
+import os from 'os'
+
 import bodyParser from 'body-parser'
 import bunyanMiddleware from 'bunyan-middleware'
 import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
-import * as http from 'http'
-import os from 'os'
 import { QueryTypes } from 'sequelize'
 
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { productDatabaseMiddleware } from '@/middlewares/productDbMiddleware'
 import { BadRequestError } from '@crowd/common'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
@@ -15,9 +18,6 @@ import { RedisPubSubReceiver, getRedisClient, getRedisPubSubPair } from '@crowd/
 import { telemetryExpressMiddleware } from '@crowd/telemetry'
 import { Client as TemporalClient, getTemporalClient } from '@crowd/temporal'
 import { ApiWebsocketMessage } from '@crowd/types'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { productDatabaseMiddleware } from '@/middlewares/productDbMiddleware'
 
 import { OPENSEARCH_CONFIG, PRODUCT_DB_CONFIG, REDIS_CONFIG, TEMPORAL_CONFIG } from '../conf'
 import { authMiddleware } from '../middlewares/authMiddleware'
@@ -30,7 +30,6 @@ import { redisMiddleware } from '../middlewares/redisMiddleware'
 import { responseHandlerMiddleware } from '../middlewares/responseHandlerMiddleware'
 import { segmentMiddleware } from '../middlewares/segmentMiddleware'
 import { tenantMiddleware } from '../middlewares/tenantMiddleware'
-
 import { createRateLimiter } from './apiRateLimiter'
 import authSocial from './auth/authSocial'
 import { publicRouter } from './public'
@@ -252,6 +251,7 @@ setImmediate(async () => {
   require('./dataQuality').default(routes)
   require('./collections').default(routes)
   require('./categories').default(routes)
+  require('./projectCatalog').default(routes)
 
   await require('./nango').default(routes)
 

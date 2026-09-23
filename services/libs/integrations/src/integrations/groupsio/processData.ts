@@ -5,7 +5,6 @@ import { IActivityData, IMemberData, MemberIdentityType, PlatformType } from '@c
 
 import { ProcessDataHandler } from '../../types'
 import { roundToNearestMinute } from '../utils'
-
 import { Groupsio_GRID } from './grid'
 import {
   GroupsioActivityType,

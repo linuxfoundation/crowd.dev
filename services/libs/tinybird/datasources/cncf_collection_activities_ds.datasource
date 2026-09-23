@@ -1,0 +1,18 @@
+DESCRIPTION >
+    - `cncf_collection_activities_ds` contains activity relations pre-filtered to the CNCF collection (slug `cncf`, `cityHash64('cncf') % 10 = 8`, so all its rows live in bucket 8).
+    - Populated daily by `cncf_collection_activities_copy.pipe`, which reads from `activityRelations_collection_deduplicated_cleaned_bucket_8_ds` filtered to `collectionSlug = 'cncf'`.
+    - Exists so the CNCF geo-distribution report pipes (`collection_contributors_geo_distribution*`) don't have to scan/filter the full bucket on every request.
+    - Stores only the fields those report pipes need: organizationId, memberId, timestamp, platform, type.
+
+TAGS "Report"
+
+SCHEMA >
+    `organizationId` String DEFAULT '',
+    `memberId` String DEFAULT '',
+    `timestamp` DateTime64(3),
+    `platform` LowCardinality(String),
+    `type` LowCardinality(String)
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(timestamp)
+ENGINE_SORTING_KEY timestamp, organizationId

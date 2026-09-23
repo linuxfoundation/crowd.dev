@@ -1,16 +1,26 @@
+import { ICanonicalRepoUrl, canonicalizeRepoUrl } from '@crowd/common'
 import {
+  finalizeProjectCatalogEvaluation,
+  findGithubOwnersWithLfProjects,
+  findGithubOwnersWithNonLfRepos,
   findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
+  findRepoUrlsInCdp,
+  finishPipelineRun,
+  markProjectCatalogPreCheckSkipped,
   promoteProjectsToEvaluate,
-  updateProjectCatalog,
+  startPipelineRun,
 } from '@crowd/data-access-layer'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
-import { IPriorityConfig } from '../types'
+import { computeExclusivelyLfOwners, resolvePrecheckSkipReason } from '../precheck/precheck'
+import { IEvaluationActivityResult, IPrecheckResult, IPriorityConfig } from '../types'
 
 const log = getServiceLogger()
 
@@ -40,7 +50,89 @@ export async function fetchPendingProjects(batchSize: number): Promise<IDbProjec
   return projects
 }
 
-export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Promise<void> {
+export async function precheckPendingProjects(
+  projects: IDbProjectCatalog[],
+): Promise<IPrecheckResult> {
+  // Writer connection: avoids replica lag missing a just-written repo/project mapping,
+  // same reasoning as evaluateAndUpdateProject's fresh-state read below.
+  const writeQx = pgpQx(svc.postgres.writer.connection())
+
+  const canonicalsByProjectId = new Map(
+    projects.map((project) => [project.id, canonicalizeRepoUrl(project.repoUrl)] as const),
+  )
+  const githubCanonicals = [...canonicalsByProjectId.values()].filter(
+    (canonical): canonical is ICanonicalRepoUrl & { isGithub: true } =>
+      Boolean(canonical?.isGithub),
+  )
+  const githubCanonicalUrls = githubCanonicals.map((canonical) => canonical.url)
+  const githubOwners = githubCanonicals.map((canonical) => canonical.owner)
+  const uncanonicalizable = [...canonicalsByProjectId.values()].filter(
+    (canonical) => !canonical,
+  ).length
+
+  const [reposInCdp, lfOwners, nonLfOwners] = await Promise.all([
+    findRepoUrlsInCdp(writeQx, githubCanonicalUrls),
+    findGithubOwnersWithLfProjects(writeQx, githubOwners),
+    findGithubOwnersWithNonLfRepos(writeQx, githubOwners),
+  ])
+  const exclusivelyLfOwners = computeExclusivelyLfOwners(lfOwners, nonLfOwners)
+
+  const remaining: IDbProjectCatalog[] = []
+  const breakdown: Record<string, number> = {}
+  let skippedPreCheck = 0
+
+  for (const project of projects) {
+    const reason = resolvePrecheckSkipReason(canonicalsByProjectId.get(project.id) ?? null, {
+      reposInCdp,
+      exclusivelyLfOwners,
+    })
+
+    if (!reason) {
+      remaining.push(project)
+      continue
+    }
+
+    const updatedRows = await markProjectCatalogPreCheckSkipped(writeQx, project.id, reason)
+
+    if (updatedRows > 0) {
+      skippedPreCheck++
+      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+      continue
+    }
+
+    // 0 rows: either a manual request moved this row out of 'evaluate', or a prior
+    // attempt of this same (retried) activity already skipped it with this reason.
+    const fresh = await findProjectCatalogById(writeQx, project.id)
+    const alreadyPrechecked = fresh?.action === 'skip' && fresh?.skipReason === reason
+
+    if (alreadyPrechecked) {
+      skippedPreCheck++
+      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+    } else {
+      log.info(
+        { id: project.id, repoUrl: project.repoUrl },
+        'Project was moved out of evaluate by a manual request while pre-checking, discarding skip.',
+      )
+    }
+  }
+
+  log.info(
+    {
+      total: projects.length,
+      skippedPreCheck,
+      remaining: remaining.length,
+      breakdown,
+      uncanonicalizable,
+    },
+    'Deterministic pre-check complete.',
+  )
+
+  return { remaining, skippedPreCheck, breakdown }
+}
+
+export async function evaluateAndUpdateProject(
+  project: IDbProjectCatalog,
+): Promise<IEvaluationActivityResult | null> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -52,7 +144,7 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
       { id: project.id, repoUrl: project.repoUrl, evaluatedAt: fresh.evaluatedAt },
       'Project already evaluated, skipping API call.',
     )
-    return
+    return null
   }
 
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting evaluation.')
@@ -66,24 +158,74 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
     source: project.source,
   })
 
-  await updateProjectCatalog(qx, project.id, {
+  const updated = await finalizeProjectCatalogEvaluation(qx, project.id, {
     action: result.outcome,
     evaluationResult: result.evaluationResult,
     evaluationReason: result.evaluationReason,
-    evaluatedAt: new Date().toISOString(),
   })
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
 
-  log.info(
-    {
-      id: project.id,
-      repoUrl: project.repoUrl,
+  if (!updated) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, elapsedSeconds },
+      'Project was moved out of evaluate by a manual request while evaluating, discarding DB update.',
+    )
+  } else {
+    log.info(
+      {
+        id: project.id,
+        repoUrl: project.repoUrl,
+        outcome: result.outcome,
+        evaluationResult: result.evaluationResult,
+        evaluationReason: result.evaluationReason,
+        elapsedSeconds,
+      },
+      'Evaluation complete.',
+    )
+  }
+
+  if (!result.metrics) {
+    return {
+      applied: Boolean(updated),
       outcome: result.outcome,
-      evaluationResult: result.evaluationResult,
-      evaluationReason: result.evaluationReason,
-      elapsedSeconds,
-    },
-    'Evaluation complete.',
-  )
+      model: null,
+      inputTokens: null,
+      outputTokens: null,
+      costUsd: null,
+      seconds: null,
+    }
+  }
+
+  const { model, inputTokens, outputTokens, seconds } = result.metrics
+
+  return {
+    applied: Boolean(updated),
+    outcome: result.outcome,
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: estimateLlmCostUsd(model, inputTokens, outputTokens),
+    seconds,
+  }
+}
+
+export async function startEvaluationPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'evaluation', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishEvaluationPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }

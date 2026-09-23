@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDbPackageUniverse, IDbPackageUpsert, IDbSonatypePopularityUpsert } from './types'
 
 export async function findPackageIdsByPurl(
@@ -163,6 +162,7 @@ export type MavenRepoUrlRow = {
   id: number
   declaredRepositoryUrl: string | null
   repositoryUrl: string | null
+  homepage: string | null
 }
 
 /**
@@ -185,7 +185,8 @@ export async function listMavenPackagesForRepoUrlRecompute(
     SELECT
       id,
       declared_repository_url AS "declaredRepositoryUrl",
-      repository_url          AS "repositoryUrl"
+      repository_url          AS "repositoryUrl",
+      homepage
     FROM packages
     WHERE ecosystem = 'maven'
       ${options.criticalOnly ? 'AND is_critical' : ''}

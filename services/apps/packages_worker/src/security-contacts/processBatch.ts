@@ -7,7 +7,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { getSecurityContactsConfig } from '../config'
 import { parseGithubUrl } from '../enricher/fetchLightRepo'
 import { mapWithConcurrency } from '../utils/concurrency'
-
 import { fetchRepoTree } from './extractors/gitTree'
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'

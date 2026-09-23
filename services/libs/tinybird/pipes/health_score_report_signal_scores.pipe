@@ -1,0 +1,348 @@
+DESCRIPTION >
+    - `health_score_report_signal_scores.pipe` serves widget 03 "Where the strongest
+    repositories pull ahead" for the Health Score report (IN-1288, part of epic IN-1276
+    Health Score Coverage).
+    - Returns one row per signal (all 11 catalogued signals): the score distribution across the
+    10th-through-100th percentile (in steps of 10), each expressed as a percent of the signal's
+    max points — feeds a percentile-band heatmap (IN-1304) rather than a two-point comparison.
+    - Only repos where that signal's availability flag is `1` are counted — a repo with no
+    measured value for a signal doesn't drag its percentiles down. `commitActivity` has
+    no `*Available` flag in `health_score_v2_signal_detail_ds` — same rule as
+    `health_score_report_signal_availability`: available when `commitsLast6m > 0 OR
+    lastCommitAt IS NOT NULL`.
+    - `signal_key` / `category_key` — same catalogue keys as `health_score_report_signal_availability`.
+    - `p10_pct` through `p100_pct` — `quantileExact(0.N)(score) / max_pts * 100` for N in 0.1..1.0.
+    `p100_pct` is the exact max (`quantileExact(1.0)`, equivalent to `max()`), kept as a quantile for
+    naming consistency with the other 9 columns rather than a differently-named `max_pct`.
+    - `repos` — count of repos with that signal available (the denominator behind every percentile).
+    - `max_pts` — the signal's max points, the same literal divisor used in every `pN_pct` column.
+    - No parameters — this pipe is not scope-filtered.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Health"
+
+NODE health_score_report_signal_scores_tracked_repos
+SQL >
+    SELECT url FROM repositories FINAL WHERE deletedAt IS NULL AND excluded = false
+
+NODE health_score_report_signal_scores_endpoint
+SQL >
+    SELECT
+        'busFactor' AS signal_key,
+        'maintainerHealth' AS category_key,
+        quantileExact(0.1)
+        (sd.busFactorScore) / 18 * 100 AS p10_pct,
+        quantileExact(0.2)
+        (sd.busFactorScore) / 18 * 100 AS p20_pct,
+        quantileExact(0.3)
+        (sd.busFactorScore) / 18 * 100 AS p30_pct,
+        quantileExact(0.4)
+        (sd.busFactorScore) / 18 * 100 AS p40_pct,
+        quantileExact(0.5)
+        (sd.busFactorScore) / 18 * 100 AS p50_pct,
+        quantileExact(0.6)
+        (sd.busFactorScore) / 18 * 100 AS p60_pct,
+        quantileExact(0.7)
+        (sd.busFactorScore) / 18 * 100 AS p70_pct,
+        quantileExact(0.8)
+        (sd.busFactorScore) / 18 * 100 AS p80_pct,
+        quantileExact(0.9)
+        (sd.busFactorScore) / 18 * 100 AS p90_pct,
+        quantileExact(1.0)
+        (sd.busFactorScore) / 18 * 100 AS p100_pct,
+        count() AS repos,
+        18 AS max_pts
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.busFactorAvailable = 1
+    UNION ALL
+    SELECT
+        'orgDiversity',
+        'maintainerHealth',
+        quantileExact(0.1)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.2)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.3)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.4)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.5)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.6)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.7)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.8)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(0.9)
+        (sd.orgDiversityScore) / 7 * 100,
+        quantileExact(1.0)
+        (sd.orgDiversityScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.orgDiversityAvailable = 1
+    UNION ALL
+    SELECT
+        'responsiveness',
+        'maintainerHealth',
+        quantileExact(0.1)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.2)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.3)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.4)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.5)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.6)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.7)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.8)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(0.9)
+        (sd.responsivenessScore) / 15 * 100,
+        quantileExact(1.0)
+        (sd.responsivenessScore) / 15 * 100,
+        count(),
+        15
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.responsivenessAvailable = 1
+    UNION ALL
+    SELECT
+        'openVuln',
+        'securitySupplyChain',
+        quantileExact(0.1)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.2)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.3)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.4)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.5)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.6)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.7)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.8)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(0.9)
+        (sd.openVulnScore) / 10 * 100,
+        quantileExact(1.0)
+        (sd.openVulnScore) / 10 * 100,
+        count(),
+        10
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.openVulnAvailable = 1
+    UNION ALL
+    SELECT
+        'scorecard',
+        'securitySupplyChain',
+        quantileExact(0.1)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.2)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.3)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.4)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.5)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.6)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.7)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.8)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(0.9)
+        (sd.scorecardScorePts) / 7 * 100,
+        quantileExact(1.0)
+        (sd.scorecardScorePts) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.scorecardAvailable = 1
+    UNION ALL
+    SELECT
+        'securityPractices',
+        'securitySupplyChain',
+        quantileExact(0.1)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.2)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.3)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.4)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.5)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.6)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.7)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.8)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(0.9)
+        (sd.securityPracticesScore) / 7 * 100,
+        quantileExact(1.0)
+        (sd.securityPracticesScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.securityPracticesAvailable = 1
+    UNION ALL
+    SELECT
+        'dependencyHealth',
+        'securitySupplyChain',
+        quantileExact(0.1)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.2)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.3)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.4)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.5)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.6)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.7)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.8)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(0.9)
+        (sd.dependencyHealthScore) / 5 * 100,
+        quantileExact(1.0)
+        (sd.dependencyHealthScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.dependencyHealthAvailable = 1
+    UNION ALL
+    SELECT
+        'releaseCadence',
+        'developmentActivity',
+        quantileExact(0.1)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.2)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.3)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.4)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.5)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.6)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.7)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.8)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(0.9)
+        (sd.releaseCadenceScore) / 8 * 100,
+        quantileExact(1.0)
+        (sd.releaseCadenceScore) / 8 * 100,
+        count(),
+        8
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.releaseCadenceAvailable = 1
+    UNION ALL
+    SELECT
+        'commitActivity',
+        'developmentActivity',
+        quantileExact(0.1)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.2)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.3)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.4)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.5)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.6)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.7)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.8)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(0.9)
+        (sd.commitActivityScore) / 5 * 100,
+        quantileExact(1.0)
+        (sd.commitActivityScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.commitsLast6m > 0 OR sd.lastCommitAt IS NOT NULL
+    UNION ALL
+    SELECT
+        'issueResolution',
+        'developmentActivity',
+        quantileExact(0.1)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.2)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.3)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.4)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.5)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.6)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.7)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.8)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(0.9)
+        (sd.issueResolutionScore) / 7 * 100,
+        quantileExact(1.0)
+        (sd.issueResolutionScore) / 7 * 100,
+        count(),
+        7
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.issueResolutionAvailable = 1
+    UNION ALL
+    SELECT
+        'prMerge',
+        'developmentActivity',
+        quantileExact(0.1)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.2)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.3)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.4)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.5)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.6)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.7)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.8)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(0.9)
+        (sd.prMergeScore) / 5 * 100,
+        quantileExact(1.0)
+        (sd.prMergeScore) / 5 * 100,
+        count(),
+        5
+    FROM health_score_report_signal_scores_tracked_repos AS r
+    JOIN health_score_v2_signal_detail_ds AS sd ON sd.repoUrl = r.url
+    WHERE sd.prMergeAvailable = 1

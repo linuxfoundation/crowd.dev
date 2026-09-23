@@ -1,21 +1,24 @@
-
 <!-- BODY -->
 
-# LFX Community Data Platform (fka crowd.dev) 
+# LFX Community Data Platform (fka crowd.dev)
+
 ## Background story
+
 This project was launched as part of the startup crowd.dev. crowd.dev was acquired by the Linux Foundation in April 2024. Following the acquisition, crowd.dev was renamed to "Community Data Platform" and is now part of the [LFX platform](https://lfx.linuxfoundation.org/).
 
 ## About this project
+
 LFX Community Data Platform collects and stores data from across the communities in a single database for data unification, identity resolution, analysis, and activation. By utilizing this tool, the Linux Foundation can effectively identify key contributors and organizations, facilitating more efficient community support.
 
 Key features:
-* It consolidates developers' touchpoints with a company or brand.
-* It captures data from community platforms, product channels, and commercial channels.
-* The data is cleaned, and profiles are matched across platforms and enriched with third-party data.
-* The platform provides a unified 360-degree view of developers' engagement, their companies, and their customer journey.
 
+- It consolidates developers' touchpoints with a company or brand.
+- It captures data from community platforms, product channels, and commercial channels.
+- The data is cleaned, and profiles are matched across platforms and enriched with third-party data.
+- The platform provides a unified 360-degree view of developers' engagement, their companies, and their customer journey.
 
 ## Getting started
+
 ⚠️ This documentation is outdated and needs to be reviewed.
 
 To get started with self-hosting, take a look at our [self-hosting docs](https://docs.crowd.dev/docs/getting-started-with-self-hosting).
@@ -32,7 +35,7 @@ We currently support all our integrations for self-hosting. For each one of them
 
 #### <a name="requirements">Requirements</a>
 
-- [Node](https://nodejs.org/en) v20+
+- [Node](https://nodejs.org/en) v24+
 - [Docker](https://docs.docker.com/get-docker/) and [docker-compose](https://docs.docker.com/compose/install/)
 
 #### <a name="getting_started">Getting started</a>
@@ -59,6 +62,7 @@ cd scripts
 
 For starting services required for insights infra (Tinybird, Sequin and Kafka Connect sink),
 you can use the `WITH_INSIGHTS` env variable while running cli commands
+
 ```
 WITH_INSIGHTS=1 ./cli scaffold up
 ```
@@ -66,7 +70,6 @@ WITH_INSIGHTS=1 ./cli scaffold up
 This app will be available at http://localhost:8081
 
 For more information on development, you can <a href="https://docs.crowd.dev/docs/docker-compose-single-machine-development-with-docker-images">check our docs</a>.
-
 
 ## Contribution
 

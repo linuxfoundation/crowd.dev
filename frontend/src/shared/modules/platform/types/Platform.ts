@@ -14,6 +14,7 @@ export enum Platform {
     HUBSPOT = 'hubspot',
     GIT = 'git',
     GROUPS_IO = 'groupsio',
+    MAILING_LIST = 'mailinglist',
     CUSTOM = 'custom',
     ENRICHMENT = 'enrichment',
     EMAIL = 'email',

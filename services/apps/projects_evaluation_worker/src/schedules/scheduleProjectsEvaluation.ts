@@ -1,51 +1,67 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
+import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
+
 import { svc } from '../main'
 import { IEvaluateProjectsInput, evaluateProjects } from '../workflows'
 
-// Priority configuration for the evaluation queue.
-// - evaluateLimit: maximum number of projects in 'evaluate' state at any time.
-// - sourcePriority: ordered list of sources; earlier = higher priority; unlisted sources rank last.
-const EVALUATION_ARGS: IEvaluateProjectsInput = {
-  batchSize: 50,
-  priorityConfig: {
-    evaluateLimit: 50,
-    sourcePriority: ['insights-discussions'],
-  },
+// Ordered list of sources; earlier = higher priority; unlisted sources rank last.
+const SOURCE_PRIORITY = ['manual', 'insights-discussions', 'lf-criticality-score']
+
+// Ceiling, not a target: scheduled (incremental) discovery accepts up to
+// DISCOVERY_NEW_PROJECTS_LIMIT per source per run, so evaluation must drain that much.
+const EVALUATION_LIMIT = DISCOVERY_NEW_PROJECTS_LIMIT * SOURCE_PRIORITY.length
+
+// Worst case per project: evaluateActivities allows 2 attempts × 3 min startToCloseTimeout.
+const WORST_CASE_MINUTES_PER_PROJECT = 6
+const WORKFLOW_EXECUTION_TIMEOUT = `${EVALUATION_LIMIT * WORST_CASE_MINUTES_PER_PROJECT} minutes`
+
+function scheduleAction() {
+  const args: IEvaluateProjectsInput = {
+    batchSize: EVALUATION_LIMIT,
+    priorityConfig: {
+      evaluateLimit: EVALUATION_LIMIT,
+      sourcePriority: SOURCE_PRIORITY,
+    },
+  }
+
+  return {
+    type: 'startWorkflow' as const,
+    workflowType: evaluateProjects,
+    taskQueue: 'projects-evaluation',
+    args: [args] as [IEvaluateProjectsInput],
+    workflowExecutionTimeout: WORKFLOW_EXECUTION_TIMEOUT,
+    retry: {
+      initialInterval: '30 seconds',
+      backoffCoefficient: 2,
+      maximumAttempts: 3,
+    },
+  }
 }
 
 export const scheduleProjectsEvaluation = async () => {
-  svc.log.info('Scheduling projects evaluation')
+  svc.log.info({ evaluationLimit: EVALUATION_LIMIT }, 'Scheduling projects evaluation')
 
   try {
     await svc.temporal.schedule.create({
       scheduleId: 'projectsEvaluation',
       spec: {
-        // Run every Monday at 02:00 UTC — gives time after the weekly discovery run.
-        cronExpressions: ['0 2 * * 1'],
+        cronExpressions: ['0 4 * * *'],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
-        catchupWindow: '1 minute',
+        catchupWindow: '1 hour',
       },
-      action: {
-        type: 'startWorkflow',
-        workflowType: evaluateProjects,
-        taskQueue: 'projects-evaluation',
-        args: [EVALUATION_ARGS],
-        // 50 projects × ~3min each = ~2.5h worst case; set ceiling with margin.
-        workflowExecutionTimeout: '6 hours',
-        retry: {
-          initialInterval: '30 seconds',
-          backoffCoefficient: 2,
-          maximumAttempts: 3,
-        },
-      },
+      action: scheduleAction(),
     })
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info('Schedule already registered in Temporal.')
-      svc.log.info('Configuration may have changed since. Please make sure they are in sync.')
+      svc.log.info('Schedule projectsEvaluation already exists, reconciling action.')
+      const handle = svc.temporal.schedule.getHandle('projectsEvaluation')
+      await handle.update((prev) => ({
+        ...prev,
+        action: scheduleAction(),
+      }))
     } else {
       throw new Error(err)
     }

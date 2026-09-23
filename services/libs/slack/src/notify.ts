@@ -68,7 +68,7 @@ function buildContentBlocks(content: string | SlackMessageSection[]): SlackBlock
 
   const blocks: SlackBlock[] = []
   for (const section of content) {
-    const fullText = `*${section.title}*\n${section.text}`
+    const fullText = section.title ? `*${section.title}*\n${section.text}` : section.text
     for (const block of splitIntoSectionBlocks(fullText)) {
       blocks.push(block)
     }
@@ -142,14 +142,15 @@ function pruneBlocksIfNeeded(blocks: SlackBlock[]): SlackBlock[] {
  * @param persona - The persona/type of the notification
  * @param title - The title of the notification
  * @param content - The markdown-formatted content (string) or an array of sections
- * @returns Promise that resolves when the message is sent
+ * @returns Promise resolving to true if the message was sent, false if delivery failed
+ *   or was skipped (e.g. no webhook configured for the channel)
  */
 export async function sendSlackNotificationAsync(
   channel: SlackChannel,
   persona: SlackPersona,
   title: string,
   content: string | SlackMessageSection[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     const client = getWebhookClient(channel)
 
@@ -158,7 +159,7 @@ export async function sendSlackNotificationAsync(
         { channel, persona, title },
         `Skipping Slack notification - webhook client not available for channel ${channel}`,
       )
-      return
+      return false
     }
 
     const personaConfig = getPersonaConfig(persona)
@@ -196,11 +197,13 @@ export async function sendSlackNotificationAsync(
       { channel, persona, title, service: SERVICE },
       `Successfully sent Slack notification to channel ${channel}`,
     )
+    return true
   } catch (error) {
     log.error(
       { error, channel, persona, title, service: SERVICE },
       `Failed to send Slack notification to channel ${channel}`,
     )
+    return false
   }
 }
 

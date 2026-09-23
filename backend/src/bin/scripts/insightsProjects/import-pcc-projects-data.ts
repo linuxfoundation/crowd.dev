@@ -4,6 +4,9 @@
 
 /* eslint-disable import/no-extraneous-dependencies */
 
+import * as fs from 'fs'
+import path from 'path'
+
 /**
  * Access Snowflake's instance: https://app.snowflake.com/jnmhvwd/xpb85243
  * Create a new worksheet and run the query below.
@@ -44,8 +47,6 @@ WHERE
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
 import { parse } from 'csv-parse/sync'
-import * as fs from 'fs'
-import path from 'path'
 
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'

@@ -1,0 +1,140 @@
+[
+  {
+    "id": "llms-txt-exists",
+    "category": "content-discoverability",
+    "status": "pass",
+    "message": "llms.txt found at 2 locations; using https://openfga.dev/docs/llms.txt as canonical"
+  },
+  {
+    "id": "llms-txt-valid",
+    "category": "content-discoverability",
+    "status": "pass",
+    "message": "llms.txt follows the proposed structure (H1, blockquote, heading-delimited link sections)"
+  },
+  {
+    "id": "llms-txt-size",
+    "category": "content-discoverability",
+    "status": "pass",
+    "message": "llms.txt is 19,900 characters (under 50,000 threshold)"
+  },
+  {
+    "id": "llms-txt-links-resolve",
+    "category": "content-discoverability",
+    "status": "pass",
+    "message": "All 50 same-origin sampled links resolve (111 total links)"
+  },
+  {
+    "id": "llms-txt-links-markdown",
+    "category": "content-discoverability",
+    "status": "pass",
+    "message": "50/50 same-origin sampled links point to markdown content (100%)"
+  },
+  {
+    "id": "llms-txt-directive-html",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt directive found in HTML of any of 50 sampled pages"
+  },
+  {
+    "id": "llms-txt-directive-md",
+    "category": "content-discoverability",
+    "status": "fail",
+    "message": "No llms.txt directive found in markdown of any of 50 sampled pages"
+  },
+  {
+    "id": "markdown-url-support",
+    "category": "markdown-availability",
+    "status": "pass",
+    "message": "50/50 sampled pages support .md URLs (100%)"
+  },
+  {
+    "id": "content-negotiation",
+    "category": "markdown-availability",
+    "status": "fail",
+    "message": "Server ignores Accept: text/markdown header (0/50 sampled pages return markdown)"
+  },
+  {
+    "id": "rendering-strategy",
+    "category": "page-size",
+    "status": "pass",
+    "message": "All 50 sampled pages contain server-rendered content"
+  },
+  {
+    "id": "page-size-markdown",
+    "category": "page-size",
+    "status": "fail",
+    "message": "3 of 50 pages exceed 100K chars (max 145K)"
+  },
+  {
+    "id": "page-size-html",
+    "category": "page-size",
+    "status": "fail",
+    "message": "3 of 50 sampled pages convert to over 100K chars (max 1472K HTML \u2192 144K markdown (84% boilerplate))"
+  },
+  {
+    "id": "content-start-position",
+    "category": "page-size",
+    "status": "fail",
+    "message": "6 of 50 sampled pages have content starting past 50% (worst 75%)"
+  },
+  {
+    "id": "tabbed-content-serialization",
+    "category": "content-structure",
+    "status": "fail",
+    "message": "120 tab group(s) found; worst page serializes to 124K chars (over 100K)"
+  },
+  {
+    "id": "section-header-quality",
+    "category": "content-structure",
+    "status": "pass",
+    "message": "1 page(s) with tab headers checked; headers include variant context"
+  },
+  {
+    "id": "markdown-code-fence-validity",
+    "category": "content-structure",
+    "status": "fail",
+    "message": "1 unclosed code fences found across 52 pages"
+  },
+  {
+    "id": "http-status-codes",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "All 50 sampled pages return proper error codes for bad URLs"
+  },
+  {
+    "id": "redirect-behavior",
+    "category": "url-stability",
+    "status": "pass",
+    "message": "No redirects detected across 50 sampled pages"
+  },
+  {
+    "id": "llms-txt-coverage",
+    "category": "observability",
+    "status": "pass",
+    "message": "llms.txt covers 100% of 111 sitemap doc pages"
+  },
+  {
+    "id": "markdown-content-parity",
+    "category": "observability",
+    "status": "warn",
+    "message": "2 of 50 pages have minor content differences between markdown and HTML"
+  },
+  {
+    "id": "cache-header-hygiene",
+    "category": "observability",
+    "status": "pass",
+    "message": "All 52 endpoints have appropriate cache headers"
+  },
+  {
+    "id": "auth-gate-detection",
+    "category": "authentication",
+    "status": "pass",
+    "message": "All 50 sampled pages are publicly accessible"
+  },
+  {
+    "id": "auth-alternative-access",
+    "category": "authentication",
+    "status": "skip",
+    "message": "All docs pages are publicly accessible; no alternative access paths needed"
+  }
+]

@@ -1,7 +1,20 @@
 import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
-import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
+import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
+import {
+  bulkInsertProjectCatalog,
+  findDiscoverySourceCursor,
+  findDiscoverySourceWatermark,
+  findExistingProjectCatalogRepoUrls,
+  findRepoUrlsInCdp,
+  finishPipelineRun,
+  startPipelineRun,
+  upsertDiscoverySourceCursor,
+  upsertDiscoverySourceWatermark,
+} from '@crowd/data-access-layer'
+import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
+import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -12,28 +25,100 @@ import { IDatasetDescriptor } from '../sources/types'
 
 const log = getServiceLogger()
 
-const BATCH_SIZE = 5000
+// Matches the LF Criticality Score API's page size, so the stream can stop after one page
+// once a chunk satisfies the cap, instead of always fetching several pages upfront.
+const CANDIDATE_CHUNK_SIZE = 100
+
+const ALREADY_IN_CDP_SKIP_REASON = 'repository already tracked in CDP (discovery pre-check)'
 
 export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()
 }
 
-export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
+export async function listDatasets(
+  sourceName: string,
+  since?: string,
+  cursor?: IDiscoverySourceCursor,
+): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
 
-  log.info({ sourceName }, 'Listing datasets.')
+  log.info({ sourceName, since: since ?? 'none', cursor: cursor ?? 'none' }, 'Listing datasets.')
 
-  const datasets = await source.listAvailableDatasets()
+  const datasets = await source.listAvailableDatasets({ since, cursor })
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
 
   return datasets
 }
 
+export interface ISourceWatermark {
+  since: string | null
+  capturedAt: string
+}
+
+// Wide enough to absorb the gap between listDatasets and processDataset (up to 90 min
+// startToCloseTimeout, plus retries) and ordinary clock skew — re-processing is harmless.
+const WATERMARK_OVERLAP_MS = 24 * 60 * 60 * 1000
+
+export async function readSourceWatermark(sourceName: string): Promise<ISourceWatermark> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const watermark = await findDiscoverySourceWatermark(qx, sourceName)
+  const capturedAt = new Date().toISOString()
+
+  const since = watermark
+    ? new Date(new Date(watermark).getTime() - WATERMARK_OVERLAP_MS).toISOString()
+    : null
+
+  log.info({ sourceName, watermark, since, capturedAt }, 'Source watermark read.')
+
+  return { since, capturedAt }
+}
+
+export async function commitSourceWatermark(
+  sourceName: string,
+  watermark: string,
+  force: boolean,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceWatermark(qx, sourceName, watermark, { force })
+
+  log.info({ sourceName, watermark, force }, 'Source watermark committed.')
+}
+
+export async function readSourceCursor(sourceName: string): Promise<IDiscoverySourceCursor | null> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const cursor = await findDiscoverySourceCursor(qx, sourceName)
+
+  log.info({ sourceName, cursor }, 'Source cursor read.')
+
+  return cursor
+}
+
+// Unlike commitSourceWatermark, called even when truncated — that's the expected
+// steady state for a cursor-based source, and dataset.cursor is already rolled back.
+export async function commitSourceCursor(
+  sourceName: string,
+  cursor: IDiscoverySourceCursor,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceCursor(qx, sourceName, cursor)
+
+  log.info({ sourceName, cursor }, 'Source cursor committed.')
+}
+
+export interface IProcessDatasetResult {
+  totalRows: number
+  totalSkipped: number
+  totalSkippedAlreadyInCdp: number
+  totalAccepted: number
+  truncated: boolean
+  cursor?: IDiscoverySourceCursor
+}
+
 export async function processDataset(
   sourceName: string,
   dataset: IDatasetDescriptor,
-): Promise<void> {
+): Promise<IProcessDatasetResult> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -72,11 +157,56 @@ export async function processDataset(
     })
   }
 
-  let batch: IDbProjectCatalogCreate[] = []
-  let totalProcessed = 0
-  let totalSkipped = 0
-  let batchNumber = 0
+  const accepted: IDbProjectCatalogCreate[] = []
+  const skippedInCdp: IDbProjectCatalogCreate[] = []
+  const seenRepoUrls = new Set<string>()
+  let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
+  let totalSkipped = 0
+  let truncated = false
+
+  async function acceptNewRows(candidates: IDbProjectCatalogCreate[]): Promise<void> {
+    const seenInChunk = new Set<string>()
+    const unseen = candidates.filter(
+      (c) =>
+        !seenRepoUrls.has(c.repoUrl) && !seenInChunk.has(c.repoUrl) && seenInChunk.add(c.repoUrl),
+    )
+    if (unseen.length === 0) {
+      return
+    }
+
+    const existingRepoUrls = await findExistingProjectCatalogRepoUrls(
+      qx,
+      unseen.map((c) => c.repoUrl),
+    )
+    const fresh = unseen.filter((c) => !existingRepoUrls.has(c.repoUrl))
+    if (fresh.length === 0) {
+      return
+    }
+
+    const repoUrlsInCdp = await findRepoUrlsInCdp(
+      qx,
+      fresh.map((c) => c.repoUrl),
+    )
+
+    for (const candidate of fresh) {
+      if (repoUrlsInCdp.has(candidate.repoUrl)) {
+        skippedInCdp.push({
+          ...candidate,
+          action: 'skip',
+          skipReason: ALREADY_IN_CDP_SKIP_REASON,
+        })
+        seenRepoUrls.add(candidate.repoUrl)
+        continue
+      }
+      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
+        break
+      }
+      accepted.push(candidate)
+      seenRepoUrls.add(candidate.repoUrl)
+    }
+  }
 
   for await (const rawRow of records) {
     totalRows++
@@ -87,37 +217,58 @@ export async function processDataset(
       continue
     }
 
-    batch.push({
+    chunk.push({
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
       source: sourceName,
+      sourceUrl: parsed.sourceUrl ?? null,
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
     })
 
-    if (batch.length >= BATCH_SIZE) {
-      batchNumber++
+    if (chunk.length >= CANDIDATE_CHUNK_SIZE) {
+      await acceptNewRows(chunk)
+      chunk = []
 
-      await bulkUpsertProjectCatalog(qx, batch)
-      totalProcessed += batch.length
-      batch = []
+      Context.current().heartbeat({
+        totalRows,
+        accepted: accepted.length,
+        skippedAlreadyInCdp: skippedInCdp.length,
+      })
 
-      Context.current().heartbeat({ totalProcessed, batchNumber })
-      log.info({ totalProcessed, batchNumber, datasetId: dataset.id }, 'Batch upserted.')
+      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
+        log.info(
+          { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
+          'Discovery limit reached, stopping stream.',
+        )
+        break
+      }
     }
   }
 
-  // Flush remaining rows that didn't fill a complete batch
-  if (batch.length > 0) {
-    batchNumber++
-    log.info(
-      { sourceName, datasetId: dataset.id, batchSize: batch.length },
-      'Flushing final batch...',
-    )
-    await bulkUpsertProjectCatalog(qx, batch)
-    totalProcessed += batch.length
+  // Flush a final partial chunk, unless the limit was already hit above.
+  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+    await acceptNewRows(chunk)
   }
+
+  records.destroy()
+  if (stream !== records) {
+    stream.destroy()
+  }
+
+  const toInsert = [...accepted, ...skippedInCdp]
+  if (toInsert.length > 0) {
+    await bulkInsertProjectCatalog(qx, toInsert)
+  }
+
+  // On truncation the cap can hit mid-page, dropping candidates from the page whose
+  // rows are already marked consumed — roll the cursor back one page so it's replayed.
+  const cursor =
+    dataset.cursor && truncated
+      ? { rundate: dataset.cursor.rundate, page: Math.max(dataset.cursor.page - 1, 0) }
+      : dataset.cursor
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
 
@@ -126,11 +277,41 @@ export async function processDataset(
       sourceName,
       datasetId: dataset.id,
       totalRows,
-      totalProcessed,
       totalSkipped,
-      totalBatches: batchNumber,
+      totalSkippedAlreadyInCdp: skippedInCdp.length,
+      totalAccepted: accepted.length,
+      truncated,
       elapsedSeconds,
     },
     'Dataset processing complete.',
   )
+
+  return {
+    totalRows,
+    totalSkipped,
+    totalSkippedAlreadyInCdp: skippedInCdp.length,
+    totalAccepted: accepted.length,
+    truncated,
+    cursor,
+  }
+}
+
+export async function startDiscoveryPipelineRun(
+  workflowId: string | null,
+  temporalRunId: string | null,
+): Promise<string> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const run = await startPipelineRun(qx, { stage: 'discovery', workflowId, temporalRunId })
+
+  return run.id
+}
+
+export async function finishDiscoveryPipelineRun(
+  id: string,
+  data: IPipelineRunFinish,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  await finishPipelineRun(qx, id, data)
 }

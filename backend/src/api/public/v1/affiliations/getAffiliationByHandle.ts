@@ -1,14 +1,13 @@
 import type { Request, Response } from 'express'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
 import { NotFoundError } from '@crowd/common'
 import {
   findMembersByGithubHandles,
   findVerifiedEmailsByMemberIds,
   resolveAffiliationsByMemberIds,
 } from '@crowd/data-access-layer'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
 
 export async function getAffiliationByHandle(req: Request, res: Response): Promise<void> {
   const handle = req.params.githubHandle.toLowerCase()

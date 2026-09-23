@@ -1,0 +1,186 @@
+-- Deterministic package→repo confidence scoring (CM-1306).
+--
+-- confidence numeric(3,2) cannot hold the uniqueness offset that separates links
+-- sharing a tier, so it is widened to numeric(12,9). The offset is not injective —
+-- repo ids congruent modulo 1e6 still tie — so total ordering comes from the repo_id
+-- tie-break in the shared read fragment, not from confidence alone.
+-- Scale changes rewrite the table under an ACCESS EXCLUSIVE lock, and package_repos
+-- carries REPLICA IDENTITY FULL plus a Sequin publication (see V1781009234) — run this
+-- with the Sequin and Tinybird sinks paused.
+--
+-- Existing rows keep their current value until rescore_package_repo_confidence()
+-- backfills them in chunks; every new write goes through the scoring function below.
+
+ALTER TABLE package_repos
+    ALTER COLUMN confidence TYPE numeric(12, 9),
+    -- deps.dev RelationProvenance for source='deps_dev'. Previously collapsed to a
+    -- confidence number inside the BigQuery query, which left nothing to rescore from.
+    ADD COLUMN IF NOT EXISTS provenance text;
+
+-- Serves the pick-highest lateral in BEST_REPO_LINK_JOIN.
+CREATE INDEX IF NOT EXISTS package_repos_package_id_confidence_idx
+    ON package_repos (package_id, confidence DESC);
+
+-- ============================================================
+-- Scoring function — the only path that may produce a confidence value.
+-- ============================================================
+--
+-- Base tier by source, then repo-state penalties, then a deterministic offset that
+-- breaks ties. Every scale here is intentional: base tiers sit on 0.05 boundaries,
+-- penalties on 0.05 boundaries, and the offset is bounded below 0.004 so it can
+-- never cross a tier boundary or a High/Medium/Low threshold (0.80 / 0.50).
+CREATE OR REPLACE FUNCTION package_repo_confidence(
+    p_source           text,
+    p_ecosystem        text,
+    p_provenance       text,
+    p_archived         bool,
+    p_is_fork          bool,
+    p_disabled         bool,
+    p_host             text,
+    p_competing_github bool,
+    p_repo_id          bigint
+)
+RETURNS numeric(12, 9)
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+    base            numeric;
+    source_priority int;
+    offset_units    bigint;
+BEGIN
+    base := CASE p_source
+        WHEN 'manual'    THEN 0.99
+        WHEN 'heuristic' THEN 0.30
+        WHEN 'deps_dev'  THEN CASE p_provenance
+            WHEN 'SLSA_ATTESTATION'             THEN 0.99
+            WHEN 'RUBYGEMS_PUBLISH_ATTESTATION' THEN 0.95
+            WHEN 'PYPI_PUBLISH_ATTESTATION'     THEN 0.95
+            WHEN 'GO_ORIGIN'                    THEN 0.90
+            ELSE 0.50
+        END
+        -- maven splits off npm/cargo/the rest: POM <scm> blocks are notoriously
+        -- stale (legacy SVN URLs, org renames, dead mirrors).
+        WHEN 'declared' THEN CASE WHEN p_ecosystem = 'maven' THEN 0.80 ELSE 0.85 END
+        ELSE 0.30
+    END;
+
+    source_priority := CASE p_source
+        WHEN 'manual'    THEN 3
+        WHEN 'deps_dev'  THEN 2
+        WHEN 'declared'  THEN 1
+        ELSE 0
+    END;
+
+    IF p_disabled IS TRUE THEN
+        -- Scale proportionally so pre-disabled claim ordering is preserved across sources.
+        -- The offset uses a tighter modulo so max contribution (3*1000+999)*1e-9 ≈ 4e-6
+        -- stays below the 0.00016 minimum scaled tier gap and cannot invert source ordering.
+        base := 0.05 + LEAST(base, 0.99) * 0.004;
+        offset_units := source_priority::bigint * 1000 + COALESCE(p_repo_id, 0) % 1000;
+    ELSE
+        IF p_archived IS TRUE THEN
+            base := base - 0.20;
+        END IF;
+
+        IF p_is_fork IS TRUE THEN
+            base := base - 0.10;
+        END IF;
+
+        IF p_competing_github IS TRUE AND p_host IS NOT NULL AND p_host <> 'github' THEN
+            base := base - 0.05;
+        END IF;
+
+        base := GREATEST(base, 0.05);
+
+        -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
+        -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
+        -- ORDER BY repo_id DESC as the canonical deterministic pick when confidence ties.
+        offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
+    END IF;
+
+    RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
+END;
+$$;
+
+-- ============================================================
+-- Rescore — chunked, keyset-paged, committed per chunk so the Sequin slot advances.
+-- ============================================================
+--
+-- Used for the initial backfill (p_repo_ids NULL = whole table) and as a manual
+-- safety-net sweep. The enricher rescores its own touched repos inline.
+CREATE OR REPLACE PROCEDURE rescore_package_repo_confidence(
+    p_repo_ids   bigint[] DEFAULT NULL,
+    chunk_size   int      DEFAULT 25000,
+    INOUT applied_rows int DEFAULT 0
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    batch_rows   int;
+    updated_rows int;
+    cursor_id    bigint := 0;
+BEGIN
+    IF chunk_size IS NULL OR chunk_size <= 0 THEN
+        RAISE EXCEPTION 'rescore_package_repo_confidence: chunk_size must be positive, got %', chunk_size;
+    END IF;
+
+    -- Session-level: survives the internal COMMITs below.
+    IF NOT pg_try_advisory_lock(hashtextextended('rescore_package_repo_confidence', 0)) THEN
+        RAISE EXCEPTION 'rescore_package_repo_confidence: another execution is already in progress';
+    END IF;
+
+    applied_rows := 0;
+
+    LOOP
+            WITH batch AS (
+                SELECT pr.id
+                  FROM package_repos pr
+                 WHERE pr.id > cursor_id
+                   AND (p_repo_ids IS NULL OR pr.repo_id = ANY(p_repo_ids))
+                   -- deps_dev rows with NULL provenance were ingested before this column existed;
+                   -- skip them so the backfill does not downgrade SLSA/attestation links to 0.50.
+                   -- They will be rescored correctly once the next ingest populates provenance.
+                   AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
+                 ORDER BY pr.id
+                 LIMIT chunk_size
+                   FOR UPDATE
+            ),
+            updated AS (
+                UPDATE package_repos pr
+                   SET confidence = s.confidence, verified_at = NOW()
+                  FROM batch b
+                  JOIN package_repos cur ON cur.id = b.id
+                  JOIN packages p ON p.id = cur.package_id
+                  JOIN repos r ON r.id = cur.repo_id,
+                       LATERAL (
+                         SELECT package_repo_confidence(
+                           cur.source, p.ecosystem, cur.provenance,
+                           r.archived, r.is_fork, r.disabled, r.host,
+                           EXISTS (
+                             SELECT 1
+                               FROM package_repos c
+                               JOIN repos cr ON cr.id = c.repo_id
+                              WHERE c.package_id = cur.package_id
+                                AND c.repo_id <> cur.repo_id
+                                AND cr.host = 'github'
+                           ),
+                           cur.repo_id
+                         ) AS confidence
+                       ) s
+                 WHERE pr.id = b.id
+                   AND s.confidence IS DISTINCT FROM cur.confidence
+                RETURNING pr.id
+            )
+            SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id),
+                   (SELECT COUNT(*) FROM updated)
+              INTO batch_rows, cursor_id, updated_rows
+              FROM batch b;
+
+            applied_rows := applied_rows + updated_rows;
+
+            COMMIT;
+
+            EXIT WHEN batch_rows < chunk_size;
+        END LOOP;
+
+    PERFORM pg_advisory_unlock(hashtextextended('rescore_package_repo_confidence', 0));
+END;
+$$;

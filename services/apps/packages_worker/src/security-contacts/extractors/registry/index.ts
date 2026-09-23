@@ -1,5 +1,4 @@
 import { Extractor, ExtractorResult, RawContact, RepoPolicies } from '../../types'
-
 import { fetchCargo } from './cargo'
 import { fetchComposer } from './composer'
 import { fetchGo } from './go'

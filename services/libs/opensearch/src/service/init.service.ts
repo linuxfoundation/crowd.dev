@@ -6,7 +6,6 @@ import {
 } from '@crowd/types'
 
 import { OpenSearchIndex } from '../types'
-
 import { MemberSyncService } from './member.sync.service'
 import { OpenSearchService } from './opensearch.service'
 import { OrganizationSyncService } from './organization.sync.service'

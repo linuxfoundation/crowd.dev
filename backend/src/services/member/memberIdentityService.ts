@@ -1,6 +1,9 @@
 /* eslint-disable no-continue */
 import lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error404, Error409 } from '@crowd/common'
 import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
@@ -9,15 +12,10 @@ import {
   fetchMemberIdentities,
   findMemberIdentityById,
   findMemberIdentityConflict,
-  touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
 import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
-
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -79,8 +77,6 @@ export default class MemberIdentityService extends LoggerBase {
           // Create member identity
           await insertMemberIdentities(qx, [{ ...data, memberId }])
 
-          await touchMemberUpdatedAt(qx, memberId)
-
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
 
@@ -102,7 +98,7 @@ export default class MemberIdentityService extends LoggerBase {
     }
   }
 
-  async findById(memberId: string, id: string): Promise<IMemberIdentity> {
+  async findById(memberId: string, id: string): Promise<IMemberIdentity | null> {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
     return findMemberIdentityById(qx, memberId, id)
   }
@@ -155,8 +151,6 @@ export default class MemberIdentityService extends LoggerBase {
             qx,
             data.map((identity) => ({ ...identity, memberId })),
           )
-
-          await touchMemberUpdatedAt(qx, memberId)
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
@@ -239,8 +233,6 @@ export default class MemberIdentityService extends LoggerBase {
             ...(data.value !== undefined ? { value } : {}),
           })
 
-          await touchMemberUpdatedAt(qx, memberId)
-
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
 
@@ -276,8 +268,6 @@ export default class MemberIdentityService extends LoggerBase {
 
       // Delete member identity
       await deleteMemberIdentity(qx, memberId, id)
-
-      await touchMemberUpdatedAt(qx, memberId)
 
       // List all member identities
       const list = await fetchMemberIdentities(qx, memberId)

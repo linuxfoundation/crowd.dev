@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { noContent } from '@/utils/api'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
@@ -11,18 +15,18 @@ import {
   findMemberById,
 } from '@crowd/data-access-layer'
 
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { noContent } from '@/utils/api'
-import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
-
 const paramsSchema = z.object({
   memberId: z.uuid(),
   workExperienceId: z.uuid(),
 })
 
+const bodySchema = z.object({
+  deletedBy: z.string().trim().min(1),
+})
+
 export async function deleteMemberWorkExperience(req: Request, res: Response): Promise<void> {
   const { memberId, workExperienceId } = validateOrThrow(paramsSchema, req.params)
+  const { deletedBy } = validateOrThrow(bodySchema, req.body)
 
   const qx = optionsQx(req)
 
@@ -53,7 +57,10 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
       captureOldState(memberOrg)
 
       await qx.tx(async (tx) => {
-        await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete)
+        await deleteMemberOrganizations(tx, memberId, {
+          ids: memberOrgIdsToDelete,
+          deletedBy,
+        })
       })
 
       // Signal after commit so the workflow sees persisted changes

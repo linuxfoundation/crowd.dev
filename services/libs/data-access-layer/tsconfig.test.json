@@ -1,0 +1,16 @@
+{
+  "extends": "../../base.tsconfig.json",
+  "compilerOptions": {
+    // BigInt literals live in the packagist integration tests, not in src.
+    "target": "es2020",
+    "lib": ["es2020", "ES2021.String"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.spec.ts"],
+  "references": [
+    { "path": "." },
+    { "path": "../common" },
+    { "path": "../database" },
+    { "path": "../test-kit" },
+    { "path": "../types" }
+  ]
+}

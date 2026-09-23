@@ -1,3 +1,5 @@
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { IDataQualityParams, IDataQualityType } from '@/types/data-quality/data-quality-filters'
 import {
   fetchMembersWithConflictingWorkExperiences,
   fetchMembersWithMissingInfoOnWorkExperience,
@@ -8,9 +10,6 @@ import {
   fetchMembersWithoutWorkExperience,
 } from '@crowd/data-access-layer/src/data-quality'
 import { LoggerBase } from '@crowd/logging'
-
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { IDataQualityParams, IDataQualityType } from '@/types/data-quality/data-quality-filters'
 
 import { IServiceOptions } from './IServiceOptions'
 

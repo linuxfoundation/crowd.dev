@@ -63,6 +63,7 @@ export interface IMemberOrganization {
   verified?: boolean
   verifiedBy?: string
   deletedAt?: string
+  deletedBy?: string
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
@@ -249,8 +250,7 @@ export interface IOrganizationIdentityOpensearch {
   string_source: string
 }
 
-export interface IOrganizationFullAggregatesOpensearch
-  extends IOrganizationBaseForMergeSuggestions {
+export interface IOrganizationFullAggregatesOpensearch extends IOrganizationBaseForMergeSuggestions {
   ticker: string
   identities: IOrganizationIdentity[]
   activityCount: number

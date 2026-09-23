@@ -4,9 +4,8 @@ import {
   UnauthorizedError as Auth0UnauthorizedError,
 } from 'express-oauth2-jwt-bearer'
 
-import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
-
 import { alertOnce } from '@/api/public/alerts/alertOnce'
+import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
 
 /**
  * Converts errors to structured JSON: `{ error: { code, message } }`.

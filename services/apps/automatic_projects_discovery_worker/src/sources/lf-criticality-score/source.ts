@@ -2,26 +2,17 @@ import http from 'http'
 import https from 'https'
 import { Readable } from 'stream'
 
-import { timeout } from '@crowd/common'
+import { canonicalizeRepoUrl, parseEnvInt, timeout } from '@crowd/common'
+import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
+import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
 
 const log = getServiceLogger()
 
-const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
-
-function parseEnvInt(
-  value: string | undefined,
-  defaultValue: number,
-  min: number,
-  max: number,
-): number {
-  const parsed = parseInt(value ?? '', 10)
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
-}
 
 // Requests per second sent to the LF Criticality Score API (throttle between pages).
 const REQUESTS_PER_SECOND = parseEnvInt(
@@ -64,12 +55,25 @@ function getApiBaseUrl(): string {
   if (process.env.LF_CRITICALITY_SCORE_API_URL) {
     return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
   }
-  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST)
-    .trim()
-    .replace(/\/$/, '')
+  const host = process.env.LF_CRITICALITY_SCORE_API_HOST?.trim().replace(/\/$/, '')
+  if (!host) {
+    throw new Error(
+      'LF Criticality Score API host is not configured. Set LF_CRITICALITY_SCORE_API_URL or LF_CRITICALITY_SCORE_API_HOST.',
+    )
+  }
   const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
   const scheme = port === 443 ? 'https' : 'http'
   return `${scheme}://${host}:${port}`
+}
+
+function getApiKey(): string {
+  const key = process.env.LF_CRITICALITY_SCORE_API_KEY?.trim()
+  if (!key) {
+    throw new Error(
+      'LF Criticality Score API key is not configured. Set LF_CRITICALITY_SCORE_API_KEY.',
+    )
+  }
+  return key
 }
 
 interface HttpGetResult {
@@ -85,10 +89,14 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
-function httpGet(url: string): Promise<HttpGetResult> {
+// Bounds a single request so a hung connection doesn't block the activity's heartbeat
+// for the full Temporal heartbeatTimeout (5 min) while the socket stays open.
+const REQUEST_TIMEOUT_MS = 30_000
+
+function httpGet(url: string, headers: Record<string, string>): Promise<HttpGetResult> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
-    const req = client.get(url, (res) => {
+    const req = client.get(url, { headers, timeout: REQUEST_TIMEOUT_MS }, (res) => {
       const statusCode = res.statusCode ?? 0
       const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
       const chunks: Uint8Array[] = []
@@ -98,6 +106,9 @@ function httpGet(url: string): Promise<HttpGetResult> {
       )
       res.on('error', reject)
     })
+    req.on('timeout', () =>
+      req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
+    )
     req.on('error', reject)
     req.end()
   })
@@ -105,18 +116,20 @@ function httpGet(url: string): Promise<HttpGetResult> {
 
 async function fetchPage(
   baseUrl: string,
+  apiKey: string,
   page: number,
   scoredAfter?: string,
 ): Promise<LfApiResponse> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) })
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
+  const headers = { Authorization: `Bearer ${apiKey}` }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let result: HttpGetResult | null = null
 
     try {
-      result = await httpGet(url)
+      result = await httpGet(url, headers)
     } catch (networkErr) {
       if (attempt === MAX_ATTEMPTS - 1) {
         throw new Error(`LF Criticality Score API network error for ${url}: ${networkErr}`)
@@ -138,6 +151,12 @@ async function fetchPage(
       } catch (err) {
         throw new Error(`Failed to parse LF Criticality Score API response: ${err}`)
       }
+    }
+
+    if (statusCode === 401 || statusCode === 403) {
+      throw new Error(
+        `LF Criticality Score API returned status ${statusCode} for ${url}. Check LF_CRITICALITY_SCORE_API_KEY.`,
+      )
     }
 
     const isRetryable = statusCode === 429 || statusCode >= 500
@@ -162,10 +181,15 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: {
+    since?: string
+    cursor?: IDiscoverySourceCursor
+  }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
+    getApiKey()
     const today = new Date().toISOString().slice(0, 10)
-    const { scoredAfter } = options ?? {}
+    // `since` is the generic interface name; this API's query param is `scoredAfter`.
+    const scoredAfter = options?.since
 
     const params = new URLSearchParams()
     if (scoredAfter) params.set('scoredAfter', scoredAfter)
@@ -176,45 +200,89 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
         id: scoredAfter ? `${today}-since-${scoredAfter}` : today,
         date: today,
         url: `${baseUrl}/projects${qs ? `?${qs}` : ''}`,
+        // Passed through as-is; fetchDatasetStream decides whether it's still resumable
+        // once it learns the API's current rundate.
+        cursor: options?.cursor,
       },
     ]
   }
 
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
     const baseUrl = getApiBaseUrl()
+    const apiKey = getApiKey()
     const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
+    const previousCursor = dataset.cursor
 
     log.info(
-      { datasetId: dataset.id, baseUrl, scoredAfter: scoredAfter ?? 'none (full fetch)' },
+      {
+        datasetId: dataset.id,
+        baseUrl,
+        scoredAfter: scoredAfter ?? 'none (full fetch)',
+        previousCursor: previousCursor ?? 'none',
+      },
       'LF Criticality Score: starting stream fetch.',
     )
 
     const throttleIntervalMs = Math.round(1000 / REQUESTS_PER_SECOND)
 
     async function* pages() {
-      const firstPage = await fetchPage(baseUrl, 1, scoredAfter)
+      const firstPage = await fetchPage(baseUrl, apiKey, 1, scoredAfter)
       const { totalPages } = firstPage
+      // rundate versions the whole ranking (shared by all rows), not per-row: same
+      // rundate as last run -> resume paging; different -> start over from page 1.
+      const apiRundate = firstPage.data[0]?.rundate
+      const resumable = apiRundate !== undefined && previousCursor?.rundate === apiRundate
+      const startPage = resumable ? previousCursor.page + 1 : 1
+
+      if (apiRundate !== undefined) {
+        dataset.cursor = { rundate: apiRundate, page: resumable ? previousCursor.page : 0 }
+      }
 
       log.info(
-        { datasetId: dataset.id, total: firstPage.total, totalPages, pageSize: firstPage.pageSize },
+        {
+          datasetId: dataset.id,
+          total: firstPage.total,
+          totalPages,
+          pageSize: firstPage.pageSize,
+          apiRundate,
+          resumable,
+          startPage,
+        },
         'LF Criticality Score: first page received — total records available.',
       )
 
-      for (const row of firstPage.data) {
-        yield row
+      if (startPage > totalPages) {
+        log.info(
+          { datasetId: dataset.id, startPage, totalPages },
+          'LF Criticality Score: already caught up with this rundate, nothing to fetch.',
+        )
+        return
       }
 
-      for (let page = 2; page <= totalPages; page++) {
+      if (startPage <= 1) {
+        for (const row of firstPage.data) {
+          yield row
+        }
+        if (apiRundate !== undefined) {
+          dataset.cursor = { rundate: apiRundate, page: 1 }
+        }
+      }
+
+      for (let page = Math.max(startPage, 2); page <= totalPages; page++) {
         await timeout(throttleIntervalMs)
 
         log.info(
           { datasetId: dataset.id, page, totalPages },
           'LF Criticality Score: fetching page...',
         )
-        const response = await fetchPage(baseUrl, page, scoredAfter)
+        const response = await fetchPage(baseUrl, apiKey, page, scoredAfter)
 
         for (const row of response.data) {
           yield row
+        }
+
+        if (apiRundate !== undefined) {
+          dataset.cursor = { rundate: apiRundate, page }
         }
 
         log.info(
@@ -230,25 +298,22 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
-    const repoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
-    if (!repoUrl) {
+    const rawRepoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
+    if (!rawRepoUrl) {
       return null
     }
 
-    let repoName = ''
-    let projectSlug = ''
-
-    try {
-      const urlPath = new URL(repoUrl).pathname.replace(/^\//, '').replace(/\/$/, '')
-      projectSlug = urlPath
-      repoName = urlPath.split('/').pop() || ''
-    } catch {
-      const parts = repoUrl.replace(/\/$/, '').split('/')
-      projectSlug = parts.slice(-2).join('/')
-      repoName = parts.pop() || ''
+    // Canonicalize the repoUrl itself; non-GitHub hosts are kept (not rejected) —
+    // the evaluation pre-check needs them to skip deterministically.
+    const canonical = canonicalizeRepoUrl(rawRepoUrl)
+    if (!canonical) {
+      return null
     }
 
-    if (!projectSlug || !repoName) {
+    // repoName/projectSlug are derived from the original (case-preserving) URL:
+    // they feed the LFX display name, and lowercasing would mangle names like "CMake".
+    const identity = deriveProjectIdentityFromRepoUrl(rawRepoUrl)
+    if (!identity) {
       return null
     }
 
@@ -256,9 +321,9 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const lfCriticalityScore = typeof score === 'number' ? score : parseFloat(score as string)
 
     return {
-      projectSlug,
-      repoName,
-      repoUrl,
+      projectSlug: identity.projectSlug,
+      repoName: identity.repoName,
+      repoUrl: canonical.url,
       lfCriticalityScore: Number.isNaN(lfCriticalityScore) ? undefined : lfCriticalityScore,
     }
   }

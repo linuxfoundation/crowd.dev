@@ -6,7 +6,7 @@ import {
   startChild,
 } from '@temporalio/workflow'
 
-import { IMemberUnmergeBackup, IUnmergeBackup, MemberIdentityType } from '@crowd/types'
+import { IMemberUnmergeBackup, IUnmergeBackup } from '@crowd/types'
 
 import * as commonActivities from '../activities/common'
 import * as activities from '../activities/dissect-member'
@@ -50,12 +50,7 @@ export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
 
     for (const groupedIdentities of memberIdentitiesGroupedByPlatform) {
       // 1. get payload for identity split using unmergePreview endpoint
-      const preview = await common.unmergeMembersPreview(args.memberId, {
-        platform: groupedIdentities.platforms[0],
-        type: groupedIdentities.types[0] as MemberIdentityType,
-        verified: groupedIdentities.verified[0],
-        value: groupedIdentities.values[0],
-      })
+      const preview = await common.unmergeMembersPreview(args.memberId, groupedIdentities.ids[0])
       // 2. Currently unmerge preview only supports a single identity as input. Add grouped identities to secondary payload
       // and remove the grouped identities from the primary payload
       const toMove = preview.primary.identities.filter(

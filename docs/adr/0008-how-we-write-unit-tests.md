@@ -49,11 +49,11 @@ reuse is real.
 
 ### What to share
 
-| Layer | Where | Belongs |
-| --- | --- | --- |
-| Scenario | Inside the test | Data that defines *this* case |
+| Layer      | Where                 | Belongs                                                    |
+| ---------- | --------------------- | ---------------------------------------------------------- |
+| Scenario   | Inside the test       | Data that defines _this_ case                              |
 | File-local | Top of the suite file | Constants or tiny helpers used more than once in this file |
-| Shared kit | `@crowd/test-kit` | Helpers needed by a second suite |
+| Shared kit | `@crowd/test-kit`     | Helpers needed by a second suite                           |
 
 **Rules of thumb**
 

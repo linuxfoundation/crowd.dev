@@ -3,7 +3,6 @@ import { Gitlab, IssueSchema, OffsetPagination } from '@gitbeaker/rest'
 import { IProcessStreamContext } from '../../../types'
 import { GitlabApiResult, GitlabIssueData } from '../types'
 import { RedisSemaphore } from '../utils/lock'
-
 import { handleGitlabError } from './errorHandler'
 import { getUser } from './getUser'
 

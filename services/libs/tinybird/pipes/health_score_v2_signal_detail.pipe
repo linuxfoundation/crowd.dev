@@ -35,9 +35,11 @@ SQL >
         m.isGerrit AS isGerrit,
         m.isExcluded AS isExcluded,
         s.openVulnScore AS openVulnScore,
+        s.openVulnAvailable AS openVulnAvailable,
         s.openCriticals AS openCriticals,
         s.openHighs AS openHighs,
         s.openModerates AS openModerates,
+        s.openUnknowns AS openUnknowns,
         s.scorecardScorePts AS scorecardScorePts,
         s.scorecardAvailable AS scorecardAvailable,
         s.scorecardScore AS scorecardScore,
@@ -69,7 +71,12 @@ SQL >
         d.closedUnmerged12m AS closedUnmerged12m,
         d.medianMergeS AS medianMergeS,
         coalesce(m.methodologyVersion, '2.0.0') AS methodologyVersion
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE isNull (deletedAt)) AS base
+    FROM
+        (
+            SELECT DISTINCT url AS repoUrl
+            FROM repositories FINAL
+            WHERE deletedAt IS NULL AND excluded = false
+        ) AS base
     LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl

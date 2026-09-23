@@ -9,8 +9,10 @@ import aiofiles.os
 from slugify import slugify
 
 from crowdgit.database.crud import (
+    end_date_maintainers_for_repos,
     find_github_identity,
     find_maintainer_identity_by_email,
+    find_project_repo_sibling,
     get_github_maintainer_usernames_for_repo,
     get_maintainers_for_repo,
     save_service_execution,
@@ -24,6 +26,7 @@ from crowdgit.errors import (
     CrowdGitError,
     MaintainerFileNotFoundError,
     MaintainerIntervalNotElapsedError,
+    MaintainerSkippedProjectLevelError,
     MaintanerAnalysisError,
 )
 from crowdgit.models import CloneBatchInfo, Repository
@@ -39,6 +42,11 @@ from crowdgit.models.maintainer_info import (
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.llm.bedrock import invoke_bedrock
+from crowdgit.services.maintainer.cncf_maintainers import (
+    find_cncf_maintainers_file,
+    is_cncf_repo,
+    parse_cncf_maintainers_yaml,
+)
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
@@ -270,11 +278,16 @@ class MaintainerService(BaseService):
             current_value = (current.get("identity_value") or "").lower()
             current_platform = current.get("platform")
             current_type = current.get("type")
+            identity_deleted = current.get("identity_deleted_at") is not None
             is_github_username = current_platform == "github" and current_type == "username"
             is_email = current_type == "email"
-            skip_end_date = bool(current_value) and (
-                (is_github_username and current_value in unresolved_usernames)
-                or (is_email and current_value in unresolved_emails)
+            skip_end_date = (
+                not identity_deleted
+                and bool(current_value)
+                and (
+                    (is_github_username and current_value in unresolved_usernames)
+                    or (is_email and current_value in unresolved_emails)
+                )
             )
             if skip_end_date:
                 self.logger.warning(
@@ -339,7 +352,8 @@ class MaintainerService(BaseService):
             - Do not include filler words like "repository", "project", or "active".
             - **If the content does not assign an explicit individual role to each person** (e.g. a flat list with no per-person labels), set the title to the capitalized form of `normalized_title` (i.e. "Maintainer" or "Contributor"). Every person in the same response MUST receive the same derived title.
         4.  `normalized_title`:
-            - Must be exactly "maintainer" or "contributor". Reviewers and designated reviewers map to "maintainer". If the role is ambiguous, use the `{filename}` as the primary hint:
+            - Must be exactly "maintainer", "contributor", or "emeritus". Use "emeritus" for any person explicitly marked as emeritus, retired, or inactive (e.g. "Emeritus Maintainer", "Alumni", "Past Maintainer"). Otherwise:
+              - Reviewers and designated reviewers map to "maintainer". If the role is ambiguous, use the `{filename}` as the primary hint:
               - Filenames containing `MAINTAINERS`, `CODEOWNERS`, `OWNERS`, or `REVIEWERS` → "maintainer"
               - All other filenames (AUTHORS, CONTRIBUTORS, CREDITS, COMMITTERS, etc.) → "contributor"
         5.  `email`:
@@ -791,6 +805,26 @@ class MaintainerService(BaseService):
             result.ai_suggested_file = ai_suggested_file
             return result
 
+        # Runs before the saved-file shortcut so a repo already locked
+        # onto another file self-corrects.
+        if is_cncf_repo(repo_url):
+            cncf_file = find_cncf_maintainers_file(repo_path)
+            if cncf_file:
+                try:
+                    content = await self._read_text_file(str(cncf_file))
+                    cncf_maintainers = parse_cncf_maintainers_yaml(content)
+                except Exception as e:
+                    self.logger.warning(f"CNCF maintainer file processing failed: {repr(e)}")
+                    cncf_maintainers = None
+                if cncf_maintainers is not None:
+                    return _attach_metadata(
+                        MaintainerResult(
+                            maintainer_file=cncf_file.name,
+                            maintainer_info=cncf_maintainers,
+                            cncf_authoritative=True,
+                        )
+                    )
+
         # Step 1: Try the previously saved maintainer file
         if saved_maintainer_file:
             self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
@@ -1019,6 +1053,13 @@ class MaintainerService(BaseService):
                     f"Interval not elapsed yet. Remaining: {remaining_hours:.2f} hours"
                 )
 
+            if not is_cncf_repo(repository.url):
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx:
+                    raise MaintainerSkippedProjectLevelError(
+                        f"Skipping: project-level source at {project_ctx.project_repo_url}"
+                    )
+
             self.logger.info(f"Starting maintainers processing for repo: {batch_info.remote}")
             maintainers = await self.extract_maintainers(
                 batch_info.repo_path,
@@ -1052,7 +1093,36 @@ class MaintainerService(BaseService):
                 repository.last_maintainer_run_at,
             )
             await update_maintainer_run(repository.id, latest_maintainer_file)
+
+            if not is_cncf_repo(repository.url):
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx and project_ctx.project_repo_id:
+                    today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+                    await end_date_maintainers_for_repos([repository.id], today_midnight)
+                    self.logger.info(
+                        f"End-dated own maintainer rows for {repository.url}: "
+                        f".project authority at {project_ctx.project_repo_url} "
+                        f"appeared during processing"
+                    )
+
+            if is_cncf_repo(repository.url) and maintainers.cncf_authoritative:
+                project_ctx = await find_project_repo_sibling(repository.id, repository.segment_id)
+                if project_ctx and project_ctx.sibling_repo_ids:
+                    today_midnight = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+                    await end_date_maintainers_for_repos(
+                        project_ctx.sibling_repo_ids, today_midnight
+                    )
+                    self.logger.info(
+                        f"End-dated sibling maintainer rows for project "
+                        f"{project_ctx.project_segment_id} after processing {repository.url}"
+                    )
+
         except MaintainerIntervalNotElapsedError as e:
+            execution_status = ExecutionStatus.FAILURE
+            error_message = e.error_message
+            error_code = e.error_code.value
+        except MaintainerSkippedProjectLevelError as e:
+            await update_maintainer_run(repository.id, maintainer_file=None)
             execution_status = ExecutionStatus.FAILURE
             error_message = e.error_message
             error_code = e.error_code.value

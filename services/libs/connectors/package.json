@@ -1,0 +1,21 @@
+{
+  "name": "@crowd/connectors",
+  "private": true,
+  "main": "src/index.ts",
+  "dependencies": {
+    "@crowd/common": "workspace:*",
+    "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/integrations": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/redis": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "axios": "catalog:",
+    "jsonwebtoken": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/node": "catalog:"
+  }
+}

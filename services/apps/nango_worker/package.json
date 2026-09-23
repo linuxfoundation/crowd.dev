@@ -7,10 +7,6 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=nango SERVICE=nango-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
-    "tsc-check": "tsc --noEmit",
     "check-nango-mapping": "tsx src/bin/check-nango-mapping.ts",
     "script:create-missing-github-token-connections": "tsx src/bin/create-missing-github-token-connections.ts",
     "script:sync-github-token-connections-metadata": "tsx src/bin/sync-github-token-connections-metadata.ts"
@@ -19,22 +15,21 @@
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
-    "@crowd/data-access-layer": "workspace:*",
     "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@temporalio/activity": "~1.17.2",
-    "@temporalio/client": "~1.17.2",
-    "@temporalio/workflow": "~1.17.2",
+    "@temporalio/activity": "catalog:",
+    "@temporalio/client": "catalog:",
+    "@temporalio/workflow": "catalog:",
     "html-to-text": "^9.0.5",
-    "tsx": "^4.7.1",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
+    "@types/node": "catalog:",
     "nodemon": "^3.0.1"
   }
 }

@@ -1,11 +1,12 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
-
 import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,
   IDbProjectCatalogUpdate,
+  PROJECT_CATALOG_ACTIONS,
   ProjectCatalogAction,
+  ProjectCatalogActionCounts,
 } from './types'
 
 const PROJECT_CATALOG_COLUMNS = [
@@ -14,12 +15,15 @@ const PROJECT_CATALOG_COLUMNS = [
   'repoName',
   'repoUrl',
   'source',
+  'sourceUrl',
   'action',
   'lfCriticalityScore',
   'evaluationResult',
   'evaluationReason',
   'evaluatedAt',
   'onboardedAt',
+  'onboardingError',
+  'skipReason',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -97,12 +101,58 @@ export async function findProjectCatalogPendingEvaluation(
     SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     FROM "projectCatalog"
     WHERE action = 'evaluate'
-    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC
+    ORDER BY
+      (source = 'manual') DESC NULLS LAST,
+      "lfCriticalityScore" DESC NULLS LAST,
+      "createdAt" ASC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
     { limit, offset },
   )
+}
+
+export async function findProjectCatalogPendingOnboarding(
+  qx: QueryExecutor,
+  options: { limit?: number; offset?: number } = {},
+): Promise<IDbProjectCatalog[]> {
+  const { limit, offset } = options
+
+  return qx.select(
+    `
+    SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    FROM "projectCatalog"
+    WHERE action = 'onboard' AND "onboardedAt" IS NULL
+    ORDER BY
+      (source = 'manual') DESC NULLS LAST,
+      "lfCriticalityScore" DESC NULLS LAST,
+      "createdAt" ASC,
+      id ASC
+    ${limit !== undefined ? 'LIMIT $(limit)' : ''}
+    ${offset !== undefined ? 'OFFSET $(offset)' : ''}
+    `,
+    { limit, offset },
+  )
+}
+
+export async function findExistingProjectCatalogRepoUrls(
+  qx: QueryExecutor,
+  repoUrls: string[],
+): Promise<Set<string>> {
+  if (repoUrls.length === 0) {
+    return new Set()
+  }
+
+  const rows: { repoUrl: string }[] = await qx.select(
+    `
+    SELECT "repoUrl"
+    FROM "projectCatalog"
+    WHERE "repoUrl" = ANY($(repoUrls)::text[])
+    `,
+    { repoUrls },
+  )
+
+  return new Set(rows.map((row) => row.repoUrl))
 }
 
 export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
@@ -113,6 +163,30 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
     `,
   )
   return parseInt(result.count, 10)
+}
+
+export async function countProjectCatalogByActions(
+  qx: QueryExecutor,
+): Promise<ProjectCatalogActionCounts> {
+  const rows: { action: ProjectCatalogAction; count: number }[] = await qx.select(
+    `
+    SELECT action, COUNT(*)::int AS count
+    FROM "projectCatalog"
+    GROUP BY action
+    `,
+  )
+
+  const counts = Object.fromEntries(
+    PROJECT_CATALOG_ACTIONS.map((action) => [action, 0]),
+  ) as ProjectCatalogActionCounts
+
+  for (const row of rows) {
+    if (row.action in counts) {
+      counts[row.action] = row.count
+    }
+  }
+
+  return counts
 }
 
 export async function countProjectCatalogByAction(
@@ -199,6 +273,7 @@ export async function insertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -210,6 +285,7 @@ export async function insertProjectCatalog(
       $(repoName),
       $(repoUrl),
       $(source),
+      $(sourceUrl),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -223,6 +299,7 @@ export async function insertProjectCatalog(
       repoName: data.repoName,
       repoUrl: data.repoUrl,
       source: data.source ?? null,
+      sourceUrl: data.sourceUrl ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
@@ -242,8 +319,10 @@ export async function bulkInsertProjectCatalog(
     repoName: item.repoName,
     repoUrl: item.repoUrl,
     source: item.source ?? null,
+    sourceUrl: item.sourceUrl ?? null,
     action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
+    skipReason: item.skipReason ?? null,
   }))
 
   await qx.result(
@@ -253,8 +332,10 @@ export async function bulkInsertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
+      "skipReason",
       "createdAt",
       "updatedAt",
       "syncedAt"
@@ -264,8 +345,10 @@ export async function bulkInsertProjectCatalog(
       v."repoName",
       v."repoUrl",
       v."source",
+      v."sourceUrl",
       v."action",
       v."lfCriticalityScore"::double precision,
+      v."skipReason",
       NOW(),
       NOW(),
       NOW()
@@ -274,8 +357,10 @@ export async function bulkInsertProjectCatalog(
       "repoName" text,
       "repoUrl" text,
       "source" text,
+      "sourceUrl" text,
       "action" text,
-      "lfCriticalityScore" double precision
+      "lfCriticalityScore" double precision,
+      "skipReason" text
     )
     ON CONFLICT ("repoUrl") DO NOTHING
     `,
@@ -294,6 +379,7 @@ export async function upsertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -305,6 +391,7 @@ export async function upsertProjectCatalog(
       $(repoName),
       $(repoUrl),
       $(source),
+      $(sourceUrl),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -315,8 +402,9 @@ export async function upsertProjectCatalog(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
+      "sourceUrl" = COALESCE("projectCatalog"."sourceUrl", EXCLUDED."sourceUrl"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
@@ -330,30 +418,18 @@ export async function upsertProjectCatalog(
       repoName: data.repoName,
       repoUrl: data.repoUrl,
       source: data.source ?? null,
+      sourceUrl: data.sourceUrl ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
   )
 }
 
-export async function bulkUpsertProjectCatalog(
+export async function upsertProjectCatalogManualAction(
   qx: QueryExecutor,
-  items: IDbProjectCatalogCreate[],
-): Promise<void> {
-  if (items.length === 0) {
-    return
-  }
-
-  const values = items.map((item) => ({
-    projectSlug: item.projectSlug,
-    repoName: item.repoName,
-    repoUrl: item.repoUrl,
-    source: item.source ?? null,
-    action: item.action ?? 'auto',
-    lfCriticalityScore: item.lfCriticalityScore ?? null,
-  }))
-
-  await qx.result(
+  data: { projectSlug: string; repoName: string; repoUrl: string; action: ProjectCatalogAction },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
     `
     INSERT INTO "projectCatalog" (
       "projectSlug",
@@ -361,43 +437,44 @@ export async function bulkUpsertProjectCatalog(
       "repoUrl",
       "source",
       "action",
-      "lfCriticalityScore",
       "createdAt",
       "updatedAt",
       "syncedAt"
     )
-    SELECT
-      v."projectSlug",
-      v."repoName",
-      v."repoUrl",
-      v."source",
-      v."action",
-      v."lfCriticalityScore"::double precision,
+    VALUES (
+      $(projectSlug),
+      $(repoName),
+      $(repoUrl),
+      'manual',
+      $(action),
       NOW(),
       NOW(),
       NOW()
-    FROM jsonb_to_recordset($(values)::jsonb) AS v(
-      "projectSlug" text,
-      "repoName" text,
-      "repoUrl" text,
-      "source" text,
-      "action" text,
-      "lfCriticalityScore" double precision
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
-      "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
-        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
-        ELSE "projectCatalog"."action"
+      "source" = 'manual',
+      "action" = EXCLUDED."action",
+      "evaluatedAt" = CASE
+        WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
+        ELSE "projectCatalog"."evaluatedAt"
       END,
-      "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
+      "onboardedAt" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardedAt"
+      END,
+      "onboardingError" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardingError"
+      END,
       "updatedAt" = NOW(),
       "syncedAt" = NOW()
+    WHERE "projectCatalog"."onboardedAt" IS NULL
+      AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
-    { values: JSON.stringify(values) },
+    data,
   )
 }
 
@@ -453,6 +530,14 @@ export async function updateProjectCatalog(
     setClauses.push('"onboardedAt" = $(onboardedAt)')
     params.onboardedAt = data.onboardedAt
   }
+  if (data.onboardingError !== undefined) {
+    setClauses.push('"onboardingError" = $(onboardingError)')
+    params.onboardingError = data.onboardingError
+  }
+  if (data.skipReason !== undefined) {
+    setClauses.push('"skipReason" = $(skipReason)')
+    params.skipReason = data.skipReason
+  }
 
   if (setClauses.length === 0) {
     return findProjectCatalogById(qx, id)
@@ -468,6 +553,81 @@ export async function updateProjectCatalog(
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     params,
+  )
+}
+
+export async function markProjectCatalogOnboardingFailed(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'error', "onboardingError" = $(reason), "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
+    `,
+    { id, reason },
+  )
+}
+
+// Guarded like markProjectCatalogOnboardingFailed: a concurrent manual action wins.
+// onboardingError is cleared in case this row was previously failed and requeued.
+export async function markProjectCatalogOnboardingSkipped(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'skip', "skipReason" = $(reason), "onboardingError" = NULL, "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
+    `,
+    { id, reason },
+  )
+}
+
+// Guarded like markProjectCatalogOnboardingFailed above: a manual request
+// (POST /project-catalog) may have moved the row out of 'evaluate' while this
+// evaluation was in flight — in that case the manual action wins and this
+// write is a no-op.
+export async function finalizeProjectCatalogEvaluation(
+  qx: QueryExecutor,
+  id: string,
+  data: { action: ProjectCatalogAction; evaluationResult: string; evaluationReason: string },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET
+      "action" = $(action),
+      "evaluationResult" = $(evaluationResult),
+      "evaluationReason" = $(evaluationReason),
+      "evaluatedAt" = NOW(),
+      "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id, ...data },
+  )
+}
+
+// Guarded like finalizeProjectCatalogEvaluation. Explicitly nulls the verdict columns
+// (clearing any stale prior verdict) so this skip stays out of the agent's skip alert.
+export async function markProjectCatalogPreCheckSkipped(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'skip', "skipReason" = $(reason), "evaluatedAt" = NOW(),
+        "evaluationResult" = NULL, "evaluationReason" = NULL, "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    `,
+    { id, reason },
   )
 }
 

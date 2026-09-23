@@ -3,6 +3,7 @@
 # dependencies
 /node_modules
 node_modules/
+.pnpm-store/
 
 # testing
 /frontend/tests/screenshots
@@ -44,6 +45,7 @@ api-test/__pycache__/api_test.cpython-39-pytest-6.2.4.pyc
 build/
 develop-eggs/
 dist/
+*.tsbuildinfo
 downloads/
 eggs/
 .eggs/

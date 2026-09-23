@@ -6,12 +6,11 @@
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
 
-import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import OrganizationRepository from '@/database/repositories/organizationRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 const options = [
   {

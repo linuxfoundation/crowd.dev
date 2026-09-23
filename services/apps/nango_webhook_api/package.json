@@ -6,28 +6,23 @@
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=nango-webhook-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "start:debug": "SERVICE=nango-webhook-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
-    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
-    "tsc-check": "tsc --noEmit"
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
+    "@crowd/telemetry": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@crowd/telemetry": "workspace:*",
     "@types/express": "^4.17.17",
     "bunyan-middleware": "^1.0.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "tsx": "^4.7.1",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
+    "@types/node": "catalog:",
     "nodemon": "^3.0.1"
   }
 }

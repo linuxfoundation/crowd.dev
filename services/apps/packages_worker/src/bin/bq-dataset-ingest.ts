@@ -1,4 +1,5 @@
 import { scheduleOsspckgsBootstrap } from '../deps-dev/schedules/bootstrap'
+import { schedulePackageRepoConfidenceSweep } from '../package-repos/schedules'
 import {
   schedulePypiDownloads30d,
   schedulePypiDownloadsDaily,
@@ -10,5 +11,6 @@ setImmediate(async () => {
   await scheduleOsspckgsBootstrap()
   await schedulePypiDownloads30d()
   await schedulePypiDownloadsDaily()
+  await schedulePackageRepoConfidenceSweep()
   await svc.start()
 })

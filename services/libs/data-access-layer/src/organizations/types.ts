@@ -66,8 +66,7 @@ export interface IDbOrgAttributeInput {
 }
 
 export interface IDbOrganizationAggregateData
-  extends IOrganizationActivityCoreAggregates,
-    IOrganizationDisplayAggregates {}
+  extends IOrganizationActivityCoreAggregates, IOrganizationDisplayAggregates {}
 
 export interface IOrganizationActivityCoreAggregates {
   organizationId: string
@@ -119,6 +118,11 @@ export interface IQueryNumberOfNewOrganizations {
   after?: Date
   before?: Date
   platform?: string
+}
+
+export interface IFindOrCreateOrganizationResult {
+  id: string
+  created: boolean
 }
 
 export interface IQueryTimeseriesOfNewOrganizations {
