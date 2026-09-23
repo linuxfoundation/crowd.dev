@@ -1,6 +1,9 @@
 import type { QueryExecutor } from '../queryExecutor'
 import type { IShadowRecord } from './types'
 
+const stripNullBytes = (_key: string, value: unknown): unknown =>
+  typeof value === 'string' ? value.replace(/\0/g, '') : value
+
 export async function recordShadowRecords(
   qx: QueryExecutor,
   unitId: string,
@@ -30,7 +33,7 @@ export async function recordShadowRecords(
       types: deduped.map((r) => r.type),
       sourceIds: deduped.map((r) => r.sourceId),
       occurredAts: deduped.map((r) => r.occurredAt),
-      data: deduped.map((r) => JSON.stringify(r.data)),
+      data: deduped.map((r) => JSON.stringify(r.data, stripNullBytes)),
     },
   )
 }
