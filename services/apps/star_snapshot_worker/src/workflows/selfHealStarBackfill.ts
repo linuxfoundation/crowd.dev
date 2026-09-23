@@ -78,10 +78,7 @@ async function startBatchChild(
 }
 
 // Fans out to abandoned child workflows so each batch's own rate-limit retry loop doesn't
-// hold up other pages waiting on GitHub's reset.
-// Runs two independent paged scans per tick - the never-completed repos (existing behavior)
-// and, separately, completed repos that picked up a fresh gap (CM-1441) - each bounded to
-// PAGE_SIZE per activity call and carried across continueAsNew via its own cursor.
+// hold up other pages. Runs two independently-cursored paged scans per tick (CM-1441).
 export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {}): Promise<void> {
   let batchesDispatched = args.batchesDispatchedSoFar ?? 0
   const mainScanDone = args.mainScanDone ?? false

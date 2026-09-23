@@ -107,8 +107,6 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
     rejectedBatches.push(...(await runWindow(batches.slice(i, i + CONCURRENCY))))
   }
 
-  // One retry pass over whatever's still rejected before giving up on it, even if every
-  // batch on this page rejected (small/last page - still worth one cooldown retry) (CM-1441).
   // patched() keeps an execution already in flight on its old command sequence so a
   // mid-deploy replay doesn't hit a nondeterminism error (CM-1441).
   if (rejectedBatches.length > 0 && patched('retry-rejected-batches')) {
@@ -121,6 +119,10 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
       failed += batch.length
     }
     rejectedBatches = stillRejected
+  } else {
+    for (const batch of rejectedBatches) {
+      failed += batch.length
+    }
   }
 
   const total = (args.totalSoFar ?? 0) + repos.length
