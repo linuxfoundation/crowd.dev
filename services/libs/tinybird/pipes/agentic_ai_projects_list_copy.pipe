@@ -3,6 +3,9 @@ DESCRIPTION >
     Filters by specific repositories in the collection via collectionsRepositories.
     Runs daily and stores results in agentic_ai_projects_list_ds.
 
+TOKEN "mcp_read" READ
+TOKEN "claude_readonly" READ
+
 NODE ai_repos
 SQL >
     SELECT r.url, r.segmentId, r.insightsProjectId

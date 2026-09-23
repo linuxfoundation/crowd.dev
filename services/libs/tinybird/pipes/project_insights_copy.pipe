@@ -1,3 +1,6 @@
+TOKEN "mcp_read" READ
+TOKEN "claude_readonly" READ
+
 NODE project_insights_copy_base_projects
 DESCRIPTION >
     Returns base project information (id, name, slug, segmentId, logoUrl, isLF, contributorCount, organizationCount, softwareValue, healthScore, firstCommit)
