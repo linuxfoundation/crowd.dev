@@ -820,6 +820,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/slack':
+        specifier: workspace:*
+        version: link:../../libs/slack
       '@crowd/types':
         specifier: workspace:*
         version: link:../../libs/types

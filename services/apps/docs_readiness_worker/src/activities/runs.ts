@@ -6,6 +6,7 @@ import {
   startDocReadinessRun,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
 
@@ -25,4 +26,13 @@ export async function startRun(args: IStartRunArgs): Promise<string> {
 export async function finishRun(runId: string, data: IDocReadinessRunFinish): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   await finishDocReadinessRun(qx, runId, data)
+
+  if (data.status === 'failed') {
+    await sendSlackNotificationAsync(
+      SlackChannel.CDP_ALERTS,
+      SlackPersona.ERROR_REPORTER,
+      'Docs readiness run failed',
+      `Run \`${runId}\` finished with status \`failed\`.\n\n*Error:* ${data.errorMessage ?? 'unknown'}`,
+    )
+  }
 }
