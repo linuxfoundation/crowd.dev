@@ -208,6 +208,34 @@ describe('bulkInsertProjectCatalog', () => {
     const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
     expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
   })
+
+  test('persists provenance for a discovery row', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        provenance: 'github-discussion',
+      }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBe('github-discussion')
+  })
+
+  test('leaves provenance null when omitted', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [catalogRow({ action: 'skip', skipReason: 'n/a' })])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBeNull()
+  })
+
+  test('rejects an unlisted provenance value', async ({ qx }) => {
+    await expect(
+      bulkInsertProjectCatalog(qx, [
+        catalogRow({ action: 'auto', provenance: 'not-a-real-provenance' as never }),
+      ]),
+    ).rejects.toThrow(/projectCatalog_provenance_check/)
+  })
 })
 
 describe('upsertProjectCatalog', () => {
@@ -261,6 +289,22 @@ describe('upsertProjectCatalog', () => {
     const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
     expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/1')
   })
+
+  test('keeps the existing provenance when a later upsert omits it', async ({ qx }) => {
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        provenance: 'github-discussion',
+      }),
+    )
+
+    await upsertProjectCatalog(qx, catalogRow({ action: 'auto', source: 'insights-discussions' }))
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBe('github-discussion')
+  })
 })
 
 describe('upsertProjectCatalogManualAction', () => {
@@ -297,5 +341,20 @@ describe('upsertProjectCatalogManualAction', () => {
 
     expect(created?.source).toBe('manual')
     expect(created?.sourceUrl).toBeNull()
+  })
+
+  test('writes provenance while leaving source as manual', async ({ qx }) => {
+    const row = catalogRow({ action: 'evaluate' })
+
+    const created = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: row.projectSlug,
+      repoName: row.repoName,
+      repoUrl: row.repoUrl,
+      action: row.action as 'evaluate',
+      provenance: 'slack-tag',
+    })
+
+    expect(created?.source).toBe('manual')
+    expect(created?.provenance).toBe('slack-tag')
   })
 })

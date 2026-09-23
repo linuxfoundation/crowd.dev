@@ -223,6 +223,7 @@ export async function processDataset(
       repoUrl: parsed.repoUrl,
       source: sourceName,
       sourceUrl: parsed.sourceUrl ?? null,
+      provenance: source.provenance,
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
     })

@@ -12,6 +12,14 @@ export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
 
 export type ProjectCatalogActionCounts = Record<ProjectCatalogAction, number>
 
+export const PROJECT_CATALOG_PROVENANCES = [
+  'github-discussion',
+  'slack-tag',
+  'lf-criticality-score',
+] as const
+
+export type ProjectCatalogProvenance = (typeof PROJECT_CATALOG_PROVENANCES)[number]
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string
@@ -19,6 +27,7 @@ export interface IDbProjectCatalog {
   repoUrl: string
   source: string | null
   sourceUrl: string | null
+  provenance: ProjectCatalogProvenance | null
   action: ProjectCatalogAction
   lfCriticalityScore: number | null
   evaluationResult: string | null
@@ -58,6 +67,7 @@ export type IDbProjectCatalogCreate = Omit<
 > & {
   source?: string | null
   sourceUrl?: string | null
+  provenance?: ProjectCatalogProvenance | null
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
   evaluationResult?: string | null
