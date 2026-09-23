@@ -109,7 +109,7 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   // patched() keeps an execution already in flight on its old command sequence so a
   // mid-deploy replay doesn't hit a nondeterminism error.
-  if (rejectedBatches.length > 0 && patched('retry-rejected-batches')) {
+  if (rejectedBatches.length > 0 && patched('CM-1441-retry-rejected-batches')) {
     await sleep(REJECTED_BATCH_RETRY_DELAY_MS)
     const stillRejected: (typeof batches)[number][] = []
     for (let i = 0; i < rejectedBatches.length; i += CONCURRENCY) {
