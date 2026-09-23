@@ -96,8 +96,9 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
 
   // patched() keeps an execution already in flight on its old command sequence so a
   // mid-deploy replay doesn't hit a nondeterminism error.
+  const gapHealPatched = patched('gap-heal-scan')
   let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
-  if (!gapHealDone && patched('gap-heal-scan')) {
+  if (!gapHealDone && gapHealPatched) {
     gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
     for (let i = 0; i < gapHealPage.gappedRepos.length; i += BATCH_SIZE) {
       const batch = gapHealPage.gappedRepos.slice(i, i + BATCH_SIZE)
@@ -107,7 +108,9 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
   }
 
   const nextMainScanDone = mainScanDone || repos.length < PAGE_SIZE
-  const nextGapHealDone = gapHealDone || (gapHealPage?.pageSize ?? 0) < PAGE_SIZE
+  // Only advance gapHealDone once the scan actually ran (gapHealPatched) - otherwise a
+  // pre-deploy replay would bake gapHealDone: true into continueAsNew and never run it.
+  const nextGapHealDone = gapHealDone || (gapHealPatched && (gapHealPage?.pageSize ?? 0) < PAGE_SIZE)
 
   if (!nextMainScanDone || !nextGapHealDone) {
     await continueAsNew<typeof selfHealStarBackfill>({
