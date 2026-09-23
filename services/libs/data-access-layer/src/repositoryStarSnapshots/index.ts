@@ -97,6 +97,51 @@ export async function findRepoIdsWithStarSnapshotGaps(
   return (rows || []).map((row) => row.repositoryId)
 }
 
+const DEFAULT_GAP_CHECK_BATCH_SIZE = 5_000
+
+// Chunks the IN-list so it stays bounded as the eligible repo count grows.
+export async function findAllRepoIdsWithStarSnapshotGaps(
+  qx: QueryExecutor,
+  repositoryIds: string[],
+  batchSize: number = DEFAULT_GAP_CHECK_BATCH_SIZE,
+): Promise<string[]> {
+  const gapped: string[] = []
+  for (let i = 0; i < repositoryIds.length; i += batchSize) {
+    const batch = repositoryIds.slice(i, i + batchSize)
+    gapped.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
+  }
+  return gapped
+}
+
+// Completed, still-retryable repos - the population findReposNeedingStarBackfill skips.
+// Paginated the same way, so a caller can bound each page's gap check (findAllRepoIdsWithStarSnapshotGaps).
+export async function findCompletedReposEligibleForGapHeal(
+  qx: QueryExecutor,
+  limit: number | null = null,
+  afterUrl: string | null = null,
+): Promise<IRepoForStarSnapshot[]> {
+  const repos: IRepoForStarSnapshot[] = await qx.select(
+    `
+      select
+          r.id as "repositoryId",
+          r.url as "repoUrl"
+      from public.repositories r
+      join public."repositoryStarBackfillStatus" f on f."repositoryId" = r.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and ($(afterUrl)::text is null or r.url > $(afterUrl))
+        and f."completedAt" is not null
+        and f."deadLetteredAt" is null
+      order by r.url asc
+      limit $(limit)
+    `,
+    { limit, afterUrl },
+  )
+
+  return repos || []
+}
+
 export interface IRepoStarSnapshotGapDays {
   repositoryId: string
   missingDays: number
