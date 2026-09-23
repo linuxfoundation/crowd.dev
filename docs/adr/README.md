@@ -37,10 +37,11 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0027](./0027-nomerge-is-evidence-bound.md) | noMerge is a veto against evidence, not against member IDs forever | accepted | 2026-09-16 |
 | [ADR-0028](./0028-cncf-project-wide-maintainer-authority.md) | CNCF `.project` repo as project-wide maintainer authority | accepted | 2026-09-16 |
 | [ADR-0029](./0029-typescript-project-references.md) | TypeScript project references | accepted | 2026-09-22 |
+| [ADR-0030](./0030-docs-readiness-worker-architecture.md) | Docs readiness worker — architecture | accepted | 2026-09-23 |
 
 ## Why ADRs?
 
-The codebase is in active transition across several axes (see `CLAUDE.md`). ADRs provide a durable record of:
+The codebase is in active transition across several axes (see `AGENTS.md`). ADRs provide a durable record of:
 
 - Why old patterns are being replaced (e.g. Sequelize → pg-promise)
 - What alternatives were considered before choosing the current approach
