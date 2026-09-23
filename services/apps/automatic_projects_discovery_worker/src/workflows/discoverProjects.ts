@@ -35,9 +35,8 @@ const watermarkActivities = proxyActivities<typeof activities>({
 // lf-criticality-score's `since` param is wired but unused — the workflow never watermarks it.
 const WATERMARKED_SOURCES = ['insights-discussions']
 
-// Sources whose corpus is periodically re-ranked in full, so a scalar time watermark
-// doesn't fit: instead we resume paging through the same ranking via a (rundate, page)
-// cursor, and reset to page 0 once the source reports a new rundate.
+// Sources whose corpus is periodically re-ranked in full: resumed via a (rundate, page)
+// cursor instead of a scalar time watermark.
 const CURSOR_BASED_SOURCES = ['lf-criticality-score']
 
 interface ISourceBreakdown {
@@ -82,7 +81,7 @@ export async function discoverProjects(
         since = mode === 'incremental' ? (watermark.since ?? undefined) : undefined
       }
 
-      if (cursorBased) {
+      if (cursorBased && mode === 'incremental') {
         previousCursor = (await watermarkActivities.readSourceCursor(sourceName)) ?? undefined
       }
 

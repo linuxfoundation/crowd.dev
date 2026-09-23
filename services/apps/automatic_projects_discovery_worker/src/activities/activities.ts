@@ -94,9 +94,8 @@ export async function readSourceCursor(sourceName: string): Promise<IDiscoverySo
   return cursor
 }
 
-// Unlike commitSourceWatermark, this is called even when the run was truncated by the
-// discovery cap — truncation is the expected steady state for a cursor-based source, and
-// it's exactly the position we need to resume from next time.
+// Unlike commitSourceWatermark, called even when truncated — that's the expected
+// steady state for a cursor-based source, and dataset.cursor is already rolled back.
 export async function commitSourceCursor(
   sourceName: string,
   cursor: IDiscoverySourceCursor,
@@ -264,6 +263,13 @@ export async function processDataset(
     await bulkInsertProjectCatalog(qx, toInsert)
   }
 
+  // On truncation the cap can hit mid-page, dropping candidates from the page whose
+  // rows are already marked consumed — roll the cursor back one page so it's replayed.
+  const cursor =
+    dataset.cursor && truncated
+      ? { rundate: dataset.cursor.rundate, page: Math.max(dataset.cursor.page - 1, 0) }
+      : dataset.cursor
+
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
 
   log.info(
@@ -286,7 +292,7 @@ export async function processDataset(
     totalSkippedAlreadyInCdp: skippedInCdp.length,
     totalAccepted: accepted.length,
     truncated,
-    cursor: dataset.cursor,
+    cursor,
   }
 }
 

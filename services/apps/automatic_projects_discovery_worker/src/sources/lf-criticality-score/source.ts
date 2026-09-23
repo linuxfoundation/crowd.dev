@@ -228,10 +228,8 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     async function* pages() {
       const firstPage = await fetchPage(baseUrl, apiKey, 1, scoredAfter)
       const { totalPages } = firstPage
-      // The corpus is fully re-ranked ~monthly (all rows share one rundate between
-      // reloads), so rundate is a version stamp for the whole ranking, not a per-row
-      // timestamp: same rundate as last run -> resume paging; different -> the ranking
-      // was recomputed, so page numbers from before no longer point at the same rows.
+      // rundate versions the whole ranking (shared by all rows), not per-row: same
+      // rundate as last run -> resume paging; different -> start over from page 1.
       const apiRundate = firstPage.data[0]?.rundate
       const resumable = apiRundate !== undefined && previousCursor?.rundate === apiRundate
       const startPage = resumable ? previousCursor.page + 1 : 1

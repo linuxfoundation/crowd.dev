@@ -92,7 +92,10 @@ describe('upsertDiscoverySourceCursor', () => {
       rundate: '2026-09-01',
       page: 37,
     })
-    await upsertDiscoverySourceCursor(qx, 'lf-criticality-score', { rundate: '2026-10-01', page: 0 })
+    await upsertDiscoverySourceCursor(qx, 'lf-criticality-score', {
+      rundate: '2026-10-01',
+      page: 0,
+    })
 
     expect(await findDiscoverySourceCursor(qx, 'lf-criticality-score')).toEqual({
       rundate: '2026-10-01',

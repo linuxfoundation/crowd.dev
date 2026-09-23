@@ -10,10 +10,8 @@ export interface IDatasetDescriptor {
   // Stamped by listAvailableDatasets so it survives into fetchDatasetStream via
   // workflow history — processDataset receives the descriptor, not the original options.
   since?: string
-  // Page-based resume cursor: listAvailableDatasets seeds it from the previously persisted
-  // value, fetchDatasetStream mutates it in place as pages complete, and processDataset reads
-  // it back afterwards (even if the stream was truncated by the discovery cap) to persist the
-  // next run's resume point.
+  // Page-based resume cursor, threaded the same way `since` is (see above), mutated
+  // in place by fetchDatasetStream as pages complete.
   cursor?: IDiscoverySourceCursor
 }
 

@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { IDiscoverySourceCursor } from './types'
 
 export async function findDiscoverySourceWatermark(
