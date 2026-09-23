@@ -8,11 +8,13 @@ import { IEvaluateProjectsInput, evaluateProjects } from '../workflows'
 // Ordered list of sources; earlier = higher priority; unlisted sources rank last.
 const SOURCE_PRIORITY = ['manual', 'insights-discussions', 'lf-criticality-score']
 
-// Cap high enough that the evaluation queue never carries a residue between runs:
-// discovery can accept up to DISCOVERY_NEW_PROJECTS_LIMIT per source (per-source cap),
-// so evaluation must be able to drain all sources' worth in one run. It's a ceiling,
-// not a target — actual daily volume is well below it.
+// Ceiling, not a target: scheduled (incremental) discovery accepts up to
+// DISCOVERY_NEW_PROJECTS_LIMIT per source per run, so evaluation must drain that much.
 const EVALUATION_LIMIT = DISCOVERY_NEW_PROJECTS_LIMIT * SOURCE_PRIORITY.length
+
+// Worst case per project: evaluateActivities allows 2 attempts × 3 min startToCloseTimeout.
+const WORST_CASE_MINUTES_PER_PROJECT = 6
+const WORKFLOW_EXECUTION_TIMEOUT = `${EVALUATION_LIMIT * WORST_CASE_MINUTES_PER_PROJECT} minutes`
 
 function scheduleAction() {
   const args: IEvaluateProjectsInput = {
@@ -28,7 +30,7 @@ function scheduleAction() {
     workflowType: evaluateProjects,
     taskQueue: 'projects-evaluation',
     args: [args] as [IEvaluateProjectsInput],
-    workflowExecutionTimeout: '3 hours',
+    workflowExecutionTimeout: WORKFLOW_EXECUTION_TIMEOUT,
     retry: {
       initialInterval: '30 seconds',
       backoffCoefficient: 2,
