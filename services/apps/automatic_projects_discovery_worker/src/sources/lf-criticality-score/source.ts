@@ -2,11 +2,10 @@ import http from 'http'
 import https from 'https'
 import { Readable } from 'stream'
 
-import { canonicalizeRepoUrl, timeout } from '@crowd/common'
+import { canonicalizeRepoUrl, parseEnvInt, timeout } from '@crowd/common'
 import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
-import { parseEnvInt } from '../../config'
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
 
 const log = getServiceLogger()
