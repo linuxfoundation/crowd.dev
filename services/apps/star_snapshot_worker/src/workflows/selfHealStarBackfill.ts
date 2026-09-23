@@ -78,7 +78,7 @@ async function startBatchChild(
 }
 
 // Fans out to abandoned child workflows so each batch's own rate-limit retry loop doesn't
-// hold up other pages. Runs two independently-cursored paged scans per tick (CM-1441).
+// hold up other pages. Runs two independently-cursored paged scans per tick.
 export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {}): Promise<void> {
   let batchesDispatched = args.batchesDispatchedSoFar ?? 0
   const mainScanDone = args.mainScanDone ?? false
@@ -95,7 +95,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
   }
 
   // patched() keeps an execution already in flight on its old command sequence so a
-  // mid-deploy replay doesn't hit a nondeterminism error (CM-1441).
+  // mid-deploy replay doesn't hit a nondeterminism error.
   let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
   if (!gapHealDone && patched('gap-heal-scan')) {
     gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)

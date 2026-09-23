@@ -404,8 +404,7 @@ export interface IGapHealPage {
 }
 
 // A completed repo can still pick up a fresh gap (e.g. a dropped capture batch) - this
-// finds those so selfHealStarBackfill re-sweeps them too, without a manual backfill (CM-1441).
-// Paginated like findReposNeedingStarBackfill, so each call and its gap check stay bounded.
+// finds those so selfHealStarBackfill re-sweeps them too, paginated like the backfill scan.
 export async function findReposNeedingGapHeal(
   limit: number,
   afterUrl?: string,

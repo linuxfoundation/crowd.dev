@@ -117,7 +117,7 @@ const main = async () => {
   const dryRun = process.argv.includes('--dry-run')
   const fresh = process.argv.includes('--fresh')
   // Targets only currently-gapped repos instead of sweeping every eligible one - fixes a
-  // specific gap on demand without a full backfill pass (CM-1441).
+  // specific gap on demand without a full backfill pass.
   const gappedOnly = process.argv.includes('--gapped-only')
   const afterUrlOverride = readFlagValue('--after-url')
   const checkpointFile = gappedOnly
@@ -179,7 +179,7 @@ const main = async () => {
 
   if (gappedOnly && !resumedFromCheckpoint) {
     // Everyone not currently gapped is pre-marked "completed" so the scan/skip loop below
-    // flies through them, touching only the repos actually gapped right now (CM-1441).
+    // flies through them, touching only the repos actually gapped right now.
     const allRepos = await findReposForStarSnapshot(qx)
     const gappedRepoIds = new Set(
       await findAllRepoIdsWithStarSnapshotGaps(
