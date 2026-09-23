@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.5.0",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "lint": "eslint \"src/**/*.{js,ts,vue}\" --max-warnings=0",
     "lint:fix": "npm run lint -- --fix",
