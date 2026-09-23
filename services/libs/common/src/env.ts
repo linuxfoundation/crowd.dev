@@ -79,12 +79,9 @@ export const INTEGRATION_STREAM_WORKER_PARTITIONS: Record<QueuePriorityLevel, nu
     : undefined,
 }
 
-export const DISCOVERY_NEW_PROJECTS_LIMIT = parseEnvInt(
-  process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT,
-  20,
-  1,
-  10_000,
-)
+export const DISCOVERY_NEW_PROJECTS_LIMIT = process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT
+  ? Number(process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT)
+  : 20
 
 export function getEnv() {
   if (IS_PROD_ENV) return 'prod'
