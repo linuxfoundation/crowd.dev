@@ -4,13 +4,16 @@ import { parse } from 'csv-parse'
 import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
 import {
   bulkInsertProjectCatalog,
+  findDiscoverySourceCursor,
   findDiscoverySourceWatermark,
   findExistingProjectCatalogRepoUrls,
   findRepoUrlsInCdp,
   finishPipelineRun,
   startPipelineRun,
+  upsertDiscoverySourceCursor,
   upsertDiscoverySourceWatermark,
 } from '@crowd/data-access-layer'
+import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -35,12 +38,13 @@ export async function listSources(): Promise<string[]> {
 export async function listDatasets(
   sourceName: string,
   since?: string,
+  cursor?: IDiscoverySourceCursor,
 ): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
 
-  log.info({ sourceName, since: since ?? 'none' }, 'Listing datasets.')
+  log.info({ sourceName, since: since ?? 'none', cursor: cursor ?? 'none' }, 'Listing datasets.')
 
-  const datasets = await source.listAvailableDatasets({ since })
+  const datasets = await source.listAvailableDatasets({ since, cursor })
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
 
@@ -81,12 +85,35 @@ export async function commitSourceWatermark(
   log.info({ sourceName, watermark, force }, 'Source watermark committed.')
 }
 
+export async function readSourceCursor(sourceName: string): Promise<IDiscoverySourceCursor | null> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const cursor = await findDiscoverySourceCursor(qx, sourceName)
+
+  log.info({ sourceName, cursor }, 'Source cursor read.')
+
+  return cursor
+}
+
+// Unlike commitSourceWatermark, this is called even when the run was truncated by the
+// discovery cap — truncation is the expected steady state for a cursor-based source, and
+// it's exactly the position we need to resume from next time.
+export async function commitSourceCursor(
+  sourceName: string,
+  cursor: IDiscoverySourceCursor,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceCursor(qx, sourceName, cursor)
+
+  log.info({ sourceName, cursor }, 'Source cursor committed.')
+}
+
 export interface IProcessDatasetResult {
   totalRows: number
   totalSkipped: number
   totalSkippedAlreadyInCdp: number
   totalAccepted: number
   truncated: boolean
+  cursor?: IDiscoverySourceCursor
 }
 
 export async function processDataset(
@@ -259,6 +286,7 @@ export async function processDataset(
     totalSkippedAlreadyInCdp: skippedInCdp.length,
     totalAccepted: accepted.length,
     truncated,
+    cursor: dataset.cursor,
   }
 }
 

@@ -4,6 +4,7 @@ import { Readable } from 'stream'
 
 import { canonicalizeRepoUrl, parseEnvInt, timeout } from '@crowd/common'
 import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
+import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
@@ -180,7 +181,10 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: {
+    since?: string
+    cursor?: IDiscoverySourceCursor
+  }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
     getApiKey()
     const today = new Date().toISOString().slice(0, 10)
@@ -196,6 +200,9 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
         id: scoredAfter ? `${today}-since-${scoredAfter}` : today,
         date: today,
         url: `${baseUrl}/projects${qs ? `?${qs}` : ''}`,
+        // Passed through as-is; fetchDatasetStream decides whether it's still resumable
+        // once it learns the API's current rundate.
+        cursor: options?.cursor,
       },
     ]
   }
@@ -204,9 +211,15 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const baseUrl = getApiBaseUrl()
     const apiKey = getApiKey()
     const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
+    const previousCursor = dataset.cursor
 
     log.info(
-      { datasetId: dataset.id, baseUrl, scoredAfter: scoredAfter ?? 'none (full fetch)' },
+      {
+        datasetId: dataset.id,
+        baseUrl,
+        scoredAfter: scoredAfter ?? 'none (full fetch)',
+        previousCursor: previousCursor ?? 'none',
+      },
       'LF Criticality Score: starting stream fetch.',
     )
 
@@ -215,17 +228,49 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     async function* pages() {
       const firstPage = await fetchPage(baseUrl, apiKey, 1, scoredAfter)
       const { totalPages } = firstPage
+      // The corpus is fully re-ranked ~monthly (all rows share one rundate between
+      // reloads), so rundate is a version stamp for the whole ranking, not a per-row
+      // timestamp: same rundate as last run -> resume paging; different -> the ranking
+      // was recomputed, so page numbers from before no longer point at the same rows.
+      const apiRundate = firstPage.data[0]?.rundate
+      const resumable = apiRundate !== undefined && previousCursor?.rundate === apiRundate
+      const startPage = resumable ? previousCursor.page + 1 : 1
+
+      if (apiRundate !== undefined) {
+        dataset.cursor = { rundate: apiRundate, page: resumable ? previousCursor.page : 0 }
+      }
 
       log.info(
-        { datasetId: dataset.id, total: firstPage.total, totalPages, pageSize: firstPage.pageSize },
+        {
+          datasetId: dataset.id,
+          total: firstPage.total,
+          totalPages,
+          pageSize: firstPage.pageSize,
+          apiRundate,
+          resumable,
+          startPage,
+        },
         'LF Criticality Score: first page received — total records available.',
       )
 
-      for (const row of firstPage.data) {
-        yield row
+      if (startPage > totalPages) {
+        log.info(
+          { datasetId: dataset.id, startPage, totalPages },
+          'LF Criticality Score: already caught up with this rundate, nothing to fetch.',
+        )
+        return
       }
 
-      for (let page = 2; page <= totalPages; page++) {
+      if (startPage <= 1) {
+        for (const row of firstPage.data) {
+          yield row
+        }
+        if (apiRundate !== undefined) {
+          dataset.cursor = { rundate: apiRundate, page: 1 }
+        }
+      }
+
+      for (let page = Math.max(startPage, 2); page <= totalPages; page++) {
         await timeout(throttleIntervalMs)
 
         log.info(
@@ -236,6 +281,10 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
 
         for (const row of response.data) {
           yield row
+        }
+
+        if (apiRundate !== undefined) {
+          dataset.cursor = { rundate: apiRundate, page }
         }
 
         log.info(

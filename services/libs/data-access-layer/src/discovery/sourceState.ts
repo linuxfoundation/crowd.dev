@@ -1,5 +1,7 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import { IDiscoverySourceCursor } from './types'
+
 export async function findDiscoverySourceWatermark(
   qx: QueryExecutor,
   source: string,
@@ -38,5 +40,42 @@ export async function upsertDiscoverySourceWatermark(
       "updatedAt" = NOW()
     `,
     { source, watermark, force: options.force ?? false },
+  )
+}
+
+export async function findDiscoverySourceCursor(
+  qx: QueryExecutor,
+  source: string,
+): Promise<IDiscoverySourceCursor | null> {
+  const row: { cursor: IDiscoverySourceCursor | null } | null = await qx.selectOneOrNone(
+    `
+    SELECT "cursor"
+    FROM public."discoverySourceState"
+    WHERE "source" = $(source)
+    `,
+    { source },
+  )
+
+  return row?.cursor ?? null
+}
+
+// Full replace, not a merge: the caller decides whether to resume from the stored page
+// or reset to page 0 (e.g. when the source's ranking has been recomputed).
+export async function upsertDiscoverySourceCursor(
+  qx: QueryExecutor,
+  source: string,
+  cursor: IDiscoverySourceCursor,
+): Promise<void> {
+  await qx.result(
+    `
+    INSERT INTO public."discoverySourceState" ("source", "cursor", "lastRunAt")
+    VALUES ($(source), $(cursor), NOW())
+    ON CONFLICT ("source") DO UPDATE
+    SET
+      "cursor" = EXCLUDED."cursor",
+      "lastRunAt" = NOW(),
+      "updatedAt" = NOW()
+    `,
+    { source, cursor: JSON.stringify(cursor) },
   )
 }
