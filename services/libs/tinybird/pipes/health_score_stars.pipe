@@ -8,7 +8,7 @@ SQL >
         SELECT r.segmentId AS segmentId, sum(s.starCount) AS stars
         FROM
             (
-                SELECT repositoryId, argMax(starCount, capturedAt) AS starCount
+                SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
                 FROM repositoryStarSnapshots
                 WHERE
                     repositoryId IN (
@@ -61,7 +61,7 @@ SQL >
         SELECT r.segmentId AS segmentId, sum(s.starCount) AS stars
         FROM
             (
-                SELECT repositoryId, argMax(starCount, capturedAt) AS starCount
+                SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
                 FROM repositoryStarSnapshots
                 GROUP BY repositoryId
             ) s
