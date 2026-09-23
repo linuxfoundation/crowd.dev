@@ -15,6 +15,7 @@
     "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
+    "@crowd/slack": "workspace:*",
     "@crowd/types": "workspace:*",
     "@temporalio/activity": "catalog:",
     "@temporalio/client": "catalog:",

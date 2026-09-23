@@ -62,12 +62,19 @@ SQL >
 
 NODE project_insights_copy_period_metrics
 DESCRIPTION >
-    Calculate metrics for last 365 days and previous 365 days in a single scan
+    Calculate metrics for last 365 days and previous 365 days in a single scan.
+    Stars excludes github here (platform != 'github') - github stars are no longer emitted
+    as activity events (CM-1419), sourced instead from repositoryStarSnapshots via
+    project_insights_copy_star_deltas below. Without this filter, historical github star
+    activity rows still sitting in the table from before the cutover would double-count
+    alongside the snapshot-based numbers.
 
 SQL >
     SELECT
         segmentId,
-        countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
+        countIf(
+            type = 'star' AND platform != 'github' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
         uniqIf(
             memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
@@ -75,7 +82,9 @@ SQL >
         uniqIf(
             organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
         ) AS activeOrganizationsLast365Days,
-        countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
+        countIf(
+            type = 'star' AND platform != 'github' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS starsPrevious365Days,
         countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
         uniqIf(
             memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
@@ -86,6 +95,63 @@ SQL >
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
+
+NODE project_insights_copy_star_snapshot_totals
+DESCRIPTION >
+    Per-repository star totals now / 365d-ago / 730d-ago from repositoryStarSnapshots
+    (github-only source, CM-1419). argMaxIf resolves to NULL when no snapshot exists yet
+    before that cutoff (star-snapshot backfill is partial, CM-1463) - coalesced to 0
+    downstream, which overstates the period-gain for a repo backfilled only partway through
+    its history (its pre-backfill total gets attributed entirely to the recent window).
+    Acceptable until CM-1463 backfill completes; revisit if leaderboard numbers look inflated.
+
+SQL >
+    SELECT
+        repositoryId,
+        argMax(starCount, (capturedAt, updatedAt)) AS totalNow,
+        argMaxIf(
+            starCount, (capturedAt, updatedAt), capturedAt <= now() - INTERVAL 365 DAY
+        ) AS totalAt365,
+        argMaxIf(
+            starCount, (capturedAt, updatedAt), capturedAt <= now() - INTERVAL 730 DAY
+        ) AS totalAt730
+    FROM repositoryStarSnapshots
+    GROUP BY repositoryId
+
+NODE project_insights_copy_star_deltas
+DESCRIPTION >
+    Rolls the per-repository snapshot totals up to project level and turns them into the
+    same last365/previous365 period-delta shape as project_insights_copy_period_metrics.
+
+SQL >
+    SELECT
+        r.segmentId AS segmentId,
+        greatest(
+            sum(coalesce(s.totalNow, 0)) - sum(coalesce(s.totalAt365, 0)), 0
+        ) AS starsLast365DaysSnapshot,
+        greatest(
+            sum(coalesce(s.totalAt365, 0)) - sum(coalesce(s.totalAt730, 0)), 0
+        ) AS starsPrevious365DaysSnapshot
+    FROM project_insights_copy_star_snapshot_totals s
+    INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+    WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
+    GROUP BY r.segmentId
+
+NODE project_insights_copy_repo_star_deltas
+DESCRIPTION >
+    Same snapshot deltas as project_insights_copy_star_deltas, kept per-repository for the
+    repo-level rows in project_insights_copy_repo_results.
+
+SQL >
+    SELECT
+        r.url AS repoUrl,
+        greatest(coalesce(s.totalNow, 0) - coalesce(s.totalAt365, 0), 0) AS starsLast365DaysSnapshot,
+        greatest(
+            coalesce(s.totalAt365, 0) - coalesce(s.totalAt730, 0), 0
+        ) AS starsPrevious365DaysSnapshot
+    FROM project_insights_copy_star_snapshot_totals s
+    INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+    WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
 
 NODE project_insights_copy_health_v2_project
 DESCRIPTION >
@@ -221,11 +287,12 @@ SQL >
         dep.developmentPercentage AS developmentHealthScore,
         dep.securityPercentage AS securityHealthScore,
         base.firstCommit AS firstCommit,
-        pm.starsLast365Days AS starsLast365Days,
+        COALESCE(pm.starsLast365Days, 0) + COALESCE(sd.starsLast365DaysSnapshot, 0) AS starsLast365Days,
         pm.forksLast365Days AS forksLast365Days,
         pm.activeContributorsLast365Days AS activeContributorsLast365Days,
         pm.activeOrganizationsLast365Days AS activeOrganizationsLast365Days,
-        pm.starsPrevious365Days AS starsPrevious365Days,
+        COALESCE(pm.starsPrevious365Days, 0)
+        + COALESCE(sd.starsPrevious365DaysSnapshot, 0) AS starsPrevious365Days,
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
@@ -279,6 +346,7 @@ SQL >
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
+    LEFT JOIN project_insights_copy_star_deltas AS sd ON base.segmentId = sd.segmentId
     LEFT JOIN project_insights_copy_health_v2_project AS hv2 ON base.id = hv2.insightsProjectId
 
 NODE project_insights_copy_repo_base
@@ -304,12 +372,17 @@ SQL >
 
 NODE project_insights_copy_repo_period_metrics
 DESCRIPTION >
-    Calculate repository-level metrics for last 365 days and previous 365 days in a single scan
+    Calculate repository-level metrics for last 365 days and previous 365 days in a single scan.
+    Stars excludes github (platform != 'github') - see project_insights_copy_period_metrics above
+    for why: github stars now come from repositoryStarSnapshots via
+    project_insights_copy_repo_star_deltas, not activity events.
 
 SQL >
     SELECT
         channel,
-        countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
+        countIf(
+            type = 'star' AND platform != 'github' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
         uniqIf(
             memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
@@ -317,7 +390,9 @@ SQL >
         uniqIf(
             organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
         ) AS activeOrganizationsLast365Days,
-        countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
+        countIf(
+            type = 'star' AND platform != 'github' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS starsPrevious365Days,
         countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
         uniqIf(
             memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
@@ -357,11 +432,13 @@ SQL >
         hs.developmentPercentage AS developmentHealthScore,
         hs.securityPercentage AS securityHealthScore,
         base.firstCommit AS firstCommit,
-        COALESCE(rm.starsLast365Days, 0) AS starsLast365Days,
+        COALESCE(rm.starsLast365Days, 0)
+        + COALESCE(srd.starsLast365DaysSnapshot, 0) AS starsLast365Days,
         COALESCE(rm.forksLast365Days, 0) AS forksLast365Days,
         COALESCE(rm.activeContributorsLast365Days, 0) AS activeContributorsLast365Days,
         COALESCE(rm.activeOrganizationsLast365Days, 0) AS activeOrganizationsLast365Days,
-        COALESCE(rm.starsPrevious365Days, 0) AS starsPrevious365Days,
+        COALESCE(rm.starsPrevious365Days, 0)
+        + COALESCE(srd.starsPrevious365DaysSnapshot, 0) AS starsPrevious365Days,
         COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
         COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
         COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days,
@@ -400,6 +477,7 @@ SQL >
     FROM project_insights_copy_repo_base AS base
     LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
+    LEFT JOIN project_insights_copy_repo_star_deltas AS srd ON base.repoUrl = srd.repoUrl
     LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON base.repoUrl = hv2.repoUrl
 
 NODE project_insights_copy_results

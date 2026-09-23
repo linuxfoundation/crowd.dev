@@ -16,6 +16,9 @@
     },
     {
       "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/slack"
     }
   ]
 }

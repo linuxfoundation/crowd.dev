@@ -17,6 +17,7 @@ export async function githubGraphql<T>(
   query: string,
   variables: Record<string, unknown>,
   log: Logger,
+  maxAttempts?: number,
 ): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     const body = await http.request<GraphqlEnvelope<T>>(
@@ -26,6 +27,7 @@ export async function githubGraphql<T>(
         data: { query, variables },
       },
       log,
+      maxAttempts,
     )
     if (body.errors?.length) {
       const details = body.errors.map((e) => `${e.type ?? 'ERROR'}: ${e.message ?? ''}`).join('; ')
