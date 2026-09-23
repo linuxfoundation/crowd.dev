@@ -3,6 +3,7 @@ import {
   WorkflowIdReusePolicy,
   continueAsNew,
   log,
+  patched,
   proxyActivities,
   startChild,
   workflowInfo,
@@ -96,8 +97,11 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
     }
   }
 
+  // Gated by patched() - an execution already in flight when this shipped must keep replaying
+  // its old command sequence (skip straight to continueAsNew) or it'll hit a nondeterminism
+  // error; only executions that start fresh after the deploy take the new gap-heal scan.
   let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
-  if (!gapHealDone) {
+  if (!gapHealDone && patched('CM-1441-gap-heal-scan')) {
     gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
     for (let i = 0; i < gapHealPage.gappedRepos.length; i += BATCH_SIZE) {
       const batch = gapHealPage.gappedRepos.slice(i, i + BATCH_SIZE)
