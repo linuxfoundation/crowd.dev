@@ -9,6 +9,7 @@ import {
   insertProjectCatalog,
   markProjectCatalogOnboardingSkipped,
   markProjectCatalogPreCheckSkipped,
+  promoteProjectCatalogProvenance,
   updateProjectCatalog,
   upsertProjectCatalog,
   upsertProjectCatalogManualAction,
@@ -208,6 +209,34 @@ describe('bulkInsertProjectCatalog', () => {
     const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
     expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
   })
+
+  test('persists provenance for a discovery row', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        provenance: 'github-discussion',
+      }),
+    ])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBe('github-discussion')
+  })
+
+  test('leaves provenance null when omitted', async ({ qx }) => {
+    await bulkInsertProjectCatalog(qx, [catalogRow({ action: 'skip', skipReason: 'n/a' })])
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBeNull()
+  })
+
+  test('rejects an unlisted provenance value', async ({ qx }) => {
+    await expect(
+      bulkInsertProjectCatalog(qx, [
+        catalogRow({ action: 'auto', provenance: 'not-a-real-provenance' as never }),
+      ]),
+    ).rejects.toThrow(/projectCatalog_provenance_check/)
+  })
 })
 
 describe('upsertProjectCatalog', () => {
@@ -261,6 +290,22 @@ describe('upsertProjectCatalog', () => {
     const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
     expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/1')
   })
+
+  test('keeps the existing provenance when a later upsert omits it', async ({ qx }) => {
+    await upsertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'insights-discussions',
+        provenance: 'github-discussion',
+      }),
+    )
+
+    await upsertProjectCatalog(qx, catalogRow({ action: 'auto', source: 'insights-discussions' }))
+
+    const row = await findProjectCatalogByRepoUrl(qx, 'https://github.com/gerritcodereview/gerrit')
+    expect(row?.provenance).toBe('github-discussion')
+  })
 })
 
 describe('upsertProjectCatalogManualAction', () => {
@@ -297,5 +342,142 @@ describe('upsertProjectCatalogManualAction', () => {
 
     expect(created?.source).toBe('manual')
     expect(created?.sourceUrl).toBeNull()
+  })
+
+  test('writes provenance while leaving source as manual', async ({ qx }) => {
+    const row = catalogRow({ action: 'evaluate' })
+
+    const created = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: row.projectSlug,
+      repoName: row.repoName,
+      repoUrl: row.repoUrl,
+      action: row.action as 'evaluate',
+      provenance: 'slack-tag',
+    })
+
+    expect(created?.source).toBe('manual')
+    expect(created?.provenance).toBe('slack-tag')
+  })
+
+  test('replaces an existing bulk provenance with an explicit incoming one', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+
+    const updated = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+      action: 'evaluate',
+      provenance: 'slack-tag',
+    })
+
+    expect(updated?.source).toBe('manual')
+    expect(updated?.provenance).toBe('slack-tag')
+  })
+
+  test('keeps the existing provenance when the manual action omits one', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+
+    const updated = await upsertProjectCatalogManualAction(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+      action: 'evaluate',
+    })
+
+    expect(updated?.source).toBe('manual')
+    expect(updated?.provenance).toBe('lf-criticality-score')
+  })
+})
+
+describe('promoteProjectCatalogProvenance', () => {
+  test('promotes a row with no provenance', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'auto' }))
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'github-discussion', [
+      { repoUrl: inserted.repoUrl },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(affected).toBe(1)
+    expect(row?.provenance).toBe('github-discussion')
+  })
+
+  test('promotes a row with an existing bulk provenance', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'github-discussion', [
+      { repoUrl: inserted.repoUrl },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(affected).toBe(1)
+    expect(row?.provenance).toBe('github-discussion')
+  })
+
+  test('does not overwrite an existing human provenance from the other human channel', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        provenance: 'github-discussion',
+      }),
+    )
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'slack-tag', [
+      { repoUrl: inserted.repoUrl },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(affected).toBe(0)
+    expect(row?.provenance).toBe('github-discussion')
+  })
+
+  test('fills a null sourceUrl but does not overwrite a populated one', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+
+    await promoteProjectCatalogProvenance(qx, 'github-discussion', [
+      {
+        repoUrl: inserted.repoUrl,
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/42',
+      },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(row?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
+  })
+
+  test('returns 0 for an empty refs array', async ({ qx }) => {
+    const affected = await promoteProjectCatalogProvenance(qx, 'github-discussion', [])
+    expect(affected).toBe(0)
   })
 })

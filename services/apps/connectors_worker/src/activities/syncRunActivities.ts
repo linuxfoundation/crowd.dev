@@ -189,6 +189,8 @@ export async function executeSync(unitId: string): Promise<void> {
           errorMessage: err.message,
           nextRunAt: resumeAt,
           progressCommitted,
+          request: err.options?.request,
+          response: err.options?.response,
         }),
         'sync run summary',
       )
@@ -209,6 +211,8 @@ export async function executeSync(unitId: string): Promise<void> {
         errorMessage,
         consecutiveFailures,
         nextRunAt,
+        request: err instanceof ConnectorError ? err.options?.request : undefined,
+        response: err instanceof ConnectorError ? err.options?.response : undefined,
         err,
       }),
       'sync run summary',

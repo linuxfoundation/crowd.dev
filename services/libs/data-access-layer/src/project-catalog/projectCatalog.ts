@@ -5,8 +5,11 @@ import {
   IDbProjectCatalogCreate,
   IDbProjectCatalogUpdate,
   PROJECT_CATALOG_ACTIONS,
+  PROJECT_CATALOG_BULK_PROVENANCES,
   ProjectCatalogAction,
   ProjectCatalogActionCounts,
+  ProjectCatalogHumanProvenance,
+  ProjectCatalogProvenance,
 } from './types'
 
 const PROJECT_CATALOG_COLUMNS = [
@@ -16,6 +19,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'repoUrl',
   'source',
   'sourceUrl',
+  'provenance',
   'action',
   'lfCriticalityScore',
   'evaluationResult',
@@ -155,6 +159,38 @@ export async function findExistingProjectCatalogRepoUrls(
   return new Set(rows.map((row) => row.repoUrl))
 }
 
+export async function promoteProjectCatalogProvenance(
+  qx: QueryExecutor,
+  provenance: ProjectCatalogHumanProvenance,
+  refs: { repoUrl: string; sourceUrl?: string | null }[],
+): Promise<number> {
+  if (refs.length === 0) {
+    return 0
+  }
+
+  const values = refs.map((ref) => ({
+    repoUrl: ref.repoUrl,
+    sourceUrl: ref.sourceUrl ?? null,
+  }))
+
+  return qx.result(
+    `
+    UPDATE "projectCatalog" pc
+    SET "provenance" = $(provenance),
+        "sourceUrl" = COALESCE(pc."sourceUrl", v."sourceUrl"),
+        "updatedAt" = NOW()
+    FROM jsonb_to_recordset($(values)::jsonb) AS v("repoUrl" text, "sourceUrl" text)
+    WHERE pc."repoUrl" = v."repoUrl"
+      AND (pc."provenance" IS NULL OR pc."provenance" = ANY($(overridable)::text[]))
+    `,
+    {
+      provenance,
+      values: JSON.stringify(values),
+      overridable: PROJECT_CATALOG_BULK_PROVENANCES,
+    },
+  )
+}
+
 export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
   const result = await qx.selectOne(
     `
@@ -274,6 +310,7 @@ export async function insertProjectCatalog(
       "repoUrl",
       "source",
       "sourceUrl",
+      "provenance",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -286,6 +323,7 @@ export async function insertProjectCatalog(
       $(repoUrl),
       $(source),
       $(sourceUrl),
+      $(provenance),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -300,6 +338,7 @@ export async function insertProjectCatalog(
       repoUrl: data.repoUrl,
       source: data.source ?? null,
       sourceUrl: data.sourceUrl ?? null,
+      provenance: data.provenance ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
@@ -320,6 +359,7 @@ export async function bulkInsertProjectCatalog(
     repoUrl: item.repoUrl,
     source: item.source ?? null,
     sourceUrl: item.sourceUrl ?? null,
+    provenance: item.provenance ?? null,
     action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
     skipReason: item.skipReason ?? null,
@@ -333,6 +373,7 @@ export async function bulkInsertProjectCatalog(
       "repoUrl",
       "source",
       "sourceUrl",
+      "provenance",
       "action",
       "lfCriticalityScore",
       "skipReason",
@@ -346,6 +387,7 @@ export async function bulkInsertProjectCatalog(
       v."repoUrl",
       v."source",
       v."sourceUrl",
+      v."provenance",
       v."action",
       v."lfCriticalityScore"::double precision,
       v."skipReason",
@@ -358,6 +400,7 @@ export async function bulkInsertProjectCatalog(
       "repoUrl" text,
       "source" text,
       "sourceUrl" text,
+      "provenance" text,
       "action" text,
       "lfCriticalityScore" double precision,
       "skipReason" text
@@ -380,6 +423,7 @@ export async function upsertProjectCatalog(
       "repoUrl",
       "source",
       "sourceUrl",
+      "provenance",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -392,6 +436,7 @@ export async function upsertProjectCatalog(
       $(repoUrl),
       $(source),
       $(sourceUrl),
+      $(provenance),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -403,6 +448,7 @@ export async function upsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "sourceUrl" = COALESCE("projectCatalog"."sourceUrl", EXCLUDED."sourceUrl"),
+      "provenance" = COALESCE("projectCatalog"."provenance", EXCLUDED."provenance"),
       "action" = CASE
         WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
@@ -419,6 +465,7 @@ export async function upsertProjectCatalog(
       repoUrl: data.repoUrl,
       source: data.source ?? null,
       sourceUrl: data.sourceUrl ?? null,
+      provenance: data.provenance ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
@@ -427,7 +474,13 @@ export async function upsertProjectCatalog(
 
 export async function upsertProjectCatalogManualAction(
   qx: QueryExecutor,
-  data: { projectSlug: string; repoName: string; repoUrl: string; action: ProjectCatalogAction },
+  data: {
+    projectSlug: string
+    repoName: string
+    repoUrl: string
+    action: ProjectCatalogAction
+    provenance?: ProjectCatalogProvenance | null
+  },
 ): Promise<IDbProjectCatalog | null> {
   return qx.selectOneOrNone(
     `
@@ -436,6 +489,7 @@ export async function upsertProjectCatalogManualAction(
       "repoName",
       "repoUrl",
       "source",
+      "provenance",
       "action",
       "createdAt",
       "updatedAt",
@@ -446,6 +500,7 @@ export async function upsertProjectCatalogManualAction(
       $(repoName),
       $(repoUrl),
       'manual',
+      $(provenance),
       $(action),
       NOW(),
       NOW(),
@@ -455,6 +510,7 @@ export async function upsertProjectCatalogManualAction(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = 'manual',
+      "provenance" = COALESCE(EXCLUDED."provenance", "projectCatalog"."provenance"),
       "action" = EXCLUDED."action",
       "evaluatedAt" = CASE
         WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
@@ -474,7 +530,7 @@ export async function upsertProjectCatalogManualAction(
       AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
-    data,
+    { ...data, provenance: data.provenance ?? null },
   )
 }
 

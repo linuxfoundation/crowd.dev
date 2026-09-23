@@ -102,6 +102,11 @@ async function attemptRequest<T>(
     return response.data
   }
 
+  error.withContext({
+    request: requestContext(config),
+    response: { status: response.status, body: summarizeBody(response.data) },
+  })
+
   if (error.errorClass === 'provider.rate_limit') {
     const resumeAt = error.options?.resumeAt ?? computeResumeAt(headers)
     // parking makes acquire() skip this entry, so rotation ends when the pool
@@ -175,8 +180,40 @@ async function send<T>(
   try {
     return await axios.request<T>(authenticatedConfig)
   } catch (err) {
-    throw new ProviderUnavailableError('no response from provider', { cause: err })
+    throw new ProviderUnavailableError('no response from provider', { cause: err }).withContext({
+      request: requestContext(config),
+    })
   }
+}
+
+const CONTEXT_BODY_MAX_LENGTH = 500
+
+function requestContext(config: AxiosRequestConfig): {
+  method: string
+  url: string
+  body?: unknown
+} {
+  return {
+    method: (config.method ?? 'get').toUpperCase(),
+    url: config.url ?? '',
+    body: summarizeBody(config.data),
+  }
+}
+
+export function summarizeBody(data: unknown): string | undefined {
+  if (data === undefined || data === null) {
+    return undefined
+  }
+  let text: string | undefined
+  try {
+    text = typeof data === 'string' ? data : JSON.stringify(data)
+  } catch {
+    return '[unserializable body]'
+  }
+  if (text === undefined) {
+    return '[unserializable body]'
+  }
+  return text.length > CONTEXT_BODY_MAX_LENGTH ? `${text.slice(0, CONTEXT_BODY_MAX_LENGTH)}…` : text
 }
 
 function applyBearerToken(config: AxiosRequestConfig, token: IPooledToken): AxiosRequestConfig {

@@ -11,16 +11,26 @@ export interface ConnectorErrorOptions {
   status?: number
   resumeAt?: Date
   cause?: unknown
+  request?: { method: string; url: string; body?: unknown }
+  response?: { status: number; body?: unknown }
 }
 
 export class ConnectorError extends Error {
+  options?: ConnectorErrorOptions
+
   constructor(
     readonly errorClass: ErrorClass,
     message: string,
-    readonly options?: ConnectorErrorOptions,
+    options?: ConnectorErrorOptions,
   ) {
     super(message)
     this.name = 'ConnectorError'
+    this.options = options
+  }
+
+  withContext(context: Pick<ConnectorErrorOptions, 'request' | 'response'>): this {
+    this.options = { ...this.options, ...context }
+    return this
   }
 }
 
