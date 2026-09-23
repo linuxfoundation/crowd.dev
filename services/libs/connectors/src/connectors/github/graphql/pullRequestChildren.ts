@@ -70,8 +70,9 @@ export interface PrCommitNode {
   commit: {
     // GitHub returns these as null with a SERVICE_UNAVAILABLE error when diff-stat
     // computation times out on large diffs; not actually guaranteed non-null.
-    additions: number | null
-    deletions: number | null
+    // Absent entirely when fetched via PR_COMMITS_QUERY_NO_STATS.
+    additions?: number | null
+    deletions?: number | null
     parents: { totalCount: number }
     id: string
     oid: string
@@ -212,6 +213,45 @@ export const PR_COMMITS_QUERY = `
             commit {
               additions
               deletions
+              parents {
+                totalCount
+              }
+              id
+              oid
+              message
+              authoredDate
+              url
+              author {
+                user {
+                  ... on User {
+                    ${USER_FIELDS}
+                  }
+                }
+                email
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`
+
+// Same as PR_COMMITS_QUERY minus additions/deletions, which GitHub's resolver
+// can 502 on for commits with an expensive diff (e.g. a merge commit pulling
+// in a large upstream history). Used as a fallback once retries are exhausted.
+export const PR_COMMITS_QUERY_NO_STATS = `
+  query ($owner: String!, $repo: String!, $prNumber: Int!, $first: Int!, $cursor: String) {
+    repository(name: $repo, owner: $owner) {
+      pullRequest(number: $prNumber) {
+        commits(first: $first, after: $cursor) {
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+          nodes {
+            commit {
               parents {
                 totalCount
               }
