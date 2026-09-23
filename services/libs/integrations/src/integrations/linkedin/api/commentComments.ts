@@ -4,7 +4,6 @@ import { PlatformType } from '@crowd/types'
 
 import { IGenerateStreamsContext, IProcessStreamContext } from '../../../types'
 import { getNangoToken } from '../../nango'
-
 import { handleLinkedinError } from './handleError'
 import { ILinkedInPostComment, IPaginatedResponse } from './types'
 

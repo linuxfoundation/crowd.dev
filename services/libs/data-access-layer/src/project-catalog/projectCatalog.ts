@@ -1,6 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
-
 import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,
@@ -16,6 +15,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'repoName',
   'repoUrl',
   'source',
+  'sourceUrl',
   'action',
   'lfCriticalityScore',
   'evaluationResult',
@@ -273,6 +273,7 @@ export async function insertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -284,6 +285,7 @@ export async function insertProjectCatalog(
       $(repoName),
       $(repoUrl),
       $(source),
+      $(sourceUrl),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -297,6 +299,7 @@ export async function insertProjectCatalog(
       repoName: data.repoName,
       repoUrl: data.repoUrl,
       source: data.source ?? null,
+      sourceUrl: data.sourceUrl ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
@@ -316,6 +319,7 @@ export async function bulkInsertProjectCatalog(
     repoName: item.repoName,
     repoUrl: item.repoUrl,
     source: item.source ?? null,
+    sourceUrl: item.sourceUrl ?? null,
     action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
     skipReason: item.skipReason ?? null,
@@ -328,6 +332,7 @@ export async function bulkInsertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
       "skipReason",
@@ -340,6 +345,7 @@ export async function bulkInsertProjectCatalog(
       v."repoName",
       v."repoUrl",
       v."source",
+      v."sourceUrl",
       v."action",
       v."lfCriticalityScore"::double precision,
       v."skipReason",
@@ -351,6 +357,7 @@ export async function bulkInsertProjectCatalog(
       "repoName" text,
       "repoUrl" text,
       "source" text,
+      "sourceUrl" text,
       "action" text,
       "lfCriticalityScore" double precision,
       "skipReason" text
@@ -372,6 +379,7 @@ export async function upsertProjectCatalog(
       "repoName",
       "repoUrl",
       "source",
+      "sourceUrl",
       "action",
       "lfCriticalityScore",
       "createdAt",
@@ -383,6 +391,7 @@ export async function upsertProjectCatalog(
       $(repoName),
       $(repoUrl),
       $(source),
+      $(sourceUrl),
       $(action),
       $(lfCriticalityScore),
       NOW(),
@@ -393,6 +402,7 @@ export async function upsertProjectCatalog(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
+      "sourceUrl" = COALESCE("projectCatalog"."sourceUrl", EXCLUDED."sourceUrl"),
       "action" = CASE
         WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
@@ -408,6 +418,7 @@ export async function upsertProjectCatalog(
       repoName: data.repoName,
       repoUrl: data.repoUrl,
       source: data.source ?? null,
+      sourceUrl: data.sourceUrl ?? null,
       action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },

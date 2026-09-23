@@ -1,4 +1,30 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../archetypes/standard"
+    },
+    {
+      "path": "../../archetypes/worker"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/common_services"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/redis"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

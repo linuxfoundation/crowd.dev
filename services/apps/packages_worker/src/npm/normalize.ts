@@ -1,5 +1,4 @@
 import { ResolvedManifestRepo, resolveManifestRepo } from '../utils/resolveManifestRepo'
-
 import type { Packument } from './types'
 
 export function parseNpmName(raw: string): { namespace: string | null; name: string } {

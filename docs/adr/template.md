@@ -15,11 +15,13 @@
 ## Alternatives Considered
 
 ### Alternative 1: [Name]
+
 - **Pros**: [benefits]
 - **Cons**: [drawbacks]
 - **Why not**: [specific rejection reason]
 
 ### Alternative 2: [Name]
+
 - **Pros**: [benefits]
 - **Cons**: [drawbacks]
 - **Why not**: [specific rejection reason]
@@ -27,10 +29,13 @@
 ## Consequences
 
 ### Positive
+
 - [benefit 1]
 
 ### Negative
+
 - [trade-off 1]
 
 ### Risks
+
 - [risk and how it's mitigated]

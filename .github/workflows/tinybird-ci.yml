@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [labeled, unlabeled, synchronize]
     paths:
-      - 'services/libs/tinybird/**'
+      - "services/libs/tinybird/**"
   workflow_dispatch:
 
 env:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -52,7 +52,7 @@ jobs:
   #     run:
   #       working-directory: ${{ env.DATA_PROJECT_DIR }}
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v5
   #       with:
   #         fetch-depth: ${{ env.GIT_DEPTH }}
   #         ref: ${{ github.event.pull_request.head.sha }}
@@ -144,7 +144,7 @@ jobs:
   #     run:
   #       working-directory: ${{ env.DATA_PROJECT_DIR }}
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v5
   #       with:
   #         fetch-depth: 0
   #         ref: ${{ github.event.pull_request.head.sha }}

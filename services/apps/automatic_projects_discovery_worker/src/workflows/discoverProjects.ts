@@ -6,6 +6,8 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import type { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
+
 import type * as activities from '../activities'
 
 const listActivities = proxyActivities<typeof activities>({
@@ -24,6 +26,18 @@ const pipelineRunActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
 })
+
+const watermarkActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
+// lf-criticality-score's `since` param is wired but unused — the workflow never watermarks it.
+const WATERMARKED_SOURCES = ['insights-discussions']
+
+// Sources whose corpus is periodically re-ranked in full: resumed via a (rundate, page)
+// cursor instead of a scalar time watermark.
+const CURSOR_BASED_SOURCES = ['lf-criticality-score']
 
 interface ISourceBreakdown {
   rows: number
@@ -55,7 +69,33 @@ export async function discoverProjects(
     const sourceNames = await listActivities.listSources()
 
     for (const sourceName of sourceNames) {
-      const allDatasets = await listActivities.listDatasets(sourceName)
+      const watermarked = WATERMARKED_SOURCES.includes(sourceName)
+      const cursorBased = CURSOR_BASED_SOURCES.includes(sourceName)
+      let capturedAt: string | undefined
+      let since: string | undefined
+      let previousCursor: IDiscoverySourceCursor | undefined
+
+      if (watermarked) {
+        const watermark = await watermarkActivities.readSourceWatermark(sourceName)
+        capturedAt = watermark.capturedAt
+        since = mode === 'incremental' ? (watermark.since ?? undefined) : undefined
+      }
+
+      if (cursorBased && mode === 'incremental') {
+        previousCursor = (await watermarkActivities.readSourceCursor(sourceName)) ?? undefined
+      }
+
+      let allDatasets: Awaited<ReturnType<typeof listActivities.listDatasets>>
+      try {
+        allDatasets = await listActivities.listDatasets(sourceName, since, previousCursor)
+      } catch (err) {
+        if (isCancellation(err)) {
+          throw err
+        }
+        failed++
+        log.error(`Listing datasets failed for source=${sourceName}: ${String(err)}`)
+        continue
+      }
 
       if (allDatasets.length === 0) {
         log.warn(`No datasets found for source "${sourceName}". Skipping.`)
@@ -77,6 +117,10 @@ export async function discoverProjects(
         skipped: 0,
         accepted: 0,
       }
+
+      let sourceOk = true
+      let sourceTruncated = false
+      let latestCursor: IDiscoverySourceCursor | undefined
 
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i]
@@ -102,12 +146,20 @@ export async function discoverProjects(
           sourceStats.skippedAlreadyInCdp += result.totalSkippedAlreadyInCdp
           sourceStats.skipped += datasetSkipped
           sourceStats.accepted += result.totalAccepted
+
+          if (result.truncated) {
+            sourceTruncated = true
+          }
+          if (result.cursor) {
+            latestCursor = result.cursor
+          }
         } catch (err) {
           if (isCancellation(err)) {
             throw err
           }
 
           failed++
+          sourceOk = false
           log.error(
             `Dataset processing failed for source=${sourceName} datasetId=${dataset.id}: ${String(err)}`,
           )
@@ -115,6 +167,16 @@ export async function discoverProjects(
       }
 
       bySource[sourceName] = sourceStats
+
+      if (watermarked && capturedAt && sourceOk && !sourceTruncated) {
+        await watermarkActivities.commitSourceWatermark(sourceName, capturedAt, mode === 'full')
+      }
+
+      // Committed even when truncated: for a cursor-based source, hitting the cap mid-run
+      // is the normal case, and the cursor is exactly the position to resume from next time.
+      if (cursorBased && sourceOk && latestCursor) {
+        await watermarkActivities.commitSourceCursor(sourceName, latestCursor)
+      }
 
       log.info(`[${sourceName}] Done. Processed ${datasets.length} dataset(s).`)
     }

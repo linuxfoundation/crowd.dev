@@ -22,6 +22,14 @@ export default (app) => {
     '/collections/insights-projects/:id',
     safeWrap(require('./insightsProjects/insightsProjectsGet').default),
   )
+  app.post(
+    '/collections/insights-projects/:id/docs-override',
+    safeWrap(require('./insightsProjects/insightsProjectsDocsOverrideCreate').default),
+  )
+  app.delete(
+    '/collections/insights-projects/:id/docs-override',
+    safeWrap(require('./insightsProjects/insightsProjectsDocsOverrideDelete').default),
+  )
 
   // Collections routes
   app.post('/collections/query', safeWrap(require('./collectionsQuery').default))

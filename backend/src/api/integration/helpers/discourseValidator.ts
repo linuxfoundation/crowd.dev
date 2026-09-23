@@ -24,7 +24,7 @@ export default async (req, res) => {
       if (result.status === 200 && result.data && result.data.length > 0) {
         return req.responseHandler.success(req, res, result.data)
       }
-    } catch (e) {
+    } catch {
       return req.responseHandler.error(req, res, new Error400(req.language))
     }
   }

@@ -243,9 +243,12 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const exportMeta: Record<string, string | number | string[]> = {}
   if (ecosystems) exportMeta['meta:ecosystems'] = ecosystems
   if (isFill) exportMeta['meta:fill'] = 1
-  await markJobStatus(qx, jobId, 'exporting', {
-    ...(Object.keys(exportMeta).length > 0 ? { tableRowCounts: exportMeta } : {}),
-  })
+  await markJobStatus(
+    qx,
+    jobId,
+    'exporting',
+    Object.keys(exportMeta).length > 0 ? { tableRowCounts: exportMeta } : {},
+  )
 
   // From here the row is 'exporting'; any BQ failure (incl. script-mode maximumBytesBilled aborts)
   // must flip it to 'failed' with the reason, else it stays stuck 'exporting' forever and the

@@ -45,6 +45,8 @@ discoverProjects({ mode: 'incremental' | 'full' })
 Each source is capped independently at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default 20) _new_
 projects per `processDataset` call — rows already present in `projectCatalog` are still fetched
 from the source but don't count against the cap, so every run brings in genuinely new candidates.
+The limit is defined in `services/libs/common/src/env.ts` (`DISCOVERY_NEW_PROJECTS_LIMIT`), shared
+with `projects_evaluation_worker`.
 Sources are processed in registry order (`insights-discussions`, then `lf-criticality-score`);
 once a source hits its limit, `processDataset` stops consuming its stream early.
 
@@ -71,7 +73,6 @@ Runs daily at midnight via Temporal cron (`0 0 * * *`).
 ```
 src/
 ├── main.ts                          # Service bootstrap (postgres enabled)
-├── config.ts                        # Shared env config (parseEnvInt, DISCOVERY_NEW_PROJECTS_LIMIT)
 ├── activities.ts                    # Barrel re-export
 ├── workflows.ts                     # Barrel re-export
 ├── activities/

@@ -2,21 +2,12 @@
   "name": "@crowd/slack",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@slack/webhook": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
   }
 }

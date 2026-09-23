@@ -2,12 +2,6 @@
   "name": "@crowd/archetype-standard",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/common_services": "workspace:*",
@@ -22,9 +16,6 @@
   },
   "devDependencies": {
     "@types/config": "^3.3.1",
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "@types/node": "catalog:"
   }
 }

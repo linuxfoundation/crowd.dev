@@ -123,6 +123,7 @@ No new resource server.
 
 **`resource_servers.tf`** — three Akrites-namespaced scopes inside
 `auth0_resource_server_scopes.cdp_public_api`:
+
 ```hcl
 scopes {
   name        = "read:akrites-packages"
@@ -139,11 +140,13 @@ scopes {
 ```
 
 **`clients_m2m.tf`** — one entry in `local.m2m_clients`:
+
 ```hcl
 "Akrites Enclave" = { # Client for Akrites to consume the CDP public API
   oidc_conformant = true
 }
 ```
+
 The existing `auth0_client.m2m_clients` `for_each` resource instantiates the
 client with `grant_types = ["client_credentials"]`. Auth method starts as
 `client_secret_post`; `lfx-secrets-management` rotation converts it to
@@ -151,6 +154,7 @@ client with `grant_types = ["client_credentials"]`. Auth method starts as
 
 **`grants_cdp.tf`** — the grant, next to `lfxone_cdp` and
 `persona_service_cdp`:
+
 ```hcl
 # Akrites Enclave CDP grant. Consumer isolation is claim-based: the three
 # `read:akrites-*` scopes below are granted only to this client on
@@ -210,6 +214,7 @@ same `AUTH0_CONFIG` already used by every other public route. No new
 **`backend/src/security/scopes.ts`**
 
 Three Akrites consts (existing scopes unchanged):
+
 ```ts
 READ_AKRITES_PACKAGES: 'read:akrites-packages',
 READ_AKRITES_ADVISORIES: 'read:akrites-advisories',
@@ -218,6 +223,7 @@ READ_AKRITES_MAINTAINERS: 'read:akrites-maintainers',
 
 **`backend/src/api/public/v1/index.ts`** — the route is mounted at the
 existing position:
+
 ```ts
 router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
 ```
@@ -233,17 +239,26 @@ Akrites confirms end-to-end token exchange:
 ```ts
 // packages subrouter — drop READ_PACKAGES/READ_STEWARDSHIPS on cut-over
 packagesSubRouter.use(
-  requireScopes([SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+  requireScopes(
+    [SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS],
+    'any',
+  ),
 )
 
 // advisories subrouter — drop READ_PACKAGES on cut-over
-advisoriesSubRouter.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'))
+advisoriesSubRouter.use(
+  requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'),
+)
 
 // contacts subrouter — drop READ_MAINTAINER_ROLES on cut-over
-contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS], 'any'))
+contactsSubRouter.use(
+  requireScopes([SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS], 'any'),
+)
 
 // blast-radius subrouter — drop READ_PACKAGES on cut-over
-blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'))
+blastRadiusSubRouter.use(
+  requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'),
+)
 ```
 
 Target state (post cut-over): `requireScopes([SCOPES.READ_AKRITES_*])` with
@@ -273,7 +288,7 @@ Akrites' call.
    it at LFX Auth0 for a short-lived Bearer token against the
    `cdp_public_api` audience.
 3. **Call** `/api/v1/akrites-external/*` with `Authorization: Bearer
-   <token>`. Cache the token until close to expiry, refreshing with a
+<token>`. Cache the token until close to expiry, refreshing with a
    clock-skew margin.
 4. **On `invalid_client`** (keypair rotated): coordinate with LF for
    re-delivery of the rotated credential via 1Password — do not

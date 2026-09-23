@@ -2,21 +2,12 @@
   "name": "@crowd/archetype-consumer",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "kafkajs": "~2.2.4"
   },
   "devDependencies": {
     "@types/config": "^3.3.1",
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "@types/node": "catalog:"
   }
 }

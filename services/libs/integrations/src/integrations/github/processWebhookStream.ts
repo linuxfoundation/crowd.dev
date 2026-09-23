@@ -6,7 +6,6 @@ import {
   IProcessWebhookStreamContext,
   ProcessWebhookStreamHandler,
 } from '../../types'
-
 import getMember from './api/graphql/members'
 import getOrganization from './api/graphql/organizations'
 import TeamsQuery from './api/graphql/teams'
@@ -309,21 +308,6 @@ const parseWebhookPullRequestReview = async (
   }
 }
 
-const parseWebhookStar = async (payload: any, ctx: IProcessWebhookStreamContext, date: string) => {
-  if (payload.action === 'created' || payload.action === 'deleted') {
-    const member = await handleWebhookSender(payload?.sender, ctx)
-
-    if (member) {
-      await ctx.processData<GithubWebhookData>({
-        webhookType: GithubWehookEvent.STAR,
-        data: payload,
-        member,
-        date,
-      })
-    }
-  }
-}
-
 const parseWebhookFork = async (payload: any, ctx: IProcessWebhookStreamContext) => {
   if (payload?.sender?.type === 'Organization') {
     const member = await handleWebhookOrgSender(payload?.sender, ctx)
@@ -426,7 +410,6 @@ const parseWebhookPullRequestReviewComment = async (
 
 const handler: ProcessWebhookStreamHandler = async (ctx) => {
   const identifier = ctx.stream.identifier
-  const webhookCreatedAt = ctx.stream.webhookCreatedAt
 
   // this is for pull request commits which are published during runtime
   if (identifier.startsWith(GithubStreamType.PULL_COMMITS)) {
@@ -451,9 +434,6 @@ const handler: ProcessWebhookStreamHandler = async (ctx) => {
         break
       case GithubWehookEvent.PULL_REQUEST_REVIEW:
         await parseWebhookPullRequestReview(data, ctx)
-        break
-      case GithubWehookEvent.STAR:
-        await parseWebhookStar(data, ctx, webhookCreatedAt)
         break
       case GithubWehookEvent.FORK:
         await parseWebhookFork(data, ctx)

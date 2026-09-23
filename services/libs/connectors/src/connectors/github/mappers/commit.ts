@@ -2,7 +2,6 @@ import { GITHUB_GRID, GithubActivityType } from '@crowd/integrations'
 
 import type { PrCommitNode } from '../graphql/pullRequestChildren'
 import type { GithubActivity } from '../schemas'
-
 import { toMember } from './member'
 
 const DEFAULT_TIMESTAMP = '1970-01-01T00:00:00Z'
@@ -17,10 +16,12 @@ export function toCommit(commit: PrCommitNode['commit'], prId: string): GithubAc
     body: commit.message,
     url: commit.url ?? '',
     attributes: {
-      insertions: commit.additions,
-      deletions: commit.deletions,
+      // additions/deletions are unavailable (SERVICE_UNAVAILABLE, or the
+      // no-stats fallback query) — defaulted to 0, there's no way to recover them.
+      insertions: commit.additions ?? 0,
+      deletions: commit.deletions ?? 0,
       // nango quirk kept for exact-match: lines = additions - deletions, not the sum
-      lines: commit.additions - commit.deletions,
+      lines: (commit.additions ?? 0) - (commit.deletions ?? 0),
       isMerge: commit.parents.totalCount > 1,
     },
     member: toMember(commit.author?.user),

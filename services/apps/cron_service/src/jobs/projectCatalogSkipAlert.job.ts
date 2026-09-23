@@ -18,9 +18,9 @@ import {
 import { IJobDefinition } from '../types'
 
 // evaluationReason is free-text from an external API and can change wording anytime;
-// only these two are DB-verifiable — the third ("not on GitHub") gave a false alarm on gcc/gcc.
+// only this one is DB-verifiable — the others ("not on GitHub", the old "already part
+// of LF") either gave false alarms (gcc/gcc) or are no longer produced by the evaluator.
 const ONBOARDED_REASON = 'project is already onboarded'
-const LF_REASON = 'project is already part of LF'
 
 const CONTRADICTIONS_ONLY_REASONS = new Set<string>([ONBOARDED_REASON])
 
@@ -40,9 +40,6 @@ interface ISkipRow {
   repoUrl: string
   reason: string
   repoInCdp: boolean
-  matchedProject: string | null
-  matchedIsLf: boolean | null
-  matchedDeletedAt: string | null
   suspicious: boolean | null
 }
 
@@ -110,9 +107,8 @@ const job: IJobDefinition = {
         SELECT
           repo_path,
           bool_or(true)                                              AS repo_exists,
-          count(DISTINCT "insightsProjectId") > 1                     AS ambiguous,
-          -- multiple unrelated LF projects can share a generic Gerrit path
-          -- (e.g. "r/ci-management"); only trust the project when it's unambiguous
+          -- multiple unrelated projects can share a generic Gerrit path
+          -- (e.g. "r/ci-management"); only trust the match when it's unambiguous
           CASE WHEN count(DISTINCT "insightsProjectId") = 1
             THEN (array_agg("insightsProjectId") FILTER (WHERE "insightsProjectId" IS NOT NULL))[1]
           END                                                         AS "insightsProjectId"
@@ -135,11 +131,8 @@ const job: IJobDefinition = {
       ),
       matched AS (
         SELECT
-          s."repoUrl", s.reason, r.repo_exists, COALESCE(r.ambiguous, false) AS ambiguous,
-          CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END               AS matched_id,
-          CASE WHEN ipr.id IS NOT NULL THEN ipr.name ELSE ips.name END           AS matched_name,
-          CASE WHEN ipr.id IS NOT NULL THEN ipr."isLF" ELSE ips."isLF" END       AS matched_is_lf,
-          CASE WHEN ipr.id IS NOT NULL THEN ipr."deletedAt" ELSE ips."deletedAt" END AS matched_deleted_at
+          s."repoUrl", s.reason, r.repo_exists,
+          CASE WHEN ipr.id IS NOT NULL THEN ipr.id ELSE ips.id END AS matched_id
         FROM skipped s
         LEFT JOIN repos_norm r           ON r.repo_path = s.repo_path
         LEFT JOIN "insightsProjects" ipr ON ipr.id = r."insightsProjectId"
@@ -149,25 +142,14 @@ const job: IJobDefinition = {
         m."repoUrl"          AS "repoUrl",
         m.reason              AS reason,
         COALESCE(m.repo_exists, false) AS "repoInCdp",
-        m.matched_name         AS "matchedProject",
-        m.matched_is_lf        AS "matchedIsLf",
-        m.matched_deleted_at   AS "matchedDeletedAt",
-        -- a soft-deleted insights project still counts as "exists in CDP"; its isLF
-        -- flag doesn't, so LF-reason rows on it are unverifiable rather than flagged
         CASE m.reason
           WHEN $1 THEN (NOT COALESCE(m.repo_exists, false) AND m.matched_id IS NULL)
-          WHEN $2 THEN CASE
-            WHEN m.ambiguous                      THEN NULL
-            WHEN m.matched_id IS NULL             THEN true
-            WHEN m.matched_deleted_at IS NOT NULL  THEN NULL
-            ELSE NOT COALESCE(m.matched_is_lf, false)
-          END
           ELSE NULL
         END                                             AS suspicious
       FROM matched m
       ORDER BY suspicious DESC NULLS LAST, m.reason, m."repoUrl"
       `,
-      [ONBOARDED_REASON, LF_REASON],
+      [ONBOARDED_REASON],
     )
 
     const flagged = rows.filter((row) => row.suspicious)
@@ -252,14 +234,7 @@ function formatLine(row: ISkipRow): string {
     return row.repoUrl
   }
 
-  const reasoning =
-    row.reason === ONBOARDED_REASON
-      ? 'not found in CDP at all'
-      : row.matchedProject
-        ? `matched to "${row.matchedProject}", which is not flagged as LF`
-        : 'no matching project found in CDP'
-
-  return `⚠️ *${row.repoUrl}* — ${reasoning}`
+  return `⚠️ *${row.repoUrl}* — not found in CDP at all`
 }
 
 export default job

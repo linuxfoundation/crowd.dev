@@ -9,7 +9,6 @@ import {
 import { rankPackagesWorkflow } from '../../criticality/workflow'
 import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
-
 import { ingestAdvisories } from './ingestAdvisories'
 import { ingestDependencies } from './ingestDependencies'
 import { ingestDependentCounts } from './ingestDependentCounts'

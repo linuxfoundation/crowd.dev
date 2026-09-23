@@ -1,13 +1,66 @@
 import type { SyncContext, SyncOutcome } from '../../types'
-
 import { githubGraphql } from './gql'
 import type { PullRequestNode, PullRequestsPage } from './graphql/pullRequests'
 import { PULL_REQUESTS_QUERY } from './graphql/pullRequests'
+import type { GithubWatermark } from './paging'
 import { parseRepoChannel, readWatermark } from './paging'
 
 export const PR_PAGE_SIZE = 50
 
 export type PrPageHandler = (prs: PullRequestNode[], sinceDate: Date | null) => Promise<void>
+
+interface ConfirmedWindow {
+  confirmedThrough: string
+  coveredUntil: string
+}
+
+function readConfirmedWindow(watermark: GithubWatermark): ConfirmedWindow | null {
+  if (watermark.confirmedThrough && watermark.coveredUntil) {
+    return { confirmedThrough: watermark.confirmedThrough, coveredUntil: watermark.coveredUntil }
+  }
+  return null
+}
+
+function isCovered(window: ConfirmedWindow | null, updatedAt: string): boolean {
+  if (!window) {
+    return false
+  }
+  // updatedAt has second precision and is not unique — both edges stay exclusive so
+  // PRs tied with a boundary timestamp are replayed instead of silently skipped
+  const updated = new Date(updatedAt).getTime()
+  return (
+    updated > new Date(window.confirmedThrough).getTime() &&
+    updated < new Date(window.coveredUntil).getTime()
+  )
+}
+
+function mergeConfirmedWindow(
+  prior: ConfirmedWindow | null,
+  oldestSeen: string | null,
+  newestSeen: string | null,
+): ConfirmedWindow | null {
+  if (!oldestSeen || !newestSeen) {
+    return prior
+  }
+  if (!prior) {
+    return { confirmedThrough: oldestSeen, coveredUntil: newestSeen }
+  }
+  // merge only once the walk passed strictly below the prior ceiling: dying above it leaves
+  // an unwalked gap, dying exactly on it may split a timestamp tie — both would be claimed covered
+  if (new Date(oldestSeen).getTime() >= new Date(prior.coveredUntil).getTime()) {
+    return prior
+  }
+  return {
+    confirmedThrough:
+      new Date(oldestSeen).getTime() < new Date(prior.confirmedThrough).getTime()
+        ? oldestSeen
+        : prior.confirmedThrough,
+    coveredUntil:
+      new Date(newestSeen).getTime() > new Date(prior.coveredUntil).getTime()
+        ? newestSeen
+        : prior.coveredUntil,
+  }
+}
 
 async function runBackfill(
   ctx: SyncContext,
@@ -58,43 +111,66 @@ async function runIncremental(
   owner: string,
   repo: string,
   since: string,
+  priorWindow: ConfirmedWindow | null,
   processPrs: PrPageHandler,
 ): Promise<SyncOutcome> {
   const sinceDate = new Date(since)
   const runStartedAt = new Date().toISOString()
+  // the walk is DESC by updatedAt, so a raw page cursor is a position that reorders
+  // under it — never persist it across runs; resume coverage is value-based instead
   let cursor: string | null = null
+  let oldestSeen: string | null = null
+  let newestSeen: string | null = null
 
-  while (ctx.hasRunBudget()) {
-    const data = await githubGraphql<PullRequestsPage>(
-      ctx.http,
-      PULL_REQUESTS_QUERY,
-      {
-        owner,
-        repo,
-        first: PR_PAGE_SIZE,
-        cursor,
-        direction: 'DESC',
-      },
-      ctx.log,
-    )
-
-    const { pageInfo, nodes } = data.repository.pullRequests
-    const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
-
-    const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) >= sinceDate)
-    if (fresh.length > 0) {
-      await processPrs(fresh, sinceDate)
+  const commitPartial = async () => {
+    const window = mergeConfirmedWindow(priorWindow, oldestSeen, newestSeen)
+    if (window) {
+      await ctx.commitWatermark({ phase: 'incremental', since, cursor: null, ...window })
     }
-
-    const reachedSince = fresh.length < pullRequests.length
-    if (reachedSince || !pageInfo.hasNextPage) {
-      await ctx.commitWatermark({ phase: 'incremental', since: runStartedAt, cursor: null })
-      return { complete: true }
-    }
-
-    cursor = pageInfo.endCursor
   }
 
+  try {
+    while (ctx.hasRunBudget()) {
+      const data = await githubGraphql<PullRequestsPage>(
+        ctx.http,
+        PULL_REQUESTS_QUERY,
+        {
+          owner,
+          repo,
+          first: PR_PAGE_SIZE,
+          cursor,
+          direction: 'DESC',
+        },
+        ctx.log,
+      )
+
+      const { pageInfo, nodes } = data.repository.pullRequests
+      const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
+
+      const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) >= sinceDate)
+      const pending = fresh.filter((pr) => !isCovered(priorWindow, pr.updatedAt))
+      if (pending.length > 0) {
+        await processPrs(pending, sinceDate)
+      }
+      if (fresh.length > 0) {
+        newestSeen = newestSeen ?? fresh[0].updatedAt
+        oldestSeen = fresh[fresh.length - 1].updatedAt
+      }
+
+      const reachedSince = fresh.length < pullRequests.length
+      if (reachedSince || !pageInfo.hasNextPage) {
+        await ctx.commitWatermark({ phase: 'incremental', since: runStartedAt, cursor: null })
+        return { complete: true }
+      }
+
+      cursor = pageInfo.endCursor
+    }
+  } catch (err) {
+    await commitPartial()
+    throw err
+  }
+
+  await commitPartial()
   return { complete: false }
 }
 
@@ -106,7 +182,14 @@ export async function runDualPhasePrSync(
   const watermark = readWatermark(ctx.watermark)
 
   if (watermark.phase === 'incremental' && watermark.since) {
-    return runIncremental(ctx, owner, repo, watermark.since, processPrs)
+    return runIncremental(
+      ctx,
+      owner,
+      repo,
+      watermark.since,
+      readConfirmedWindow(watermark),
+      processPrs,
+    )
   }
   return runBackfill(ctx, owner, repo, processPrs)
 }

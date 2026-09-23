@@ -9,7 +9,6 @@ import {
   SlackMessages,
   SlackParsedResponse,
 } from '../types'
-
 import { handleSlackError } from './errorHandler'
 
 async function getMessages(

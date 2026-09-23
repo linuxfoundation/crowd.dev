@@ -31,16 +31,19 @@ fixed-window, and gap-recovered by manual **Backfill** — they are deliberately
 ## Alternatives Considered
 
 ### Alternative 1: npm-style per-package HTTP fetch with watermark due-selection
+
 - **Pros**: reuses the npm downloads model exactly; source is scoped to what's due; naturally self-healing.
 - **Cons**: requires a per-package downloads API.
 - **Why not**: PyPI has no such API. The BigQuery public dataset is the only source, which forces a bulk-aggregate model.
 
 ### Alternative 2: Push the critical package list into BigQuery (inline `IN UNNEST([...])`) to shrink the export
+
 - **Pros**: smaller GCS export and staging load, especially for daily backfills.
 - **Cons**: inlines our data into the query text.
 - **Why not**: the critical set can grow to tens of thousands+; the inline list blows BigQuery's ~1 MB query-text limit (and Temporal's ~2 MB payload limit for the name list). Merge-scoping is unbounded and matches how every deps.dev job scopes to our data in Postgres, not at the source. A cheap `getCriticalPypiCount` guard skips the scan when there are zero critical packages.
 
 ### Alternative 3: Gap-filling self-healing (npm's `computeMissingLast30dWindows` model)
+
 - **Pros**: auto-recovers missed days/months without manual intervention.
 - **Cons**: needs per-package due-selection / existing-window diffing, extra state and complexity, and re-scans BigQuery anyway.
 - **Why not**: for a bulk-BQ source the simpler fixed-window + idempotent-upsert + manual **Backfill** model is sufficient; deps.dev jobs re-scan on re-run too. The daily 2-day **Trailing re-scan** already corrects a partial most-recent partition.
@@ -48,16 +51,19 @@ fixed-window, and gap-recovered by manual **Backfill** — they are deliberately
 ## Consequences
 
 ### Positive
+
 - Reuses the deps.dev BQ→GCS→staging→merge plumbing and the `monitor:osspckgs` cost/row dashboard for free.
 - Scoping in the merge scales to any critical-set size; our package identifiers never leave Postgres.
 - Idempotent upserts make re-runs and overlapping backfills safe (no duplicate rows).
 
 ### Negative
+
 - Re-running a date range re-scans BigQuery and re-bills — there is no "already imported" skip.
-- The daily 2-day window re-scans each calendar day ~2×; steady-state cost ≈ $610/yr daily + $311/yr 30d ≈ **~$920/yr** at $6.25/TiB (measured).
+- The daily 2-day window re-scans each calendar day ~~2×; steady-state cost ≈ $610/yr daily + $311/yr 30d ≈ **~~$920/yr** at $6.25/TiB (measured).
 - Not self-healing: an outage or missed schedule is recovered only by a manual **Backfill**.
 - Daily export carries all ~800k projects even though the merge keeps only the critical subset (larger data movement than a source-filtered approach).
 
 ### Risks
+
 - **BigQuery cost / runaway scans** — mitigated by per-kind `BQ_DATASET_INGEST_PYPI_DOWNLOADS_*_MAX_BQ_GB` ceilings enforced via a pre-run dry-run (aborts before billing); defaults set from measured sizes (30d = 6000 GB, daily = 2000 GB).
 - **Traffic growth** — the ~4.56 TB/30d figure grows with PyPI traffic; ceilings may need raising over time.

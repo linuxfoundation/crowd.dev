@@ -35,14 +35,17 @@ export interface HttpClientDeps {
 }
 
 export interface ConnectorHttp {
-  request<T>(config: AxiosRequestConfig): Promise<T>
+  request<T>(config: AxiosRequestConfig, log?: Logger, maxAttempts?: number): Promise<T>
   requestCount(): number
 }
 
 type CountingHttpClientDeps = HttpClientDeps & { countRequest: () => void }
 
-const MAX_ATTEMPTS = 3
+// 8 attempts keeps the worst case (8 x 60s timeouts + 91s backoff = 571s) inside
+// the 600s the run reserves before the activity start-to-close timeout (runLimits.ts)
+const MAX_ATTEMPTS = 8
 const BACKOFF_BASE_MS = 1000
+const BACKOFF_CAP_MS = 30_000
 const RATE_LIMIT_FALLBACK_MS = 60_000
 const DEFAULT_TIMEOUT_MS = 60_000
 
@@ -55,7 +58,8 @@ export function createHttpClient(deps: HttpClientDeps): ConnectorHttp {
     },
   }
   return {
-    request: <T>(config: AxiosRequestConfig) => requestWithRetry<T>(countingDeps, config),
+    request: <T>(config: AxiosRequestConfig, log?: Logger, maxAttempts?: number) =>
+      requestWithRetry<T>(log ? { ...countingDeps, log } : countingDeps, config, maxAttempts),
     requestCount: () => requests,
   }
 }
@@ -63,9 +67,10 @@ export function createHttpClient(deps: HttpClientDeps): ConnectorHttp {
 async function requestWithRetry<T>(
   deps: CountingHttpClientDeps,
   config: AxiosRequestConfig,
+  maxAttempts: number = MAX_ATTEMPTS,
 ): Promise<T> {
   let lastError: ConnectorError = new ProviderUnavailableError()
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await attemptRequest<T>(deps, config)
     } catch (err) {
@@ -73,8 +78,8 @@ async function requestWithRetry<T>(
         throw err
       }
       lastError = err
-      if (attempt < MAX_ATTEMPTS) {
-        const delay = BACKOFF_BASE_MS * 2 ** (attempt - 1)
+      if (attempt < maxAttempts) {
+        const delay = Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS)
         deps.log.warn({ attempt, delay, reason: err.message }, 'provider unavailable, backing off')
         await timeout(delay)
       }

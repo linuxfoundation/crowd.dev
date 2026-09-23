@@ -64,8 +64,10 @@ onboarding segment lookup in step 1 as the equivalent safeguard against redoing 
 
 Schema evolved across `V1770653666__add-automatic_projects_discovery-tables.sql` (creation),
 `V1778749030__refactor-projects-catalog.sql` (`source`, `action`, `evaluatedAt`, `onboardedAt`),
-plus later additions for `evaluationResult`/`evaluationReason`, `onboardingError`, and
-`skipReason`.
+plus later additions for `evaluationResult`/`evaluationReason`, `onboardingError`,
+`skipReason`, and `sourceUrl` (provenance for a discovery source, e.g. the discussion URL
+that produced the row; write-once at insert, never blanked on a re-sight — see
+`bulkInsertProjectCatalog`/`upsertProjectCatalog` in `projectCatalog.ts`).
 
 ### Stage 1 — Discovery (`automatic_projects_discovery_worker`)
 
@@ -159,7 +161,7 @@ right pattern, not a shortcut to revisit.
 ### The numbers: 20 projects a day, by design
 
 - Discovery caps new projects at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default **20**) **per
-  source, per `processDataset` call** (`src/config.ts:11-16`); rows the source returns that
+  source, per `processDataset` call** (`services/libs/common/src/env.ts`); rows the source returns that
   already exist in `projectCatalog` don't count against the cap. The scheduled workflow always
   runs in `incremental` mode, processing exactly one dataset per source, so in practice this is
   20 per source per day — up to 40 new rows in `action = 'auto'` with both sources enabled. A

@@ -54,7 +54,7 @@ export async function checkTokens(): Promise<boolean> {
   for (const token of tokens) {
     try {
       await tokenRotator.updateRateLimitInfoFromApi(token, GithubAPIResource.CORE)
-    } catch (e) {
+    } catch {
       // something is wrong with the token, remove it from the list
       tokenRotator.removeToken(token)
     }
@@ -65,7 +65,7 @@ export async function checkTokens(): Promise<boolean> {
     if (token) {
       return true
     }
-  } catch (e) {
+  } catch {
     return false
   }
 }

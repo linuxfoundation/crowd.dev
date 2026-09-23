@@ -23,13 +23,13 @@ export function generateOrganizationNameVariants(name: string): string[] {
     add(withoutParens)
   }
 
-  for (const value of [...variants]) {
+  for (const value of Array.from(variants)) {
     if (value.startsWith('the ') && value.slice(4).length >= 8) {
       add(value.slice(4))
     }
   }
 
-  for (const value of [...variants]) {
+  for (const value of Array.from(variants)) {
     for (const suffix of ['project', 'foundation', 'initiative']) {
       const token = ` ${suffix}`
       if (value.endsWith(token)) {
@@ -43,7 +43,7 @@ export function generateOrganizationNameVariants(name: string): string[] {
     }
   }
 
-  for (const value of [...variants]) {
+  for (const value of Array.from(variants)) {
     if (value.includes('-')) {
       add(value.replace(/-/g, ' '))
     }

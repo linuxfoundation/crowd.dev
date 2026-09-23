@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+
 import he from 'he'
 import sanitizeHtml from 'sanitize-html'
 
@@ -11,7 +12,6 @@ import {
 } from '@crowd/types'
 
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { REDDIT_GRID } from './grid'
 import { IRedditPublishData, RedditActivityType, RedditComment, RedditPost } from './types'
 

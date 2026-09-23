@@ -1,5 +1,4 @@
 import { IProcessStreamContext, ProcessWebhookStreamHandler } from '../../types'
-
 import { getDiscourseUserByUsername } from './api/getUser'
 import { usernameIsBot } from './processStream'
 import {

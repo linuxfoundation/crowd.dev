@@ -1,4 +1,4 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
@@ -11,7 +11,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.backend
-    command: 'pnpm run start:api'
+    command: "pnpm run start:api"
     working_dir: /usr/crowd/app/backend
     env_file:
       - ../../backend/.env.dist.local
@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8080:8080'
+      - "8080:8080"
     restart: always
     networks:
       - crowd-bridge
@@ -30,7 +30,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.backend
-    command: 'pnpm run start:api:dev'
+    command: "pnpm run start:api:dev"
     working_dir: /usr/crowd/app/backend
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: api
     ports:
-      - '8080:8080'
+      - "8080:8080"
     networks:
       - crowd-bridge
     volumes:

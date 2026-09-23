@@ -1,8 +1,18 @@
 import { uniq } from 'lodash'
 
+import { ENABLE_LF_COLLECTION_MANAGEMENT, LINUX_FOUNDATION_CONFIG } from '@/conf'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { IGithubInsights } from '@/types/githubTypes'
 import { getCleanString } from '@crowd/common'
 import { GithubIntegrationService } from '@crowd/common_services'
-import { OrganizationField, QueryExecutor, findOrgById, queryOrgs } from '@crowd/data-access-layer'
+import {
+  OrganizationField,
+  QueryExecutor,
+  createProjectDocOverride,
+  deactivateProjectDocOverride,
+  findOrgById,
+  queryOrgs,
+} from '@crowd/data-access-layer'
 import { listCategoriesByIds } from '@crowd/data-access-layer/src/categories'
 import {
   CollectionField,
@@ -40,11 +50,8 @@ import { findSegmentById, hasMappedRepos } from '@crowd/data-access-layer/src/se
 import { QueryResult } from '@crowd/data-access-layer/src/utils'
 import { GithubIntegrationSettings } from '@crowd/integrations'
 import { LoggerBase } from '@crowd/logging'
+import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import { DEFAULT_WIDGET_VALUES, PlatformType, Widgets } from '@crowd/types'
-
-import { ENABLE_LF_COLLECTION_MANAGEMENT, LINUX_FOUNDATION_CONFIG } from '@/conf'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { IGithubInsights } from '@/types/githubTypes'
 
 import { IServiceOptions } from './IServiceOptions'
 
@@ -223,7 +230,9 @@ export class CollectionService extends LoggerBase {
   }
 
   async createInsightsProject(project: Partial<ICreateInsightsProject>) {
-    return SequelizeRepository.withTx(this.options, async (tx) => {
+    const isNestedTransaction = Boolean(this.options.transaction)
+
+    const createdProject = await SequelizeRepository.withTx(this.options, async (tx) => {
       const qx = SequelizeRepository.getQueryExecutor({ ...this.options, transaction: tx })
       const slug = project.slug ?? getCleanString(project.name).replace(/\s+/g, '-')
 
@@ -261,6 +270,23 @@ export class CollectionService extends LoggerBase {
 
       return txSvc.findInsightsProjectById(createdProject.id)
     })
+
+    const dispatchDocsReadiness = async () => {
+      try {
+        await this.startDocsReadinessWorkflow(createdProject.id)
+      } catch (err) {
+        this.log.error(err, 'Failed to start docs readiness workflow for new insights project')
+      }
+    }
+
+    if (isNestedTransaction) {
+      // Defer until the outer transaction commits so the workflow doesn't race the uncommitted row.
+      this.options.transaction.afterCommit(dispatchDocsReadiness)
+    } else {
+      await dispatchDocsReadiness()
+    }
+
+    return createdProject
   }
 
   async destroyInsightsProject(id: string) {
@@ -268,6 +294,37 @@ export class CollectionService extends LoggerBase {
       const qx = SequelizeRepository.getQueryExecutor({ ...this.options, transaction: tx })
       await disconnectProjectsAndCollections(qx, { insightsProjectId: id })
       await deleteInsightsProject(qx, id)
+    })
+  }
+
+  async createInsightsProjectDocOverride(projectId: string, docsUrl: string) {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const override = await createProjectDocOverride(qx, {
+      projectId,
+      docsUrl,
+      submittedBy: this.options.currentUser.id,
+    })
+
+    await this.startDocsReadinessWorkflow(projectId)
+
+    return override
+  }
+
+  async revertInsightsProjectDocOverride(projectId: string) {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const override = await deactivateProjectDocOverride(qx, projectId)
+
+    await this.startDocsReadinessWorkflow(projectId)
+
+    return override
+  }
+
+  async startDocsReadinessWorkflow(projectId: string) {
+    await this.options.temporal.workflow.start('processProjectDocsReadiness', {
+      taskQueue: 'docs-readiness',
+      workflowId: `docsReadinessProject/${projectId}`,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+      args: [{ projectId }],
     })
   }
 

@@ -9,7 +9,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
-
 import { normalizeScmUrl } from './extract'
 import { withDeadlockRetry, writeRepoLink } from './runMavenEnrichmentLoop'
 

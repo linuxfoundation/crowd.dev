@@ -1,6 +1,9 @@
 /* eslint-disable no-continue */
 import lodash from 'lodash'
 
+import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
+import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error404, Error409 } from '@crowd/common'
 import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
@@ -13,10 +16,6 @@ import {
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
 import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
-
-import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import { IServiceOptions } from '../IServiceOptions'
 

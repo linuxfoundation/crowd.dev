@@ -1,4 +1,21 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../common"
+    },
+    {
+      "path": "../data-access-layer"
+    },
+    {
+      "path": "../integrations"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

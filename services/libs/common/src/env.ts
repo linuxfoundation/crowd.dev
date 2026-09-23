@@ -1,5 +1,15 @@
 import { Edition, QueuePriorityLevel } from '@crowd/types'
 
+export function parseEnvInt(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
+}
+
 export const IS_TEST_ENV: boolean = process.env.NODE_ENV === 'test'
 
 export const IS_DEV_ENV: boolean =
@@ -68,6 +78,10 @@ export const INTEGRATION_STREAM_WORKER_PARTITIONS: Record<QueuePriorityLevel, nu
     ? Number(process.env.INTEGRATION_STREAM_WORKER_SYSTEM_PARTITIONS)
     : undefined,
 }
+
+export const DISCOVERY_NEW_PROJECTS_LIMIT = process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT
+  ? Number(process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT)
+  : 20
 
 export function getEnv() {
   if (IS_PROD_ENV) return 'prod'

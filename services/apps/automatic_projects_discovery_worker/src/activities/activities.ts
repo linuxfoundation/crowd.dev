@@ -1,19 +1,24 @@
 import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
+import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
 import {
   bulkInsertProjectCatalog,
+  findDiscoverySourceCursor,
+  findDiscoverySourceWatermark,
   findExistingProjectCatalogRepoUrls,
   findRepoUrlsInCdp,
   finishPipelineRun,
   startPipelineRun,
+  upsertDiscoverySourceCursor,
+  upsertDiscoverySourceWatermark,
 } from '@crowd/data-access-layer'
+import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
-import { DISCOVERY_NEW_PROJECTS_LIMIT } from '../config'
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'
@@ -30,16 +35,75 @@ export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()
 }
 
-export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
+export async function listDatasets(
+  sourceName: string,
+  since?: string,
+  cursor?: IDiscoverySourceCursor,
+): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
 
-  log.info({ sourceName }, 'Listing datasets.')
+  log.info({ sourceName, since: since ?? 'none', cursor: cursor ?? 'none' }, 'Listing datasets.')
 
-  const datasets = await source.listAvailableDatasets()
+  const datasets = await source.listAvailableDatasets({ since, cursor })
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
 
   return datasets
+}
+
+export interface ISourceWatermark {
+  since: string | null
+  capturedAt: string
+}
+
+// Wide enough to absorb the gap between listDatasets and processDataset (up to 90 min
+// startToCloseTimeout, plus retries) and ordinary clock skew — re-processing is harmless.
+const WATERMARK_OVERLAP_MS = 24 * 60 * 60 * 1000
+
+export async function readSourceWatermark(sourceName: string): Promise<ISourceWatermark> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const watermark = await findDiscoverySourceWatermark(qx, sourceName)
+  const capturedAt = new Date().toISOString()
+
+  const since = watermark
+    ? new Date(new Date(watermark).getTime() - WATERMARK_OVERLAP_MS).toISOString()
+    : null
+
+  log.info({ sourceName, watermark, since, capturedAt }, 'Source watermark read.')
+
+  return { since, capturedAt }
+}
+
+export async function commitSourceWatermark(
+  sourceName: string,
+  watermark: string,
+  force: boolean,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceWatermark(qx, sourceName, watermark, { force })
+
+  log.info({ sourceName, watermark, force }, 'Source watermark committed.')
+}
+
+export async function readSourceCursor(sourceName: string): Promise<IDiscoverySourceCursor | null> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const cursor = await findDiscoverySourceCursor(qx, sourceName)
+
+  log.info({ sourceName, cursor }, 'Source cursor read.')
+
+  return cursor
+}
+
+// Unlike commitSourceWatermark, called even when truncated — that's the expected
+// steady state for a cursor-based source, and dataset.cursor is already rolled back.
+export async function commitSourceCursor(
+  sourceName: string,
+  cursor: IDiscoverySourceCursor,
+): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await upsertDiscoverySourceCursor(qx, sourceName, cursor)
+
+  log.info({ sourceName, cursor }, 'Source cursor committed.')
 }
 
 export interface IProcessDatasetResult {
@@ -47,6 +111,8 @@ export interface IProcessDatasetResult {
   totalSkipped: number
   totalSkippedAlreadyInCdp: number
   totalAccepted: number
+  truncated: boolean
+  cursor?: IDiscoverySourceCursor
 }
 
 export async function processDataset(
@@ -97,6 +163,7 @@ export async function processDataset(
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
   let totalSkipped = 0
+  let truncated = false
 
   async function acceptNewRows(candidates: IDbProjectCatalogCreate[]): Promise<void> {
     const seenInChunk = new Set<string>()
@@ -133,6 +200,7 @@ export async function processDataset(
         continue
       }
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
         break
       }
       accepted.push(candidate)
@@ -154,6 +222,7 @@ export async function processDataset(
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
       source: sourceName,
+      sourceUrl: parsed.sourceUrl ?? null,
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
     })
@@ -169,6 +238,7 @@ export async function processDataset(
       })
 
       if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+        truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
           'Discovery limit reached, stopping stream.',
@@ -193,6 +263,13 @@ export async function processDataset(
     await bulkInsertProjectCatalog(qx, toInsert)
   }
 
+  // On truncation the cap can hit mid-page, dropping candidates from the page whose
+  // rows are already marked consumed — roll the cursor back one page so it's replayed.
+  const cursor =
+    dataset.cursor && truncated
+      ? { rundate: dataset.cursor.rundate, page: Math.max(dataset.cursor.page - 1, 0) }
+      : dataset.cursor
+
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
 
   log.info(
@@ -203,6 +280,7 @@ export async function processDataset(
       totalSkipped,
       totalSkippedAlreadyInCdp: skippedInCdp.length,
       totalAccepted: accepted.length,
+      truncated,
       elapsedSeconds,
     },
     'Dataset processing complete.',
@@ -213,6 +291,8 @@ export async function processDataset(
     totalSkipped,
     totalSkippedAlreadyInCdp: skippedInCdp.length,
     totalAccepted: accepted.length,
+    truncated,
+    cursor,
   }
 }
 
