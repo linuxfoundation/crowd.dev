@@ -53,6 +53,9 @@ async function refreshGithubInstallationToken(): Promise<string> {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+      // axios has no timeout by default; without one, a hung request never settles
+      // refreshPromise below, wedging every concurrent caller sharing it indefinitely.
+      timeout: 15_000,
     },
   )
 
