@@ -31,7 +31,7 @@ Treat test setup as composition of sharp primitives, not smart world-builders. P
   - **Allowlist only** — unlisted fields are untouched.
   - **Explicit always wins** — a provided value is never overwritten.
   - **Only** `undefined` **is missing** — omitted / `undefined` may be filled; `null` **is intentional and sticks**.
-  - **Labels / harmless flags only** — e.g. generated `id`, display names, join timestamps, inactive-path status flags. Ask per field: *if we invent this, could we change which production branch the test hits?* If yes, it does not belong in defaults.
+  - **Labels / harmless flags only** — e.g. generated `id`, display names, join timestamps, inactive-path status flags. Ask per field: _if we invent this, could we change which production branch the test hits?_ If yes, it does not belong in defaults.
   - **Caller owns scenario identity** when the value defines the case (names, slugs, platforms, dates, relationship targets, and any field that makes two cases different).
 
 Defaults do **not** build a realistic entity or graph. They only patch allowlisted gaps (e.g. `displayName`, `joinedAt`). Identities, org stints, activities, and other scenario data stay with the test.

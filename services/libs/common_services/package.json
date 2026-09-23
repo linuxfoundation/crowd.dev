@@ -2,18 +2,6 @@
   "name": "@crowd/common_services",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
-  },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.572.0",
     "@crowd/audit-logs": "workspace:*",
@@ -34,5 +22,8 @@
     "lodash.pick": "~4.4.0",
     "lodash.uniqby": "^4.7.0",
     "moment": "^2.30.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
   }
 }

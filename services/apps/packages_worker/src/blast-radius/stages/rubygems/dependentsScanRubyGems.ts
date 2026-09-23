@@ -2,7 +2,6 @@ import { getReverseDependents } from '@crowd/data-access-layer/src/packages/blas
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
-
 import { rubygemsConstraintMayInclude } from './rubygemsConstraint'
 
 // Same as Maven/Go/NuGet: no download-count signal, and deps.dev never resolves a

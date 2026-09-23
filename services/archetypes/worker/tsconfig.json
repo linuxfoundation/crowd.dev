@@ -1,4 +1,33 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../standard"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/database"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/opensearch"
+    },
+    {
+      "path": "../../libs/queue"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/telemetry"
+    },
+    {
+      "path": "../../libs/temporal"
+    }
+  ]
 }

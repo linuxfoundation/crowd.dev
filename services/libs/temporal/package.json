@@ -2,12 +2,6 @@
   "name": "@crowd/temporal",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
@@ -16,9 +10,6 @@
     "@temporalio/proto": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "@types/node": "catalog:"
   }
 }

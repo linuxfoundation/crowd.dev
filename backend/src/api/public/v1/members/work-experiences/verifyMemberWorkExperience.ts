@@ -1,6 +1,14 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
+import { ok } from '@/utils/api'
+import {
+  getOverlappingGroupedMemberOrganizations,
+  groupMemberOrganizations,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
+import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, memberVerifyWorkExperienceAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
@@ -13,15 +21,6 @@ import {
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
-
-import { optionsQx } from '@/database/sequelizeQueryExecutor'
-import { ok } from '@/utils/api'
-import {
-  getOverlappingGroupedMemberOrganizations,
-  groupMemberOrganizations,
-  toMemberWorkExperience,
-} from '@/utils/mapper'
-import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
   memberId: z.uuid(),

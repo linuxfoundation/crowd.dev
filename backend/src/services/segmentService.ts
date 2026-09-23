@@ -30,9 +30,8 @@ import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 import MemberRepository from '../database/repositories/memberRepository'
 import SegmentRepository from '../database/repositories/segmentRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
-
-import { IServiceOptions } from './IServiceOptions'
 import { CollectionService } from './collectionService'
+import { IServiceOptions } from './IServiceOptions'
 import OrganizationService from './organizationService'
 
 interface UnnestedActivityTypes {

@@ -1,6 +1,5 @@
 // generateStreams.ts content
 import { GenerateStreamsHandler } from '../../types'
-
 import {
   GroupsioGroupMembersStreamMetadata,
   GroupsioIntegrationSettings,

@@ -1,4 +1,4 @@
-import Sequelize, { DataTypes } from 'sequelize'
+import Sequelize, { DataTypes, WhereOptions } from 'sequelize'
 
 import { DB_CONFIG } from '../../conf'
 
@@ -8,7 +8,7 @@ export default class SequelizeArrayUtils {
     return DB_CONFIG.dialect === 'mysql' ? DataTypes.JSON : DataTypes.ARRAY(DataTypes.TEXT)
   }
 
-  static filter(tableName, fieldName, filterValue) {
+  static filter(tableName, fieldName, filterValue): WhereOptions {
     const filterValueAsArray = Array.isArray(filterValue) ? filterValue : [filterValue]
 
     if (DB_CONFIG.dialect === 'mysql') {

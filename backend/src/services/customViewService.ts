@@ -2,7 +2,6 @@ import { LoggerBase } from '@crowd/logging'
 
 import CustomViewRepository from '../database/repositories/customViewRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
-
 import { IServiceOptions } from './IServiceOptions'
 
 export default class CustomViewService extends LoggerBase {

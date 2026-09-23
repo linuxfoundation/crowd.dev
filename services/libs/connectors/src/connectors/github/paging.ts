@@ -2,6 +2,8 @@ export interface GithubWatermark {
   phase: 'backfill' | 'incremental'
   since: string | null
   cursor: string | null
+  confirmedThrough: string | null
+  coveredUntil: string | null
 }
 
 export const PAGE_SIZE = 100
@@ -15,9 +17,17 @@ export function readWatermark(raw: Record<string, unknown> | null): GithubWaterm
       phase: raw.phase,
       since: typeof raw.since === 'string' ? raw.since : null,
       cursor: typeof raw.cursor === 'string' ? raw.cursor : null,
+      confirmedThrough: typeof raw.confirmedThrough === 'string' ? raw.confirmedThrough : null,
+      coveredUntil: typeof raw.coveredUntil === 'string' ? raw.coveredUntil : null,
     }
   }
-  return { phase: 'backfill', since: null, cursor: null }
+  return {
+    phase: 'backfill',
+    since: null,
+    cursor: null,
+    confirmedThrough: null,
+    coveredUntil: null,
+  }
 }
 
 export function parseRepoChannel(channelName: string): { owner: string; repo: string } {

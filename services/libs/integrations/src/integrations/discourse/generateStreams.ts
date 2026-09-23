@@ -1,6 +1,5 @@
 // generateStreams.ts content
 import { GenerateStreamsHandler } from '../../types'
-
 import { DiscourseCategoryStreamData, DiscourseStreamType } from './types'
 
 const handler: GenerateStreamsHandler = async (ctx) => {

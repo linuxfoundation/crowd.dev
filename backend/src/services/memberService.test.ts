@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { BasicMemberIdentity } from '@/database/repositories/types/memberTypes'
 import { firstIdentityValue, normalizeDisplayName } from '@crowd/common'
 import { MemberIdentityType } from '@crowd/types'
-
-import { BasicMemberIdentity } from '@/database/repositories/types/memberTypes'
 
 describe('MemberService.upsert displayName fallback', () => {
   it('falls back to the first identity value when displayName is missing', () => {

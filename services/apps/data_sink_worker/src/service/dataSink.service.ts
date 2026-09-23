@@ -29,7 +29,6 @@ import {
 } from '@crowd/types'
 
 import { WORKER_SETTINGS } from '../conf'
-
 import ActivityService from './activity.service'
 import MemberService from './member.service'
 

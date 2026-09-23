@@ -4,7 +4,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 const log = getServiceChildLogger('getGroupsIoUserSubscriptions')
 
-interface Subscription {
+export interface Subscription {
   id: number
   object: string
   created: string

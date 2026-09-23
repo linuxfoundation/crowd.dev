@@ -1,5 +1,6 @@
 {
   "name": "app-backend",
+  "private": true,
   "description": "Backend",
   "scripts": {
     "start:api": "SERVICE=api TS_NODE_TRANSPILE_ONLY=true tsx src/bin/api.ts",
@@ -11,10 +12,6 @@
     "build": "tsc && cp package*json dist/ && cp .sequelizerc dist/.sequelizerc ",
     "sequelize-cli:source": "pnpm run build && sequelize --config src/database/sequelize-cli-config.ts --migrations-source-path src/database/migrations",
     "sequelize-cli:build": "sequelize --config database/sequelize-cli-config.js --migrations-compiled-path database/migrations",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit",
     "script": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx",
     "script:continue-run": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/continue-run.ts",
     "script:trigger-webhook": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/trigger-webhook.ts",
@@ -40,12 +37,6 @@
     "script:onboard-default-tenant:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run script:onboard-default-tenant",
     "script:create-mailing-list-integration": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-mailing-list-integration.ts",
     "script:create-mailing-list-integration:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-mailing-list-integration.ts"
-  },
-  "lint-staged": {
-    "**/*.ts": [
-      "eslint",
-      "prettier --write"
-    ]
   },
   "dependencies": {
     "@aws-sdk/client-comprehend": "^3.159.0",
@@ -138,9 +129,7 @@
     "verify-github-webhook": "^1.0.1",
     "zod": "^4.3.6"
   },
-  "private": true,
   "devDependencies": {
-    "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "@types/bunyan": "^1.8.8",
     "@types/bunyan-format": "^0.2.5",
     "@types/config": "^3.3.0",
@@ -151,19 +140,10 @@
     "@types/sanitize-html": "^2.6.2",
     "@types/superagent": "^4.1.15",
     "@types/uuid": "^9.0.2",
-    "@typescript-eslint/eslint-plugin": "^5.17.0",
-    "@typescript-eslint/parser": "^5.17.0",
     "copyfiles": "2.4.1",
     "cross-env": "7.0.2",
     "deep-object-diff": "^1.1.9",
-    "eslint": "catalog:",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-airbnb-typescript": "^16.1.4",
-    "eslint-config-prettier": "^8.5.0",
-    "eslint-plugin-import": "^2.25.4",
-    "lint-staged": "^15.4.3",
     "nodemon": "2.0.4",
-    "prettier": "catalog:",
     "rdme": "^7.2.0",
     "tsx": "catalog:",
     "typescript": "catalog:"

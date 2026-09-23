@@ -67,7 +67,9 @@ export function prepareInsert<T extends string>(table: string, columns: T[], dat
 
 export function checkUpdateRowCount(rowCount: number, expected: number) {
   if (rowCount !== expected) {
-    new Error(`Updated number of rows (${rowCount}) not equal to expected number (${expected})!`)
+    throw new Error(
+      `Updated number of rows (${rowCount}) not equal to expected number (${expected})!`,
+    )
   }
 }
 

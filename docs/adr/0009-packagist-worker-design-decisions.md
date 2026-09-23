@@ -22,10 +22,10 @@ like the one deps.dev exposes in BigQuery.
 
 ## Scope and current status
 
-| Decision area   | Status  |
-| --------------- | ------- |
-| Dependency model | decided |
-| Metadata enrichment scope | decided |
+| Decision area               | Status  |
+| --------------------------- | ------- |
+| Dependency model            | decided |
+| Metadata enrichment scope   | decided |
 | Lane architecture & cadence | decided |
 | Transitive dependent counts | decided |
 
@@ -58,25 +58,25 @@ the Packagist change brief:
 > store the resolved graph at ingest.
 
 Leaving `depends_on_version_id` NULL is the column-level **implementation** of that last sentence —
-the resolved concrete version *is* part of "the resolved graph" — locked at the plan-approval gate
+the resolved concrete version _is_ part of "the resolved graph" — locked at the plan-approval gate
 and consistent with the pre-existing schema comment (`depends_on_version_id bigint, -- resolved
 version; NULL if unknown`). Storing the declared `version_constraint` but not a pinned version means
-the two derived views — *which version a constraint resolves to* and *the full transitive tree* —
+the two derived views — _which version a constraint resolves to_ and _the full transitive tree_ —
 are both computed on read.
 
-**Why not pin `depends_on_version_id` at ingest (as deps.dev does):** a resolved version is *derived
-and volatile*. `^3.0` resolves to whatever `psr/log` patch is newest this week; a stored pin goes
+**Why not pin `depends_on_version_id` at ingest (as deps.dev does):** a resolved version is _derived
+and volatile_. `^3.0` resolves to whatever `psr/log` patch is newest this week; a stored pin goes
 stale the moment a patch ships and would need continuous rewriting. deps.dev's own worker documents
 exactly this churn — re-resolving `^4.17.0` every snapshot is what produced its ~555M-row edge
 exports and forced a snapshot-diff to suppress it. We sidestep it entirely by storing the immutable
-declared constraint and resolving on demand. deps.dev pins because it *already* has a fully-resolved
+declared constraint and resolving on demand. deps.dev pins because it _already_ has a fully-resolved
 graph in BigQuery for free; we only get manifests, so resolving eagerly would mean building and
 continuously re-running a Composer resolver for no durable benefit.
 
 **Why store `dev` edges when deps.dev doesn't:** deps.dev's resolved graph is runtime-only — every
 edge lands as `'direct'`, it has no dev/peer notion. Because we read the raw manifest we can split
-`require-dev` into `'dev'`, so Packagist edges are *richer per-edge* (dev deps + declared
-constraints) even though they are *shallower* (no resolved target version) than deps.dev's.
+`require-dev` into `'dev'`, so Packagist edges are _richer per-edge_ (dev deps + declared
+constraints) even though they are _shallower_ (no resolved target version) than deps.dev's.
 
 **Consequences.**
 
@@ -128,7 +128,7 @@ parity with what deps.dev populates for its ecosystems.
 **Why this deliberately diverges from pypi:** the pypi sibling documents critical-only as the
 "intended steady state" with all-packages as a temporary bootstrap mode. That design assumes
 deps.dev provides package-level data for the whole ecosystem, so per-package registry enrichment
-only needs to deepen the critical slice. Packagist has no such backstop; the registry crawl *is*
+only needs to deepen the critical slice. Packagist has no such backstop; the registry crawl _is_
 the universe source. The p2 endpoint is a static, CDN-served file designed to be mirrored (it is
 how Composer clients resolve), with `If-Modified-Since`/304 replay — so the steady-state weekly
 cost after the first full pass is dominated by 304s, not re-parses.
@@ -218,7 +218,7 @@ transitive dependents vs 471 registry-reported direct) and closes most of the cr
 vs ecosyste.ms. `is_critical` is a BOOL_OR across signals, so enabling this can only add
 critical packages — the same measurement-first precedent as the sonatype signal.
 
-**This does not reopen the "no resolved graph at ingest" decision** (see *Dependency model*
+**This does not reopen the "no resolved graph at ingest" decision** (see _Dependency model_
 above). No versions are resolved and no per-edge resolved targets are stored; the closure is a
 package-level derived aggregate — the same count columns deps.dev hands us pre-computed for
 npm/maven/pypi/cargo, and the same exact-closure computation the deps-dev worker already runs

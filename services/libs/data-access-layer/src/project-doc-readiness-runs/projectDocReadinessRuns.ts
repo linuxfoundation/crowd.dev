@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import {
   DocReadinessRunTrigger,
   IDbDocReadinessRun,

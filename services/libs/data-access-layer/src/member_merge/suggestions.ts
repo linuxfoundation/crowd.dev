@@ -7,7 +7,6 @@ import {
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-
 import { removeMemberNoMerge } from './noMerge'
 
 export async function upsertMemberMergeSuggestions(
@@ -96,6 +95,7 @@ export async function upsertMemberMergeSuggestions(
               WHERE ${pairMatch}
             )
             ${thresholdFilter}
+          ON CONFLICT ("memberId", "toMergeId") DO NOTHING
         `,
         params,
       )

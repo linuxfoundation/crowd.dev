@@ -33,15 +33,15 @@ there is no second column.
 
 Base tier by `source` (and `provenance` for deps.dev):
 
-| Source | Base |
-| --- | --- |
-| `manual` | 0.99 |
-| `deps_dev` — SLSA provenance | 0.99 |
-| `deps_dev` — rubygems/pypi attestation | 0.95 |
-| `deps_dev` — `GO_ORIGIN` | 0.90 |
-| `deps_dev` — other | 0.50 |
-| `declared` | 0.85 (0.80 for maven) |
-| `heuristic` | 0.30 |
+| Source                                 | Base                  |
+| -------------------------------------- | --------------------- |
+| `manual`                               | 0.99                  |
+| `deps_dev` — SLSA provenance           | 0.99                  |
+| `deps_dev` — rubygems/pypi attestation | 0.95                  |
+| `deps_dev` — `GO_ORIGIN`               | 0.90                  |
+| `deps_dev` — other                     | 0.50                  |
+| `declared`                             | 0.85 (0.80 for maven) |
+| `heuristic`                            | 0.30                  |
 
 Penalties, stacked, floored at 0.05:
 
@@ -90,6 +90,7 @@ ties and logs them as a data-quality signal rather than failing.
   attestation — reach the table at all, and what lets a row written before
   `provenance` existed acquire one. Keep-highest arbitrates between sources; it is
   not a ratchet within one.
+
 - **Rescores lock in primary-key order** (`ORDER BY pr.id FOR UPDATE`) so a
   package-scoped and a repo-scoped rescore over an overlapping set cannot
   deadlock.

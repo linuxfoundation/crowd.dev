@@ -1,11 +1,11 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
   SERVICE: rubygems-worker
   SHELL: /bin/sh
-  SUPPRESS_NO_CONFIG_WARNING: 'true'
+  SUPPRESS_NO_CONFIG_WARNING: "true"
   CROWD_TEMPORAL_TASKQUEUE: rubygems-worker
 
 services:
@@ -13,7 +13,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:rubygems-worker'
+    command: "pnpm run start:rubygems-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -30,7 +30,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:rubygems-worker'
+    command: "pnpm run dev:rubygems-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local

@@ -7,11 +7,25 @@ import {
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { isPrivateOrLoopbackHost } from '../discovery/http'
 import { svc } from '../main'
 import { loadAfdocs } from '../scoring/afdocs'
 import { computeScores } from '../scoring/computeScores'
 import { trimReport } from '../scoring/trimReport'
 import { IResolvedDocsUrl } from '../types'
+
+// Blocks the literal-target vector only; afdocs' own redirect-following fetch isn't intercepted here.
+function isUnsafeDocsUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return true
+  }
+  return url.protocol !== 'http:' && url.protocol !== 'https:'
+    ? true
+    : isPrivateOrLoopbackHost(url.hostname)
+}
 
 export async function scoreProject(
   projectId: string,
@@ -21,6 +35,12 @@ export async function scoreProject(
   if (!resolved.docsUrl) {
     throw ApplicationFailure.nonRetryable(
       `scoreProject requires a resolved docsUrl for project ${projectId}`,
+    )
+  }
+
+  if (isUnsafeDocsUrl(resolved.docsUrl)) {
+    throw ApplicationFailure.nonRetryable(
+      `Refusing to score project ${projectId}: docsUrl resolves to a private or loopback host`,
     )
   }
 
@@ -36,6 +56,12 @@ export async function scoreProject(
   const { runChecks } = await loadAfdocs()
   const report = await runChecks(resolved.docsUrl)
   const durationMs = Date.now() - startedAt
+
+  if (report.results.length > 0 && report.results.every((result) => result.status === 'error')) {
+    throw ApplicationFailure.create({
+      message: `Docs host unreachable while scoring project ${projectId}: every check errored`,
+    })
+  }
 
   const { overallScore, overallGrade, categoryScores } = computeScores(report.results)
   const checkRows = trimReport(report.results).map((row) => ({ ...row, durationMs: null }))

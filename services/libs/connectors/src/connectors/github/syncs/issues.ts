@@ -51,7 +51,7 @@ async function runIssuesSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const issuesSync: SyncDefinition = {
   name: 'issues',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runIssuesSync,
 }

@@ -49,19 +49,20 @@ Note whether `backend/`, `services/**`, `frontend/`, `pnpm-lock.yaml`, and/or `p
 
 ## Check 2–4: Lint, Format, TypeScript
 
-**Backend + services** — one command covers lint, format-check, and tsc-check, with dependency-graph-aware fan-out (packages that depend on a changed lib are checked too) and automatic fallback to a full workspace check when shared config (eslint/prettier/tsconfig base, lockfile, workspace yaml) changed:
+**Backend + services** — one command covers lint (root `pnpm lint` / oxlint), format-check (root `pnpm format-check` / oxfmt), and tsc-check (`tsc -b` from the repo root):
 
 ```bash
 ./scripts/cli lint-changed
 ```
 
-Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, or `pnpm-workspace.yaml` has changed files — the last two trigger `lint-changed`'s own full-workspace fallback. Skip only if none of these changed.
+Run this whenever `backend/`, `services/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, docs, workflows, or other oxfmt-owned files have changed. Skip only for frontend-only changes.
 
 The three checks run in order (lint → format-check → tsc-check) and stop at the first failure — same fail-fast behavior as the CI job. If lint fails, format/tsc did not run yet; fix and re-run to see the next check, same as watching CI re-run per push.
 
 Fix any errors it reports before proceeding:
+
 - Lint errors — unused imports, missing types, rule violations
-- Format violations — fix with `pnpm format` (from the relevant workspace) then `git add -p`
+- Format violations — fix with `pnpm format` from the repo root then `git add -p`
 - TypeScript errors — fix all before proceeding
 
 **Frontend** — no dependency-graph tooling exists for it yet; run manually if `frontend/` has changed files:
@@ -88,7 +89,7 @@ Flag any changes to these protected files — they should NOT be modified withou
 - `scripts/cli`, `scripts/scaffold.yaml`, `scripts/scaffold.insights.yaml`
 - `.husky/*`, `commitlint.config.js`
 - `.github/workflows/**`, `.github/actions/**`
-- `tsconfig*.json`, `.eslintrc*`, `.prettierrc*`
+- `tsconfig*.json`, `.oxlintrc*`, `.oxfmtrc*`, `.eslintrc*`, `.prettierrc*`
 - `pnpm-lock.yaml`, `package.json`, `*/package.json`
 - `CLAUDE.md`, `.claude/settings.json`
 
@@ -116,6 +117,7 @@ git diff --stat origin/main...HEAD
 ```
 
 List:
+
 1. **New files created** — with their purpose
 2. **Modified files** — with what changed
 3. **API changes** — any new or modified routes in `backend/src/api/`

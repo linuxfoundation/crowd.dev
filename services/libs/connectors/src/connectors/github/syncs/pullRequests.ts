@@ -58,7 +58,7 @@ async function runPullRequestsSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const pullRequestsSync: SyncDefinition = {
   name: 'pull-requests',
-  cadenceMinutes: 60,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runPullRequestsSync,
 }

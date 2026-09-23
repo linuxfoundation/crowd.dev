@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import {
   KEEP_HIGHEST_CONFLICT_UPDATE,
   PackageRepoLinkClaim,
