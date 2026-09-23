@@ -88,6 +88,25 @@ describe('scoreProject', () => {
     expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
   })
 
+  test('rejects if runChecks exceeds the scoring timeout, without persisting anything', async () => {
+    vi.useFakeTimers()
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: null,
+    })
+    mocks.runChecks.mockReturnValue(new Promise(() => {}))
+
+    const result = scoreProject('project-1', 'run-1', RESOLVED)
+    const assertion = expect(result).rejects.toThrow(/exceeded/)
+    await vi.advanceTimersByTimeAsync(25 * 60 * 1000)
+    await assertion
+
+    expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
   test('runs checks, computes scores, and persists both check rows and the readiness row in one transaction', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue({
       id: 'project-1',
