@@ -19,6 +19,9 @@ const { findReposForStarSnapshot, fetchAndSaveStarSnapshotBatch } = proxyActivit
 const GRAPHQL_BATCH_SIZE = 100
 const CONCURRENCY = 5
 const PAGE_SIZE = 2_000
+// A rejected batch usually means a transient blip - one retry pass after a cooldown
+// recovers most of them instead of leaving a permanent gap for that day.
+const REJECTED_BATCH_RETRY_DELAY_MS = 30_000
 
 export interface ICaptureStarSnapshotsArgs {
   capturedAt?: string
@@ -39,12 +42,15 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   let succeeded = args.succeededSoFar ?? 0
   let failed = args.failedSoFar ?? 0
-  let rejectedBatches = 0
+  let rejectedBatches: (typeof batches)[number][] = []
 
-  for (let i = 0; i < batches.length; i += CONCURRENCY) {
-    // Rate-limited batches retry in place via a durable workflow sleep, not a blocking
-    // activity call - mirrors backfillStarHistoryBatch's handling of the same quota problem.
-    let window = batches.slice(i, i + CONCURRENCY)
+  // Runs one window of batches to completion, handling rate-limit backoff in place.
+  // Returns the batches that were still rejected (activity retries exhausted) when done.
+  const runWindow = async (
+    initialWindow: (typeof batches)[number][],
+  ): Promise<(typeof batches)[number][]> => {
+    let window = initialWindow
+    const rejected: (typeof batches)[number][] = []
 
     while (window.length > 0) {
       const results = await Promise.allSettled(
@@ -56,8 +62,7 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
       for (const [idx, result] of results.entries()) {
         if (result.status === 'rejected') {
-          rejectedBatches++
-          failed += window[idx].length
+          rejected.push(window[idx])
           log.warn('Failed to capture star snapshot batch', {
             repoCount: window[idx].length,
             error: (result.reason as Error)?.message ?? result.reason,
@@ -93,13 +98,36 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
         await sleep(waitMs)
       }
     }
+
+    return rejected
+  }
+
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    rejectedBatches.push(...(await runWindow(batches.slice(i, i + CONCURRENCY))))
+  }
+
+  // One retry pass over whatever's still rejected before giving up on it (CM-1441).
+  if (rejectedBatches.length > 0 && rejectedBatches.length < batches.length) {
+    await sleep(REJECTED_BATCH_RETRY_DELAY_MS)
+    const stillRejected: (typeof batches)[number][] = []
+    for (let i = 0; i < rejectedBatches.length; i += CONCURRENCY) {
+      stillRejected.push(...(await runWindow(rejectedBatches.slice(i, i + CONCURRENCY))))
+    }
+    for (const batch of stillRejected) {
+      failed += batch.length
+    }
+    rejectedBatches = stillRejected
+  } else {
+    for (const batch of rejectedBatches) {
+      failed += batch.length
+    }
   }
 
   const total = (args.totalSoFar ?? 0) + repos.length
 
   // A few rejected batches self-heal (next run's diff, or the gap backfill) - only a fully
   // wiped-out page signals something systemic (auth/token/outage) worth failing the run over.
-  if (batches.length > 0 && rejectedBatches === batches.length) {
+  if (batches.length > 0 && rejectedBatches.length === batches.length) {
     // A plain Error only fails the workflow task (infinite replay); ApplicationFailure
     // is required to fail the execution so the schedule's retry policy engages.
     throw ApplicationFailure.create({
@@ -108,9 +136,9 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
     })
   }
 
-  if (rejectedBatches > 0) {
+  if (rejectedBatches.length > 0) {
     log.error('star snapshot capture had partial batch failures on this page', {
-      rejectedBatches,
+      rejectedBatches: rejectedBatches.length,
       totalBatches: batches.length,
       succeeded,
       failed,

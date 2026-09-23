@@ -2,7 +2,11 @@ import { randomUUID } from 'crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 
-import { findRepoIdsWithStarSnapshotGaps } from '@crowd/data-access-layer'
+import {
+  findAllRepoIdsWithStarSnapshotGaps,
+  findRepoIdsWithStarSnapshotGaps,
+  findReposForStarSnapshot,
+} from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -29,6 +33,12 @@ const DEFAULT_RESERVED_CORE_RATE_LIMIT = 2_000
 const DEFAULT_CONCURRENCY = 5
 const DEFAULT_CHECKPOINT_FILE = '/var/lib/star-snapshot-worker/backfill-checkpoint.json'
 const DEFAULT_COMPLETED_REPOS_FILE = '/var/lib/star-snapshot-worker/backfill-completed-repos.json'
+// --gapped-only keeps its own progress files so it can't clobber a normal full-sweep run's
+// checkpoint/completed-repos state (or vice versa) if the two are ever run against each other.
+const DEFAULT_GAPPED_ONLY_CHECKPOINT_FILE =
+  '/var/lib/star-snapshot-worker/backfill-gapped-only-checkpoint.json'
+const DEFAULT_GAPPED_ONLY_COMPLETED_REPOS_FILE =
+  '/var/lib/star-snapshot-worker/backfill-gapped-only-completed-repos.json'
 
 interface Checkpoint {
   afterUrl: string
@@ -106,11 +116,18 @@ async function clearCompletedRepoIds(path: string): Promise<void> {
 const main = async () => {
   const dryRun = process.argv.includes('--dry-run')
   const fresh = process.argv.includes('--fresh')
+  // Targets only currently-gapped repos instead of sweeping every eligible one - fixes a
+  // specific gap on demand without a full backfill pass (CM-1441).
+  const gappedOnly = process.argv.includes('--gapped-only')
   const afterUrlOverride = readFlagValue('--after-url')
-  const checkpointFile =
-    process.env.STAR_SNAPSHOT_BACKFILL_CHECKPOINT_FILE ?? DEFAULT_CHECKPOINT_FILE
-  const completedReposFile =
-    process.env.STAR_SNAPSHOT_BACKFILL_COMPLETED_REPOS_FILE ?? DEFAULT_COMPLETED_REPOS_FILE
+  const checkpointFile = gappedOnly
+    ? process.env.STAR_SNAPSHOT_BACKFILL_GAPPED_ONLY_CHECKPOINT_FILE ??
+      DEFAULT_GAPPED_ONLY_CHECKPOINT_FILE
+    : process.env.STAR_SNAPSHOT_BACKFILL_CHECKPOINT_FILE ?? DEFAULT_CHECKPOINT_FILE
+  const completedReposFile = gappedOnly
+    ? process.env.STAR_SNAPSHOT_BACKFILL_GAPPED_ONLY_COMPLETED_REPOS_FILE ??
+      DEFAULT_GAPPED_ONLY_COMPLETED_REPOS_FILE
+    : process.env.STAR_SNAPSHOT_BACKFILL_COMPLETED_REPOS_FILE ?? DEFAULT_COMPLETED_REPOS_FILE
   const reservedCoreRateLimit = readIntEnv(
     'STAR_SNAPSHOT_BACKFILL_RESERVED_CORE_RATE_LIMIT',
     DEFAULT_RESERVED_CORE_RATE_LIMIT,
@@ -119,12 +136,14 @@ const main = async () => {
   const concurrency = readIntEnv('STAR_SNAPSHOT_BACKFILL_CONCURRENCY', DEFAULT_CONCURRENCY, false)
 
   let afterUrl = afterUrlOverride
+  let resumedFromCheckpoint = false
   if (!afterUrl && fresh) {
     await clearCheckpoint(checkpointFile)
   } else if (!afterUrl) {
     const checkpoint = await readCheckpoint(checkpointFile)
     if (checkpoint) {
       afterUrl = checkpoint.afterUrl
+      resumedFromCheckpoint = true
       log.info({ checkpoint }, 'resuming star snapshot backfill from checkpoint')
     }
   }
@@ -142,6 +161,7 @@ const main = async () => {
     {
       dryRun,
       fresh,
+      gappedOnly,
       afterUrl,
       checkpointFile,
       completedReposFile,
@@ -157,9 +177,31 @@ const main = async () => {
   await qx.selectOne('SELECT 1')
   log.info('Connected to database.')
 
-  // A repo can be marked complete yet still have a gap (e.g. an earlier interrupted
-  // run) - re-check and reprocess it instead of trusting the flag forever.
-  if (completedRepoIds.size > 0) {
+  if (gappedOnly && !resumedFromCheckpoint) {
+    // Everyone not currently gapped is pre-marked "completed" so the scan/skip loop below
+    // flies through them, touching only the repos actually gapped right now (CM-1441).
+    const allRepos = await findReposForStarSnapshot(qx)
+    const gappedRepoIds = new Set(
+      await findAllRepoIdsWithStarSnapshotGaps(
+        qx,
+        allRepos.map((repo) => repo.repositoryId),
+      ),
+    )
+    completedRepoIds.clear()
+    for (const repo of allRepos) {
+      if (!gappedRepoIds.has(repo.repositoryId)) {
+        completedRepoIds.add(repo.repositoryId)
+      }
+    }
+    log.info(
+      { totalRepos: allRepos.length, gappedRepoCount: gappedRepoIds.size },
+      'gapped-only backfill targeting currently-gapped repos',
+    )
+  }
+
+  // A repo can be marked complete yet still have a gap (e.g. an interrupted run) - re-check
+  // it. Skipped in gapped-only mode, which already re-derives completedRepoIds every run.
+  if (!gappedOnly && completedRepoIds.size > 0) {
     const gappedRepoIds = await findRepoIdsWithStarSnapshotGaps(qx, [...completedRepoIds])
     const unmarked = gappedRepoIds.filter((id) => completedRepoIds.delete(id)).length
     if (unmarked > 0) {

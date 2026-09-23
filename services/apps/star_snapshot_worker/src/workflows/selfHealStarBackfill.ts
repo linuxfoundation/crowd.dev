@@ -11,7 +11,9 @@ import {
 import * as activities from '../activities'
 import { backfillStarHistoryBatch } from './backfillStarHistoryBatch'
 
-const { findReposNeedingStarBackfill } = proxyActivities<typeof activities>({
+const { findReposNeedingStarBackfill, findReposNeedingGapHeal } = proxyActivities<
+  typeof activities
+>({
   startToCloseTimeout: '2 minutes',
   retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
@@ -81,6 +83,17 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
     const batch = repos.slice(i, i + BATCH_SIZE)
     await startBatchChild(batch, batchWorkflowId(batch))
     batchesDispatched++
+  }
+
+  // Runs once per full sweep, not per page - args.afterUrl is only unset on the true first
+  // page, and this covers completed repos, a population the paged scan above never touches.
+  if (args.afterUrl === undefined) {
+    const gapped = await findReposNeedingGapHeal()
+    for (let i = 0; i < gapped.length; i += BATCH_SIZE) {
+      const batch = gapped.slice(i, i + BATCH_SIZE)
+      await startBatchChild(batch, batchWorkflowId(batch))
+      batchesDispatched++
+    }
   }
 
   if (repos.length === PAGE_SIZE) {
