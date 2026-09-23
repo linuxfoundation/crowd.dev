@@ -91,7 +91,7 @@ Flag any changes to these protected files — they should NOT be modified withou
 - `.github/workflows/**`, `.github/actions/**`
 - `tsconfig*.json`, `.oxlintrc*`, `.oxfmtrc*`, `.eslintrc*`, `.prettierrc*`
 - `pnpm-lock.yaml`, `package.json`, `*/package.json`
-- `CLAUDE.md`, `.claude/settings.json`
+- `AGENTS.md`, `.claude/settings.json`
 
 If protected files appear in the diff, warn the contributor and ask them to revert or get code owner approval.
 
