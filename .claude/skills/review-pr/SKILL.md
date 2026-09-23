@@ -21,7 +21,7 @@ The review is backed by these living sources of truth — always pull current co
 
 - `.claude/rules/*.md` — all project rules
 - `.claude/hooks/guard-protected-files.sh` — the authoritative protected-files list
-- `CLAUDE.md` — project conventions, patterns in transition
+- `AGENTS.md` — project conventions, patterns in transition
 
 ---
 
@@ -95,7 +95,7 @@ Prompt for the agent:
 > For each file, read it with `git show origin/<headRefName>:<path>` and check against:
 >
 > 1. `.claude/rules/*.md` — glob and read all rule files
-> 2. `CLAUDE.md` — project conventions and patterns-in-transition
+> 2. `AGENTS.md` — project conventions and patterns-in-transition
 > 3. Domain checklists:
 >    - Backend files (`backend/**`) → `.claude/skills/review-pr/references/backend-checklist.md`
 >    - Frontend files (`frontend/**`) → `.claude/skills/review-pr/references/frontend-checklist.md`
@@ -113,7 +113,7 @@ Prompt for the agent:
 > Return findings as JSON:
 > `[{ "file": "...", "line": N, "severity": "CRITICAL|SHOULD_FIX|NIT", "rule": "<source>:<section>", "message": "...", "suggestion": "..." }]`
 >
-> **If you cannot quote the rule from a loaded rule file, checklist, or CLAUDE.md, drop the finding. Hallucinated rules are worse than missed ones.**
+> **If you cannot quote the rule from a loaded rule file, checklist, or AGENTS.md, drop the finding. Hallucinated rules are worse than missed ones.**
 
 ---
 
@@ -188,7 +188,7 @@ Wait for the Phase 2 enforcer Agent to complete. Then compile all findings.
 
 Before surfacing any finding, drop it if:
 
-- The `rule` field cannot be matched by string search in the loaded rule files, checklists, or CLAUDE.md
+- The `rule` field cannot be matched by string search in the loaded rule files, checklists, or AGENTS.md
 - It relates to patterns from other codebases (Angular, Nuxt, Go-specific rules, etc.)
 - It flags legacy Sequelize/class usage in files that are clearly already legacy (`backend/src/database/repositories/`, `backend/src/services/`) — only flag NEW usage
 
