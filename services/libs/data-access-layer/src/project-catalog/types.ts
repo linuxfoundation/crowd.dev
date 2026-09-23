@@ -12,13 +12,22 @@ export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
 
 export type ProjectCatalogActionCounts = Record<ProjectCatalogAction, number>
 
+export const PROJECT_CATALOG_HUMAN_PROVENANCES = ['github-discussion', 'slack-tag'] as const
+export const PROJECT_CATALOG_BULK_PROVENANCES = ['lf-criticality-score'] as const
+
 export const PROJECT_CATALOG_PROVENANCES = [
-  'github-discussion',
-  'slack-tag',
-  'lf-criticality-score',
+  ...PROJECT_CATALOG_HUMAN_PROVENANCES,
+  ...PROJECT_CATALOG_BULK_PROVENANCES,
 ] as const
 
 export type ProjectCatalogProvenance = (typeof PROJECT_CATALOG_PROVENANCES)[number]
+export type ProjectCatalogHumanProvenance = (typeof PROJECT_CATALOG_HUMAN_PROVENANCES)[number]
+
+export function isHumanProjectCatalogProvenance(
+  value: ProjectCatalogProvenance,
+): value is ProjectCatalogHumanProvenance {
+  return (PROJECT_CATALOG_HUMAN_PROVENANCES as readonly string[]).includes(value)
+}
 
 export interface IDbProjectCatalog {
   id: string

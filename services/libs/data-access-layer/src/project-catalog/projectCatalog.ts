@@ -5,8 +5,10 @@ import {
   IDbProjectCatalogCreate,
   IDbProjectCatalogUpdate,
   PROJECT_CATALOG_ACTIONS,
+  PROJECT_CATALOG_BULK_PROVENANCES,
   ProjectCatalogAction,
   ProjectCatalogActionCounts,
+  ProjectCatalogHumanProvenance,
   ProjectCatalogProvenance,
 } from './types'
 
@@ -155,6 +157,38 @@ export async function findExistingProjectCatalogRepoUrls(
   )
 
   return new Set(rows.map((row) => row.repoUrl))
+}
+
+export async function promoteProjectCatalogProvenance(
+  qx: QueryExecutor,
+  provenance: ProjectCatalogHumanProvenance,
+  refs: { repoUrl: string; sourceUrl?: string | null }[],
+): Promise<number> {
+  if (refs.length === 0) {
+    return 0
+  }
+
+  const values = refs.map((ref) => ({
+    repoUrl: ref.repoUrl,
+    sourceUrl: ref.sourceUrl ?? null,
+  }))
+
+  return qx.result(
+    `
+    UPDATE "projectCatalog" pc
+    SET "provenance" = $(provenance),
+        "sourceUrl" = COALESCE(pc."sourceUrl", v."sourceUrl"),
+        "updatedAt" = NOW()
+    FROM jsonb_to_recordset($(values)::jsonb) AS v("repoUrl" text, "sourceUrl" text)
+    WHERE pc."repoUrl" = v."repoUrl"
+      AND (pc."provenance" IS NULL OR pc."provenance" = ANY($(overridable)::text[]))
+    `,
+    {
+      provenance,
+      values: JSON.stringify(values),
+      overridable: PROJECT_CATALOG_BULK_PROVENANCES,
+    },
+  )
 }
 
 export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
@@ -476,7 +510,7 @@ export async function upsertProjectCatalogManualAction(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = 'manual',
-      "provenance" = COALESCE("projectCatalog"."provenance", EXCLUDED."provenance"),
+      "provenance" = COALESCE(EXCLUDED."provenance", "projectCatalog"."provenance"),
       "action" = EXCLUDED."action",
       "evaluatedAt" = CASE
         WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL

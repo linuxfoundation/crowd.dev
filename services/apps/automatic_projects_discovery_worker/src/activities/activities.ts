@@ -9,13 +9,17 @@ import {
   findExistingProjectCatalogRepoUrls,
   findRepoUrlsInCdp,
   finishPipelineRun,
+  promoteProjectCatalogProvenance,
   startPipelineRun,
   upsertDiscoverySourceCursor,
   upsertDiscoverySourceWatermark,
 } from '@crowd/data-access-layer'
 import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
-import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
+import {
+  IDbProjectCatalogCreate,
+  isHumanProjectCatalogProvenance,
+} from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
@@ -110,6 +114,7 @@ export interface IProcessDatasetResult {
   totalRows: number
   totalSkipped: number
   totalSkippedAlreadyInCdp: number
+  totalPromoted: number
   totalAccepted: number
   truncated: boolean
   cursor?: IDiscoverySourceCursor
@@ -163,6 +168,7 @@ export async function processDataset(
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
   let totalSkipped = 0
+  let totalPromoted = 0
   let truncated = false
 
   async function acceptNewRows(candidates: IDbProjectCatalogCreate[]): Promise<void> {
@@ -179,6 +185,19 @@ export async function processDataset(
       qx,
       unseen.map((c) => c.repoUrl),
     )
+
+    const humanProvenance = source.provenance
+    if (isHumanProjectCatalogProvenance(humanProvenance)) {
+      const alreadyCatalogued = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
+      if (alreadyCatalogued.length > 0) {
+        totalPromoted += await promoteProjectCatalogProvenance(
+          qx,
+          humanProvenance,
+          alreadyCatalogued,
+        )
+      }
+    }
+
     const fresh = unseen.filter((c) => !existingRepoUrls.has(c.repoUrl))
     if (fresh.length === 0) {
       return
@@ -280,6 +299,7 @@ export async function processDataset(
       totalRows,
       totalSkipped,
       totalSkippedAlreadyInCdp: skippedInCdp.length,
+      totalPromoted,
       totalAccepted: accepted.length,
       truncated,
       elapsedSeconds,
@@ -291,6 +311,7 @@ export async function processDataset(
     totalRows,
     totalSkipped,
     totalSkippedAlreadyInCdp: skippedInCdp.length,
+    totalPromoted,
     totalAccepted: accepted.length,
     truncated,
     cursor,
