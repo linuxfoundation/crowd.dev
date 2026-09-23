@@ -41,12 +41,8 @@ function fnv1a32Hex(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-// Content-addressed (not positional) so a workflow retry with a reshuffled candidate list can't
-// collide two different batches under REJECT_DUPLICATE and silently skip one. Namespaced by scan
-// kind so a gap-heal batch can never collide with a main-scan batch under REJECT_DUPLICATE and
-// get silently skipped as an already-started duplicate. The main-scan ID format is already live,
-// so `namespaced` (gated by patched()) keeps an in-flight main-scan batch dispatched under the
-// old, un-namespaced format from getting a different-looking ID on replay.
+// Content-addressed so a retry with a reshuffled candidate list can't collide two batches
+// under REJECT_DUPLICATE; namespaced by scanKind so gap-heal can't collide with main-scan.
 function batchWorkflowId(
   scanKind: 'main' | 'gap-heal',
   batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
@@ -94,9 +90,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
   const mainScanDone = args.mainScanDone ?? false
   const gapHealDone = args.gapHealDone ?? false
 
-  // patched() keeps a main-scan batch already dispatched in this run's history on its old,
-  // un-namespaced child-workflow ID so a replay after this deploy doesn't compute a
-  // different-looking ID for that call and hit a nondeterminism error.
+  // Keeps an in-flight main-scan batch's ID stable across the deploy that added namespacing.
   const namespacedBatchIds = patched('CM-1441-namespaced-batch-ids')
 
   let repos: Awaited<ReturnType<typeof findReposNeedingStarBackfill>> = []
@@ -109,8 +103,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
     }
   }
 
-  // patched() keeps an execution already in flight on its old command sequence so a
-  // mid-deploy replay doesn't hit a nondeterminism error.
+  // Keeps an in-flight execution on its old command sequence through a mid-deploy replay.
   const gapHealPatched = patched('CM-1441-gap-heal-scan')
   let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
   if (!gapHealDone && gapHealPatched) {
