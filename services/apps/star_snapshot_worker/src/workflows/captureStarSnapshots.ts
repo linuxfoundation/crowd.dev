@@ -106,8 +106,9 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
     rejectedBatches.push(...(await runWindow(batches.slice(i, i + CONCURRENCY))))
   }
 
-  // One retry pass over whatever's still rejected before giving up on it (CM-1441).
-  if (rejectedBatches.length > 0 && rejectedBatches.length < batches.length) {
+  // One retry pass over whatever's still rejected before giving up on it, even if every
+  // batch on this page rejected (small/last page - still worth one cooldown retry) (CM-1441).
+  if (rejectedBatches.length > 0) {
     await sleep(REJECTED_BATCH_RETRY_DELAY_MS)
     const stillRejected: (typeof batches)[number][] = []
     for (let i = 0; i < rejectedBatches.length; i += CONCURRENCY) {
@@ -117,10 +118,6 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
       failed += batch.length
     }
     rejectedBatches = stillRejected
-  } else {
-    for (const batch of rejectedBatches) {
-      failed += batch.length
-    }
   }
 
   const total = (args.totalSoFar ?? 0) + repos.length

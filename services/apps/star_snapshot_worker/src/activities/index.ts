@@ -397,18 +397,32 @@ export async function findReposNeedingStarBackfill(
   return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
 }
 
+export interface IGapHealPage {
+  gappedRepos: IRepoForStarSnapshot[]
+  pageSize: number
+  lastUrl?: string
+}
+
 // A completed repo can still pick up a fresh gap (e.g. a dropped capture batch) - this
 // finds those so selfHealStarBackfill re-sweeps them too, without a manual backfill (CM-1441).
-export async function findReposNeedingGapHeal(): Promise<IRepoForStarSnapshot[]> {
+// Paginated like findReposNeedingStarBackfill, so each call and its gap check stay bounded.
+export async function findReposNeedingGapHeal(
+  limit: number,
+  afterUrl?: string,
+): Promise<IGapHealPage> {
   const qx = pgpQx(svc.postgres.reader.connection())
-  const eligible = await findCompletedReposEligibleForGapHeal(qx)
+  const page = await findCompletedReposEligibleForGapHeal(qx, limit, afterUrl)
   const gappedIds = new Set(
     await findAllRepoIdsWithStarSnapshotGaps(
       qx,
-      eligible.map((repo) => repo.repositoryId),
+      page.map((repo) => repo.repositoryId),
     ),
   )
-  return eligible.filter((repo) => gappedIds.has(repo.repositoryId))
+  return {
+    gappedRepos: page.filter((repo) => gappedIds.has(repo.repositoryId)),
+    pageSize: page.length,
+    lastUrl: page.length > 0 ? page[page.length - 1].repoUrl : undefined,
+  }
 }
 
 // A leftover claim only costs a repo one skipped run before the TTL clears it - not worth

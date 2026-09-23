@@ -23,6 +23,9 @@ const BATCH_SIZE = 100
 
 export interface ISelfHealStarBackfillArgs {
   afterUrl?: string
+  mainScanDone?: boolean
+  gapHealAfterUrl?: string
+  gapHealDone?: boolean
   batchesDispatchedSoFar?: number
 }
 
@@ -75,30 +78,43 @@ async function startBatchChild(
 
 // Fans out to abandoned child workflows so each batch's own rate-limit retry loop doesn't
 // hold up other pages waiting on GitHub's reset.
+// Runs two independent paged scans per tick - the never-completed repos (existing behavior)
+// and, separately, completed repos that picked up a fresh gap (CM-1441) - each bounded to
+// PAGE_SIZE per activity call and carried across continueAsNew via its own cursor.
 export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {}): Promise<void> {
-  const repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
   let batchesDispatched = args.batchesDispatchedSoFar ?? 0
+  const mainScanDone = args.mainScanDone ?? false
+  const gapHealDone = args.gapHealDone ?? false
 
-  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
-    const batch = repos.slice(i, i + BATCH_SIZE)
-    await startBatchChild(batch, batchWorkflowId(batch))
-    batchesDispatched++
-  }
-
-  // Runs once per full sweep, not per page - args.afterUrl is only unset on the true first
-  // page, and this covers completed repos, a population the paged scan above never touches.
-  if (args.afterUrl === undefined) {
-    const gapped = await findReposNeedingGapHeal()
-    for (let i = 0; i < gapped.length; i += BATCH_SIZE) {
-      const batch = gapped.slice(i, i + BATCH_SIZE)
+  let repos: Awaited<ReturnType<typeof findReposNeedingStarBackfill>> = []
+  if (!mainScanDone) {
+    repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
+    for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+      const batch = repos.slice(i, i + BATCH_SIZE)
       await startBatchChild(batch, batchWorkflowId(batch))
       batchesDispatched++
     }
   }
 
-  if (repos.length === PAGE_SIZE) {
+  let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
+  if (!gapHealDone) {
+    gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
+    for (let i = 0; i < gapHealPage.gappedRepos.length; i += BATCH_SIZE) {
+      const batch = gapHealPage.gappedRepos.slice(i, i + BATCH_SIZE)
+      await startBatchChild(batch, batchWorkflowId(batch))
+      batchesDispatched++
+    }
+  }
+
+  const nextMainScanDone = mainScanDone || repos.length < PAGE_SIZE
+  const nextGapHealDone = gapHealDone || (gapHealPage?.pageSize ?? 0) < PAGE_SIZE
+
+  if (!nextMainScanDone || !nextGapHealDone) {
     await continueAsNew<typeof selfHealStarBackfill>({
-      afterUrl: repos[repos.length - 1].repoUrl,
+      afterUrl: nextMainScanDone ? undefined : repos[repos.length - 1].repoUrl,
+      mainScanDone: nextMainScanDone,
+      gapHealAfterUrl: nextGapHealDone ? undefined : gapHealPage!.lastUrl,
+      gapHealDone: nextGapHealDone,
       batchesDispatchedSoFar: batchesDispatched,
     })
     return

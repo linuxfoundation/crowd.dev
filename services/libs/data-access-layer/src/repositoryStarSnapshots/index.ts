@@ -114,22 +114,30 @@ export async function findAllRepoIdsWithStarSnapshotGaps(
 }
 
 // Completed, still-retryable repos - the population findReposNeedingStarBackfill skips.
-// Cheap index lookup; the actual gap check happens via findAllRepoIdsWithStarSnapshotGaps.
+// Paginated the same way, so a caller can bound each page's gap check (findAllRepoIdsWithStarSnapshotGaps).
 export async function findCompletedReposEligibleForGapHeal(
   qx: QueryExecutor,
+  limit: number | null = null,
+  afterUrl: string | null = null,
 ): Promise<IRepoForStarSnapshot[]> {
-  const repos: IRepoForStarSnapshot[] = await qx.select(`
-    select
-        r.id as "repositoryId",
-        r.url as "repoUrl"
-    from public.repositories r
-    join public."repositoryStarBackfillStatus" f on f."repositoryId" = r.id
-    where r."deletedAt" is null
-      and r."excluded" = false
-      and r.url like 'https://github.com%'
-      and f."completedAt" is not null
-      and f."deadLetteredAt" is null
-  `)
+  const repos: IRepoForStarSnapshot[] = await qx.select(
+    `
+      select
+          r.id as "repositoryId",
+          r.url as "repoUrl"
+      from public.repositories r
+      join public."repositoryStarBackfillStatus" f on f."repositoryId" = r.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and ($(afterUrl)::text is null or r.url > $(afterUrl))
+        and f."completedAt" is not null
+        and f."deadLetteredAt" is null
+      order by r.url asc
+      limit $(limit)
+    `,
+    { limit, afterUrl },
+  )
 
   return repos || []
 }
