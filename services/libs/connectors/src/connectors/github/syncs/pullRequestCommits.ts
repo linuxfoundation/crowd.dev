@@ -12,10 +12,10 @@ import { githubActivitySchema } from '../schemas'
 
 const COMMITS_PAGE_SIZE = 50
 
-// If GitHub keeps 502ing on additions/deletions for a page (usually a commit
-// with an expensive diff, e.g. a large merge), give up on the stats and take
-// the page without them rather than let the whole sync stall on it.
 const STATS_MAX_ATTEMPTS = 5
+const NO_STATS_MAX_ATTEMPTS = 3
+// Worst case (5 stats + 3 no-stats attempts, full backoff) is ~498s — under
+// the 600s activity timeout budget (client.ts MAX_ATTEMPTS docs the math).
 
 async function fetchCommitsPage(
   ctx: SyncContext,
@@ -35,7 +35,13 @@ async function fetchCommitsPage(
       throw err
     }
     log.warn({ err }, 'github keeps failing on commit diff stats, retrying without them')
-    return githubGraphql<PrCommitsPage>(ctx.http, PR_COMMITS_QUERY_NO_STATS, variables, log)
+    return githubGraphql<PrCommitsPage>(
+      ctx.http,
+      PR_COMMITS_QUERY_NO_STATS,
+      variables,
+      log,
+      NO_STATS_MAX_ATTEMPTS,
+    )
   }
 }
 

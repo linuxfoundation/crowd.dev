@@ -16,9 +16,8 @@ export function toCommit(commit: PrCommitNode['commit'], prId: string): GithubAc
     body: commit.message,
     url: commit.url ?? '',
     attributes: {
-      // additions/deletions are null (SERVICE_UNAVAILABLE) or absent (no-stats
-      // fallback query) when github can't compute the diff stat; defaulted to 0
-      // since the schema requires a number and there's no way to recover the value.
+      // additions/deletions are unavailable (SERVICE_UNAVAILABLE, or the
+      // no-stats fallback query) — defaulted to 0, there's no way to recover them.
       insertions: commit.additions ?? 0,
       deletions: commit.deletions ?? 0,
       // nango quirk kept for exact-match: lines = additions - deletions, not the sum

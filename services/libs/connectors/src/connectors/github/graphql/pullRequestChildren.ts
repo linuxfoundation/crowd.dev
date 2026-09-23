@@ -68,9 +68,8 @@ export interface ThreadCommentsBatchPage {
 
 export interface PrCommitNode {
   commit: {
-    // GitHub returns these as null with a SERVICE_UNAVAILABLE error when diff-stat
-    // computation times out on large diffs; not actually guaranteed non-null.
-    // Absent entirely when fetched via PR_COMMITS_QUERY_NO_STATS.
+    // Null on a SERVICE_UNAVAILABLE diff-stat error, absent entirely when
+    // fetched via PR_COMMITS_QUERY_NO_STATS — never assume these are set.
     additions?: number | null
     deletions?: number | null
     parents: { totalCount: number }
@@ -238,9 +237,8 @@ export const PR_COMMITS_QUERY = `
   }
 `
 
-// Same as PR_COMMITS_QUERY minus additions/deletions, which GitHub's resolver
-// can 502 on for commits with an expensive diff (e.g. a merge commit pulling
-// in a large upstream history). Used as a fallback once retries are exhausted.
+// PR_COMMITS_QUERY minus additions/deletions — GitHub's resolver 502s on
+// commits with an expensive diff. Fallback once stats retries are exhausted.
 export const PR_COMMITS_QUERY_NO_STATS = `
   query ($owner: String!, $repo: String!, $prNumber: Int!, $first: Int!, $cursor: String) {
     repository(name: $repo, owner: $owner) {
