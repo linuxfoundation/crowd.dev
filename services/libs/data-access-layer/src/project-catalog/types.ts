@@ -18,6 +18,7 @@ export interface IDbProjectCatalog {
   repoName: string
   repoUrl: string
   source: string | null
+  sourceUrl: string | null
   action: ProjectCatalogAction
   lfCriticalityScore: number | null
   evaluationResult: string | null
@@ -56,6 +57,7 @@ export type IDbProjectCatalogCreate = Omit<
   | 'skipReason'
 > & {
   source?: string | null
+  sourceUrl?: string | null
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
   evaluationResult?: string | null

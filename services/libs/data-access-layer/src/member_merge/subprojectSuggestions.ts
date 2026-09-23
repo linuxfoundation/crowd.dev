@@ -1,5 +1,4 @@
 import { QueryExecutor } from '../queryExecutor'
-
 import { getMemberNoMerge } from './noMerge'
 
 type SubprojectMember = {

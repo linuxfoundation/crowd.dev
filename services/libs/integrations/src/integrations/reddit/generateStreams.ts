@@ -1,5 +1,4 @@
 import { GenerateStreamsHandler } from '../../types'
-
 import { IRedditIntegrationSettings, IRedditSubredditStreamData, RedditStreamType } from './types'
 
 const handler: GenerateStreamsHandler = async (ctx) => {

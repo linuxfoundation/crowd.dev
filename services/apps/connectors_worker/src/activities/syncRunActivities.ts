@@ -213,7 +213,15 @@ export async function executeSync(unitId: string): Promise<void> {
       }),
       'sync run summary',
     )
-    await recordRunFailure(qx, unitId, errorClass, errorMessage, deadLetterAfter, nextRunAt)
+    await recordRunFailure(
+      qx,
+      unitId,
+      errorClass,
+      errorMessage,
+      deadLetterAfter,
+      nextRunAt,
+      committedWatermark === unit.watermark ? null : committedWatermark,
+    )
     throw err
   } finally {
     clearInterval(heartbeat)

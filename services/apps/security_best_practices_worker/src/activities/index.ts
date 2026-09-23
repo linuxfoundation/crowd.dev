@@ -1,8 +1,9 @@
-import { ApplicationFailure } from '@temporalio/client'
 import { exec, spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
-import { load as parseYaml } from 'js-yaml'
 import { promisify } from 'util'
+
+import { ApplicationFailure } from '@temporalio/client'
+import { load as parseYaml } from 'js-yaml'
 
 import {
   addControlEvaluationAssessment,
@@ -233,7 +234,7 @@ async function cleanupFiles(repoName: string): Promise<void> {
     )
 
     svc.log.info(`Cleaned generated files for repo: ${repoName}`)
-  } catch (err) {
+  } catch {
     svc.log.error(`Failed to clean generated files for repo: ${repoName}`)
     throw new Error(`Failed to clean generated files for repo: ${repoName}`)
   }

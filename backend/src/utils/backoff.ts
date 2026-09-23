@@ -5,7 +5,7 @@ export async function retryBackoff<T>(fn: () => Promise<T>, maxRetries: number =
   while (retries < maxRetries) {
     try {
       return await fn()
-    } catch (error) {
+    } catch {
       retries++
       // Exponential backoff with base of 2 seconds
       // 1st retry: 2s, 2nd: 4s, 3rd: 8s, etc

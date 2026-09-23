@@ -6,11 +6,7 @@
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=webhook-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
     "start:debug": "SERVICE=webhook-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
-    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "eslint --ext .ts src --max-warnings=0",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format-check": "prettier --check .",
-    "tsc-check": "tsc --noEmit"
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
@@ -29,12 +25,9 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "tsx": "catalog:",
-    "typescript": "catalog:",
     "verify-github-webhook": "^1.0.1"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22",
-    "eslint": "catalog:",
-    "prettier": "catalog:"
+    "nodemon": "^2.0.22"
   }
 }

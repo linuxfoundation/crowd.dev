@@ -29,7 +29,6 @@ import { queryActivityRelations } from '../activityRelations'
 import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { deleteMemberOrganizations } from '../members/organizations'
 import { insertOrganizationSegments } from '../organizations/segments'
-
 import {
   prepareMemberOrganizationAffiliationTimeline,
   refreshMemberOrganizationAffiliations,

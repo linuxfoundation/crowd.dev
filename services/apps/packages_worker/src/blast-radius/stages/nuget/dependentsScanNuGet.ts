@@ -3,7 +3,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
 import { highestVersion } from '../ecosystemVersions'
-
 import { nugetConstraintMayInclude } from './nugetConstraint'
 
 // NuGet dependents come from package_dependencies (deps.dev BigQuery ingestion), same as

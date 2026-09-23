@@ -56,17 +56,19 @@ function isPrivateIpv6(addr: string): boolean {
 }
 
 export function isPrivateOrLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  if (PRIVATE_HOSTNAME_RE.test(host)) {
-    return true
+  const host = hostname.toLowerCase().replace(/\.$/, '')
+  if (host.includes(':')) {
+    return isPrivateIpv6(host)
   }
   if (IPV4_RE.test(host)) {
     return isPrivateIpv4(host)
   }
-  if (host.includes(':')) {
-    return isPrivateIpv6(host)
+  if (PRIVATE_HOSTNAME_RE.test(host)) {
+    return true
   }
-  return false
+  // A public hostname always has at least one dot (domain + TLD); an unqualified
+  // single-label name can resolve internally via local DNS search domains.
+  return !host.includes('.')
 }
 
 function isUnsafeUrl(raw: string): boolean {
@@ -99,9 +101,11 @@ async function guardedFetch(url: string, timeoutMs: number): Promise<Response | 
     if (REDIRECT_STATUSES.has(response.status)) {
       const location = response.headers.get('location')
       if (!location) {
+        await response.body?.cancel()
         return null
       }
       current = new URL(location, current).toString()
+      await response.body?.cancel()
       continue
     }
     return response
@@ -151,12 +155,14 @@ export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResu
       return { ok: false, status: 0, finalUrl: '', contentType: '' }
     }
 
-    return {
+    const result: IProbeResult = {
       ok: response.ok,
       status: response.status,
       finalUrl: response.url,
       contentType: response.headers.get('content-type') ?? '',
     }
+    await response.body?.cancel()
+    return result
   } catch {
     return { ok: false, status: 0, finalUrl: '', contentType: '' }
   }
@@ -164,7 +170,7 @@ export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResu
 
 export async function isLiveDocs(url: string): Promise<boolean> {
   const result = await probe(url)
-  return result.ok && result.contentType.includes('text/html')
+  return result.ok && result.contentType.toLowerCase().includes('text/html')
 }
 
 const MAX_FETCH_TEXT_BYTES = 2 * 1024 * 1024

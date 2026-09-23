@@ -18,7 +18,6 @@ import {
   preferCompanyOverUniversityWhenOverlapping,
 } from '../organizations/identities'
 import { QueryExecutor } from '../queryExecutor'
-
 import type { MemberOrganizationWithOverrides, TimelineItem } from './types'
 
 const logger = getServiceChildLogger('member-affiliations')

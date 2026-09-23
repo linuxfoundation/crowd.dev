@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
 import { getPackagesDb } from '../db'
-
 import { MAVEN_GCS_MIRROR_BASE_URL } from './registry'
 import { BatchResult, processBatch } from './runMavenEnrichmentLoop'
 

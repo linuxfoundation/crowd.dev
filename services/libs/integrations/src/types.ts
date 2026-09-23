@@ -1,4 +1,3 @@
-import { DbConnection, DbTransaction } from '@crowd/data-access-layer/src/database'
 import { Logger } from '@crowd/logging'
 import {
   IActivityData,
@@ -9,6 +8,8 @@ import {
   IMemberAttribute,
   IRateLimiter,
   IntegrationResultType,
+  MemberIdentityType,
+  PlatformType,
 } from '@crowd/types'
 
 export interface IIntegrationContext {
@@ -54,7 +55,12 @@ export interface IProcessStreamContext extends IIntegrationContext {
 
   abortWithError: (message: string, metadata?: unknown, error?: Error) => Promise<void>
 
-  getDbConnection: () => DbConnection | DbTransaction
+  fetchIntegrationMembersPaginated: (
+    platform: PlatformType,
+    type: MemberIdentityType,
+    page: number,
+    perPage: number,
+  ) => Promise<{ id: string; value: string }[]>
 
   /**
    * Global cache that is shared between all integrations

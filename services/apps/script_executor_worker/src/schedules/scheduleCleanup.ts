@@ -1,10 +1,10 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../main'
-import { cleanupMemberSegmentsAgg } from '../workflows/cleanup/memberSegmentsAgg'
 import { cleanupMembers } from '../workflows/cleanup/members'
-import { cleanupOrganizationSegmentAgg } from '../workflows/cleanup/organizationSegmentsAgg'
+import { cleanupMemberSegmentsAgg } from '../workflows/cleanup/memberSegmentsAgg'
 import { cleanupOrganizations } from '../workflows/cleanup/organizations'
+import { cleanupOrganizationSegmentAgg } from '../workflows/cleanup/organizationSegmentsAgg'
 
 export const scheduleMembersCleanup = async () => {
   try {

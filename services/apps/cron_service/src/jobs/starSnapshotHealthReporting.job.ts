@@ -2,10 +2,12 @@ import CronTime from 'cron-time-generator'
 
 import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import {
+  IRepoStarSnapshotGapDays,
   countDeadLetteredStarBackfillFailures,
   findDeadLetteredStarBackfillFailures,
   findRepoIdsWithStarSnapshotGaps,
   findReposForStarSnapshot,
+  findStarSnapshotGapDaysForRepos,
   getDeadLetterReportCursor,
 } from '@crowd/data-access-layer'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
@@ -59,13 +61,22 @@ const job: IJobDefinition = {
       gappedRepoIds.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
     }
 
+    const gapDays: IRepoStarSnapshotGapDays[] = []
+    for (let i = 0; i < gappedRepoIds.length; i += GAP_CHECK_BATCH_SIZE) {
+      const batch = gappedRepoIds.slice(i, i + GAP_CHECK_BATCH_SIZE)
+      gapDays.push(...(await findStarSnapshotGapDaysForRepos(qx, batch)))
+    }
+    const missingDaysByRepoId = new Map(gapDays.map((gap) => [gap.repositoryId, gap.missingDays]))
+    const totalMissingDays = gapDays.reduce((sum, gap) => sum + gap.missingDays, 0)
+
     const sections: SlackMessageSection[] = [
       {
         title: 'Star Snapshot Health Summary',
         text: [
-          `🪦 Newly dead-lettered (self-heal): *${newlyDeadLettered.length}*`,
-          `📉 Total dead-lettered (self-heal): *${totalDeadLettered}*`,
+          `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
+          `📉 Total repos GitHub gave up retrying: *${totalDeadLettered}*`,
           `📅 Repos with a snapshot gap right now: *${gappedRepoIds.length}*`,
+          `📆 Total missing snapshot-days across those repos: *${totalMissingDays}*`,
         ].join('\n'),
       },
     ]
@@ -77,18 +88,23 @@ const job: IJobDefinition = {
         return `• \`${url}\` - ${failure.lastErrorClass ?? 'unknown error'} (${failure.consecutiveFailures} consecutive failures)`
       })
       sections.push({
-        title: `Newly Dead-Lettered (top ${shown.length} of ${newlyDeadLettered.length})`,
+        title: `Repos No Longer Retried (top ${shown.length} of ${newlyDeadLettered.length})`,
         text: lines.join('\n'),
       })
     }
 
     if (gappedRepoIds.length > 0) {
-      const shown = gappedRepoIds.slice(0, SAMPLE_SIZE)
-      const lines = shown.map(
-        (repositoryId) => `• \`${repoUrlById.get(repositoryId) ?? repositoryId}\``,
+      const sortedByMissingDays = [...gappedRepoIds].sort(
+        (a, b) => (missingDaysByRepoId.get(b) ?? 0) - (missingDaysByRepoId.get(a) ?? 0),
       )
+      const shown = sortedByMissingDays.slice(0, SAMPLE_SIZE)
+      const lines = shown.map((repositoryId) => {
+        const url = repoUrlById.get(repositoryId) ?? repositoryId
+        const days = missingDaysByRepoId.get(repositoryId) ?? 0
+        return `• \`${url}\` - missing ${days} day${days === 1 ? '' : 's'}`
+      })
       sections.push({
-        title: `Snapshot Gaps (top ${shown.length} of ${gappedRepoIds.length})`,
+        title: `Snapshot Gaps (top ${shown.length} of ${gappedRepoIds.length}, most days missing first)`,
         text: lines.join('\n'),
       })
     }

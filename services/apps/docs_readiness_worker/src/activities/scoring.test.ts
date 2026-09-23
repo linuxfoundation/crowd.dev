@@ -58,6 +58,36 @@ describe('scoreProject', () => {
     expect(mocks.runChecks).not.toHaveBeenCalled()
   })
 
+  test('throws a non-retryable failure when docsUrl resolves to a private host', async () => {
+    await expect(
+      scoreProject('project-1', 'run-1', { ...RESOLVED, docsUrl: 'http://169.254.169.254/' }),
+    ).rejects.toThrow()
+    expect(mocks.findProjectForDocsDiscovery).not.toHaveBeenCalled()
+  })
+
+  test('throws when every check in the report errored instead of persisting a false score', async () => {
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: 'https://example.com',
+    })
+    mocks.runChecks.mockResolvedValue({
+      results: [
+        {
+          id: 'llms-txt-exists',
+          category: 'content-discoverability',
+          status: 'error',
+          message: 'timeout',
+        },
+        { id: 'redirect-behavior', category: 'url-stability', status: 'error', message: 'timeout' },
+      ],
+    })
+
+    await expect(scoreProject('project-1', 'run-1', RESOLVED)).rejects.toThrow()
+    expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
+  })
+
   test('runs checks, computes scores, and persists both check rows and the readiness row in one transaction', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue({
       id: 'project-1',

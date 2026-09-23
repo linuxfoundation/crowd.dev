@@ -25,6 +25,14 @@ const pipelineRunActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
+const watermarkActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
+// lf-criticality-score's `since` param is wired but unused — the workflow never watermarks it.
+const WATERMARKED_SOURCES = ['insights-discussions']
+
 interface ISourceBreakdown {
   rows: number
   skippedPreCheck: number
@@ -55,7 +63,27 @@ export async function discoverProjects(
     const sourceNames = await listActivities.listSources()
 
     for (const sourceName of sourceNames) {
-      const allDatasets = await listActivities.listDatasets(sourceName)
+      const watermarked = WATERMARKED_SOURCES.includes(sourceName)
+      let capturedAt: string | undefined
+      let since: string | undefined
+
+      if (watermarked) {
+        const watermark = await watermarkActivities.readSourceWatermark(sourceName)
+        capturedAt = watermark.capturedAt
+        since = mode === 'incremental' ? (watermark.since ?? undefined) : undefined
+      }
+
+      let allDatasets: Awaited<ReturnType<typeof listActivities.listDatasets>>
+      try {
+        allDatasets = await listActivities.listDatasets(sourceName, since)
+      } catch (err) {
+        if (isCancellation(err)) {
+          throw err
+        }
+        failed++
+        log.error(`Listing datasets failed for source=${sourceName}: ${String(err)}`)
+        continue
+      }
 
       if (allDatasets.length === 0) {
         log.warn(`No datasets found for source "${sourceName}". Skipping.`)
@@ -77,6 +105,9 @@ export async function discoverProjects(
         skipped: 0,
         accepted: 0,
       }
+
+      let sourceOk = true
+      let sourceTruncated = false
 
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i]
@@ -102,12 +133,17 @@ export async function discoverProjects(
           sourceStats.skippedAlreadyInCdp += result.totalSkippedAlreadyInCdp
           sourceStats.skipped += datasetSkipped
           sourceStats.accepted += result.totalAccepted
+
+          if (result.truncated) {
+            sourceTruncated = true
+          }
         } catch (err) {
           if (isCancellation(err)) {
             throw err
           }
 
           failed++
+          sourceOk = false
           log.error(
             `Dataset processing failed for source=${sourceName} datasetId=${dataset.id}: ${String(err)}`,
           )
@@ -115,6 +151,10 @@ export async function discoverProjects(
       }
 
       bySource[sourceName] = sourceStats
+
+      if (watermarked && capturedAt && sourceOk && !sourceTruncated) {
+        await watermarkActivities.commitSourceWatermark(sourceName, capturedAt, mode === 'full')
+      }
 
       log.info(`[${sourceName}] Done. Processed ${datasets.length} dataset(s).`)
     }

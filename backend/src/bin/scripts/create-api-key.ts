@@ -1,15 +1,15 @@
 /* eslint-disable no-console */
 
+import crypto from 'crypto'
+
 /* eslint-disable import/no-extraneous-dependencies */
 import commandLineArgs from 'command-line-args'
 import commandLineUsage from 'command-line-usage'
-import crypto from 'crypto'
-
-import { createApiKey } from '@crowd/data-access-layer/src/apiKeys'
 
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { createApiKey } from '@crowd/data-access-layer/src/apiKeys'
 
 const options = [
   {

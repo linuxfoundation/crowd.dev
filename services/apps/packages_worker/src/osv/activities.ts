@@ -1,12 +1,12 @@
-import { ApplicationFailure, Context } from '@temporalio/activity'
 import { rm } from 'node:fs/promises'
 import * as path from 'node:path'
+
+import { ApplicationFailure, Context } from '@temporalio/activity'
 
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
-
 import { deriveCriticalFlag } from './deriveCriticalFlag'
 import { fetchEcosystemZip } from './fetchEcosystemZip'
 import { parseOsvRecord } from './parseOsvRecord'

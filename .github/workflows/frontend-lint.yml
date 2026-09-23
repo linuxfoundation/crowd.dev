@@ -3,7 +3,7 @@ name: Frontend Lint
 on:
   pull_request:
     paths:
-      - 'frontend/**'
+      - "frontend/**"
 
 permissions:
   contents: read
@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Lint code
         run: npm i && npm run lint

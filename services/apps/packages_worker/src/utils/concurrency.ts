@@ -9,7 +9,7 @@ export async function mapWithConcurrency<T, R>(
     )
   }
 
-  const results: R[] = new Array(items.length)
+  const results: R[] = Array.from({ length: items.length })
   const executing = new Set<Promise<void>>()
   let firstError: unknown
   let failed = false

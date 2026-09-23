@@ -7,7 +7,6 @@ import {
   TwitterParsedPosts,
   TwitterPlatformSettings,
 } from '../types'
-
 import { handleTwitterError } from './errorHandler'
 
 /**

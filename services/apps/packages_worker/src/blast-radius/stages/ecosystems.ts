@@ -1,7 +1,6 @@
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { Ecosystem } from '../ecosystemSupport'
-
 import { runDependentsStageCargo } from './cargo/dependentsCargo'
 import { runIntelStageCargo } from './cargo/intelCargo'
 import { cargoReachabilityConfig } from './cargo/reachabilityConfig'

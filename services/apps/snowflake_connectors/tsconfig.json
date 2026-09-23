@@ -1,4 +1,48 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../archetypes/standard"
+    },
+    {
+      "path": "../../archetypes/worker"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/common_services"
+    },
+    {
+      "path": "../../libs/database"
+    },
+    {
+      "path": "../../libs/data-access-layer"
+    },
+    {
+      "path": "../../libs/integrations"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/queue"
+    },
+    {
+      "path": "../../libs/redis"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/snowflake"
+    },
+    {
+      "path": "../../libs/temporal"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

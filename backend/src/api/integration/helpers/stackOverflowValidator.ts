@@ -43,7 +43,7 @@ export default async (req, res) => {
         )
         return req.responseHandler.success(req, res, data)
       }
-    } catch (e) {
+    } catch {
       track(
         'Stack Overflow: tag input',
         {

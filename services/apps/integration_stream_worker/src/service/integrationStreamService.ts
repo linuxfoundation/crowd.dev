@@ -4,10 +4,11 @@ import {
   IntegrationRunWorkerEmitter,
   IntegrationStreamWorkerEmitter,
 } from '@crowd/common_services'
-import { DbConnection, DbStore, DbTransaction } from '@crowd/data-access-layer/src/database'
+import { DbStore } from '@crowd/data-access-layer/src/database'
 import IncomingWebhookRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/incomingWebhook.repo'
 import { IStreamData } from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.data'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
+import { fetchIntegrationMembersPaginated } from '@crowd/data-access-layer/src/old/lib/integrations/members'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { populateGithubSettingsWithRepos } from '@crowd/data-access-layer/src/repositories'
 import {
@@ -21,13 +22,13 @@ import {
   IntegrationRunState,
   IntegrationState,
   IntegrationStreamType,
+  MemberIdentityType,
   PlatformType,
   RateLimitError,
   WebhookType,
 } from '@crowd/types'
 
 import { NANGO_CONFIG, PLATFORM_CONFIG, WORKER_SETTINGS } from '../conf'
-
 import IntegrationDataService from './integrationDataService'
 
 export default class IntegrationStreamService extends LoggerBase {
@@ -543,9 +544,20 @@ export default class IntegrationStreamService extends LoggerBase {
         await this.updateIntegrationRefreshToken(streamId, refreshToken)
       },
 
-      getDbConnection: (): DbConnection | DbTransaction => {
-        return this.repo.db()
-      },
+      fetchIntegrationMembersPaginated: (
+        platform: PlatformType,
+        type: MemberIdentityType,
+        page: number,
+        perPage: number,
+      ) =>
+        fetchIntegrationMembersPaginated(
+          this.repo.db(),
+          streamInfo.integrationId,
+          platform,
+          type,
+          page,
+          perPage,
+        ),
 
       abortWithError: async (message: string, metadata?: unknown, error?: Error) => {
         this.log.error({ message }, 'Aborting stream processing with error!')

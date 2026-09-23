@@ -1,4 +1,21 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/nango"
+    },
+    {
+      "path": "../../libs/telemetry"
+    },
+    {
+      "path": "../../libs/temporal"
+    }
+  ]
 }

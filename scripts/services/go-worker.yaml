@@ -1,4 +1,4 @@
-version: '3.1'
+version: "3.1"
 
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
@@ -6,14 +6,14 @@ x-env-args: &env-args
   SERVICE: go-worker
   CROWD_TEMPORAL_TASKQUEUE: go-worker
   SHELL: /bin/sh
-  SUPPRESS_NO_CONFIG_WARNING: 'true'
+  SUPPRESS_NO_CONFIG_WARNING: "true"
 
 services:
   go-worker:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:go-worker'
+    command: "pnpm run start:go-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -30,7 +30,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:go-worker'
+    command: "pnpm run dev:go-worker"
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:

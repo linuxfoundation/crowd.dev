@@ -39,7 +39,7 @@ export async function exportMembersToCSV(input: ITriggerCSVExport): Promise<void
   let upload: ResultS3Upload
   try {
     upload = await buildAndUploadMembersCSV(input)
-  } catch (err) {
+  } catch {
     hasFailed = true
   }
 
@@ -47,7 +47,7 @@ export async function exportMembersToCSV(input: ITriggerCSVExport): Promise<void
   if (!hasFailed) {
     try {
       result = await getPresignedUrl(upload)
-    } catch (err) {
+    } catch {
       hasFailed = true
     }
   }

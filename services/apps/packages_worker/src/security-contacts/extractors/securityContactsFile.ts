@@ -2,7 +2,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
 import { Extractor, ExtractorDeps, ProvenanceEntry, RawContact } from '../types'
-
 import { isEmail } from './http'
 
 const log = getServiceChildLogger('security-contacts:security_contacts-file')

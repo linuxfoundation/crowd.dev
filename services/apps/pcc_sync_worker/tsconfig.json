@@ -1,4 +1,33 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../archetypes/standard"
+    },
+    {
+      "path": "../../archetypes/worker"
+    },
+    {
+      "path": "../../libs/common"
+    },
+    {
+      "path": "../../libs/database"
+    },
+    {
+      "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/snowflake"
+    },
+    {
+      "path": "../../libs/temporal"
+    },
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

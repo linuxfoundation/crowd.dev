@@ -13,9 +13,7 @@ import {
   PlatformType,
 } from '@crowd/types'
 
-import { generateSourceIdHash } from '../../helpers'
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
-
 import { GITHUB_GRID } from './grid'
 import {
   GithubActivitySubType,
@@ -300,31 +298,6 @@ const parseOrgMember = (memberData: GithubPrepareOrgMemberOutput): IMemberData =
   }
 
   return member
-}
-
-const parseStar: ProcessDataHandler = async (ctx) => {
-  const apiData = ctx.data as GithubApiData
-  const data = apiData.data
-  const memberData = apiData.member
-
-  const member = parseMember(memberData)
-
-  const activity: IActivityData = {
-    type: GithubActivityType.STAR,
-    sourceId: generateSourceIdHash(
-      data.node.login,
-      GithubActivityType.STAR,
-      Math.floor(new Date(data.starredAt).getTime() / 1000).toString(),
-      PlatformType.GITHUB,
-    ),
-    sourceParentId: '',
-    timestamp: new Date(data.starredAt).toISOString(),
-    channel: apiData.repo.url,
-    member,
-    score: GITHUB_GRID.star.score,
-  }
-
-  await ctx.publishActivity(activity)
 }
 
 const parseFork: ProcessDataHandler = async (ctx) => {
@@ -1139,65 +1112,11 @@ const parseWebhookPullRequestReview = async (ctx: IProcessDataContext) => {
       body,
       score: scoreGrid.score,
       attributes: {
-        reviewState: (payload.review?.state as string).toUpperCase(),
+        reviewState: payload.review.state.toUpperCase(),
         state: pull.state,
         authorAssociation: pull.author_association,
         labels: pull.labels.map((l) => l.name),
       },
-    }
-
-    await ctx.publishActivity(activity)
-  }
-}
-
-const parseWebhookStar = async (ctx: IProcessDataContext) => {
-  const data = ctx.data as GithubWebhookData
-  const payload = data.data
-  const memberData = data.member
-
-  const member = parseMember(memberData)
-
-  let type: GithubActivityType
-  switch (payload.action) {
-    case 'created': {
-      type = GithubActivityType.STAR
-      break
-    }
-
-    case 'deleted': {
-      type = GithubActivityType.UNSTAR
-      break
-    }
-
-    default: {
-      return
-    }
-  }
-
-  if (
-    member &&
-    (type === GithubActivityType.UNSTAR ||
-      (type === GithubActivityType.STAR && payload.starred_at !== null))
-  ) {
-    const starredAt =
-      type === GithubActivityType.STAR ? new Date(payload.starred_at).toISOString() : data.date
-
-    const activity: IActivityData = {
-      member,
-      type,
-      timestamp: starredAt,
-      sourceId: generateSourceIdHash(
-        payload.sender.login,
-        type,
-        Math.floor(new Date(starredAt).getTime() / 1000).toString(),
-        PlatformType.GITHUB,
-      ),
-      sourceParentId: null,
-      channel: payload.repository.html_url,
-      score:
-        type === 'star'
-          ? GITHUB_GRID[GithubActivityType.STAR].score
-          : GITHUB_GRID[GithubActivityType.UNSTAR].score,
     }
 
     await ctx.publishActivity(activity)
@@ -1407,9 +1326,6 @@ const handler: ProcessDataHandler = async (ctx) => {
   if (event) {
     // parse github api data
     switch (event) {
-      case GithubActivityType.STAR:
-        await parseStar(ctx)
-        break
       case GithubActivityType.FORK:
         await parseFork(ctx)
         break
@@ -1472,9 +1388,6 @@ const handler: ProcessDataHandler = async (ctx) => {
         break
       case GithubWehookEvent.PULL_REQUEST_REVIEW:
         await parseWebhookPullRequestReview(ctx)
-        break
-      case GithubWehookEvent.STAR:
-        await parseWebhookStar(ctx)
         break
       case GithubWehookEvent.FORK:
         await parseWebhookFork(ctx)

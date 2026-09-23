@@ -1,11 +1,11 @@
-import express from 'express'
+import express, { Router } from 'express'
 
 import { OrganizationSyncService } from '@crowd/opensearch'
 
 import { ApiRequest } from '../middleware'
 import { asyncWrap } from '../middleware/error'
 
-const router = express.Router()
+const router: Router = express.Router()
 
 const syncService = (req: ApiRequest): OrganizationSyncService =>
   new OrganizationSyncService(req.pgStore, req.opensearch, req.log)
