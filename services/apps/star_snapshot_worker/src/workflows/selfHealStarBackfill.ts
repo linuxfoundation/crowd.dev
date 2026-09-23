@@ -112,8 +112,11 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
   // pre-deploy replay would bake gapHealDone: true into continueAsNew and never run it.
   const nextGapHealDone =
     gapHealDone || (gapHealPatched && (gapHealPage?.pageSize ?? 0) < PAGE_SIZE)
+  // While unpatched, gap healing doesn't exist yet - the continue/complete decision must
+  // depend on nextMainScanDone alone, exactly like the pre-gap-heal command sequence.
+  const shouldContinue = gapHealPatched ? !nextMainScanDone || !nextGapHealDone : !nextMainScanDone
 
-  if (!nextMainScanDone || !nextGapHealDone) {
+  if (shouldContinue) {
     await continueAsNew<typeof selfHealStarBackfill>({
       afterUrl: nextMainScanDone ? undefined : repos[repos.length - 1].repoUrl,
       mainScanDone: nextMainScanDone,
