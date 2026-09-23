@@ -5,27 +5,53 @@ DESCRIPTION >
 SQL >
     %
     {% if defined(project) %}
-        SELECT segmentId, count() AS stars
-        FROM activityRelations_bucket_routing
+        SELECT r.segmentId AS segmentId, sum(s.starCount) AS stars
+        FROM
+            (
+                SELECT repositoryId, argMax(starCount, capturedAt) AS starCount
+                FROM repositoryStarSnapshots
+                WHERE
+                    1
+                    {% if defined(startDate) %}
+                        AND capturedAt
+                        >= {{ DateTime(startDate, description="Snapshot from date", required=False) }}
+                    {% end %}
+                    {% if defined(endDate) %}
+                        AND capturedAt
+                        <= {{ DateTime(endDate, description="Snapshot as of date", required=False) }}
+                    {% end %}
+                GROUP BY repositoryId
+            ) s
+        INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
         WHERE
-            type = 'star'
-            AND segmentId = (SELECT segmentId FROM segments_filtered)
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
-            {% if defined(startDate) %}
-                AND timestamp
-                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            isNull (r.deletedAt)
+            AND r.enabled = true
+            AND r.excluded = false
+            AND isNull (i.deletedAt)
+            AND i.enabled = 1
+            AND r.segmentId = (SELECT segmentId FROM segments_filtered)
+            {% if defined(repos) %}
+                AND r.url IN {{ Array(repos, 'String', description="Repository URLs", required=False) }}
             {% end %}
-            {% if defined(endDate) %}
-                AND timestamp
-                < {{ DateTime(endDate, description="Filter before date", required=False) }}
-            {% end %}
-        GROUP BY segmentId
+        GROUP BY r.segmentId
     {% else %}
-        SELECT segmentId, count() AS stars
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE type = 'star' AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-        GROUP BY segmentId
+        SELECT r.segmentId AS segmentId, sum(s.starCount) AS stars
+        FROM
+            (
+                SELECT repositoryId, argMax(starCount, capturedAt) AS starCount
+                FROM repositoryStarSnapshots
+                GROUP BY repositoryId
+            ) s
+        INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
+        WHERE
+            isNull (r.deletedAt)
+            AND r.enabled = true
+            AND r.excluded = false
+            AND isNull (i.deletedAt)
+            AND i.enabled = 1
+        GROUP BY r.segmentId
     {% end %}
 
 NODE health_score_stars_benchmark
