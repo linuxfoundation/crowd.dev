@@ -172,6 +172,11 @@ cython_debug/
 
 **/**/.idea
 
+# team-shared editor config; ignore everything else in .vscode
+**/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
+
 .serverless
 .webpack
 .build
