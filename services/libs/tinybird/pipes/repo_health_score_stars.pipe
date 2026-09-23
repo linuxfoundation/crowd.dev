@@ -28,8 +28,13 @@ SQL >
                                     isNull (r2.deletedAt)
                                     AND r2.enabled = true
                                     AND r2.excluded = false
-                                    AND r2.url
-                                    = {{ String(repoUrl, description="Repository URL", required=False) }}
+                                    AND lower(r2.url) = lower(
+                                        {{
+                                            String(
+                                                repoUrl, description="Repository URL", required=False
+                                            )
+                                        }}
+                                    )
                             )
                             {% if defined(startDate) %}
                                 AND capturedAt
@@ -54,7 +59,8 @@ SQL >
                     isNull (r.deletedAt)
                     AND r.enabled = true
                     AND r.excluded = false
-                    AND r.url = {{ String(repoUrl, description="Repository URL", required=False) }}
+                    AND lower(r.url)
+                    = lower({{ String(repoUrl, description="Repository URL", required=False) }})
                 UNION ALL
                 SELECT channel, count() AS stars
                 FROM activityRelations_deduplicated_cleaned_bucket_union

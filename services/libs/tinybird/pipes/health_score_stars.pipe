@@ -26,15 +26,20 @@ SQL >
                                     AND i2.enabled = 1
                                     AND r2.segmentId = (SELECT segmentId FROM segments_filtered)
                                     {% if defined(repos) %}
-                                        AND r2.url
-                                        IN {{
-                                            Array(
-                                                repos,
-                                                'String',
-                                                description="Repository URLs",
-                                                required=False,
-                                            )
-                                        }}
+                                        AND has(
+                                            arrayMap(
+                                                x -> lower(x),
+                                                {{
+                                                    Array(
+                                                        repos,
+                                                        'String',
+                                                        description="Repository URLs",
+                                                        required=False,
+                                                    )
+                                                }}
+                                            ),
+                                            lower(r2.url)
+                                        )
                                     {% end %}
                             )
                             {% if defined(startDate) %}
@@ -65,8 +70,17 @@ SQL >
                     AND i.enabled = 1
                     AND r.segmentId = (SELECT segmentId FROM segments_filtered)
                     {% if defined(repos) %}
-                        AND r.url
-                        IN {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                        AND has(
+                            arrayMap(
+                                x -> lower(x),
+                                {{
+                                    Array(
+                                        repos, 'String', description="Repository URLs", required=False
+                                    )
+                                }}
+                            ),
+                            lower(r.url)
+                        )
                     {% end %}
                 GROUP BY r.segmentId
                 UNION ALL
