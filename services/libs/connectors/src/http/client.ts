@@ -35,7 +35,7 @@ export interface HttpClientDeps {
 }
 
 export interface ConnectorHttp {
-  request<T>(config: AxiosRequestConfig, log?: Logger): Promise<T>
+  request<T>(config: AxiosRequestConfig, log?: Logger, maxAttempts?: number): Promise<T>
   requestCount(): number
 }
 
@@ -58,8 +58,8 @@ export function createHttpClient(deps: HttpClientDeps): ConnectorHttp {
     },
   }
   return {
-    request: <T>(config: AxiosRequestConfig, log?: Logger) =>
-      requestWithRetry<T>(log ? { ...countingDeps, log } : countingDeps, config),
+    request: <T>(config: AxiosRequestConfig, log?: Logger, maxAttempts?: number) =>
+      requestWithRetry<T>(log ? { ...countingDeps, log } : countingDeps, config, maxAttempts),
     requestCount: () => requests,
   }
 }
@@ -67,9 +67,10 @@ export function createHttpClient(deps: HttpClientDeps): ConnectorHttp {
 async function requestWithRetry<T>(
   deps: CountingHttpClientDeps,
   config: AxiosRequestConfig,
+  maxAttempts: number = MAX_ATTEMPTS,
 ): Promise<T> {
   let lastError: ConnectorError = new ProviderUnavailableError()
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await attemptRequest<T>(deps, config)
     } catch (err) {
@@ -77,7 +78,7 @@ async function requestWithRetry<T>(
         throw err
       }
       lastError = err
-      if (attempt < MAX_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         const delay = Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS)
         deps.log.warn({ attempt, delay, reason: err.message }, 'provider unavailable, backing off')
         await timeout(delay)

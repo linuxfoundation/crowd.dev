@@ -16,10 +16,11 @@ export function toCommit(commit: PrCommitNode['commit'], prId: string): GithubAc
     body: commit.message,
     url: commit.url ?? '',
     attributes: {
+      // additions/deletions are unavailable (SERVICE_UNAVAILABLE, or the
+      // no-stats fallback query) — defaulted to 0, there's no way to recover them.
       insertions: commit.additions ?? 0,
       deletions: commit.deletions ?? 0,
       // nango quirk kept for exact-match: lines = additions - deletions, not the sum
-      // default to 0 (matching nango) when github's diff-stat computation timed out
       lines: (commit.additions ?? 0) - (commit.deletions ?? 0),
       isMerge: commit.parents.totalCount > 1,
     },
