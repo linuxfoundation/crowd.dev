@@ -14,6 +14,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(jq -r '.tool_input.file_path'); pnpm exec oxlint --fix --no-error-on-unmatched-pattern \"$file\"; pnpm exec oxfmt --no-error-on-unmatched-pattern \"$file\""
+          }
+        ]
+      }
     ]
   },
   "permissions": {

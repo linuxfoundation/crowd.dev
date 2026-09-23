@@ -41,7 +41,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 
 ## Why ADRs?
 
-The codebase is in active transition across several axes (see `CLAUDE.md`). ADRs provide a durable record of:
+The codebase is in active transition across several axes (see `AGENTS.md`). ADRs provide a durable record of:
 
 - Why old patterns are being replaced (e.g. Sequelize → pg-promise)
 - What alternatives were considered before choosing the current approach

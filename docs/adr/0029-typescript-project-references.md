@@ -53,4 +53,4 @@ A few projects stay outside the shared services config. Data-access-layer tests 
 
 ### Risks
 
-- `tsc -b` only builds projects listed in the root `tsconfig.json`. A package that is missing from that list is not typechecked, and CI still passes. `CLAUDE.md` points agents at this when a package is added.
+- `tsc -b` only builds projects listed in the root `tsconfig.json`. A package that is missing from that list is not typechecked, and CI still passes. `AGENTS.md` points agents at this when a package is added.

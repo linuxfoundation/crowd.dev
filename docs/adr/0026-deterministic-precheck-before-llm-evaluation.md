@@ -148,7 +148,7 @@ part of this work.
   own call sites; folding it into a new combined query changes its contract and couples the two
   tickets' DAL code together.
 - **Why not**: `data-access-layer` is explicitly called out as high-blast-radius in the root
-  `CLAUDE.md` — adding a second, independent function and composing the result in TypeScript was
+  `AGENTS.md` — adding a second, independent function and composing the result in TypeScript was
   judged safer than reshaping a function other code already depends on. Flagged as a known,
   accepted performance trade-off (see Risks).
 

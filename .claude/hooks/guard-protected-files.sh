@@ -42,7 +42,7 @@ warn() {
 
 # ── Data Access Layer ──────────────────────────────────────────────
 if [[ "$FILE_PATH" == services/libs/data-access-layer/* ]]; then
-  warn "Shared DAL — high blast radius. Check for existing functions before adding new ones (CLAUDE.md: 'duplicates are already a problem')."
+  warn "Shared DAL — high blast radius. Check for existing functions before adding new ones (AGENTS.md: 'duplicates are already a problem')."
 fi
 
 # ── Common / Shared Utilities ──────────────────────────────────────
@@ -102,7 +102,7 @@ fi
 
 # ── Claude Config ─────────────────────────────────────────────────
 case "$FILE_PATH" in
-  CLAUDE.md)
+  AGENTS.md)
     warn "Project instructions — changes affect AI assistant behavior for all users." ;;
   .claude/settings.json)
     warn "Claude Code settings — changes affect hooks, permissions, and plugins for all users." ;;

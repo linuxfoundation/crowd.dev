@@ -35,6 +35,11 @@ already a problem.
 
 Typecheck is `pnpm tsc-check` (`tsc -b` on the root `tsconfig.json`). A new `services/` package must be added to that file's `references`, and its own tsconfig must reference the `@crowd` packages it imports. Say so when you add one.
 
+## Linting and formatting
+
+- After making code changes, run `pnpm lint:fix`, then run `pnpm format`.
+- Before finishing, run `pnpm lint --deny-warnings --format=agent`.
+
 ## Patterns in transition
 
 Old and new patterns coexist. Always use the new pattern.
