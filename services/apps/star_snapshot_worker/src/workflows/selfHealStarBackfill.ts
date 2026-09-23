@@ -117,7 +117,7 @@ export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {})
     await continueAsNew<typeof selfHealStarBackfill>({
       afterUrl: nextMainScanDone ? undefined : repos[repos.length - 1].repoUrl,
       mainScanDone: nextMainScanDone,
-      gapHealAfterUrl: nextGapHealDone ? undefined : gapHealPage!.lastUrl,
+      gapHealAfterUrl: nextGapHealDone ? undefined : (gapHealPage?.lastUrl ?? args.gapHealAfterUrl),
       gapHealDone: nextGapHealDone,
       batchesDispatchedSoFar: batchesDispatched,
     })
