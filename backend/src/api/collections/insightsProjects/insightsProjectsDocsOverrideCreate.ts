@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-import { validateOrThrow } from '@/utils/validation'
 import { CollectionService } from '@/services/collectionService'
+import { validateOrThrow } from '@/utils/validation'
 
 import Permissions from '../../../security/permissions'
 import PermissionChecker from '../../../services/user/permissionChecker'
