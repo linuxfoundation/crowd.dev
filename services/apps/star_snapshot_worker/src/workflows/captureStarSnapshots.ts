@@ -109,9 +109,8 @@ export async function captureStarSnapshots(args: ICaptureStarSnapshotsArgs = {})
 
   // One retry pass over whatever's still rejected before giving up on it, even if every
   // batch on this page rejected (small/last page - still worth one cooldown retry) (CM-1441).
-  // Gated by patched() - an execution already in flight when this shipped must keep replaying
-  // its old command sequence (straight to the page decision below) or it'll hit a nondeterminism
-  // error; only executions that start fresh after the deploy take the new retry-then-decide path.
+  // patched() keeps an execution already in flight on its old command sequence so a
+  // mid-deploy replay doesn't hit a nondeterminism error (CM-1441).
   if (rejectedBatches.length > 0 && patched('CM-1441-retry-rejected-batches')) {
     await sleep(REJECTED_BATCH_RETRY_DELAY_MS)
     const stillRejected: (typeof batches)[number][] = []
