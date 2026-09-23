@@ -129,11 +129,11 @@ DESCRIPTION >
 SQL >
     SELECT
         r.segmentId AS segmentId,
-        greatest(
-            sum(coalesce(s.totalNow, 0)) - sum(coalesce(s.totalAt365, 0)), 0
+        toUInt64(
+            greatest(sum(coalesce(s.totalNow, 0)) - sum(coalesce(s.totalAt365, 0)), 0)
         ) AS starsLast365DaysSnapshot,
-        greatest(
-            sum(coalesce(s.totalAt365, 0)) - sum(coalesce(s.totalAt730, 0)), 0
+        toUInt64(
+            greatest(sum(coalesce(s.totalAt365, 0)) - sum(coalesce(s.totalAt730, 0)), 0)
         ) AS starsPrevious365DaysSnapshot
     FROM project_insights_copy_star_snapshot_totals s
     INNER JOIN repositories r FINAL ON r.id = s.repositoryId
@@ -148,9 +148,11 @@ DESCRIPTION >
 SQL >
     SELECT
         r.url AS repoUrl,
-        greatest(coalesce(s.totalNow, 0) - coalesce(s.totalAt365, 0), 0) AS starsLast365DaysSnapshot,
-        greatest(
-            coalesce(s.totalAt365, 0) - coalesce(s.totalAt730, 0), 0
+        toUInt64(
+            greatest(coalesce(s.totalNow, 0) - coalesce(s.totalAt365, 0), 0)
+        ) AS starsLast365DaysSnapshot,
+        toUInt64(
+            greatest(coalesce(s.totalAt365, 0) - coalesce(s.totalAt730, 0), 0)
         ) AS starsPrevious365DaysSnapshot
     FROM project_insights_copy_star_snapshot_totals s
     INNER JOIN repositories r FINAL ON r.id = s.repositoryId

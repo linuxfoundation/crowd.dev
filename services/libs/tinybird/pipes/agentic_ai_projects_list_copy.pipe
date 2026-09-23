@@ -95,7 +95,9 @@ SQL >
     SELECT
         segmentId,
         sum(coalesce(totalNow, 0)) AS starsSnapshot,
-        greatest(sum(coalesce(totalNow, 0)) - sum(coalesce(totalAt30, 0)), 0) AS stars30dSnapshot
+        toUInt64(
+            greatest(sum(coalesce(totalNow, 0)) - sum(coalesce(totalAt30, 0)), 0)
+        ) AS stars30dSnapshot
     FROM ai_star_snapshot_repo_totals
     GROUP BY segmentId
 
