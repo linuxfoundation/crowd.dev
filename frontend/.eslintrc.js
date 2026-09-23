@@ -1,3 +1,5 @@
+const legacy = require('./.eslint/legacy-files.json');
+
 module.exports = {
   root: true,
 
@@ -53,6 +55,9 @@ module.exports = {
     // TODO: This is a temporary rule to allow the use of destructuring in setup props - from package version upgrade
     'vue/no-setup-props-destructure': 'off',
     'vue/space-infix-ops': 'off',
+    'vue/component-api-style': ['error', ['script-setup']],
+    'vue/block-lang': ['error', { script: { lang: 'ts' } }],
+    'vue/prefer-define-options': 'error',
     'vue/max-len': [
       'error',
       {
@@ -84,4 +89,6 @@ module.exports = {
       typescript: {},
     },
   },
+
+  overrides: Object.entries(legacy).map(([rule, files]) => ({ files, rules: { [rule]: 'off' } })),
 };
