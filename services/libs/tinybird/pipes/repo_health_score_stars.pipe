@@ -11,50 +11,88 @@ TAGS "Repository health", "Metrics"
 NODE repo_health_score_stars_score
 SQL >
     %
-    {% if defined(repoUrl) %}
-        SELECT r.url AS channel, s.starCount AS stars
-        FROM
-            (
-                SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
-                FROM repositoryStarSnapshots
-                WHERE
-                    repositoryId IN (
-                        SELECT r2.id
-                        FROM repositories r2 FINAL
+    SELECT channel, sum(stars) AS stars
+    FROM
+        (
+            {% if defined(repoUrl) %}
+                SELECT r.url AS channel, toUInt64(s.starCount) AS stars
+                FROM
+                    (
+                        SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                        FROM repositoryStarSnapshots
                         WHERE
-                            isNull (r2.deletedAt)
-                            AND r2.enabled = true
-                            AND r2.excluded = false
-                            AND r2.url
-                            = {{ String(repoUrl, description="Repository URL", required=False) }}
-                    )
+                            repositoryId IN (
+                                SELECT r2.id
+                                FROM repositories r2 FINAL
+                                WHERE
+                                    isNull (r2.deletedAt)
+                                    AND r2.enabled = true
+                                    AND r2.excluded = false
+                                    AND r2.url
+                                    = {{ String(repoUrl, description="Repository URL", required=False) }}
+                            )
+                            {% if defined(startDate) %}
+                                AND capturedAt
+                                >= {{
+                                    DateTime(
+                                        startDate, description="Snapshot from date", required=False
+                                    )
+                                }}
+                            {% end %}
+                            {% if defined(endDate) %}
+                                AND capturedAt
+                                <= {{
+                                    DateTime(
+                                        endDate, description="Snapshot as of date", required=False
+                                    )
+                                }}
+                            {% end %}
+                        GROUP BY repositoryId
+                    ) s
+                INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+                WHERE
+                    isNull (r.deletedAt)
+                    AND r.enabled = true
+                    AND r.excluded = false
+                    AND r.url = {{ String(repoUrl, description="Repository URL", required=False) }}
+                UNION ALL
+                SELECT channel, count() AS stars
+                FROM activityRelations_deduplicated_cleaned_bucket_union
+                WHERE
+                    type = 'star'
+                    AND platform != 'github'
+                    AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+                    AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(startDate) %}
-                        AND capturedAt
-                        >= {{ DateTime(startDate, description="Snapshot from date", required=False) }}
+                        AND timestamp
+                        > {{ DateTime(startDate, description="Filter after date", required=False) }}
                     {% end %}
                     {% if defined(endDate) %}
-                        AND capturedAt
-                        <= {{ DateTime(endDate, description="Snapshot as of date", required=False) }}
+                        AND timestamp
+                        < {{ DateTime(endDate, description="Filter before date", required=False) }}
                     {% end %}
-                GROUP BY repositoryId
-            ) s
-        INNER JOIN repositories r FINAL ON r.id = s.repositoryId
-        WHERE
-            isNull (r.deletedAt)
-            AND r.enabled = true
-            AND r.excluded = false
-            AND r.url = {{ String(repoUrl, description="Repository URL", required=False) }}
-    {% else %}
-        SELECT r.url AS channel, s.starCount AS stars
-        FROM
-            (
-                SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
-                FROM repositoryStarSnapshots
-                GROUP BY repositoryId
-            ) s
-        INNER JOIN repositories r FINAL ON r.id = s.repositoryId
-        WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
-    {% end %}
+                GROUP BY channel
+            {% else %}
+                SELECT r.url AS channel, toUInt64(s.starCount) AS stars
+                FROM
+                    (
+                        SELECT repositoryId, argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                        FROM repositoryStarSnapshots
+                        GROUP BY repositoryId
+                    ) s
+                INNER JOIN repositories r FINAL ON r.id = s.repositoryId
+                WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
+                UNION ALL
+                SELECT channel, count() AS stars
+                FROM activityRelations_deduplicated_cleaned_bucket_union
+                WHERE
+                    type = 'star'
+                    AND platform != 'github'
+                    AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+                GROUP BY channel
+            {% end %}
+        )
+    GROUP BY channel
 
 NODE health_score_stars_benchmark
 SQL >
