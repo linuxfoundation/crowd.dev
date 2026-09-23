@@ -2,9 +2,6 @@
   "name": "@crowd/logging",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "bunyan": "^1.8.15",
@@ -13,7 +10,6 @@
   "devDependencies": {
     "@types/bunyan": "^1.8.8",
     "@types/bunyan-format": "^0.2.5",
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }

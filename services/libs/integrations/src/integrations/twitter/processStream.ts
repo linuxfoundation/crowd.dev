@@ -1,6 +1,5 @@
 import { processPaginated } from '@crowd/common'
 import { generateUUIDv4 } from '@crowd/common'
-import { fetchIntegrationMembersPaginated } from '@crowd/data-access-layer/src/old/lib/integrations/members'
 import { MemberIdentityType, PlatformType, RateLimitError } from '@crowd/types'
 
 import { ProcessStreamHandler } from '../../types'
@@ -97,15 +96,12 @@ const processReachStream: ProcessStreamHandler = async (ctx) => {
   if (!usernames) {
     // this is the initial stream, we need to get all the usernames
     const perPage = 100
-    const db = ctx.getDbConnection()
 
     ctx.log.info('Getting all usernames for reach update', { int: ctx.integration })
 
     await processPaginated(
       async (page) => {
-        return await fetchIntegrationMembersPaginated(
-          db,
-          ctx.integration.id,
+        return await ctx.fetchIntegrationMembersPaginated(
           PlatformType.TWITTER,
           MemberIdentityType.USERNAME,
           page,

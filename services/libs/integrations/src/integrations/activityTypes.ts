@@ -229,7 +229,8 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
-    [GithubActivityType.STAR]: {
+    // literal keys: GithubActivityType.STAR/UNSTAR are gone (CM-1439), but old persisted activities still carry these
+    star: {
       display: {
         default: 'starred {channel}',
         short: 'starred',
@@ -240,7 +241,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: false,
     },
-    [GithubActivityType.UNSTAR]: {
+    unstar: {
       display: {
         default: 'unstarred {channel}',
         short: 'unstarred',

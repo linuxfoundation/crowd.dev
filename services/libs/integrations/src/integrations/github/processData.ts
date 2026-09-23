@@ -13,7 +13,6 @@ import {
   PlatformType,
 } from '@crowd/types'
 
-import { generateSourceIdHash } from '../../helpers'
 import { IProcessDataContext, ProcessDataHandler } from '../../types'
 import { GITHUB_GRID } from './grid'
 import {
@@ -1124,60 +1123,6 @@ const parseWebhookPullRequestReview = async (ctx: IProcessDataContext) => {
   }
 }
 
-const parseWebhookStar = async (ctx: IProcessDataContext) => {
-  const data = ctx.data as GithubWebhookData
-  const payload = data.data
-  const memberData = data.member
-
-  const member = parseMember(memberData)
-
-  let type: GithubActivityType
-  switch (payload.action) {
-    case 'created': {
-      type = GithubActivityType.STAR
-      break
-    }
-
-    case 'deleted': {
-      type = GithubActivityType.UNSTAR
-      break
-    }
-
-    default: {
-      return
-    }
-  }
-
-  if (
-    member &&
-    (type === GithubActivityType.UNSTAR ||
-      (type === GithubActivityType.STAR && payload.starred_at !== null))
-  ) {
-    const starredAt =
-      type === GithubActivityType.STAR ? new Date(payload.starred_at).toISOString() : data.date
-
-    const activity: IActivityData = {
-      member,
-      type,
-      timestamp: starredAt,
-      sourceId: generateSourceIdHash(
-        payload.sender.login,
-        type,
-        Math.floor(new Date(starredAt).getTime() / 1000).toString(),
-        PlatformType.GITHUB,
-      ),
-      sourceParentId: null,
-      channel: payload.repository.html_url,
-      score:
-        type === 'star'
-          ? GITHUB_GRID[GithubActivityType.STAR].score
-          : GITHUB_GRID[GithubActivityType.UNSTAR].score,
-    }
-
-    await ctx.publishActivity(activity)
-  }
-}
-
 const parseWebhookFork = async (ctx: IProcessDataContext) => {
   const data = ctx.data as GithubWebhookData
   const payload = data.data
@@ -1443,9 +1388,6 @@ const handler: ProcessDataHandler = async (ctx) => {
         break
       case GithubWehookEvent.PULL_REQUEST_REVIEW:
         await parseWebhookPullRequestReview(ctx)
-        break
-      case GithubWehookEvent.STAR:
-        await parseWebhookStar(ctx)
         break
       case GithubWehookEvent.FORK:
         await parseWebhookFork(ctx)

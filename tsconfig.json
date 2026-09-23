@@ -1,0 +1,173 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "services/libs/anthropic-aws"
+    },
+    {
+      "path": "services/archetypes/consumer"
+    },
+    {
+      "path": "services/archetypes/standard"
+    },
+    {
+      "path": "services/archetypes/worker"
+    },
+    {
+      "path": "services/libs/audit-logs"
+    },
+    {
+      "path": "services/apps/automatic_onboarding_worker"
+    },
+    {
+      "path": "services/apps/automatic_projects_discovery_worker"
+    },
+    {
+      "path": "services/apps/cache_worker"
+    },
+    {
+      "path": "services/apps/categorization_worker"
+    },
+    {
+      "path": "services/libs/common"
+    },
+    {
+      "path": "services/libs/common_services"
+    },
+    {
+      "path": "services/libs/connectors"
+    },
+    {
+      "path": "services/apps/connectors_worker"
+    },
+    {
+      "path": "services/apps/cron_service"
+    },
+    {
+      "path": "services/libs/data-access-layer"
+    },
+    {
+      "path": "services/libs/integrations"
+    },
+    {
+      "path": "services/apps/data_sink_worker"
+    },
+    {
+      "path": "services/libs/database"
+    },
+    {
+      "path": "services/apps/docs_readiness_worker"
+    },
+    {
+      "path": "services/apps/entity_merging_worker"
+    },
+    {
+      "path": "services/apps/exports_worker"
+    },
+    {
+      "path": "services/apps/integration_run_worker"
+    },
+    {
+      "path": "services/apps/integration_stream_worker"
+    },
+    {
+      "path": "services/apps/kafka_connect_monitor"
+    },
+    {
+      "path": "services/libs/logging"
+    },
+    {
+      "path": "services/apps/members_enrichment_worker"
+    },
+    {
+      "path": "services/apps/merge_suggestions_worker"
+    },
+    {
+      "path": "services/libs/nango"
+    },
+    {
+      "path": "services/apps/nango_webhook_api"
+    },
+    {
+      "path": "services/apps/nango_worker"
+    },
+    {
+      "path": "services/libs/opensearch"
+    },
+    {
+      "path": "services/apps/organizations_enrichment_worker"
+    },
+    {
+      "path": "services/apps/packages_worker"
+    },
+    {
+      "path": "services/apps/pcc_sync_worker"
+    },
+    {
+      "path": "services/apps/profiles_worker"
+    },
+    {
+      "path": "services/apps/projects_evaluation_worker"
+    },
+    {
+      "path": "services/libs/queue"
+    },
+    {
+      "path": "services/libs/redis"
+    },
+    {
+      "path": "services/apps/script_executor_worker"
+    },
+    {
+      "path": "services/apps/search_sync_worker"
+    },
+    {
+      "path": "services/apps/security_best_practices_worker"
+    },
+    {
+      "path": "services/libs/slack"
+    },
+    {
+      "path": "services/libs/snowflake"
+    },
+    {
+      "path": "services/apps/snowflake_connectors"
+    },
+    {
+      "path": "services/apps/star_snapshot_worker"
+    },
+    {
+      "path": "services/libs/telemetry"
+    },
+    {
+      "path": "services/apps/template_consumer"
+    },
+    {
+      "path": "services/apps/template_worker"
+    },
+    {
+      "path": "services/libs/temporal"
+    },
+    {
+      "path": "services/apps/temporal_codec_server"
+    },
+    {
+      "path": "services/libs/test-kit"
+    },
+    {
+      "path": "services/libs/types"
+    },
+    {
+      "path": "services/apps/webhook_api"
+    },
+    {
+      "path": "services/apps/search_sync_api"
+    },
+    {
+      "path": "backend/tsconfig.check.json"
+    },
+    {
+      "path": "services/libs/data-access-layer/tsconfig.test.json"
+    }
+  ]
+}

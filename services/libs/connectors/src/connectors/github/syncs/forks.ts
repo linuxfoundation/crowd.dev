@@ -49,7 +49,7 @@ async function runForksSync(ctx: SyncContext): Promise<SyncOutcome> {
 
 export const forksSync: SyncDefinition = {
   name: 'forks',
-  cadenceMinutes: 360,
+  cadenceMinutes: 720,
   schema: githubActivitySchema,
   run: runForksSync,
 }

@@ -7,7 +7,6 @@
     "start:debug": "SERVICE=integration-run-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9230 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "tsc-check": "tsc --noEmit",
     "script:onboard-integration": "SERVICE=script tsx src/bin/onboard-integration.ts",
     "script:process-repo": "SERVICE=script tsx src/bin/process-repo.ts",
     "script:trigger-stream-processed": "SERVICE=script tsx src/bin/trigger-stream-processed.ts",
@@ -26,8 +25,7 @@
     "@crowd/types": "workspace:*",
     "axios": "catalog:",
     "config": "catalog:",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",

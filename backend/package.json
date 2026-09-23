@@ -12,7 +12,6 @@
     "build": "tsc && cp package*json dist/ && cp .sequelizerc dist/.sequelizerc ",
     "sequelize-cli:source": "pnpm run build && sequelize --config src/database/sequelize-cli-config.ts --migrations-source-path src/database/migrations",
     "sequelize-cli:build": "sequelize --config database/sequelize-cli-config.js --migrations-compiled-path database/migrations",
-    "tsc-check": "tsc --noEmit",
     "script": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx",
     "script:continue-run": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/continue-run.ts",
     "script:trigger-webhook": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/trigger-webhook.ts",

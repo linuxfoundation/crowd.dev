@@ -181,11 +181,12 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
     getApiKey()
     const today = new Date().toISOString().slice(0, 10)
-    const { scoredAfter } = options ?? {}
+    // `since` is the generic interface name; this API's query param is `scoredAfter`.
+    const scoredAfter = options?.since
 
     const params = new URLSearchParams()
     if (scoredAfter) params.set('scoredAfter', scoredAfter)

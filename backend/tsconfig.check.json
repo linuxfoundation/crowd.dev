@@ -1,0 +1,55 @@
+// `tsc -b` project. backend/tsconfig.json still emits JavaScript for sequelize-cli.
+// Delete this file once sequelize-cli is gone.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "references": [
+    {
+      "path": "../services/libs/audit-logs"
+    },
+    {
+      "path": "../services/libs/common"
+    },
+    {
+      "path": "../services/libs/common_services"
+    },
+    {
+      "path": "../services/libs/data-access-layer"
+    },
+    {
+      "path": "../services/libs/integrations"
+    },
+    {
+      "path": "../services/libs/logging"
+    },
+    {
+      "path": "../services/libs/nango"
+    },
+    {
+      "path": "../services/libs/opensearch"
+    },
+    {
+      "path": "../services/libs/queue"
+    },
+    {
+      "path": "../services/libs/redis"
+    },
+    {
+      "path": "../services/libs/slack"
+    },
+    {
+      "path": "../services/libs/telemetry"
+    },
+    {
+      "path": "../services/libs/temporal"
+    },
+    {
+      "path": "../services/libs/types"
+    }
+  ]
+}

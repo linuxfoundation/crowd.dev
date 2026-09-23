@@ -1,4 +1,27 @@
 {
   "extends": "../../base.tsconfig.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../common"
+    },
+    {
+      "path": "../common_services"
+    },
+    {
+      "path": "../data-access-layer"
+    },
+    {
+      "path": "../integrations"
+    },
+    {
+      "path": "../logging"
+    },
+    {
+      "path": "../redis"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

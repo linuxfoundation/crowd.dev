@@ -95,6 +95,7 @@ export async function upsertMemberMergeSuggestions(
               WHERE ${pairMatch}
             )
             ${thresholdFilter}
+          ON CONFLICT ("memberId", "toMergeId") DO NOTHING
         `,
         params,
       )

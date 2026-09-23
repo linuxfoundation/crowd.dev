@@ -879,62 +879,21 @@ function install_libs() {
 }
 
 function lint_backend() {
-    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && cd backend && pnpm run tsc-check)
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && pnpm tsc-check)
 }
 
 function lint_services() {
-    (cd $CLI_HOME/.. && \
-        ./services/scripts/check_package_scripts.sh && \
-        pnpm lint && \
-        pnpm format-check && \
-        pnpm --filter="./services/**" --if-present --workspace-concurrency=4 run tsc-check)
-}
-
-function _lint_changed_packages_with_script() {
-    local root="$1" list="$2" script="$3" p
-    while IFS= read -r p; do
-        [[ -z "$p" ]] && continue
-        if jq -e --arg s "$script" '(.scripts[$s] // null) != null' "$p/package.json" >/dev/null 2>&1; then
-            [[ "$p" == "$root" ]] && echo "(root)" || echo "${p#$root/}"
-        fi
-    done <<< "$list"
-}
-
-function _lint_changed_run() {
-    local label="$1" packages="$2"
-    shift 2
-    say "Checking $label for:" && whisper "$packages" && "$@"
+    (cd $CLI_HOME/.. && pnpm lint && pnpm format-check && pnpm tsc-check)
 }
 
 function lint_changed() {
-    if ! command -v jq &>/dev/null; then
-        error "jq is required for lint-changed but is not installed. Install it: brew install jq (macOS) / apt-get install jq (Debian/Ubuntu) / dnf install jq (Fedora)."
-        return 1
-    fi
     (cd $CLI_HOME/.. && \
-        git fetch origin main && \
-        ./services/scripts/check_package_scripts.sh && \
         say "Checking lint" && \
         pnpm lint && \
         say "Checking format" && \
         pnpm format-check && \
-        if git diff --name-only "$(git merge-base origin/main HEAD)" \
-            | grep -qE '^(services/base\.tsconfig\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then
-            yell "Shared config changed (tsconfig base, lockfile or catalog) - falling back to full workspace tsc-check" && \
-            say "Checking typescript for entire workspace" && \
-            pnpm -r --if-present --workspace-concurrency=4 run tsc-check
-        else
-            local root packages_all changed_packages && \
-            root="$(pwd)" && \
-            packages_all="$(pnpm --filter="...[origin/main]" ls --depth -1 --parseable 2>/dev/null)" && \
-            changed_packages="$(_lint_changed_packages_with_script "$root" "$packages_all" tsc-check)" && \
-            if [[ -z "$changed_packages" ]]; then
-                whisper "Skipping typescript - no relevant packages changed"
-            else
-                _lint_changed_run "typescript" "$changed_packages" \
-                    pnpm --filter="...[origin/main]" --if-present --workspace-concurrency=4 run tsc-check
-            fi
-        fi)
+        say "Checking typescript" && \
+        pnpm tsc-check)
 }
 
 function install_tinybird_cli() {    

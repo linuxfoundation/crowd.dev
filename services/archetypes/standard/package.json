@@ -2,9 +2,6 @@
   "name": "@crowd/archetype-standard",
   "private": true,
   "main": "src/index.ts",
-  "scripts": {
-    "tsc-check": "tsc --noEmit"
-  },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/common_services": "workspace:*",
@@ -19,7 +16,6 @@
   },
   "devDependencies": {
     "@types/config": "^3.3.1",
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "catalog:"
   }
 }
