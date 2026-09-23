@@ -63,6 +63,7 @@
     "yup": "^0.32.11"
   },
   "devDependencies": {
+    "@storybook/addon-docs": "^10.2.12",
     "@storybook/vue3": "^10.2.12",
     "@storybook/vue3-vite": "^10.2.12",
     "@types/pluralize": "^0.0.33",
@@ -83,8 +84,6 @@
     "tailwind-config-viewer": "^1.7.2",
     "tailwindcss": "^3.2.7",
     "typescript": "~5.0.4",
-    "unplugin-auto-import": "^0.15.2",
-    "unplugin-vue-components": "^0.24.1",
-    "@storybook/addon-docs": "^10.2.12"
+    "unplugin-vue-components": "^32.1.0"
   }
 }
