@@ -1,18 +1,8 @@
 frontend_files=`git --no-pager diff --name-only --cached |
-grep -E "frontend\/.+\.(?:js|ts|vue|scss|html)$" |
+grep -E "^frontend/.+\.(js|ts|vue|scss|html)$" |
 wc -l`
-
-# backend_files=`git --no-pager diff --name-only --cached |
-# grep -E "backend\/.+\.(?:js|ts|vue|scss|html)$" |
-# wc -l`
-
 
 if [ $frontend_files -gt 0 ]
 then
     cd frontend && npx lint-staged && cd ..
 fi
-
-# if [ $backend_files -gt 0 ]
-# then
-#     cd backend && npx lint-staged
-# fi
