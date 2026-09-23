@@ -6,6 +6,8 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import type { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
+
 import type * as activities from '../activities'
 
 const listActivities = proxyActivities<typeof activities>({
@@ -32,6 +34,10 @@ const watermarkActivities = proxyActivities<typeof activities>({
 
 // lf-criticality-score's `since` param is wired but unused — the workflow never watermarks it.
 const WATERMARKED_SOURCES = ['insights-discussions']
+
+// Sources whose corpus is periodically re-ranked in full: resumed via a (rundate, page)
+// cursor instead of a scalar time watermark.
+const CURSOR_BASED_SOURCES = ['lf-criticality-score']
 
 interface ISourceBreakdown {
   rows: number
@@ -64,8 +70,10 @@ export async function discoverProjects(
 
     for (const sourceName of sourceNames) {
       const watermarked = WATERMARKED_SOURCES.includes(sourceName)
+      const cursorBased = CURSOR_BASED_SOURCES.includes(sourceName)
       let capturedAt: string | undefined
       let since: string | undefined
+      let previousCursor: IDiscoverySourceCursor | undefined
 
       if (watermarked) {
         const watermark = await watermarkActivities.readSourceWatermark(sourceName)
@@ -73,9 +81,13 @@ export async function discoverProjects(
         since = mode === 'incremental' ? (watermark.since ?? undefined) : undefined
       }
 
+      if (cursorBased && mode === 'incremental') {
+        previousCursor = (await watermarkActivities.readSourceCursor(sourceName)) ?? undefined
+      }
+
       let allDatasets: Awaited<ReturnType<typeof listActivities.listDatasets>>
       try {
-        allDatasets = await listActivities.listDatasets(sourceName, since)
+        allDatasets = await listActivities.listDatasets(sourceName, since, previousCursor)
       } catch (err) {
         if (isCancellation(err)) {
           throw err
@@ -108,6 +120,7 @@ export async function discoverProjects(
 
       let sourceOk = true
       let sourceTruncated = false
+      let latestCursor: IDiscoverySourceCursor | undefined
 
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i]
@@ -137,6 +150,9 @@ export async function discoverProjects(
           if (result.truncated) {
             sourceTruncated = true
           }
+          if (result.cursor) {
+            latestCursor = result.cursor
+          }
         } catch (err) {
           if (isCancellation(err)) {
             throw err
@@ -154,6 +170,12 @@ export async function discoverProjects(
 
       if (watermarked && capturedAt && sourceOk && !sourceTruncated) {
         await watermarkActivities.commitSourceWatermark(sourceName, capturedAt, mode === 'full')
+      }
+
+      // Committed even when truncated: for a cursor-based source, hitting the cap mid-run
+      // is the normal case, and the cursor is exactly the position to resume from next time.
+      if (cursorBased && sourceOk && latestCursor) {
+        await watermarkActivities.commitSourceCursor(sourceName, latestCursor)
       }
 
       log.info(`[${sourceName}] Done. Processed ${datasets.length} dataset(s).`)
