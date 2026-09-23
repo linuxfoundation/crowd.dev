@@ -273,6 +273,7 @@ async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRe
 
 export class InsightsDiscussionsSource implements IDiscoverySource {
   public readonly name = 'insights-discussions'
+  public readonly provenance = 'github-discussion' as const
   public readonly format = 'json' as const
 
   async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {

@@ -179,6 +179,7 @@ async function fetchPage(
 
 export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
+  public readonly provenance = 'lf-criticality-score' as const
   public readonly format = 'json' as const
 
   async listAvailableDatasets(options?: {
