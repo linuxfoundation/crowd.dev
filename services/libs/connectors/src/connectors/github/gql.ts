@@ -1,6 +1,7 @@
 import { timeout } from '@crowd/common'
 import type { Logger } from '@crowd/logging'
 
+import { summarizeBody } from '../../http/client'
 import type { ConnectorHttp } from '../../http/client'
 import { ProviderContractError } from '../../http/errors'
 
@@ -42,7 +43,14 @@ export async function githubGraphql<T>(
       return body.data
     }
     if (isForbidden || attempt >= NO_DATA_MAX_ATTEMPTS) {
-      throw new ProviderContractError('github graphql response has no data')
+      throw new ProviderContractError('github graphql response has no data').withContext({
+        request: {
+          method: 'POST',
+          url: 'https://api.github.com/graphql',
+          body: summarizeBody(variables),
+        },
+        response: { status: 200, body: summarizeBody(body.errors) },
+      })
     }
     log.warn({ attempt }, 'github graphql empty data response, retrying')
     await timeout(NO_DATA_BACKOFF_MS)
