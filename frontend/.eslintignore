@@ -1,8 +1,6 @@
-**/*.spec.js
-cypress
-coverage
 dist
-tests
+storybook-static
+coverage
+node_modules
 tailwind.config.js
-cypress.config.js
-cypress.staging.config.js
+components.d.ts
