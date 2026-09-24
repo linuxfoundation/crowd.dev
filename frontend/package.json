@@ -5,6 +5,7 @@
   "scripts": {
     "lint": "eslint \"src/**/*.{js,ts,vue}\" --max-warnings=0",
     "lint:fix": "npm run lint -- --fix",
+    "build": "npm run build:production",
     "build:localhost": "vite build --mode localhost",
     "build:production": "vite build --mode prod",
     "build:staging": "vite build --mode staging",
