@@ -145,13 +145,26 @@ SQL >
     FROM stars_snapshots_deduped
     GROUP BY repositoryId
 
+NODE stars_repo_histories_agg
+DESCRIPTION >
+    All in-scope repos' pre-reversed histories collected into a single row, so
+    `stars_github_bucketed` below always has exactly one row to `CROSS JOIN` against per bucket -
+    `groupArray` with no `GROUP BY` returns one row (with an empty array) even when
+    `stars_repo_snapshot_history` has zero repos, unlike `CROSS JOIN stars_repo_scope`, which
+    dropped every bucket entirely for a GitLab-only scope with no GitHub repos.
+
+SQL >
+    SELECT groupArray(history) AS histories FROM stars_repo_snapshot_history
+
 NODE stars_github_bucketed
 DESCRIPTION >
     Granularity mode: per-bucket GitHub cumulative total. For each (bucket, repo): the latest
     snapshot captured at or before that bucket's end date, 0 if none exists yet for that repo.
     A bucket's own `endDate` can extend past a period boundary (e.g. the last month in range is
     only half over) - capped by the caller's own `endDate` when given, so a mid-period cutoff
-    never admits snapshots the caller asked to exclude.
+    never admits snapshots the caller asked to exclude. Sums over `stars_repo_histories_agg`'s
+    single collected-histories row instead of joining per repo, so a bucket always survives even
+    when the scope has no GitHub repos at all.
 
 SQL >
     %
@@ -160,33 +173,34 @@ SQL >
             ds.startDate AS startDate,
             ds.endDate AS endDate,
             toUInt64(
-                sum(
-                    coalesce(
-                        tupleElement(
-                            arrayFirst(
-                                x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
-                                {% if defined(endDate) %}
-                                    AND tupleElement(x, 1)
-                                    <= {{
-                                        DateTime(
-                                            endDate,
-                                            description="Snapshot as of cutoff",
-                                            required=False,
-                                        )
-                                    }}
-                                {% end %},
-                                coalesce(h.history, [])
+                arraySum(
+                    arrayMap(
+                        history -> coalesce(
+                            tupleElement(
+                                arrayFirst(
+                                    x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
+                                    {% if defined(endDate) %}
+                                        AND tupleElement(x, 1)
+                                        <= {{
+                                            DateTime(
+                                                endDate,
+                                                description="Snapshot as of cutoff",
+                                                required=False,
+                                            )
+                                        }}
+                                    {% end %},
+                                    history
+                                ),
+                                2
                             ),
-                            2
+                            0
                         ),
-                        0
+                        agg.histories
                     )
                 )
             ) AS githubCumulativeStars
         FROM generate_timeseries ds
-        CROSS JOIN stars_repo_scope repo
-        LEFT JOIN stars_repo_snapshot_history h ON h.repositoryId = repo.repositoryId
-        GROUP BY ds.startDate, ds.endDate
+        CROSS JOIN stars_repo_histories_agg agg
     {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS githubCumulativeStars
     {% end %}
 
@@ -263,11 +277,11 @@ SQL >
                 SELECT
                     ds.startDate AS startDate,
                     ds.endDate AS endDate,
-                    count(case when af.sourceId != '' then 1 else null end) AS activityCount
+                    count(case when af.activityId != '' then 1 else null end) AS activityCount
                 FROM generate_timeseries ds
                 LEFT JOIN
                     (
-                        SELECT timestamp, sourceId
+                        SELECT timestamp, activityId
                         FROM
                             {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
                             {% else %} activityRelations_bucket_routing
