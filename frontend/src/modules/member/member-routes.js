@@ -16,9 +16,6 @@ export default [
     meta: {
       auth: true,
       title: 'People',
-      segments: {
-        requireSelectedProjectGroup: true,
-      },
     },
     children: [
       {
@@ -28,6 +25,9 @@ export default [
         meta: {
           auth: true,
           eventKey: PageEventKey.MEMBERS,
+          segments: {
+            requireSelectedProjectGroup: true,
+          },
         },
         beforeEnter: [
           PermissionGuard(LfPermission.memberRead),
@@ -40,6 +40,9 @@ export default [
         meta: {
           auth: true,
           eventKey: PageEventKey.MEMBERS_MERGE_SUGGESTIONS,
+          segments: {
+            requireSelectedProjectGroup: true,
+          },
         },
         beforeEnter: [
           PermissionGuard(LfPermission.mergeMembers),
@@ -53,6 +56,9 @@ export default [
           auth: true,
           title: 'Person profile',
           eventKey: PageEventKey.MEMBER_PROFILE,
+          segments: {
+            optionalSelectedProjectGroup: true,
+          },
         },
         props: true,
         beforeEnter: [
@@ -66,6 +72,9 @@ export default [
         meta: {
           auth: true,
           eventKey: PageEventKey.MEMBERS_MERGE_SUGGESTIONS,
+          segments: {
+            requireSelectedProjectGroup: true,
+          },
         },
         props: true,
         beforeEnter: [
