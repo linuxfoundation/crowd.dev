@@ -40,7 +40,12 @@ export function staticApiKeyMiddleware(): RequestHandler {
       // fire and forget — don't block the request
       touchApiKeyLastUsed(qx, apiKey.id).catch(() => {})
 
-      req.actor = { id: apiKey.name, type: 'service', scopes: apiKey.scopes }
+      req.actor = {
+        id: apiKey.name,
+        type: 'service',
+        scopes: apiKey.scopes,
+        apiKeyId: apiKey.id,
+      }
 
       next()
     } catch (err) {
