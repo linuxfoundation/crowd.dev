@@ -10,12 +10,12 @@ vi.mock('./evaluateProject', () => ({
   evaluateProject: vi.fn(),
 }))
 
-function mockReqRes(body: unknown, actorId = 'test-actor') {
+function mockReqRes(body: unknown, actorId = 'test-actor', apiKeyId?: string) {
   const req = {
     body,
     database: { sequelize: {} },
     log: { warn: vi.fn(), error: vi.fn() },
-    actor: { type: 'service', id: actorId, scopes: [] },
+    actor: { type: 'service', id: actorId, scopes: [], apiKeyId },
   } as unknown as Request
 
   const json = vi.fn()
@@ -96,6 +96,39 @@ describe('projectEvaluationExec', () => {
       await expect(projectEvaluationExec(req, res)).rejects.toThrow()
 
       const { req: otherReq, res: otherRes } = mockReqRes(req.body, 'a-different-actor')
+      await expect(projectEvaluationExec(otherReq, otherRes)).resolves.not.toThrow()
+    } finally {
+      delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP
+    }
+  })
+
+  it('isolates the reservation counter by apiKeyId even when names collide', async () => {
+    vi.mocked(evaluateProject).mockImplementation(async (_input, _qx, _creds, _log, reserve) => {
+      reserve?.()
+      return {
+        outcome: 'onboard',
+        evaluationResult: 'true',
+        evaluationReason: null,
+        metrics: null,
+      }
+    })
+
+    const body = {
+      id: 'catalog-1',
+      repoUrl: 'https://github.com/foo/bar',
+      repoName: 'bar',
+      projectSlug: 'foo',
+      lfCriticalityScore: null,
+      source: null,
+    }
+
+    process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP = '1'
+    try {
+      const { req, res } = mockReqRes(body, 'shared-name', 'key-id-a')
+      await projectEvaluationExec(req, res)
+      await expect(projectEvaluationExec(req, res)).rejects.toThrow()
+
+      const { req: otherReq, res: otherRes } = mockReqRes(body, 'shared-name', 'key-id-b')
       await expect(projectEvaluationExec(otherReq, otherRes)).resolves.not.toThrow()
     } finally {
       delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP

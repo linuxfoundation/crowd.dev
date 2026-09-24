@@ -34,6 +34,16 @@ describe('createDailyLlmCap', () => {
     day = '2026-09-25'
     expect(() => reserve('key-1')).not.toThrow()
   })
+
+  it('isolates counters by counterKey while resolving the max from overrideKey', () => {
+    const resolveMax = (overrideKey: string) => (overrideKey === 'shared-name' ? 1 : 25)
+    const reserve = createDailyLlmCap(resolveMax)
+
+    reserve('key-id-a', 'shared-name')
+
+    expect(() => reserve('key-id-b', 'shared-name')).not.toThrow()
+    expect(() => reserve('key-id-a', 'shared-name')).toThrow()
+  })
 })
 
 describe('resolveDailyLlmCapMax', () => {

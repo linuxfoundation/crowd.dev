@@ -62,11 +62,21 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
   }
 
   if (response.status === 429) {
-    return {
-      outcome: 'unsure',
-      evaluationResult: 'error',
-      evaluationReason: 'rate limited: daily evaluation cap reached',
-      metrics: null,
+    let dailyCapReached = false
+    try {
+      const body = (await response.clone().json()) as { error?: { message?: string } }
+      dailyCapReached = body?.error?.message === 'Daily evaluation limit reached'
+    } catch {
+      dailyCapReached = false
+    }
+
+    if (dailyCapReached) {
+      return {
+        outcome: 'unsure',
+        evaluationResult: 'error',
+        evaluationReason: 'rate limited: daily evaluation cap reached',
+        metrics: null,
+      }
     }
   }
 

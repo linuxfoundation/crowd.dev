@@ -2,25 +2,28 @@ import { RateLimitError } from '@crowd/common'
 
 const DEFAULT_MAX = 25
 
-function parseOverrides(raw: string | undefined): Record<string, number> {
+function parseOverrides(raw: string | undefined): Map<string, number> {
   if (!raw) {
-    return {}
+    return new Map()
   }
 
+  let parsed: unknown
   try {
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return Object.fromEntries(
-        Object.entries(parsed as Record<string, unknown>).filter(
-          ([, value]) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0,
-        ),
-      ) as Record<string, number>
-    }
+    parsed = JSON.parse(raw)
   } catch {
-    // fall through to the empty default below
+    return new Map()
   }
 
-  return {}
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return new Map()
+  }
+
+  return new Map(
+    Object.entries(parsed as Record<string, unknown>).filter(
+      (entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isSafeInteger(entry[1]) && entry[1] > 0,
+    ),
+  )
 }
 
 export function resolveDailyLlmCapMax(key: string): number {
@@ -31,27 +34,29 @@ export function resolveDailyLlmCapMax(key: string): number {
       : DEFAULT_MAX
 
   const overrides = parseOverrides(process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP_OVERRIDES)
-  return overrides[key] ?? defaultMax
+  return overrides.get(key) ?? defaultMax
 }
 
 // In-process, per-instance counter — a blast-radius limiter against runaway callers, not an
 // accounting-grade budget. Resets on deploy and the effective ceiling scales with replica count.
 export function createDailyLlmCap(
-  resolveMax: (key: string) => number = resolveDailyLlmCapMax,
+  resolveMax: (overrideKey: string) => number = resolveDailyLlmCapMax,
   today: () => Date = () => new Date(),
 ) {
   const counters = new Map<string, { day: string; count: number }>()
 
-  return (key: string): void => {
+  // `counterKey` isolates the budget (must be unique per caller); `overrideKey` picks which
+  // configured cap applies and may be shared by callers that aren't uniquely identifiable.
+  return (counterKey: string, overrideKey: string = counterKey): void => {
     const day = today().toISOString().slice(0, 10)
-    const entry = counters.get(key)
+    const entry = counters.get(counterKey)
     const count = entry?.day === day ? entry.count : 0
-    const max = resolveMax(key)
+    const max = resolveMax(overrideKey)
 
     if (count >= max) {
-      throw new RateLimitError('Daily evaluation limit reached', { key, max })
+      throw new RateLimitError('Daily evaluation limit reached', { counterKey, overrideKey, max })
     }
 
-    counters.set(key, { day, count: count + 1 })
+    counters.set(counterKey, { day, count: count + 1 })
   }
 }
