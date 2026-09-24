@@ -74,6 +74,60 @@ describe('evaluateProject', () => {
     expect(result.evaluationReason).toContain('network down')
   })
 
+  it('returns a rate-limited reason on HTTP 429 from the daily evaluation cap', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      clone: () => ({
+        json: async () => ({
+          error: { code: 'RATE_LIMITED', message: 'Daily evaluation limit reached' },
+        }),
+      }),
+    })
+
+    const result = await evaluateProject(input)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationReason).toBe('rate limited: daily evaluation cap reached')
+  })
+
+  it('falls back to the generic reason on HTTP 429 from an unrelated rate limiter', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      clone: () => ({
+        json: async () => ({
+          error: { code: 'RATE_LIMITED', message: 'Too many requests, please try again later' },
+        }),
+      }),
+    })
+
+    const result = await evaluateProject(input)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationReason).toContain('API returned HTTP 429')
+  })
+
+  it('falls back to the generic reason on HTTP 429 with a non-JSON body', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      clone: () => ({
+        json: async () => {
+          throw new SyntaxError('Unexpected token')
+        },
+      }),
+    })
+
+    const result = await evaluateProject(input)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationReason).toContain('API returned HTTP 429')
+  })
+
   it('returns an unsure/error result on a non-ok HTTP status', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
