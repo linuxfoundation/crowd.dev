@@ -62,8 +62,6 @@ declare module 'vue' {
   app.use(marked);
   app.use(VueLazyLoad, {});
 
-  (app.config as any).productionTip = process.env.NODE_ENV === 'production';
-
   app.config.errorHandler = (err: any) => {
     console.error(err);
     if (config.env !== 'local') {
@@ -82,14 +80,6 @@ declare module 'vue' {
     });
 
   app.use(store).use(router).mount('#app');
-
-  if ((window as any).Cypress) {
-    (window as any).app = {
-      ...app,
-      $store: store,
-      $router: router,
-    };
-  }
 
   if (config.env === 'production' && config.hotjarKey) {
     (function (h, o, t, j, a, r) {

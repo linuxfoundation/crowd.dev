@@ -40,7 +40,7 @@
         Activities tracked
       </p>
       <p class="text-gray-600 text-small pb-3">
-        Stars/Un-stars, Forks, Issues, Pull requests, Discussions, Comments on
+        Star counts, Forks, Issues, Pull requests, Discussions, Comments on
         issues, Pull requests, Discussions, Closing of issues/pull
         requests/discussions
       </p>

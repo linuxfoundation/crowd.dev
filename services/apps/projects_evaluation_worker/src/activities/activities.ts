@@ -12,15 +12,20 @@ import {
   startPipelineRun,
 } from '@crowd/data-access-layer'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
-import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
+import {
+  IDbProjectCatalog,
+  isGithubDiscussionProvenance,
+} from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
 import { computeExclusivelyLfOwners, resolvePrecheckSkipReason } from '../precheck/precheck'
 import { IEvaluationActivityResult, IPrecheckResult, IPriorityConfig } from '../types'
+import { buildSkippedDiscussionAlert } from './skippedRequestAlert'
 
 const log = getServiceLogger()
 
@@ -79,7 +84,16 @@ export async function precheckPendingProjects(
 
   const remaining: IDbProjectCatalog[] = []
   const breakdown: Record<string, number> = {}
+  const skippedDiscussionRequests: IPrecheckResult['skippedDiscussionRequests'] = []
   let skippedPreCheck = 0
+
+  const recordSkip = (project: IDbProjectCatalog, reason: string) => {
+    skippedPreCheck++
+    breakdown[reason] = (breakdown[reason] ?? 0) + 1
+    if (isGithubDiscussionProvenance(project.provenance)) {
+      skippedDiscussionRequests.push({ project, reason })
+    }
+  }
 
   for (const project of projects) {
     const reason = resolvePrecheckSkipReason(canonicalsByProjectId.get(project.id) ?? null, {
@@ -95,8 +109,7 @@ export async function precheckPendingProjects(
     const updatedRows = await markProjectCatalogPreCheckSkipped(writeQx, project.id, reason)
 
     if (updatedRows > 0) {
-      skippedPreCheck++
-      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+      recordSkip(project, reason)
       continue
     }
 
@@ -106,8 +119,7 @@ export async function precheckPendingProjects(
     const alreadyPrechecked = fresh?.action === 'skip' && fresh?.skipReason === reason
 
     if (alreadyPrechecked) {
-      skippedPreCheck++
-      breakdown[reason] = (breakdown[reason] ?? 0) + 1
+      recordSkip(project, reason)
     } else {
       log.info(
         { id: project.id, repoUrl: project.repoUrl },
@@ -127,7 +139,7 @@ export async function precheckPendingProjects(
     'Deterministic pre-check complete.',
   )
 
-  return { remaining, skippedPreCheck, breakdown }
+  return { remaining, skippedPreCheck, breakdown, skippedDiscussionRequests }
 }
 
 export async function evaluateAndUpdateProject(
@@ -189,6 +201,7 @@ export async function evaluateAndUpdateProject(
     return {
       applied: Boolean(updated),
       outcome: result.outcome,
+      evaluationReason: result.evaluationReason,
       model: null,
       inputTokens: null,
       outputTokens: null,
@@ -202,11 +215,35 @@ export async function evaluateAndUpdateProject(
   return {
     applied: Boolean(updated),
     outcome: result.outcome,
+    evaluationReason: result.evaluationReason,
     model,
     inputTokens,
     outputTokens,
     costUsd: estimateLlmCostUsd(model, inputTokens, outputTokens),
     seconds,
+  }
+}
+
+export async function notifySkippedHumanRequest(
+  project: IDbProjectCatalog,
+  reason: string,
+): Promise<void> {
+  if (!isGithubDiscussionProvenance(project.provenance)) {
+    return
+  }
+
+  const sent = await sendSlackNotificationAsync(
+    SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+    SlackPersona.WARNING_PROPAGATOR,
+    `Skipped — ${project.repoName}`,
+    buildSkippedDiscussionAlert(project, reason),
+  )
+
+  if (!sent) {
+    log.warn(
+      { id: project.id, repoUrl: project.repoUrl },
+      'Skipped-discussion Slack alert was not sent.',
+    )
   }
 }
 
