@@ -20,7 +20,7 @@
   },
   "lint-staged": {
     "**/*.{js,ts,vue}": [
-      "eslint --fix"
+      "eslint --fix --max-warnings=0"
     ]
   },
   "dependencies": {
