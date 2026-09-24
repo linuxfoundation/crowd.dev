@@ -14,6 +14,7 @@
     "@crowd/common": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
+    "@crowd/project-onboarding": "workspace:*",
     "@crowd/slack": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@temporalio/client": "~1.17.2",

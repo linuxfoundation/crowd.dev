@@ -53,6 +53,7 @@
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
     "@crowd/opensearch": "workspace:*",
+    "@crowd/project-onboarding": "workspace:*",
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",

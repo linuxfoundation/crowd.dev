@@ -107,6 +107,9 @@
       "path": "services/apps/profiles_worker"
     },
     {
+      "path": "services/libs/project-onboarding"
+    },
+    {
       "path": "services/apps/projects_evaluation_worker"
     },
     {

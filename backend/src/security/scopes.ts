@@ -19,6 +19,7 @@ export const SCOPES = {
   READ_AKRITES_MAINTAINERS: 'read:akrites-maintainers',
   WRITE_PROJECT_EVALUATION: 'write:project-evaluation',
   WRITE_PROJECT_CATALOG: 'write:project-catalog',
+  WRITE_PROJECT_ONBOARDING: 'write:project-onboarding',
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]
