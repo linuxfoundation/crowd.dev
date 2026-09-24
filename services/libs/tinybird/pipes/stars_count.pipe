@@ -1,0 +1,175 @@
+DESCRIPTION >
+    - `stars_count.pipe` provides "new stars" (period-specific, non-cumulative) analytics for a
+    project or curated collection, replacing `activities_count.pipe` for stars only (CM-1785).
+    - Built directly on top of `stars_cumulative_count.pipe`: in granularity mode, a period's "new
+    stars" is just that bucket's cumulative total minus the previous bucket's - correct regardless
+    of whether the underlying number came from a GitHub snapshot or a GitLab per-event count, so
+    there's no separate GitHub/GitLab branching in the bucketed mode at all.
+    - **Can go negative for a bucket** - GitHub's snapshot total is the platform's current net
+    count (stars minus unstars), so a bucket where unstars outpaced new stars nets negative. Real,
+    not a bug. GitLab's own contribution to the same bucket can't go negative (it's an event
+    tally), but the combined number can.
+    - **Backfill-inflation caveat (same as CM-1441's already-reworked pipes)**: the very first
+    bucket where a repo's snapshot history exists shows that repo's *entire* historical total as
+    "new", since there's no earlier snapshot to diff against. Repos whose CM-1463 backfill hasn't
+    reached back to the start of the requested range will show an inflated first-seen bucket.
+    - Exactly one of `project` / `collectionSlug` must be given, same contract as
+    `stars_cumulative_count.pipe` / `activities_filtered.pipe`.
+    - Parameters: `project`, `collectionSlug`, `repos`, `startDate`, `endDate`, `granularity` -
+    identical to `stars_cumulative_count.pipe`, passed straight through.
+    - Response:
+    - Without granularity: `activityCount` (single row)
+    - With granularity: `startDate`, `endDate`, `activityCount` per bucket
+    - Response field names deliberately match `activities_count.pipe` so `stars.ts` can swap the
+    pipe name with no other code changes.
+
+NODE stars_count_repo_scope
+DESCRIPTION >
+    Same GitHub repo scoping as `stars_cumulative_count.pipe`'s `stars_repo_scope` node,
+    duplicated here since Tinybird nodes only see their own pipe file.
+
+SQL >
+    %
+    {% if defined(collectionSlug) %}
+        SELECT r.id AS repositoryId
+        FROM repositories r FINAL
+        WHERE
+            isNull (r.deletedAt)
+            AND r.enabled = true
+            AND r.excluded = false
+            AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+            {% if defined(repos) %}
+                AND has(
+                    arrayMap(
+                        x -> lower(x),
+                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                    ),
+                    lower(r.url)
+                )
+            {% end %}
+    {% else %}
+        SELECT r.id AS repositoryId
+        FROM repositories r FINAL
+        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
+        WHERE
+            isNull (r.deletedAt)
+            AND r.enabled = true
+            AND r.excluded = false
+            AND isNull (i.deletedAt)
+            AND i.enabled = 1
+            AND r.segmentId = (SELECT segmentId FROM segments_filtered)
+            {% if defined(repos) %}
+                AND has(
+                    arrayMap(
+                        x -> lower(x),
+                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                    ),
+                    lower(r.url)
+                )
+            {% end %}
+    {% end %}
+
+NODE stars_count_bucketed
+DESCRIPTION >
+    Granularity mode: diffs consecutive buckets of `stars_cumulative_count`'s running total - "new
+    stars" in a bucket is just that bucket's cumulative total minus the previous bucket's. First
+    bucket in range diffs against 0 (see backfill-inflation caveat above).
+
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            startDate,
+            endDate,
+            toInt64(cumulativeActivityCount) - toInt64(
+                coalesce(lagInFrame(cumulativeActivityCount) OVER (ORDER BY startDate ASC), 0)
+            ) AS activityCount
+        FROM stars_cumulative_count
+        ORDER BY startDate ASC
+    {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS activityCount
+    {% end %}
+
+NODE stars_count_summary
+DESCRIPTION >
+    No-granularity mode: total "new stars" across [startDate, endDate]. GitHub = total as of
+    endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - same
+    backfill-inflation caveat as the bucketed mode, can also go negative on net unstars). GitLab =
+    plain per-event range count, `platform != 'github'`.
+
+SQL >
+    %
+    {% if not defined(granularity) %}
+        WITH
+            github_at_end AS (
+                SELECT sum(starCount) AS total
+                FROM
+                    (
+                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                        FROM repositoryStarSnapshots
+                        WHERE
+                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
+                            {% if defined(endDate) %}
+                                AND capturedAt
+                                <= {{ DateTime(endDate, description="Range end", required=False) }}
+                            {% end %}
+                        GROUP BY repositoryId
+                    )
+            ),
+            github_at_start AS (
+                SELECT sum(starCount) AS total
+                FROM
+                    (
+                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                        FROM repositoryStarSnapshots
+                        WHERE
+                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
+                            {% if defined(startDate) %}
+                                AND capturedAt
+                                <= {{ DateTime(startDate, description="Range start", required=False) }}
+                            {% else %} AND 1 = 0
+                            {% end %}
+                        GROUP BY repositoryId
+                    )
+            ),
+            gitlab_new AS (
+                SELECT count() AS c
+                FROM
+                    {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
+                    {% else %} activityRelations_bucket_routing
+                    {% end %} as a
+                WHERE
+                    {% if defined(collectionSlug) %}
+                        {% if defined(bucketId) %}
+                            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                            AND a.collectionSlug = {{ String(collectionSlug) }}
+                        {% else %} 1 = 0
+                        {% end %}
+                    {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+                    {% end %}
+                    AND type = 'star'
+                    AND platform != 'github'
+                    AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+                    {% if defined(repos) %}
+                        AND channel IN (SELECT channel FROM repos_to_channels)
+                    {% end %}
+                    {% if defined(startDate) %}
+                        AND timestamp
+                        > {{ DateTime(startDate, description="Range start", required=False) }}
+                    {% end %}
+                    {% if defined(endDate) %}
+                        AND timestamp < {{ DateTime(endDate, description="Range end", required=False) }}
+                    {% end %}
+            )
+        SELECT
+            toInt64(coalesce((SELECT total FROM github_at_end), 0))
+            - toInt64(coalesce((SELECT total FROM github_at_start), 0))
+            + (SELECT c FROM gitlab_new) AS activityCount
+    {% else %} SELECT 0 AS activityCount
+    {% end %}
+
+NODE stars_count
+SQL >
+    %
+    {% if defined(granularity) %} SELECT startDate, endDate, activityCount FROM stars_count_bucketed
+    {% else %} SELECT activityCount FROM stars_count_summary
+    {% end %}
