@@ -153,21 +153,17 @@ SQL >
                     coalesce(
                         tupleElement(
                             arrayFirst(
-                                x -> tupleElement(x, 1) < (
-                                    {% if defined(endDate) %}
-                                        least(
-                                            ds.endDate + INTERVAL 1 DAY,
-                                            {{
-                                                DateTime(
-                                                    endDate,
-                                                    description="Snapshot as of cutoff",
-                                                    required=False,
-                                                )
-                                            }}
+                                x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
+                                {% if defined(endDate) %}
+                                    AND tupleElement(x, 1)
+                                    <= {{
+                                        DateTime(
+                                            endDate,
+                                            description="Snapshot as of cutoff",
+                                            required=False,
                                         )
-                                    {% else %}ds.endDate + INTERVAL 1 DAY
-                                    {% end %}
-                                ),
+                                    }}
+                                {% end %},
                                 arrayReverse(coalesce(h.history, []))
                             ),
                             2
