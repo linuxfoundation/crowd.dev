@@ -29,6 +29,12 @@ export function isHumanProjectCatalogProvenance(
   return (PROJECT_CATALOG_HUMAN_PROVENANCES as readonly string[]).includes(value)
 }
 
+export function isGithubDiscussionProvenance(
+  value: ProjectCatalogProvenance | null,
+): value is 'github-discussion' {
+  return value === 'github-discussion'
+}
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string

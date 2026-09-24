@@ -122,20 +122,23 @@ export async function recordFailure(
   }
 
   const writerQx = pgpQx(svc.postgres.writer.connection())
-  await upsertProjectDocReadiness(writerQx, {
-    projectId,
-    projectSlug: project.slug,
-    projectName: project.name,
-    docsUrl: resolved.docsUrl,
-    discoveryMethod: resolved.discoveryMethod,
-    confidence: resolved.confidence,
-    isOverride: resolved.isOverride,
-    overallScore: null,
-    overallGrade: null,
-    categoryScores: null,
-    runId,
-    durationMs: null,
-    ok: false,
-    error: errorMessage,
+  await writerQx.tx(async (tx) => {
+    await replaceProjectDocReadinessChecks(tx, projectId, [])
+    await upsertProjectDocReadiness(tx, {
+      projectId,
+      projectSlug: project.slug,
+      projectName: project.name,
+      docsUrl: resolved.docsUrl,
+      discoveryMethod: resolved.discoveryMethod,
+      confidence: resolved.confidence,
+      isOverride: resolved.isOverride,
+      overallScore: null,
+      overallGrade: null,
+      categoryScores: null,
+      runId,
+      durationMs: null,
+      ok: false,
+      error: errorMessage,
+    })
   })
 }

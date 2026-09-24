@@ -5,7 +5,7 @@ WORKDIR /usr/crowd/frontend
 COPY package-lock.json package.json ./
 RUN npm ci
 
-COPY .browserslistrc .eslintrc.js babel.config.js postcss.config.js tailwind.config.js vite.config.js tsconfig.json index.html ./
+COPY .browserslistrc postcss.config.js tailwind.config.js vite.config.js tsconfig.json index.html ./
 COPY ./public ./public
 COPY ./src ./src
 COPY ./.tailwind ./.tailwind
