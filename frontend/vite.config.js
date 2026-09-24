@@ -30,7 +30,7 @@ export default defineConfig({
     }),
     visualizer({
       template: 'treemap',
-      open: true,
+      open: false,
       gzipSize: true,
       brotliSize: true,
       filename: 'analyse.html',

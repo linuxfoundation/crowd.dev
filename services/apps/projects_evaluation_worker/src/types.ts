@@ -17,12 +17,20 @@ export interface IEvaluateProjectsInput {
   priorityConfig?: IPriorityConfig
 }
 
+// A github-discussion project skipped during the deterministic pre-check,
+// carried back to the workflow so it can send a per-repo alert.
+export interface IPrecheckSkippedDiscussionRequest {
+  project: IDbProjectCatalog
+  reason: string
+}
+
 // Returned by precheckPendingProjects; breakdown keys are the skip reasons from
 // PRECHECK_SKIP_REASONS, values are the count of projects skipped for that reason.
 export interface IPrecheckResult {
   remaining: IDbProjectCatalog[]
   skippedPreCheck: number
   breakdown: Record<string, number>
+  skippedDiscussionRequests: IPrecheckSkippedDiscussionRequest[]
 }
 
 // Returned by evaluateAndUpdateProject so the workflow can aggregate cost/token usage.
@@ -30,6 +38,7 @@ export interface IPrecheckResult {
 export interface IEvaluationActivityResult {
   applied: boolean
   outcome: EvaluationOutcome
+  evaluationReason: string | null
   model: string | null
   inputTokens: number | null
   outputTokens: number | null

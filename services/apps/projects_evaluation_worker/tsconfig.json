@@ -18,6 +18,9 @@
       "path": "../../libs/logging"
     },
     {
+      "path": "../../libs/slack"
+    },
+    {
       "path": "../../libs/types"
     }
   ]

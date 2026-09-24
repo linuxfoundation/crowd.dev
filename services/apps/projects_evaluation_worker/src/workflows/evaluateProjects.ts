@@ -40,6 +40,13 @@ const pipelineRunActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
+// A retry after a timeout could re-post an already-delivered, non-idempotent webhook message;
+// a missed alert is recoverable, a duplicate one is not (see CM-1791).
+const notifyActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 1 },
+})
+
 const DEFAULT_PRIORITY_CONFIG: IPriorityConfig = {
   evaluateLimit: 50,
   sourcePriority: ['manual', 'insights-discussions', 'lf-criticality-score'],
@@ -109,6 +116,17 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
     skippedPreCheck = precheck.skippedPreCheck
     precheckBreakdown = precheck.breakdown
 
+    for (const { project, reason } of precheck.skippedDiscussionRequests) {
+      try {
+        await notifyActivities.notifySkippedHumanRequest(project, reason)
+      } catch (notifyErr) {
+        // A failed alert must never turn a recorded skip into a batch failure.
+        log.error(
+          `Failed to send skipped-request alert for project id=${project.id}: ${String(notifyErr)}`,
+        )
+      }
+    }
+
     if (remainingProjects.length > 0) {
       log.info(`Evaluating ${remainingProjects.length} project(s) (batch size: ${batchSize}).`)
 
@@ -123,6 +141,19 @@ export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Prom
             skipped++
           } else if (result.applied) {
             succeeded++
+            if (result.outcome === 'skip') {
+              try {
+                await notifyActivities.notifySkippedHumanRequest(
+                  project,
+                  result.evaluationReason ?? '(no reason provided)',
+                )
+              } catch (notifyErr) {
+                // A failed alert must never turn a recorded skip into a batch failure.
+                log.error(
+                  `Failed to send skipped-request alert for project id=${project.id}: ${String(notifyErr)}`,
+                )
+              }
+            }
           } else {
             skipped++
           }

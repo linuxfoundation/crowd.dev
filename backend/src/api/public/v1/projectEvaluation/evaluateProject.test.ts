@@ -292,6 +292,56 @@ describe('evaluateProject', () => {
     expect(queryLlm).not.toHaveBeenCalled()
   })
 
+  it('does not reserve a daily LLM call when the insufficient-activity shortcut fires', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue({
+      ...metrics,
+      stars: 0,
+      forks: 0,
+      closedIssues: 0,
+      closedPullRequests: 0,
+    })
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    const reserveLlmCall = vi.fn()
+
+    await evaluateProject(input, qx, bedrockCredentials, log, reserveLlmCall)
+
+    expect(reserveLlmCall).not.toHaveBeenCalled()
+  })
+
+  it('reserves exactly one daily LLM call before querying the LLM', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockResolvedValue({
+      answer: '{"onboard": true}',
+      model: 'test-model',
+      inputTokenCount: 10,
+      outputTokenCount: 5,
+      responseTimeSeconds: 1.2,
+    })
+    parseLlmJson.mockReturnValue({ onboard: true })
+    const reserveLlmCall = vi.fn()
+
+    await evaluateProject(input, qx, bedrockCredentials, log, reserveLlmCall)
+
+    expect(reserveLlmCall).toHaveBeenCalledOnce()
+  })
+
+  it('propagates a thrown reservation error instead of returning an errorResult', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    const reserveLlmCall = vi.fn(() => {
+      throw new Error('Daily evaluation limit reached')
+    })
+
+    await expect(
+      evaluateProject(input, qx, bedrockCredentials, log, reserveLlmCall),
+    ).rejects.toThrow('Daily evaluation limit reached')
+    expect(queryLlm).not.toHaveBeenCalled()
+  })
+
   it('returns an unsure/error result when the LLM answer is not parseable JSON', async () => {
     getGithubToken.mockReturnValue('token')
     fetchPublicRepoMetrics.mockResolvedValue(metrics)

@@ -17,4 +17,7 @@ export interface Actor {
   type: 'service' | 'user'
   id: string
   scopes: string[]
+  // Only set for API-key actors. `id` above holds the key's display name, which is not
+  // unique — use this for anything that must isolate one key from another with the same name.
+  apiKeyId?: string
 }
