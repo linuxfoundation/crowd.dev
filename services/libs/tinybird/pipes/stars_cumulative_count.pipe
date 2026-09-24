@@ -131,14 +131,15 @@ SQL >
 
 NODE stars_repo_snapshot_history
 DESCRIPTION >
-    Per-repository, chronologically-sorted array of (capturedAt, starCount) pairs - one row per
-    repo, built once instead of per bucket. `stars_github_bucketed` picks the latest qualifying
-    entry out of this array per bucket via `arrayFirst`, avoiding the
-    buckets x repos x full-snapshot-history join the old per-bucket `LEFT JOIN` produced.
+    Per-repository array of (capturedAt, starCount) pairs, newest-first - one row per repo, built
+    once instead of per bucket. Stored pre-reversed so `stars_github_bucketed`'s `arrayFirst`
+    lookup can scan it directly instead of calling `arrayReverse` on the same array again for
+    every bucket in the cross join (up to 1,000x per repo).
 
 SQL >
     SELECT
-        repositoryId, arraySort(x -> tupleElement(x, 1), groupArray((capturedAt, starCount))) AS history
+        repositoryId,
+        arrayReverse(arraySort(x -> tupleElement(x, 1), groupArray((capturedAt, starCount)))) AS history
     FROM stars_snapshots_deduped
     GROUP BY repositoryId
 
@@ -172,7 +173,7 @@ SQL >
                                         )
                                     }}
                                 {% end %},
-                                arrayReverse(coalesce(h.history, []))
+                                coalesce(h.history, [])
                             ),
                             2
                         ),
@@ -290,7 +291,7 @@ SQL >
                             {% end %}
                             {% if defined(endDate) %}
                                 AND timestamp
-                                < {{ DateTime(endDate, description="Filter before", required=False) }}
+                                <= {{ DateTime(endDate, description="Filter before", required=False) }}
                             {% end %}
                     ) af
                     ON CASE
