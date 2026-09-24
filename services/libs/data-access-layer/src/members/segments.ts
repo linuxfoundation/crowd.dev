@@ -144,7 +144,7 @@ export async function fetchMemberOverallAggregates(
       )
       SELECT
         SUM("activityCount") AS "activityCount",
-        AVG("averageSentiment") AS "averageSentiment",
+        SUM("averageSentiment" * "activityCount") / NULLIF(SUM("activityCount"), 0) AS "averageSentiment",
         ARRAY(SELECT DISTINCT UNNEST("activeOn") FROM top_level_segments) AS "activeOn"
       FROM top_level_segments
     `,
