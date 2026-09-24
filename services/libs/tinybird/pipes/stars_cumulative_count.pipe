@@ -154,22 +154,19 @@ SQL >
                         tupleElement(
                             arrayFirst(
                                 x -> tupleElement(x, 1) < (
-                                    least(
-                                        ds.endDate,
-                                        {% if defined(endDate) %}
-                                            toDate(
-                                                {{
-                                                    DateTime(
-                                                        endDate,
-                                                        description="Snapshot as of date cap",
-                                                        required=False,
-                                                    )
-                                                }}
-                                            )
-                                        {% else %} ds.endDate
-                                        {% end %}
-                                    )
-                                    + INTERVAL 1 DAY
+                                    {% if defined(endDate) %}
+                                        least(
+                                            ds.endDate + INTERVAL 1 DAY,
+                                            {{
+                                                DateTime(
+                                                    endDate,
+                                                    description="Snapshot as of cutoff",
+                                                    required=False,
+                                                )
+                                            }}
+                                        )
+                                    {% else %}ds.endDate + INTERVAL 1 DAY
+                                    {% end %}
                                 ),
                                 arrayReverse(coalesce(h.history, []))
                             ),
