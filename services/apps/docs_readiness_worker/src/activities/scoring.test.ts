@@ -160,19 +160,26 @@ describe('recordFailure', () => {
     expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
   })
 
-  test('upserts an ok=false row without touching check rows', async () => {
+  test('clears any stale check rows and upserts an ok=false row, in one transaction', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue({
       id: 'project-1',
       slug: 'proj',
       name: 'Project',
       website: null,
     })
+    mocks.tx.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+      await fn('tx-marker')
+    })
 
     await recordFailure('project-1', 'run-1', RESOLVED, 'no-docs-url')
 
-    expect(mocks.replaceProjectDocReadinessChecks).not.toHaveBeenCalled()
+    expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
+      'tx-marker',
+      'project-1',
+      [],
+    )
     expect(mocks.upsertProjectDocReadiness).toHaveBeenCalledWith(
-      { tx: mocks.tx },
+      'tx-marker',
       expect.objectContaining({
         projectId: 'project-1',
         ok: false,
