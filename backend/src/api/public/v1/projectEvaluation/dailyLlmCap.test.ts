@@ -57,7 +57,7 @@ describe('resolveDailyLlmCapMax', () => {
     delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP
     delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP_OVERRIDES
 
-    expect(resolveDailyLlmCapMax('any-key')).toBe(25)
+    expect(resolveDailyLlmCapMax('any-key')).toBe(100)
   })
 
   it('uses the configured default for keys without an override', () => {

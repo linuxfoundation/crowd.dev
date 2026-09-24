@@ -1,6 +1,6 @@
 import { RateLimitError } from '@crowd/common'
 
-const DEFAULT_MAX = 25
+const DEFAULT_MAX = 100
 
 function parseOverrides(raw: string | undefined): Map<string, number> {
   if (!raw) {
