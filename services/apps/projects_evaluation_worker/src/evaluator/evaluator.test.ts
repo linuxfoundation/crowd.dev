@@ -74,6 +74,19 @@ describe('evaluateProject', () => {
     expect(result.evaluationReason).toContain('network down')
   })
 
+  it('returns a rate-limited reason on HTTP 429', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+    })
+
+    const result = await evaluateProject(input)
+
+    expect(result.outcome).toBe('unsure')
+    expect(result.evaluationReason).toBe('rate limited: daily evaluation cap reached')
+  })
+
   it('returns an unsure/error result on a non-ok HTTP status', async () => {
     fetchMock.mockResolvedValue({
       ok: false,

@@ -61,6 +61,15 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
     }
   }
 
+  if (response.status === 429) {
+    return {
+      outcome: 'unsure',
+      evaluationResult: 'error',
+      evaluationReason: 'rate limited: daily evaluation cap reached',
+      metrics: null,
+    }
+  }
+
   if (!response.ok) {
     return {
       outcome: 'unsure',

@@ -4,8 +4,11 @@ import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { createDailyLlmCap } from './dailyLlmCap'
 import { evaluateProject } from './evaluateProject'
 import { IProjectEvaluationRequest, projectEvaluationRequestSchema } from './types'
+
+const reserveDailyLlmCall = createDailyLlmCap()
 
 export default async (req: Request, res: Response): Promise<void> => {
   const parsed = validateOrThrow(projectEvaluationRequestSchema, req.body)
@@ -26,6 +29,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       secretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
     },
     req.log,
+    () => reserveDailyLlmCall(req.actor.id),
   )
 
   ok(res, response)

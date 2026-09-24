@@ -10,11 +10,12 @@ vi.mock('./evaluateProject', () => ({
   evaluateProject: vi.fn(),
 }))
 
-function mockReqRes(body: unknown) {
+function mockReqRes(body: unknown, actorId = 'test-actor') {
   const req = {
     body,
     database: { sequelize: {} },
     log: { warn: vi.fn(), error: vi.fn() },
+    actor: { type: 'service', id: actorId, scopes: [] },
   } as unknown as Request
 
   const json = vi.fn()
@@ -60,9 +61,45 @@ describe('projectEvaluationExec', () => {
         secretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
       }),
       req.log,
+      expect.any(Function),
     )
     expect(status).toHaveBeenCalledWith(200)
     expect(json).toHaveBeenCalledWith(evaluationResponse)
+  })
+
+  it('keys the daily LLM reservation on the actor id', async () => {
+    vi.mocked(evaluateProject).mockImplementation(async (_input, _qx, _creds, _log, reserve) => {
+      reserve?.()
+      return {
+        outcome: 'onboard',
+        evaluationResult: 'true',
+        evaluationReason: null,
+        metrics: null,
+      }
+    })
+
+    const { req, res } = mockReqRes(
+      {
+        id: 'catalog-1',
+        repoUrl: 'https://github.com/foo/bar',
+        repoName: 'bar',
+        projectSlug: 'foo',
+        lfCriticalityScore: null,
+        source: null,
+      },
+      'projects-evaluation-worker',
+    )
+
+    process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP = '1'
+    try {
+      await projectEvaluationExec(req, res)
+      await expect(projectEvaluationExec(req, res)).rejects.toThrow()
+
+      const { req: otherReq, res: otherRes } = mockReqRes(req.body, 'a-different-actor')
+      await expect(projectEvaluationExec(otherReq, otherRes)).resolves.not.toThrow()
+    } finally {
+      delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP
+    }
   })
 
   it('rejects a request missing required fields', async () => {

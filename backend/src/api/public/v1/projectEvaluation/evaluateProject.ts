@@ -114,6 +114,7 @@ export async function evaluateProject(
   qx: QueryExecutor,
   bedrockCredentials: IBedrockClientCredentials,
   log: Logger,
+  reserveLlmCall: () => void = () => {},
 ): Promise<IProjectEvaluationResponse> {
   let token: string
   try {
@@ -138,6 +139,10 @@ export async function evaluateProject(
   if (hasInsufficientActivity(metrics)) {
     return insufficientActivityResult()
   }
+
+  // Must run outside the queryLlm try/catch below — otherwise a RateLimitError gets
+  // swallowed into errorResult() and returned as a 200, hiding the cap from the caller.
+  reserveLlmCall()
 
   const llmService = new LlmService(qx, bedrockCredentials, log)
 
