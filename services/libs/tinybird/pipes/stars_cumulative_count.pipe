@@ -112,13 +112,21 @@ NODE stars_snapshots_deduped
 DESCRIPTION >
     One row per (repositoryId, capturedAt), collapsing `repositoryStarSnapshots`'
     `ReplacingMergeTree` duplicate versions down to the latest `updatedAt`. Scoped to
-    `stars_repo_scope` up front so the array below is built only from in-scope repos.
+    `stars_repo_scope` up front, and to the caller's `endDate` (when given) so the array below is
+    built only from in-scope repos and snapshots `stars_github_bucketed`'s own cutoff could ever
+    select - a snapshot past `endDate` would be filtered out there anyway, so dropping it here
+    keeps the dedup scan and the array it feeds from growing with history the request can't use.
 
 SQL >
     %
     SELECT repositoryId, capturedAt, argMax(starCount, updatedAt) AS starCount
     FROM repositoryStarSnapshots
-    WHERE repositoryId IN (SELECT repositoryId FROM stars_repo_scope)
+    WHERE
+        repositoryId IN (SELECT repositoryId FROM stars_repo_scope)
+        {% if defined(endDate) %}
+            AND capturedAt
+            <= {{ DateTime(endDate, description="Snapshot as of cutoff", required=False) }}
+        {% end %}
     GROUP BY repositoryId, capturedAt
 
 NODE stars_repo_snapshot_history
