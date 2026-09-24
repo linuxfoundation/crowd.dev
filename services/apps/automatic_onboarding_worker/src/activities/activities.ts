@@ -20,8 +20,12 @@ import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/s
 import { svc } from '../main'
 import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
 import { OnboardAndUpdateProjectOutcome } from '../types'
+import {
+  buildErroredDiscussionAlert,
+  buildOnboardedDiscussionAlert,
+  isGithubDiscussionRequest,
+} from './discussionRequestAlert'
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
-import { buildOnboardedDiscussionAlert, isGithubDiscussionRequest } from './onboardedRequestAlert'
 
 const log = getServiceLogger()
 
@@ -152,7 +156,7 @@ export async function notifyOnboardedHumanRequest(project: IDbProjectCatalog): P
 export async function markProjectOnboardingFailed(
   projectId: string,
   reason: string,
-): Promise<void> {
+): Promise<boolean> {
   const qx = pgpQx(svc.postgres.writer.connection())
 
   const updatedRows = await markProjectCatalogOnboardingFailed(qx, projectId, reason)
@@ -162,10 +166,34 @@ export async function markProjectOnboardingFailed(
       { id: projectId },
       'Project was already onboarded or no longer pending, not marking as error.',
     )
-    return
+    return false
   }
 
   log.error({ id: projectId, reason }, 'Onboarding permanently failed, marked as error.')
+  return true
+}
+
+export async function notifyErroredHumanRequest(
+  project: IDbProjectCatalog,
+  reason: string,
+): Promise<void> {
+  if (!isGithubDiscussionRequest(project)) {
+    return
+  }
+
+  const sent = await sendSlackNotificationAsync(
+    SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+    SlackPersona.ERROR_REPORTER,
+    `Onboarding failed — ${project.repoName}`,
+    buildErroredDiscussionAlert(project, reason),
+  )
+
+  if (!sent) {
+    log.warn(
+      { id: project.id, repoUrl: project.repoUrl },
+      'Errored-discussion Slack alert was not sent.',
+    )
+  }
 }
 
 export async function startOnboardingPipelineRun(

@@ -99,7 +99,17 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
           )
 
           try {
-            await failureActivities.markProjectOnboardingFailed(project.id, reason)
+            const marked = await failureActivities.markProjectOnboardingFailed(project.id, reason)
+            if (marked) {
+              try {
+                await notifyActivities.notifyErroredHumanRequest(project, reason)
+              } catch (notifyErr) {
+                // A failed alert must never turn a recorded error into a batch failure.
+                log.error(
+                  `Failed to send errored-request alert for project id=${project.id}: ${String(notifyErr)}`,
+                )
+              }
+            }
           } catch (markErr) {
             // Don't let a failure to record the error state abort the rest of the batch.
             log.error(`Failed to mark project id=${project.id} as errored: ${String(markErr)}`)

@@ -4,9 +4,27 @@ import { SlackMessageSection } from '@crowd/slack'
 import { deriveProjectSlug } from '../onboarder/onboarder'
 
 const INSIGHTS_PROJECT_URL_BASE = 'https://insights.linuxfoundation.org/project'
+const MAX_REASON_LENGTH = 500
 
 export function isGithubDiscussionRequest(project: Pick<IDbProjectCatalog, 'provenance'>): boolean {
   return project.provenance === 'github-discussion'
+}
+
+function buildDiscussionRequestHeader(
+  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'>,
+): SlackMessageSection {
+  const requestedIn = project.sourceUrl
+    ? `<${project.sourceUrl}|${project.sourceUrl}>`
+    : '_source discussion not recorded_'
+
+  return {
+    title: '',
+    text: [`*${project.repoName}*`, project.repoUrl, `Requested in: ${requestedIn}`].join('\n'),
+  }
+}
+
+function truncateReason(reason: string): string {
+  return reason.length > MAX_REASON_LENGTH ? `${reason.slice(0, MAX_REASON_LENGTH)}…` : reason
 }
 
 export function buildOnboardedDiscussionReply(
@@ -19,18 +37,24 @@ export function buildOnboardedDiscussionReply(
 export function buildOnboardedDiscussionAlert(
   project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'projectSlug' | 'sourceUrl'>,
 ): SlackMessageSection[] {
-  const requestedIn = project.sourceUrl
-    ? `<${project.sourceUrl}|${project.sourceUrl}>`
-    : '_source discussion not recorded_'
-
   return [
-    {
-      title: '',
-      text: [`*${project.repoName}*`, project.repoUrl, `Requested in: ${requestedIn}`].join('\n'),
-    },
+    buildDiscussionRequestHeader(project),
     {
       title: 'Suggested reply',
       text: ['```', buildOnboardedDiscussionReply(project), '```'].join('\n'),
+    },
+  ]
+}
+
+export function buildErroredDiscussionAlert(
+  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'>,
+  reason: string,
+): SlackMessageSection[] {
+  return [
+    buildDiscussionRequestHeader(project),
+    {
+      title: 'Error',
+      text: ['```', truncateReason(reason), '```'].join('\n'),
     },
   ]
 }
