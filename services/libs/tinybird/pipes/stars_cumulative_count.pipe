@@ -50,6 +50,7 @@ SQL >
                 isNull (r.deletedAt)
                 AND r.enabled = true
                 AND r.excluded = false
+                AND r.url LIKE 'https://github.com/%'
                 AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
                 {% if defined(repos) %}
                     AND has(
@@ -70,6 +71,7 @@ SQL >
             isNull (r.deletedAt)
             AND r.enabled = true
             AND r.excluded = false
+            AND r.url LIKE 'https://github.com/%'
             AND isNull (i.deletedAt)
             AND i.enabled = 1
             AND r.segmentId = (SELECT segmentId FROM segments_filtered)
