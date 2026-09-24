@@ -33,6 +33,8 @@ DESCRIPTION >
     snapshot to `argMax` over and reads as 0 stars for that repo, not "unknown" - undercounts
     early buckets until CM-1463's backfill fully lands, never overcounts.
 
+TOKEN "insights-app-token" READ
+
 NODE stars_repo_scope
 DESCRIPTION >
     GitHub repositories in scope (+ optional `repos` filter). Same project/collection dual
