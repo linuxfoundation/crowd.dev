@@ -33,6 +33,13 @@ const pipelineRunActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
+// A retry after a timeout could re-post an already-delivered, non-idempotent webhook message;
+// a missed alert is recoverable, a duplicate one is not (see CM-1791).
+const notifyActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 1 },
+})
+
 export async function onboardProjects(input: IOnboardProjectsInput = {}): Promise<void> {
   const { batchSize = 20 } = input
   const { workflowId, runId } = workflowInfo()
@@ -64,6 +71,14 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
           const outcome = await onboardActivities.onboardAndUpdateProject(project)
           if (outcome === 'onboarded') {
             succeeded++
+            try {
+              await notifyActivities.notifyOnboardedHumanRequest(project)
+            } catch (notifyErr) {
+              // A failed alert must never turn a successful onboarding into a batch failure.
+              log.error(
+                `Failed to send onboarded-request alert for project id=${project.id}: ${String(notifyErr)}`,
+              )
+            }
           } else {
             skipped++
             if (outcome === 'catalog-changed') {

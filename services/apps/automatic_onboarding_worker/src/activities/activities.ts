@@ -15,11 +15,13 @@ import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
 import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
 import { OnboardAndUpdateProjectOutcome } from '../types'
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
+import { buildOnboardedDiscussionAlert, isGithubDiscussionRequest } from './onboardedRequestAlert'
 
 const log = getServiceLogger()
 
@@ -125,6 +127,26 @@ export async function onboardAndUpdateProject(
   )
 
   return 'onboarded'
+}
+
+export async function notifyOnboardedHumanRequest(project: IDbProjectCatalog): Promise<void> {
+  if (!isGithubDiscussionRequest(project)) {
+    return
+  }
+
+  const sent = await sendSlackNotificationAsync(
+    SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+    SlackPersona.SUCCESS_ANNOUNCER,
+    `Onboarded from GitHub discussion — ${project.repoName}`,
+    buildOnboardedDiscussionAlert(project),
+  )
+
+  if (!sent) {
+    log.warn(
+      { id: project.id, repoUrl: project.repoUrl },
+      'Onboarded-discussion Slack alert was not sent.',
+    )
+  }
 }
 
 export async function markProjectOnboardingFailed(
