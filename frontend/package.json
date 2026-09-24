@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.5.0",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "lint": "eslint \"src/**/*.{js,ts,vue}\" --max-warnings=0",
     "lint:fix": "npm run lint -- --fix",
@@ -19,7 +22,7 @@
     "docs": "npm run docs:tailwind & npm run docs:storybook"
   },
   "lint-staged": {
-    "**/*.{js,ts,vue}": [
+    "**/!(components.d).{js,ts,vue}": [
       "eslint --fix --max-warnings=0"
     ]
   },
@@ -87,7 +90,6 @@
     "tailwind-config-viewer": "^1.7.2",
     "tailwindcss": "^3.2.7",
     "typescript": "5.9.3",
-    "unplugin-auto-import": "^0.15.2",
-    "unplugin-vue-components": "^0.24.1"
+    "unplugin-vue-components": "^32.1.0"
   }
 }

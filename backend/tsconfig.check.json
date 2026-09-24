@@ -34,6 +34,9 @@
       "path": "../services/libs/opensearch"
     },
     {
+      "path": "../services/libs/project-onboarding"
+    },
+    {
       "path": "../services/libs/queue"
     },
     {

@@ -1,0 +1,11 @@
+{
+  "name": "@crowd/project-onboarding",
+  "private": true,
+  "main": "src/index.ts",
+  "dependencies": {
+    "@crowd/common": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

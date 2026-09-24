@@ -1,7 +1,6 @@
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
+import { deriveProjectSlug } from '@crowd/project-onboarding'
 import { SlackMessageSection } from '@crowd/slack'
-
-import { deriveProjectSlug } from '../onboarder/onboarder'
 
 const INSIGHTS_PROJECT_URL_BASE = 'https://insights.linuxfoundation.org/project'
 const MAX_REASON_LENGTH = 500
