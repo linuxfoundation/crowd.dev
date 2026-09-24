@@ -3,10 +3,9 @@
   <head>
     <title>LFX Community Data Platform | App</title>
     <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1"
     />
     <link
       rel="apple-touch-icon"
@@ -33,106 +32,29 @@
     <link
       rel="preload"
       as="style"
-      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@100;200;300;400;500;600;700;800;900&family=Roboto+Slab:wght@100;200;300;400;500;600;700;800;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Roboto+Slab:wght@400;600&display=swap"
     />
 
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@100;200;300;400;500;600;700;800;900&family=Roboto+Slab:wght@100;200;300;400;500;600;700;800;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Roboto+Slab:wght@400;600&display=swap"
       media="print"
       onload="this.media='all'"
     />
 
     <noscript>
       <link
-        href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@100;200;300;400;500;600;700;800;900&family=Roboto+Slab:wght@100;200;300;400;500;600;700;800;900&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Roboto+Slab:wght@400;600&display=swap"
         rel="stylesheet"
       />
     </noscript>
     <script src="https://cdn.platform.linuxfoundation.org/lfx-header-v2.js"></script>
-    <script type="text/javascript">
-      let segmentKey =
-              '%VUE_APP_SEGMENT_KEY%'
-
-      if (!segmentKey || segmentKey.startsWith('%VUE_APP_SEGMENT_KEY')) {
-        segmentKey = 'CROWD_VUE_APP_SEGMENT_KEY'
-      }
-
-      !(function() {
-        var analytics = (window.analytics =
-                window.analytics || [])
-        if (!analytics.initialize)
-          if (analytics.invoked)
-            window.console &&
-            console.error &&
-            console.error(
-                    'Segment snippet included twice.'
-            )
-          else {
-            analytics.invoked = !0
-            analytics.methods = [
-              'trackSubmit',
-              'trackClick',
-              'trackLink',
-              'trackForm',
-              'pageview',
-              'identify',
-              'reset',
-              'group',
-              'track',
-              'ready',
-              'alias',
-              'debug',
-              'page',
-              'once',
-              'off',
-              'on'
-            ]
-            analytics.factory = function(t) {
-              return function() {
-                var e =
-                        Array.prototype.slice.call(arguments)
-                e.unshift(t)
-                analytics.push(e)
-                return analytics
-              }
-            }
-            for (
-                    var t = 0;
-                    t < analytics.methods.length;
-                    t++
-            ) {
-              var e = analytics.methods[t]
-              analytics[e] = analytics.factory(e)
-            }
-            analytics.load = function(t, e) {
-              var n = document.createElement('script')
-              n.type = 'text/javascript'
-              n.async = !0
-              n.src =
-                      'https://cdn.segment.com/analytics.js/v1/' +
-                      t +
-                      '/analytics.min.js'
-              var a =
-                      document.getElementsByTagName('script')[0]
-              a.parentNode.insertBefore(n, a)
-              analytics._loadOptions = e
-            }
-            analytics.SNIPPET_VERSION = '4.1.0'
-
-            analytics.load(segmentKey)
-          }
-      })()
-    </script>
-    <title></title>
   </head>
 
   <body>
     <noscript>
       <strong
-        >We're sorry but frontend doesn't work properly
-        without JavaScript enabled. Please enable it to
-        continue.</strong
+        >LFX Community Data Platform needs JavaScript enabled.</strong
       >
     </noscript>
     <div id="app"></div>
