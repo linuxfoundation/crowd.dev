@@ -90,7 +90,7 @@ const computedOrganizationToMerge = computed({
 });
 
 const fetchFn = async ({ query, limit }) => {
-  if ((query?.trim().length ?? 0) < 3) {
+  if (!/[\p{L}\p{N}]{3}/u.test(query ?? '')) {
     return [];
   }
 
