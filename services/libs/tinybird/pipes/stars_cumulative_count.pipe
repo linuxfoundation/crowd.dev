@@ -340,7 +340,7 @@ SQL >
     {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS gitlabCumulativeStars
     {% end %}
 
-NODE stars_cumulative_count
+NODE stars_cumulative_count_final
 SQL >
     %
     {% if defined(granularity) %}
