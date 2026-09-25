@@ -23,6 +23,8 @@ DESCRIPTION >
     - Response field names deliberately match `activities_count.pipe` so `stars.ts` can swap the
     pipe name with no other code changes.
 
+TOKEN "insights-app-token" READ
+
 NODE stars_count_repo_scope
 DESCRIPTION >
     Same GitHub repo scoping as `stars_cumulative_count.pipe`'s `stars_repo_scope` node,
@@ -34,18 +36,22 @@ SQL >
         SELECT r.id AS repositoryId
         FROM repositories r FINAL
         WHERE
-            isNull (r.deletedAt)
-            AND r.enabled = true
-            AND r.excluded = false
-            AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-            {% if defined(repos) %}
-                AND has(
-                    arrayMap(
-                        x -> lower(x),
-                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
-                    ),
-                    lower(r.url)
-                )
+            {% if defined(bucketId) %}
+                isNull (r.deletedAt)
+                AND r.enabled = true
+                AND r.excluded = false
+                AND r.url LIKE 'https://github.com/%'
+                AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                {% if defined(repos) %}
+                    AND has(
+                        arrayMap(
+                            x -> lower(x),
+                            {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                        ),
+                        lower(r.url)
+                    )
+                {% end %}
+            {% else %} 1 = 0
             {% end %}
     {% else %}
         SELECT r.id AS repositoryId
@@ -55,6 +61,7 @@ SQL >
             isNull (r.deletedAt)
             AND r.enabled = true
             AND r.excluded = false
+            AND r.url LIKE 'https://github.com/%'
             AND isNull (i.deletedAt)
             AND i.enabled = 1
             AND r.segmentId = (SELECT segmentId FROM segments_filtered)
@@ -157,7 +164,8 @@ SQL >
                         > {{ DateTime(startDate, description="Range start", required=False) }}
                     {% end %}
                     {% if defined(endDate) %}
-                        AND timestamp < {{ DateTime(endDate, description="Range end", required=False) }}
+                        AND timestamp
+                        <= {{ DateTime(endDate, description="Range end", required=False) }}
                     {% end %}
             )
         SELECT
