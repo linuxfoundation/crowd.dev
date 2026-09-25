@@ -1,11 +1,11 @@
 DESCRIPTION >
     - Cumulative (running-total) star count time series for a project or curated collection,
-    replacing `activities_cumulative_count.pipe` for stars only (CM-1785).
-    - GitHub repos: no per-user star events exist any more (CM-1419/CM-1439) - the cumulative
-    total is read from `repositoryStarSnapshots` (aggregate-only snapshots, CM-1437/CM-1463)
+    replacing `activities_cumulative_count.pipe` for stars only.
+    - GitHub repos: no per-user star events exist any more - the cumulative
+    total is read from `repositoryStarSnapshots` (aggregate-only snapshots)
     instead. Same `argMax(starCount, (capturedAt, updatedAt))` snapshot pattern as
     `health_score_stars.pipe`, evaluated once per bucket instead of once for a single `endDate`.
-    - Non-GitHub (GitLab) repos: unaffected by CM-1419, still counted from per-event `star`
+    - Non-GitHub (GitLab) repos: unaffected by that change, still counted from per-event `star`
     activities the normal way - read directly off `activityRelations_bucket_routing` /
     `activityRelations_collection_bucket_routing` (the same tables `activities_filtered.pipe`
     itself routes to), filtered `platform != 'github'`, since `activities_filtered.pipe` has no
@@ -31,7 +31,7 @@ DESCRIPTION >
     can swap the pipe name with no other code changes.
     - **Known limitation**: a bucket earlier than a repo's first backfilled snapshot has no
     snapshot to `argMax` over and reads as 0 stars for that repo, not "unknown" - undercounts
-    early buckets until CM-1463's backfill fully lands, never overcounts.
+    early buckets until the star-snapshot backfill fully lands, never overcounts.
 
 TOKEN "insights-app-token" READ
 
@@ -178,7 +178,7 @@ SQL >
                         history -> coalesce(
                             tupleElement(
                                 arrayFirst(
-                                    x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
+                                    x -> tupleElement(x, 1) < assumeNotNull(ds.endDate) + INTERVAL 1 DAY
                                     {% if defined(endDate) %}
                                         AND tupleElement(x, 1)
                                         <= {{
@@ -340,7 +340,7 @@ SQL >
     {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS gitlabCumulativeStars
     {% end %}
 
-NODE stars_cumulative_count
+NODE stars_cumulative_count_final
 SQL >
     %
     {% if defined(granularity) %}
