@@ -102,8 +102,9 @@ SQL >
 
 NODE stars_count_summary
 DESCRIPTION >
-    No-granularity mode: total "new stars" across [startDate, endDate]. GitHub = total as of
-    endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - same
+    No-granularity mode: total "new stars" across (startDate, endDate] - a star captured/counted
+    exactly at startDate belongs to the prior period's baseline, not this one. GitHub = total as
+    of endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - same
     backfill-inflation caveat as the bucketed mode, can also go negative on net unstars). GitLab =
     plain per-event range count, `platform != 'github'`.
 
