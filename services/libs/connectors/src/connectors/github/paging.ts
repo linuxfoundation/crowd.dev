@@ -1,9 +1,13 @@
+export interface CoveredWindow {
+  confirmedThrough: string
+  coveredUntil: string
+}
+
 export interface GithubWatermark {
   phase: 'backfill' | 'incremental'
   since: string | null
   cursor: string | null
-  confirmedThrough: string | null
-  coveredUntil: string | null
+  coveredWindows: CoveredWindow[]
 }
 
 export const PAGE_SIZE = 100
@@ -11,22 +15,37 @@ export const PAGE_SIZE = 100
 // (no error, pageInfo claims completeness) — fetch per item, bounded by this concurrency.
 export const ITEM_FETCH_CONCURRENCY = 5
 
+function readCoveredWindows(raw: Record<string, unknown>): CoveredWindow[] {
+  if (Array.isArray(raw.coveredWindows)) {
+    return raw.coveredWindows.filter(
+      (w): w is CoveredWindow =>
+        typeof w === 'object' &&
+        w !== null &&
+        typeof (w as CoveredWindow).confirmedThrough === 'string' &&
+        typeof (w as CoveredWindow).coveredUntil === 'string',
+    )
+  }
+  // legacy single-window watermark, carried over so existing units keep their progress
+  if (typeof raw.confirmedThrough === 'string' && typeof raw.coveredUntil === 'string') {
+    return [{ confirmedThrough: raw.confirmedThrough, coveredUntil: raw.coveredUntil }]
+  }
+  return []
+}
+
 export function readWatermark(raw: Record<string, unknown> | null): GithubWatermark {
   if (raw && (raw.phase === 'backfill' || raw.phase === 'incremental')) {
     return {
       phase: raw.phase,
       since: typeof raw.since === 'string' ? raw.since : null,
       cursor: typeof raw.cursor === 'string' ? raw.cursor : null,
-      confirmedThrough: typeof raw.confirmedThrough === 'string' ? raw.confirmedThrough : null,
-      coveredUntil: typeof raw.coveredUntil === 'string' ? raw.coveredUntil : null,
+      coveredWindows: readCoveredWindows(raw),
     }
   }
   return {
     phase: 'backfill',
     since: null,
     cursor: null,
-    confirmedThrough: null,
-    coveredUntil: null,
+    coveredWindows: [],
   }
 }
 

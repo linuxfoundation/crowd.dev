@@ -129,6 +129,45 @@ export async function fetchAbsoluteMemberAggregates(
   )
 }
 
+export async function fetchMemberOverallAggregates(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<Pick<IMemberSegmentAggregates, 'activityCount' | 'activeOn' | 'averageSentiment'>> {
+  // Top-level segments are project groups plus orphaned projects, so every activity is counted once.
+  return qx.selectOne(
+    `
+      WITH top_level_segments AS (
+        SELECT msa."activityCount", msa."activeOn", msa."averageSentiment"
+        FROM segments s
+        JOIN "memberSegmentsAgg" msa ON msa."segmentId" = s.id AND msa."memberId" = $(memberId)
+        WHERE s."parentId" IS NULL
+      )
+      SELECT
+        SUM("activityCount") AS "activityCount",
+        SUM("averageSentiment" * "activityCount") / NULLIF(SUM("activityCount"), 0) AS "averageSentiment",
+        ARRAY(SELECT DISTINCT UNNEST("activeOn") FROM top_level_segments) AS "activeOn"
+      FROM top_level_segments
+    `,
+    { memberId },
+  )
+}
+
+export async function fetchMemberSegmentAggregates(
+  qx: QueryExecutor,
+  memberId: string,
+  segmentId: string,
+): Promise<Pick<IMemberSegmentAggregates, 'activityCount' | 'averageSentiment'> | null> {
+  return qx.selectOneOrNone(
+    `
+      SELECT "activityCount", "averageSentiment"
+      FROM "memberSegmentsAgg"
+      WHERE "segmentId" = $(segmentId)
+        AND "memberId" = $(memberId)
+    `,
+    { memberId, segmentId },
+  )
+}
+
 export async function includeMemberToSegments(
   qx: QueryExecutor,
   memberId: string,

@@ -4,6 +4,7 @@ import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
 import type { SyncContext } from '../../types'
+import type { CoveredWindow } from './paging'
 import { PR_PAGE_SIZE, runDualPhasePrSync } from './prWalk'
 
 interface FakePr {
@@ -168,8 +169,7 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since,
         cursor: null,
-        confirmedThrough: prs[199].updatedAt,
-        coveredUntil: prs[0].updatedAt,
+        coveredWindows: [{ confirmedThrough: prs[199].updatedAt, coveredUntil: prs[0].updatedAt }],
       })
     })
 
@@ -185,12 +185,11 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since,
         cursor: null,
-        confirmedThrough: prs[149].updatedAt,
-        coveredUntil: prs[0].updatedAt,
+        coveredWindows: [{ confirmedThrough: prs[149].updatedAt, coveredUntil: prs[0].updatedAt }],
       })
     })
 
-    it('keeps a non-contiguous prior window unchanged when the run dies above it', async () => {
+    it('keeps a non-contiguous prior window as a separate entry when the run dies above it', async () => {
       const prs = makePrs(500)
       const since = iso(6000)
       const staleWindow = {
@@ -199,7 +198,7 @@ describe('runDualPhasePrSync', () => {
       }
       const harness = makeHarness(
         prs,
-        { phase: 'incremental', since, ...staleWindow },
+        { phase: 'incremental', since, coveredWindows: [staleWindow] },
         { failAfterPages: 2 },
       )
 
@@ -211,7 +210,10 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since,
         cursor: null,
-        ...staleWindow,
+        coveredWindows: [
+          { confirmedThrough: prs[99].updatedAt, coveredUntil: prs[0].updatedAt },
+          staleWindow,
+        ],
       })
     })
 
@@ -232,7 +234,7 @@ describe('runDualPhasePrSync', () => {
 
       const firstResume = makeHarness(
         tiedPrs,
-        { phase: 'incremental', since, ...priorWindow },
+        { phase: 'incremental', since, coveredWindows: [priorWindow] },
         { failAfterPages: 2 },
       )
       await expect(runDualPhasePrSync(firstResume.ctx, firstResume.handler)).rejects.toThrow(
@@ -245,18 +247,70 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since,
         cursor: null,
-        ...priorWindow,
+        coveredWindows: [
+          { confirmedThrough: tieTimestamp, coveredUntil: tiedPrs[0].updatedAt },
+          priorWindow,
+        ],
       })
 
       const secondResume = makeHarness(tiedPrs, {
         phase: 'incremental',
         since,
-        ...priorWindow,
+        coveredWindows: [
+          { confirmedThrough: tieTimestamp, coveredUntil: tiedPrs[0].updatedAt },
+          priorWindow,
+        ],
       })
       const outcome = await runDualPhasePrSync(secondResume.ctx, secondResume.handler)
 
       expect(outcome).toEqual({ complete: true })
       expect(secondResume.processed).toContain('ceil-tie-b')
+    })
+
+    it('merges progress into the closest prior window once the walk passes below its ceiling', async () => {
+      const prs = makePrs(500)
+      const since = iso(6000)
+      const priorWindow = {
+        confirmedThrough: prs[199].updatedAt,
+        coveredUntil: prs[100].updatedAt,
+      }
+      const harness = makeHarness(
+        prs,
+        { phase: 'incremental', since, coveredWindows: [priorWindow] },
+        { failAfterPages: 4 },
+      )
+
+      await expect(runDualPhasePrSync(harness.ctx, harness.handler)).rejects.toThrow(
+        'simulated 502 chain exhaustion',
+      )
+
+      expect(harness.lastCommit()).toEqual({
+        phase: 'incremental',
+        since,
+        cursor: null,
+        coveredWindows: [{ confirmedThrough: prs[199].updatedAt, coveredUntil: prs[0].updatedAt }],
+      })
+    })
+
+    it('carries the window forward across two runs that each die above the prior ceiling, instead of resetting it', async () => {
+      const prs = makePrs(900)
+      const since = iso(20000)
+
+      const firstRun = makeHarness(prs, { phase: 'incremental', since }, { budgetPages: 3 })
+      const firstOutcome = await runDualPhasePrSync(firstRun.ctx, firstRun.handler)
+      expect(firstOutcome).toEqual({ complete: false })
+      const afterFirst = firstRun.lastCommit() as { coveredWindows: CoveredWindow[] }
+      expect(afterFirst.coveredWindows).toEqual([
+        { confirmedThrough: prs[149].updatedAt, coveredUntil: prs[0].updatedAt },
+      ])
+
+      const secondRun = makeHarness(prs, afterFirst, { budgetPages: 3 })
+      const secondOutcome = await runDualPhasePrSync(secondRun.ctx, secondRun.handler)
+      expect(secondOutcome).toEqual({ complete: false })
+      const afterSecond = secondRun.lastCommit() as { coveredWindows: CoveredWindow[] }
+
+      // a second run that dies above the same ceiling must not lose the first run's window
+      expect(afterSecond.coveredWindows).toContainEqual(afterFirst.coveredWindows[0])
     })
   })
 
@@ -270,7 +324,11 @@ describe('runDualPhasePrSync', () => {
       }
       const updatedPr = { id: 'pr-50-v2', updatedAt: iso(-5) }
       const prsAfter = [updatedPr, ...prs.filter((pr) => pr.id !== 'pr-50')]
-      const harness = makeHarness(prsAfter, { phase: 'incremental', since, ...window })
+      const harness = makeHarness(prsAfter, {
+        phase: 'incremental',
+        since,
+        coveredWindows: [window],
+      })
 
       const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
 
@@ -302,13 +360,63 @@ describe('runDualPhasePrSync', () => {
         confirmedThrough: iso(490),
         coveredUntil: tiedPrs[0].updatedAt,
       }
-      const harness = makeHarness(tiedPrs, { phase: 'incremental', since, ...window })
+      const harness = makeHarness(tiedPrs, {
+        phase: 'incremental',
+        since,
+        coveredWindows: [window],
+      })
 
       const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
 
       expect(outcome).toEqual({ complete: true })
       expect(harness.processed).toContain('tie-a')
       expect(harness.processed).toContain('tie-b')
+    })
+
+    it('reads a legacy flat-field watermark as a single covered window', async () => {
+      const prs = makePrs(500)
+      const since = iso(6000)
+      const window = {
+        confirmedThrough: prs[199].updatedAt,
+        coveredUntil: prs[0].updatedAt,
+      }
+      const harness = makeHarness(prs, { phase: 'incremental', since, ...window })
+
+      const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
+
+      expect(outcome).toEqual({ complete: true })
+      expect(harness.processed).not.toContain('pr-1')
+      expect(harness.processed).not.toContain('pr-198')
+      expect(harness.processed).toContain('pr-0')
+      expect(harness.processed).toContain('pr-199')
+      expect(harness.processed).toContain('pr-200')
+    })
+  })
+
+  describe('covered window cap', () => {
+    it('drops the oldest window once the cap is exceeded, never dropping a PR from the active window', async () => {
+      const prs = makePrs(500)
+      const since = iso(6000)
+      const priorWindows = Array.from({ length: 8 }, (_, i) => ({
+        confirmedThrough: iso(2000 + i * 100 + 50),
+        coveredUntil: iso(2000 + i * 100),
+      }))
+      const harness = makeHarness(
+        prs,
+        { phase: 'incremental', since, coveredWindows: priorWindows },
+        { failAfterPages: 2 },
+      )
+
+      await expect(runDualPhasePrSync(harness.ctx, harness.handler)).rejects.toThrow(
+        'simulated 502 chain exhaustion',
+      )
+
+      const commit = harness.lastCommit() as { coveredWindows: unknown[] }
+      expect(commit.coveredWindows).toHaveLength(8)
+      expect(commit.coveredWindows[0]).toEqual({
+        confirmedThrough: prs[99].updatedAt,
+        coveredUntil: prs[0].updatedAt,
+      })
     })
   })
 })
