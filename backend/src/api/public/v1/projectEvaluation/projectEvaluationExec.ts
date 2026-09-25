@@ -29,7 +29,11 @@ export default async (req: Request, res: Response): Promise<void> => {
       secretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
     },
     req.log,
-    () => reserveDailyLlmCall(req.actor.apiKeyId ?? req.actor.id, req.actor.id),
+    () =>
+      reserveDailyLlmCall(
+        req.actor ? (req.actor.apiKeyId ?? req.actor.id) : 'anonymous',
+        req.actor ? req.actor.id : 'anonymous',
+      ),
   )
 
   ok(res, response)

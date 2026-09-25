@@ -15,7 +15,10 @@ import { projectCatalogUpsertRequestSchema } from './types'
 const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
 
 export default async (req: Request, res: Response): Promise<void> => {
-  reserveDailyProjectCatalogRequest(req.actor.apiKeyId ?? req.actor.id, req.actor.id)
+  reserveDailyProjectCatalogRequest(
+    req.actor ? (req.actor.apiKeyId ?? req.actor.id) : 'anonymous',
+    req.actor ? req.actor.id : 'anonymous',
+  )
 
   const parsed = validateOrThrow(projectCatalogUpsertRequestSchema, req.body)
 
