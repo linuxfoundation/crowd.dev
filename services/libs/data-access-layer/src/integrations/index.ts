@@ -575,8 +575,8 @@ export async function getNangoMappingForRepo(
     WHERE new_integration.id = $(integrationId)
       AND nango_integration.platform = $(nangoPlatform)
       AND nango_integration."deletedAt" IS NULL
-      AND nm.owner = $(owner)
-      AND nm."repoName" = $(repoName)
+      AND LOWER(nm.owner) = LOWER($(owner))
+      AND LOWER(nm."repoName") = LOWER($(repoName))
     ORDER BY nm."updatedAt" DESC
     LIMIT 1
     `,
