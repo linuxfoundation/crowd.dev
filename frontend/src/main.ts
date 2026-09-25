@@ -17,6 +17,7 @@ import { vueSanitizeOptions } from '@/shared/plugins/sanitize';
 import marked from '@/shared/plugins/marked';
 import { useLogRocket } from '@/utils/logRocket';
 import { initRUM } from '@/utils/datadog/rum';
+import { installAnalyticsStub, loadSegment, isRealSegmentKey } from '@/utils/segment';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 
 declare module 'vue' {
@@ -31,6 +32,11 @@ declare module 'vue' {
  */
 /* eslint-disable no-param-reassign, no-underscore-dangle, func-names */
 (async function () {
+  installAnalyticsStub();
+  if (isRealSegmentKey(config.segmentKey)) {
+    loadSegment(config.segmentKey);
+  }
+
   const pinia = createPinia();
   const app = createApp(App);
   app.use(pinia);

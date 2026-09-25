@@ -15,10 +15,10 @@ import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { deriveProjectSlug, onboardProject } from '@crowd/project-onboarding'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
-import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
 import { OnboardAndUpdateProjectOutcome } from '../types'
 import {
   buildErroredDiscussionAlert,

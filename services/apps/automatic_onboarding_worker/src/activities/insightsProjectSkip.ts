@@ -1,4 +1,4 @@
-import { deriveProjectSlug } from '../onboarder/onboarder'
+import { deriveProjectSlug } from '@crowd/project-onboarding'
 
 // A soft-deleted insightsProjects row still owns its slug (the unique index can't be made
 // partial on deletedAt: three FKs reference it), so segment creation would 500 on it.
