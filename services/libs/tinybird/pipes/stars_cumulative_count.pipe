@@ -178,7 +178,7 @@ SQL >
                         history -> coalesce(
                             tupleElement(
                                 arrayFirst(
-                                    x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
+                                    x -> tupleElement(x, 1) < assumeNotNull(ds.endDate) + INTERVAL 1 DAY
                                     {% if defined(endDate) %}
                                         AND tupleElement(x, 1)
                                         <= {{
