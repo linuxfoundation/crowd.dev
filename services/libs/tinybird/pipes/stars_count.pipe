@@ -1,6 +1,6 @@
 DESCRIPTION >
     - `stars_count.pipe` provides "new stars" (period-specific, non-cumulative) analytics for a
-    project or curated collection, replacing `activities_count.pipe` for stars only (CM-1785).
+    project or curated collection, replacing `activities_count.pipe` for stars only.
     - Built directly on top of `stars_cumulative_count.pipe`: in granularity mode, a period's "new
     stars" is just that bucket's cumulative total minus the previous bucket's - correct regardless
     of whether the underlying number came from a GitHub snapshot or a GitLab per-event count, so
@@ -9,10 +9,11 @@ DESCRIPTION >
     count (stars minus unstars), so a bucket where unstars outpaced new stars nets negative. Real,
     not a bug. GitLab's own contribution to the same bucket can't go negative (it's an event
     tally), but the combined number can.
-    - **Backfill-inflation caveat (same as CM-1441's already-reworked pipes)**: the very first
-    bucket where a repo's snapshot history exists shows that repo's *entire* historical total as
-    "new", since there's no earlier snapshot to diff against. Repos whose CM-1463 backfill hasn't
-    reached back to the start of the requested range will show an inflated first-seen bucket.
+    - **Backfill-inflation caveat (same as the already-reworked sibling star pipes)**: the very
+    first bucket where a repo's snapshot history exists shows that repo's *entire* historical
+    total as "new", since there's no earlier snapshot to diff against. Repos whose star-snapshot
+    backfill hasn't reached back to the start of the requested range will show an inflated
+    first-seen bucket.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
     `stars_cumulative_count.pipe` / `activities_filtered.pipe`. `bucketId` is required alongside
     `collectionSlug` for the same reason `stars_cumulative_count.pipe` needs it - both collection
