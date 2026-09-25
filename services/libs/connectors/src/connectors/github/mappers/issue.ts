@@ -21,8 +21,8 @@ export function toIssueActivities(issue: IssueNode): GithubActivity[] {
     },
   ]
 
-  const closedEvent = issue.timelineItems.nodes.find((node) => node?.__typename === 'ClosedEvent')
-  if (issue.state === 'CLOSED' && closedEvent) {
+  const closedEvent = issue.timelineItems.nodes[0]
+  if (issue.state === 'CLOSED' && closedEvent?.__typename === 'ClosedEvent') {
     const closedAt = closedEvent.createdAt ?? issue.updatedAt ?? DEFAULT_TIMESTAMP
     activities.push({
       type: GithubActivityType.ISSUE_CLOSED,
