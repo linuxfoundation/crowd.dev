@@ -175,7 +175,7 @@ SQL >
     {% else %} SELECT 0 AS activityCount
     {% end %}
 
-NODE stars_count
+NODE stars_count_final
 SQL >
     %
     {% if defined(granularity) %} SELECT startDate, endDate, activityCount FROM stars_count_bucketed
