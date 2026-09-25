@@ -16,7 +16,7 @@ const NODES_QUERY = `query($ids: [ID!]!) { nodes(ids: $ids) { id } }`
 
 interface GraphqlEnvelope<T> {
   data?: T
-  errors?: { type?: string; message?: string }[]
+  errors?: { type?: string; message?: string; path?: (string | number)[] }[]
 }
 
 interface NodesQueryResult {
@@ -51,11 +51,16 @@ function toBatches<T>(items: T[], size: number): T[][] {
   return batches
 }
 
-async function fetchExistingNodeIds(
+interface BatchConfirmation {
+  deletedIds: Set<string>
+  unconfirmedIds: Set<string>
+}
+
+async function confirmDeletedNodeIds(
   http: ConnectorHttp,
   ids: string[],
   log: Logger,
-): Promise<Set<string> | null> {
+): Promise<BatchConfirmation | null> {
   try {
     const body = await http.request<GraphqlEnvelope<NodesQueryResult>>(
       {
@@ -67,10 +72,28 @@ async function fetchExistingNodeIds(
       log,
       CONFIRM_REQUEST_MAX_ATTEMPTS,
     )
-    if (!body.data) {
+    if (!body.data || body.data.nodes.length !== ids.length) {
       return null
     }
-    return new Set(body.data.nodes.filter((n): n is { id: string } => n !== null).map((n) => n.id))
+    const notFoundIndexes = new Set(
+      (body.errors ?? [])
+        .filter((e) => e.type === 'NOT_FOUND' && e.path?.[0] === 'nodes')
+        .map((e) => e.path?.[1])
+        .filter((i): i is number => typeof i === 'number'),
+    )
+    const deletedIds = new Set<string>()
+    const unconfirmedIds = new Set<string>()
+    body.data.nodes.forEach((node, i) => {
+      if (node !== null) {
+        return
+      }
+      if (notFoundIndexes.has(i)) {
+        deletedIds.add(ids[i])
+      } else {
+        unconfirmedIds.add(ids[i])
+      }
+    })
+    return { deletedIds, unconfirmedIds }
   } catch {
     return null
   }
@@ -101,16 +124,13 @@ export async function dropConfirmedDeletedRecords(
       for (const id of batch) uncheckedIds.add(id)
       return
     }
-    const existingIds = await fetchExistingNodeIds(http, batch, log)
-    if (existingIds === null) {
+    const confirmation = await confirmDeletedNodeIds(http, batch, log)
+    if (confirmation === null) {
       for (const id of batch) uncheckedIds.add(id)
       return
     }
-    for (const id of batch) {
-      if (!existingIds.has(id)) {
-        confirmedDeletedIds.add(id)
-      }
-    }
+    for (const id of confirmation.deletedIds) confirmedDeletedIds.add(id)
+    for (const id of confirmation.unconfirmedIds) uncheckedIds.add(id)
   })
 
   return {
