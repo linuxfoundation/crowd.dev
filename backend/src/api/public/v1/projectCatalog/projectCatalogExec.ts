@@ -9,9 +9,14 @@ import {
   upsertProjectCatalogManualAction,
 } from '@crowd/data-access-layer'
 
+import { createDailyProjectCatalogCap } from './dailyRequestCap'
 import { projectCatalogUpsertRequestSchema } from './types'
 
+const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
+
 export default async (req: Request, res: Response): Promise<void> => {
+  reserveDailyProjectCatalogRequest(req.actor.apiKeyId ?? req.actor.id, req.actor.id)
+
   const parsed = validateOrThrow(projectCatalogUpsertRequestSchema, req.body)
 
   const repoUrl = canonicalizeGithubRepoUrl(parsed.repoUrl)

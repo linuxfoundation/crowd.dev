@@ -6,9 +6,14 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 import { onboardProject } from '@crowd/project-onboarding'
 
+import { createDailyProjectOnboardingCap } from './dailyRequestCap'
 import { projectOnboardingRequestSchema } from './types'
 
+const reserveDailyProjectOnboardingRequest = createDailyProjectOnboardingCap()
+
 export default async (req: Request, res: Response): Promise<void> => {
+  reserveDailyProjectOnboardingRequest(req.actor.apiKeyId ?? req.actor.id, req.actor.id)
+
   const parsed = validateOrThrow(projectOnboardingRequestSchema, req.body)
 
   const result = await onboardProject({
