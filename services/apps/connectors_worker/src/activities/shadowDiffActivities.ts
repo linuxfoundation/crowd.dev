@@ -11,6 +11,7 @@ import {
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { dropConfirmedDeletedRecords, hasDeletedRecordCandidates } from '../deletedRecords'
 import { dropConfirmedForcePushedCommits, hasForcePushCandidates } from '../forcePushedCommits'
 import { svc } from '../main'
 import {
@@ -153,9 +154,12 @@ export async function runShadowDiffForChannel(
   const unitDiffs: { unit: IShadowDiffUnit; result: IShadowDiffUnitResult }[] = []
   let confirmationHttp: Promise<ConnectorHttp> | null = null
   for (const unit of pendingUnits) {
-    const result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    let result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
 
-    if (hasForcePushCandidates(unit.syncName, result.mismatches)) {
+    const needsForcePushCheck = hasForcePushCandidates(unit.syncName, result.mismatches)
+    const needsDeletedRecordCheck = hasDeletedRecordCandidates(unit.syncName, result.mismatches)
+
+    if (needsForcePushCheck || needsDeletedRecordCheck) {
       confirmationHttp ??= createGithubConfirmationHttp(qx, channel.integrationId)
       let http: ConnectorHttp
       try {
@@ -163,33 +167,53 @@ export async function runShadowDiffForChannel(
       } catch (err) {
         svc.log.warn(
           { err, unitId: unit.id, day, channelName: channel.channelName },
-          'failed to set up github client for force-push confirmation, keeping candidates as missing_in_shadow',
+          'failed to set up github client for missing_in_shadow confirmation, keeping candidates as missing_in_shadow',
         )
         unitDiffs.push({ unit, result })
         continue
       }
-      const { mismatches, skippedCount, failedCount } = await dropConfirmedForcePushedCommits(
-        unit.syncName,
-        result.mismatches,
-        owner,
-        repo,
-        http,
-        svc.log,
-      )
-      if (skippedCount > 0) {
-        svc.log.info(
-          { unitId: unit.id, day, channelName: channel.channelName, skippedCount },
-          'skipped force-pushed commits confirmed missing from github',
+
+      if (needsForcePushCheck) {
+        const { mismatches, skippedCount, failedCount } = await dropConfirmedForcePushedCommits(
+          unit.syncName,
+          result.mismatches,
+          owner,
+          repo,
+          http,
+          svc.log,
         )
+        if (skippedCount > 0) {
+          svc.log.info(
+            { unitId: unit.id, day, channelName: channel.channelName, skippedCount },
+            'skipped force-pushed commits confirmed missing from github',
+          )
+        }
+        if (failedCount > 0) {
+          svc.log.warn(
+            { unitId: unit.id, day, channelName: channel.channelName, failedCount },
+            'failed to confirm force-pushed commit candidates against github, keeping them as missing_in_shadow',
+          )
+        }
+        result = { ...result, mismatches }
       }
-      if (failedCount > 0) {
-        svc.log.warn(
-          { unitId: unit.id, day, channelName: channel.channelName, failedCount },
-          'failed to confirm force-pushed commit candidates against github, keeping them as missing_in_shadow',
-        )
+
+      if (hasDeletedRecordCandidates(unit.syncName, result.mismatches)) {
+        const { mismatches, confirmedDeletedCount, keptUnconfirmedCount } =
+          await dropConfirmedDeletedRecords(unit.syncName, result.mismatches, http, svc.log)
+        if (confirmedDeletedCount > 0) {
+          svc.log.info(
+            { unitId: unit.id, day, channelName: channel.channelName, confirmedDeletedCount },
+            'skipped records confirmed deleted on github',
+          )
+        }
+        if (keptUnconfirmedCount > 0) {
+          svc.log.warn(
+            { unitId: unit.id, day, channelName: channel.channelName, keptUnconfirmedCount },
+            'failed to confirm deleted-record candidates against github, keeping them as missing_in_shadow',
+          )
+        }
+        result = { ...result, mismatches }
       }
-      unitDiffs.push({ unit, result: { ...result, mismatches } })
-      continue
     }
 
     unitDiffs.push({ unit, result })
