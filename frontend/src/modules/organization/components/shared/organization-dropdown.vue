@@ -1,6 +1,6 @@
 <template>
   <lf-dropdown-item
-    v-if="hasSegments && hasPermission(LfPermission.organizationEdit) && props.organization.identities.length > 1"
+    v-if="hasPermission(LfPermission.organizationEdit) && props.organization.identities.length > 1"
     @click="emit('unmerge')"
   >
     <lf-icon name="link-simple-slash" />
@@ -47,7 +47,6 @@ import { useOrganizationStore } from '@/modules/organization/store/pinia';
 
 const props = defineProps<{
   organization: Organization,
-  hasSegments: boolean,
 }>();
 
 const emit = defineEmits<{(e: 'reload'): any, (e: 'unmerge'): void}>();

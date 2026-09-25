@@ -43,7 +43,7 @@ export class OrganizationService {
       `/organization/${organizationToKeepId}/merge`,
       {
         organizationToMerge: organizationToMergeId,
-        segments: [getSelectedProjectGroup().id],
+        segments: getSelectedProjectGroup()?.id ? [getSelectedProjectGroup()?.id] : null,
       },
     );
 
@@ -215,7 +215,7 @@ export class OrganizationService {
   }
 
   static async fetchMergeSuggestions(limit, offset, query) {
-    const segments = [getSelectedProjectGroup().id];
+    const segments = getSelectedProjectGroup()?.id ? [getSelectedProjectGroup()?.id] : null;
 
     const data = {
       limit,

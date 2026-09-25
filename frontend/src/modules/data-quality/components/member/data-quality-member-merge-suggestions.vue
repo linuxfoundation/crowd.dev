@@ -67,7 +67,7 @@ import LfMemberMergeSuggestionDropdown
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
 const props = defineProps<{
-  projectGroup: string,
+  projectGroup?: string,
 }>();
 
 const loading = ref(true);
@@ -79,7 +79,7 @@ const mergeSuggestions = ref<any[]>([]);
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
 
-const segments = computed(() => [props.projectGroup]);
+const segments = computed(() => (props.projectGroup ? [props.projectGroup] : []));
 
 const loadMergeSuggestions = () => {
   loading.value = true;

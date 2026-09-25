@@ -770,6 +770,7 @@ class OrganizationRepository {
   }
 
   static async countOrganizationMergeSuggestions(
+    segmentFilter: string,
     organizationFilter: string,
     similarityFilter: string,
     displayNameFilter: string,
@@ -790,15 +791,7 @@ class OrganizationRepository {
       SELECT COUNT(*) AS total_count
       FROM "organizationToMerge" otm
       ${organizationsJoin}
-      WHERE EXISTS (
-          SELECT 1 FROM "organizationSegmentsAgg" os1
-          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
-      )
-      AND EXISTS (
-          SELECT 1 FROM "organizationSegmentsAgg" os2
-          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
-      )
-      AND NOT EXISTS (
+      WHERE NOT EXISTS (
         SELECT 1
         FROM "mergeActions" ma
         WHERE ma.type = :mergeActionType
@@ -808,6 +801,7 @@ class OrganizationRepository {
             OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
           )
       )
+        ${segmentFilter}
         ${organizationFilter}
         ${similarityFilter}
         ${displayNameFilter}
@@ -832,18 +826,37 @@ class OrganizationRepository {
     const HIGH_CONFIDENCE_LOWER_BOUND = 0.9
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
-    // Organization segments are aggregated at each hierarchy level (group -> project -> subproject).
-    const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
-
-    let segmentIds: string[]
+    let segmentIds: string[] = []
 
     if (args.filter?.projectIds?.length) {
       segmentIds = args.filter.projectIds
     } else if (args.filter?.subprojectIds?.length) {
       segmentIds = args.filter.subprojectIds
-    } else {
-      segmentIds = [projectGroupSegment.id]
+    } else if (args.segmentId) {
+      segmentIds = [args.segmentId]
     }
+
+    // Organization segments are aggregated at each hierarchy level (group -> project -> subproject).
+    const segmentFilter = segmentIds.length
+      ? ` AND EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os1
+            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+          )
+          AND EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os2
+            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+          )`
+      : ''
+
+    const segmentColumns = segmentIds.length
+      ? `,
+          (SELECT os1."segmentId" FROM "organizationSegmentsAgg" os1
+           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+           LIMIT 1) as "primarySegmentId",
+          (SELECT os2."segmentId" FROM "organizationSegmentsAgg" os2
+           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+           LIMIT 1) as "secondarySegmentId"`
+      : ''
 
     let similarityFilter = ''
     const similarityConditions = []
@@ -895,16 +908,17 @@ class OrganizationRepository {
     )
 
     const getTotalCount = async (): Promise<number> => {
-      if (!hasCountFilters && !hasProjectFilter) {
+      if (args.segmentId && !hasCountFilters && !hasProjectFilter) {
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
-          projectGroupSegment.id,
+          args.segmentId,
         )
 
         return counts?.organizationMergeSuggestionsCount ?? 0
       }
 
       return this.countOrganizationMergeSuggestions(
+        segmentFilter,
         organizationFilter,
         similarityFilter,
         displayNameFilter,
@@ -933,25 +947,12 @@ class OrganizationRepository {
           o1."displayName" as "primaryDisplayName",
           o1.logo as "primaryLogo",
           o2."displayName" as "secondaryDisplayName",
-          o2.logo as "secondaryLogo",
-          (SELECT os1."segmentId" FROM "organizationSegmentsAgg" os1
-           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
-           LIMIT 1) as "primarySegmentId",
-          (SELECT os2."segmentId" FROM "organizationSegmentsAgg" os2
-           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
-           LIMIT 1) as "secondarySegmentId"
+          o2.logo as "secondaryLogo"
+          ${segmentColumns}
         FROM "organizationToMerge" otm
         JOIN organizations o1 ON o1.id = otm."organizationId"
         JOIN organizations o2 ON o2.id = otm."toMergeId"
-        WHERE EXISTS (
-            SELECT 1 FROM "organizationSegmentsAgg" os1
-            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
-        )
-        AND EXISTS (
-            SELECT 1 FROM "organizationSegmentsAgg" os2
-            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
-        )
-        AND NOT EXISTS (
+        WHERE NOT EXISTS (
           SELECT 1
           FROM "mergeActions" ma
           WHERE ma.type = :mergeActionType
@@ -961,6 +962,7 @@ class OrganizationRepository {
               OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
             )
         )
+          ${segmentFilter}
           ${organizationFilter}
           ${similarityFilter}
           ${displayNameFilter}

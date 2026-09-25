@@ -22,6 +22,7 @@ export interface IFetchMemberMergeSuggestionFilter {
 
 export interface IFetchMemberMergeSuggestionArgs {
   filter?: IFetchMemberMergeSuggestionFilter
+  segmentId?: string
   limit: number
   offset: number
   orderBy?: string[]
@@ -31,6 +32,7 @@ export interface IFetchMemberMergeSuggestionArgs {
 
 export interface IFetchOrganizationMergeSuggestionArgs {
   filter?: IFetchOrganizationMergeSuggestionFilter
+  segmentId?: string
   limit: number
   offset: number
   orderBy?: string[]

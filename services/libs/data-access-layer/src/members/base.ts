@@ -699,6 +699,53 @@ function refreshCountCacheInBackground(
   return refreshCacheInBackground(qx, redis, cacheKey, params, true)
 }
 
+export interface IMemberSearchResult {
+  id: string
+  displayName: string
+  attributes: { avatarUrl?: Record<string, string> }
+}
+
+export async function searchMembersByNameOrIdentity(
+  qx: QueryExecutor,
+  search: string,
+  limit: number,
+): Promise<IMemberSearchResult[]> {
+  const term = search?.trim().toLowerCase() ?? ''
+
+  // Shorter patterns can't use the trigram index on lower("displayName") and fall back to a full scan.
+  if (term.length < 3) {
+    return []
+  }
+
+  return qx.select(
+    `
+      WITH matches AS (
+        (
+          SELECT m.id
+          FROM members m
+          WHERE LOWER(m."displayName") LIKE $(pattern)
+          LIMIT $(limit)
+        )
+        UNION
+        SELECT mi."memberId"
+        FROM "memberIdentities" mi
+        WHERE LOWER(mi.value) = $(term)
+          AND mi."deletedAt" IS NULL
+      )
+      SELECT
+        m.id,
+        m."displayName",
+        jsonb_build_object('avatarUrl', m.attributes -> 'avatarUrl') AS attributes
+      FROM matches
+      JOIN members m ON m.id = matches.id
+      WHERE m."deletedAt" IS NULL
+        AND COALESCE((m.attributes -> 'isBot' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
+        AND COALESCE((m.attributes -> 'isOrganization' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
+    `,
+    { pattern: `%${term}%`, term, limit },
+  )
+}
+
 export async function queryMembers<T extends MemberField>(
   qx: QueryExecutor,
   opts: QueryOptions<T>,

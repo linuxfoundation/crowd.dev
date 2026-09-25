@@ -263,6 +263,7 @@ class MemberRepository {
   }
 
   static async countMemberMergeSuggestions(
+    segmentFilter: string,
     memberFilter: string,
     similarityFilter: string,
     displayNameFilter: string,
@@ -284,15 +285,7 @@ class MemberRepository {
             COUNT(*) AS count
         FROM "memberToMerge" mtm
         ${membersJoin}
-        WHERE EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
-        )
-        AND EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
-        )
-        AND NOT EXISTS (
+        WHERE NOT EXISTS (
           SELECT 1
           FROM "mergeActions" ma
           WHERE ma.type = :mergeActionType
@@ -302,6 +295,7 @@ class MemberRepository {
               OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
             )
         )
+          ${segmentFilter}
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -326,18 +320,27 @@ class MemberRepository {
     const HIGH_CONFIDENCE_LOWER_BOUND = 0.9
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
-    // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
-    const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
-
-    let segmentIds: string[]
+    let segmentIds: string[] = []
 
     if (args.filter?.projectIds?.length) {
       segmentIds = args.filter.projectIds
     } else if (args.filter?.subprojectIds?.length) {
       segmentIds = args.filter.subprojectIds
-    } else {
-      segmentIds = [projectGroupSegment.id]
+    } else if (args.segmentId) {
+      segmentIds = [args.segmentId]
     }
+
+    // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
+    const segmentFilter = segmentIds.length
+      ? ` AND EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
+          )
+          AND EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms2
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
+          )`
+      : ''
 
     let similarityFilter = ''
     const similarityConditions = []
@@ -392,16 +395,17 @@ class MemberRepository {
     )
 
     const getTotalCount = async (): Promise<number> => {
-      if (!hasCountFilters && !hasProjectFilter) {
+      if (args.segmentId && !hasCountFilters && !hasProjectFilter) {
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
-          projectGroupSegment.id,
+          args.segmentId,
         )
 
         return counts?.memberMergeSuggestionsCount ?? 0
       }
 
       return this.countMemberMergeSuggestions(
+        segmentFilter,
         memberFilter,
         similarityFilter,
         displayNameFilter,
@@ -435,15 +439,7 @@ class MemberRepository {
         FROM "memberToMerge" mtm
         JOIN members m ON m.id = mtm."memberId"
         JOIN members m2 ON m2.id = mtm."toMergeId"
-        WHERE EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
-        )
-        AND EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
-        )
-        AND NOT EXISTS (
+        WHERE NOT EXISTS (
           SELECT 1
           FROM "mergeActions" ma
           WHERE ma.type = :mergeActionType
@@ -453,6 +449,7 @@ class MemberRepository {
               OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
             )
         )
+          ${segmentFilter}
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}

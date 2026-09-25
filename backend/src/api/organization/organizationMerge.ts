@@ -9,7 +9,7 @@ export default async (req, res) => {
 
   const primaryOrgId = req.params.organizationId
   const secondaryOrgId = req.body.organizationToMerge
-  const segmentId = req.body.segments[0]
+  const segmentId = req.body.segments?.[0]
 
   const requestPayload = {
     primary: primaryOrgId,

@@ -29,15 +29,10 @@ export class OrganizationApiService {
   }
 
   static async fetchMergeSuggestions(limit: number = 20, offset: number = 0, query: any = {}) {
-    const lsSegmentsStore = useLfSegmentsStore();
-    const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-
-    const segments = [selectedProjectGroup.value?.id];
-
     const data = {
       limit,
       offset,
-      segments,
+      segments: getSelectedProjectGroupId(),
       ...query,
     };
 

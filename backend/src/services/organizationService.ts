@@ -1171,7 +1171,7 @@ export default class OrganizationService extends LoggerBase {
         orderBy,
         limit,
         offset,
-        segmentId: segments.length > 0 ? segments[0] : undefined,
+        segmentId: segments?.[0],
         fields: ['id', 'segmentId', 'displayName', 'memberCount', 'activityCount', 'logo'],
         include: { aggregates: false, identities: false, lfxMemberships: true },
       },

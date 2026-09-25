@@ -29,6 +29,7 @@ import {
   findMemberIdentityById,
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
+  searchMembersByNameOrIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
@@ -961,6 +962,13 @@ export default class MemberService extends LoggerBase {
 
   async findAllAutocomplete(data) {
     const qx = optionsQx(this.options)
+    const segmentId = data.segments?.[0]
+
+    if (!segmentId) {
+      const rows = await searchMembersByNameOrIdentity(qx, data.search, data.limit)
+      return { rows, count: rows.length, limit: data.limit, offset: 0 }
+    }
+
     const bgQx = optionsBgQx(this.options)
 
     return queryMembersAdvanced(qx, bgQx, this.options.redis, {
@@ -968,7 +976,7 @@ export default class MemberService extends LoggerBase {
       offset: data.offset,
       orderBy: data.orderBy,
       limit: data.limit,
-      segmentId: data.segments[0],
+      segmentId,
       include: {
         segments: true,
       },

@@ -90,11 +90,15 @@ const computedOrganizationToMerge = computed({
 });
 
 const fetchFn = async ({ query, limit }) => {
+  if ((query?.trim().length ?? 0) < 3) {
+    return [];
+  }
+
   const options = await OrganizationService.listOrganizationsAutocomplete({
     query,
     limit,
     excludeLfMember: true,
-    segments: segments.value,
+    excludeSegments: true,
   });
 
   // Remove primary organization from organizations that can be merged with
@@ -109,7 +113,8 @@ const fetchFn = async ({ query, limit }) => {
 };
 
 onMounted(() => {
-  segments.value = route.query.segmentId ? [route.query.segmentId] : [route.query.projectGroup];
+  const segmentId = route.query.segmentId || route.query.projectGroup;
+  segments.value = segmentId ? [segmentId] : [];
 });
 
 const disableOption = (option) => !!option.lfxMembership && !!props.primaryOrganization?.lfxMembership;

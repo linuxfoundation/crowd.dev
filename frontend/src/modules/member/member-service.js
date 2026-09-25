@@ -87,9 +87,10 @@ export class MemberService {
   }
 
   static async find(id, segmentId, includeAllAttributes = false) {
+    const segment = segmentId ?? getSelectedProjectGroup()?.id;
     const response = await authAxios.get(`/member/${id}`, {
       params: {
-        segments: [segmentId ?? getSelectedProjectGroup().id],
+        segments: segment ? [segment] : [],
         includeAllAttributes,
         include: {
           identities: true,
@@ -102,7 +103,12 @@ export class MemberService {
     return response.data;
   }
 
-  static async listMembersAutocomplete({ query, limit, segments }) {
+  static async listMembersAutocomplete({
+    query,
+    limit,
+    segments,
+    excludeSegments = false,
+  }) {
     const payload = {
       filter: {
         and: [
@@ -119,11 +125,15 @@ export class MemberService {
             : []),
         ],
       },
+      search: query,
       offset: 0,
       orderBy: 'activityCount_DESC',
       limit,
       ...(segments && {
         segments,
+      }),
+      ...(excludeSegments && {
+        excludeSegments,
       }),
     };
 
@@ -208,7 +218,7 @@ export class MemberService {
   }
 
   static async fetchMergeSuggestions(limit, offset, query) {
-    const segments = [getSelectedProjectGroup().id];
+    const segments = getSelectedProjectGroup()?.id ? [getSelectedProjectGroup()?.id] : null;
 
     const data = {
       limit,
