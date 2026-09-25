@@ -158,7 +158,7 @@ export const ISSUES_QUERY = `
               ${ORGANIZATION_FIELDS}
             }
           }
-          timelineItems(first: 10, itemTypes: [CLOSED_EVENT]) {
+          timelineItems(last: 1, itemTypes: [CLOSED_EVENT]) {
             nodes {
               __typename
               ... on ClosedEvent {
