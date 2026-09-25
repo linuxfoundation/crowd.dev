@@ -11,7 +11,7 @@ import {
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { dropConfirmedForcePushedCommits } from '../forcePushedCommits'
+import { dropConfirmedForcePushedCommits, hasForcePushCandidates } from '../forcePushedCommits'
 import { svc } from '../main'
 import {
   IShadowDiffUnitResult,
@@ -151,20 +151,29 @@ export async function runShadowDiffForChannel(
   const pendingUnits = channel.units.filter((unit) => !alreadySummarized.has(unit.id))
 
   const unitDiffs: { unit: IShadowDiffUnit; result: IShadowDiffUnitResult }[] = []
-  let confirmationHttp: ConnectorHttp | null = null
+  let confirmationHttp: Promise<ConnectorHttp> | null = null
   for (const unit of pendingUnits) {
     const result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
 
-    if (result.mismatches.some((m) => m.kind === 'missing_in_shadow')) {
-      if (!confirmationHttp) {
-        confirmationHttp = await createGithubConfirmationHttp(qx, channel.integrationId)
+    if (hasForcePushCandidates(unit.syncName, result.mismatches)) {
+      confirmationHttp ??= createGithubConfirmationHttp(qx, channel.integrationId)
+      let http: ConnectorHttp
+      try {
+        http = await confirmationHttp
+      } catch (err) {
+        svc.log.warn(
+          { err, unitId: unit.id, day, channelName: channel.channelName },
+          'failed to set up github client for force-push confirmation, keeping candidates as missing_in_shadow',
+        )
+        unitDiffs.push({ unit, result })
+        continue
       }
       const { mismatches, skippedCount, failedCount } = await dropConfirmedForcePushedCommits(
         unit.syncName,
         result.mismatches,
         owner,
         repo,
-        confirmationHttp,
+        http,
         svc.log,
       )
       if (skippedCount > 0) {

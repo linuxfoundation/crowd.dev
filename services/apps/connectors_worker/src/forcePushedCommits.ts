@@ -1,12 +1,27 @@
 import type { ConnectorHttp } from '@crowd/connectors'
 import { mapWithConcurrency } from '@crowd/connectors'
-import { fetchPullRequestsForCommit } from '@crowd/connectors/src/connectors/github/commits'
+import {
+  IRequestLimits,
+  fetchPullRequestsForCommit,
+} from '@crowd/connectors/src/connectors/github/commits'
 import type { Logger } from '@crowd/logging'
 
 import { IShadowDiffMismatch } from './shadowDiff'
 
 const PULL_REQUEST_COMMITS_SYNC_NAME = 'pull-request-commits'
 const CONFIRM_CONCURRENCY = 5
+const CONFIRM_BUDGET_MS = 60_000
+const CONFIRM_REQUEST_LIMITS: IRequestLimits = { timeoutMs: 10_000, maxAttempts: 1 }
+
+export function hasForcePushCandidates(
+  syncName: string,
+  mismatches: IShadowDiffMismatch[],
+): boolean {
+  return (
+    syncName === PULL_REQUEST_COMMITS_SYNC_NAME &&
+    mismatches.some((m) => m.kind === 'missing_in_shadow')
+  )
+}
 
 export interface ForcePushedCommitFilterResult {
   mismatches: IShadowDiffMismatch[]
@@ -24,7 +39,14 @@ async function checkCommitOrphaned(
   log: Logger,
 ): Promise<CommitCheckOutcome> {
   try {
-    const pulls = await fetchPullRequestsForCommit(http, owner, repo, sha, log)
+    const pulls = await fetchPullRequestsForCommit(
+      http,
+      owner,
+      repo,
+      sha,
+      log,
+      CONFIRM_REQUEST_LIMITS,
+    )
     if (!Array.isArray(pulls)) {
       return 'check_failed'
     }
@@ -42,17 +64,19 @@ export async function dropConfirmedForcePushedCommits(
   http: ConnectorHttp,
   log: Logger,
 ): Promise<ForcePushedCommitFilterResult> {
-  if (syncName !== PULL_REQUEST_COMMITS_SYNC_NAME) {
+  if (!hasForcePushCandidates(syncName, mismatches)) {
     return { mismatches, skippedCount: 0, failedCount: 0 }
   }
 
   const candidates = mismatches.filter((m) => m.kind === 'missing_in_shadow')
-  if (candidates.length === 0) {
-    return { mismatches, skippedCount: 0, failedCount: 0 }
-  }
-
-  const outcomes = await mapWithConcurrency(candidates, CONFIRM_CONCURRENCY, (mismatch) =>
-    checkCommitOrphaned(http, owner, repo, mismatch.sourceId, log),
+  const deadline = Date.now() + CONFIRM_BUDGET_MS
+  const outcomes = await mapWithConcurrency(
+    candidates,
+    CONFIRM_CONCURRENCY,
+    async (mismatch): Promise<CommitCheckOutcome> =>
+      Date.now() >= deadline
+        ? 'check_failed'
+        : checkCommitOrphaned(http, owner, repo, mismatch.sourceId, log),
   )
 
   const orphanedSourceIds = new Set(
