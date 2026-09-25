@@ -1,3 +1,5 @@
+import type { ConnectorHttp } from '@crowd/connectors'
+import { createHttpClient, createTokenPool, getCredential, getManifest } from '@crowd/connectors'
 import { parseRepoChannel } from '@crowd/connectors/src/connectors/github/paging'
 import {
   IShadowDiffUnit,
@@ -9,6 +11,7 @@ import {
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { dropConfirmedForcePushedCommits } from '../forcePushedCommits'
 import { svc } from '../main'
 import {
   IShadowDiffUnitResult,
@@ -17,6 +20,8 @@ import {
   diffableRecordKey,
   resolveDiffWindow,
 } from '../shadowDiffUnit'
+
+const GITHUB_PLATFORM = 'github'
 
 export interface IShadowDiffChannel {
   channelName: string
@@ -31,6 +36,31 @@ export interface IShadowDiffChannelResult {
   integrationId: string
   status: ShadowDiffChannelStatus
   errorMessage?: string
+}
+
+async function createGithubConfirmationHttp(
+  qx: ReturnType<typeof dbStoreQx>,
+  integrationId: string,
+): Promise<ConnectorHttp> {
+  const manifest = getManifest(GITHUB_PLATFORM)
+  const credential = manifest.mintToken ? await getCredential(qx, integrationId) : null
+  const pool = createTokenPool(svc.redis, GITHUB_PLATFORM, {
+    probeBudget: manifest.probeBudget,
+    mintToken: credential && manifest.mintToken ? manifest.mintToken(credential) : undefined,
+    log: svc.log,
+  })
+  const preferredEntryId =
+    credential && manifest.preparePool
+      ? (await manifest.preparePool(credential, pool)).preferredEntryId
+      : undefined
+
+  return createHttpClient({
+    acquireToken: () => pool.acquire(preferredEntryId),
+    parkToken: pool.park,
+    invalidateToken: pool.invalidate,
+    interpretResponse: manifest.interpretResponse,
+    log: svc.log,
+  })
 }
 
 export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
@@ -121,8 +151,38 @@ export async function runShadowDiffForChannel(
   const pendingUnits = channel.units.filter((unit) => !alreadySummarized.has(unit.id))
 
   const unitDiffs: { unit: IShadowDiffUnit; result: IShadowDiffUnitResult }[] = []
+  let confirmationHttp: ConnectorHttp | null = null
   for (const unit of pendingUnits) {
     const result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+
+    if (result.mismatches.some((m) => m.kind === 'missing_in_shadow')) {
+      if (!confirmationHttp) {
+        confirmationHttp = await createGithubConfirmationHttp(qx, channel.integrationId)
+      }
+      const { mismatches, skippedCount, failedCount } = await dropConfirmedForcePushedCommits(
+        unit.syncName,
+        result.mismatches,
+        owner,
+        repo,
+        confirmationHttp,
+        svc.log,
+      )
+      if (skippedCount > 0) {
+        svc.log.info(
+          { unitId: unit.id, day, channelName: channel.channelName, skippedCount },
+          'skipped force-pushed commits confirmed missing from github',
+        )
+      }
+      if (failedCount > 0) {
+        svc.log.warn(
+          { unitId: unit.id, day, channelName: channel.channelName, failedCount },
+          'failed to confirm force-pushed commit candidates against github, keeping them as missing_in_shadow',
+        )
+      }
+      unitDiffs.push({ unit, result: { ...result, mismatches } })
+      continue
+    }
+
     unitDiffs.push({ unit, result })
   }
 
