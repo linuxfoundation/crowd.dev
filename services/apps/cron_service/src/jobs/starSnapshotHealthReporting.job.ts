@@ -4,8 +4,8 @@ import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import {
   IRepoStarSnapshotGapDays,
   countDeadLetteredStarBackfillFailures,
+  findAllRepoIdsWithStarSnapshotGaps,
   findDeadLetteredStarBackfillFailures,
-  findRepoIdsWithStarSnapshotGaps,
   findReposForStarSnapshot,
   findStarSnapshotGapDaysForRepos,
   getDeadLetterReportCursor,
@@ -25,8 +25,7 @@ import { IJobDefinition } from '../types'
 const LAST_DEAD_LETTER_REPORTED_AT_KEY =
   'star-snapshot-health-reporting:last-dead-letter-reported-at'
 const SAMPLE_SIZE = 20
-// Keeps each gap-check query's IN-list bounded as the eligible repo count grows.
-const GAP_CHECK_BATCH_SIZE = 5_000
+const GAP_DAYS_BATCH_SIZE = 5_000
 
 const job: IJobDefinition = {
   name: 'star-snapshot-health-reporting',
@@ -55,19 +54,20 @@ const job: IJobDefinition = {
 
     const repoUrlById = new Map(allRepos.map((repo) => [repo.repositoryId, repo.repoUrl]))
     const allRepoIds = allRepos.map((repo) => repo.repositoryId)
-    const gappedRepoIds: string[] = []
-    for (let i = 0; i < allRepoIds.length; i += GAP_CHECK_BATCH_SIZE) {
-      const batch = allRepoIds.slice(i, i + GAP_CHECK_BATCH_SIZE)
-      gappedRepoIds.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
-    }
+    const gappedRepoIds = await findAllRepoIdsWithStarSnapshotGaps(qx, allRepoIds)
 
     const gapDays: IRepoStarSnapshotGapDays[] = []
-    for (let i = 0; i < gappedRepoIds.length; i += GAP_CHECK_BATCH_SIZE) {
-      const batch = gappedRepoIds.slice(i, i + GAP_CHECK_BATCH_SIZE)
+    for (let i = 0; i < gappedRepoIds.length; i += GAP_DAYS_BATCH_SIZE) {
+      const batch = gappedRepoIds.slice(i, i + GAP_DAYS_BATCH_SIZE)
       gapDays.push(...(await findStarSnapshotGapDaysForRepos(qx, batch)))
     }
     const missingDaysByRepoId = new Map(gapDays.map((gap) => [gap.repositoryId, gap.missingDays]))
     const totalMissingDays = gapDays.reduce((sum, gap) => sum + gap.missingDays, 0)
+    // The two queries above run seconds apart, so a repo can close its gap in between and
+    // come back with 0 missing days - drop those instead of over-reporting the gap count.
+    const currentlyGappedRepoIds = gapDays
+      .filter((gap) => gap.missingDays > 0)
+      .map((gap) => gap.repositoryId)
 
     const sections: SlackMessageSection[] = [
       {
@@ -75,7 +75,7 @@ const job: IJobDefinition = {
         text: [
           `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
           `📉 Total repos GitHub gave up retrying: *${totalDeadLettered}*`,
-          `📅 Repos with a snapshot gap right now: *${gappedRepoIds.length}*`,
+          `📅 Repos with a snapshot gap right now: *${currentlyGappedRepoIds.length}*`,
           `📆 Total missing snapshot-days across those repos: *${totalMissingDays}*`,
         ].join('\n'),
       },
@@ -93,8 +93,8 @@ const job: IJobDefinition = {
       })
     }
 
-    if (gappedRepoIds.length > 0) {
-      const sortedByMissingDays = [...gappedRepoIds].sort(
+    if (currentlyGappedRepoIds.length > 0) {
+      const sortedByMissingDays = [...currentlyGappedRepoIds].sort(
         (a, b) => (missingDaysByRepoId.get(b) ?? 0) - (missingDaysByRepoId.get(a) ?? 0),
       )
       const shown = sortedByMissingDays.slice(0, SAMPLE_SIZE)
@@ -104,13 +104,13 @@ const job: IJobDefinition = {
         return `• \`${url}\` - missing ${days} day${days === 1 ? '' : 's'}`
       })
       sections.push({
-        title: `Snapshot Gaps (top ${shown.length} of ${gappedRepoIds.length}, most days missing first)`,
+        title: `Snapshot Gaps (top ${shown.length} of ${currentlyGappedRepoIds.length}, most days missing first)`,
         text: lines.join('\n'),
       })
     }
 
     const persona =
-      newlyDeadLettered.length > 0 || gappedRepoIds.length > 0
+      newlyDeadLettered.length > 0 || currentlyGappedRepoIds.length > 0
         ? SlackPersona.WARNING_PROPAGATOR
         : SlackPersona.INFO_NOTIFIER
 
@@ -128,7 +128,7 @@ const job: IJobDefinition = {
     }
 
     ctx.log.info(
-      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${totalDeadLettered}, gaps=${gappedRepoIds.length}`,
+      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${totalDeadLettered}, gaps=${currentlyGappedRepoIds.length}`,
     )
   },
 }

@@ -3,6 +3,9 @@ DESCRIPTION >
     Filters by specific repositories in the collection via collectionsRepositories.
     Runs daily and stores results in agentic_ai_projects_list_ds.
 
+TOKEN "mcp_read" READ
+TOKEN "claude_readonly" READ
+
 NODE ai_repos
 SQL >
     SELECT r.url, r.segmentId, r.insightsProjectId
@@ -91,8 +94,10 @@ DESCRIPTION >
 SQL >
     SELECT
         segmentId,
-        sum(coalesce(totalNow, 0)) AS starsSnapshot,
-        greatest(sum(coalesce(totalNow, 0)) - sum(coalesce(totalAt30, 0)), 0) AS stars30dSnapshot
+        toUInt64(sum(coalesce(totalNow, 0))) AS starsSnapshot,
+        toUInt64(
+            greatest(sum(coalesce(totalNow, 0)) - sum(coalesce(totalAt30, 0)), 0)
+        ) AS stars30dSnapshot
     FROM ai_star_snapshot_repo_totals
     GROUP BY segmentId
 

@@ -2,6 +2,8 @@ import { ApplicationFailure } from '@temporalio/client'
 
 import { getGithubInstallationToken } from '@crowd/common_services'
 import {
+  findAllRepoIdsWithStarSnapshotGaps,
+  findCompletedReposEligibleForGapHeal,
   findReposForStarSnapshot as findReposForStarSnapshotQx,
   findReposNeedingStarBackfill as findReposNeedingStarBackfillQx,
   recordStarBackfillFailure,
@@ -393,6 +395,33 @@ export async function findReposNeedingStarBackfill(
 ): Promise<IRepoForStarSnapshot[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
   return findReposNeedingStarBackfillQx(qx, limit, afterUrl)
+}
+
+export interface IGapHealPage {
+  gappedRepos: IRepoForStarSnapshot[]
+  pageSize: number
+  lastUrl?: string
+}
+
+// A completed repo can still pick up a fresh gap (e.g. a dropped capture batch) - this
+// finds those so selfHealStarBackfill re-sweeps them too, paginated like the backfill scan.
+export async function findReposNeedingGapHeal(
+  limit: number,
+  afterUrl?: string,
+): Promise<IGapHealPage> {
+  const qx = pgpQx(svc.postgres.reader.connection())
+  const page = await findCompletedReposEligibleForGapHeal(qx, limit, afterUrl)
+  const gappedIds = new Set(
+    await findAllRepoIdsWithStarSnapshotGaps(
+      qx,
+      page.map((repo) => repo.repositoryId),
+    ),
+  )
+  return {
+    gappedRepos: page.filter((repo) => gappedIds.has(repo.repositoryId)),
+    pageSize: page.length,
+    lastUrl: page.length > 0 ? page[page.length - 1].repoUrl : undefined,
+  }
 }
 
 // A leftover claim only costs a repo one skipped run before the TTL clears it - not worth

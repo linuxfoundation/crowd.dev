@@ -17,7 +17,9 @@ import { organizationsRouter } from './organizations'
 import { osspreyRouter } from './ossprey'
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
+import { projectCatalogRouter } from './projectCatalog'
 import { projectEvaluationRouter } from './projectEvaluation'
+import { projectOnboardingRouter } from './projectOnboarding'
 import { stewardshipsRouter } from './stewardships'
 
 const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
@@ -29,6 +31,8 @@ export function v1Router(): Router {
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
   router.use('/project-evaluation', staticApiKeyMiddleware(), projectEvaluationRouter())
+  router.use('/project-catalog', staticApiKeyMiddleware(), projectCatalogRouter())
+  router.use('/project-onboarding', staticApiKeyMiddleware(), projectOnboardingRouter())
 
   // TODO[deprecate]: /packages, /stewardships, /ossprey are superseded by /akrites — remove once consumers have migrated
   router.post(

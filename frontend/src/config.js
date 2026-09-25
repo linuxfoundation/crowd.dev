@@ -62,6 +62,7 @@ const defaultConfig = {
     auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
     auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
   },
+  segmentKey: import.meta.env.VUE_APP_SEGMENT_KEY,
 };
 
 const composedConfig = {
@@ -116,6 +117,7 @@ const composedConfig = {
     auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
     auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
   },
+  segmentKey: 'CROWD_VUE_APP_SEGMENT_KEY',
 };
 
 const config = defaultConfig.backendUrl ? defaultConfig : composedConfig;

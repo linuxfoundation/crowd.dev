@@ -1,7 +1,10 @@
 import { Readable } from 'stream'
 
 import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
-import { ProjectCatalogAction } from '@crowd/data-access-layer/src/project-catalog/types'
+import {
+  ProjectCatalogAction,
+  ProjectCatalogProvenance,
+} from '@crowd/data-access-layer/src/project-catalog/types'
 
 export interface IDatasetDescriptor {
   id: string
@@ -17,6 +20,7 @@ export interface IDatasetDescriptor {
 
 export interface IDiscoverySource {
   name: string
+  provenance: ProjectCatalogProvenance
   /**
    * 'csv' (default): fetchDatasetStream returns a raw text stream, piped through csv-parse.
    * 'json': fetchDatasetStream returns an object-mode Readable that emits pre-parsed records.

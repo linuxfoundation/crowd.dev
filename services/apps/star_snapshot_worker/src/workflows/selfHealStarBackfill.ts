@@ -3,6 +3,7 @@ import {
   WorkflowIdReusePolicy,
   continueAsNew,
   log,
+  patched,
   proxyActivities,
   startChild,
   workflowInfo,
@@ -11,7 +12,9 @@ import {
 import * as activities from '../activities'
 import { backfillStarHistoryBatch } from './backfillStarHistoryBatch'
 
-const { findReposNeedingStarBackfill } = proxyActivities<typeof activities>({
+const { findReposNeedingStarBackfill, findReposNeedingGapHeal } = proxyActivities<
+  typeof activities
+>({
   startToCloseTimeout: '2 minutes',
   retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
@@ -21,6 +24,9 @@ const BATCH_SIZE = 100
 
 export interface ISelfHealStarBackfillArgs {
   afterUrl?: string
+  mainScanDone?: boolean
+  gapHealAfterUrl?: string
+  gapHealDone?: boolean
   batchesDispatchedSoFar?: number
 }
 
@@ -35,16 +41,22 @@ function fnv1a32Hex(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-// Content-addressed (not positional) so a workflow retry with a reshuffled candidate list can't
-// collide two different batches under REJECT_DUPLICATE and silently skip one.
-function batchWorkflowId(batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>): string {
+// Content-addressed so a retry with a reshuffled candidate list can't collide two batches
+// under REJECT_DUPLICATE; namespaced by scanKind so gap-heal can't collide with main-scan.
+function batchWorkflowId(
+  scanKind: 'main' | 'gap-heal',
+  batch: Awaited<ReturnType<typeof findReposNeedingStarBackfill>>,
+  namespaced: boolean,
+): string {
   const digest = fnv1a32Hex(
     batch
       .map((repo) => repo.repositoryId)
       .sort()
       .join(','),
   )
-  return `${workflowInfo().workflowId}/batch-${digest}`
+  return namespaced
+    ? `${workflowInfo().workflowId}/${scanKind}-batch-${digest}`
+    : `${workflowInfo().workflowId}/batch-${digest}`
 }
 
 async function startBatchChild(
@@ -72,20 +84,54 @@ async function startBatchChild(
 }
 
 // Fans out to abandoned child workflows so each batch's own rate-limit retry loop doesn't
-// hold up other pages waiting on GitHub's reset.
+// hold up other pages. Runs two independently-cursored paged scans per tick.
 export async function selfHealStarBackfill(args: ISelfHealStarBackfillArgs = {}): Promise<void> {
-  const repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
   let batchesDispatched = args.batchesDispatchedSoFar ?? 0
+  const mainScanDone = args.mainScanDone ?? false
+  const gapHealDone = args.gapHealDone ?? false
 
-  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
-    const batch = repos.slice(i, i + BATCH_SIZE)
-    await startBatchChild(batch, batchWorkflowId(batch))
-    batchesDispatched++
+  // Keeps an in-flight main-scan batch's ID stable across the deploy that added namespacing.
+  const namespacedBatchIds = patched('CM-1441-namespaced-batch-ids')
+
+  let repos: Awaited<ReturnType<typeof findReposNeedingStarBackfill>> = []
+  if (!mainScanDone) {
+    repos = await findReposNeedingStarBackfill(PAGE_SIZE, args.afterUrl)
+    for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+      const batch = repos.slice(i, i + BATCH_SIZE)
+      await startBatchChild(batch, batchWorkflowId('main', batch, namespacedBatchIds))
+      batchesDispatched++
+    }
   }
 
-  if (repos.length === PAGE_SIZE) {
+  // Keeps an in-flight execution on its old command sequence through a mid-deploy replay.
+  const gapHealPatched = patched('CM-1441-gap-heal-scan')
+  let gapHealPage: Awaited<ReturnType<typeof findReposNeedingGapHeal>> | undefined
+  if (!gapHealDone && gapHealPatched) {
+    gapHealPage = await findReposNeedingGapHeal(PAGE_SIZE, args.gapHealAfterUrl)
+    for (let i = 0; i < gapHealPage.gappedRepos.length; i += BATCH_SIZE) {
+      const batch = gapHealPage.gappedRepos.slice(i, i + BATCH_SIZE)
+      // Gap-heal batches are a brand-new call site introduced by this PR (no prior deployed
+      // format to preserve), so they're always namespaced.
+      await startBatchChild(batch, batchWorkflowId('gap-heal', batch, true))
+      batchesDispatched++
+    }
+  }
+
+  const nextMainScanDone = mainScanDone || repos.length < PAGE_SIZE
+  // Only advance gapHealDone once the scan actually ran (gapHealPatched) - otherwise a
+  // pre-deploy replay would bake gapHealDone: true into continueAsNew and never run it.
+  const nextGapHealDone =
+    gapHealDone || (gapHealPatched && (gapHealPage?.pageSize ?? 0) < PAGE_SIZE)
+  // While unpatched, gap healing doesn't exist yet - the continue/complete decision must
+  // depend on nextMainScanDone alone, exactly like the pre-gap-heal command sequence.
+  const shouldContinue = gapHealPatched ? !nextMainScanDone || !nextGapHealDone : !nextMainScanDone
+
+  if (shouldContinue) {
     await continueAsNew<typeof selfHealStarBackfill>({
-      afterUrl: repos[repos.length - 1].repoUrl,
+      afterUrl: nextMainScanDone ? undefined : repos[repos.length - 1].repoUrl,
+      mainScanDone: nextMainScanDone,
+      gapHealAfterUrl: nextGapHealDone ? undefined : (gapHealPage?.lastUrl ?? args.gapHealAfterUrl),
+      gapHealDone: nextGapHealDone,
       batchesDispatchedSoFar: batchesDispatched,
     })
     return

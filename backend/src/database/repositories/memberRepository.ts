@@ -49,6 +49,8 @@ import {
 } from '@crowd/data-access-layer/src/members'
 import {
   fetchAbsoluteMemberAggregates,
+  fetchMemberOverallAggregates,
+  fetchMemberSegmentAggregates,
   includeMemberToSegments,
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
@@ -1153,65 +1155,49 @@ class MemberRepository {
   static async findById(
     id,
     options: IRepositoryOptions,
-    {
-      segmentId,
-    }: {
-      segmentId?: string
-    } = {},
+    { segmentId }: { segmentId?: string } = {},
     include: Record<string, boolean> = {},
     includeAllAttributes = false,
   ) {
-    let memberResponse = null
-
     const qx = optionsQx(options)
     const bgQx = optionsBgQx(options)
 
-    memberResponse = await queryMembersAdvanced(qx, bgQx, options.redis, {
-      filter: { id: { eq: id } },
-      limit: 1,
-      offset: 0,
-      segmentId,
-      includeAllAttributes,
-      include: {
-        memberOrganizations: false,
-        lfxMemberships: true,
-        identities: false,
-        segments: true,
-        onlySubProjects: true,
-        maintainers: true,
-        ...include,
-      },
-    })
-
-    if (memberResponse.count === 0) {
-      // try it again without segment information (no aggregates)
-      // for members without activities
-      memberResponse = await queryMembersAdvanced(qx, bgQx, options.redis, {
+    const [{ rows }, overall, selectedSegment] = await Promise.all([
+      queryMembersAdvanced(qx, bgQx, options.redis, {
         filter: { id: { eq: id } },
         limit: 1,
         offset: 0,
         includeAllAttributes,
         include: {
+          memberOrganizations: false,
           lfxMemberships: true,
+          identities: false,
           segments: true,
+          onlySubProjects: true,
           maintainers: true,
           ...include,
         },
-      })
+      }),
+      fetchMemberOverallAggregates(qx, id),
+      segmentId ? fetchMemberSegmentAggregates(qx, id, segmentId) : null,
+    ])
 
-      if (memberResponse.count === 0) {
-        throw new Error404()
-      }
+    const [member] = rows
 
-      memberResponse.rows[0].activityCount = 0
-      memberResponse.rows[0].lastActive = null
-      memberResponse.rows[0].activityTypes = []
-      memberResponse.rows[0].activeOn = []
-      memberResponse.rows[0].averageSentiment = null
+    if (!member) {
+      throw new Error404()
     }
 
-    const [data] = memberResponse.rows
-    return data
+    const totals = segmentId ? selectedSegment : overall
+
+    return {
+      ...member,
+      segmentId,
+      activityCount: totals?.activityCount ?? 0,
+      averageSentiment: totals?.averageSentiment ?? null,
+      // The identity edit lock reads activeOn, so it must cover every segment
+      activeOn: overall.activeOn,
+    }
   }
 
   static getUsernameFromIdentities(identities: IMemberIdentity[]): IMemberUsername {

@@ -1,0 +1,362 @@
+DESCRIPTION >
+    - Cumulative (running-total) star count time series for a project or curated collection,
+    replacing `activities_cumulative_count.pipe` for stars only (CM-1785).
+    - GitHub repos: no per-user star events exist any more (CM-1419/CM-1439) - the cumulative
+    total is read from `repositoryStarSnapshots` (aggregate-only snapshots, CM-1437/CM-1463)
+    instead. Same `argMax(starCount, (capturedAt, updatedAt))` snapshot pattern as
+    `health_score_stars.pipe`, evaluated once per bucket instead of once for a single `endDate`.
+    - Non-GitHub (GitLab) repos: unaffected by CM-1419, still counted from per-event `star`
+    activities the normal way - read directly off `activityRelations_bucket_routing` /
+    `activityRelations_collection_bucket_routing` (the same tables `activities_filtered.pipe`
+    itself routes to), filtered `platform != 'github'`, since `activities_filtered.pipe` has no
+    platform-exclusion parameter to reuse as-is.
+    - Exactly one of `project` / `collectionSlug` must be given, same contract as
+    `activities_filtered.pipe`. `bucketId` is required alongside `collectionSlug` (resolved via
+    `collection_buckets.pipe`) for the same reason `activities_filtered.pipe` needs it - Tinybird
+    renders Jinja before any SQL runs, so it can't branch on a bucket id only ClickHouse can
+    compute. The insights backend's Tinybird client already resolves and injects `bucketId`
+    transparently for both `project` and `collectionSlug` on every pipe call, same as it does
+    for every other pipe today.
+    - Parameters:
+    - `project`: Project slug (e.g. 'k8s'). Inherited from `segments_filtered`.
+    - `collectionSlug`: Collection slug (e.g. 'cncf'). Inherited from `segments_filtered_by_collection`.
+    - `repos`: Optional array of repository URLs to restrict to.
+    - `startDate`: Optional DateTime, only affects which buckets `generate_timeseries` produces.
+    - `endDate`: Optional DateTime, snapshot/summary cutoff and bucket upper bound.
+    - `granularity`: Optional string ('daily', 'weekly', 'monthly', 'quarterly', 'yearly').
+    - Response:
+    - Without granularity: `cumulativeActivityCount` (single row)
+    - With granularity: `startDate`, `endDate`, `cumulativeActivityCount` per bucket
+    - Response field names deliberately match `activities_cumulative_count.pipe` so `stars.ts`
+    can swap the pipe name with no other code changes.
+    - **Known limitation**: a bucket earlier than a repo's first backfilled snapshot has no
+    snapshot to `argMax` over and reads as 0 stars for that repo, not "unknown" - undercounts
+    early buckets until CM-1463's backfill fully lands, never overcounts.
+
+TOKEN "insights-app-token" READ
+
+NODE stars_repo_scope
+DESCRIPTION >
+    GitHub repositories in scope (+ optional `repos` filter). Same project/collection dual
+    scoping as `activities_filtered.pipe`; same repo-join shape as `health_score_stars.pipe`.
+
+SQL >
+    %
+    {% if defined(collectionSlug) %}
+        SELECT r.id AS repositoryId
+        FROM repositories r FINAL
+        WHERE
+            {% if defined(bucketId) %}
+                isNull (r.deletedAt)
+                AND r.enabled = true
+                AND r.excluded = false
+                AND r.url LIKE 'https://github.com/%'
+                AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                {% if defined(repos) %}
+                    AND has(
+                        arrayMap(
+                            x -> lower(x),
+                            {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                        ),
+                        lower(r.url)
+                    )
+                {% end %}
+            {% else %} 1 = 0
+            {% end %}
+    {% else %}
+        SELECT r.id AS repositoryId
+        FROM repositories r FINAL
+        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
+        WHERE
+            isNull (r.deletedAt)
+            AND r.enabled = true
+            AND r.excluded = false
+            AND r.url LIKE 'https://github.com/%'
+            AND isNull (i.deletedAt)
+            AND i.enabled = 1
+            AND r.segmentId = (SELECT segmentId FROM segments_filtered)
+            {% if defined(repos) %}
+                AND has(
+                    arrayMap(
+                        x -> lower(x),
+                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
+                    ),
+                    lower(r.url)
+                )
+            {% end %}
+    {% end %}
+
+NODE stars_github_summary
+DESCRIPTION >
+    No-granularity mode: single GitHub total as of `endDate` (or the latest known snapshot per
+    repo if `endDate` isn't given), same shape as `health_score_stars.pipe`'s own summary query.
+
+SQL >
+    %
+    {% if not defined(granularity) %}
+        SELECT toUInt64(sum(s.starCount)) AS githubCumulativeStars
+        FROM
+            (
+                SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                FROM repositoryStarSnapshots
+                WHERE
+                    repositoryId IN (SELECT repositoryId FROM stars_repo_scope)
+                    {% if defined(endDate) %}
+                        AND capturedAt
+                        <= {{ DateTime(endDate, description="Snapshot as of date", required=False) }}
+                    {% end %}
+                GROUP BY repositoryId
+            ) s
+    {% else %} SELECT 0 AS githubCumulativeStars
+    {% end %}
+
+NODE stars_snapshots_deduped
+DESCRIPTION >
+    One row per (repositoryId, capturedAt), collapsing `repositoryStarSnapshots`'
+    `ReplacingMergeTree` duplicate versions down to the latest `updatedAt`. Scoped to
+    `stars_repo_scope` up front, and to the caller's `endDate` (when given) so the array below is
+    built only from in-scope repos and snapshots `stars_github_bucketed`'s own cutoff could ever
+    select - a snapshot past `endDate` would be filtered out there anyway, so dropping it here
+    keeps the dedup scan and the array it feeds from growing with history the request can't use.
+
+SQL >
+    %
+    SELECT repositoryId, capturedAt, argMax(starCount, updatedAt) AS starCount
+    FROM repositoryStarSnapshots
+    WHERE
+        repositoryId IN (SELECT repositoryId FROM stars_repo_scope)
+        {% if defined(endDate) %}
+            AND capturedAt
+            <= {{ DateTime(endDate, description="Snapshot as of cutoff", required=False) }}
+        {% end %}
+    GROUP BY repositoryId, capturedAt
+
+NODE stars_repo_snapshot_history
+DESCRIPTION >
+    Per-repository array of (capturedAt, starCount) pairs, newest-first - one row per repo, built
+    once instead of per bucket. Stored pre-reversed so `stars_github_bucketed`'s `arrayFirst`
+    lookup can scan it directly instead of calling `arrayReverse` on the same array again for
+    every bucket in the cross join (up to 1,000x per repo).
+
+SQL >
+    SELECT
+        repositoryId,
+        arrayReverse(arraySort(x -> tupleElement(x, 1), groupArray((capturedAt, starCount)))) AS history
+    FROM stars_snapshots_deduped
+    GROUP BY repositoryId
+
+NODE stars_repo_histories_agg
+DESCRIPTION >
+    All in-scope repos' pre-reversed histories collected into a single row, so
+    `stars_github_bucketed` below always has exactly one row to `CROSS JOIN` against per bucket -
+    `groupArray` with no `GROUP BY` returns one row (with an empty array) even when
+    `stars_repo_snapshot_history` has zero repos, unlike `CROSS JOIN stars_repo_scope`, which
+    dropped every bucket entirely for a GitLab-only scope with no GitHub repos.
+
+SQL >
+    SELECT groupArray(history) AS histories FROM stars_repo_snapshot_history
+
+NODE stars_github_bucketed
+DESCRIPTION >
+    Granularity mode: per-bucket GitHub cumulative total. For each (bucket, repo): the latest
+    snapshot captured at or before that bucket's end date, 0 if none exists yet for that repo.
+    A bucket's own `endDate` can extend past a period boundary (e.g. the last month in range is
+    only half over) - capped by the caller's own `endDate` when given, so a mid-period cutoff
+    never admits snapshots the caller asked to exclude. Sums over `stars_repo_histories_agg`'s
+    single collected-histories row instead of joining per repo, so a bucket always survives even
+    when the scope has no GitHub repos at all.
+
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            ds.startDate AS startDate,
+            ds.endDate AS endDate,
+            toUInt64(
+                arraySum(
+                    arrayMap(
+                        history -> coalesce(
+                            tupleElement(
+                                arrayFirst(
+                                    x -> tupleElement(x, 1) < ds.endDate + INTERVAL 1 DAY
+                                    {% if defined(endDate) %}
+                                        AND tupleElement(x, 1)
+                                        <= {{
+                                            DateTime(
+                                                endDate,
+                                                description="Snapshot as of cutoff",
+                                                required=False,
+                                            )
+                                        }}
+                                    {% end %},
+                                    history
+                                ),
+                                2
+                            ),
+                            0
+                        ),
+                        agg.histories
+                    )
+                )
+            ) AS githubCumulativeStars
+        FROM generate_timeseries ds
+        CROSS JOIN stars_repo_histories_agg agg
+    {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS githubCumulativeStars
+    {% end %}
+
+NODE stars_gitlab_summary
+DESCRIPTION >
+    No-granularity mode: total non-GitHub star events up to `endDate` (or all-time).
+
+SQL >
+    %
+    {% if not defined(granularity) %}
+        SELECT count() AS gitlabCumulativeStars
+        FROM
+            {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
+            {% else %} activityRelations_bucket_routing
+            {% end %} as a
+        WHERE
+            {% if defined(collectionSlug) %}
+                {% if defined(bucketId) %}
+                    segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                    AND a.collectionSlug = {{ String(collectionSlug) }}
+                {% else %} 1 = 0
+                {% end %}
+            {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+            {% end %}
+            AND type = 'star'
+            AND platform != 'github'
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
+            {% end %}
+    {% else %} SELECT 0 AS gitlabCumulativeStars
+    {% end %}
+
+NODE stars_gitlab_cumulative
+DESCRIPTION >
+    Granularity mode: non-GitHub star events, cumulative (historical baseline + rolling sum),
+    same rolling-sum pattern as `activities_cumulative_count.pipe` but restricted to
+    `platform != 'github'`, read directly off the bucket-routing tables.
+
+SQL >
+    %
+    {% if defined(granularity) %}
+        WITH
+            gitlab_historical AS (
+                SELECT count() AS c
+                FROM
+                    {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
+                    {% else %} activityRelations_bucket_routing
+                    {% end %} as a
+                WHERE
+                    {% if defined(collectionSlug) %}
+                        {% if defined(bucketId) %}
+                            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                            AND a.collectionSlug = {{ String(collectionSlug) }}
+                        {% else %} 1 = 0
+                        {% end %}
+                    {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+                    {% end %}
+                    AND type = 'star'
+                    AND platform != 'github'
+                    AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+                    {% if defined(repos) %}
+                        AND channel IN (SELECT channel FROM repos_to_channels)
+                    {% end %}
+                    {% if defined(startDate) %}
+                        AND timestamp
+                        <= {{ DateTime(startDate, description="Historical cutoff", required=False) }}
+                    {% else %} AND 1 = 0
+                    {% end %}
+            ),
+            gitlab_base AS (
+                SELECT
+                    ds.startDate AS startDate,
+                    ds.endDate AS endDate,
+                    count(case when af.activityId != '' then 1 else null end) AS activityCount
+                FROM generate_timeseries ds
+                LEFT JOIN
+                    (
+                        SELECT timestamp, activityId
+                        FROM
+                            {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
+                            {% else %} activityRelations_bucket_routing
+                            {% end %} as a
+                        WHERE
+                            {% if defined(collectionSlug) %}
+                                {% if defined(bucketId) %}
+                                    segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                                    AND a.collectionSlug = {{ String(collectionSlug) }}
+                                {% else %} 1 = 0
+                                {% end %}
+                            {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+                            {% end %}
+                            AND type = 'star'
+                            AND platform != 'github'
+                            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+                            {% if defined(repos) %}
+                                AND channel IN (SELECT channel FROM repos_to_channels)
+                            {% end %}
+                            {% if defined(startDate) %}
+                                AND timestamp
+                                > {{ DateTime(startDate, description="Filter after", required=False) }}
+                            {% end %}
+                            {% if defined(endDate) %}
+                                AND timestamp
+                                <= {{ DateTime(endDate, description="Filter before", required=False) }}
+                            {% end %}
+                    ) af
+                    ON CASE
+                        WHEN {{ granularity }} = 'daily'
+                        THEN toDate(af.timestamp)
+                        WHEN {{ granularity }} = 'weekly'
+                        THEN toStartOfWeek(af.timestamp)
+                        WHEN {{ granularity }} = 'monthly'
+                        THEN toStartOfMonth(af.timestamp)
+                        WHEN {{ granularity }} = 'quarterly'
+                        THEN toStartOfQuarter(af.timestamp)
+                        WHEN {{ granularity }} = 'yearly'
+                        THEN toStartOfYear(af.timestamp)
+                    END
+                    = ds.startDate
+                GROUP BY ds.startDate, ds.endDate
+            ),
+            rolling AS (
+                SELECT startDate, endDate, activityCount, sumState(activityCount) AS cumulativeState
+                FROM gitlab_base
+                GROUP BY startDate, endDate, activityCount
+            )
+        SELECT
+            startDate,
+            endDate,
+            COALESCE(sumMerge(cumulativeState) OVER (ORDER BY startDate ASC), 0)
+            + (SELECT c FROM gitlab_historical) AS gitlabCumulativeStars
+        FROM rolling
+        ORDER BY startDate ASC
+    {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS gitlabCumulativeStars
+    {% end %}
+
+NODE stars_cumulative_count
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            g.startDate AS startDate,
+            g.endDate AS endDate,
+            toUInt64(
+                g.githubCumulativeStars + coalesce(gl.gitlabCumulativeStars, 0)
+            ) AS cumulativeActivityCount
+        FROM stars_github_bucketed g
+        LEFT JOIN stars_gitlab_cumulative gl ON gl.startDate = g.startDate AND gl.endDate = g.endDate
+        ORDER BY g.startDate ASC
+    {% else %}
+        SELECT
+            toUInt64(
+                (SELECT githubCumulativeStars FROM stars_github_summary)
+                + (SELECT gitlabCumulativeStars FROM stars_gitlab_summary)
+            ) AS cumulativeActivityCount
+    {% end %}
