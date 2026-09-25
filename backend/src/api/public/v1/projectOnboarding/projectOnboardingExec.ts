@@ -12,10 +12,7 @@ import { projectOnboardingRequestSchema } from './types'
 const reserveDailyProjectOnboardingRequest = createDailyProjectOnboardingCap()
 
 export default async (req: Request, res: Response): Promise<void> => {
-  reserveDailyProjectOnboardingRequest(
-    req.actor ? (req.actor.apiKeyId ?? req.actor.id) : 'anonymous',
-    req.actor ? req.actor.id : 'anonymous',
-  )
+  reserveDailyProjectOnboardingRequest(req.actor.apiKeyId ?? req.actor.id, req.actor.id)
 
   const parsed = validateOrThrow(projectOnboardingRequestSchema, req.body)
 

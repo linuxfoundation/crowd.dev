@@ -30,10 +30,9 @@ export function v1Router(): Router {
   router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter())
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
-  // TODO(CM-1794): API-key auth temporarily removed for Claude Tag testing — re-enable before wider rollout.
-  router.use('/project-evaluation', projectEvaluationRouter())
-  router.use('/project-catalog', projectCatalogRouter())
-  router.use('/project-onboarding', projectOnboardingRouter())
+  router.use('/project-evaluation', staticApiKeyMiddleware(), projectEvaluationRouter())
+  router.use('/project-catalog', staticApiKeyMiddleware(), projectCatalogRouter())
+  router.use('/project-onboarding', staticApiKeyMiddleware(), projectOnboardingRouter())
 
   // TODO[deprecate]: /packages, /stewardships, /ossprey are superseded by /akrites — remove once consumers have migrated
   router.post(
