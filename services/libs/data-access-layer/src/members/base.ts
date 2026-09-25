@@ -712,8 +712,9 @@ export async function searchMembersByNameOrIdentity(
 ): Promise<IMemberSearchResult[]> {
   const term = search?.trim().toLowerCase() ?? ''
 
-  // Shorter patterns can't use the trigram index on lower("displayName") and fall back to a full scan.
-  if (term.length < 3) {
+  // Without 3 consecutive letters/digits the trigram index on lower("displayName") can't be used,
+  // so the search falls back to a full scan.
+  if (!/[\p{L}\p{N}]{3}/u.test(term)) {
     return []
   }
 
@@ -724,6 +725,9 @@ export async function searchMembersByNameOrIdentity(
           SELECT m.id
           FROM members m
           WHERE LOWER(m."displayName") LIKE $(pattern)
+            AND m."deletedAt" IS NULL
+            AND COALESCE((m.attributes -> 'isBot' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
+            AND COALESCE((m.attributes -> 'isOrganization' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
           LIMIT $(limit)
         )
         UNION
@@ -742,7 +746,7 @@ export async function searchMembersByNameOrIdentity(
         AND COALESCE((m.attributes -> 'isBot' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
         AND COALESCE((m.attributes -> 'isOrganization' ->> 'default')::BOOLEAN, FALSE) IS NOT TRUE
     `,
-    { pattern: `%${term}%`, term, limit },
+    { pattern: `%${term.replace(/[\\%_]/g, '\\$&')}%`, term, limit },
   )
 }
 
