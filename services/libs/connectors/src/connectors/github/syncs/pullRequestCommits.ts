@@ -96,9 +96,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
 
         const fresh = commits.nodes
           .map((node) => node?.commit)
-          .filter((commit): commit is PrCommitNode['commit'] =>
-            Boolean(commit?.author?.user?.login),
-          )
+          .filter((commit): commit is PrCommitNode['commit'] => Boolean(commit))
 
         if (fresh.length > 0) {
           await ctx.emit(fresh.map((commit) => toCommit(commit, pullRequest.id)))
