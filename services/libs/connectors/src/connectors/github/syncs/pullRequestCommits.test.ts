@@ -6,6 +6,7 @@ import type { ConnectorHttp } from '../../../http/client'
 import { ProviderUnavailableError } from '../../../http/errors'
 import type { SyncContext } from '../../../types'
 import { PR_COMMITS_QUERY } from '../graphql/pullRequestChildren'
+import type { GithubActivity } from '../schemas'
 import { pullRequestCommitsSync } from './pullRequestCommits'
 
 // @crowd/integrations eagerly scans and requires every integration folder on import,
@@ -29,9 +30,11 @@ interface HarnessOptions {
   statsUnavailableForPrs?: number[]
   // number of commit pages to serve for a given PR (default 1)
   pagesPerPr?: Record<number, number>
+  // PR numbers whose commits have no resolvable GitHub user (author.user = null)
+  ghostAuthorPrs?: number[]
 }
 
-function commitNode(id: string) {
+function commitNode(id: string, ghostAuthor = false) {
   return {
     commit: {
       parents: { totalCount: 1 },
@@ -40,13 +43,16 @@ function commitNode(id: string) {
       message: 'msg',
       authoredDate: '2026-09-20T00:00:00Z',
       url: `https://github.com/openclaw/openclaw/commit/${id}`,
-      author: { user: { login: 'someone' }, email: null, name: null },
+      author: ghostAuthor
+        ? { user: null, email: 'someone@example.com', name: 'Someone' }
+        : { user: { login: 'someone' }, email: null, name: null },
     },
   }
 }
 
 function makeHarness(opts: HarnessOptions) {
   const requests: RequestLog[] = []
+  const emitted: GithubActivity[] = []
   let prListServed = false
   const commitPagesSeen: Record<number, number> = {}
 
@@ -101,7 +107,12 @@ function makeHarness(opts: HarnessOptions) {
                   endCursor: hasNextPage ? `p${commitPagesSeen[prNumber] + 1}` : null,
                   hasNextPage,
                 },
-                nodes: [commitNode(`${prNumber}-${commitPagesSeen[prNumber]}`)],
+                nodes: [
+                  commitNode(
+                    `${prNumber}-${commitPagesSeen[prNumber]}`,
+                    opts.ghostAuthorPrs?.includes(prNumber),
+                  ),
+                ],
               },
             },
           },
@@ -113,7 +124,9 @@ function makeHarness(opts: HarnessOptions) {
   const ctx: SyncContext = {
     channel: CHANNEL,
     watermark: { phase: 'backfill', since: null, cursor: null },
-    emit: async () => {},
+    emit: async (records) => {
+      emitted.push(...(records as GithubActivity[]))
+    },
     commitWatermark: async () => {},
     hasRunBudget: () => true,
     http,
@@ -125,7 +138,7 @@ function makeHarness(opts: HarnessOptions) {
     } as unknown as Logger,
   }
 
-  return { ctx, requests }
+  return { ctx, requests, emitted }
 }
 
 describe('pullRequestCommitsSync', () => {
@@ -152,6 +165,17 @@ describe('pullRequestCommitsSync', () => {
     // page 2 of the same PR: stats is skipped entirely, straight to no-stats
     expect(requests[2]).toEqual({ prNumber: 2, usedStatsQuery: false, cursor: 'p2' })
     expect(requests).toHaveLength(3)
+  })
+
+  it('emits commits whose author has no github account as the ghost member', async () => {
+    const { ctx, emitted } = makeHarness({ prNumbers: [5], ghostAuthorPrs: [5] })
+
+    await pullRequestCommitsSync.run(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0].sourceId).toBe('5-1')
+    expect(emitted[0].member.displayName).toBe('ghost')
+    expect(emitted[0].member.identities[0].value).toBe('ghost')
   })
 
   it('does not carry the no-stats fallback over to the next PR', async () => {
