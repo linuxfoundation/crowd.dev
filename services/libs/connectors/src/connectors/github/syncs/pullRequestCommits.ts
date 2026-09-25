@@ -12,36 +12,55 @@ import { githubActivitySchema } from '../schemas'
 
 const COMMITS_PAGE_SIZE = 50
 
-const STATS_MAX_ATTEMPTS = 5
+const STATS_MAX_ATTEMPTS = 2
 const NO_STATS_MAX_ATTEMPTS = 3
-// Worst case (5 stats + 3 no-stats attempts, full backoff) is ~498s — under
+// Worst case (2 stats + 3 no-stats attempts, full backoff) is ~304s — under
 // the 600s activity timeout budget (client.ts MAX_ATTEMPTS docs the math).
+
+interface CommitsPageResult {
+  page: PrCommitsPage
+  usedNoStats: boolean
+}
 
 async function fetchCommitsPage(
   ctx: SyncContext,
   variables: Record<string, unknown>,
   log: Logger,
-): Promise<PrCommitsPage> {
-  try {
-    return await githubGraphql<PrCommitsPage>(
-      ctx.http,
-      PR_COMMITS_QUERY,
-      variables,
-      log,
-      STATS_MAX_ATTEMPTS,
-    )
-  } catch (err) {
-    if (!(err instanceof ConnectorError) || err.errorClass !== 'provider.unavailable') {
-      throw err
-    }
-    log.warn({ err }, 'github keeps failing on commit diff stats, retrying without them')
-    return githubGraphql<PrCommitsPage>(
+  skipStats: boolean,
+): Promise<CommitsPageResult> {
+  if (skipStats) {
+    const page = await githubGraphql<PrCommitsPage>(
       ctx.http,
       PR_COMMITS_QUERY_NO_STATS,
       variables,
       log,
       NO_STATS_MAX_ATTEMPTS,
     )
+    return { page, usedNoStats: true }
+  }
+
+  try {
+    const page = await githubGraphql<PrCommitsPage>(
+      ctx.http,
+      PR_COMMITS_QUERY,
+      variables,
+      log,
+      STATS_MAX_ATTEMPTS,
+    )
+    return { page, usedNoStats: false }
+  } catch (err) {
+    if (!(err instanceof ConnectorError) || err.errorClass !== 'provider.unavailable') {
+      throw err
+    }
+    log.warn({ err }, 'github keeps failing on commit diff stats, retrying without them')
+    const page = await githubGraphql<PrCommitsPage>(
+      ctx.http,
+      PR_COMMITS_QUERY_NO_STATS,
+      variables,
+      log,
+      NO_STATS_MAX_ATTEMPTS,
+    )
+    return { page, usedNoStats: true }
   }
 }
 
@@ -52,10 +71,11 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
     for (const pullRequest of prs) {
       let cursor: string | null = null
       let hasMore = true
+      let noStats = false
 
       while (hasMore) {
         const log = ctx.log.child({ prNumber: pullRequest.number, cursor })
-        const data = await fetchCommitsPage(
+        const { page: data, usedNoStats } = await fetchCommitsPage(
           ctx,
           {
             owner,
@@ -65,7 +85,9 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
             cursor,
           },
           log,
+          noStats,
         )
+        noStats = noStats || usedNoStats
 
         const commits = data.repository.pullRequest?.commits
         if (!commits) {

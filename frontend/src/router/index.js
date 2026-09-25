@@ -110,7 +110,7 @@ export const createRouter = () => {
             return;
           }
 
-          if (!selectedProjectGroup.value) {
+          if (!selectedProjectGroup.value && to.query.projectGroup) {
             try {
               await updateSelectedProjectGroup(to.query.projectGroup, false);
               if (!selectedProjectGroup.value) {
