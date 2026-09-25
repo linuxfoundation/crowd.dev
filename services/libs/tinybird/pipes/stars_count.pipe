@@ -14,9 +14,13 @@ DESCRIPTION >
     "new", since there's no earlier snapshot to diff against. Repos whose CM-1463 backfill hasn't
     reached back to the start of the requested range will show an inflated first-seen bucket.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
-    `stars_cumulative_count.pipe` / `activities_filtered.pipe`.
-    - Parameters: `project`, `collectionSlug`, `repos`, `startDate`, `endDate`, `granularity` -
-    identical to `stars_cumulative_count.pipe`, passed straight through.
+    `stars_cumulative_count.pipe` / `activities_filtered.pipe`. `bucketId` is required alongside
+    `collectionSlug` for the same reason `stars_cumulative_count.pipe` needs it - both collection
+    branches here return no rows unless it's defined. The insights backend's Tinybird client
+    already resolves and injects `bucketId` transparently for both `project` and `collectionSlug`
+    on every pipe call, same as it does for every other pipe today.
+    - Parameters: `project`, `collectionSlug`, `bucketId`, `repos`, `startDate`, `endDate`,
+    `granularity` - identical to `stars_cumulative_count.pipe`, passed straight through.
     - Response:
     - Without granularity: `activityCount` (single row)
     - With granularity: `startDate`, `endDate`, `activityCount` per bucket
