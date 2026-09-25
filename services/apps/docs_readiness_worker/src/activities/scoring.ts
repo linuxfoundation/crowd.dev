@@ -13,21 +13,13 @@ import { loadAfdocs } from '../scoring/afdocs'
 import { computeScores } from '../scoring/computeScores'
 import { trimReport } from '../scoring/trimReport'
 import { IResolvedDocsUrl } from '../types'
+import { withTimeout } from './withTimeout'
 
 // afdocs bounds each individual HTTP request (15s default) but not the overall runChecks()
 // call; without this, a slow docs site can push the aggregate past Temporal's 30-minute
 // activity timeout, and since afdocs exposes no cancellation token, the abandoned call keeps
 // running and permanently occupies a worker concurrency slot instead of freeing it on timeout.
 const SCORING_TIMEOUT_MS = 25 * 60 * 1000
-
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(message)), ms)
-    }),
-  ])
-}
 
 // Blocks the literal-target vector only; afdocs' own redirect-following fetch isn't intercepted here.
 function isUnsafeDocsUrl(raw: string): boolean {

@@ -151,4 +151,25 @@ describe('resolveDocsUrl', () => {
       serpApiKey: 'serp-key',
     })
   })
+
+  test('rejects if discoverDocs exceeds the discovery timeout, without upserting anything', async () => {
+    vi.useFakeTimers()
+    mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: 'https://example.com',
+    })
+    mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+    mocks.discoverDocs.mockReturnValue(new Promise(() => {}))
+
+    const result = resolveDocsUrl('project-1')
+    const assertion = expect(result).rejects.toThrow(/exceeded/)
+    await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+    await assertion
+
+    expect(mocks.upsertProjectDocDiscovery).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
 })
