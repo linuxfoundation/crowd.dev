@@ -74,3 +74,22 @@ jobs:
         run: pnpm install --frozen-lockfile --filter "frontend..."
 
       - run: pnpm --filter frontend run docs:storybook:ci
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@24
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "frontend..."
+
+      - name: Type check
+        run: pnpm --filter frontend run typecheck:ci
