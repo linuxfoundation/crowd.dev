@@ -32,6 +32,21 @@ import { h } from 'vue';
 
 defineOptions({ name: 'AppPagination' });
 
+withDefaults(defineProps<{
+  currentPage: number;
+  pageSize: number;
+  total: number;
+  hideSorting?: boolean;
+  module?: string;
+}>(), {
+  hideSorting: false,
+  module: '',
+});
+
+const emit = defineEmits<{(e: 'changeCurrentPage', page: number): void;
+  (e: 'changePageSize', pageSize: number): void;
+}>();
+
 const ArrowPrevIcon = h(
   'i', // type
   {
@@ -47,20 +62,6 @@ const ArrowNextIcon = h(
   }, // props
   [],
 );
-
-const emit = defineEmits<{(e: 'changeCurrentPage', page: number): void;
-  (e: 'changePageSize', pageSize: number): void;
-}>();
-withDefaults(defineProps<{
-  currentPage: number;
-  pageSize: number;
-  total: number;
-  hideSorting?: boolean;
-  module?: string;
-}>(), {
-  hideSorting: false,
-  module: '',
-});
 </script>
 
 <style lang="scss">

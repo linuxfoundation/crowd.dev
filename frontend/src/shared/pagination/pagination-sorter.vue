@@ -38,10 +38,6 @@ import pluralize from 'pluralize';
 
 defineOptions({ name: 'AppPaginationSorter' });
 
-const emit = defineEmits<{(e: 'changeSorter', value: string | number): void;
-  (e: 'update:modelValue', value: string | number | null): void;
-  (e: 'export'): void;
-}>();
 const props = withDefaults(defineProps<{
   currentPage: number;
   pageSize: number;
@@ -60,6 +56,11 @@ const props = withDefaults(defineProps<{
   sorter: true,
   export: () => false,
 });
+
+const emit = defineEmits<{(e: 'changeSorter', value: string | number): void;
+  (e: 'update:modelValue', value: string | number | null): void;
+  (e: 'export'): void;
+}>();
 
 defineSlots<{
   defaultFilters?:() => unknown;

@@ -6,7 +6,7 @@
     pre-title="Integration"
     show-footer
     has-border
-    :close-on-click-modal="true"
+    close-on-click-modal
     :close-function="canClose"
     @close="isDrawerVisible = false"
   >

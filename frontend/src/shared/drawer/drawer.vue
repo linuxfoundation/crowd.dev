@@ -75,15 +75,12 @@
 import {
   computed, ref, watch, onUnmounted, nextTick,
 } from 'vue';
-import type { DialogBeforeCloseFn, DrawerInstance } from 'element-plus';
+import type { DrawerInstance } from 'element-plus';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
 defineOptions({ name: 'AppDrawer' });
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
-  (e: 'close'): void;
-}>();
 const props = withDefaults(defineProps<{
   modelValue?: boolean;
   preTitle?: string | null;
@@ -96,7 +93,7 @@ const props = withDefaults(defineProps<{
   hasPadding?: boolean;
   zIndex?: number;
   closeOnClickModal?: boolean;
-  closeFunction?: DialogBeforeCloseFn;
+  closeFunction?:(done: (cancel?: boolean) => void) => void;
 }>(), {
   modelValue: false,
   preTitle: null,
@@ -108,10 +105,14 @@ const props = withDefaults(defineProps<{
   hasPadding: true,
   zIndex: 2004,
   closeOnClickModal: false,
-  closeFunction: (done: Parameters<DialogBeforeCloseFn>[0]) => {
+  closeFunction: (done: (cancel?: boolean) => void) => {
     done(false);
   },
 });
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'close'): void;
+}>();
 
 defineSlots<{
   header?:() => unknown;
