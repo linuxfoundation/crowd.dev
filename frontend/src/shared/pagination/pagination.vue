@@ -9,7 +9,7 @@
       hide-on-single-page
       layout="prev, pager, next"
       @current-change="
-        (currentPage) =>
+        (currentPage: number) =>
           emit('changeCurrentPage', currentPage)
       "
     />
@@ -21,43 +21,16 @@
       :current-page="currentPage"
       :module="module"
       @change-sorter="
-        (pageSize) => emit('changePageSize', pageSize)
+        (pageSize: number) => emit('changePageSize', pageSize)
       "
     />
   </div>
 </template>
 
-<script setup>
-import { defineProps, defineEmits, h } from 'vue';
+<script setup lang="ts">
+import { h } from 'vue';
 
-defineProps({
-  currentPage: {
-    type: Number,
-    required: true,
-  },
-  pageSize: {
-    type: Number,
-    required: true,
-  },
-  total: {
-    type: Number,
-    required: true,
-  },
-  hideSorting: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  module: {
-    type: String,
-    default: () => '',
-  },
-});
-
-const emit = defineEmits([
-  'changeCurrentPage',
-  'changePageSize',
-]);
+defineOptions({ name: 'AppPagination' });
 
 const ArrowPrevIcon = h(
   'i', // type
@@ -75,12 +48,19 @@ const ArrowNextIcon = h(
   [],
 );
 
-</script>
-
-<script>
-export default {
-  name: 'AppPagination',
-};
+const emit = defineEmits<{(e: 'changeCurrentPage', page: number): void;
+  (e: 'changePageSize', pageSize: number): void;
+}>();
+withDefaults(defineProps<{
+  currentPage: number;
+  pageSize: number;
+  total: number;
+  hideSorting?: boolean;
+  module?: string;
+}>(), {
+  hideSorting: false,
+  module: '',
+});
 </script>
 
 <style lang="scss">

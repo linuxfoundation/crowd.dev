@@ -32,55 +32,40 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import pluralize from 'pluralize';
 
-const props = defineProps({
-  currentPage: {
-    type: Number,
-    required: true,
-  },
-  pageSize: {
-    type: Number,
-    required: true,
-  },
-  total: {
-    type: Number,
-    required: true,
-  },
-  position: {
-    type: String,
-    default: 'bottom',
-    validator: (propValue) => propValue === 'bottom' || propValue === 'top',
-  },
-  hasPageCounter: {
-    type: Boolean,
-    default: true,
-  },
-  module: {
-    type: String,
-    default: () => '',
-  },
-  modelValue: {
-    type: String,
-    default: () => null,
-  },
-  sorter: {
-    type: Boolean,
-    default: () => true,
-  },
-  export: {
-    type: Function,
-    default: () => false,
-  },
+defineOptions({ name: 'AppPaginationSorter' });
+
+const emit = defineEmits<{(e: 'changeSorter', value: string | number): void;
+  (e: 'update:modelValue', value: string | number | null): void;
+  (e: 'export'): void;
+}>();
+const props = withDefaults(defineProps<{
+  currentPage: number;
+  pageSize: number;
+  total: number;
+  position?: 'bottom' | 'top';
+  hasPageCounter?: boolean;
+  module?: string;
+  modelValue?: string | null;
+  sorter?: boolean;
+  export?:() => unknown;
+}>(), {
+  position: 'bottom',
+  hasPageCounter: true,
+  module: '',
+  modelValue: null,
+  sorter: true,
+  export: () => false,
 });
-const emit = defineEmits([
-  'changeSorter',
-  'update:modelValue',
-  'export',
-]);
-const model = computed({
+
+defineSlots<{
+  defaultFilters?:() => unknown;
+}>();
+
+const model = computed<string | number | null>({
   get() {
     if (
       props.module !== 'activity'
@@ -91,7 +76,7 @@ const model = computed({
     return props.modelValue;
   },
 
-  set(value) {
+  set(value: string | number | null) {
     emit('update:modelValue', value);
   },
 });
@@ -149,13 +134,7 @@ const sorterPopperPlacement = computed(() => {
   return 'bottom-end';
 });
 
-const onChange = (value) => {
+const onChange = (value: string | number) => {
   emit('changeSorter', value);
-};
-</script>
-
-<script>
-export default {
-  name: 'AppPaginationSorter',
 };
 </script>

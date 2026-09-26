@@ -6,7 +6,7 @@
     title="Git"
     pre-title="Integration"
     has-border
-    close-on-click-modal="true"
+    :close-on-click-modal="true"
     :close-function="canClose"
     @close="cancel"
   >
