@@ -16,15 +16,26 @@ const result = spawnSync(
 );
 
 const { stdout } = result;
-if (result.error || (![0, 2].includes(result.status) && !stdout.trim())) {
-  console.error('vue-tsc crashed:');
-  console.error(result.error?.message ?? result.stderr);
+if (result.error || ![0, 2].includes(result.status)) {
+  console.error(`vue-tsc crashed (exit ${result.status}):`);
+  console.error(result.error?.message ?? `${stdout}${result.stderr}`);
   process.exit(1);
 }
 
 const errorLines = stdout.split('\n').filter((line) => /\berror TS\d+:/.test(line));
+// Config-level errors have no source location or point at tsconfig.json; the check did not really run.
+const configErrors = errorLines.filter((line) => /^error TS|^tsconfig\.json\(/.test(line));
+if (configErrors.length) {
+  console.error(`tsconfig/project errors, type check did not run:\n${configErrors.join('\n')}`);
+  process.exit(1);
+}
+
 const count = errorLines.length;
 const baseline = JSON.parse(readFileSync(path.join(frontendDir, 'typecheck-baseline.json'), 'utf8')).errors;
+if (!Number.isInteger(baseline)) {
+  console.error('typecheck-baseline.json must be { "errors": <integer> }.');
+  process.exit(1);
+}
 
 if (count > baseline) {
   console.log(errorLines.join('\n'));
