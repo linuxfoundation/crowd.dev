@@ -126,7 +126,7 @@ const model = computed({
   get() {
     return props.modelValue;
   },
-  set(value: boolean) {
+  set(value) {
     emit('update:modelValue', value);
   },
 });
