@@ -9,7 +9,7 @@ export default function elementChangeDetector<T>(element: Ref<T>): {
 } {
   const temporaryElement = ref('');
 
-  function elementSnapshot(): void {
+  function elementSnapshot() {
     temporaryElement.value = JSON.stringify(element.value);
   }
 

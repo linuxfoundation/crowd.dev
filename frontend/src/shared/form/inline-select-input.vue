@@ -77,7 +77,7 @@ const emit = defineEmits<{(e: 'update:modelValue', value: string | number | unkn
   (e: 'change', value: string | number | unknown[] | null): void;
 }>();
 
-const model = computed<string | number | unknown[] | null>({
+const model = computed({
   get() {
     return props.modelValue;
   },
@@ -96,10 +96,10 @@ const modelLabel = computed(() => props.options.find((o) => o.value === model.va
   ?.label);
 
 const dropdownExpanded = ref(false);
-const handleDropdownVisibleChange = (value: boolean): void => {
+const handleDropdownVisibleChange = (value: boolean) => {
   dropdownExpanded.value = value;
 };
-const handleOptionClick = (option: { value: string | number }): void => {
+const handleOptionClick = (option: { value: string | number }) => {
   model.value = option.value;
 };
 </script>

@@ -9,7 +9,7 @@ export default function formChangeDetector<T extends object>(form: T): {
 } {
   const temporaryForm = ref('');
 
-  function formSnapshot(): void {
+  function formSnapshot() {
     temporaryForm.value = JSON.stringify(form);
   }
 

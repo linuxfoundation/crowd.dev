@@ -55,7 +55,7 @@ const props = withDefaults(defineProps<{
   formId: '',
   required: false,
   errorMessages: () => ({}),
-  filterErrors: () => null,
+  filterErrors: null,
   showError: true,
   errorIcon: '',
   errorClass: '',
@@ -67,14 +67,14 @@ defineSlots<{
 
 const errors = computed(() => props.validation?.$errors || []);
 
-const enabledError = (errors: ErrorObject[]): boolean => {
+const enabledError = (errors: ErrorObject[]) => {
   if (props.filterErrors && props.filterErrors.length > 0 && errors.length > 0) {
     return props.filterErrors.includes(errors[0].$validator);
   }
   return errors.length > 0;
 };
 
-const errorMessage = (error: ErrorObject): ErrorObject['$message'] => {
+const errorMessage = (error: ErrorObject) => {
   if (
     props.errorMessages
     && props.errorMessages[error.$validator]

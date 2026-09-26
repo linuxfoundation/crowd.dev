@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
 
 const errors = computed(() => props.validation?.$errors || []);
 
-const errorMessage = (error: ErrorObject): string => {
+const errorMessage = (error: ErrorObject) => {
   const prop = `${error.$property}-${error.$validator}`;
   if (
     props.errorMessages
