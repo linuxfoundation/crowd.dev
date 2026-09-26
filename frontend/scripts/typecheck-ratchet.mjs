@@ -8,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const baselineFile = path.join(frontendDir, 'typecheck-baseline.json');
 
 const result = spawnSync(
   path.join(frontendDir, 'node_modules/.bin/vue-tsc'),
@@ -16,7 +15,7 @@ const result = spawnSync(
   { cwd: frontendDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
 );
 
-const stdout = result.stdout ?? '';
+const { stdout } = result;
 if (result.error || (![0, 2].includes(result.status) && !stdout.trim())) {
   console.error('vue-tsc crashed:');
   console.error(result.error?.message ?? result.stderr);
@@ -25,7 +24,7 @@ if (result.error || (![0, 2].includes(result.status) && !stdout.trim())) {
 
 const errorLines = stdout.split('\n').filter((line) => /\berror TS\d+:/.test(line));
 const count = errorLines.length;
-const baseline = JSON.parse(readFileSync(baselineFile, 'utf8')).errors;
+const baseline = JSON.parse(readFileSync(path.join(frontendDir, 'typecheck-baseline.json'), 'utf8')).errors;
 
 if (count > baseline) {
   console.log(errorLines.join('\n'));
