@@ -10,40 +10,29 @@
   </div>
 </template>
 
-<script setup>
-import { computed, defineProps } from 'vue';
+<script setup lang="ts">
+import { computed, unref } from 'vue';
+import type { ErrorObject } from '@vuelidate/core';
 
-const props = defineProps({
-  validation: {
-    required: false,
-    type: Object,
-    default: () => ({}),
-  },
-  errorMessages: {
-    required: false,
-    type: Object,
-    default: () => ({}),
-  },
-  hideDefault: {
-    required: false,
-    type: Boolean,
-    default: false,
-  },
-  errorIcon: {
-    required: false,
-    type: String,
-    default: '',
-  },
-  errorClass: {
-    required: false,
-    type: String,
-    default: '',
-  },
+defineOptions({ name: 'AppFormErrors' });
+
+const props = withDefaults(defineProps<{
+  validation?: { $errors?: ErrorObject[] };
+  errorMessages?: Record<string, string>;
+  hideDefault?: boolean;
+  errorIcon?: string;
+  errorClass?: string;
+}>(), {
+  validation: () => ({}),
+  errorMessages: () => ({}),
+  hideDefault: false,
+  errorIcon: '',
+  errorClass: '',
 });
 
 const errors = computed(() => props.validation?.$errors || []);
 
-const errorMessage = (error) => {
+const errorMessage = (error: ErrorObject): string => {
   const prop = `${error.$property}-${error.$validator}`;
   if (
     props.errorMessages
@@ -52,14 +41,8 @@ const errorMessage = (error) => {
     return props.errorMessages[prop];
   }
   if (!props.hideDefault) {
-    return error.$message;
+    return unref(error.$message);
   }
   return '';
-};
-</script>
-
-<script>
-export default {
-  name: 'AppFormErrors',
 };
 </script>

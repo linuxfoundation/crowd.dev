@@ -33,67 +33,48 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { ErrorObject } from '@vuelidate/core';
 
-const props = defineProps({
-  validation: {
-    required: false,
-    type: Object,
-    default: () => ({}),
-  },
-  label: {
-    required: false,
-    type: String,
-    default: '',
-  },
-  formId: {
-    required: false,
-    type: String,
-    default: '',
-  },
-  required: {
-    required: false,
-    type: Boolean,
-    default: false,
-  },
-  errorMessages: {
-    required: false,
-    type: Object,
-    default: () => ({}),
-  },
-  filterErrors: {
-    required: false,
-    type: Array,
-    default: () => null,
-  },
-  showError: {
-    required: false,
-    type: Boolean,
-    default: true,
-  },
-  errorIcon: {
-    required: false,
-    type: String,
-    default: '',
-  },
-  errorClass: {
-    required: false,
-    type: String,
-    default: '',
-  },
+defineOptions({ name: 'AppFormItem' });
+
+const props = withDefaults(defineProps<{
+  validation?: { $errors?: ErrorObject[] };
+  label?: string;
+  formId?: string;
+  required?: boolean;
+  errorMessages?: Record<string, string>;
+  filterErrors?: string[] | null;
+  showError?: boolean;
+  errorIcon?: string;
+  errorClass?: string;
+}>(), {
+  validation: () => ({}),
+  label: '',
+  formId: '',
+  required: false,
+  errorMessages: () => ({}),
+  filterErrors: () => null,
+  showError: true,
+  errorIcon: '',
+  errorClass: '',
 });
+
+defineSlots<{
+  default?:() => unknown;
+}>();
 
 const errors = computed(() => props.validation?.$errors || []);
 
-const enabledError = (errors) => {
+const enabledError = (errors: ErrorObject[]): boolean => {
   if (props.filterErrors && props.filterErrors.length > 0 && errors.length > 0) {
     return props.filterErrors.includes(errors[0].$validator);
   }
   return errors.length > 0;
 };
 
-const errorMessage = (error) => {
+const errorMessage = (error: ErrorObject): ErrorObject['$message'] => {
   if (
     props.errorMessages
     && props.errorMessages[error.$validator]
@@ -101,11 +82,5 @@ const errorMessage = (error) => {
     return props.errorMessages[error.$validator];
   }
   return error.$message;
-};
-</script>
-
-<script>
-export default {
-  name: 'AppFormItem',
 };
 </script>

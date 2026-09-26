@@ -1,9 +1,15 @@
-import { ref, computed } from 'vue';
+import {
+  ref, computed, type Ref, type ComputedRef,
+} from 'vue';
 
-export default function elementChangeDetector(element) {
+export default function elementChangeDetector<T>(element: Ref<T>): {
+  temporaryElement: Ref<string>;
+  elementSnapshot: () => void;
+  hasElementChanged: ComputedRef<boolean>;
+} {
   const temporaryElement = ref('');
 
-  function elementSnapshot() {
+  function elementSnapshot(): void {
     temporaryElement.value = JSON.stringify(element.value);
   }
 
