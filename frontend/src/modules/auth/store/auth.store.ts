@@ -46,7 +46,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         const intercomJwt = auth0User[config.intercom.auth0IntercomClaim];
         const userId = auth0User[config.intercom.auth0UsernameClaim];
-        if (userId && intercomJwt) {
+        if (typeof userId === 'string' && userId && typeof intercomJwt === 'string' && intercomJwt) {
           bootIntercom({
             user_id: userId,
             name: auth0User.name,
