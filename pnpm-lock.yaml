@@ -554,6 +554,9 @@ importers:
       '@types/lodash-es':
         specifier: ^4.17.12
         version: 4.17.12
+      '@types/marked':
+        specifier: ^4.3.2
+        version: 4.3.2
       '@types/node':
         specifier: ^24.19.0
         version: 24.19.0
@@ -6504,6 +6507,9 @@ packages:
 
   '@types/luxon@3.3.8':
     resolution: {integrity: sha512-jYvz8UMLDgy3a5SkGJne8H7VA7zPV2Lwohjx0V8V31+SqAjNmurWMkk9cQhfvlcnXWudBpK9xPM1n4rljOcHYQ==}
+
+  '@types/marked@4.3.2':
+    resolution: {integrity: sha512-a79Yc3TOk6dGdituy8hmTTJXjOkZ7zsFYV10L337ttq/rec8lRMDBpV7fL3uLx6TgbFCa5DU/h8FmIBQPSbU0w==}
 
   '@types/mdx@2.0.13':
     resolution: {integrity: sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw==}
@@ -17867,6 +17873,8 @@ snapshots:
   '@types/lru-cache@5.1.1': {}
 
   '@types/luxon@3.3.8': {}
+
+  '@types/marked@4.3.2': {}
 
   '@types/mdx@2.0.13': {}
 

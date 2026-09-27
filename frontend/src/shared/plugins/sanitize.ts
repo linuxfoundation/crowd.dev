@@ -1,4 +1,16 @@
-export const vueSanitizeOptions = {
+export interface VueSanitizeOptions {
+  allowedTags: string[];
+  disallowedTagsMode: 'discard' | 'completelyDiscard' | 'escape' | 'recursiveEscape';
+  allowedAttributes: Record<string, string[]>;
+  selfClosing: string[];
+  allowedSchemes: string[];
+  allowedSchemesByTag: Record<string, string[]>;
+  allowedSchemesAppliedToAttributes: string[];
+  allowProtocolRelative: boolean;
+  enforceHtmlBoundary: boolean;
+}
+
+export const vueSanitizeOptions: VueSanitizeOptions = {
   allowedTags: [
     'address',
     'article',

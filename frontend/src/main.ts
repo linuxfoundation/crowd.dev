@@ -21,10 +21,12 @@ import { useLogRocket } from '@/utils/logRocket';
 import { initRUM } from '@/utils/datadog/rum';
 import { installAnalyticsStub, loadSegment, isRealSegmentKey } from '@/utils/segment';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
+import type { marked as Marked } from 'marked';
 
 declare module 'vue' {
   interface ComponentCustomProperties {
     $sanitize: (key: string) => string;
+    $marked: (markdown: string, options?: Marked.MarkedOptions) => string;
   }
 }
 
