@@ -2,8 +2,6 @@ import CronTime from 'cron-time-generator'
 
 import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import {
-  IRepoDaysSinceAdded,
-  IRepoStarSnapshotGapDays,
   countDeadLetteredStarBackfillFailures,
   findAllRepoIdsWithStarSnapshotGaps,
   findAllRepoIdsWithoutStarSnapshots,
@@ -16,6 +14,7 @@ import {
 } from '@crowd/data-access-layer'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { batchAll } from '@crowd/data-access-layer/src/utils'
 import { REDIS_CONFIG, getRedisClient } from '@crowd/redis'
 import {
   SlackChannel,
@@ -74,11 +73,18 @@ const job: IJobDefinition = {
     // unreachable will never get captured, so there's no point reporting it as "awaiting".
     const neverCapturedIds = new Set(await findAllRepoIdsWithoutStarSnapshots(qx, allRepoIds))
     const neverCapturedRepoIds = allRepoIds.filter((id) => neverCapturedIds.has(id))
-    const daysSinceAdded: IRepoDaysSinceAdded[] = []
-    for (let i = 0; i < neverCapturedRepoIds.length; i += GAP_DAYS_BATCH_SIZE) {
-      const batch = neverCapturedRepoIds.slice(i, i + GAP_DAYS_BATCH_SIZE)
-      daysSinceAdded.push(...(await findDaysSinceAddedForRepos(qx, batch)))
-    }
+    // Only repos that already have at least one row go through the gap-day diff below - the
+    // never-captured ones above are reported separately since there's nothing to diff yet.
+    const withExistingDataRepoIds = allRepoIds.filter((id) => !neverCapturedIds.has(id))
+
+    // Independent of each other (one scans never-captured ids, the other existing-data ids),
+    // so they run concurrently instead of one after the other.
+    const [daysSinceAdded, gappedRepoIds] = await Promise.all([
+      batchAll(neverCapturedRepoIds, GAP_DAYS_BATCH_SIZE, (batch) =>
+        findDaysSinceAddedForRepos(qx, batch),
+      ),
+      findAllRepoIdsWithStarSnapshotGaps(qx, withExistingDataRepoIds),
+    ])
     const daysSinceAddedByRepoId = new Map(
       daysSinceAdded.map((r) => [r.repositoryId, r.daysSinceAdded]),
     )
@@ -87,16 +93,9 @@ const job: IJobDefinition = {
       0,
     )
 
-    // Only repos that already have at least one row go through the gap-day diff below - the
-    // never-captured ones above are reported separately since there's nothing to diff yet.
-    const withExistingDataRepoIds = allRepoIds.filter((id) => !neverCapturedIds.has(id))
-    const gappedRepoIds = await findAllRepoIdsWithStarSnapshotGaps(qx, withExistingDataRepoIds)
-
-    const gapDays: IRepoStarSnapshotGapDays[] = []
-    for (let i = 0; i < gappedRepoIds.length; i += GAP_DAYS_BATCH_SIZE) {
-      const batch = gappedRepoIds.slice(i, i + GAP_DAYS_BATCH_SIZE)
-      gapDays.push(...(await findStarSnapshotGapDaysForRepos(qx, batch)))
-    }
+    const gapDays = await batchAll(gappedRepoIds, GAP_DAYS_BATCH_SIZE, (batch) =>
+      findStarSnapshotGapDaysForRepos(qx, batch),
+    )
     const missingDaysByRepoId = new Map(gapDays.map((gap) => [gap.repositoryId, gap.missingDays]))
     const totalMissingDays = gapDays.reduce((sum, gap) => sum + gap.missingDays, 0)
     // The two queries above run seconds apart, so a repo can close its gap in between and

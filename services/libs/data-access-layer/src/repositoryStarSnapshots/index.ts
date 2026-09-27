@@ -2,6 +2,7 @@ import { generateUUIDv4 } from '@crowd/common'
 import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+import { batchAll } from '../utils'
 
 export * from './backfillStatus'
 
@@ -105,12 +106,7 @@ export async function findAllRepoIdsWithStarSnapshotGaps(
   repositoryIds: string[],
   batchSize: number = DEFAULT_GAP_CHECK_BATCH_SIZE,
 ): Promise<string[]> {
-  const gapped: string[] = []
-  for (let i = 0; i < repositoryIds.length; i += batchSize) {
-    const batch = repositoryIds.slice(i, i + batchSize)
-    gapped.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
-  }
-  return gapped
+  return batchAll(repositoryIds, batchSize, (batch) => findRepoIdsWithStarSnapshotGaps(qx, batch))
 }
 
 // Completed, still-retryable repos - the population findReposNeedingStarBackfill skips.
@@ -175,12 +171,7 @@ export async function findAllRepoIdsWithoutStarSnapshots(
   repositoryIds: string[],
   batchSize: number = DEFAULT_NO_SNAPSHOT_CHECK_BATCH_SIZE,
 ): Promise<string[]> {
-  const withoutSnapshots: string[] = []
-  for (let i = 0; i < repositoryIds.length; i += batchSize) {
-    const batch = repositoryIds.slice(i, i + batchSize)
-    withoutSnapshots.push(...(await findRepoIdsWithoutStarSnapshots(qx, batch)))
-  }
-  return withoutSnapshots
+  return batchAll(repositoryIds, batchSize, (batch) => findRepoIdsWithoutStarSnapshots(qx, batch))
 }
 
 export interface IRepoDaysSinceAdded {
