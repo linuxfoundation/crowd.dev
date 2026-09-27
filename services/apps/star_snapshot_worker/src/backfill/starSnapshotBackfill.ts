@@ -2,6 +2,7 @@ import {
   GithubAuthError,
   GithubForbiddenError,
   GithubIpAllowlistError,
+  GithubRepoBlockedError,
   GithubRepoNotFoundError,
 } from '@crowd/common'
 import {
@@ -299,8 +300,10 @@ async function assertOk(
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
     // Neither rate-limit wording nor a retry-after header - either an org IP allow list block
-    // (permanent policy) or a real installation-permission 403.
+    // (permanent policy), a GitHub-side access block (e.g. ToS takedown), or a real
+    // installation-permission 403.
     const isIpAllowlistBlock = bodyLower.includes('ip allow list')
+    const isRepoAccessBlocked = bodyLower.includes('repository access blocked')
     log.warn(
       {
         owner,
@@ -313,11 +316,18 @@ async function assertOk(
       },
       isIpAllowlistBlock
         ? 'GitHub 403, org IP allow list is blocking this installation'
-        : 'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
+        : isRepoAccessBlocked
+          ? 'GitHub 403, repo access blocked by GitHub (e.g. ToS takedown)'
+          : 'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
     )
     if (isIpAllowlistBlock) {
       throw new GithubIpAllowlistError(
         `GitHub org IP allow list blocked (403) fetching ${what} for ${owner}/${name}`,
+      )
+    }
+    if (isRepoAccessBlocked) {
+      throw new GithubRepoBlockedError(
+        `GitHub blocked repo access (403) fetching ${what} for ${owner}/${name}`,
       )
     }
     throw new GithubForbiddenError(

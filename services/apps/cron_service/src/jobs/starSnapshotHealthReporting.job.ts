@@ -7,6 +7,7 @@ import {
   findAllRepoIdsWithStarSnapshotGaps,
   findDeadLetteredStarBackfillFailures,
   findReposForStarSnapshot,
+  findStarBackfillNonActionableRepoIds,
   findStarSnapshotGapDaysForRepos,
   getDeadLetterReportCursor,
 } from '@crowd/data-access-layer'
@@ -46,14 +47,22 @@ const job: IJobDefinition = {
     // enough to erode the safety margin if the watermark were taken at persist time instead.
     const nextCursor = await getDeadLetterReportCursor(qx)
 
-    const [newlyDeadLettered, totalDeadLettered, allRepos] = await Promise.all([
-      findDeadLetteredStarBackfillFailures(qx, since),
-      countDeadLetteredStarBackfillFailures(qx),
-      findReposForStarSnapshot(qx),
-    ])
+    const [newlyDeadLettered, totalDeadLettered, allRepos, nonActionableRepoIds] =
+      await Promise.all([
+        findDeadLetteredStarBackfillFailures(qx, since),
+        countDeadLetteredStarBackfillFailures(qx),
+        findReposForStarSnapshot(qx),
+        findStarBackfillNonActionableRepoIds(qx),
+      ])
 
     const repoUrlById = new Map(allRepos.map((repo) => [repo.repositoryId, repo.repoUrl]))
-    const allRepoIds = allRepos.map((repo) => repo.repositoryId)
+    const goneRepoIds = new Set(nonActionableRepoIds)
+    // Gone repos (repo 404'd, access blocked, org IP allow list) can never close their gap -
+    // they're reported separately below instead of growing the gap count/list forever.
+    const allRepoIds = allRepos
+      .map((repo) => repo.repositoryId)
+      .filter((repositoryId) => !goneRepoIds.has(repositoryId))
+    const goneRepoCount = allRepos.filter((repo) => goneRepoIds.has(repo.repositoryId)).length
     const gappedRepoIds = await findAllRepoIdsWithStarSnapshotGaps(qx, allRepoIds)
 
     const gapDays: IRepoStarSnapshotGapDays[] = []
@@ -75,6 +84,7 @@ const job: IJobDefinition = {
         text: [
           `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
           `📉 Total repos GitHub gave up retrying: *${totalDeadLettered}*`,
+          `🚫 Repos gone from GitHub (404 / access blocked), not counted as gaps: *${goneRepoCount}*`,
           `📅 Repos with a snapshot gap right now: *${currentlyGappedRepoIds.length}*`,
           `📆 Total missing snapshot-days across those repos: *${totalMissingDays}*`,
         ].join('\n'),
