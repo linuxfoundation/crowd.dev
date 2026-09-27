@@ -19,7 +19,6 @@ function flattenObject(obj) {
   return flattenedObj;
 }
 
-// Member row (or { attributes }) written by MemberRepository.update and MemberAttributesService.update.
 interface MemberProfileState {
   attributes?: Record<string, Record<string, unknown>>;
   [key: string]: unknown;

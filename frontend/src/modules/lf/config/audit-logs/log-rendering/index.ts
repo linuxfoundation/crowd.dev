@@ -21,7 +21,6 @@ export interface LogChanges {
   changes: string[];
 }
 
-// Merge/unmerge payloads: member or organization snapshots; merged `primary` holds only changed fields.
 interface MergeLogEntity {
   id?: string;
   displayName?: string;

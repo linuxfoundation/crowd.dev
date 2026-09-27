@@ -1,12 +1,7 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { lfIdentities } from '@/config/identities';
 
-// Integration row written by IntegrationRepository.create; oldState is {} for create actions.
-interface IntegrationState {
-  platform?: string;
-}
-
-const integrationsConnect: LogRenderingConfig<IntegrationState> = {
+const integrationsConnect: LogRenderingConfig<{ platform?: string }> = {
   label: 'Integration connected',
   changes: () => null,
   description: (log) => {

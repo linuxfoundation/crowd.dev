@@ -2,7 +2,6 @@ import type { LogChanges, LogRenderingConfig } from '@/modules/lf/config/audit-l
 import { OrganizationService } from '@/modules/organization/organization-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-// Rows written by CommonMemberService.updateMemberOrganizations (memberOrganizations).
 interface MemberOrganizationStateRow {
   organizationId: string;
   title?: string | null;
@@ -60,10 +59,10 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
       if (!newStateMap.has(org.organizationId)) {
         changes.removals.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}`);
       } else {
-        const newOrg = newStateMap.get(org.organizationId);
-        if (newOrg && (
+        const newOrg = newStateMap.get(org.organizationId)!;
+        if (
           formatDateRange(org.dateStart, org.dateEnd) !== formatDateRange(newOrg.dateStart, newOrg.dateEnd)
-          || (org.title || '') !== (newOrg.title || ''))) {
+          || (org.title || '') !== (newOrg.title || '')) {
           changes.changes.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}
             <br><s>${org.title ? `${org.title}: ` : ''}${formatDateRange(org.dateStart, org.dateEnd)}</s>
             <br>${newOrg.title ? `${org.title}: ` : ''}${formatDateRange(newOrg.dateStart, newOrg.dateEnd)}

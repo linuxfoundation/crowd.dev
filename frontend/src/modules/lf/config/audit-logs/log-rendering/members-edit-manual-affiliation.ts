@@ -3,7 +3,6 @@ import { OrganizationService } from '@/modules/organization/organization-service
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-// Rows written by MemberRepository.setAffiliations and patchProjectAffiliation (memberSegmentAffiliations).
 interface MemberAffiliationStateRow {
   organizationId: string | null;
   segmentId: string;
@@ -73,8 +72,8 @@ const membersEditManualAffiliation: LogRenderingConfig<MemberAffiliationStateRow
           <br> (${formatDateRange(dateStart, dateEnd)})`,
         );
       } else {
-        const newOrg = newStateMap.get(org.organizationId);
-        if (newOrg && (org.dateStart !== newOrg.dateStart || org.dateEnd !== newOrg.dateEnd || org.segmentId !== newOrg.segmentId)) {
+        const newOrg = newStateMap.get(org.organizationId)!;
+        if (org.dateStart !== newOrg.dateStart || org.dateEnd !== newOrg.dateEnd || org.segmentId !== newOrg.segmentId) {
           changes.changes.push(
             `<span>${org.organizationId ? (orgById[org.organizationId]) : 'Individual'} </span>: 
             <br><s>${org.segmentId ? segmentById[org.segmentId] : 'None'} (${formatDateRange(org.dateStart, org.dateEnd)})</s>

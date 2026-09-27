@@ -1,11 +1,6 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
-// Organization snapshot written by OrganizationRepository.create and the public createOrganization API.
-interface OrganizationCreateState {
-  displayName?: string;
-}
-
-const organizationsCreate: LogRenderingConfig<unknown, OrganizationCreateState> = {
+const organizationsCreate: LogRenderingConfig<unknown, { displayName?: string }> = {
   label: 'Organization created',
   changes: () => null,
   description: (log) => {

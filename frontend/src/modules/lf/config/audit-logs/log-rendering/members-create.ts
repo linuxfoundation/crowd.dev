@@ -1,11 +1,6 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
-// Member snapshot written by MemberRepository.create and the public createMember API.
-interface MemberCreateState {
-  displayName?: string;
-}
-
-const membersCreate: LogRenderingConfig<unknown, MemberCreateState> = {
+const membersCreate: LogRenderingConfig<unknown, { displayName?: string }> = {
   label: 'Profile created',
   changes: () => null,
   description: (log) => {

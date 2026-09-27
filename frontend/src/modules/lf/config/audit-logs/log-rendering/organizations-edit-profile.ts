@@ -5,10 +5,7 @@ function camelCaseToName(camelCase) {
     .replace(/^./, (str) => str.toUpperCase());
 }
 
-// Organization row written by OrganizationRepository.update.
-type OrganizationProfileState = Record<string, unknown>;
-
-const organizationsEditProfile: LogRenderingConfig<OrganizationProfileState> = {
+const organizationsEditProfile: LogRenderingConfig<Record<string, unknown>> = {
   label: 'Organization profile updated',
   changes: ({ oldState, newState, diff }) => {
     const additions = [];
