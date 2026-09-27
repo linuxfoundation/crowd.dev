@@ -1,5 +1,4 @@
-import { ElMessageBox } from 'element-plus';
-import type { MessageBoxData } from 'element-plus';
+import { ElMessageBox, type MessageBoxData } from 'element-plus';
 import { h } from 'vue';
 import 'element-plus/dist/index.css';
 
