@@ -1,7 +1,10 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { lfIdentities } from '@/config/identities';
 
-const organizationsEditIdentities: LogRenderingConfig = {
+// Platform -> identities map written by OrganizationRepository.update (convertIdentitiesForAudit).
+type OrganizationIdentitiesState = Record<string, { value: string; type: string; verified: boolean }[]>;
+
+const organizationsEditIdentities: LogRenderingConfig<OrganizationIdentitiesState> = {
   label: 'Organization identities updated',
   changes: ({ oldState, newState }) => {
     const additions: any[] = [];

@@ -22,7 +22,7 @@ export interface Actor {
   email: string | null;
 }
 
-export interface AuditLog{
+export interface AuditLog<TOld = unknown, TNew = TOld> {
   id: string;
   timestamp: string;
   actor: Actor;
@@ -32,7 +32,7 @@ export interface AuditLog{
   actionType: ActionType;
   success: boolean;
   entityId: string;
-  oldState: any;
-  newState: any;
-  diff: any;
+  oldState: TOld;
+  newState: TNew;
+  diff: unknown;
 }

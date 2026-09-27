@@ -19,17 +19,24 @@ function flattenObject(obj) {
   return flattenedObj;
 }
 
-const membersEditProfile: LogRenderingConfig = {
+// Member row (or { attributes }) written by MemberRepository.update and MemberAttributesService.update.
+interface MemberProfileState {
+  attributes?: Record<string, Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+const membersEditProfile: LogRenderingConfig<MemberProfileState> = {
   label: 'Profile updated',
   changes: (log) => {
     const additions: any[] = [];
     const removals: any[] = [];
     const changes: any[] = [];
 
-    const oldState = { ...log.oldState, ...flattenObject(log.oldState.attributes) };
-    const newState = { ...log.newState, ...flattenObject(log.newState.attributes) };
+    const oldState: Record<string, unknown> = { ...log.oldState, ...flattenObject(log.oldState.attributes) };
+    const newState: Record<string, unknown> = { ...log.newState, ...flattenObject(log.newState.attributes) };
     const diff = {
-      ...log.diff,
+      // diff is the deep-object-diff of the two states, always an object.
+      ...(log.diff as Record<string, unknown>),
       ...{ ...flattenObject(log.oldState.attributes), ...flattenObject(log.newState.attributes) },
     };
     delete oldState.attributes;

@@ -5,14 +5,18 @@ function camelCaseToName(camelCase) {
     .replace(/^./, (str) => str.toUpperCase());
 }
 
-const organizationsEditProfile: LogRenderingConfig = {
+// Organization row written by OrganizationRepository.update.
+type OrganizationProfileState = Record<string, unknown>;
+
+const organizationsEditProfile: LogRenderingConfig<OrganizationProfileState> = {
   label: 'Organization profile updated',
   changes: ({ oldState, newState, diff }) => {
     const additions = [];
     const removals = [];
     const changes = [];
 
-    Object.keys(diff).forEach((key) => {
+    // diff is the deep-object-diff of the two states, always an object.
+    Object.keys(diff as Record<string, unknown>).forEach((key) => {
       const keyName = camelCaseToName(key);
       if (!!oldState[key] && !newState[key] && newState[key] !== undefined) {
         const display = typeof oldState[key] === 'object' ? JSON.stringify(oldState[key]) : `${oldState[key]}`;
