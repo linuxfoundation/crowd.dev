@@ -57,11 +57,17 @@ import {
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+interface InlineSelectOption {
+  value: string | number;
+  label: string;
+  description?: string;
+}
+
 defineOptions({ name: 'AppInlineSelectInput' });
 
 const props = withDefaults(defineProps<{
   modelValue?: string | number | unknown[] | null;
-  options?: { value: string | number; label: string; description?: string }[];
+  options?: InlineSelectOption[];
   prefix?: string | null;
   popperClass?: string | null;
   popperPlacement?: string;
@@ -99,7 +105,7 @@ const dropdownExpanded = ref(false);
 const handleDropdownVisibleChange = (value: boolean) => {
   dropdownExpanded.value = value;
 };
-const handleOptionClick = (option: { value: string | number }) => {
+const handleOptionClick = (option: InlineSelectOption) => {
   model.value = option.value;
 };
 </script>

@@ -2,14 +2,14 @@ import {
   ref, computed, type Ref, type ComputedRef,
 } from 'vue';
 
-export default function formChangeDetector<T extends object>(form: T): {
+export default function formChangeDetector(form: object): {
   temporaryForm: Ref<string>;
   formSnapshot: () => void;
   hasFormChanged: ComputedRef<boolean>;
 } {
   const temporaryForm = ref('');
 
-  function formSnapshot() {
+  function formSnapshot(): void {
     temporaryForm.value = JSON.stringify(form);
   }
 

@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, unref } from 'vue';
 import type { ErrorObject } from '@vuelidate/core';
 
 defineOptions({ name: 'AppFormItem' });
@@ -81,6 +81,6 @@ const errorMessage = (error: ErrorObject) => {
   ) {
     return props.errorMessages[error.$validator];
   }
-  return error.$message;
+  return unref(error.$message);
 };
 </script>
