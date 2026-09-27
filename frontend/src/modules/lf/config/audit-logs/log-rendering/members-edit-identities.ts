@@ -1,7 +1,6 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { lfIdentities } from '@/config/identities';
 
-// Platform -> usernames map this renderer reads; current backend writers capture identity arrays.
 type MemberIdentitiesState = Record<string, string[]>;
 
 const membersEditIdentities: LogRenderingConfig<MemberIdentitiesState> = {
