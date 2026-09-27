@@ -24,15 +24,10 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null);
   const loaded = ref(false);
 
-  const tenantUser = computed<TenantUser | null>(() => (user.value?.tenants || [])?.[0] || null);
-  const tenant = computed<Tenant | null>(() => (tenantUser.value?.tenant || null));
+  const tenantUser = computed<TenantUser | null>(() => user.value?.tenants?.[0] || null);
+  const tenant = computed<Tenant | null>(() => tenantUser.value?.tenant || null);
   const roles = computed<LfRole[]>(() => tenantUser.value?.roles || [LfRole.readonly]);
-  const isEmailVerified = computed<boolean>(() => {
-    if (!user.value || !user.value.id) {
-      return false;
-    }
-    return user.value.emailVerified;
-  });
+  const isEmailVerified = computed<boolean>(() => !!user.value?.id && user.value.emailVerified);
 
   function setLfxHeader() {
     const lfxHeader = document.getElementById('lfx-header') as LfxHeaderElement | null;
@@ -130,11 +125,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (['production', 'staging'].includes(config.env)) {
       return Promise.reject();
     }
-    const storedToken = AuthService.getToken();
-    const params = new URLSearchParams(window.location.search);
-    const myJwt = params.get('my-jwt');
-
-    const localToken = storedToken || myJwt;
+    const localToken = AuthService.getToken() || new URLSearchParams(window.location.search).get('my-jwt');
     if (localToken) {
       return getUser(localToken);
     }
@@ -144,7 +135,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function init() {
     Auth0Service.isAuthenticated()
-      .then((isAuthenticated: boolean) => {
+      .then((isAuthenticated) => {
         if (!isAuthenticated) {
           handleLocalAuth()
             .catch(() => silentLogin());
