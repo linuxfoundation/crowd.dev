@@ -160,7 +160,7 @@ export default ({
                 class:
                   'c-btn c-btn--tiny c-btn--primary-link w-8 !h-8 hover:!no-underline group',
                 type: 'button',
-                onClick: () => {
+                onClick: (): void => {
                   document
                     .querySelector(
                       '.el-message-box__headerbtn',
