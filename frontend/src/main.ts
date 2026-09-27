@@ -26,7 +26,7 @@ import type { marked as Marked } from 'marked';
 declare module 'vue' {
   interface ComponentCustomProperties {
     $sanitize: (key: string) => string;
-    $marked: (markdown: string, options?: Marked.MarkedOptions) => string;
+    $marked: (markdown: string, options?: Omit<Marked.MarkedOptions, 'async'>) => string;
   }
 }
 
