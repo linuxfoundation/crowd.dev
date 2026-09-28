@@ -1,5 +1,6 @@
 import {
   getAllTenants,
+  getLLMMergeDecision,
   getLLMResult,
   mergeMembers,
   mergeOrganizations,
@@ -46,6 +47,7 @@ export {
   findTenantsLatestOrganizationSuggestionGeneratedAt,
   updateOrganizationMergeSuggestionsLastGeneratedAt,
   addOrganizationToMerge,
+  getLLMMergeDecision,
   getLLMResult,
   getMembersForLLMConsumption,
   getOrganizationsForLLMConsumption,

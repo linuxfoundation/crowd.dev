@@ -3,7 +3,7 @@ import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 import { LLMSuggestionVerdictType } from '@crowd/types'
 
 import type * as activities from '../activities'
-import { ILLMResult, IProcessMergeOrganizationSuggestionsWithLLM } from '../types'
+import { IProcessMergeOrganizationSuggestionsWithLLM } from '../types'
 
 const {
   getRawOrganizationMergeSuggestions,
@@ -15,7 +15,9 @@ const {
   retry: { maximumAttempts: 3 },
 })
 
-const { getLLMResult, saveLLMVerdict, mergeOrganizations } = proxyActivities<typeof activities>({
+const { getLLMMergeDecision, saveLLMVerdict, mergeOrganizations } = proxyActivities<
+  typeof activities
+>({
   startToCloseTimeout: '5 minutes',
   retry: {
     initialInterval: '1 minute',
@@ -36,7 +38,7 @@ export async function mergeOrganizationsWithLLM(
     anthropic_version: 'bedrock-2023-05-31',
     temperature: 0,
   }
-  const PROMPT = `Please compare and come up with a boolean answer if these two organizations are the same organization or not. Print 'true' if they are the same organization, 'false' otherwise. No explanation required. Don't print anything else.`
+  const PROMPT = `Please compare and decide if these two organizations are the same organization or not. Submit your answer with the submit_merge_decision tool: set decision to true if they are the same organization, false otherwise, and give the reason in one short sentence.`
 
   const suggestions = await getRawOrganizationMergeSuggestions(
     args.tenantId,
@@ -74,7 +76,7 @@ export async function mergeOrganizationsWithLLM(
       continue
     }
 
-    const llmResult: ILLMResult = await getLLMResult(
+    const llmDecision = await getLLMMergeDecision(
       organizations,
       MODEL_ID,
       PROMPT,
@@ -87,14 +89,10 @@ export async function mergeOrganizationsWithLLM(
       model: MODEL_ID,
       primaryId: suggestion[0],
       secondaryId: suggestion[1],
-      prompt: llmResult.prompt,
-      responseTimeSeconds: llmResult.responseTimeSeconds,
-      inputTokenCount: llmResult.body.usage.input_tokens,
-      outputTokenCount: llmResult.body.usage.output_tokens,
-      verdict: llmResult.body.content[0].text,
+      ...llmDecision,
     })
 
-    if (llmResult.body.content[0].text === 'true') {
+    if (llmDecision.response.decision) {
       console.log(
         `LLM verdict says these two orgs are the same. Merging organizations: ${suggestion[0]} and ${suggestion[1]}!`,
       )
@@ -102,7 +100,7 @@ export async function mergeOrganizationsWithLLM(
       mergedAwayOrganizationIds.add(suggestion[1])
     } else {
       console.log(
-        `LLM doesn't think these orgs are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
+        `LLM rejected merge, marking organizations ${suggestion[0]} and ${suggestion[1]} as no merge`,
       )
       await removeOrganizationMergePair(suggestion)
       await addOrganizationSuggestionToNoMerge(suggestion)
