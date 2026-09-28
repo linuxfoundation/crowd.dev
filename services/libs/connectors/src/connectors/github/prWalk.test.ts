@@ -132,6 +132,32 @@ describe('runDualPhasePrSync', () => {
         cursor: '150',
       })
     })
+
+    it('does not skip unprocessed PRs when a per-PR-aware handler bails mid-page', async () => {
+      const prs = makePrs(120)
+      const harness = makeHarness(prs, null)
+
+      const processed: string[] = []
+      const handler = async (
+        batch: PullRequestNode[],
+        _sinceDate: Date | null,
+        onPrProcessed?: (pr: PullRequestNode) => Promise<void>,
+      ) => {
+        for (const pr of batch) {
+          if (processed.length >= 30) {
+            return
+          }
+          processed.push((pr as unknown as FakePr).id)
+          await onPrProcessed?.(pr)
+        }
+      }
+
+      const outcome = await runDualPhasePrSync(harness.ctx, handler)
+
+      expect(outcome).toEqual({ complete: false })
+      expect(processed).toHaveLength(30)
+      expect(harness.commits).toHaveLength(0)
+    })
   })
 
   describe('incremental phase', () => {

@@ -94,7 +94,22 @@ async function runBackfill(
     const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
 
     if (pullRequests.length > 0) {
-      await processPrs(pullRequests, null)
+      // only handlers that declare the onPrProcessed param opt into per-PR
+      // checkpointing; others are trusted fully once processPrs resolves
+      const tracksPerPrProgress = processPrs.length >= 3
+      let processedCount = 0
+      const onPrProcessed: OnPrProcessed = async () => {
+        processedCount += 1
+      }
+      await processPrs(pullRequests, null, tracksPerPrProgress ? onPrProcessed : undefined)
+
+      if (tracksPerPrProgress && processedCount < pullRequests.length) {
+        // handler bailed out before finishing this page — leave since/cursor at their
+        // pre-page values so the next run re-walks this exact page instead of
+        // skipping the PRs that were never reached
+        return { complete: false }
+      }
+
       since = pullRequests[pullRequests.length - 1].updatedAt
     }
 
