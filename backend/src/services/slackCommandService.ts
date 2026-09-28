@@ -9,11 +9,13 @@ import TenantRepository from '../database/repositories/tenantRepository'
 import {
   SlackCommand,
   SlackCommandDefinition,
+  SlackCommandExecutionContext,
   SlackCommandParameter,
   SlackCommandParameterType,
   SlackParameterParseResult,
 } from '../types/slackTypes'
 import { IServiceOptions } from './IServiceOptions'
+import { runOnboardProjectCommand, textMessage } from './slack/onboardProjectCommand'
 
 export default class SlackCommandService {
   private readonly commands: SlackCommandDefinition[]
@@ -69,7 +71,43 @@ export default class SlackCommandService {
         ],
         executor: this.setTenantPlan.bind(this),
       },
+      {
+        command: SlackCommand.ONBOARD_PROJECT,
+        shortVersion: 'op',
+        description:
+          'Evaluates a GitHub repo and onboards it automatically if the evaluation is positive',
+        parameters: [
+          {
+            name: 'repoUrl',
+            short: 'r',
+            required: true,
+            description: 'GitHub repository URL',
+            type: SlackCommandParameterType.STRING,
+          },
+        ],
+        executor: this.onboardProject.bind(this),
+      },
     ]
+  }
+
+  public async onboardProject(
+    params: any,
+    context: SlackCommandExecutionContext,
+  ): Promise<SlackMessageDto> {
+    const repoUrl = params.repoUrl
+
+    runOnboardProjectCommand({
+      repoUrl,
+      options: this.options,
+      responseUrl: context.responseUrl,
+      actorId: context.userId ?? 'unknown-slack-user',
+    }).catch((err) => {
+      this.options.log.error(err, 'Unhandled error running onboard-project command.')
+    })
+
+    return textMessage(
+      `:hourglass_flowing_sand: Evaluating \`${repoUrl}\`, I'll post the result here shortly...`,
+    )
   }
 
   public async setTenantPlan(params: any): Promise<SlackMessageDto> {
@@ -159,6 +197,7 @@ export default class SlackCommandService {
     params: string,
     username: string,
     userId: string,
+    responseUrl?: string,
   ): Promise<SlackMessageDto> {
     if (command === '/crowd-test' && !IS_DEV_ENV) {
       this.options.log.error('Received /crowd-test command in non-dev environment! Ignoring!')
@@ -208,7 +247,10 @@ export default class SlackCommandService {
       return parsedParams.error
     }
 
-    return commandDefinition.executor(parsedParams.params)
+    return commandDefinition.executor(parsedParams.params, {
+      responseUrl,
+      userId,
+    })
   }
 
   private static parseParameters(
