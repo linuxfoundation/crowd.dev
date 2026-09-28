@@ -67,8 +67,16 @@ async function fetchCommitsPage(
 async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome> {
   const { owner, repo } = parseRepoChannel(ctx.channel.channelName)
 
-  return runDualPhasePrSync(ctx, async (prs) => {
+  return runDualPhasePrSync(ctx, async (prs, _sinceDate, onPrProcessed) => {
     for (const pullRequest of prs) {
+      // a single PR's commit walk can cost up to ~304s worst case (see STATS_MAX_ATTEMPTS
+      // below), so a page of PR_PAGE_SIZE PRs must check the run budget between PRs, not
+      // just between pages, or a degraded provider can stall a whole page past the
+      // activity's deadline with nothing checkpointed for the PRs that already finished
+      if (!ctx.hasRunBudget()) {
+        return
+      }
+
       let cursor: string | null = null
       let hasMore = true
       let noStats = false
@@ -105,6 +113,8 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
         hasMore = commits.pageInfo.hasNextPage
         cursor = commits.pageInfo.endCursor
       }
+
+      await onPrProcessed?.(pullRequest)
     }
   })
 }

@@ -118,28 +118,6 @@ class MergeActionRepository {
       },
     )
   }
-
-  async getUnprocessedLLMApprovedSuggestions(
-    batchSize: number,
-    type: EntityType,
-  ): Promise<{ primaryId: string; secondaryId: string }[]> {
-    return this.connection.query(
-      `
-      select l."primaryId", l."secondaryId"
-      from "llmSuggestionVerdicts" l
-      left join "mergeActions" ma on l."primaryId" = ma."primaryId" and l."secondaryId" = ma."secondaryId"
-      where l."type" = $(type) and l.verdict = 'true'
-      and (ma."primaryId" is null and ma."secondaryId" is null)
-      ${type === EntityType.MEMBER ? 'and exists (select 1 from members m1 where m1.id = l."primaryId") and exists (select 1 from members m2 where m2.id = l."secondaryId")' : ''}
-      ${type === EntityType.ORGANIZATION ? 'and exists (select 1 from organizations o1 where o1.id = l."primaryId") and exists (select 1 from organizations o2 where o2.id = l."secondaryId") and not exists (select 1 from "lfxMemberships" lm where lm."organizationId" = l."secondaryId")' : ''}
-      limit $(batchSize)
-    `,
-      {
-        type,
-        batchSize,
-      },
-    )
-  }
 }
 
 export default MergeActionRepository

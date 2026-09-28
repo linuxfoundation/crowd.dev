@@ -3,7 +3,7 @@ import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 import { LLMSuggestionVerdictType } from '@crowd/types'
 
 import type * as activities from '../activities'
-import { ILLMResult, IProcessMergeMemberSuggestionsWithLLM } from '../types'
+import { IProcessMergeMemberSuggestionsWithLLM } from '../types'
 import { removeEmailLikeIdentitiesFromMember } from '../utils'
 
 const {
@@ -16,7 +16,7 @@ const {
   retry: { maximumAttempts: 3 },
 })
 
-const { getLLMResult, saveLLMVerdict, mergeMembers } = proxyActivities<typeof activities>({
+const { getLLMMergeDecision, saveLLMVerdict, mergeMembers } = proxyActivities<typeof activities>({
   startToCloseTimeout: '5 minutes',
   retry: {
     initialInterval: '1 minute',
@@ -37,7 +37,7 @@ export async function mergeMembersWithLLM(
     anthropic_version: 'bedrock-2023-05-31',
     temperature: 0,
   }
-  const PROMPT = `Please compare and come up with a boolean answer if these two members are the same person or not. 
+  const PROMPT = `Please compare and decide if these two members are the same person or not. 
                   Only compare data from first member and second member. Never compare data from only one member with itself. 
                   Never tokenize 'platform' field using character tokenization. Use word tokenization for platform field in identities.
                   You should check all the sent fields between members to find similarities both literally and semantically. 
@@ -52,20 +52,20 @@ export async function mergeMembersWithLLM(
                   4. Display Name: Tokenize using both character and word tokenization. When the display name is more than one word, and the difference is a few edit distances consider it a strong indication of similarity.
                   When one display name is contained by the other, check other fields for the final decision. The same members on different platforms might have different display names.
                   Display names can be multiple words and might be sorted in different order in different platforms for the same member. Display name is a supporting signal only — it is never sufficient on its own. 
-                  If display name is the only thing that matches and there are no corroborating signals from identities, organizations, or attributes, return 'false'.
+                  If display name is the only thing that matches and there are no corroborating signals from identities, organizations, or attributes, set decision to false.
                   CRITICAL RULE - NEVER MERGE IF SAME PLATFORM WITH DIFFERENT VALUES:
                   Before making any decision, you MUST check if both members have identities on the same platform.
                   If member1.identities[x].platform === member2.identities[y].platform (they share a platform), then:
                   - Check if member1.identities[x].value === member2.identities[y].value
-                  - If the values are DIFFERENT, immediately return 'false' - these are definitely different people
+                  - If the values are DIFFERENT, immediately set decision to false - these are definitely different people
                   - This rule applies REGARDLESS of how similar other fields appear.
                   This check must be performed FIRST before evaluating any other similarities. Only do such labeling if both members have identities in the same platform. If they don't have identities in the same platform, ignore the rule.
                   BOT CHECKS - NEVER MERGE IF ONE PROFILE IS A BOT AND THE OTHER IS NOT
                   - Check the bot status in attributes.isBot.default for each member
-                  - If one member has attributes.isBot.default === true and the other has attributes.isBot.default === false (or undefined), return 'false'
+                  - If one member has attributes.isBot.default === true and the other has attributes.isBot.default === false (or undefined), set decision to false
                   - Bots and humans are never the same entity
                   - This check must be performed before evaluating any other similarities
-                  Print 'true' if they are the same member, 'false' otherwise. No explanation required. Don't print anything else.`
+                  Submit your answer with the submit_merge_decision tool: set decision to true if they are the same member, false otherwise, and give the reason in one short sentence.`
 
   const suggestions = await getRawMemberMergeSuggestions(args.similarity, SUGGESTIONS_PER_RUN)
 
@@ -92,7 +92,7 @@ export async function mergeMembersWithLLM(
       continue
     }
 
-    const llmResult: ILLMResult = await getLLMResult(
+    const llmDecision = await getLLMMergeDecision(
       members.map((member) => removeEmailLikeIdentitiesFromMember(member)),
       MODEL_ID,
       PROMPT,
@@ -105,14 +105,10 @@ export async function mergeMembersWithLLM(
       model: MODEL_ID,
       primaryId: suggestion[0],
       secondaryId: suggestion[1],
-      prompt: llmResult.prompt,
-      responseTimeSeconds: llmResult.responseTimeSeconds,
-      inputTokenCount: llmResult.body.usage.input_tokens,
-      outputTokenCount: llmResult.body.usage.output_tokens,
-      verdict: llmResult.body.content[0].text,
+      ...llmDecision,
     })
 
-    if (llmResult.body.content[0].text === 'true') {
+    if (llmDecision.response.decision) {
       console.log(
         `LLM verdict says these two members are the same. Merging members: ${suggestion[0]} and ${suggestion[1]}!`,
       )
@@ -120,7 +116,7 @@ export async function mergeMembersWithLLM(
       mergedAwayMemberIds.add(suggestion[1])
     } else {
       console.log(
-        `LLM doesn't think these members are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
+        `LLM rejected merge, marking members ${suggestion[0]} and ${suggestion[1]} as no merge`,
       )
       await removeMemberMergePair(suggestion)
       await addMemberSuggestionToNoMerge(suggestion)

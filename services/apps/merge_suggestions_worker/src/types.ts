@@ -1,4 +1,4 @@
-import { IMemberOpensearch, IOrganizationOpensearch } from '@crowd/types'
+import { ILLMMergeDecision, IMemberOpensearch, IOrganizationOpensearch } from '@crowd/types'
 
 interface ITermFilter {
   term: {
@@ -51,21 +51,38 @@ export interface ILLMResult {
   modelSpecificArgs: any
 }
 
+export interface ILLMTextContent {
+  type: 'text'
+  text: string
+}
+
+export interface ILLMToolUseContent {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: unknown
+}
+
 export interface ILLMBody {
   id: string
   type: string
   role: string
   model: string
-  content: {
-    type: string
-    text: string
-  }[]
+  content: (ILLMTextContent | ILLMToolUseContent)[]
   stop_reason: string
   stop_sequence: string
   usage: {
     input_tokens: number
     output_tokens: number
   }
+}
+
+export interface ILLMMergeDecisionResult {
+  response: ILLMMergeDecision
+  prompt: string
+  inputTokenCount: number
+  outputTokenCount: number
+  responseTimeSeconds: number
 }
 
 export interface IProcessGenerateMemberMergeSuggestionsArgs {
