@@ -190,7 +190,6 @@ const job: IJobDefinition = {
       `Fetching status for ${statusCheckOperations.length} Nango connections (${STATUS_CHECK_CONCURRENCY} at a time)...`,
     )
 
-    // Execute status checks with concurrency limit
     const limiter = new ConcurrencyLimiter(STATUS_CHECK_CONCURRENCY)
     let completedChecks = 0
 
