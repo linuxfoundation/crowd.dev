@@ -2,6 +2,7 @@ import {
   GithubAuthError,
   GithubForbiddenError,
   GithubIpAllowlistError,
+  GithubRepoBlockedError,
   GithubRepoNotFoundError,
 } from '@crowd/common'
 import {
@@ -273,7 +274,7 @@ async function assertOk(
   if (response.status === 404) {
     throw new GithubRepoNotFoundError(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
   }
-  if (response.status === 403 || response.status === 429) {
+  if (response.status === 403 || response.status === 429 || response.status === 451) {
     const retryAfterHeader = response.headers.get('retry-after')
     const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
     const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
@@ -298,9 +299,10 @@ async function assertOk(
     if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
-    // Neither rate-limit wording nor a retry-after header - either an org IP allow list block
-    // (permanent policy) or a real installation-permission 403.
+    // Neither rate-limit wording nor a retry-after header - an IP allow list block, a ToS-style access block, or a real 403.
     const isIpAllowlistBlock = bodyLower.includes('ip allow list')
+    const isRepoAccessBlocked =
+      response.status === 451 || bodyLower.includes('repository access blocked')
     log.warn(
       {
         owner,
@@ -312,16 +314,23 @@ async function assertOk(
         body: body.slice(0, 500),
       },
       isIpAllowlistBlock
-        ? 'GitHub 403, org IP allow list is blocking this installation'
-        : 'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
+        ? `GitHub ${response.status}, org IP allow list is blocking this installation`
+        : isRepoAccessBlocked
+          ? `GitHub ${response.status}, repo access blocked by GitHub (e.g. ToS takedown)`
+          : `GitHub ${response.status} with no rate-limit signal, treating as auth/permission failure`,
     )
     if (isIpAllowlistBlock) {
       throw new GithubIpAllowlistError(
-        `GitHub org IP allow list blocked (403) fetching ${what} for ${owner}/${name}`,
+        `GitHub org IP allow list blocked (${response.status}) fetching ${what} for ${owner}/${name}`,
+      )
+    }
+    if (isRepoAccessBlocked) {
+      throw new GithubRepoBlockedError(
+        `GitHub blocked repo access (${response.status}) fetching ${what} for ${owner}/${name}`,
       )
     }
     throw new GithubForbiddenError(
-      `GitHub auth failure (403) fetching ${what} for ${owner}/${name}`,
+      `GitHub auth failure (${response.status}) fetching ${what} for ${owner}/${name}`,
     )
   }
   throw new Error(`GitHub API error ${response.status} fetching ${what} for ${owner}/${name}`)
