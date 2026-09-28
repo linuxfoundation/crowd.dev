@@ -10,7 +10,13 @@ export const PR_PAGE_SIZE = 50
 // re-fetching the dropped window's PRs once more before it gets picked back up
 const MAX_COVERED_WINDOWS = 8
 
-export type PrPageHandler = (prs: PullRequestNode[], sinceDate: Date | null) => Promise<void>
+export type OnPrProcessed = (pr: PullRequestNode) => Promise<void>
+
+export type PrPageHandler = (
+  prs: PullRequestNode[],
+  sinceDate: Date | null,
+  onPrProcessed?: OnPrProcessed,
+) => Promise<void>
 
 function isCovered(windows: CoveredWindow[], updatedAt: string): boolean {
   // updatedAt has second precision and is not unique — both edges stay exclusive so
@@ -147,9 +153,28 @@ async function runIncremental(
 
       const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) >= sinceDate)
       const pending = fresh.filter((pr) => !isCovered(priorWindows, pr.updatedAt))
+
+      let allPendingProcessed = true
       if (pending.length > 0) {
-        await processPrs(pending, sinceDate)
+        // only handlers that declare the onPrProcessed param opt into per-PR
+        // checkpointing; others are trusted fully once processPrs resolves
+        const tracksPerPrProgress = processPrs.length >= 3
+        let processedCount = 0
+        const onPrProcessed: OnPrProcessed = async (pr) => {
+          processedCount += 1
+          newestSeen = newestSeen ?? fresh[0].updatedAt
+          oldestSeen = pr.updatedAt
+        }
+        await processPrs(pending, sinceDate, tracksPerPrProgress ? onPrProcessed : undefined)
+        allPendingProcessed = !tracksPerPrProgress || processedCount === pending.length
       }
+
+      if (!allPendingProcessed) {
+        // processPrs bailed out before finishing this page — trust only the per-PR
+        // progress already recorded above, not the full page's fresh range
+        break
+      }
+
       if (fresh.length > 0) {
         newestSeen = newestSeen ?? fresh[0].updatedAt
         oldestSeen = fresh[fresh.length - 1].updatedAt

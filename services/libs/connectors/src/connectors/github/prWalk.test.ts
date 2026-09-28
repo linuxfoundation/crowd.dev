@@ -4,6 +4,7 @@ import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
 import type { SyncContext } from '../../types'
+import type { PullRequestNode } from './graphql/pullRequests'
 import type { CoveredWindow } from './paging'
 import { PR_PAGE_SIZE, runDualPhasePrSync } from './prWalk'
 
@@ -416,6 +417,68 @@ describe('runDualPhasePrSync', () => {
       expect(commit.coveredWindows[0]).toEqual({
         confirmedThrough: prs[99].updatedAt,
         coveredUntil: prs[0].updatedAt,
+      })
+    })
+  })
+
+  describe('per-PR checkpointing', () => {
+    it('checkpoints only the PRs a per-PR-aware handler finished before bailing mid-page', async () => {
+      const prs = makePrs(500)
+      const since = iso(6000)
+      const harness = makeHarness(prs, { phase: 'incremental', since })
+
+      const processed: string[] = []
+      const handler = async (
+        batch: PullRequestNode[],
+        _sinceDate: Date | null,
+        onPrProcessed?: (pr: PullRequestNode) => Promise<void>,
+      ) => {
+        for (const pr of batch) {
+          if (processed.length >= 30) {
+            return
+          }
+          processed.push((pr as unknown as FakePr).id)
+          await onPrProcessed?.(pr)
+        }
+      }
+
+      const outcome = await runDualPhasePrSync(harness.ctx, handler)
+
+      expect(outcome).toEqual({ complete: false })
+      expect(processed).toHaveLength(30)
+      expect(harness.lastCommit()).toEqual({
+        phase: 'incremental',
+        since,
+        cursor: null,
+        coveredWindows: [{ confirmedThrough: prs[29].updatedAt, coveredUntil: prs[0].updatedAt }],
+      })
+    })
+
+    it('completes normally when a per-PR-aware handler processes every pending PR', async () => {
+      const prs = makePrs(120)
+      const since = iso(6000)
+      const harness = makeHarness(prs, { phase: 'incremental', since })
+
+      const processed: string[] = []
+      const handler = async (
+        batch: PullRequestNode[],
+        _sinceDate: Date | null,
+        onPrProcessed?: (pr: PullRequestNode) => Promise<void>,
+      ) => {
+        for (const pr of batch) {
+          processed.push((pr as unknown as FakePr).id)
+          await onPrProcessed?.(pr)
+        }
+      }
+
+      const outcome = await runDualPhasePrSync(harness.ctx, handler)
+
+      expect(outcome).toEqual({ complete: true })
+      expect(processed).toHaveLength(120)
+      expect(harness.lastCommit()).toEqual({
+        phase: 'incremental',
+        since: iso(0),
+        cursor: null,
       })
     })
   })
