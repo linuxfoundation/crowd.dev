@@ -22,7 +22,14 @@ vi.mock('./strategies', async () => {
 })
 
 function ctx(serpApiKey: string | null = null): IDiscoveryContext {
-  return { name: 'proj', website: 'https://example.com', repos: [], githubToken: null, serpApiKey }
+  return {
+    name: 'proj',
+    slug: 'proj',
+    website: 'https://example.com',
+    repos: [],
+    githubToken: null,
+    serpApiKey,
+  }
 }
 
 function candidate(
@@ -192,6 +199,7 @@ describe('discoverDocs', () => {
 
     const result = await discoverDocs({
       name: 'proj',
+      slug: 'proj',
       website: 'https://github.com/acme/real-project',
       repos: [],
       githubToken: null,
@@ -209,6 +217,7 @@ describe('discoverDocs', () => {
 
     const result = await discoverDocs({
       name: 'proj',
+      slug: 'proj',
       website: 'https://github.com/acme/real-project',
       repos: [],
       githubToken: null,

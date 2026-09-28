@@ -46,6 +46,7 @@ describe('llmsTxtProbe', () => {
 
     const result = await llmsTxtProbe({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -71,6 +72,7 @@ describe('llmsTxtProbe', () => {
 
     const result = await llmsTxtProbe({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -84,6 +86,7 @@ describe('llmsTxtProbe', () => {
 
     const result = await llmsTxtProbe({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -96,6 +99,7 @@ describe('llmsTxtProbe', () => {
     expect(
       await llmsTxtProbe({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: null,
@@ -108,6 +112,7 @@ describe('llmsTxtProbe', () => {
     expect(
       await llmsTxtProbe({
         name: 'proj',
+        slug: 'proj',
         website: '::not a url::',
         repos: [],
         githubToken: null,
@@ -124,6 +129,7 @@ describe('llmsTxtProbe', () => {
 
     const result = await llmsTxtProbe({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -150,6 +156,7 @@ describe('llmsTxtProbe', () => {
 
     const result = await llmsTxtProbe({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -170,6 +177,7 @@ describe('llmsTxtProbe', () => {
     expect(
       await llmsTxtProbe({
         name: 'proj',
+        slug: 'proj',
         website: 'https://example.com',
         repos: [],
         githubToken: null,
@@ -185,6 +193,7 @@ describe('docsSubdomain', () => {
 
     const result = await docsSubdomain({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -205,6 +214,7 @@ describe('docsSubdomain', () => {
     expect(
       await docsSubdomain({
         name: 'proj',
+        slug: 'proj',
         website: 'https://example.com',
         repos: [],
         githubToken: null,
@@ -217,6 +227,7 @@ describe('docsSubdomain', () => {
     expect(
       await docsSubdomain({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: null,
@@ -230,6 +241,7 @@ describe('docsSubdomain', () => {
 
     const result = await docsSubdomain({
       name: 'proj',
+      slug: 'proj',
       website: 'example.com',
       repos: [],
       githubToken: null,
@@ -250,6 +262,7 @@ describe('docsSubdomain', () => {
     expect(
       await docsSubdomain({
         name: 'proj',
+        slug: 'proj',
         website: 'https://example.com',
         repos: [],
         githubToken: null,
@@ -269,6 +282,7 @@ describe('docsPath', () => {
 
     const result = await docsPath({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -299,6 +313,7 @@ describe('docsPath', () => {
 
     const result = await docsPath({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com?ref=x',
       repos: [],
       githubToken: null,
@@ -321,6 +336,7 @@ describe('docsPath', () => {
     expect(
       await docsPath({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: null,
@@ -334,6 +350,7 @@ describe('docsPath', () => {
     expect(
       await docsPath({
         name: 'proj',
+        slug: 'proj',
         website: 'https://example.com',
         repos: [],
         githubToken: null,
@@ -343,7 +360,7 @@ describe('docsPath', () => {
   })
 })
 
-const repos = ['https://github.com/torvalds/linux']
+const repos = [{ url: 'https://github.com/torvalds/linux', starCount: null }]
 
 describe('packageManifest', () => {
   it('returns a candidate from the package.json documentation field', async () => {
@@ -357,6 +374,7 @@ describe('packageManifest', () => {
 
     const result = await packageManifest({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos,
       githubToken: 'token',
@@ -376,6 +394,7 @@ describe('packageManifest', () => {
     expect(
       await packageManifest({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: 'token',
@@ -388,6 +407,7 @@ describe('packageManifest', () => {
     expect(
       await packageManifest({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: null,
@@ -401,6 +421,7 @@ describe('packageManifest', () => {
     expect(
       await packageManifest({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: 'token',
@@ -422,6 +443,7 @@ describe('readmeScrape', () => {
 
     const result = await readmeScrape({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos,
       githubToken: 'token',
@@ -441,6 +463,7 @@ describe('readmeScrape', () => {
     expect(
       await readmeScrape({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: 'token',
@@ -453,6 +476,7 @@ describe('readmeScrape', () => {
     expect(
       await readmeScrape({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: null,
@@ -466,6 +490,7 @@ describe('readmeScrape', () => {
     expect(
       await readmeScrape({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: 'token',
@@ -487,6 +512,7 @@ describe('githubHomepage', () => {
 
     const result = await githubHomepage({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos,
       githubToken: 'token',
@@ -513,6 +539,7 @@ describe('githubHomepage', () => {
     expect(
       await githubHomepage({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: 'token',
@@ -532,6 +559,7 @@ describe('githubHomepage', () => {
     expect(
       await githubHomepage({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: 'token',
@@ -544,6 +572,7 @@ describe('githubHomepage', () => {
     expect(
       await githubHomepage({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: 'token',
@@ -556,6 +585,7 @@ describe('githubHomepage', () => {
     expect(
       await githubHomepage({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: null,
@@ -569,6 +599,7 @@ describe('githubHomepage', () => {
     expect(
       await githubHomepage({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos,
         githubToken: 'token',
@@ -584,6 +615,7 @@ describe('projectWebsite', () => {
 
     const result = await projectWebsite({
       name: 'proj',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -603,6 +635,7 @@ describe('projectWebsite', () => {
     expect(
       await projectWebsite({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: null,
@@ -616,6 +649,7 @@ describe('projectWebsite', () => {
     expect(
       await projectWebsite({
         name: 'proj',
+        slug: 'proj',
         website: 'https://example.com',
         repos: [],
         githubToken: null,
@@ -630,6 +664,7 @@ describe('serpStrategy', () => {
     const fetchMock = throwingFetch()
     const result = await serpStrategy({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos: [],
       githubToken: null,
@@ -657,6 +692,7 @@ describe('serpStrategy', () => {
 
     const result = await serpStrategy({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos: [],
       githubToken: null,
@@ -680,6 +716,7 @@ describe('serpStrategy', () => {
 
     const result = await serpStrategy({
       name: 'proj',
+      slug: 'proj',
       website: null,
       repos: [],
       githubToken: null,
@@ -693,6 +730,7 @@ describe('serpStrategy', () => {
     expect(
       await serpStrategy({
         name: 'proj',
+        slug: 'proj',
         website: null,
         repos: [],
         githubToken: null,

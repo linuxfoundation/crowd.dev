@@ -26,13 +26,38 @@ function isGithubUrl(repo: string): boolean {
   }
 }
 
-export function primaryRepo(repos: string[]): string | null {
-  const githubRepos = repos.filter(isGithubUrl)
+export interface IRepoRef {
+  url: string
+  starCount: number | null
+}
+
+export interface IPrimaryRepoHint {
+  slug?: string | null
+  name?: string | null
+}
+
+const normalizeRepoName = (value: string) => value.toLowerCase().replace(/[-_.\s]/g, '')
+
+// Picks the project's main repo: name matches slug/name, then highest stars, then url.
+export function primaryRepo(repos: IRepoRef[], hint: IPrimaryRepoHint = {}): string | null {
+  const githubRepos = repos
+    .filter((repo) => isGithubUrl(repo.url))
+    .map((repo) => ({ ...repo, parsed: parseGithubRepo(repo.url) }))
   if (githubRepos.length === 0) {
     return null
   }
 
-  return githubRepos.find((repo) => parseGithubRepo(repo)) ?? githubRepos[0]
+  const wanted = new Set(
+    [hint.slug, hint.name].filter((v): v is string => !!v).map(normalizeRepoName),
+  )
+  const parseable = githubRepos.filter((repo) => repo.parsed)
+  const byName = parseable.filter((repo) => wanted.has(normalizeRepoName(repo.parsed!.repo)))
+  const pool = byName.length > 0 ? byName : parseable.length > 0 ? parseable : githubRepos
+
+  return [...pool].sort(
+    (a, b) =>
+      (b.starCount ?? -1) - (a.starCount ?? -1) || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0),
+  )[0].url
 }
 
 async function githubRequest(path: string, token: string, accept: string): Promise<Response> {

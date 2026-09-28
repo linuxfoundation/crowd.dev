@@ -4,13 +4,21 @@ import type {
   IDocCandidate,
 } from '@crowd/data-access-layer'
 
-import { getPackageJson, getReadme, getRepoHomepage, parseGithubRepo, primaryRepo } from './github'
+import {
+  type IRepoRef,
+  getPackageJson,
+  getReadme,
+  getRepoHomepage,
+  parseGithubRepo,
+  primaryRepo,
+} from './github'
 import { USER_AGENT, domainOf, fetchText, isLiveDocs, normalizeUrl, normalizedDomain } from './http'
 
 export interface IDiscoveryContext {
   name: string
+  slug: string
   website: string | null
-  repos: string[]
+  repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
 }
@@ -123,7 +131,7 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
 }
 
 export const packageManifest: DiscoveryStrategy = async (ctx) => {
-  const repo = primaryRepo(ctx.repos)
+  const repo = primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name })
   if (!repo || !ctx.githubToken) {
     return []
   }
@@ -157,7 +165,7 @@ export const packageManifest: DiscoveryStrategy = async (ctx) => {
 }
 
 export const readmeScrape: DiscoveryStrategy = async (ctx) => {
-  const repo = primaryRepo(ctx.repos)
+  const repo = primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name })
   if (!repo || !ctx.githubToken) {
     return []
   }
@@ -207,7 +215,7 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
 }
 
 export const githubHomepage: DiscoveryStrategy = async (ctx) => {
-  const repo = primaryRepo(ctx.repos)
+  const repo = primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name })
   if (!repo || !ctx.githubToken) {
     return []
   }

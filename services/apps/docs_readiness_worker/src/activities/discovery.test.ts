@@ -98,6 +98,7 @@ describe('resolveDocsUrl', () => {
     expect(mocks.getGithubInstallationToken).not.toHaveBeenCalled()
     expect(mocks.discoverDocs).toHaveBeenCalledWith({
       name: 'Project',
+      slug: 'proj',
       website: 'https://example.com',
       repos: [],
       githubToken: null,
@@ -130,7 +131,7 @@ describe('resolveDocsUrl', () => {
       website: null,
     })
     mocks.findEnabledRepositoriesForProject.mockResolvedValue([
-      { url: 'https://github.com/org/repo' },
+      { url: 'https://github.com/org/repo', starCount: 42 },
     ])
     mocks.getGithubInstallationToken.mockResolvedValue('gh-token')
     mocks.discoverDocs.mockResolvedValue({
@@ -145,8 +146,9 @@ describe('resolveDocsUrl', () => {
     expect(mocks.getGithubInstallationToken).toHaveBeenCalledTimes(1)
     expect(mocks.discoverDocs).toHaveBeenCalledWith({
       name: 'Project',
+      slug: 'proj',
       website: null,
-      repos: ['https://github.com/org/repo'],
+      repos: [{ url: 'https://github.com/org/repo', starCount: 42 }],
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
     })

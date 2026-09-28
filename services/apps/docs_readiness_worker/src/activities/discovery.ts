@@ -45,8 +45,9 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
   const result = await withTimeout(
     discoverDocs({
       name: project.name,
+      slug: project.slug,
       website: project.website,
-      repos: repos.map((r) => r.url),
+      repos,
       githubToken,
       serpApiKey: process.env.CROWD_DOCS_READINESS_SERP_API_KEY ?? null,
     }),
