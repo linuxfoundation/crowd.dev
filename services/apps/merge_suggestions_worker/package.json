@@ -24,7 +24,8 @@
     "axios": "catalog:",
     "fast-levenshtein": "^3.0.0",
     "lodash.uniqby": "^4.7.0",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
