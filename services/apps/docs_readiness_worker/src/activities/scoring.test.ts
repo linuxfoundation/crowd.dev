@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { recordFailure, scoreProject } from './scoring'
 
 const mocks = vi.hoisted(() => ({
+  findLatestProjectDocReadiness: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
   replaceProjectDocReadinessChecks: vi.fn(),
   upsertProjectDocReadiness: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer', () => ({
+  findLatestProjectDocReadiness: mocks.findLatestProjectDocReadiness,
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
   replaceProjectDocReadinessChecks: mocks.replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
@@ -160,34 +162,126 @@ describe('recordFailure', () => {
     expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
   })
 
-  test('clears any stale check rows and upserts an ok=false row, in one transaction', async () => {
-    mocks.findProjectForDocsDiscovery.mockResolvedValue({
-      id: 'project-1',
-      slug: 'proj',
-      name: 'Project',
-      website: null,
-    })
-    mocks.tx.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
-      await fn('tx-marker')
+  describe('with an existing project', () => {
+    beforeEach(() => {
+      mocks.findProjectForDocsDiscovery.mockResolvedValue({
+        id: 'project-1',
+        slug: 'proj',
+        name: 'Project',
+        website: null,
+      })
+      mocks.tx.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+        await fn('tx-marker')
+      })
     })
 
-    await recordFailure('project-1', 'run-1', RESOLVED, 'no-docs-url')
+    const expectFailureRowUpserted = (error: string) =>
+      expect(mocks.upsertProjectDocReadiness).toHaveBeenCalledWith(
+        'tx-marker',
+        expect.objectContaining({
+          projectId: 'project-1',
+          ok: false,
+          error,
+          overallScore: null,
+          overallGrade: null,
+          categoryScores: null,
+        }),
+      )
 
-    expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
-      'tx-marker',
-      'project-1',
-      [],
-    )
-    expect(mocks.upsertProjectDocReadiness).toHaveBeenCalledWith(
-      'tx-marker',
-      expect.objectContaining({
-        projectId: 'project-1',
+    test('keeps check rows when the docs URL matches the latest run', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://docs.example.com/',
+        ok: true,
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.findLatestProjectDocReadiness).toHaveBeenCalledWith('tx-marker', 'project-1')
+      expect(mocks.replaceProjectDocReadinessChecks).not.toHaveBeenCalled()
+      expectFailureRowUpserted('timeout')
+    })
+
+    test('treats host case and fragment differences as the same URL', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://Docs.Example.com/#intro',
+        ok: true,
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.replaceProjectDocReadinessChecks).not.toHaveBeenCalled()
+    })
+
+    test('clears check rows when the docs URL changed since the latest run', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://old.example.com',
+        ok: true,
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
+        'tx-marker',
+        'project-1',
+        [],
+      )
+      expectFailureRowUpserted('timeout')
+    })
+
+    test('clears check rows when there is no earlier run', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue(null)
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
+        'tx-marker',
+        'project-1',
+        [],
+      )
+      expectFailureRowUpserted('timeout')
+    })
+
+    test('keeps check rows across repeated same-URL failures', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://docs.example.com',
         ok: false,
-        error: 'no-docs-url',
-        overallScore: null,
-        overallGrade: null,
-        categoryScores: null,
-      }),
-    )
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.replaceProjectDocReadinessChecks).not.toHaveBeenCalled()
+      expectFailureRowUpserted('timeout')
+    })
+
+    test('clears check rows when the latest row is a failure on a different URL', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://other.example.com',
+        ok: false,
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
+        'tx-marker',
+        'project-1',
+        [],
+      )
+    })
+
+    test('clears check rows when the failed run has no docs URL', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://docs.example.com',
+        ok: true,
+      })
+
+      await recordFailure('project-1', 'run-1', { ...RESOLVED, docsUrl: null }, 'no-docs-url')
+
+      expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
+        'tx-marker',
+        'project-1',
+        [],
+      )
+      expectFailureRowUpserted('no-docs-url')
+    })
   })
 })
