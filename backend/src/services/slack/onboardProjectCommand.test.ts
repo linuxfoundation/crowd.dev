@@ -6,15 +6,21 @@ vi.mock('axios', () => ({
 }))
 
 vi.mock('../../database/sequelizeQueryExecutor', () => ({
-  optionsQx: vi.fn(() => ({})),
+  optionsBgQx: vi.fn(() => ({})),
 }))
 
 vi.mock('@crowd/data-access-layer', () => ({
   deriveProjectIdentityFromRepoUrl: vi.fn(() => ({ projectSlug: 'foo/bar', repoName: 'bar' })),
-  upsertProjectCatalogManualAction: vi.fn(),
+  claimProjectCatalogForSlackEvaluation: vi.fn(),
+  claimProjectCatalogForOnboarding: vi.fn(),
   finalizeProjectCatalogEvaluation: vi.fn(),
-  findProjectCatalogById: vi.fn(async () => ({ onboardedAt: null })),
   updateProjectCatalog: vi.fn(async () => ({})),
+  findRepoUrlsInCdp: vi.fn(async () => new Set()),
+  findGithubOwnersWithLfProjects: vi.fn(async () => new Set()),
+  findGithubOwnersWithNonLfRepos: vi.fn(async () => new Set()),
+  computeExclusivelyLfOwners: vi.fn(() => new Set()),
+  resolvePrecheckSkipReason: vi.fn(() => null),
+  markProjectCatalogPreCheckSkipped: vi.fn(),
 }))
 
 vi.mock('../../api/public/v1/projectEvaluation/evaluateProject', () => ({
@@ -26,11 +32,12 @@ vi.mock('@crowd/project-onboarding', () => ({
 }))
 
 import {
+  claimProjectCatalogForOnboarding,
+  claimProjectCatalogForSlackEvaluation,
   deriveProjectIdentityFromRepoUrl,
   finalizeProjectCatalogEvaluation,
-  findProjectCatalogById,
+  markProjectCatalogPreCheckSkipped,
   updateProjectCatalog,
-  upsertProjectCatalogManualAction,
 } from '@crowd/data-access-layer'
 import { onboardProject } from '@crowd/project-onboarding'
 
@@ -66,11 +73,14 @@ describe('runOnboardProjectCommand', () => {
       projectSlug: 'foo/bar',
       repoName: 'bar',
     })
-    vi.mocked(findProjectCatalogById).mockResolvedValue({ onboardedAt: null } as any)
+    vi.mocked(claimProjectCatalogForOnboarding).mockResolvedValue({
+      ...catalogEntry,
+      onboardedAt: new Date().toISOString(),
+    } as any)
   })
 
   it('evaluates and onboards a positively evaluated repo', async () => {
-    vi.mocked(upsertProjectCatalogManualAction).mockResolvedValue(catalogEntry as any)
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
     vi.mocked(evaluateProject).mockResolvedValue({
       outcome: 'onboard',
       evaluationResult: 'true',
@@ -104,7 +114,7 @@ describe('runOnboardProjectCommand', () => {
   })
 
   it('reports a negative evaluation and does not onboard', async () => {
-    vi.mocked(upsertProjectCatalogManualAction).mockResolvedValue(catalogEntry as any)
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
     vi.mocked(evaluateProject).mockResolvedValue({
       outcome: 'skip',
       evaluationResult: 'false',
@@ -127,8 +137,8 @@ describe('runOnboardProjectCommand', () => {
     expect(lastSlackText()).toContain('skip')
   })
 
-  it('reports back without erroring when the repo is already onboarded or in flight', async () => {
-    vi.mocked(upsertProjectCatalogManualAction).mockResolvedValue(null)
+  it('reports back without erroring when the repo is already onboarded or a duplicate evaluate request is in flight', async () => {
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(null)
 
     await runOnboardProjectCommand({
       repoUrl: catalogEntry.repoUrl,
@@ -150,7 +160,7 @@ describe('runOnboardProjectCommand', () => {
         responseUrl: 'https://hooks.slack.com/response',
         actorId: 'daily-cap-actor',
       })
-      expect(upsertProjectCatalogManualAction).toHaveBeenCalledTimes(1)
+      expect(claimProjectCatalogForSlackEvaluation).toHaveBeenCalledTimes(1)
 
       vi.mocked(axios.post).mockClear()
       await runOnboardProjectCommand({
@@ -160,10 +170,91 @@ describe('runOnboardProjectCommand', () => {
         actorId: 'daily-cap-actor',
       })
 
-      expect(upsertProjectCatalogManualAction).toHaveBeenCalledTimes(1)
+      expect(claimProjectCatalogForSlackEvaluation).toHaveBeenCalledTimes(1)
       expect(lastSlackText()).toContain('no_entry')
     } finally {
       delete process.env.CROWD_PROJECT_CATALOG_DAILY_CAP
     }
+  })
+
+  it('does not double-onboard when the nightly worker already claimed the row', async () => {
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
+    vi.mocked(evaluateProject).mockResolvedValue({
+      outcome: 'onboard',
+      evaluationResult: 'true',
+      evaluationReason: null,
+      metrics: null,
+    })
+    vi.mocked(finalizeProjectCatalogEvaluation).mockResolvedValue({
+      ...catalogEntry,
+      action: 'onboard',
+    } as any)
+    vi.mocked(claimProjectCatalogForOnboarding).mockResolvedValue(null)
+
+    await runOnboardProjectCommand({
+      repoUrl: catalogEntry.repoUrl,
+      options: mockOptions(),
+      responseUrl: 'https://hooks.slack.com/response',
+      actorId: 'U123',
+    })
+
+    expect(onboardProject).not.toHaveBeenCalled()
+    expect(lastSlackText()).toContain('automatic onboarding job')
+  })
+
+  it('persists a terminal state when the LLM cap rejects the request', async () => {
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
+    vi.mocked(evaluateProject).mockRejectedValue(new Error('daily LLM cap exceeded'))
+
+    await runOnboardProjectCommand({
+      repoUrl: catalogEntry.repoUrl,
+      options: mockOptions(),
+      responseUrl: 'https://hooks.slack.com/response',
+      actorId: 'U123',
+    })
+
+    expect(markProjectCatalogPreCheckSkipped).toHaveBeenCalledWith(
+      expect.anything(),
+      catalogEntry.id,
+      expect.stringContaining('daily LLM cap exceeded'),
+    )
+    expect(lastSlackText()).toContain('no_entry')
+  })
+
+  it('persists onboardingError and reverts the claim when onboarding fails', async () => {
+    vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
+    vi.mocked(evaluateProject).mockResolvedValue({
+      outcome: 'onboard',
+      evaluationResult: 'true',
+      evaluationReason: null,
+      metrics: null,
+    })
+    vi.mocked(finalizeProjectCatalogEvaluation).mockResolvedValue({
+      ...catalogEntry,
+      action: 'onboard',
+    } as any)
+    vi.mocked(onboardProject).mockResolvedValue({
+      outcome: 'error',
+      segmentId: null,
+      error: 'onboarding pipeline exploded',
+    })
+
+    await runOnboardProjectCommand({
+      repoUrl: catalogEntry.repoUrl,
+      options: mockOptions(),
+      responseUrl: 'https://hooks.slack.com/response',
+      actorId: 'U123',
+    })
+
+    expect(updateProjectCatalog).toHaveBeenCalledWith(
+      expect.anything(),
+      catalogEntry.id,
+      expect.objectContaining({
+        action: 'error',
+        onboardingError: 'onboarding pipeline exploded',
+        onboardedAt: null,
+      }),
+    )
+    expect(lastSlackText()).toContain('onboarding failed')
   })
 })

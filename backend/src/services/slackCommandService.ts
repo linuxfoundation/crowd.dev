@@ -15,7 +15,11 @@ import {
   SlackParameterParseResult,
 } from '../types/slackTypes'
 import { IServiceOptions } from './IServiceOptions'
-import { runOnboardProjectCommand, textMessage } from './slack/onboardProjectCommand'
+import {
+  postToResponseUrl,
+  runOnboardProjectCommand,
+  textMessage,
+} from './slack/onboardProjectCommand'
 
 export default class SlackCommandService {
   private readonly commands: SlackCommandDefinition[]
@@ -103,6 +107,11 @@ export default class SlackCommandService {
       actorId: context.userId ?? 'unknown-slack-user',
     }).catch((err) => {
       this.options.log.error(err, 'Unhandled error running onboard-project command.')
+      postToResponseUrl(
+        context.responseUrl,
+        textMessage(`:no_entry: \`${repoUrl}\` failed with an unexpected error.`),
+        this.options.log,
+      )
     })
 
     return textMessage(

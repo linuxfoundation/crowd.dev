@@ -3,13 +3,19 @@ import { randomUUID } from 'crypto'
 import axios from 'axios'
 import { Message, Section, SlackMessageDto } from 'slack-block-builder'
 
-import { canonicalizeGithubRepoUrl, getErrorMessage } from '@crowd/common'
+import { canonicalizeGithubRepoUrl, canonicalizeRepoUrl, getErrorMessage } from '@crowd/common'
 import {
+  claimProjectCatalogForOnboarding,
+  claimProjectCatalogForSlackEvaluation,
+  computeExclusivelyLfOwners,
   deriveProjectIdentityFromRepoUrl,
   finalizeProjectCatalogEvaluation,
-  findProjectCatalogById,
+  findGithubOwnersWithLfProjects,
+  findGithubOwnersWithNonLfRepos,
+  findRepoUrlsInCdp,
+  markProjectCatalogPreCheckSkipped,
+  resolvePrecheckSkipReason,
   updateProjectCatalog,
-  upsertProjectCatalogManualAction,
 } from '@crowd/data-access-layer'
 import { onboardProject } from '@crowd/project-onboarding'
 
@@ -17,7 +23,7 @@ import { createDailyProjectCatalogCap } from '../../api/public/v1/projectCatalog
 import { createDailyLlmCap } from '../../api/public/v1/projectEvaluation/dailyLlmCap'
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
 import { createDailyProjectOnboardingCap } from '../../api/public/v1/projectOnboarding/dailyRequestCap'
-import { optionsQx } from '../../database/sequelizeQueryExecutor'
+import { optionsBgQx } from '../../database/sequelizeQueryExecutor'
 import { IServiceOptions } from '../IServiceOptions'
 
 const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
@@ -57,7 +63,9 @@ export async function runOnboardProjectCommand({
   actorId: string
 }): Promise<void> {
   const { log } = options
-  const qx = optionsQx(options)
+  // Runs detached after the Slack ack (fire-and-forget) — never bind to a
+  // request-scoped transaction that may already be committed/rolled back.
+  const qx = optionsBgQx(options)
   const send = (message: SlackMessageDto) => postToResponseUrl(responseUrl, message, log)
 
   const repoUrl = canonicalizeGithubRepoUrl(rawRepoUrl)
@@ -79,10 +87,9 @@ export async function runOnboardProjectCommand({
     return
   }
 
-  const catalogEntry = await upsertProjectCatalogManualAction(qx, {
+  const catalogEntry = await claimProjectCatalogForSlackEvaluation(qx, {
     ...identity,
     repoUrl,
-    action: 'evaluate',
     provenance: 'slack-bot',
   })
 
@@ -92,6 +99,24 @@ export async function runOnboardProjectCommand({
         `\`${repoUrl}\` is already onboarded, or is currently being onboarded/evaluated.`,
       ),
     )
+    return
+  }
+
+  const canonical = canonicalizeRepoUrl(repoUrl)
+  const owners = canonical?.isGithub ? [canonical.owner] : []
+  const [reposInCdp, lfOwners, nonLfOwners] = await Promise.all([
+    findRepoUrlsInCdp(qx, [repoUrl]),
+    findGithubOwnersWithLfProjects(qx, owners),
+    findGithubOwnersWithNonLfRepos(qx, owners),
+  ])
+  const precheckSkipReason = resolvePrecheckSkipReason(canonical, {
+    reposInCdp,
+    exclusivelyLfOwners: computeExclusivelyLfOwners(lfOwners, nonLfOwners),
+  })
+
+  if (precheckSkipReason) {
+    await markProjectCatalogPreCheckSkipped(qx, catalogEntry.id, precheckSkipReason)
+    await send(textMessage(`\`${repoUrl}\` was skipped: ${precheckSkipReason}`))
     return
   }
 
@@ -115,6 +140,13 @@ export async function runOnboardProjectCommand({
       () => reserveDailyLlmCall(actorId),
     )
   } catch (err) {
+    // Reject leaves the row at action='evaluate' unless we terminate it here — otherwise
+    // the nightly worker re-evaluates it later, bypassing this actor's daily LLM cap.
+    await markProjectCatalogPreCheckSkipped(
+      qx,
+      catalogEntry.id,
+      `slack-bot: rejected before evaluation - ${getErrorMessage(err)}`,
+    )
     await send(textMessage(`:no_entry: ${getErrorMessage(err)}`))
     return
   }
@@ -154,10 +186,11 @@ export async function runOnboardProjectCommand({
     return
   }
 
-  // Mirrors the guard in automatic_onboarding_worker's onboardAndUpdateProject — the nightly
-  // worker polls action='onboard' rows too and could be racing us for the same row.
-  const fresh = await findProjectCatalogById(qx, catalogEntry.id)
-  if (fresh?.onboardedAt) {
+  // Atomically claims the row by stamping onboardedAt before calling onboardProject — the
+  // nightly automatic_onboarding_worker polls action='onboard' rows too and treats any
+  // non-null onboardedAt as already handled, so this closes the race without touching it.
+  const claimed = await claimProjectCatalogForOnboarding(qx, catalogEntry.id)
+  if (!claimed) {
     await send(textMessage(`\`${repoUrl}\` was just onboarded by the automatic onboarding job.`))
     return
   }
@@ -165,6 +198,11 @@ export async function runOnboardProjectCommand({
   try {
     reserveDailyProjectOnboardingRequest(actorId)
   } catch (err) {
+    await updateProjectCatalog(qx, catalogEntry.id, {
+      action: 'error',
+      onboardingError: getErrorMessage(err),
+      onboardedAt: null,
+    })
     await send(
       textMessage(
         `\`${repoUrl}\` passed evaluation, but onboarding is currently rate-limited: ${getErrorMessage(err)}`,
@@ -181,6 +219,11 @@ export async function runOnboardProjectCommand({
   })
 
   if (onboardingResult.outcome === 'error') {
+    await updateProjectCatalog(qx, catalogEntry.id, {
+      action: 'error',
+      onboardingError: onboardingResult.error ?? 'unknown error',
+      onboardedAt: null,
+    })
     await send(
       textMessage(
         `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
@@ -191,7 +234,6 @@ export async function runOnboardProjectCommand({
 
   await updateProjectCatalog(qx, catalogEntry.id, {
     action: 'onboarded',
-    onboardedAt: new Date().toISOString(),
     onboardingError: null,
   })
 
