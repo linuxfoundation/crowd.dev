@@ -111,7 +111,7 @@ const job: IJobDefinition = {
         text: [
           `📦 Repos tracked: *${reposTracked}*`,
           `✅ Repos not confirmed gone: *${notGoneRepoCount}*`,
-          `🚫 Repos gone from GitHub (404 / access blocked), not counted as gaps: *${goneRepoCount}*`,
+          `🚫 Repos gone from GitHub (404 / access blocked / org IP allow list), not counted as gaps: *${goneRepoCount}*`,
           `🆕 Repos awaiting first snapshot (no data yet): *${neverCapturedRepoIds.length}*`,
           `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
           `📉 Total repos GitHub gave up retrying: *${totalDeadLettered}*`,
