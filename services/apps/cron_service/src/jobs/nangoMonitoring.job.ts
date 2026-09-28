@@ -40,6 +40,8 @@ import { IJobDefinition } from '../types'
 
 const nangoEnv = IS_PROD_ENV ? 'prod' : IS_DEV_ENV ? 'local' : 'dev'
 
+const STATUS_CHECK_CONCURRENCY = 10
+
 type NangoIntegrationDataExtended = INangoIntegrationData & { connectionId: string }
 
 const job: IJobDefinition = {
@@ -185,11 +187,11 @@ const job: IJobDefinition = {
     }
 
     ctx.log.info(
-      `Fetching status for ${statusCheckOperations.length} Nango connections (5 at a time)...`,
+      `Fetching status for ${statusCheckOperations.length} Nango connections (${STATUS_CHECK_CONCURRENCY} at a time)...`,
     )
 
-    // Execute status checks with concurrency limit of 10
-    const limiter = new ConcurrencyLimiter(10)
+    // Execute status checks with concurrency limit
+    const limiter = new ConcurrencyLimiter(STATUS_CHECK_CONCURRENCY)
     let completedChecks = 0
 
     limiter.setOnJobComplete(() => {
