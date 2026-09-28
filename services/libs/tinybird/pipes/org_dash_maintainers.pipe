@@ -35,7 +35,8 @@ SQL >
                         required=True,
                     )
                 }}
-                AND m.organizationId NOT IN (SELECT id FROM organizations FINAL WHERE isAffiliationBlocked = 1)
+                AND m.organizationId
+                NOT IN (SELECT id FROM organizations FINAL WHERE isAffiliationBlocked = 1)
             ) as "orgMaintainersCount"
         FROM generate_timeseries ds
         CROSS JOIN org_dash_maintainers_roles_filtered m

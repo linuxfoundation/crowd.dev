@@ -29,8 +29,7 @@ SQL >
         organizations_code_contributors
         ON organizations_populated_slug.id = organizations_code_contributors.organizationId
     where
-        1 = 1
-        AND organizations_populated_slug.isAffiliationBlocked = 0
+        1 = 1 AND organizations_populated_slug.isAffiliationBlocked = 0
         {% if defined(slug) %}
             AND organizations_populated_slug.slug
             = {{ String(slug, description="Filter organization by slug", required=False) }}
