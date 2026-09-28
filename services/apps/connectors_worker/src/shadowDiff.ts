@@ -15,7 +15,18 @@ export const PASS_THROUGH_FIELDS = [
 const LOW_SEVERITY_TYPES = new Set(['pull_request-review-requested'])
 const MAX_FIELD_VALUE_LENGTH = 500
 
-const SNAPSHOT_AT_EXTRACTION_ATTRIBUTE_FIELDS = new Set(['additions', 'deletions', 'changedFiles'])
+// these fields are read off the parent PR at capture time: shadow snapshots them once per
+// activity, Nango re-embeds the PR's current value on every resync, so they drift whenever
+// the PR changes afterward — an architecture difference, not a data gap (see #4692/#4693).
+const SNAPSHOT_AT_EXTRACTION_ATTRIBUTE_FIELDS = new Set([
+  'additions',
+  'deletions',
+  'changedFiles',
+  'state',
+  'labels',
+  'authorAssociation',
+])
+const SNAPSHOT_AT_EXTRACTION_TOP_LEVEL_FIELDS = new Set(['title'])
 const TYPES_WITH_SNAPSHOT_ATTRIBUTES = new Set([
   'pull_request-opened',
   'pull_request-closed',
@@ -24,6 +35,7 @@ const TYPES_WITH_SNAPSHOT_ATTRIBUTES = new Set([
   'pull_request-assigned',
   'pull_request-merged',
   'pull_request-review-thread-comment',
+  'pull_request-comment',
 ])
 
 export type ShadowDiffSeverity = 'high' | 'low'
@@ -82,6 +94,12 @@ function withoutSnapshotAttributeFields(attributes: unknown, type: string): unkn
   )
 }
 
+function isSnapshotDriftTopLevelField(field: string, type: string): boolean {
+  return (
+    TYPES_WITH_SNAPSHOT_ATTRIBUTES.has(type) && SNAPSHOT_AT_EXTRACTION_TOP_LEVEL_FIELDS.has(field)
+  )
+}
+
 function comparePassThroughFields(
   shadowData: Record<string, unknown>,
   nangoData: Record<string, unknown>,
@@ -89,6 +107,9 @@ function comparePassThroughFields(
 ): IFieldMismatch[] {
   const mismatches: IFieldMismatch[] = []
   for (const field of PASS_THROUGH_FIELDS) {
+    if (isSnapshotDriftTopLevelField(field, type)) {
+      continue
+    }
     const shadowValue =
       field === 'attributes'
         ? withoutSnapshotAttributeFields(shadowData[field], type)

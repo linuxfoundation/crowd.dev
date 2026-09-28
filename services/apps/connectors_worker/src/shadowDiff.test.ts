@@ -165,14 +165,14 @@ describe('diffShadowAgainstNango', () => {
       {
         sourceId: 'pr-1',
         type: 'pull_request-opened',
-        data: { attributes: { additions: 10, state: 'open' } },
+        data: { attributes: { additions: 10, isDraft: true } },
       },
     ]
     const nango: IDiffableRecord[] = [
       {
         sourceId: 'pr-1',
         type: 'pull_request-opened',
-        data: { attributes: { additions: 15, state: 'closed' } },
+        data: { attributes: { additions: 15, isDraft: false } },
       },
     ]
 
@@ -185,8 +185,77 @@ describe('diffShadowAgainstNango', () => {
         kind: 'field_mismatch',
         severity: 'high',
         fields: [
-          { field: 'attributes', shadowValue: { state: 'open' }, nangoValue: { state: 'closed' } },
+          {
+            field: 'attributes',
+            shadowValue: { isDraft: true },
+            nangoValue: { isDraft: false },
+          },
         ],
+      },
+    ])
+  })
+
+  it('ignores state/labels/authorAssociation drift on snapshot-covered attributes', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { state: 'OPEN', labels: ['a'], authorAssociation: 'NONE' } },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'pr-1',
+        type: 'pull_request-opened',
+        data: { attributes: { state: 'CLOSED', labels: [], authorAssociation: 'MEMBER' } },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('ignores title and snapshot attribute drift on pull request comments', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'comment-1',
+        type: 'pull_request-comment',
+        data: {
+          title: 'old title',
+          attributes: { state: 'OPEN', additions: 10, labels: ['a'] },
+        },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'comment-1',
+        type: 'pull_request-comment',
+        data: {
+          title: 'new title',
+          attributes: { state: 'CLOSED', additions: 15, labels: [] },
+        },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('still reports a body mismatch on pull request comments', () => {
+    const shadow: IDiffableRecord[] = [
+      { sourceId: 'comment-1', type: 'pull_request-comment', data: { body: 'old body' } },
+    ]
+    const nango: IDiffableRecord[] = [
+      { sourceId: 'comment-1', type: 'pull_request-comment', data: { body: 'new body' } },
+    ]
+
+    const result = diffShadowAgainstNango(shadow, nango)
+
+    expect(result).toEqual([
+      {
+        sourceId: 'comment-1',
+        type: 'pull_request-comment',
+        kind: 'field_mismatch',
+        severity: 'high',
+        fields: [{ field: 'body', shadowValue: 'old body', nangoValue: 'new body' }],
       },
     ])
   })
