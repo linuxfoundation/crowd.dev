@@ -313,23 +313,23 @@ async function assertOk(
         body: body.slice(0, 500),
       },
       isIpAllowlistBlock
-        ? 'GitHub 403, org IP allow list is blocking this installation'
+        ? `GitHub ${response.status}, org IP allow list is blocking this installation`
         : isRepoAccessBlocked
-          ? 'GitHub 403, repo access blocked by GitHub (e.g. ToS takedown)'
-          : 'GitHub 403 with no rate-limit signal, treating as auth/permission failure',
+          ? `GitHub ${response.status}, repo access blocked by GitHub (e.g. ToS takedown)`
+          : `GitHub ${response.status} with no rate-limit signal, treating as auth/permission failure`,
     )
     if (isIpAllowlistBlock) {
       throw new GithubIpAllowlistError(
-        `GitHub org IP allow list blocked (403) fetching ${what} for ${owner}/${name}`,
+        `GitHub org IP allow list blocked (${response.status}) fetching ${what} for ${owner}/${name}`,
       )
     }
     if (isRepoAccessBlocked) {
       throw new GithubRepoBlockedError(
-        `GitHub blocked repo access (403) fetching ${what} for ${owner}/${name}`,
+        `GitHub blocked repo access (${response.status}) fetching ${what} for ${owner}/${name}`,
       )
     }
     throw new GithubForbiddenError(
-      `GitHub auth failure (403) fetching ${what} for ${owner}/${name}`,
+      `GitHub auth failure (${response.status}) fetching ${what} for ${owner}/${name}`,
     )
   }
   throw new Error(`GitHub API error ${response.status} fetching ${what} for ${owner}/${name}`)
