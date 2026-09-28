@@ -1,3 +1,4 @@
+import { canonicalizeGithubRepoUrl } from '@crowd/common'
 import type {
   DocDiscoveryConfidence,
   DocDiscoveryMethod,
@@ -27,6 +28,8 @@ export interface IDiscoveryContext {
   slug: string
   website: string | null
   websiteShared: boolean
+  // shortcut: optional so existing ctx literals stay valid. revisit: when a strategy needs it.
+  sharedDocsUrls?: ReadonlySet<string>
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
@@ -45,6 +48,7 @@ export const STRATEGY_CONFIDENCE: Record<NonOverrideMethod, DocDiscoveryConfiden
   'github-homepage': 'medium',
   serp: 'low',
   'project-website': 'low',
+  'repo-url': 'low',
 }
 
 export const DOCS_KEYWORDS =
@@ -309,6 +313,13 @@ export const projectWebsite: DiscoveryStrategy = async (ctx) => {
   }
 }
 
+// Last resort for repo-only projects; ranking keeps it below every other live candidate.
+export const repoUrl: DiscoveryStrategy = async (ctx) => {
+  const repo = primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name })
+  const url = canonicalizeGithubRepoUrl(repo)
+  return url ? [candidate(url, 'repo-url', true)] : []
+}
+
 export const STRATEGIES: DiscoveryStrategy[] = [
   llmsTxtProbe,
   docsSubdomain,
@@ -317,6 +328,7 @@ export const STRATEGIES: DiscoveryStrategy[] = [
   readmeScrape,
   githubHomepage,
   projectWebsite,
+  repoUrl,
 ]
 
 export const serpStrategy: DiscoveryStrategy = async (ctx) => {

@@ -72,3 +72,21 @@ export async function findProjectDocDiscovery(
     { projectId },
   )
 }
+
+// Docs URLs other active projects already use.
+export async function findSharedDocsUrls(
+  qx: QueryExecutor,
+  excludeProjectId: string,
+): Promise<string[]> {
+  const rows: { docsUrl: string }[] = await qx.select(
+    `
+    SELECT DISTINCT d."docsUrl"
+    FROM "projectDocDiscoveries" d
+    JOIN "insightsProjects" p ON p."id" = d."projectId" AND p."enabled" AND p."deletedAt" IS NULL
+    WHERE d."docsUrl" IS NOT NULL
+      AND d."projectId" <> $(excludeProjectId)
+    `,
+    { excludeProjectId },
+  )
+  return rows.map((r) => r.docsUrl)
+}

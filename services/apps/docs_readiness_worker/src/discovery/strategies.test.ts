@@ -9,6 +9,7 @@ import {
   packageManifest,
   projectWebsite,
   readmeScrape,
+  repoUrl,
   serpStrategy,
 } from './strategies'
 
@@ -1102,5 +1103,83 @@ describe('serpStrategy', () => {
         serpApiKey: 'key123',
       }),
     ).toEqual([])
+  })
+})
+
+describe('repoUrl', () => {
+  const base = {
+    name: 'Marquez',
+    slug: 'marquez',
+    website: null,
+    websiteShared: false,
+    githubToken: null,
+    serpApiKey: null,
+  }
+
+  it('returns the canonical primary GitHub repo as a live low-confidence candidate', async () => {
+    const result = await repoUrl({
+      ...base,
+      repos: [
+        { url: 'https://github.com/MarquezProject/marquez.git', starCount: 10 },
+        { url: 'https://github.com/MarquezProject/other', starCount: 500 },
+      ],
+    })
+
+    expect(result).toEqual([
+      {
+        url: 'https://github.com/marquezproject/marquez',
+        method: 'repo-url',
+        confidence: 'low',
+        livenessOk: true,
+      },
+    ])
+  })
+
+  it('returns nothing without a GitHub repo', async () => {
+    expect(await repoUrl({ ...base, repos: [] })).toEqual([])
+    expect(
+      await repoUrl({ ...base, repos: [{ url: 'https://gitlab.com/org/repo', starCount: null }] }),
+    ).toEqual([])
+  })
+})
+
+describe('discoverDocs repo-url last resort', () => {
+  const ctx = {
+    name: 'Solo',
+    slug: 'solo',
+    website: null,
+    websiteShared: false,
+    repos: [{ url: 'https://github.com/acme/solo', starCount: 1 }],
+    githubToken: null,
+    serpApiKey: null,
+  }
+
+  it('resolves a repo-only project to its repo url with method repo-url', async () => {
+    throwingFetch()
+
+    const result = await discoverDocs(ctx)
+
+    expect(result.docsUrl).toBe('https://github.com/acme/solo')
+    expect(result.discoveryMethod).toBe('repo-url')
+    expect(result.confidence).toBe('low')
+  })
+
+  it('does not stop SERP from running, since a repo page is not a docs signal', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://serpapi.com/search.json',
+        () =>
+          Response.json({
+            organic_results: [{ link: 'https://docs.solo.dev', title: 'Solo documentation' }],
+          }),
+      ],
+      ['https://docs.solo.dev', html],
+    ])
+
+    const result = await discoverDocs({ ...ctx, serpApiKey: 'key' })
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(result.docsUrl).toBe('https://docs.solo.dev')
+    expect(result.discoveryMethod).toBe('serp')
   })
 })

@@ -51,6 +51,11 @@ export async function scoreProject(
     )
   }
 
+  // afdocs resolves github.com/llms.txt for a repo page and would score GitHub's own files.
+  if (resolved.discoveryMethod === 'repo-url') {
+    throw ApplicationFailure.nonRetryable('repo-only')
+  }
+
   const readerQx = pgpQx(svc.postgres.reader.connection())
   const project = await findProjectForDocsDiscovery(readerQx, projectId)
   if (!project) {

@@ -51,13 +51,12 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])
       : baseCandidates
 
-  // github.com is a shared host, not a project domain — using it for affinity would wrongly
-  // treat GitHub's own docs as on-domain when a project's website is just its repo URL.
+  // GitHub and shared websites are not this project's domain, so they give no affinity anchor.
   const websiteDomain = ctx.website ? normalizedDomain(ctx.website) : null
   const githubWebsite = !!ctx.website && isGithubWebsite(ctx.website)
-  const projectDomain = githubWebsite ? null : websiteDomain
+  const projectDomain = githubWebsite || ctx.websiteShared ? null : websiteDomain
   const projectNameHint = ctx.website && githubWebsite ? repoNameAnchor(ctx.website) : null
-  const winner = rankCandidates(allCandidates, projectDomain, projectNameHint)
+  const winner = rankCandidates(allCandidates, projectDomain, projectNameHint, ctx.sharedDocsUrls)
 
   return {
     docsUrl: winner?.url ?? null,

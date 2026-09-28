@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { resolveDocsUrl } from './discovery'
 
 const mocks = vi.hoisted(() => ({
   findActiveProjectDocOverride: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
+  findSharedDocsUrls: vi.fn(),
   findEnabledRepositoriesForProject: vi.fn(),
   upsertProjectDocDiscovery: vi.fn(),
   getGithubInstallationToken: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 vi.mock('@crowd/data-access-layer', () => ({
   findActiveProjectDocOverride: mocks.findActiveProjectDocOverride,
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
+  findSharedDocsUrls: mocks.findSharedDocsUrls,
   findEnabledRepositoriesForProject: mocks.findEnabledRepositoriesForProject,
   upsertProjectDocDiscovery: mocks.upsertProjectDocDiscovery,
 }))
@@ -38,6 +40,10 @@ vi.mock('@crowd/common_services', () => ({
 vi.mock('../discovery', () => ({
   discoverDocs: mocks.discoverDocs,
 }))
+
+beforeEach(() => {
+  mocks.findSharedDocsUrls.mockResolvedValue([])
+})
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -103,6 +109,7 @@ describe('resolveDocsUrl', () => {
       website: 'https://example.com',
       websiteShared: false,
       repos: [],
+      sharedDocsUrls: new Set(),
       githubToken: null,
       serpApiKey: null,
     })
@@ -153,9 +160,35 @@ describe('resolveDocsUrl', () => {
       website: null,
       websiteShared: false,
       repos: [{ url: 'https://github.com/org/repo', starCount: 42 }],
+      sharedDocsUrls: new Set(),
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
     })
+  })
+
+  test('passes docs URLs used by other projects as sharedDocsUrls', async () => {
+    mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: null,
+      websiteSharedCount: 0,
+    })
+    mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+    mocks.findSharedDocsUrls.mockResolvedValue(['https://foundation.org', 'https://www.aswf.io/'])
+    mocks.discoverDocs.mockResolvedValue({
+      docsUrl: null,
+      discoveryMethod: null,
+      confidence: null,
+      allCandidates: [],
+    })
+
+    await resolveDocsUrl('project-1')
+
+    expect(mocks.findSharedDocsUrls).toHaveBeenCalledWith({}, 'project-1')
+    const passed = mocks.discoverDocs.mock.calls[0][0].sharedDocsUrls as Set<string>
+    expect([...passed]).toEqual(['https://foundation.org', 'https://www.aswf.io/'])
   })
 
   test('rejects if discoverDocs exceeds the discovery timeout, without upserting anything', async () => {
