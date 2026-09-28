@@ -301,7 +301,8 @@ async function assertOk(
     }
     // Neither rate-limit wording nor a retry-after header - an IP allow list block, a ToS-style access block, or a real 403.
     const isIpAllowlistBlock = bodyLower.includes('ip allow list')
-    const isRepoAccessBlocked = bodyLower.includes('repository access blocked')
+    const isRepoAccessBlocked =
+      response.status === 451 || bodyLower.includes('repository access blocked')
     log.warn(
       {
         owner,
