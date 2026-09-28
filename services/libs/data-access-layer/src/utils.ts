@@ -215,8 +215,7 @@ export function truncateErrorMessage(message: string | null): string | null {
 }
 
 // Chunks an id list and runs fn over each batch sequentially, concatenating the results -
-// keeps a single IN-list bounded as the eligible id count grows, without duplicating the
-// same slice-and-concat loop at every call site.
+// keeps a single IN-list bounded as the eligible id count grows.
 export async function batchAll<T, R>(
   ids: T[],
   batchSize: number,

@@ -299,9 +299,7 @@ async function assertOk(
     if (bodyLower.includes('rate limit')) {
       throw new Error(`GitHub rate limit hit fetching ${what} for ${owner}/${name}`)
     }
-    // Neither rate-limit wording nor a retry-after header - either an org IP allow list block
-    // (permanent policy), a GitHub-side access block (e.g. ToS takedown), or a real
-    // installation-permission 403.
+    // Neither rate-limit wording nor a retry-after header - an IP allow list block, a ToS-style access block, or a real 403.
     const isIpAllowlistBlock = bodyLower.includes('ip allow list')
     const isRepoAccessBlocked = bodyLower.includes('repository access blocked')
     log.warn(

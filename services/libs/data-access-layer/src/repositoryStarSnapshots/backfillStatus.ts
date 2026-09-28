@@ -101,10 +101,8 @@ export async function getDeadLetterReportCursor(qx: QueryExecutor): Promise<stri
   return cursor
 }
 
-// Repos whose last recorded failure is a permanent external condition (repo gone, access
-// blocked, org IP allow list) - not gated on dead-lettered status, so a repo counts as gone
-// from its first such failure. A later success (recordStarBackfillSuccess) clears
-// lastErrorClass, so a repo that comes back rejoins the gap check automatically.
+// Repos whose last recorded failure is a permanent external condition (gone, blocked, IP
+// allow list) - not gated on dead-lettered status, so a repo counts as gone from its first such failure.
 export async function findStarBackfillNonActionableRepoIds(qx: QueryExecutor): Promise<string[]> {
   const rows: { repositoryId: string }[] = await qx.select(
     `

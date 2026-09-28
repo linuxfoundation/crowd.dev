@@ -66,11 +66,12 @@ const job: IJobDefinition = {
       .map((repo) => repo.repositoryId)
       .filter((repositoryId) => !goneRepoIds.has(repositoryId))
     const goneRepoCount = allRepos.filter((repo) => goneRepoIds.has(repo.repositoryId)).length
-    const accessibleRepoCount = reposTracked - goneRepoCount
+    // Not confirmed gone, not "confirmed accessible" - a repo with e.g. an auth/permission
+    // failure is counted here too, since we only track the gone/blocked/allowlisted classes.
+    const notGoneRepoCount = reposTracked - goneRepoCount
 
-    // Zero rows in repositoryStarSnapshots yet - a brand new repo waiting on its first capture,
-    // not a "gap" (nothing to diff against). Excludes gone repos: one that's both new and
-    // unreachable will never get captured, so there's no point reporting it as "awaiting".
+    // Zero rows in repositoryStarSnapshots yet - a brand new repo waiting on its first capture.
+    // Excludes gone repos: one that's both new and unreachable will never get captured.
     const neverCapturedIds = new Set(await findAllRepoIdsWithoutStarSnapshots(qx, allRepoIds))
     const neverCapturedRepoIds = allRepoIds.filter((id) => neverCapturedIds.has(id))
     // Only repos that already have at least one row go through the gap-day diff below - the
@@ -109,7 +110,7 @@ const job: IJobDefinition = {
         title: 'Star Snapshot Health Summary',
         text: [
           `📦 Repos tracked: *${reposTracked}*`,
-          `✅ Repos accessible: *${accessibleRepoCount}*`,
+          `✅ Repos not confirmed gone: *${notGoneRepoCount}*`,
           `🚫 Repos gone from GitHub (404 / access blocked), not counted as gaps: *${goneRepoCount}*`,
           `🆕 Repos awaiting first snapshot (no data yet): *${neverCapturedRepoIds.length}*`,
           `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
@@ -165,9 +166,8 @@ const job: IJobDefinition = {
       })
     }
 
-    // A repo added today (daysSinceAdded 0) hasn't missed a capture cycle yet - only one
-    // that's gone at least a full day without its first snapshot should raise a warning.
-    const overdueNeverCapturedCount = daysSinceAdded.filter((r) => r.daysSinceAdded > 1).length
+    // A repo added today (daysSinceAdded 0) hasn't missed a capture cycle yet.
+    const overdueNeverCapturedCount = daysSinceAdded.filter((r) => r.daysSinceAdded > 0).length
 
     const persona =
       newlyDeadLettered.length > 0 ||

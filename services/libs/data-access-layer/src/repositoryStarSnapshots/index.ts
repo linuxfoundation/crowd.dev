@@ -179,9 +179,8 @@ export interface IRepoDaysSinceAdded {
   daysSinceAdded: number
 }
 
-// For repos confirmed to have zero snapshot rows (findAllRepoIdsWithoutStarSnapshots) - there's
-// nothing in repositoryStarSnapshots to diff against yet, so this uses the repo's own createdAt
-// instead of the gap-days math in findStarSnapshotGapDaysForRepos.
+// For repos confirmed to have zero snapshot rows - nothing to diff against yet, so this uses
+// the repo's own createdAt instead of the gap-days math in findStarSnapshotGapDaysForRepos.
 export async function findDaysSinceAddedForRepos(
   qx: QueryExecutor,
   repositoryIds: string[],
