@@ -9,11 +9,12 @@ DESCRIPTION >
     count (stars minus unstars), so a bucket where unstars outpaced new stars nets negative. Real,
     not a bug. GitLab's own contribution to the same bucket can't go negative (it's an event
     tally), but the combined number can.
-    - **Backfill-inflation caveat (same as the already-reworked sibling star pipes)**: the very
-    first bucket where a repo's snapshot history exists shows that repo's *entire* historical
-    total as "new", since there's no earlier snapshot to diff against. Repos whose star-snapshot
-    backfill hasn't reached back to the start of the requested range will show an inflated
-    first-seen bucket.
+    - **First bucket baselines against `startDate`, not zero**: the bucketed diff can't see any
+    row before the requested range, so the first bucket's "previous" total is computed
+    separately (`stars_count_baseline`) as the real cumulative total as of `startDate`, the same
+    way `stars_count_summary`'s `github_at_start`/`gitlab_new` already do for the no-granularity
+    case. Without this, the first bucket in ANY range would show the repo's entire pre-range
+    history as "new" regardless of backfill completeness (CM-1819).
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
     `stars_cumulative_count.pipe` / `activities_filtered.pipe`. `bucketId` is required alongside
     `collectionSlug` for the same reason `stars_cumulative_count.pipe` needs it - both collection
@@ -81,11 +82,68 @@ SQL >
             {% end %}
     {% end %}
 
+NODE stars_count_baseline
+DESCRIPTION >
+    Scalar: cumulative stars total as of `startDate`, used as the first bucket's baseline in
+    `stars_count_bucketed` instead of a hardcoded 0 - mirrors `stars_count_summary`'s
+    `github_at_start`/`gitlab_new` logic (github: latest snapshot captured at or before
+    `startDate`; gitlab: event count up to and including `startDate`). 0 when `startDate` isn't
+    given - an open-ended range legitimately has nothing before its first bucket.
+
+SQL >
+    %
+    {% if defined(granularity) and defined(startDate) %}
+        WITH
+            github_before AS (
+                SELECT sum(starCount) AS total
+                FROM
+                    (
+                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
+                        FROM repositoryStarSnapshots
+                        WHERE
+                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
+                            AND capturedAt
+                            <= {{ DateTime(startDate, description="Range start", required=False) }}
+                        GROUP BY repositoryId
+                    )
+            ),
+            gitlab_before AS (
+                SELECT count() AS c
+                FROM
+                    {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
+                    {% else %} activityRelations_bucket_routing
+                    {% end %} as a
+                WHERE
+                    {% if defined(collectionSlug) %}
+                        {% if defined(bucketId) %}
+                            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+                            AND a.collectionSlug = {{ String(collectionSlug) }}
+                        {% else %} 1 = 0
+                        {% end %}
+                    {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+                    {% end %}
+                    AND type = 'star'
+                    AND platform != 'github'
+                    AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+                    {% if defined(repos) %}
+                        AND channel IN (SELECT channel FROM repos_to_channels)
+                    {% end %}
+                    AND timestamp
+                    <= {{ DateTime(startDate, description="Range start", required=False) }}
+            )
+        SELECT
+            toInt64(coalesce((SELECT total FROM github_before), 0))
+            + toInt64((SELECT c FROM gitlab_before)) AS baseline
+    {% else %} SELECT 0 AS baseline
+    {% end %}
+
 NODE stars_count_bucketed
 DESCRIPTION >
     Granularity mode: diffs consecutive buckets of `stars_cumulative_count`'s running total - "new
     stars" in a bucket is just that bucket's cumulative total minus the previous bucket's. First
-    bucket in range diffs against 0 (see backfill-inflation caveat above).
+    bucket in range diffs against `stars_count_baseline` (see above), not 0 - passed as
+    `lagInFrame`'s own `default` argument, since ClickHouse's `lagInFrame` already returns 0 (not
+    NULL) for a missing prior row, so a `coalesce()` around it never fires.
 
 SQL >
     %
@@ -93,10 +151,14 @@ SQL >
         SELECT
             startDate,
             endDate,
-            toInt64(cumulativeActivityCount) - toInt64(
-                coalesce(lagInFrame(cumulativeActivityCount) OVER (ORDER BY startDate ASC), 0)
+            cum - lagInFrame(cum, 1, coalesce((SELECT baseline FROM stars_count_baseline), 0)) OVER (
+                ORDER BY startDate ASC
             ) AS activityCount
-        FROM stars_cumulative_count
+        FROM
+            (
+                SELECT startDate, endDate, toInt64(cumulativeActivityCount) AS cum
+                FROM stars_cumulative_count
+            )
         ORDER BY startDate ASC
     {% else %} SELECT toDate(now()) AS startDate, toDate(now()) AS endDate, 0 AS activityCount
     {% end %}
@@ -105,9 +167,8 @@ NODE stars_count_summary
 DESCRIPTION >
     No-granularity mode: total "new stars" across (startDate, endDate] - a star captured/counted
     exactly at startDate belongs to the prior period's baseline, not this one. GitHub = total as
-    of endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - same
-    backfill-inflation caveat as the bucketed mode, can also go negative on net unstars). GitLab =
-    plain per-event range count, `platform != 'github'`.
+    of endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - can go
+    negative on net unstars). GitLab = plain per-event range count, `platform != 'github'`.
 
 SQL >
     %
