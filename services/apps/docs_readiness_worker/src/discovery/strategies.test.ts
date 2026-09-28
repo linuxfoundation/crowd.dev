@@ -20,7 +20,11 @@ function routeFetch(routes: [string, () => Response][]) {
     if (!match) {
       return Promise.reject(new Error(`no route for ${url}`))
     }
-    return Promise.resolve(match[1]())
+    const response = match[1]()
+    if (!response.url) {
+      Object.defineProperty(response, 'url', { value: url })
+    }
+    return Promise.resolve(response)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
@@ -34,6 +38,11 @@ function throwingFetch() {
 
 const html = () =>
   new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } })
+const htmlAt = (finalUrl: string) => {
+  const response = html()
+  Object.defineProperty(response, 'url', { value: finalUrl })
+  return response
+}
 const notFound = () => new Response('not found', { status: 404 })
 
 afterEach(() => {
@@ -484,6 +493,72 @@ describe('discoverDocs with a shared website', () => {
   })
 })
 
+describe('llmsTxtProbe registrable domain', () => {
+  it('probes docs.<registrable domain>/llms.txt for a subdomain website', async () => {
+    const fetchMock = routeFetch([
+      ['https://docs.opendaylight.org/llms.txt', () => new Response('x'.repeat(60))],
+    ])
+
+    const result = await llmsTxtProbe({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://wiki.opendaylight.org/view/Main',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result.map((c) => c.url)).toEqual(['https://docs.opendaylight.org'])
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://wiki.opendaylight.org/view/Main/llms.txt',
+      'https://docs.opendaylight.org/llms.txt',
+    ])
+  })
+
+  it('falls back to the website own host, not the registrable root', async () => {
+    const fetchMock = routeFetch([['https://', notFound]])
+
+    await llmsTxtProbe({
+      name: 'infiniedge',
+      slug: 'infiniedge',
+      website: 'https://infiniedge.lfedge.org',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://docs.infiniedge.lfedge.org/llms.txt',
+      'https://infiniedge.lfedge.org/llms.txt',
+    ])
+  })
+
+  it('ignores an llms.txt served after a cross-domain redirect', async () => {
+    routeFetch([
+      [
+        'https://docs.example.com/llms.txt',
+        () => {
+          const response = new Response('x'.repeat(60))
+          Object.defineProperty(response, 'url', { value: 'https://spam-casino.net/llms.txt' })
+          return response
+        },
+      ],
+    ])
+
+    expect(
+      await llmsTxtProbe({
+        name: 'proj',
+        slug: 'proj',
+        website: 'https://example.com',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+})
+
 describe('docsSubdomain', () => {
   it('returns a candidate when the docs subdomain is live', async () => {
     routeFetch([['https://docs.example.com', html]])
@@ -560,6 +635,81 @@ describe('docsSubdomain', () => {
 
   it('returns [] on a fetch error', async () => {
     throwingFetch()
+    expect(
+      await docsSubdomain({
+        name: 'proj',
+        slug: 'proj',
+        website: 'https://example.com',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+})
+
+describe('docsSubdomain registrable domain', () => {
+  it('probes docs.<registrable domain> for a subdomain website', async () => {
+    const fetchMock = routeFetch([['https://docs.opendaylight.org', html]])
+
+    const result = await docsSubdomain({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://wiki.opendaylight.org/view/Main',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://docs.opendaylight.org',
+        method: 'docs-subdomain',
+        confidence: 'high',
+        livenessOk: true,
+      },
+    ])
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual(['https://docs.opendaylight.org'])
+  })
+
+  it('keeps the full host on the linuxfoundation.org umbrella root (celf)', async () => {
+    const fetchMock = routeFetch([['https://docs.wiki.linuxfoundation.org', html]])
+
+    await docsSubdomain({
+      name: 'celf',
+      slug: 'celf',
+      website: 'https://wiki.linuxfoundation.org/celp/start',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://docs.wiki.linuxfoundation.org',
+    ])
+  })
+
+  it('keeps the full host for a project-specific subdomain', async () => {
+    const fetchMock = routeFetch([['https://docs.developers.google.com', html]])
+
+    await docsSubdomain({
+      name: 'tink',
+      slug: 'tink',
+      website: 'https://developers.google.com/tink',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://docs.developers.google.com',
+    ])
+  })
+
+  it('returns [] when docs.<domain> redirects to another registrable domain', async () => {
+    routeFetch([['https://docs.example.com', () => htmlAt('https://spam-casino.net/')]])
+
     expect(
       await docsSubdomain({
         name: 'proj',
@@ -852,6 +1002,538 @@ describe('readmeScrape', () => {
   })
 })
 
+describe('readmeScrape filtering', () => {
+  const readmeRoute = (body: string): [string, () => Response] => [
+    'https://api.github.com/repos/torvalds/linux/readme',
+    () => new Response(body),
+  ]
+  const probed = (fetchMock: ReturnType<typeof routeFetch>) =>
+    fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+  const scrape = (website: string | null) =>
+    readmeScrape({
+      name: 'proj',
+      slug: 'proj',
+      website,
+      websiteShared: false,
+      repos,
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+
+  it('never proposes docs.github.com or other excluded hosts', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        [
+          '[Docs](https://docs.github.com/en/actions)',
+          '[Docs](https://twitter.com/proj/docs)',
+          '[Docs](https://www.youtube.com/watch?v=docs)',
+          '[Docs](https://discord.gg/docs)',
+        ].join(' '),
+      ),
+    ])
+
+    expect(await scrape(null)).toEqual([])
+    expect(probed(fetchMock)).toEqual([])
+  })
+
+  it('drops contributing/issues/changelog/license/security style paths', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        [
+          '[Docs](https://urunc.io/docs/contributing/)',
+          '[Guide](https://urunc.io/developer-guide/contribute/#reporting-bugs)',
+          '[Docs](https://urunc.io/docs/changelog)',
+          '[Docs](https://urunc.io/docs/LICENSE)',
+          '[Docs](https://urunc.io/docs/issues)',
+          '[Guide](https://other.io/guide/code-of-conduct)',
+          '[Security Policy document](https://urunc.io/developer-guide/security/)',
+        ].join(' '),
+      ),
+    ])
+
+    expect(await scrape('https://urunc.io')).toEqual([])
+    expect(probed(fetchMock)).toEqual([])
+  })
+
+  it('excludes by whole slug: security-model is dropped, issuers and bugzilla are kept', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://a.io/docs/security-model) [Docs](https://b.io/docs/issuers) [Docs](https://c.io/docs/bugzilla)',
+      ),
+      ['https://', html],
+    ])
+
+    await scrape(null)
+    expect(probed(fetchMock)).toEqual(['https://b.io/docs/issuers', 'https://c.io/docs/bugzilla'])
+  })
+
+  it('keeps a path whose segment merely contains an excluded word', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://example.io/docs/debugging) [Docs](https://example.io/docs/security)',
+      ),
+      ['https://example.io', html],
+    ])
+
+    await scrape(null)
+    expect(probed(fetchMock)).toEqual(['https://example.io/docs/debugging'])
+  })
+
+  it('keeps the docs-labelled text when a fragment variant of the link came first', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Website](https://proj.io/) [Documentation](https://proj.io#docs)'),
+      ['https://proj.io', html],
+    ])
+
+    await scrape(null)
+    expect(probed(fetchMock)).toEqual(['https://proj.io'])
+  })
+
+  it('collapses to the path through the first docs segment', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://proj.io/en/docs/install/linux)'),
+      ['https://proj.io', html],
+    ])
+
+    await scrape('https://proj.io')
+    expect(probed(fetchMock)).toEqual(['https://proj.io/en/docs'])
+  })
+
+  it('does not collapse links when the project website is itself a github.io page', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://torvalds.github.io/linux/guide/install)'),
+      ['https://torvalds.github.io', html],
+    ])
+
+    await scrape('https://torvalds.github.io/linux')
+    expect(probed(fetchMock)).toEqual(['https://torvalds.github.io/linux/guide/install'])
+  })
+
+  it('collapses own-domain deep links and dedupes fragment variants', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        [
+          '[Docs](https://urunc.io/docs/install/linux/#step-2)',
+          '[Docs](https://urunc.io/docs/install/macos)',
+          '[Guide](https://urunc.io/developer-guide/)',
+          '[Guide](https://urunc.io/developer-guide#intro)',
+          '[Reference](https://urunc.io/reference/cli/flags)',
+        ].join(' '),
+      ),
+      ['https://urunc.io', html],
+    ])
+
+    const result = await scrape('https://urunc.io')
+    expect(probed(fetchMock)).toEqual([
+      'https://urunc.io/docs',
+      'https://urunc.io/developer-guide/',
+      'https://urunc.io/reference',
+    ])
+    expect(result.map((c) => c.url)).toEqual([
+      'https://urunc.io/docs',
+      'https://urunc.io/developer-guide/',
+      'https://urunc.io/reference',
+    ])
+  })
+
+  it('treats sibling sites on a shared registrable domain as foreign, not own', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Governance docs](https://community.finos.org/docs/governance/) [Guide](https://odp.finos.org/docs/a/b)',
+      ),
+      ['https://odp.finos.org', html],
+      ['https://community.finos.org', html],
+    ])
+
+    await scrape('https://odp.finos.org')
+    expect(probed(fetchMock)).toEqual(['https://odp.finos.org/docs'])
+  })
+
+  it('dedupes http, https and www variants of the same link', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://proj.io/docs) [Docs](https://www.proj.io/docs) [Docs](http://proj.io/docs)',
+      ),
+      ['http', html],
+    ])
+
+    await scrape('https://proj.io')
+    expect(probed(fetchMock)).toEqual(['https://proj.io/docs'])
+  })
+
+  it('collapses a deep own-domain link with no docs segment to the site root', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://urunc.io/learn/getting-started/install)'),
+      ['https://urunc.io', html],
+    ])
+
+    await scrape('https://urunc.io')
+    expect(probed(fetchMock)).toEqual(['https://urunc.io/'])
+  })
+
+  it('keeps foreign links when no own-domain link survives', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[OpenLineage docs](https://openlineage.io/docs/)'),
+      ['https://openlineage.io', html],
+    ])
+
+    const result = await scrape('https://marquezproject.ai')
+    expect(probed(fetchMock)).toEqual(['https://openlineage.io/docs/'])
+    expect(result).toHaveLength(1)
+  })
+
+  it('drops foreign links once an own-domain link survives', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[docker](https://docs.docker.com/engine/install/ubuntu/) [Guide](https://urunc.io/developer-guide/)',
+      ),
+      ['https://urunc.io', html],
+      ['https://docs.docker.com', html],
+    ])
+
+    await scrape('https://urunc.io')
+    expect(probed(fetchMock)).toEqual(['https://urunc.io/developer-guide/'])
+  })
+
+  it('treats the repo homepage domain as the project own domain when website is empty', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Website](https://proj.io/docs/a) [Docs](https://elsewhere.net/x) [Ref](https://proj.io/reference/cli/y)',
+      ),
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://proj.io' }),
+      ],
+      ['https://proj.io', html],
+    ])
+
+    await scrape('')
+    expect(probed(fetchMock)).toEqual(['https://proj.io/docs', 'https://proj.io/reference'])
+  })
+
+  it('falls back to the original deep link when the collapsed one is not live', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://jestjs.io/docs/using-matchers)'),
+      ['https://jestjs.io/docs/using-matchers', html],
+      ['https://jestjs.io/docs', notFound],
+    ])
+
+    const result = await scrape('https://jestjs.io')
+    expect(probed(fetchMock)).toEqual([
+      'https://jestjs.io/docs',
+      'https://jestjs.io/docs/using-matchers',
+    ])
+    expect(result.map((c) => c.url)).toEqual(['https://jestjs.io/docs/using-matchers'])
+  })
+
+  it('orders own website before <owner>.github.io and probes at most 5 links', async () => {
+    const links = [
+      '[Docs](https://torvalds.github.io/linux/docs)',
+      '[Docs](https://proj.dev/docs)',
+      '[Guide](https://proj.dev/guide)',
+      '[Manual](https://proj.dev/manual)',
+      '[Reference](https://proj.dev/reference)',
+      '[Handbook](https://proj.dev/handbook)',
+      '[Docs](https://proj.dev/documentation)',
+    ]
+    const fetchMock = routeFetch([readmeRoute(links.join(' ')), ['https://', notFound]])
+
+    await scrape('https://proj.dev')
+    expect(probed(fetchMock)).toEqual([
+      'https://proj.dev/docs',
+      'https://proj.dev/guide',
+      'https://proj.dev/manual',
+      'https://proj.dev/reference',
+      'https://proj.dev/handbook',
+    ])
+  })
+
+  it('probes <owner>.github.io before foreign links and skips foreign ones once it is live', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://a.example.net/docs) [Docs](https://torvalds.github.io/linux/docs)',
+      ),
+      ['https://torvalds.github.io', html],
+    ])
+
+    await scrape('https://proj.dev')
+    expect(probed(fetchMock)).toEqual(['https://torvalds.github.io/linux/docs'])
+  })
+
+  it('falls back to foreign links when no own-domain link is live', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://proj.io/docs/old/x) [Docs](https://proj.readthedocs.io/en/latest/)',
+      ),
+      ['https://proj.readthedocs.io', html],
+      ['https://proj.io', notFound],
+    ])
+
+    const result = await scrape('https://proj.io')
+    expect(probed(fetchMock)).toEqual([
+      'https://proj.io/docs',
+      'https://proj.io/docs/old/x',
+      'https://proj.readthedocs.io/en/latest/',
+    ])
+    expect(result.map((c) => c.url)).toEqual(['https://proj.readthedocs.io/en/latest/'])
+  })
+
+  it('counts fallback re-probes against the 5-probe budget', async () => {
+    const links = ['en', 'de', 'fr', 'es'].map((x) => `[Docs](https://proj.io/${x}/docs/deep)`)
+    const fetchMock = routeFetch([readmeRoute(links.join(' ')), ['https://', notFound]])
+
+    await scrape('https://proj.io')
+    expect(probed(fetchMock)).toHaveLength(5)
+  })
+
+  it('collapses a single-segment own-domain page without a docs word to the root', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://urunc.io/installation/)'),
+      ['https://urunc.io', html],
+    ])
+
+    await scrape('https://urunc.io')
+    expect(probed(fetchMock)).toEqual(['https://urunc.io/'])
+  })
+
+  it('does not collapse <owner>.github.io project pages to the site root', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Docs](https://torvalds.github.io/linux/guide/install)'),
+      ['https://torvalds.github.io', html],
+    ])
+
+    await scrape(null)
+    expect(probed(fetchMock)).toEqual(['https://torvalds.github.io/linux/guide/install'])
+  })
+
+  it('rejects a readme link that redirects to another registrable domain', async () => {
+    routeFetch([
+      readmeRoute('[Docs](https://zotregistry.io/docs)'),
+      ['https://zotregistry.io', () => htmlAt('https://spam-casino.net/')],
+    ])
+
+    expect(await scrape('https://zotregistry.io')).toEqual([])
+  })
+})
+
+describe('readmeScrape foreign links', () => {
+  const scrape = () =>
+    readmeScrape({
+      name: 'proj',
+      slug: 'proj',
+      website: null,
+      websiteShared: false,
+      repos,
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  const readme = (body: string): [string, () => Response] => [
+    'https://api.github.com/repos/torvalds/linux/readme',
+    () => new Response(body),
+  ]
+
+  const apiFree = (fetchMock: ReturnType<typeof routeFetch>) =>
+    fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+
+  it('drops a foreign link matched only by a docs-like path (RFC under /doc/)', async () => {
+    const fetchMock = routeFetch([
+      readme('[JSON Merge Patch](https://datatracker.ietf.org/doc/html/rfc7396)'),
+      ['https://datatracker.ietf.org', html],
+    ])
+
+    expect(await scrape()).toEqual([])
+    expect(apiFree(fetchMock)).toEqual([])
+  })
+
+  it('keeps a foreign link whose text or host says docs', async () => {
+    const fetchMock = routeFetch([
+      readme('[OpenLineage docs](https://openlineage.io/x) [Ext](https://docs.docker.com/engine/)'),
+      ['https://openlineage.io', html],
+      ['https://docs.docker.com', html],
+    ])
+
+    await scrape()
+    expect(apiFree(fetchMock)).toEqual([
+      'https://openlineage.io/x',
+      'https://docs.docker.com/engine/',
+    ])
+  })
+
+  it('never proposes google docs documents', async () => {
+    const fetchMock = routeFetch([
+      readme(
+        '[Meeting notes](https://docs.google.com/document/d/abc123) [Docs](https://drive.google.com/x)',
+      ),
+    ])
+
+    expect(await scrape()).toEqual([])
+    expect(apiFree(fetchMock)).toEqual([])
+  })
+
+  it('never proposes github-owned asset hosts', async () => {
+    const fetchMock = routeFetch([
+      readme('[Docs](https://raw.githubusercontent.com/o/r/main/docs/a.md)'),
+    ])
+
+    expect(await scrape()).toEqual([])
+    expect(apiFree(fetchMock)).toEqual([])
+  })
+})
+
+describe('readmeScrape and llms coverage gaps', () => {
+  const readmeRoute = (body: string): [string, () => Response] => [
+    'https://api.github.com/repos/torvalds/linux/readme',
+    () => new Response(body),
+  ]
+  const probed = (m: ReturnType<typeof routeFetch>) =>
+    m.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+  const scrape = (website: string | null) =>
+    readmeScrape({
+      name: 'p',
+      slug: 'p',
+      website,
+      websiteShared: false,
+      repos,
+      githubToken: 't',
+      serpApiKey: null,
+    })
+
+  it('llms fallback rejects a cross-domain redirect', async () => {
+    routeFetch([
+      ['https://docs.example.com/llms.txt', notFound],
+      [
+        'https://example.com/llms.txt',
+        () => {
+          const r = new Response('x'.repeat(60))
+          Object.defineProperty(r, 'url', { value: 'https://spam.net/llms.txt' })
+          return r
+        },
+      ],
+    ])
+    expect(
+      await llmsTxtProbe({
+        name: 'p',
+        slug: 'p',
+        website: 'https://example.com',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+  it('llms fallback probes the website own host for a generic-subdomain website', async () => {
+    const m = routeFetch([['https://', notFound]])
+    await llmsTxtProbe({
+      name: 'p',
+      slug: 'p',
+      website: 'https://wiki.example.org/x',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(m.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://wiki.example.org/x/llms.txt',
+      'https://docs.example.org/llms.txt',
+      'https://wiki.example.org/llms.txt',
+    ])
+  })
+  it('drops bug / report / reporting-bugs paths', async () => {
+    const m = routeFetch([
+      readmeRoute(
+        '[Docs](https://a.io/docs/bugs) [Docs](https://b.io/docs/report) [Docs](https://c.io/docs/reporting-bugs)',
+      ),
+      ['https://', html],
+    ])
+    await scrape(null)
+    expect(probed(m)).toEqual([])
+  })
+  it('x.com exclusion is dot-bounded (box.com / dropbox.com stay)', async () => {
+    const m = routeFetch([
+      readmeRoute(
+        '[Docs](https://docs.box.com/guide) [Docs](https://docs.dropbox.com/documentation)',
+      ),
+      ['https://', html],
+    ])
+    await scrape(null)
+    expect(probed(m)).toEqual([
+      'https://docs.box.com/guide',
+      'https://docs.dropbox.com/documentation',
+    ])
+  })
+  it('excluded hosts gitter/x/slack/youtu.be/githubassets/shields', async () => {
+    const m = routeFetch([
+      readmeRoute(
+        '[Docs](https://gitter.im/docs) [Docs](https://x.com/docs) [Docs](https://slack.com/docs) [Docs](https://youtu.be/docs) [Docs](https://a.githubassets.com/docs) [Docs](https://img.shields.io/badge/docs-passing-green.svg)',
+      ),
+      ['https://', html],
+    ])
+    await scrape(null)
+    expect(probed(m)).toEqual([])
+  })
+  it('own link on a subdomain of the base is own (collapsed) and gates foreign', async () => {
+    const m = routeFetch([
+      readmeRoute('[Docs](https://docs.urunc.io/en/latest/x/y) [Docs](https://other.net/docs)'),
+      ['https://', html],
+    ])
+    await scrape('https://urunc.io')
+    expect(probed(m)).toEqual(['https://docs.urunc.io/'])
+  })
+  it('generic-subdomain website: docs.<root> is own', async () => {
+    const m = routeFetch([
+      readmeRoute(
+        '[Docs](https://docs.example.org/en/latest/getting-started-guide/intro) [Docs](https://other.net/docs)',
+      ),
+      ['https://', html],
+    ])
+    await scrape('https://wiki.example.org/x')
+    expect(probed(m)).toEqual(['https://docs.example.org/en/latest/getting-started-guide'])
+  })
+  it('own link without docs keyword is dropped', async () => {
+    const m = routeFetch([
+      readmeRoute('[Blog](https://proj.io/blog/post) [About](https://proj.io/about)'),
+      ['https://', html],
+    ])
+    await scrape('https://proj.io')
+    expect(probed(m)).toEqual([])
+  })
+  it('dot / underscore boundaries and licence spelling', async () => {
+    const m = routeFetch([
+      readmeRoute(
+        '[Docs](https://a.io/docs/CHANGELOG.md) [Docs](https://a.io/docs/security.html) [Docs](https://a.io/docs/security_policy) [Docs](https://a.io/docs/licence) [Docs](https://a.io/docs/code_of_conduct)',
+      ),
+      ['https://', html],
+    ])
+    await scrape(null)
+    expect(probed(m)).toEqual([])
+  })
+  it('dedupe treats trailing-slash variants as one', async () => {
+    const m = routeFetch([
+      readmeRoute('[Guide](https://proj.io/guide/) [Guide](https://proj.io/guide/install/x)'),
+      ['https://', html],
+    ])
+    await scrape('https://proj.io')
+    expect(probed(m)).toEqual(['https://proj.io/guide/'])
+  })
+  it('collapse drops the query string', async () => {
+    const m = routeFetch([
+      readmeRoute('[Docs](https://proj.io/docs/install/linux?ref=x)'),
+      ['https://', html],
+    ])
+    await scrape('https://proj.io')
+    expect(probed(m)).toEqual(['https://proj.io/docs'])
+  })
+  it('collapse keeps up to the FIRST docs segment', async () => {
+    const m = routeFetch([
+      readmeRoute('[Docs](https://proj.io/docs/guide/install)'),
+      ['https://', html],
+    ])
+    await scrape('https://proj.io')
+    expect(probed(m)).toEqual(['https://proj.io/docs'])
+  })
+})
+
 describe('githubHomepage', () => {
   it('returns a candidate from the repo homepage field', async () => {
     routeFetch([
@@ -962,6 +1644,24 @@ describe('githubHomepage', () => {
         websiteShared: false,
         repos,
         githubToken: 'token',
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+})
+
+describe('projectWebsite cross-domain redirect', () => {
+  it('drops a lapsed website that redirects to an unrelated domain (zot)', async () => {
+    routeFetch([['https://zotregistry.io', () => htmlAt('https://spam-casino.net/')]])
+
+    expect(
+      await projectWebsite({
+        name: 'zot',
+        slug: 'zot',
+        website: 'https://zotregistry.io',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
         serpApiKey: null,
       }),
     ).toEqual([])
