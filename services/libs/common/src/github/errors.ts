@@ -21,6 +21,13 @@ export class GithubForbiddenError extends Error {
   }
 }
 
+export class GithubRepoBlockedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GithubRepoBlockedError'
+  }
+}
+
 export class GithubAuthError extends Error {
   constructor(message: string) {
     super(message)
@@ -28,9 +35,10 @@ export class GithubAuthError extends Error {
   }
 }
 
-// Permanent external conditions (repo gone, org IP allow list policy), not our bugs - excluded
-// from the star snapshot dead-letter Slack report.
+// Permanent external conditions (repo gone, access blocked by GitHub, org IP allow list
+// policy), not our bugs - excluded from the star snapshot dead-letter Slack report.
 export const NON_ACTIONABLE_GITHUB_ERROR_CLASSES: string[] = [
   GithubRepoNotFoundError.name,
   GithubIpAllowlistError.name,
+  GithubRepoBlockedError.name,
 ]

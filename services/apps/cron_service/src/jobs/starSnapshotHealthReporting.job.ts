@@ -2,16 +2,19 @@ import CronTime from 'cron-time-generator'
 
 import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import {
-  IRepoStarSnapshotGapDays,
   countDeadLetteredStarBackfillFailures,
   findAllRepoIdsWithStarSnapshotGaps,
+  findAllRepoIdsWithoutStarSnapshots,
+  findDaysSinceAddedForRepos,
   findDeadLetteredStarBackfillFailures,
   findReposForStarSnapshot,
+  findStarBackfillNonActionableRepoIds,
   findStarSnapshotGapDaysForRepos,
   getDeadLetterReportCursor,
 } from '@crowd/data-access-layer'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { batchAll } from '@crowd/data-access-layer/src/utils'
 import { REDIS_CONFIG, getRedisClient } from '@crowd/redis'
 import {
   SlackChannel,
@@ -46,21 +49,54 @@ const job: IJobDefinition = {
     // enough to erode the safety margin if the watermark were taken at persist time instead.
     const nextCursor = await getDeadLetterReportCursor(qx)
 
-    const [newlyDeadLettered, totalDeadLettered, allRepos] = await Promise.all([
-      findDeadLetteredStarBackfillFailures(qx, since),
-      countDeadLetteredStarBackfillFailures(qx),
-      findReposForStarSnapshot(qx),
-    ])
+    const [newlyDeadLettered, totalDeadLettered, allRepos, nonActionableRepoIds] =
+      await Promise.all([
+        findDeadLetteredStarBackfillFailures(qx, since),
+        countDeadLetteredStarBackfillFailures(qx),
+        findReposForStarSnapshot(qx),
+        findStarBackfillNonActionableRepoIds(qx),
+      ])
 
     const repoUrlById = new Map(allRepos.map((repo) => [repo.repositoryId, repo.repoUrl]))
-    const allRepoIds = allRepos.map((repo) => repo.repositoryId)
-    const gappedRepoIds = await findAllRepoIdsWithStarSnapshotGaps(qx, allRepoIds)
+    const goneRepoIds = new Set(nonActionableRepoIds)
+    const reposTracked = allRepos.length
+    // Gone repos (repo 404'd, access blocked, org IP allow list) can never close their gap -
+    // they're reported separately below instead of growing the gap count/list forever.
+    const allRepoIds = allRepos
+      .map((repo) => repo.repositoryId)
+      .filter((repositoryId) => !goneRepoIds.has(repositoryId))
+    const goneRepoCount = allRepos.filter((repo) => goneRepoIds.has(repo.repositoryId)).length
+    // Not confirmed gone, not "confirmed accessible" - a repo with e.g. an auth/permission
+    // failure is counted here too, since we only track the gone/blocked/allowlisted classes.
+    const notGoneRepoCount = reposTracked - goneRepoCount
 
-    const gapDays: IRepoStarSnapshotGapDays[] = []
-    for (let i = 0; i < gappedRepoIds.length; i += GAP_DAYS_BATCH_SIZE) {
-      const batch = gappedRepoIds.slice(i, i + GAP_DAYS_BATCH_SIZE)
-      gapDays.push(...(await findStarSnapshotGapDaysForRepos(qx, batch)))
-    }
+    // Zero rows in repositoryStarSnapshots yet - a brand new repo waiting on its first capture.
+    // Excludes gone repos: one that's both new and unreachable will never get captured.
+    const neverCapturedIds = new Set(await findAllRepoIdsWithoutStarSnapshots(qx, allRepoIds))
+    const neverCapturedRepoIds = allRepoIds.filter((id) => neverCapturedIds.has(id))
+    // Only repos that already have at least one row go through the gap-day diff below - the
+    // never-captured ones above are reported separately since there's nothing to diff yet.
+    const withExistingDataRepoIds = allRepoIds.filter((id) => !neverCapturedIds.has(id))
+
+    // Independent of each other (one scans never-captured ids, the other existing-data ids),
+    // so they run concurrently instead of one after the other.
+    const [daysSinceAdded, gappedRepoIds] = await Promise.all([
+      batchAll(neverCapturedRepoIds, GAP_DAYS_BATCH_SIZE, (batch) =>
+        findDaysSinceAddedForRepos(qx, batch),
+      ),
+      findAllRepoIdsWithStarSnapshotGaps(qx, withExistingDataRepoIds),
+    ])
+    const daysSinceAddedByRepoId = new Map(
+      daysSinceAdded.map((r) => [r.repositoryId, r.daysSinceAdded]),
+    )
+    const totalMissingDaysNeverCaptured = daysSinceAdded.reduce(
+      (sum, r) => sum + r.daysSinceAdded,
+      0,
+    )
+
+    const gapDays = await batchAll(gappedRepoIds, GAP_DAYS_BATCH_SIZE, (batch) =>
+      findStarSnapshotGapDaysForRepos(qx, batch),
+    )
     const missingDaysByRepoId = new Map(gapDays.map((gap) => [gap.repositoryId, gap.missingDays]))
     const totalMissingDays = gapDays.reduce((sum, gap) => sum + gap.missingDays, 0)
     // The two queries above run seconds apart, so a repo can close its gap in between and
@@ -73,10 +109,15 @@ const job: IJobDefinition = {
       {
         title: 'Star Snapshot Health Summary',
         text: [
+          `📦 Repos tracked: *${reposTracked}*`,
+          `✅ Repos not confirmed gone: *${notGoneRepoCount}*`,
+          `🚫 Repos gone from GitHub (404 / access blocked / org IP allow list), not counted as gaps: *${goneRepoCount}*`,
+          `🆕 Repos awaiting first snapshot (no data yet): *${neverCapturedRepoIds.length}*`,
           `🪦 New repos GitHub gave up retrying (3 failures in a row, excl. repo-gone/IP-allowlist): *${newlyDeadLettered.length}*`,
           `📉 Total repos GitHub gave up retrying: *${totalDeadLettered}*`,
-          `📅 Repos with a snapshot gap right now: *${currentlyGappedRepoIds.length}*`,
-          `📆 Total missing snapshot-days across those repos: *${totalMissingDays}*`,
+          `📅 Repos with a snapshot gap right now (already have data): *${currentlyGappedRepoIds.length}*`,
+          `📆 Total missing snapshot-days on those: *${totalMissingDays}*`,
+          `📆 Total missing snapshot-days on never-captured repos: *${totalMissingDaysNeverCaptured}*`,
         ].join('\n'),
       },
     ]
@@ -104,13 +145,34 @@ const job: IJobDefinition = {
         return `• \`${url}\` - missing ${days} day${days === 1 ? '' : 's'}`
       })
       sections.push({
-        title: `Snapshot Gaps (top ${shown.length} of ${currentlyGappedRepoIds.length}, most days missing first)`,
+        title: `Snapshot Gaps - existing data (top ${shown.length} of ${currentlyGappedRepoIds.length}, most days missing first)`,
         text: lines.join('\n'),
       })
     }
 
+    if (neverCapturedRepoIds.length > 0) {
+      const sortedByDaysSinceAdded = [...neverCapturedRepoIds].sort(
+        (a, b) => (daysSinceAddedByRepoId.get(b) ?? 0) - (daysSinceAddedByRepoId.get(a) ?? 0),
+      )
+      const shown = sortedByDaysSinceAdded.slice(0, SAMPLE_SIZE)
+      const lines = shown.map((repositoryId) => {
+        const url = repoUrlById.get(repositoryId) ?? repositoryId
+        const days = daysSinceAddedByRepoId.get(repositoryId) ?? 0
+        return `• \`${url}\` - added ${days} day${days === 1 ? '' : 's'} ago, still no snapshot`
+      })
+      sections.push({
+        title: `Never Captured Yet (top ${shown.length} of ${neverCapturedRepoIds.length}, oldest first)`,
+        text: lines.join('\n'),
+      })
+    }
+
+    // A repo added today (daysSinceAdded 0) hasn't missed a capture cycle yet.
+    const overdueNeverCapturedCount = daysSinceAdded.filter((r) => r.daysSinceAdded > 0).length
+
     const persona =
-      newlyDeadLettered.length > 0 || currentlyGappedRepoIds.length > 0
+      newlyDeadLettered.length > 0 ||
+      currentlyGappedRepoIds.length > 0 ||
+      overdueNeverCapturedCount > 0
         ? SlackPersona.WARNING_PROPAGATOR
         : SlackPersona.INFO_NOTIFIER
 
@@ -128,7 +190,7 @@ const job: IJobDefinition = {
     }
 
     ctx.log.info(
-      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${totalDeadLettered}, gaps=${currentlyGappedRepoIds.length}`,
+      `Star snapshot health report sent: newlyDeadLettered=${newlyDeadLettered.length}, totalDeadLettered=${totalDeadLettered}, gone=${goneRepoCount}, neverCaptured=${neverCapturedRepoIds.length}, gaps=${currentlyGappedRepoIds.length}`,
     )
   },
 }

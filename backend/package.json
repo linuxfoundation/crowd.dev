@@ -128,7 +128,7 @@
     "uuid": "^9.0.0",
     "validator": "^13.7.0",
     "verify-github-webhook": "^1.0.1",
-    "zod": "^4.3.6"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bunyan": "^1.8.8",

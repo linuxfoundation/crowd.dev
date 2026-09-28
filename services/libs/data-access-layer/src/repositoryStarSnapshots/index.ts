@@ -2,6 +2,7 @@ import { generateUUIDv4 } from '@crowd/common'
 import { IRepoForStarSnapshot, IRepositoryStarSnapshot } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+import { batchAll } from '../utils'
 
 export * from './backfillStatus'
 
@@ -105,12 +106,7 @@ export async function findAllRepoIdsWithStarSnapshotGaps(
   repositoryIds: string[],
   batchSize: number = DEFAULT_GAP_CHECK_BATCH_SIZE,
 ): Promise<string[]> {
-  const gapped: string[] = []
-  for (let i = 0; i < repositoryIds.length; i += batchSize) {
-    const batch = repositoryIds.slice(i, i + batchSize)
-    gapped.push(...(await findRepoIdsWithStarSnapshotGaps(qx, batch)))
-  }
-  return gapped
+  return batchAll(repositoryIds, batchSize, (batch) => findRepoIdsWithStarSnapshotGaps(qx, batch))
 }
 
 // Completed, still-retryable repos - the population findReposNeedingStarBackfill skips.
@@ -140,6 +136,77 @@ export async function findCompletedReposEligibleForGapHeal(
   )
 
   return repos || []
+}
+
+// Repos with zero rows in repositoryStarSnapshots at all - not "gapped" (that's diffed
+// against existing rows), just never captured yet. Scoped for an index seek like the gap check.
+export async function findRepoIdsWithoutStarSnapshots(
+  qx: QueryExecutor,
+  repositoryIds: string[],
+): Promise<string[]> {
+  if (repositoryIds.length === 0) {
+    return []
+  }
+
+  const rows: { repositoryId: string }[] = await qx.select(
+    `
+      select r.id as "repositoryId"
+      from public.repositories r
+      where r.id in ($(repositoryIds:csv))
+        and r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and not exists (
+          select 1 from "repositoryStarSnapshots" s where s."repositoryId" = r.id
+        )
+    `,
+    { repositoryIds },
+  )
+
+  return (rows || []).map((row) => row.repositoryId)
+}
+
+const DEFAULT_NO_SNAPSHOT_CHECK_BATCH_SIZE = 5_000
+
+// Chunks the IN-list so it stays bounded as the eligible repo count grows.
+export async function findAllRepoIdsWithoutStarSnapshots(
+  qx: QueryExecutor,
+  repositoryIds: string[],
+  batchSize: number = DEFAULT_NO_SNAPSHOT_CHECK_BATCH_SIZE,
+): Promise<string[]> {
+  return batchAll(repositoryIds, batchSize, (batch) => findRepoIdsWithoutStarSnapshots(qx, batch))
+}
+
+export interface IRepoDaysSinceAdded {
+  repositoryId: string
+  daysSinceAdded: number
+}
+
+// For repos confirmed to have zero snapshot rows - nothing to diff against yet, so this uses
+// the repo's own createdAt instead of the gap-days math in findStarSnapshotGapDaysForRepos.
+export async function findDaysSinceAddedForRepos(
+  qx: QueryExecutor,
+  repositoryIds: string[],
+): Promise<IRepoDaysSinceAdded[]> {
+  if (repositoryIds.length === 0) {
+    return []
+  }
+
+  const rows: IRepoDaysSinceAdded[] = await qx.select(
+    `
+      select
+          id as "repositoryId",
+          ((now() at time zone 'UTC')::date - ("createdAt" at time zone 'UTC')::date)::int as "daysSinceAdded"
+      from public.repositories
+      where id in ($(repositoryIds:csv))
+        and "deletedAt" is null
+        and "excluded" = false
+        and url like 'https://github.com%'
+    `,
+    { repositoryIds },
+  )
+
+  return rows || []
 }
 
 export interface IRepoStarSnapshotGapDays {

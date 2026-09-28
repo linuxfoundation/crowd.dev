@@ -38,10 +38,6 @@ export interface IFixActivityForiegnKeysArgs extends IScriptBatchTestArgs {
   offset?: number
 }
 
-export interface IProcessLLMVerifiedMergesArgs extends IScriptBatchTestArgs {
-  type: string
-}
-
 export interface ICleanupDuplicateMembersArgs extends IScriptBatchTestArgs {
   cutoffDate?: string
   checkByActivityIdentity?: boolean

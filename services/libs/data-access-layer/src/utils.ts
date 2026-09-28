@@ -213,3 +213,21 @@ export function truncateErrorMessage(message: string | null): string | null {
   }
   return message.slice(0, ERROR_MESSAGE_MAX_LENGTH)
 }
+
+// Chunks an id list and runs fn over each batch sequentially, concatenating the results -
+// keeps a single IN-list bounded as the eligible id count grows.
+export async function batchAll<T, R>(
+  ids: T[],
+  batchSize: number,
+  fn: (batch: T[]) => Promise<R[]>,
+): Promise<R[]> {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new Error(`batchAll: batchSize must be a positive integer, got ${batchSize}`)
+  }
+  const results: R[] = []
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize)
+    results.push(...(await fn(batch)))
+  }
+  return results
+}
