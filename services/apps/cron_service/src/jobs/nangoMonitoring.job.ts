@@ -40,6 +40,8 @@ import { IJobDefinition } from '../types'
 
 const nangoEnv = IS_PROD_ENV ? 'prod' : IS_DEV_ENV ? 'local' : 'dev'
 
+const STATUS_CHECK_CONCURRENCY = 10
+
 type NangoIntegrationDataExtended = INangoIntegrationData & { connectionId: string }
 
 const job: IJobDefinition = {
@@ -187,11 +189,10 @@ const job: IJobDefinition = {
     }
 
     ctx.log.info(
-      `Fetching status for ${statusCheckOperations.length} Nango connections (5 at a time)...`,
+      `Fetching status for ${statusCheckOperations.length} Nango connections (${STATUS_CHECK_CONCURRENCY} at a time)...`,
     )
 
-    // Execute status checks with concurrency limit of 10
-    const limiter = new ConcurrencyLimiter(10)
+    const limiter = new ConcurrencyLimiter(STATUS_CHECK_CONCURRENCY)
     let completedChecks = 0
 
     limiter.setOnJobComplete(() => {
@@ -229,7 +230,14 @@ const job: IJobDefinition = {
         let runningSyncs = 0
 
         const failedConnections: NangoIntegrationDataExtended[] = []
-        for (const [data, statuses] of integrations) {
+        for (const [data, allStatuses] of integrations) {
+          // Stars are no longer synced from our end for github - Nango may still report
+          // a status for it (its own remote sync config), so ignore it here too.
+          const statuses =
+            nangoIntegration === NangoIntegration.GITHUB
+              ? allStatuses.filter((s) => s.name !== 'stars')
+              : allStatuses
+
           const failed = statuses.filter((s) => s.status === 'ERROR')
           successfulSyncs += statuses.filter((s) => s.status === 'SUCCESS').length
           failedSyncs += failed.length
