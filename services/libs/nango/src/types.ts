@@ -88,7 +88,6 @@ export const NANGO_INTEGRATION_CONFIG = {
       PULL_REQUEST_COMMENTS: 'pull-request-comments',
       PULL_REQUEST_REVIEWS: 'pull-request-reviews',
       PULL_REQUEST_COMMITS: 'pull-request-commits',
-      STARS: 'stars',
     },
   },
   [NangoIntegration.JIRA_CLOUD_BASIC]: {

@@ -97,7 +97,14 @@ const job: IJobDefinition = {
       const connectionIds: string[] =
         platform === NangoIntegration.GITHUB ? Object.keys(nangoMapping) : [id]
 
-      const models = Object.values(NANGO_INTEGRATION_CONFIG[platform].models) as string[]
+      // Stars are no longer synced from our end for github - skip checking that model.
+      const models = (Object.values(NANGO_INTEGRATION_CONFIG[platform].models) as string[]).filter(
+        (model) =>
+          !(
+            platform === NangoIntegration.GITHUB &&
+            model === NANGO_INTEGRATION_CONFIG[NangoIntegration.GITHUB].models.STAR
+          ),
+      )
       const connections: INangoConnectionToCheck[] = []
 
       for (const connectionId of connectionIds) {
