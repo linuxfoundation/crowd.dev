@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../conf', () => ({
+  IS_DEV_ENV: false,
+  IS_PROD_ENV: false,
+  IS_STAGING_ENV: false,
+}))
+
 vi.mock('./slack/onboardProjectCommand', () => ({
   runOnboardProjectCommand: vi.fn(),
   postToResponseUrl: vi.fn(),
