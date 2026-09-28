@@ -2,13 +2,14 @@ import { performance } from 'perf_hooks'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
+import { ApplicationFailure } from '@temporalio/client'
 import axios from 'axios'
+import { z } from 'zod'
 
 import { Error404, IS_LLM_ENABLED } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
-import { pgpQx } from '@crowd/data-access-layer'
+import { insertLlmSuggestionVerdict, pgpQx } from '@crowd/data-access-layer'
 import { ITenant } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker//types'
-import LLMSuggestionVerdictsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/llmSuggestionVerdicts.repo'
 import TenantRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/tenant.repo'
 import {
   ILLMConsumableMember,
@@ -17,7 +18,31 @@ import {
 } from '@crowd/types'
 
 import { svc } from '../main'
-import { ILLMResult } from '../types'
+import { ILLMMergeDecisionResult, ILLMResult, ILLMToolUseContent } from '../types'
+
+const MERGE_DECISION_TOOL = {
+  name: 'submit_merge_decision',
+  description: 'Submit whether the two compared entities are the same.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reason: {
+        type: 'string',
+        description: 'One short sentence explaining the decision.',
+      },
+      decision: {
+        type: 'boolean',
+        description: 'true if both entities are the same, false otherwise.',
+      },
+    },
+    required: ['reason', 'decision'],
+  },
+}
+
+const mergeDecisionSchema = z.object({
+  reason: z.string().trim().min(1),
+  decision: z.boolean(),
+})
 
 export async function getAllTenants(): Promise<ITenant[]> {
   const tenantRepository = new TenantRepository(svc.postgres.writer.connection(), svc.log)
@@ -93,12 +118,57 @@ export async function getLLMResult(
   }
 }
 
-export async function saveLLMVerdict(verdict: ILLMSuggestionVerdict): Promise<string> {
-  const llmVerdictRepository = new LLMSuggestionVerdictsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
+export async function getLLMMergeDecision(
+  entities: ILLMConsumableMember[] | ILLMConsumableOrganization[],
+  modelId: string,
+  prompt: string,
+  region: string,
+  modelSpecificArgs: Record<string, unknown>,
+): Promise<ILLMMergeDecisionResult> {
+  if (!IS_LLM_ENABLED) {
+    throw ApplicationFailure.nonRetryable(
+      'LLM usage is disabled. Check CROWD_ENABLE_LLM env variable!',
+    )
+  }
+
+  const result = await getLLMResult(entities, modelId, prompt, region, {
+    ...modelSpecificArgs,
+    tools: [MERGE_DECISION_TOOL],
+    tool_choice: { type: 'tool', name: MERGE_DECISION_TOOL.name },
+  })
+
+  const toolUse = result.body.content.find(
+    (content): content is ILLMToolUseContent =>
+      content.type === 'tool_use' && content.name === MERGE_DECISION_TOOL.name,
   )
-  return llmVerdictRepository.saveLLMVerdict(verdict)
+  const parsed = mergeDecisionSchema.safeParse(toolUse?.input)
+
+  if (!parsed.success) {
+    svc.log.warn(
+      {
+        contentTypes: result.body.content.map((content) => content.type),
+        stopReason: result.body.stop_reason,
+      },
+      'LLM returned an invalid merge decision',
+    )
+    throw ApplicationFailure.retryable(
+      `Invalid LLM merge decision: ${z.prettifyError(parsed.error)}`,
+      'InvalidLLMMergeDecision',
+    )
+  }
+
+  return {
+    response: parsed.data,
+    prompt: result.prompt,
+    inputTokenCount: result.body.usage.input_tokens,
+    outputTokenCount: result.body.usage.output_tokens,
+    responseTimeSeconds: result.responseTimeSeconds,
+  }
+}
+
+export async function saveLLMVerdict(verdict: ILLMSuggestionVerdict): Promise<void> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await insertLlmSuggestionVerdict(qx, verdict)
 }
 
 export async function mergeMembers(

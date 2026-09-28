@@ -105,6 +105,11 @@ export interface MemberUnmergeResult {
   movedIdentities: IMemberIdentity[]
 }
 
+export interface ILLMMergeDecision {
+  decision: boolean
+  reason: string
+}
+
 export interface ILLMSuggestionVerdict {
   id?: string
   type: LLMSuggestionVerdictType
@@ -112,7 +117,7 @@ export interface ILLMSuggestionVerdict {
   primaryId: string
   secondaryId: string
   prompt: string
-  verdict: string
+  response: ILLMMergeDecision
   inputTokenCount: number
   outputTokenCount: number
   responseTimeSeconds: number
