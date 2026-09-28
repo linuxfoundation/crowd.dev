@@ -145,7 +145,10 @@ export async function getLLMMergeDecision(
 
   if (!parsed.success) {
     svc.log.warn(
-      { content: result.body.content, stopReason: result.body.stop_reason },
+      {
+        contentTypes: result.body.content.map((content) => content.type),
+        stopReason: result.body.stop_reason,
+      },
       'LLM returned an invalid merge decision',
     )
     throw ApplicationFailure.retryable(
