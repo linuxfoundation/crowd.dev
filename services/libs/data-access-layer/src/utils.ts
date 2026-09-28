@@ -221,6 +221,9 @@ export async function batchAll<T, R>(
   batchSize: number,
   fn: (batch: T[]) => Promise<R[]>,
 ): Promise<R[]> {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new Error(`batchAll: batchSize must be a positive integer, got ${batchSize}`)
+  }
   const results: R[] = []
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize)

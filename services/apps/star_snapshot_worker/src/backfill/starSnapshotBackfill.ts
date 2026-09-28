@@ -274,7 +274,7 @@ async function assertOk(
   if (response.status === 404) {
     throw new GithubRepoNotFoundError(`Repo not found (404) fetching ${what} for ${owner}/${name}`)
   }
-  if (response.status === 403 || response.status === 429) {
+  if (response.status === 403 || response.status === 429 || response.status === 451) {
     const retryAfterHeader = response.headers.get('retry-after')
     const retryAfterSeconds = retryAfterHeader === null ? NaN : Number(retryAfterHeader)
     const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined
