@@ -8,7 +8,9 @@ SQL >
     %
     SELECT id
     FROM organizations_populated_slug
-    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+    WHERE
+        slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+        AND isAffiliationBlocked = 0
 
 NODE org_page_contributors_timeseries_data
 SQL >

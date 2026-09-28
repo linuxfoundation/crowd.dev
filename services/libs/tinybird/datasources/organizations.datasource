@@ -11,6 +11,7 @@ DESCRIPTION >
     - `employees` is the number of employees in the organization (0 default if unknown).
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
     - `isTeamOrganization` flag indicates whether this organization is part of the project team (UInt8 boolean, 0 default).
+    - `isAffiliationBlocked` flag indicates the organization is blocked from affiliations and must not get an Insights page (UInt8 boolean, 0 default).
     - `type` specifies the organization type (company, nonprofit, government, etc., empty string if not specified).
     - `size` describes the organization size category: "1-10", "501-1000", "1001-5000", "5001-10000", "10001+" (empty string if not specified).
     - `headline` is a brief description or tagline for the organization (empty string if not provided).
@@ -28,6 +29,7 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
     `isTeamOrganization` UInt8 `json:$.record.isTeamOrganization` DEFAULT 0,
+    `isAffiliationBlocked` UInt8 `json:$.record.isAffiliationBlocked` DEFAULT 0,
     `type` String `json:$.record.type` DEFAULT '',
     `size` String `json:$.record.size` DEFAULT '',
     `headline` String `json:$.record.headline` DEFAULT '',

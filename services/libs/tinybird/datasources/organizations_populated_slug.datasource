@@ -26,6 +26,7 @@ SCHEMA >
     `createdAt` DateTime64(3),
     `updatedAt` DateTime64(3),
     `isTeamOrganization` UInt8 DEFAULT 0,
+    `isAffiliationBlocked` UInt8 DEFAULT 0,
     `type` String DEFAULT '',
     `size` String DEFAULT '',
     `headline` String DEFAULT '',

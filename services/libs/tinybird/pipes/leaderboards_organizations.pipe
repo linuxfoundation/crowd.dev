@@ -8,7 +8,7 @@ DESCRIPTION >
     Retrieves all organizations from the populated datasource, including slug for page links
 
 SQL >
-    SELECT o.id, o.displayName, o.logo, ops.slug
+    SELECT o.id, o.displayName, o.logo, if(o.isAffiliationBlocked = 1, '', ops.slug) AS slug
     FROM organizations o FINAL
     LEFT JOIN organizations_populated_slug ops ON o.id = ops.id
 
