@@ -127,13 +127,15 @@ const job: IJobDefinition = {
                     nangoConnection.connection_id,
                   )
 
-                  statusMap.set(
-                    {
-                      ...int,
-                      connectionId,
-                    },
-                    results,
-                  )
+                  if (results) {
+                    statusMap.set(
+                      {
+                        ...int,
+                        connectionId,
+                      },
+                      results,
+                    )
+                  }
                 } catch (error) {
                   failedStatusChecks++
                   ctx.log.error(
