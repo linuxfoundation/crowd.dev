@@ -14,7 +14,9 @@ DESCRIPTION >
     separately (`stars_count_baseline`) as the real cumulative total as of `startDate`, the same
     way `stars_count_summary`'s `github_at_start`/`gitlab_new` already do for the no-granularity
     case. Without this, the first bucket in ANY range would show the repo's entire pre-range
-    history as "new" regardless of backfill completeness (CM-1819).
+    history as "new" (CM-1819). Same caveat as `github_at_start`: a repo whose first snapshot
+    postdates `startDate` (incomplete backfill) still baselines at 0 for that repo, so its
+    pre-`startDate` history still shows as "new" in the first bucket - not fixed by this change.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
     `stars_cumulative_count.pipe` / `activities_filtered.pipe`. `bucketId` is required alongside
     `collectionSlug` for the same reason `stars_cumulative_count.pipe` needs it - both collection
