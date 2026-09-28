@@ -7,6 +7,7 @@ import { startDocReadinessRun } from '../project-doc-readiness-runs'
 import {
   findLatestProjectDocReadiness,
   findProjectDocReadinessChecks,
+  findProjectForDocsDiscovery,
   findProjectsForDocsReadiness,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
@@ -198,5 +199,79 @@ describe('findProjectsForDocsReadiness', () => {
     expect(first).toHaveLength(2)
     expect(rest).toHaveLength(1)
     expect(rest[0].id > first[1].id).toBe(true)
+  })
+})
+
+describe('findProjectForDocsDiscovery websiteSharedCount', () => {
+  test('counts live enabled siblings sharing the website, ignoring scheme, www and trailing slash', async ({
+    qx,
+  }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'https://foundation.org/projects/x/',
+    })
+    await createInsightsProject(qx, {
+      name: 'B',
+      slug: 'b',
+      isLF: true,
+      website: 'http://www.foundation.org/projects/x',
+    })
+    await createInsightsProject(qx, {
+      name: 'W',
+      slug: 'w',
+      isLF: true,
+      website: 'https://wwwXfoundation.org/projects/x',
+    })
+    await createInsightsProject(qx, {
+      name: 'C',
+      slug: 'c',
+      isLF: true,
+      website: 'https://foundation.org/y',
+    })
+
+    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(1)
+  })
+
+  test('is 0 for a unique website and for a missing website', async ({ qx }) => {
+    const unique = await createInsightsProject(qx, {
+      name: 'U',
+      slug: 'u',
+      isLF: true,
+      website: 'https://unique.org',
+    })
+    const none = await createInsightsProject(qx, { name: 'N', slug: 'n', isLF: true })
+    await createInsightsProject(qx, { name: 'N2', slug: 'n2', isLF: true })
+
+    expect((await findProjectForDocsDiscovery(qx, unique.id))?.websiteSharedCount).toBe(0)
+    expect((await findProjectForDocsDiscovery(qx, none.id))?.websiteSharedCount).toBe(0)
+  })
+
+  test('does not count deleted or disabled siblings', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'https://s.org',
+    })
+    const gone = await createInsightsProject(qx, {
+      name: 'G',
+      slug: 'g',
+      isLF: true,
+      website: 'https://s.org',
+    })
+    await createInsightsProject(qx, {
+      name: 'D',
+      slug: 'd',
+      isLF: true,
+      website: 'https://s.org',
+      enabled: false,
+    })
+    await qx.selectNone(`UPDATE "insightsProjects" SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: gone.id,
+    })
+
+    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(0)
   })
 })

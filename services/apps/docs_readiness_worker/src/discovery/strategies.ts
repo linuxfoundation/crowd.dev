@@ -12,12 +12,21 @@ import {
   parseGithubRepo,
   primaryRepo,
 } from './github'
-import { USER_AGENT, domainOf, fetchText, isLiveDocs, normalizeUrl, normalizedDomain } from './http'
+import {
+  USER_AGENT,
+  domainOf,
+  fetchText,
+  isGithubWebsite,
+  isLiveDocs,
+  normalizeUrl,
+  normalizedDomain,
+} from './http'
 
 export interface IDiscoveryContext {
   name: string
   slug: string
   website: string | null
+  websiteShared: boolean
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
@@ -58,44 +67,59 @@ function isBadgeOrGithubHost(host: string | null): boolean {
   )
 }
 
+// A GitHub website or one shared with other projects says nothing about this project's docs.
+const usableWebsite = (ctx: IDiscoveryContext): string | null =>
+  ctx.website && !ctx.websiteShared && !isGithubWebsite(ctx.website) ? ctx.website : null
+
+const isLlmsTxtBody = (body: string | null): body is string =>
+  !!body && body.length > 50 && !/^\s*</.test(body)
+
 export const llmsTxtProbe: DiscoveryStrategy = async (ctx) => {
-  if (!ctx.website) {
+  const website = usableWebsite(ctx)
+  if (!website) {
     return []
   }
 
   try {
-    const domain = normalizedDomain(ctx.website)
-    if (!domain) {
+    const normalized = normalizeUrl(website)
+    const domain = normalizedDomain(website)
+    if (!normalized || !domain) {
       return []
     }
 
-    const isValid = (body: string | null): body is string =>
-      !!body && body.length > 50 && !/^\s*</.test(body)
+    const parsed = new URL(normalized)
+    parsed.search = ''
+    const websiteBase = parsed.toString().replace(/\/+$/, '')
+    const rootBase = `https://${domain}`
 
-    let body = await fetchText(`https://docs.${domain}/llms.txt`, 5_000)
-    let host = `https://docs.${domain}`
-    if (!isValid(body)) {
-      body = await fetchText(`https://${domain}/llms.txt`, 5_000)
-      host = `https://${domain}`
+    // The website's own path first (a project page on a foundation site), root last.
+    const bases = [
+      ...new Set([
+        ...(parsed.pathname === '/' ? [] : [websiteBase]),
+        `https://docs.${domain}`,
+        rootBase,
+      ]),
+    ]
+
+    for (const base of bases) {
+      if (isLlmsTxtBody(await fetchText(`${base}/llms.txt`, 5_000))) {
+        return [candidate(base, 'llms-txt-probe', true)]
+      }
     }
-
-    if (!isValid(body)) {
-      return []
-    }
-
-    return [candidate(host, 'llms-txt-probe', true)]
+    return []
   } catch {
     return []
   }
 }
 
 export const docsSubdomain: DiscoveryStrategy = async (ctx) => {
-  if (!ctx.website) {
+  const website = usableWebsite(ctx)
+  if (!website) {
     return []
   }
 
   try {
-    const url = `https://docs.${normalizedDomain(ctx.website)}`
+    const url = `https://docs.${normalizedDomain(website)}`
     return (await isLiveDocs(url)) ? [candidate(url, 'docs-subdomain', true)] : []
   } catch {
     return []
@@ -103,12 +127,13 @@ export const docsSubdomain: DiscoveryStrategy = async (ctx) => {
 }
 
 export const docsPath: DiscoveryStrategy = async (ctx) => {
-  if (!ctx.website) {
+  const website = usableWebsite(ctx)
+  if (!website) {
     return []
   }
 
   try {
-    const normalized = normalizeUrl(ctx.website)
+    const normalized = normalizeUrl(website)
     if (!normalized) {
       return []
     }
@@ -124,7 +149,9 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
         candidates.push(candidate(url, 'docs-path', true))
       }
     }
-    return candidates
+    // A catch-all site (SPA) answers 200 for every path, so a live /docs proves nothing.
+    parsed.pathname = `${basePath}/__docs-readiness-soft-404-probe__`
+    return candidates.length > 0 && (await isLiveDocs(parsed.toString())) ? [] : candidates
   } catch {
     return []
   }
@@ -241,19 +268,37 @@ export const githubHomepage: DiscoveryStrategy = async (ctx) => {
       return []
     }
 
-    return [candidate(url, 'github-homepage', await isLiveDocs(url))]
+    // Probe the repo homepage like a website, so a shared or GitHub project website still finds docs.
+    // Skip when it is the website's own host: shared hosts stay gated, usable ones already ran.
+    const homepageDomain = normalizedDomain(url)
+    if (
+      homepageDomain?.startsWith('docs.') ||
+      (ctx.website && normalizedDomain(ctx.website) === homepageDomain)
+    ) {
+      return [candidate(url, 'github-homepage', await isLiveDocs(url))]
+    }
+
+    const derivedCtx: IDiscoveryContext = { ...ctx, website: url, websiteShared: false }
+    const derived = await Promise.all([
+      docsPath(derivedCtx),
+      docsSubdomain(derivedCtx),
+      llmsTxtProbe(derivedCtx),
+    ])
+
+    return [candidate(url, 'github-homepage', await isLiveDocs(url)), ...derived.flat()]
   } catch {
     return []
   }
 }
 
 export const projectWebsite: DiscoveryStrategy = async (ctx) => {
-  if (!ctx.website) {
+  const website = usableWebsite(ctx)
+  if (!website) {
     return []
   }
 
   try {
-    const url = normalizeUrl(ctx.website)
+    const url = normalizeUrl(website)
     if (!url) {
       return []
     }

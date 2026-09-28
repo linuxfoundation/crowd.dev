@@ -148,6 +148,10 @@ export function normalizedDomain(url: string): string | null {
   return normalized ? (domainOf(normalized)?.replace(/^www\./, '') ?? null) : null
 }
 
+export function isGithubWebsite(url: string): boolean {
+  return normalizedDomain(url) === 'github.com'
+}
+
 export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResult> {
   try {
     const response = await guardedFetch(url, timeoutMs)

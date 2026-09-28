@@ -237,15 +237,26 @@ export async function findProjectsForDocsReadiness(
   )
 }
 
+// shortcut: sibling count seq-scans insightsProjects (~200ms at 13.7k rows). revisit: if called in a hot loop, add an expression index on the normalised website.
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
 ): Promise<IProjectForDocsDiscovery | null> {
   return qx.selectOneOrNone(
     `
-    SELECT "id", "slug", "name", "website"
-    FROM "insightsProjects"
-    WHERE "id" = $(projectId) AND "deletedAt" IS NULL
+    SELECT p."id", p."slug", p."name", p."website",
+      (
+        SELECT count(*)::int
+        FROM "insightsProjects" o
+        WHERE o."id" <> p."id"
+          AND o."enabled"
+          AND o."deletedAt" IS NULL
+          AND COALESCE(p."website", '') <> ''
+          AND lower(regexp_replace(o."website", '^https?://(www[.])?|/+$', '', 'gi'))
+            = lower(regexp_replace(p."website", '^https?://(www[.])?|/+$', '', 'gi'))
+      ) AS "websiteSharedCount"
+    FROM "insightsProjects" p
+    WHERE p."id" = $(projectId) AND p."deletedAt" IS NULL
     `,
     { projectId },
   )

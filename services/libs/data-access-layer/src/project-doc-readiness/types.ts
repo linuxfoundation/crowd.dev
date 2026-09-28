@@ -89,4 +89,5 @@ export interface IProjectForDocsDiscovery {
   slug: string
   name: string
   website: string | null
+  websiteSharedCount: number
 }

@@ -77,6 +77,7 @@ describe('resolveDocsUrl', () => {
       slug: 'proj',
       name: 'Project',
       website: 'https://example.com',
+      websiteSharedCount: 0,
     })
     mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
     mocks.discoverDocs.mockResolvedValue({
@@ -100,6 +101,7 @@ describe('resolveDocsUrl', () => {
       name: 'Project',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -129,6 +131,7 @@ describe('resolveDocsUrl', () => {
       slug: 'proj',
       name: 'Project',
       website: null,
+      websiteSharedCount: 0,
     })
     mocks.findEnabledRepositoriesForProject.mockResolvedValue([
       { url: 'https://github.com/org/repo', starCount: 42 },
@@ -148,6 +151,7 @@ describe('resolveDocsUrl', () => {
       name: 'Project',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos: [{ url: 'https://github.com/org/repo', starCount: 42 }],
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
@@ -162,6 +166,7 @@ describe('resolveDocsUrl', () => {
       slug: 'proj',
       name: 'Project',
       website: 'https://example.com',
+      websiteSharedCount: 0,
     })
     mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
     mocks.discoverDocs.mockReturnValue(new Promise(() => {}))

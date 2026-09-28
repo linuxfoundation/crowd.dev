@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { discoverDocs } from './index'
 import {
   docsPath,
   docsSubdomain,
@@ -48,6 +49,7 @@ describe('llmsTxtProbe', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -74,6 +76,7 @@ describe('llmsTxtProbe', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -88,6 +91,7 @@ describe('llmsTxtProbe', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -101,6 +105,7 @@ describe('llmsTxtProbe', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -114,6 +119,7 @@ describe('llmsTxtProbe', () => {
         name: 'proj',
         slug: 'proj',
         website: '::not a url::',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -131,6 +137,7 @@ describe('llmsTxtProbe', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -158,6 +165,7 @@ describe('llmsTxtProbe', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -179,11 +187,299 @@ describe('llmsTxtProbe', () => {
         name: 'proj',
         slug: 'proj',
         website: 'https://example.com',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
       }),
     ).toEqual([])
+  })
+})
+
+describe('llmsTxtProbe website path and gating', () => {
+  const llms = () => new Response('x'.repeat(60), { status: 200 })
+
+  it('probes the website path before the root and returns the base that served the file', async () => {
+    const fetchMock = routeFetch([
+      ['https://foundation.org/projects/x/llms.txt', llms],
+      ['https://foundation.org/llms.txt', llms],
+    ])
+
+    const result = await llmsTxtProbe({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://foundation.org/projects/x/',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result).toEqual([
+      {
+        url: 'https://foundation.org/projects/x',
+        method: 'llms-txt-probe',
+        confidence: 'high',
+        livenessOk: true,
+      },
+    ])
+    expect(fetchMock.mock.calls[0][0]).toBe('https://foundation.org/projects/x/llms.txt')
+  })
+
+  it('falls through to docs subdomain then the bare root when the path has no llms.txt', async () => {
+    routeFetch([
+      ['https://foundation.org/projects/x/llms.txt', notFound],
+      ['https://docs.foundation.org/llms.txt', notFound],
+      ['https://foundation.org/llms.txt', llms],
+    ])
+
+    const result = await llmsTxtProbe({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://foundation.org/projects/x',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result.map((r) => r.url)).toEqual(['https://foundation.org'])
+  })
+
+  it('does not probe the root twice for a root website', async () => {
+    const fetchMock = routeFetch([
+      ['https://docs.example.com/llms.txt', notFound],
+      ['https://example.com/llms.txt', notFound],
+    ])
+
+    await llmsTxtProbe({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://example.com/',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      'https://docs.example.com/llms.txt',
+      'https://example.com/llms.txt',
+    ])
+  })
+
+  it('returns [] for a github website without fetching', async () => {
+    const fetchMock = routeFetch([['https://github.com', llms]])
+
+    expect(
+      await llmsTxtProbe({
+        name: 'proj',
+        slug: 'proj',
+        website: 'https://github.com/org/repo',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+    expect(
+      await llmsTxtProbe({
+        name: 'proj',
+        slug: 'proj',
+        website: 'https://www.github.com/org/repo',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('websiteShared gating', () => {
+  it('makes every website-anchored strategy return [] without fetching', async () => {
+    const fetchMock = routeFetch([['https://', html]])
+    const shared = {
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://foundation.org/projects/x',
+      websiteShared: true,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    }
+
+    expect(await llmsTxtProbe(shared)).toEqual([])
+    expect(await docsSubdomain(shared)).toEqual([])
+    expect(await docsPath(shared)).toEqual([])
+    expect(await projectWebsite(shared)).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('skips projectWebsite, docsSubdomain and docsPath for a github website', async () => {
+    const fetchMock = routeFetch([['https://', html]])
+    const gh = {
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://github.com/org/repo',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    }
+
+    expect(await docsSubdomain(gh)).toEqual([])
+    expect(await docsPath(gh)).toEqual([])
+    expect(await projectWebsite(gh)).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('githubHomepage derived probes', () => {
+  const llms = () => new Response('x'.repeat(60), { status: 200 })
+  const ctx = (over = {}) => ({
+    name: 'proj',
+    slug: 'proj',
+    website: 'https://foundation.org/projects/x',
+    websiteShared: true,
+    repos,
+    githubToken: 'token',
+    serpApiKey: null,
+    ...over,
+  })
+
+  it('probes the repo homepage domain when the website is shared, calling the API once', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://www.openvdb.org' }),
+      ],
+      ['https://www.openvdb.org/documentation', html],
+      ['https://www.openvdb.org/llms.txt', notFound],
+      ['https://www.openvdb.org/__docs-readiness', notFound],
+      ['https://www.openvdb.org', html],
+    ])
+
+    const result = await githubHomepage(ctx())
+
+    expect(result.map((c) => [c.method, c.url])).toEqual(
+      expect.arrayContaining([
+        ['github-homepage', 'https://www.openvdb.org/'],
+        ['docs-path', 'https://www.openvdb.org/documentation'],
+      ]),
+    )
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).startsWith('https://api.github.com')),
+    ).toHaveLength(1)
+    expect(result.some((c) => c.url.includes('foundation.org'))).toBe(false)
+  })
+
+  it('derives an llms-txt-probe candidate from the homepage domain', async () => {
+    routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://openvdb.org' }),
+      ],
+      ['https://openvdb.org/llms.txt', llms],
+      ['https://', notFound],
+    ])
+
+    const result = await githubHomepage(ctx({ website: null, websiteShared: false }))
+    expect(result).toContainEqual({
+      url: 'https://openvdb.org',
+      method: 'llms-txt-probe',
+      confidence: 'high',
+      livenessOk: true,
+    })
+  })
+
+  it('does no derived probing when the homepage is on the shared website host', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://foundation.org/projects/x/' }),
+      ],
+      ['https://foundation.org/projects/x', html],
+    ])
+
+    const result = await githubHomepage(ctx())
+    expect(result.map((c) => c.method)).toEqual(['github-homepage'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-probe a homepage that equals the usable website', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://example.com' }),
+      ],
+      ['https://example.com', html],
+    ])
+
+    await githubHomepage(ctx({ website: 'https://www.example.com', websiteShared: false }))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not derive docs.docs.<domain> when the homepage is already a docs host', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://docs.example.com' }),
+      ],
+      ['https://docs.example.com', html],
+    ])
+
+    await githubHomepage(ctx({ website: null, websiteShared: false }))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns [] from website strategies when shared with no website', async () => {
+    const fetchMock = routeFetch([['https://', html]])
+    const noSite = ctx({ website: null })
+
+    expect(await llmsTxtProbe(noSite)).toEqual([])
+    expect(await projectWebsite(noSite)).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does no derived probing when the homepage is a github url', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://github.com/torvalds' }),
+      ],
+    ])
+
+    expect(await githubHomepage(ctx())).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('discoverDocs with a shared website', () => {
+  it('resolves to the docs path derived from the repo homepage', async () => {
+    routeFetch([
+      ['https://api.github.com/repos/torvalds/linux/contents', notFound],
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://www.openvdb.org' }),
+      ],
+      ['https://www.openvdb.org/documentation', html],
+      ['https://www.openvdb.org/docs', notFound],
+      ['https://www.openvdb.org/doc', notFound],
+      ['https://www.openvdb.org/__docs-readiness', notFound],
+      ['https://www.openvdb.org', html],
+    ])
+
+    const result = await discoverDocs({
+      name: 'OpenVDB',
+      slug: 'openvdb',
+      website: 'https://foundation.org/projects/openvdb',
+      websiteShared: true,
+      repos,
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+
+    expect(result.docsUrl).toBe('https://www.openvdb.org/documentation')
+    expect(result.allCandidates.some((c) => c.url.includes('foundation.org'))).toBe(false)
   })
 })
 
@@ -195,6 +491,7 @@ describe('docsSubdomain', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -216,6 +513,7 @@ describe('docsSubdomain', () => {
         name: 'proj',
         slug: 'proj',
         website: 'https://example.com',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -229,6 +527,7 @@ describe('docsSubdomain', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -243,6 +542,7 @@ describe('docsSubdomain', () => {
       name: 'proj',
       slug: 'proj',
       website: 'example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -264,6 +564,7 @@ describe('docsSubdomain', () => {
         name: 'proj',
         slug: 'proj',
         website: 'https://example.com',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -284,6 +585,7 @@ describe('docsPath', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -304,6 +606,44 @@ describe('docsPath', () => {
     ])
   })
 
+  it('returns [] when the site answers 200 for every path (soft 404)', async () => {
+    routeFetch([['https://example.com', html]])
+
+    expect(
+      await docsPath({
+        name: 'proj',
+        slug: 'proj',
+        website: 'https://example.com',
+        websiteShared: false,
+        repos: [],
+        githubToken: null,
+        serpApiKey: null,
+      }),
+    ).toEqual([])
+  })
+
+  it('keeps a real /docs under a website path when unknown paths return 404', async () => {
+    const fetchMock = routeFetch([
+      ['https://foundation.org/projects/x/__docs-readiness', notFound],
+      ['https://foundation.org/projects/x/docs', html],
+      ['https://foundation.org/projects/x/doc', notFound],
+    ])
+
+    const result = await docsPath({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://foundation.org/projects/x/',
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: null,
+    })
+    expect(result.map((c) => c.url)).toEqual(['https://foundation.org/projects/x/docs'])
+    expect(fetchMock.mock.calls.map(([input]) => input.toString())).toContain(
+      'https://foundation.org/projects/x/__docs-readiness-soft-404-probe__',
+    )
+  })
+
   it('probes the path instead of appending after a query string', async () => {
     const fetchMock = routeFetch([
       ['https://example.com/docs', html],
@@ -315,6 +655,7 @@ describe('docsPath', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com?ref=x',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -338,6 +679,7 @@ describe('docsPath', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -352,6 +694,7 @@ describe('docsPath', () => {
         name: 'proj',
         slug: 'proj',
         website: 'https://example.com',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -376,6 +719,7 @@ describe('packageManifest', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos,
       githubToken: 'token',
       serpApiKey: null,
@@ -396,6 +740,7 @@ describe('packageManifest', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: 'token',
         serpApiKey: null,
@@ -409,6 +754,7 @@ describe('packageManifest', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: null,
         serpApiKey: null,
@@ -423,6 +769,7 @@ describe('packageManifest', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: 'token',
         serpApiKey: null,
@@ -445,6 +792,7 @@ describe('readmeScrape', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos,
       githubToken: 'token',
       serpApiKey: null,
@@ -465,6 +813,7 @@ describe('readmeScrape', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: 'token',
         serpApiKey: null,
@@ -478,6 +827,7 @@ describe('readmeScrape', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: null,
         serpApiKey: null,
@@ -492,6 +842,7 @@ describe('readmeScrape', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: 'token',
         serpApiKey: null,
@@ -507,6 +858,7 @@ describe('githubHomepage', () => {
         'https://api.github.com/repos/torvalds/linux',
         () => Response.json({ homepage: 'https://docs.example.com' }),
       ],
+      ['https://docs.example.com/doc', notFound],
       ['https://docs.example.com', html],
     ])
 
@@ -514,6 +866,7 @@ describe('githubHomepage', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos,
       githubToken: 'token',
       serpApiKey: null,
@@ -541,6 +894,7 @@ describe('githubHomepage', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: 'token',
         serpApiKey: null,
@@ -561,6 +915,7 @@ describe('githubHomepage', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: 'token',
         serpApiKey: null,
@@ -574,6 +929,7 @@ describe('githubHomepage', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: 'token',
         serpApiKey: null,
@@ -587,6 +943,7 @@ describe('githubHomepage', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: null,
         serpApiKey: null,
@@ -601,6 +958,7 @@ describe('githubHomepage', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos,
         githubToken: 'token',
         serpApiKey: null,
@@ -617,6 +975,7 @@ describe('projectWebsite', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://example.com',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -637,6 +996,7 @@ describe('projectWebsite', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -651,6 +1011,7 @@ describe('projectWebsite', () => {
         name: 'proj',
         slug: 'proj',
         website: 'https://example.com',
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: null,
@@ -666,6 +1027,7 @@ describe('serpStrategy', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -694,6 +1056,7 @@ describe('serpStrategy', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: 'key123',
@@ -718,6 +1081,7 @@ describe('serpStrategy', () => {
       name: 'proj',
       slug: 'proj',
       website: null,
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: 'key123',
@@ -732,6 +1096,7 @@ describe('serpStrategy', () => {
         name: 'proj',
         slug: 'proj',
         website: null,
+        websiteShared: false,
         repos: [],
         githubToken: null,
         serpApiKey: 'key123',

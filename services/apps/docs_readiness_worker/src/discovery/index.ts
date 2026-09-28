@@ -1,6 +1,6 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
-import { normalizedDomain } from './http'
+import { isGithubWebsite, normalizedDomain } from './http'
 import { candidateHasDocsSignal, methodPriority, rankCandidates, repoNameAnchor } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
@@ -54,9 +54,9 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
   // github.com is a shared host, not a project domain — using it for affinity would wrongly
   // treat GitHub's own docs as on-domain when a project's website is just its repo URL.
   const websiteDomain = ctx.website ? normalizedDomain(ctx.website) : null
-  const isGithubWebsite = websiteDomain === 'github.com'
-  const projectDomain = isGithubWebsite ? null : websiteDomain
-  const projectNameHint = ctx.website && isGithubWebsite ? repoNameAnchor(ctx.website) : null
+  const githubWebsite = !!ctx.website && isGithubWebsite(ctx.website)
+  const projectDomain = githubWebsite ? null : websiteDomain
+  const projectNameHint = ctx.website && githubWebsite ? repoNameAnchor(ctx.website) : null
   const winner = rankCandidates(allCandidates, projectDomain, projectNameHint)
 
   return {
