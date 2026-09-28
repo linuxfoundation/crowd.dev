@@ -7,11 +7,11 @@ export interface IDiscussionRefs {
 }
 
 const FENCED_CODE_BLOCK_RE = /(```|~~~)[\s\S]*?\1/g
-const INLINE_CODE_RE = /`[^`\n]*`/g
 const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g
 const BLOCKQUOTE_LINE_RE = /^[ \t]*>.*$/gm
 
 // A link quoted in a code block, HTML comment, or blockquote is context, not a request.
+// Inline code is not stripped: users routinely backtick links to format them.
 export function stripNonProseSections(markdown: string): string {
   let stripped = markdown
   let previous: string
@@ -20,10 +20,7 @@ export function stripNonProseSections(markdown: string): string {
     stripped = stripped.replace(HTML_COMMENT_RE, '')
   } while (stripped !== previous)
 
-  return stripped
-    .replace(FENCED_CODE_BLOCK_RE, '')
-    .replace(INLINE_CODE_RE, '')
-    .replace(BLOCKQUOTE_LINE_RE, '')
+  return stripped.replace(FENCED_CODE_BLOCK_RE, '').replace(BLOCKQUOTE_LINE_RE, '')
 }
 
 const TRAILING_PUNCTUATION_RE = /[.,;:!?)>'"\]]+$/

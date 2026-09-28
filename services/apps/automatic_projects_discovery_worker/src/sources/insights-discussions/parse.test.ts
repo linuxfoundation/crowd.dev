@@ -82,8 +82,8 @@ describe('stripNonProseSections', () => {
     ).not.toContain('github.com/foo/bar')
   })
 
-  it('removes inline code', () => {
-    expect(stripNonProseSections('see `https://github.com/foo/bar` here')).not.toContain(
+  it('keeps inline code', () => {
+    expect(stripNonProseSections('see `https://github.com/foo/bar` here')).toContain(
       'github.com/foo/bar',
     )
   })
@@ -162,5 +162,14 @@ describe('extractDiscussionRepoUrls', () => {
     })
 
     expect(result.repoUrls).toEqual([])
+  })
+
+  it('extracts a repo link wrapped in inline code (#2302)', () => {
+    const result = extractDiscussionRepoUrls({
+      title: 'Add reShapr to LFX Insights',
+      body: '* **Repository:** `https://github.com/reshaprio/reshapr`',
+    })
+
+    expect(result.repoUrls).toEqual(['https://github.com/reshaprio/reshapr'])
   })
 })
