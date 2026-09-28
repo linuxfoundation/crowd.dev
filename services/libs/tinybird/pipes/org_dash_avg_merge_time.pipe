@@ -20,6 +20,7 @@ SQL >
                             required=True,
                         )
                     }}
+                    AND organizationId NOT IN (SELECT id FROM organizations FINAL WHERE isAffiliationBlocked = 1)
                 )
             ) as "orgAverageMergeTimeSeconds"
         FROM generate_timeseries ds

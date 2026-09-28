@@ -19,6 +19,7 @@ SQL >
                         required=True,
                     )
                 }}
+                AND organizationId NOT IN (SELECT id FROM organizations FINAL WHERE isAffiliationBlocked = 1)
             ) as "orgActivityCount"
         FROM generate_timeseries ds
         LEFT JOIN
