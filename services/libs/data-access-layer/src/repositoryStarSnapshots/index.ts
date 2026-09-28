@@ -153,6 +153,9 @@ export async function findRepoIdsWithoutStarSnapshots(
       select r.id as "repositoryId"
       from public.repositories r
       where r.id in ($(repositoryIds:csv))
+        and r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
         and not exists (
           select 1 from "repositoryStarSnapshots" s where s."repositoryId" = r.id
         )
@@ -196,6 +199,9 @@ export async function findDaysSinceAddedForRepos(
           ((now() at time zone 'UTC')::date - ("createdAt" at time zone 'UTC')::date)::int as "daysSinceAdded"
       from public.repositories
       where id in ($(repositoryIds:csv))
+        and "deletedAt" is null
+        and "excluded" = false
+        and url like 'https://github.com%'
     `,
     { repositoryIds },
   )
