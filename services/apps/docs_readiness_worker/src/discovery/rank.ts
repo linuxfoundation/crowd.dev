@@ -34,6 +34,34 @@ const GITHUB_SHARED_HOSTS = new Set(['github.com', 'www.github.com', 'docs.githu
 // docs URL — it only wins when it's the sole live candidate left in the pool.
 const GITHUB_SHARED_HOST_SCORE = -1000
 
+// Above shared URLs (max about -15) and bare GitHub hosts, below any unshared candidate (min -2).
+const GITHUB_REPO_PATH_SCORE = -10
+
+// Below every organic score (max about +35), above the GitHub floor.
+const SHARED_URL_PENALTY = -50
+
+// Same site regardless of scheme, www, host case, query or trailing slash; path case is kept.
+function sharedKey(url: string): string | null {
+  const domain = normalizedDomain(url)
+  return domain ? `${domain}${pathnameOf(url).replace(/\/+$/, '')}` : null
+}
+
+const isGithubRepoPath = (host: string, pathname: string): boolean =>
+  host !== 'docs.github.com' && /^\/[^/]+\/[^/]+/.test(pathname)
+
+// A root llms.txt says nothing about one project; docs.* roots stay explicit.
+const isBareRootLlmsHit = (c: IDocCandidate): boolean => {
+  if (c.method !== 'llms-txt-probe') {
+    return false
+  }
+  try {
+    const { hostname, pathname } = new URL(c.url)
+    return pathname === '/' && !hostname.startsWith('docs.')
+  } catch {
+    return false
+  }
+}
+
 function hasDocsSignal(host: string, pathname: string): boolean {
   if (GITHUB_SHARED_HOSTS.has(host)) {
     return false
@@ -76,6 +104,7 @@ export function rankCandidates(
   candidates: IDocCandidate[],
   projectDomain: string | null = null,
   projectNameHint: string | null = null,
+  sharedDocsUrls: ReadonlySet<string> = new Set(),
 ): IDocCandidate | null {
   const live = candidates.filter((c) => c.livenessOk)
   if (live.length === 0) {
@@ -90,6 +119,15 @@ export function rankCandidates(
       ? projectNameHint.toLowerCase()
       : ''
 
+  const sharedKeys = new Set(
+    [...sharedDocsUrls].map(sharedKey).filter((key): key is string => !!key),
+  )
+
+  const isShared = (c: IDocCandidate): boolean => {
+    const key = sharedKey(c.url)
+    return !!key && sharedKeys.has(key)
+  }
+
   // A live on-domain candidate only overrides off-domain results once it carries a docs signal,
   // so a bare homepage can't shadow real docs; lacking a domain, fall back to a name-token anchor.
   const ownDomainLive = projectDomain
@@ -97,7 +135,10 @@ export function rankCandidates(
     : nameToken
       ? live.filter((c) => (normalizedDomain(c.url) ?? '').toLowerCase().includes(nameToken))
       : []
-  const pool = ownDomainLive.some(candidateHasDocsSignal) ? ownDomainLive : live
+  // A shared URL is no anchor: it must not narrow the pool and hide unshared off-domain candidates.
+  const pool = ownDomainLive.some((c) => !isShared(c) && candidateHasDocsSignal(c))
+    ? ownDomainLive
+    : live
 
   const domainMethods: Record<string, Set<IDocCandidate['method']>> = {}
   for (const c of pool) {
@@ -112,12 +153,18 @@ export function rankCandidates(
     const host = domainOf(c.url) ?? ''
     const pathname = pathnameOf(c.url)
     const domain = normalizedDomain(c.url)
+    const sharedPenalty = isShared(c) ? SHARED_URL_PENALTY : 0
 
     if (GITHUB_SHARED_HOSTS.has(host)) {
-      return { candidate: c, score: GITHUB_SHARED_HOST_SCORE }
+      const floor = isGithubRepoPath(host, pathname)
+        ? GITHUB_REPO_PATH_SCORE
+        : GITHUB_SHARED_HOST_SCORE
+      return { candidate: c, score: floor + sharedPenalty }
     }
 
-    let score = METHOD_BONUS[c.method] ?? 0
+    const bareLlms = isBareRootLlmsHit(c)
+    // No method bonus: a bare root loses ties to any same-shape candidate.
+    let score = bareLlms ? 0 : (METHOD_BONUS[c.method] ?? 0)
 
     if (host.startsWith('docs.')) score += 4
     if (DOCS_KEYWORDS.test(host)) score += 2
@@ -129,7 +176,7 @@ export function rankCandidates(
       score -= 2
     }
 
-    return { candidate: c, score }
+    return { candidate: c, score: score + sharedPenalty }
   })
 
   scored.sort((a, b) => b.score - a.score)
