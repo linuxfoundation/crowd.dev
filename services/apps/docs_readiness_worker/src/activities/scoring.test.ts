@@ -31,6 +31,7 @@ vi.mock('@crowd/data-access-layer', () => ({
   lockProjectDocReadiness: mocks.lockProjectDocReadiness,
   replaceProjectDocReadinessChecks: mocks.replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
+  REPO_ONLY_ERROR: 'repo-only',
 }))
 
 vi.mock('../scoring/runChecksIsolated', () => ({
@@ -56,9 +57,23 @@ describe('scoreProject', () => {
     expect(mocks.findProjectForDocsDiscovery).not.toHaveBeenCalled()
   })
 
+  test('refuses to score a repo-url fallback, so GitHub own llms.txt is never graded as the project', async () => {
+    await expect(
+      scoreProject('project-1', 'run-1', {
+        docsUrl: 'https://github.com/acme/solo',
+        discoveryMethod: 'repo-url',
+        confidence: 'low',
+        isOverride: false,
+      }),
+    ).rejects.toThrow('repo-only')
+    expect(mocks.runChecks).not.toHaveBeenCalled()
+    expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
+  })
+
   test('throws a non-retryable failure when the project does not exist', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue(null)
     await expect(scoreProject('missing', 'run-1', RESOLVED)).rejects.toThrow()
+    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'missing')
     expect(mocks.runChecks).not.toHaveBeenCalled()
   })
 
