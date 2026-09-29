@@ -246,7 +246,10 @@ export function isTrustedRedirect(url: string, finalUrl: string): boolean {
     domainLabel(from) === domainLabel(to) ||
     (from.endsWith('.github.io') &&
       !to.endsWith('.github.io') &&
-      isOrgVariant(domainLabel(from), domainLabel(to)))
+      isOrgVariant(domainLabel(from), domainLabel(to))) ||
+    (to.endsWith('.github.io') &&
+      !from.endsWith('.github.io') &&
+      isOrgVariant(domainLabel(to), domainLabel(from)))
   )
 }
 
