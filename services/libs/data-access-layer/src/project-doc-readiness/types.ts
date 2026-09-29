@@ -94,6 +94,11 @@ export interface IProjectForDocsDiscovery {
   website: string | null
 }
 
-export interface IProjectForDocsDiscoveryWithSharedCount extends IProjectForDocsDiscovery {
-  websiteSharedCount: number
+export interface IWebsiteSharingProject {
+  name: string
+  slug: string
+}
+
+export interface IProjectForDocsDiscoveryWithSharedWith extends IProjectForDocsDiscovery {
+  websiteSharedWith: IWebsiteSharingProject[]
 }

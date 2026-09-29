@@ -11,6 +11,7 @@ import {
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { discoverDocs } from '../discovery'
+import { isUmbrellaWebsite } from '../discovery/sharedWebsite'
 import { svc } from '../main'
 import { IResolvedDocsUrl } from '../types'
 import { withTimeout } from './withTimeout'
@@ -36,11 +37,18 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
   }
 
   const project = await findProjectForDocsDiscovery(readerQx, projectId, {
-    withWebsiteSharedCount: true,
+    withWebsiteSharedWith: true,
   })
   if (!project) {
     throw ApplicationFailure.nonRetryable(`Project ${projectId} not found for docs discovery`)
   }
+
+  const umbrella = isUmbrellaWebsite({
+    name: project.name,
+    slug: project.slug,
+    website: project.website,
+    siblings: project.websiteSharedWith,
+  })
 
   const repos = await findEnabledRepositoriesForProject(readerQx, projectId)
   const githubToken = repos.length > 0 ? await getGithubInstallationToken() : null
@@ -50,7 +58,8 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
       name: project.name,
       slug: project.slug,
       website: project.website,
-      websiteShared: project.websiteSharedCount > 0,
+      websiteShared: umbrella,
+      websiteSharedByFamily: project.websiteSharedWith.length > 0 && !umbrella,
       repos,
       findSharedDocsUrls: (hosts) => findSharedDocsUrls(readerQx, projectId, hosts),
       githubToken,

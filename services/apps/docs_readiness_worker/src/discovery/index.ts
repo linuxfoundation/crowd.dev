@@ -1,7 +1,13 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { isGithubWebsite, normalizedDomain } from './http'
-import { isOrganicCandidate, methodPriority, rankCandidates, repoNameAnchor } from './rank'
+import {
+  isOnProjectDomain,
+  isOrganicCandidate,
+  methodPriority,
+  rankCandidates,
+  repoNameAnchor,
+} from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -66,8 +72,13 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
         .filter((host): host is string => !!host),
     ),
   ]
-  const sharedDocsUrls =
+  const claimedDocsUrls =
     ctx.findSharedDocsUrls && liveHosts.length > 0 ? await ctx.findSharedDocsUrls(liveHosts) : []
+  // Twins and family legitimately share their own site's docs, so a claim there is not a penalty.
+  const familyDomain = ctx.websiteSharedByFamily ? projectDomain : null
+  const sharedDocsUrls = familyDomain
+    ? claimedDocsUrls.filter((url) => !isOnProjectDomain(url, familyDomain))
+    : claimedDocsUrls
   const winner = rankCandidates(
     allCandidates,
     projectDomain,

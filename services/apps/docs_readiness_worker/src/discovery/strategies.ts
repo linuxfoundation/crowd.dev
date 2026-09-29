@@ -29,6 +29,8 @@ export interface IDiscoveryContext {
   slug: string
   website: string | null
   websiteShared: boolean
+  // Website shared only with twins or a family of this project, so docs URLs on it are legitimately shared.
+  websiteSharedByFamily?: boolean
   findSharedDocsUrls?: (hosts: string[]) => Promise<string[]>
   repos: IRepoRef[]
   githubToken: string | null

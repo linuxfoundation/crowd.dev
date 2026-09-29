@@ -6,7 +6,7 @@ import {
   IProjectDocReadinessCheckInsert,
   IProjectDocReadinessUpsert,
   IProjectForDocsDiscovery,
-  IProjectForDocsDiscoveryWithSharedCount,
+  IProjectForDocsDiscoveryWithSharedWith,
   IProjectForDocsReadiness,
   NO_DOCS_URL_ERROR,
   REPO_ONLY_ERROR,
@@ -266,9 +266,9 @@ export async function findProjectsForDocsReadiness(
 }
 
 // Seq-scans insightsProjects (~200ms at 13.7k rows), so callers must opt in.
-const WEBSITE_SHARED_COUNT_COLUMN = `
+const WEBSITE_SHARED_WITH_COLUMN = `
   (
-    SELECT count(*)::int
+    SELECT COALESCE(json_agg(json_build_object('name', o."name", 'slug', o."slug") ORDER BY o."slug"), '[]'::json)
     FROM "insightsProjects" o
     WHERE o."id" <> p."id"
       AND o."enabled"
@@ -276,13 +276,13 @@ const WEBSITE_SHARED_COUNT_COLUMN = `
       AND COALESCE(p."website", '') <> ''
       AND lower(regexp_replace(o."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
         = lower(regexp_replace(p."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
-  ) AS "websiteSharedCount"`
+  ) AS "websiteSharedWith"`
 
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
-  options: { withWebsiteSharedCount: true },
-): Promise<IProjectForDocsDiscoveryWithSharedCount | null>
+  options: { withWebsiteSharedWith: true },
+): Promise<IProjectForDocsDiscoveryWithSharedWith | null>
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
@@ -290,14 +290,12 @@ export async function findProjectForDocsDiscovery(
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
-  options?: { withWebsiteSharedCount?: boolean },
+  options?: { withWebsiteSharedWith?: boolean },
 ): Promise<IProjectForDocsDiscovery | null> {
-  const sharedCountColumn = options?.withWebsiteSharedCount
-    ? `, ${WEBSITE_SHARED_COUNT_COLUMN}`
-    : ''
+  const sharedWithColumn = options?.withWebsiteSharedWith ? `, ${WEBSITE_SHARED_WITH_COLUMN}` : ''
   return qx.selectOneOrNone(
     `
-    SELECT p."id", p."slug", p."name", p."website"${sharedCountColumn}
+    SELECT p."id", p."slug", p."name", p."website"${sharedWithColumn}
     FROM "insightsProjects" p
     WHERE p."id" = $(projectId) AND p."deletedAt" IS NULL
     `,

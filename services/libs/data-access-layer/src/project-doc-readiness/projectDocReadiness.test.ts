@@ -415,10 +415,13 @@ describe('findProjectsForDocsReadiness', () => {
   })
 })
 
-const sharedCount = { withWebsiteSharedCount: true } as const
+const sharedWith = { withWebsiteSharedWith: true } as const
 
-describe('findProjectForDocsDiscovery websiteSharedCount', () => {
-  test('counts live enabled siblings sharing the website, ignoring scheme, www and trailing slash', async ({
+const sharedWithOf = async (qx: QueryExecutor, projectId: string) =>
+  (await findProjectForDocsDiscovery(qx, projectId, sharedWith))?.websiteSharedWith
+
+describe('findProjectForDocsDiscovery websiteSharedWith', () => {
+  test('lists live enabled siblings sharing the website, ignoring scheme, www and trailing slash', async ({
     qx,
   }) => {
     const a = await createInsightsProject(qx, {
@@ -446,10 +449,10 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       website: 'https://foundation.org/y',
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
+    expect(await sharedWithOf(qx, a.id)).toEqual([{ name: 'B', slug: 'b' }])
   })
 
-  test('is 0 for a unique website and for a missing website', async ({ qx }) => {
+  test('is empty for a unique website and for a missing website', async ({ qx }) => {
     const unique = await createInsightsProject(qx, {
       name: 'U',
       slug: 'u',
@@ -459,12 +462,8 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
     const none = await createInsightsProject(qx, { name: 'N', slug: 'n', isLF: true })
     await createInsightsProject(qx, { name: 'N2', slug: 'n2', isLF: true })
 
-    expect(
-      (await findProjectForDocsDiscovery(qx, unique.id, sharedCount))?.websiteSharedCount,
-    ).toBe(0)
-    expect((await findProjectForDocsDiscovery(qx, none.id, sharedCount))?.websiteSharedCount).toBe(
-      0,
-    )
+    expect(await sharedWithOf(qx, unique.id)).toEqual([])
+    expect(await sharedWithOf(qx, none.id)).toEqual([])
   })
 
   test('does not count deleted or disabled siblings', async ({ qx }) => {
@@ -491,7 +490,7 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       id: gone.id,
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+    expect(await sharedWithOf(qx, a.id)).toEqual([])
   })
 
   test('matches schemeless www websites against their https form in both directions', async ({
@@ -510,12 +509,8 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       website: 'https://foundation.org/projects/x',
     })
 
-    expect(
-      (await findProjectForDocsDiscovery(qx, schemeless.id, sharedCount))?.websiteSharedCount,
-    ).toBe(1)
-    expect((await findProjectForDocsDiscovery(qx, https.id, sharedCount))?.websiteSharedCount).toBe(
-      1,
-    )
+    expect(await sharedWithOf(qx, schemeless.id)).toEqual([{ name: 'H', slug: 'h' }])
+    expect(await sharedWithOf(qx, https.id)).toEqual([{ name: 'S', slug: 's' }])
   })
 
   test('does not strip a schemeless host that merely starts with www', async ({ qx }) => {
@@ -532,10 +527,10 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       website: 'wwwXfoundation.org/projects/x',
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+    expect(await sharedWithOf(qx, a.id)).toEqual([])
   })
 
-  test('skips the sibling count unless asked for it', async ({ qx }) => {
+  test('skips the sibling lookup unless asked for it', async ({ qx }) => {
     const a = await createInsightsProject(qx, {
       name: 'A',
       slug: 'a',
@@ -547,6 +542,32 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
     const plain = await findProjectForDocsDiscovery(qx, a.id)
 
     expect(plain).toEqual({ id: a.id, slug: 'a', name: 'A', website: 'https://s.org' })
-    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
+    expect(await sharedWithOf(qx, a.id)).toEqual([{ name: 'B', slug: 'b' }])
+  })
+
+  test('returns every sibling name and slug, ordered by slug', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'ODL Service Abstraction Framework',
+      slug: 'odl-saf',
+      isLF: true,
+      website: 'https://www.opendaylight.org/',
+    })
+    await createInsightsProject(qx, {
+      name: 'OpenDaylight',
+      slug: 'opendaylight',
+      isLF: true,
+      website: 'http://www.opendaylight.org/',
+    })
+    await createInsightsProject(qx, {
+      name: 'ODL Guice',
+      slug: 'odl-guice',
+      isLF: true,
+      website: 'https://www.opendaylight.org',
+    })
+
+    expect(await sharedWithOf(qx, a.id)).toEqual([
+      { name: 'ODL Guice', slug: 'odl-guice' },
+      { name: 'OpenDaylight', slug: 'opendaylight' },
+    ])
   })
 })

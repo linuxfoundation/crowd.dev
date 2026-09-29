@@ -89,7 +89,7 @@ export function candidateHasDocsSignal(c: IDocCandidate): boolean {
 export const isOrganicCandidate = (c: IDocCandidate): boolean =>
   c.method !== 'serp' && c.method !== 'repo-url' && !GITHUB_SHARED_HOSTS.has(domainOf(c.url) ?? '')
 
-function isOnProjectDomain(url: string, projectDomain: string): boolean {
+export function isOnProjectDomain(url: string, projectDomain: string): boolean {
   const domain = normalizedDomain(url)
   return domain === projectDomain || (domain?.endsWith(`.${projectDomain}`) ?? false)
 }
