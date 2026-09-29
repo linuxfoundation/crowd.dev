@@ -6,6 +6,7 @@ import {
   findDocReadinessRunById,
   findLatestDocReadinessRun,
   finishDocReadinessRun,
+  findStaleRunningDocReadinessRuns,
   startDocReadinessRun,
 } from './projectDocReadinessRuns'
 
@@ -126,5 +127,59 @@ describe('findLatestDocReadinessRun', () => {
 
   test('returns null when there are no runs', async ({ qx }) => {
     expect(await findLatestDocReadinessRun(qx)).toBeNull()
+  })
+
+  test('can be limited to a status, skipping newer runs in other states', async ({ qx }) => {
+    const completed = await startDocReadinessRun(qx, {
+      trigger: 'scheduled-incremental',
+      scope: 'lf',
+    })
+    await finishDocReadinessRun(qx, completed.id, { status: 'completed' })
+    const failed = await startDocReadinessRun(qx, { trigger: 'scheduled-incremental', scope: 'lf' })
+    await finishDocReadinessRun(qx, failed.id, { status: 'failed' })
+    await startDocReadinessRun(qx, { trigger: 'scheduled-incremental', scope: 'lf' })
+
+    expect((await findLatestDocReadinessRun(qx, 'scheduled-incremental', 'completed'))?.id).toBe(
+      completed.id,
+    )
+    expect(await findLatestDocReadinessRun(qx, 'scheduled-full', 'completed')).toBeNull()
+  })
+})
+
+describe('findStaleRunningDocReadinessRuns', () => {
+  test('returns only running rows started before the cutoff', async ({ qx }) => {
+    const stale = await startDocReadinessRun(qx, { trigger: 'scheduled-full', scope: 'lf' })
+    const finished = await startDocReadinessRun(qx, { trigger: 'on-demand', scope: 'lf' })
+    await finishDocReadinessRun(qx, finished.id, { status: 'completed' })
+    await qx.result(
+      `UPDATE "projectDocReadinessRuns" SET "startedAt" = NOW() - interval '2 days' WHERE "id" IN ($(a), $(b))`,
+      { a: stale.id, b: finished.id },
+    )
+    await startDocReadinessRun(qx, { trigger: 'on-demand', scope: 'lf' })
+
+    const rows = await findStaleRunningDocReadinessRuns(qx, new Date(Date.now() - 36 * 3600 * 1000))
+
+    expect(rows.map((r) => r.id)).toEqual([stale.id])
+  })
+
+  test('returns the workflow and temporal run ids needed to look the execution up', async ({
+    qx,
+  }) => {
+    const run = await startDocReadinessRun(qx, {
+      trigger: 'on-demand',
+      scope: 'lf',
+      workflowId: 'docsReadinessProject/p1',
+      temporalRunId: 'temporal-run-1',
+    })
+
+    const rows = await findStaleRunningDocReadinessRuns(qx, new Date(Date.now() + 60_000))
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: run.id,
+        workflowId: 'docsReadinessProject/p1',
+        temporalRunId: 'temporal-run-1',
+      }),
+    ])
   })
 })
