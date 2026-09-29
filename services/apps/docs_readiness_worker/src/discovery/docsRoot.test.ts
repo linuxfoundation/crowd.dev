@@ -23,14 +23,12 @@ describe('cutAtVersion', () => {
       'https://zotregistry.dev/v2.1.20/install-guides/install-guide-k8s/',
       'https://zotregistry.dev/',
     ],
-    ['bare number', 'https://example.org/2/intro', 'https://example.org/'],
     ['v-prefixed', 'https://example.org/v3/api/thing', 'https://example.org/'],
     ['latest', 'https://example.org/latest/api', 'https://example.org/'],
     ['stable', 'https://example.org/stable/api', 'https://example.org/'],
     ['main', 'https://example.org/main/api', 'https://example.org/'],
     ['master', 'https://example.org/master/api', 'https://example.org/'],
     ['next', 'https://example.org/next/api', 'https://example.org/'],
-    ['dev', 'https://example.org/dev/api', 'https://example.org/'],
     ['query and hash are dropped', 'https://example.org/v2/x?a=1#top', 'https://example.org/'],
     [
       'what precedes the version is kept',
@@ -85,6 +83,8 @@ describe('cutAtVersion', () => {
       'https://cntt.readthedocs.io/en/stable-kali/gov/chapters/chapter01.html',
     ],
     ['a GitHub repo tree', 'https://github.com/acme/proj/tree/main/docs'],
+    ['a bare number such as a blog year', 'https://example.org/blog/2024/05/post'],
+    ['a dev section', 'https://example.org/dev/api'],
     ['not a url', 'not a url'],
   ])('%s: leaves %s untouched', (_name, url) => {
     expect(cutAtVersion(url)).toBeNull()

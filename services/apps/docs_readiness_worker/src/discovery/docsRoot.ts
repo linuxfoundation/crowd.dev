@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { isLiveDocs } from './http'
 
-const VERSION_SEGMENT = /^(v?\d+(\.\d+)*|latest|stable|main|master|next|dev)$/i
+const VERSION_SEGMENT = /^(v\d+(\.\d+)*|\d+\.\d+(\.\d+)*|latest|stable|main|master|next)$/i
 const DOCS_SEGMENT = /^(docs?|documentation|guides?|manual|handbook|reference|learn)$/i
 // readthedocs-style leading language folder (en, pt-br, zh_CN) that must stay with its version.
 const LOCALE_SEGMENT = /^[a-z]{2}([-_][a-z]{2,4})?$/i
