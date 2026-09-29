@@ -1080,7 +1080,9 @@ describe('readmeScrape filtering', () => {
     () => new Response(body),
   ]
   const probed = (fetchMock: ReturnType<typeof routeFetch>) =>
-    fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+    fetchMock.mock.calls
+      .map(([u]) => String(u))
+      .filter((u) => new URL(u).hostname !== 'api.github.com')
   const scrape = (website: string | null) =>
     readmeScrape({
       name: 'proj',
@@ -1483,7 +1485,9 @@ describe('readmeScrape foreign links', () => {
   ]
 
   const apiFree = (fetchMock: ReturnType<typeof routeFetch>) =>
-    fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+    fetchMock.mock.calls
+      .map(([u]) => String(u))
+      .filter((u) => new URL(u).hostname !== 'api.github.com')
 
   it('drops a foreign link matched only by a docs-like path (RFC under /doc/)', async () => {
     const fetchMock = routeFetch([
@@ -1536,7 +1540,7 @@ describe('readmeScrape and llms coverage gaps', () => {
     () => new Response(body),
   ]
   const probed = (m: ReturnType<typeof routeFetch>) =>
-    m.mock.calls.map(([u]) => String(u)).filter((u) => !u.startsWith('https://api.github'))
+    m.mock.calls.map(([u]) => String(u)).filter((u) => new URL(u).hostname !== 'api.github.com')
   const scrape = (website: string | null) =>
     readmeScrape({
       name: 'p',
