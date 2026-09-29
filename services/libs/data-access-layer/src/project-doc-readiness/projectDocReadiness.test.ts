@@ -202,6 +202,8 @@ describe('findProjectsForDocsReadiness', () => {
   })
 })
 
+const sharedCount = { withWebsiteSharedCount: true } as const
+
 describe('findProjectForDocsDiscovery websiteSharedCount', () => {
   test('counts live enabled siblings sharing the website, ignoring scheme, www and trailing slash', async ({
     qx,
@@ -231,7 +233,7 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       website: 'https://foundation.org/y',
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(1)
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
   })
 
   test('is 0 for a unique website and for a missing website', async ({ qx }) => {
@@ -244,8 +246,12 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
     const none = await createInsightsProject(qx, { name: 'N', slug: 'n', isLF: true })
     await createInsightsProject(qx, { name: 'N2', slug: 'n2', isLF: true })
 
-    expect((await findProjectForDocsDiscovery(qx, unique.id))?.websiteSharedCount).toBe(0)
-    expect((await findProjectForDocsDiscovery(qx, none.id))?.websiteSharedCount).toBe(0)
+    expect(
+      (await findProjectForDocsDiscovery(qx, unique.id, sharedCount))?.websiteSharedCount,
+    ).toBe(0)
+    expect((await findProjectForDocsDiscovery(qx, none.id, sharedCount))?.websiteSharedCount).toBe(
+      0,
+    )
   })
 
   test('does not count deleted or disabled siblings', async ({ qx }) => {
@@ -272,6 +278,62 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       id: gone.id,
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(0)
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+  })
+
+  test('matches schemeless www websites against their https form in both directions', async ({
+    qx,
+  }) => {
+    const schemeless = await createInsightsProject(qx, {
+      name: 'S',
+      slug: 's',
+      isLF: true,
+      website: 'www.foundation.org/projects/x',
+    })
+    const https = await createInsightsProject(qx, {
+      name: 'H',
+      slug: 'h',
+      isLF: true,
+      website: 'https://foundation.org/projects/x',
+    })
+
+    expect(
+      (await findProjectForDocsDiscovery(qx, schemeless.id, sharedCount))?.websiteSharedCount,
+    ).toBe(1)
+    expect((await findProjectForDocsDiscovery(qx, https.id, sharedCount))?.websiteSharedCount).toBe(
+      1,
+    )
+  })
+
+  test('does not strip a schemeless host that merely starts with www', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'foundation.org/projects/x',
+    })
+    await createInsightsProject(qx, {
+      name: 'W',
+      slug: 'w',
+      isLF: true,
+      website: 'wwwXfoundation.org/projects/x',
+    })
+
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+  })
+
+  test('skips the sibling count unless asked for it', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'https://s.org',
+    })
+    await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true, website: 'https://s.org' })
+
+    const plain = await findProjectForDocsDiscovery(qx, a.id)
+
+    expect(plain).toEqual({ id: a.id, slug: 'a', name: 'A', website: 'https://s.org' })
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
   })
 })

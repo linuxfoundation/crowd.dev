@@ -142,6 +142,7 @@ describe('scoreProject', () => {
 
     await scoreProject('project-1', 'run-1', RESOLVED)
 
+    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'project-1')
     expect(mocks.runChecks).toHaveBeenCalledWith('https://docs.example.com')
     expect(txCallback).toBeDefined()
     expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
@@ -186,6 +187,7 @@ describe('recordFailure', () => {
 
     await recordFailure('project-1', 'run-1', RESOLVED, 'no-docs-url')
 
+    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'project-1')
     expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
       'tx-marker',
       'project-1',

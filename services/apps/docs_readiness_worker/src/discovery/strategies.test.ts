@@ -392,6 +392,76 @@ describe('githubHomepage derived probes', () => {
     })
   })
 
+  it.each([
+    'https://www.npmjs.com/package/foo',
+    'https://pypi.org/project/foo',
+    'https://lfenergy.org/projects/x',
+  ])(
+    'probes only paths under the homepage %s, never its docs subdomain or root',
+    async (homepage) => {
+      const fetchMock = routeFetch([
+        ['https://api.github.com/repos/torvalds/linux', () => Response.json({ homepage })],
+        ['https://', notFound],
+      ])
+
+      await githubHomepage(ctx())
+
+      const probed = fetchMock.mock.calls
+        .map((call) => String(call[0]))
+        .filter((url) => !url.startsWith('https://api.github.com'))
+      expect(probed.filter((url) => new URL(url).hostname.startsWith('docs.'))).toEqual([])
+      expect(probed.filter((url) => new URL(url).pathname === '/llms.txt')).toEqual([])
+      expect(probed.sort()).toEqual(
+        [
+          homepage,
+          `${homepage}/doc`,
+          `${homepage}/docs`,
+          `${homepage}/documentation`,
+          `${homepage}/llms.txt`,
+        ].sort(),
+      )
+    },
+  )
+
+  it('still finds an llms.txt served under the homepage path', async () => {
+    routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://lfenergy.org/projects/x' }),
+      ],
+      ['https://lfenergy.org/projects/x/llms.txt', llms],
+      ['https://', notFound],
+    ])
+
+    expect(await githubHomepage(ctx())).toContainEqual({
+      url: 'https://lfenergy.org/projects/x',
+      method: 'llms-txt-probe',
+      confidence: 'high',
+      livenessOk: true,
+    })
+  })
+
+  it('still probes the docs subdomain and root llms.txt for a root-path homepage', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://openvdb.org' }),
+      ],
+      ['https://', notFound],
+    ])
+
+    await githubHomepage(ctx())
+
+    const probed = fetchMock.mock.calls.map((call) => String(call[0]))
+    expect(probed).toEqual(
+      expect.arrayContaining([
+        'https://docs.openvdb.org',
+        'https://docs.openvdb.org/llms.txt',
+        'https://openvdb.org/llms.txt',
+      ]),
+    )
+  })
+
   it('does no derived probing when the homepage is on the shared website host', async () => {
     const fetchMock = routeFetch([
       [
