@@ -173,4 +173,19 @@ describe('buildErroredDiscussionAlert for slack-bot requests', () => {
 
     expect(header.text).toContain('source Slack message not recorded')
   })
+
+  it('does not present a retained non-Slack source url as a Slack request', () => {
+    const [header] = buildErroredDiscussionAlert(
+      {
+        repoName: 'foo/bar',
+        repoUrl: 'https://github.com/foo/bar',
+        sourceUrl: 'https://github.com/foo/bar/discussions/1',
+        provenance: 'slack-bot',
+      },
+      'boom',
+    )
+
+    expect(header.text).toContain('source Slack message not recorded')
+    expect(header.text).not.toContain('discussions/1')
+  })
 })

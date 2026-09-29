@@ -4,6 +4,7 @@ import {
   isGithubDiscussionProvenance,
   isReviewAlertProvenance,
   isSlackBotProvenance,
+  isSlackPermalink,
 } from './types'
 
 describe('isGithubDiscussionProvenance', () => {
@@ -43,5 +44,16 @@ describe('isReviewAlertProvenance', () => {
     expect(isReviewAlertProvenance('slack-tag')).toBe(false)
     expect(isReviewAlertProvenance('lf-criticality-score')).toBe(false)
     expect(isReviewAlertProvenance(null)).toBe(false)
+  })
+})
+
+describe('isSlackPermalink', () => {
+  it('accepts workspace message permalinks', () => {
+    expect(isSlackPermalink('https://acme.slack.com/archives/C1/p1700000000000100')).toBe(true)
+  })
+
+  it('rejects other urls', () => {
+    expect(isSlackPermalink('https://github.com/foo/bar/discussions/1')).toBe(false)
+    expect(isSlackPermalink('https://slack.com/archives/C1/p1')).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ import {
   IDbProjectCatalog,
   isReviewAlertProvenance,
   isSlackBotProvenance,
+  isSlackPermalink,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { deriveProjectSlug } from '@crowd/project-onboarding'
 import { SlackMessageSection } from '@crowd/slack'
@@ -22,11 +23,15 @@ function formatRequestedIn(
 ): string {
   const fromSlack = isSlackBotProvenance(project.provenance ?? null)
 
-  if (!project.sourceUrl) {
-    return fromSlack ? '_source Slack message not recorded_' : '_source discussion not recorded_'
+  if (fromSlack) {
+    return project.sourceUrl && isSlackPermalink(project.sourceUrl)
+      ? `<${project.sourceUrl}|Slack request>`
+      : '_source Slack message not recorded_'
   }
 
-  return `<${project.sourceUrl}|${fromSlack ? 'Slack request' : project.sourceUrl}>`
+  return project.sourceUrl
+    ? `<${project.sourceUrl}|${project.sourceUrl}>`
+    : '_source discussion not recorded_'
 }
 
 function buildDiscussionRequestHeader(
