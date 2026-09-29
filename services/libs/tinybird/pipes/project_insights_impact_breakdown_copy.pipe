@@ -94,6 +94,7 @@ SQL >
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false
+        AND rep.deletedAt IS NULL
     LEFT JOIN
         repos r
         ON if(lower(domain(r.url)) IN ('github.com', 'gitlab.com'), lower(r.url), r.url)
