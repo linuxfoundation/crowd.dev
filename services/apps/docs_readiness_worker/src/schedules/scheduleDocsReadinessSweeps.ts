@@ -4,6 +4,12 @@ import { svc } from '../main'
 import { DOCS_READINESS_TASK_QUEUE } from '../types'
 import { checkDocsReadinessSweepHealth, runDocsReadinessSweep } from '../workflows'
 
+// Bounds a wedged execution so `overlap: SKIP` cannot block every later run of the schedule.
+// The incremental sweep stays under 24h so it cannot outlive its own next scheduled run.
+const INCREMENTAL_SWEEP_TIMEOUT = '23 hours'
+const FULL_SWEEP_TIMEOUT = '47 hours'
+const HEALTH_CHECK_TIMEOUT = '1 hour'
+
 type ScheduleAction = Parameters<typeof svc.temporal.schedule.create>[0]['action']
 
 async function createSchedule(scheduleId: string, cronExpression: string, action: ScheduleAction) {
@@ -21,8 +27,8 @@ async function createSchedule(scheduleId: string, cronExpression: string, action
     })
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info(`Schedule ${scheduleId} already registered in Temporal.`)
-      svc.log.info('Configuration may have changed since. Please make sure they are in sync.')
+      svc.log.info(`Schedule ${scheduleId} already registered in Temporal, reconciling its action.`)
+      await svc.temporal.schedule.getHandle(scheduleId).update((prev) => ({ ...prev, action }))
     } else {
       throw new Error(err)
     }
@@ -34,6 +40,7 @@ export const scheduleDocsReadinessSweeps = async () => {
     type: 'startWorkflow',
     workflowType: runDocsReadinessSweep,
     taskQueue: DOCS_READINESS_TASK_QUEUE,
+    workflowExecutionTimeout: FULL_SWEEP_TIMEOUT,
     retry: { initialInterval: '15 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
     args: [{ mode: 'full', scope: 'lf' }],
   })
@@ -41,6 +48,7 @@ export const scheduleDocsReadinessSweeps = async () => {
     type: 'startWorkflow',
     workflowType: runDocsReadinessSweep,
     taskQueue: DOCS_READINESS_TASK_QUEUE,
+    workflowExecutionTimeout: INCREMENTAL_SWEEP_TIMEOUT,
     retry: { initialInterval: '15 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
     args: [{ mode: 'incremental', scope: 'lf' }],
   })
@@ -48,6 +56,7 @@ export const scheduleDocsReadinessSweeps = async () => {
     type: 'startWorkflow',
     workflowType: checkDocsReadinessSweepHealth,
     taskQueue: DOCS_READINESS_TASK_QUEUE,
+    workflowExecutionTimeout: HEALTH_CHECK_TIMEOUT,
     retry: { initialInterval: '15 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
     args: [],
   })

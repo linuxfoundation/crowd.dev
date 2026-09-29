@@ -250,3 +250,10 @@ export async function findProjectForDocsDiscovery(
     { projectId },
   )
 }
+
+export async function findLatestProjectDocReadinessUpdatedAt(
+  qx: QueryExecutor,
+): Promise<Date | null> {
+  const row = await qx.selectOne(`SELECT max("updatedAt") AS "latest" FROM "projectDocReadiness"`)
+  return row.latest ? new Date(row.latest) : null
+}
