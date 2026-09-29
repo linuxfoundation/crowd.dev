@@ -30,7 +30,7 @@ export function mountInteractivityRoute(app: Application): void {
   }
 
   app.post(
-    '/api/v1/slack/interactivity',
+    '/v1/slack/interactivity',
     interactivityRateLimiter,
     bodyParser.urlencoded({ limit: '5mb', extended: true, verify: captureRawBody }),
     handleParserError,
