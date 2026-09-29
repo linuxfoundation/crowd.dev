@@ -4,6 +4,7 @@ export enum SlackCommand {
   HELP = 'help',
   PRINT_TENANT = 'print-tenant',
   SET_TENANT_PLAN = 'set-tenant-plan',
+  ONBOARD_PROJECT = 'onboard-project',
 }
 
 export enum SlackCommandParameterType {
@@ -24,12 +25,19 @@ export interface SlackCommandParameter {
   allowedValues?: any[]
 }
 
+export interface SlackCommandExecutionContext {
+  // Slack's slash-command webhook for posting follow-up messages after the initial
+  // ack — only present when Slack included one on the originating request.
+  responseUrl?: string
+  userId?: string
+}
+
 export interface SlackCommandDefinition {
   command: SlackCommand
   shortVersion?: string
   description: string
   parameters?: SlackCommandParameter[]
-  executor: (params: any) => Promise<SlackMessageDto>
+  executor: (params: any, context: SlackCommandExecutionContext) => Promise<SlackMessageDto>
 }
 
 export interface SlackParameterParseResult {
