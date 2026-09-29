@@ -24,10 +24,10 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer', () => ({
-  REPO_ONLY_ERROR: 'repo-only',
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
   replaceProjectDocReadinessChecks: mocks.replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
+  REPO_ONLY_ERROR: 'repo-only',
 }))
 
 vi.mock('../scoring/afdocs', () => ({
@@ -69,6 +69,7 @@ describe('scoreProject', () => {
   test('throws a non-retryable failure when the project does not exist', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue(null)
     await expect(scoreProject('missing', 'run-1', RESOLVED)).rejects.toThrow()
+    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'missing')
     expect(mocks.runChecks).not.toHaveBeenCalled()
   })
 
@@ -143,7 +144,6 @@ describe('scoreProject', () => {
 
     await scoreProject('project-1', 'run-1', RESOLVED)
 
-    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'project-1')
     expect(mocks.runChecks).toHaveBeenCalledWith('https://docs.example.com')
     expect(txCallback).toBeDefined()
     expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
@@ -188,7 +188,6 @@ describe('recordFailure', () => {
 
     await recordFailure('project-1', 'run-1', RESOLVED, 'no-docs-url')
 
-    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith(expect.anything(), 'project-1')
     expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
       'tx-marker',
       'project-1',
