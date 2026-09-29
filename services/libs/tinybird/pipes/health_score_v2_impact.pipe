@@ -15,7 +15,7 @@ SQL >
         (
             SELECT DISTINCT url FROM repositories FINAL WHERE deletedAt IS NULL AND excluded = false
         ) AS base
-    INNER JOIN repos r ON lower(r.url) = lower(base.url)
+    INNER JOIN repos r ON r.url = if(domain(base.url) IN ('github.com', 'gitlab.com'), lower(base.url), base.url)
     INNER JOIN packageRepos pr ON pr.repoId = r.id
     INNER JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
     GROUP BY base.url
