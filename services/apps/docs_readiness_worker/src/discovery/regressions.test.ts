@@ -189,6 +189,32 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('aswf.io'))).toBe(false)
   })
 
+  const ZOT_DEEP = 'https://zotregistry.dev/v2.1.20/install-guides/install-guide-k8s/'
+  const zot = {
+    name: 'zot',
+    slug: 'zot',
+    website: null,
+    repos: [{ url: 'https://github.com/project-zot/zot', starCount: 100 }],
+  }
+
+  it('zot: a versioned deep page is cut to the live site root', async () => {
+    scriptNetwork([ZOT_DEEP, 'https://zotregistry.dev/'], { 'project-zot/zot': ZOT_DEEP })
+
+    const result = await discoverDocs(ctxFor(zot))
+
+    expect(result.docsUrl).toBe('https://zotregistry.dev/')
+    expect(result.discoveryMethod).toBe('github-homepage')
+  })
+
+  it('zot: the deep page is kept when the cut root is not live', async () => {
+    scriptNetwork([ZOT_DEEP], { 'project-zot/zot': ZOT_DEEP })
+
+    const result = await discoverDocs(ctxFor(zot))
+
+    // The homepage candidate is stored without its trailing slash.
+    expect(result.docsUrl).toBe(ZOT_DEEP.replace(/\/$/, ''))
+  })
+
   it('vLLM: docs.vllm.ai wins over the vllm.ai root that only has an llms.txt', async () => {
     scriptNetwork(['https://vllm.ai/', 'https://docs.vllm.ai'], {}, ['https://vllm.ai'])
 

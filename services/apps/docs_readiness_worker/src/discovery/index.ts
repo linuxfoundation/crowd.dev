@@ -1,5 +1,6 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
+import { cutToDocsRoot } from './docsRoot'
 import { isGithubWebsite, normalizedDomain } from './http'
 import {
   isOnProjectDomain,
@@ -87,7 +88,7 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
   )
 
   return {
-    docsUrl: winner?.url ?? null,
+    docsUrl: winner ? await cutToDocsRoot(winner.url) : null,
     discoveryMethod: winner?.method ?? null,
     confidence: winner?.confidence ?? null,
     allCandidates,
