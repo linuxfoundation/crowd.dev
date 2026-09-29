@@ -7,6 +7,7 @@ import { createProjectDocOverride, deactivateProjectDocOverride } from '../proje
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
 import {
   findLatestProjectDocReadiness,
+  findLatestProjectDocReadinessUpdatedAt,
   findProjectDocReadinessChecks,
   findProjectsForDocsReadiness,
   replaceProjectDocReadinessChecks,
@@ -134,6 +135,31 @@ describe('replaceProjectDocReadinessChecks', () => {
     await replaceProjectDocReadinessChecks(qx, a.id, [])
 
     expect(await findProjectDocReadinessChecks(qx, a.id)).toHaveLength(0)
+  })
+})
+
+describe('findLatestProjectDocReadinessUpdatedAt', () => {
+  test('is null when nothing has been written', async ({ qx }) => {
+    expect(await findLatestProjectDocReadinessUpdatedAt(qx)).toBeNull()
+  })
+
+  test('returns the newest updatedAt, including failure rows', async ({ qx }) => {
+    const project = await createInsightsProject(qx, {
+      name: 'Kyverno',
+      slug: 'kyverno',
+      isLF: true,
+    })
+    await upsertProjectDocReadiness(qx, scored(project.id, { runDate: '2026-02-01' }))
+    await qx.result(`UPDATE "projectDocReadiness" SET "updatedAt" = '2026-01-01T00:00:00Z'`)
+    await upsertProjectDocReadiness(
+      qx,
+      scored(project.id, { runDate: '2026-02-02', ok: false, error: 'no-docs-url' }),
+    )
+
+    const latest = await findLatestProjectDocReadinessUpdatedAt(qx)
+
+    expect(latest).toBeInstanceOf(Date)
+    expect(latest!.getTime()).toBeGreaterThan(new Date('2026-01-02').getTime())
   })
 })
 

@@ -28,7 +28,7 @@ incremental sweep (`0 3 * * *` UTC, only projects with no successful prior run) 
 monthly full sweep (`0 2 1 * *` UTC, every enabled project regardless of prior state). The
 pipeline runs **LF-scoped projects only** (`isLF = true, enabled = true, deletedAt IS
 NULL`) to start; an `'all'` scope already exists as a workflow argument for a future
-Phase 2, with no code change needed to turn it on.
+Phase 2, turned on by changing the schedule arguments in `scheduleDocsReadinessSweeps.ts`.
 
 ```mermaid
 flowchart TD
@@ -94,14 +94,16 @@ flowchart TD
   multiplied external HTTP/GitHub API/SerpAPI load and blast radius before anyone had seen
   the pipeline run once.
 - **Why not**: `scope` is already a workflow argument (`'lf' | 'all'`), so widening later is an
-  operational decision (change the schedule's args), not a code change or migration.
+  one-line change to the schedule arguments in `scheduleDocsReadinessSweeps.ts` (the worker
+  reconciles the schedules from code on every start), not a migration.
 
 ## Consequences
 
 ### Positive
 
 - Discovery and scoring are fully decoupled from request paths — a slow or hung `afdocs`
-  check on one project can't block others outside its own concurrency window.
+  check on one project can't block others outside its own concurrency window (this only held
+  once IN-1398 isolated the scoring, see the update at the end).
 - `projectDocReadinessRuns` gives a single place to answer "did the last sweep finish, and
   how many projects did it touch" without querying Tinybird.
 - The incremental-sweep filter (`latest.ok IS DISTINCT FROM TRUE`) means the pipeline is
@@ -126,7 +128,8 @@ flowchart TD
   the first production incremental sweep (progress briefly stalled for ~30 minutes on one
   window, then resumed normally) — not a correctness bug, but worth having monitoring for
   (see below).
-- **No proactive alerting yet on run-level failure.** `runDocsReadinessSweep` already records
+- **No proactive alerting yet on run-level failure** (stall alerts were added by IN-1398, see the
+  update at the end; alerts on failed rows or a high failed ratio are still open). `runDocsReadinessSweep` already records
   `status: 'failed'` with `errorMessage` on an unexpected error, and the shared
   `ActivityMonitoringInterceptor` (via `services/archetypes/worker`) already posts to the
   `CDP_ALERTS` Slack channel on high per-activity retry counts (≥50 attempts) — but nothing
@@ -137,3 +140,20 @@ flowchart TD
   installation (`getGithubInstallationToken()`), not a dedicated app. Acceptable at ~3 API
   calls per project; a dedicated app is an env-value change in `crowd-kube`, not a code
   change, if the shared installation's rate limit ever becomes a problem.
+
+## Update (2026-09-29, IN-1398)
+
+Two claims above did not hold in production. `afdocs` parses each fetched page synchronously,
+so one very large page (the cdk8s API reference pages are about 10 MB of HTML) blocked the
+worker's whole event loop for hours, and the `withTimeout` guard cannot interrupt synchronous
+work. Timers, activity completions and workflow tasks ran hours late, run rows stayed `running`,
+and the sweep and its own health check stalled for days, so nothing alerted. Since then:
+
+- `afdocs.runChecks` runs in a worker thread with a 1 GB heap cap, at most four alive at a time,
+  terminated at the 25-minute deadline (`src/scoring/runChecksIsolated.ts`).
+- The health-check workflow first closes `running` rows whose Temporal execution is closed or
+  gone (`closeStrandedRuns`), then alerts on a stale latest completed incremental run, on runs
+  `running` for over 36h, and on no readiness row written in 36h.
+- The schedules have execution timeouts (full 47h, incremental 23h, health check 1h) and are
+  reconciled from code when the worker starts, so a manual edit to a schedule's action does not
+  survive a restart.

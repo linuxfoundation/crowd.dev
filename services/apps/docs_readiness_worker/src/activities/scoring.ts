@@ -9,16 +9,13 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { isPrivateOrLoopbackHost } from '../discovery/http'
 import { svc } from '../main'
-import { loadAfdocs } from '../scoring/afdocs'
 import { computeScores } from '../scoring/computeScores'
+import { runChecksIsolated } from '../scoring/runChecksIsolated'
 import { trimReport } from '../scoring/trimReport'
 import { IResolvedDocsUrl } from '../types'
-import { withTimeout } from './withTimeout'
 
-// afdocs bounds each individual HTTP request (15s default) but not the overall runChecks()
-// call; without this, a slow docs site can push the aggregate past Temporal's 30-minute
-// activity timeout, and since afdocs exposes no cancellation token, the abandoned call keeps
-// running and permanently occupies a worker concurrency slot instead of freeing it on timeout.
+// afdocs bounds each HTTP request but not the whole run, and parses pages synchronously; the
+// worker thread it runs in is terminated at this deadline, so a huge docs site cannot block us.
 const SCORING_TIMEOUT_MS = 25 * 60 * 1000
 
 // Blocks the literal-target vector only; afdocs' own redirect-following fetch isn't intercepted here.
@@ -60,9 +57,8 @@ export async function scoreProject(
   }
 
   const startedAt = Date.now()
-  const { runChecks } = await loadAfdocs()
-  const report = await withTimeout(
-    runChecks(resolved.docsUrl),
+  const report = await runChecksIsolated(
+    resolved.docsUrl,
     SCORING_TIMEOUT_MS,
     `afdocs runChecks exceeded ${SCORING_TIMEOUT_MS}ms for project ${projectId}`,
   )

@@ -29,8 +29,8 @@ vi.mock('@crowd/data-access-layer', () => ({
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
 }))
 
-vi.mock('../scoring/afdocs', () => ({
-  loadAfdocs: vi.fn(async () => ({ runChecks: mocks.runChecks })),
+vi.mock('../scoring/runChecksIsolated', () => ({
+  runChecksIsolated: mocks.runChecks,
 }))
 
 const RESOLVED = {
@@ -88,23 +88,38 @@ describe('scoreProject', () => {
     expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
   })
 
-  test('rejects if runChecks exceeds the scoring timeout, without persisting anything', async () => {
-    vi.useFakeTimers()
+  test('rejects when the isolated afdocs run fails or times out, without persisting anything', async () => {
     mocks.findProjectForDocsDiscovery.mockResolvedValue({
       id: 'project-1',
       slug: 'proj',
       name: 'Project',
       website: null,
     })
-    mocks.runChecks.mockReturnValue(new Promise(() => {}))
+    mocks.runChecks.mockRejectedValue(
+      new Error('afdocs runChecks exceeded 1500000ms for project project-1'),
+    )
 
-    const result = scoreProject('project-1', 'run-1', RESOLVED)
-    const assertion = expect(result).rejects.toThrow(/exceeded/)
-    await vi.advanceTimersByTimeAsync(25 * 60 * 1000)
-    await assertion
+    await expect(scoreProject('project-1', 'run-1', RESOLVED)).rejects.toThrow(/exceeded/)
 
     expect(mocks.upsertProjectDocReadiness).not.toHaveBeenCalled()
-    vi.useRealTimers()
+  })
+
+  test('runs afdocs in isolation with the 25 minute deadline and the project in the timeout message', async () => {
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: null,
+    })
+    mocks.runChecks.mockRejectedValue(new Error('stop here'))
+
+    await expect(scoreProject('project-1', 'run-1', RESOLVED)).rejects.toThrow('stop here')
+
+    expect(mocks.runChecks).toHaveBeenCalledWith(
+      'https://docs.example.com',
+      25 * 60 * 1000,
+      'afdocs runChecks exceeded 1500000ms for project project-1',
+    )
   })
 
   test('runs checks, computes scores, and persists both check rows and the readiness row in one transaction', async () => {
@@ -129,7 +144,11 @@ describe('scoreProject', () => {
 
     await scoreProject('project-1', 'run-1', RESOLVED)
 
-    expect(mocks.runChecks).toHaveBeenCalledWith('https://docs.example.com')
+    expect(mocks.runChecks).toHaveBeenCalledWith(
+      'https://docs.example.com',
+      25 * 60 * 1000,
+      expect.stringContaining('project-1'),
+    )
     expect(txCallback).toBeDefined()
     expect(mocks.replaceProjectDocReadinessChecks).toHaveBeenCalledWith(
       'tx-marker',
