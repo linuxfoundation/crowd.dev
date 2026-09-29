@@ -207,7 +207,6 @@ export interface IEnabledRepository {
   starCount: number | null
 }
 
-// Ordered by latest star snapshot desc (unsnapshotted last), then url, so callers get a stable order.
 export async function findEnabledRepositoriesForProject(
   qx: QueryExecutor,
   insightsProjectId: string,
