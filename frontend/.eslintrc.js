@@ -90,5 +90,7 @@ module.exports = {
     },
   },
 
-  overrides: Object.entries(legacy).map(([rule, files]) => ({ files, rules: { [rule]: 'off' } })),
+  overrides: Object.entries(legacy)
+    .filter(([, files]) => files.length > 0)
+    .map(([rule, files]) => ({ files, rules: { [rule]: 'off' } })),
 };

@@ -1,9 +1,7 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
 
-// Regenerates frontend/.eslint/legacy-files.json: for each ratchet rule below, runs it alone
-// against every SFC and records which files still violate it, so .eslintrc.js can exempt them.
-// Re-run after converting a file so its entry drops out of the corresponding list.
+// Regenerates .eslint/legacy-files.json: the SFCs still violating each ratchet rule, exempted in .eslintrc.js.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const frontendDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const eslintBin = path.join(frontendDir, 'node_modules', '.bin', 'eslint');
 const outputFile = path.join(frontendDir, '.eslint', 'legacy-files.json');
+const ESLINT_EXIT_CODE_LINT_ERRORS = 1;
 
 const RULES = {
   'vue/component-api-style': ['error', ['script-setup']],
@@ -40,11 +39,19 @@ function findViolatingFiles(ruleName, ruleConfig) {
   try {
     stdout = execFileSync(eslintBin, args, { cwd: frontendDir, encoding: 'utf8', maxBuffer: 1024 * 1024 * 100 });
   } catch (err) {
-    // eslint exits non-zero when it finds lint errors; the JSON report is still on stdout.
+    if (err.status !== ESLINT_EXIT_CODE_LINT_ERRORS) {
+      throw err;
+    }
     stdout = err.stdout;
   }
 
-  const results = JSON.parse(stdout);
+  let results;
+  try {
+    results = JSON.parse(stdout);
+  } catch (err) {
+    throw new Error(`ESLint returned no JSON report for ${ruleName}`, { cause: err });
+  }
+
   return results
     .filter((result) => result.errorCount > 0)
     .map((result) => path.relative(frontendDir, result.filePath))
