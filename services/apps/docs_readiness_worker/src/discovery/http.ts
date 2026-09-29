@@ -211,21 +211,24 @@ const isOrgVariant = (pagesLabel: string, targetLabel: string): boolean => {
   )
 }
 
+// Hosted tenants named differently from the site label; explicit, not a prefix rule.
+const TENANT_ALIASES: Record<string, string> = { opentimeline: 'opentimelineio' }
+
 // wiki.<x>.org -> lf-<x>.atlassian.net, x.readthedocs.org -> x.readthedocs.io
 const isTrustedHostingMove = (fromHost: string, fromLabel: string, finalHost: string): boolean => {
   const [tenant, ...rest] = finalHost.split('.')
   const hosting = rest.join('.')
   const label = squash(fromLabel)
   const named = squash(tenant)
-  const namedAfter = label.length >= 4 && named.startsWith(label)
+  const isSiteTenant = named === label || named === TENANT_ALIASES[label]
   if (hosting === 'atlassian.net') {
-    return named === label || named === `lf${label}` || namedAfter
+    return isSiteTenant || named === `lf${label}`
   }
   if (hosting !== 'readthedocs.io' && hosting !== 'readthedocs.org') {
     return false
   }
   const fromOnLegacyRtd = registrableDomain(fromHost) === 'readthedocs.org'
-  return (fromOnLegacyRtd && tenant === fromHost.split('.')[0]) || named === label || namedAfter
+  return (fromOnLegacyRtd && tenant === fromHost.split('.')[0]) || isSiteTenant
 }
 
 export function isTrustedRedirect(url: string, finalUrl: string): boolean {

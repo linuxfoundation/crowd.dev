@@ -103,7 +103,7 @@ function collapseOwnDomainLink(url: string): string {
 
 const GENERIC_SUBDOMAINS = new Set(['www', 'wiki', 'web'])
 
-// shortcut: one umbrella root (celf on wiki.linuxfoundation.org). revisit: a second umbrella shows up
+// Roots whose subdomains are unrelated projects (celf lives on wiki.linuxfoundation.org).
 const UMBRELLA_ROOTS = new Set(['linuxfoundation.org'])
 
 function docsBaseDomain(website: string): string | null {
@@ -136,6 +136,31 @@ const usableWebsite = (ctx: IDiscoveryContext): string | null =>
   ctx.website && !ctx.websiteShared && !isGithubWebsite(ctx.website) ? ctx.website : null
 
 const hasPath = (url: string): boolean => new URL(url).pathname !== '/'
+
+const PACKAGE_REGISTRIES = [
+  'npmjs.com',
+  'pypi.org',
+  'crates.io',
+  'rubygems.org',
+  'pkg.go.dev',
+  'hub.docker.com',
+  'packagist.org',
+  'nuget.org',
+]
+
+// A path homepage (npmjs.com/package/x) or a shared host does not make the whole domain its own.
+function usableHomepage(ctx: IDiscoveryContext, homepage: string | null): string | null {
+  const url = homepage ? normalizeUrl(homepage) : null
+  const host = url ? normalizedDomain(url) : null
+  if (!url || !host || isGithubWebsite(url) || hasPath(url)) {
+    return null
+  }
+  if (PACKAGE_REGISTRIES.some((registry) => host === registry || host.endsWith(`.${registry}`))) {
+    return null
+  }
+  const websiteBase = ctx.websiteShared && ctx.website ? docsBaseDomain(ctx.website) : null
+  return websiteBase !== null && websiteBase === docsBaseDomain(url) ? null : url
+}
 
 const isLlmsTxtBody = (body: string | null): body is string =>
   !!body && body.length > 50 && !/^\s*</.test(body)
@@ -300,7 +325,7 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
     }
 
     const homepage = await getRepoHomepage(parsed.owner, parsed.repo, ctx.githubToken)
-    const ownBases = [usableWebsite(ctx), homepage].flatMap((site) => {
+    const ownBases = [usableWebsite(ctx), usableHomepage(ctx, homepage)].flatMap((site) => {
       const base = site ? docsBaseDomain(site) : null
       return base ? [base] : []
     })
@@ -332,13 +357,17 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       filtered.push({ url: collapsed, fallback: collapsed === url ? undefined : url })
     }
 
-    const seen = new Set<string>()
-    const unique = filtered.filter((link) => {
+    const byKey = new Map<string, { url: string; fallback?: string }>()
+    for (const link of filtered) {
       const key = (normalizeUrl(link.url) ?? link.url).replace(/^https?:\/\/(www\.)?/, '')
-      const isNew = !seen.has(key)
-      seen.add(key)
-      return isNew
-    })
+      const known = byKey.get(key)
+      if (!known) {
+        byKey.set(key, link)
+      } else if (!known.fallback) {
+        known.fallback = link.fallback
+      }
+    }
+    const unique = [...byKey.values()]
     const own = unique
       .filter((link) => rank(link.url) < 2)
       .sort((a, b) => rank(a.url) - rank(b.url))

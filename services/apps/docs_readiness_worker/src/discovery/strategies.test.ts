@@ -1089,6 +1089,20 @@ describe('readmeScrape filtering', () => {
       githubToken: 'token',
       serpApiKey: null,
     })
+  const scrapeSharedWebsite = (website: string) =>
+    readmeScrape({
+      name: 'proj',
+      slug: 'proj',
+      website,
+      websiteShared: true,
+      repos,
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  const homepageRoute = (homepage: string): [string, () => Response] => [
+    'https://api.github.com/repos/torvalds/linux',
+    () => Response.json({ homepage }),
+  ]
 
   it('never proposes docs.github.com or other excluded hosts', async () => {
     const fetchMock = routeFetch([
@@ -1281,9 +1295,73 @@ describe('readmeScrape filtering', () => {
     expect(probed(fetchMock)).toEqual(['https://proj.io/docs', 'https://proj.io/reference'])
   })
 
+  it('does not treat a root homepage on the shared website host as an own domain', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.real-project.dev/start)',
+      ),
+      homepageRoute('https://www.lfedge.org'),
+      ['https://', html],
+    ])
+
+    await scrapeSharedWebsite('https://www.lfedge.org/projects/x')
+    expect(probed(fetchMock)).toEqual([
+      'https://www.lfedge.org/projects/other/docs/guide/page',
+      'https://docs.real-project.dev/start',
+    ])
+  })
+
+  it.each([
+    ['https://www.npmjs.com/package/x', 'https://www.npmjs.com/package/x/docs/api'],
+    ['https://pypi.org/project/x', 'https://pypi.org/project/x/docs/api'],
+    ['https://lfenergy.org/projects/x', 'https://lfenergy.org/projects/other/docs/api'],
+    ['https://pypi.org', 'https://pypi.org/project/x/docs/api'],
+    ['https://crates.io', 'https://crates.io/crates/x/docs/api'],
+    ['https://hub.docker.com', 'https://hub.docker.com/r/x/docs/api'],
+  ])('does not make the homepage %s an own domain', async (homepage, link) => {
+    const fetchMock = routeFetch([
+      readmeRoute(`[Docs](${link}) [Guide](https://docs.real-project.dev/start)`),
+      homepageRoute(homepage),
+      ['https://', html],
+    ])
+
+    await scrape(null)
+    expect(probed(fetchMock)).toEqual([link, 'https://docs.real-project.dev/start'])
+  })
+
+  it('keeps a root homepage on a host other than the shared website as an own domain', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://openvdb.org/docs/guide/page) [Guide](https://elsewhere.net/docs/x)',
+      ),
+      homepageRoute('https://openvdb.org'),
+      ['https://', html],
+    ])
+
+    await scrapeSharedWebsite('https://foundation.org/projects/x')
+    expect(probed(fetchMock)).toEqual(['https://openvdb.org/docs'])
+  })
+
   it('falls back to the original deep link when the collapsed one is not live', async () => {
     const fetchMock = routeFetch([
       readmeRoute('[Docs](https://jestjs.io/docs/using-matchers)'),
+      ['https://jestjs.io/docs/using-matchers', html],
+      ['https://jestjs.io/docs', notFound],
+    ])
+
+    const result = await scrape('https://jestjs.io')
+    expect(probed(fetchMock)).toEqual([
+      'https://jestjs.io/docs',
+      'https://jestjs.io/docs/using-matchers',
+    ])
+    expect(result.map((c) => c.url)).toEqual(['https://jestjs.io/docs/using-matchers'])
+  })
+
+  it('keeps the deep-link fallback when the docs prefix link came first', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute(
+        '[Docs](https://jestjs.io/docs) [Matchers](https://jestjs.io/docs/using-matchers)',
+      ),
       ['https://jestjs.io/docs/using-matchers', html],
       ['https://jestjs.io/docs', notFound],
     ])
