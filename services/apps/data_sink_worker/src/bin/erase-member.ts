@@ -18,6 +18,7 @@ import { DB_CONFIG, QUEUE_CONFIG } from '../conf'
  * 1. Shows a detailed summary of all data to be deleted/modified
  * 2. Requests user confirmation before proceeding
  * 3. Performs the following operations in order:
+ *    - Records activity counts per project/platform/channel to erasedMemberActivityFootprint
  *    - Archives member identities to requestedForErasureMemberIdentities (separate step)
  *    - Deletes from maintainersInternal (respects FK constraint with memberIdentities)
  *    - Deletes from all member-related tables (relations, segments, etc.)
@@ -30,7 +31,8 @@ import { DB_CONFIG, QUEUE_CONFIG } from '../conf'
  *
  * TABLES AFFECTED:
  * - maintainersInternal (deleted by identityId from member's identities)
- * - requestedForErasureMemberIdentities (memberIdentities are inserted here before deletion)
+ * - erasedMemberActivityFootprint (activity counts per segment/platform/channel are inserted here before deletion)
+ * - requestedForErasureMemberIdentities (memberIdentities are inserted here with their memberId before deletion)
  * - activityRelations, memberNoMerge, memberOrganizationAffiliationOverrides
  * - memberOrganizations, memberSegmentAffiliations, memberSegments, memberSegmentsAgg
  * - memberEnrichmentCache, memberEnrichments, memberIdentities
@@ -135,6 +137,8 @@ setImmediate(async () => {
 
       log.info('CLEANUP ACTIVITIES...')
 
+      await recordErasedActivityFootprint(t, memberId)
+
       // Archive member identities before deletion
       await archiveMemberIdentities(t, memberId)
 
@@ -177,6 +181,11 @@ async function getDeletionSummary(store: DbStore, memberId: string): Promise<str
     })
   if (parseInt(activityRelationsUpdate.count) > 0) {
     summary += `- ${activityRelationsUpdate.count} activityRelations will have objectMemberId/objectMemberUsername cleared\n`
+  }
+
+  const footprint = await getActivityFootprintSummary(store, memberId)
+  if (footprint.activities > 0) {
+    summary += `- ${footprint.activities} activities across ${footprint.projects} projects, ${footprint.platforms} platforms, ${footprint.channels} channels (will be recorded in erasedMemberActivityFootprint first)\n`
   }
 
   // Count maintainersInternal records to be deleted
@@ -234,6 +243,76 @@ async function getDeletionSummary(store: DbStore, memberId: string): Promise<str
   return summary
 }
 
+interface IActivityFootprintSummary {
+  activities: number
+  projects: number
+  platforms: number
+  channels: number
+}
+
+async function getActivityFootprintSummary(
+  store: DbStore,
+  memberId: string,
+): Promise<IActivityFootprintSummary> {
+  const result = await store.connection().one(
+    `
+    select
+      count(*)::int as activities,
+      count(distinct "segmentId")::int as projects,
+      count(distinct platform)::int as platforms,
+      count(distinct (platform, coalesce(channel, '')))::int as channels
+    from "activityRelations"
+    where "memberId" = $(memberId)
+    `,
+    { memberId },
+  )
+  return result
+}
+
+/**
+ * Records the member's activity count per segment, platform and channel into
+ * erasedMemberActivityFootprint before the activityRelations are deleted.
+ * Runs in the same transaction as the erasure, so it is rolled back if the erasure fails.
+ *
+ * @param store - Database store instance (should be within a transaction)
+ * @param memberId - The member ID whose activity footprint will be recorded
+ * @returns Number of footprint rows written
+ */
+export async function recordErasedActivityFootprint(
+  store: DbStore,
+  memberId: string,
+): Promise<number> {
+  const insertResult = await store.connection().result(
+    `
+    insert into "erasedMemberActivityFootprint" (
+      "memberId", "segmentId", "segmentName", "parentName", "grandparentName",
+      platform, channel, "activityCount"
+    )
+    select
+      ar."memberId", ar."segmentId", s.name, s."parentName", s."grandparentName",
+      ar.platform, coalesce(ar.channel, ''), count(*)::int
+    from "activityRelations" ar
+    join segments s on s.id = ar."segmentId"
+    where ar."memberId" = $(memberId)
+    group by
+      ar."memberId", ar."segmentId", s.name, s."parentName", s."grandparentName",
+      ar.platform, coalesce(ar.channel, '')
+    on conflict ("memberId", "segmentId", platform, channel)
+    do update set "activityCount" = excluded."activityCount", "erasedAt" = now()
+    `,
+    { memberId },
+  )
+
+  if (insertResult.rowCount > 0) {
+    const { activities } = await getActivityFootprintSummary(store, memberId)
+    log.info(
+      `Recorded ${insertResult.rowCount} activity footprint rows (${activities} activities) for member ${memberId}`,
+    )
+  }
+
+  return insertResult.rowCount
+}
+
 /**
  * Archives member identities to requestedForErasureMemberIdentities table before deletion.
  * This preserves identity data for audit/compliance purposes while allowing for GDPR deletion.
@@ -246,10 +325,10 @@ export async function archiveMemberIdentities(store: DbStore, memberId: string):
   const insertResult = await store.connection().result(
     `
     INSERT INTO "requestedForErasureMemberIdentities" (
-      id, platform, value, type
+      id, platform, value, type, "memberId"
     )
-    SELECT id, platform, value, type
-    FROM "memberIdentities" 
+    SELECT id, platform, value, type, "memberId"
+    FROM "memberIdentities"
     WHERE "memberId" = $(memberId)
     `,
     { memberId },
