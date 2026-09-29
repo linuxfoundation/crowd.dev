@@ -96,7 +96,8 @@ SQL >
         AND rep.excluded = false
     LEFT JOIN
         repos r
-        ON r.url = if(lower(domain(rep.url)) IN ('github.com', 'gitlab.com'), lower(rep.url), rep.url)
+        ON if(r.host IN ('github', 'gitlab', 'gitlab.com'), lower(r.url), r.url)
+        = if(lower(domain(rep.url)) IN ('github.com', 'gitlab.com'), lower(rep.url), rep.url)
     LEFT JOIN packageRepos pr ON pr.repoId = r.id
     LEFT JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
     GROUP BY ip.id, ip.slug, ip.name
