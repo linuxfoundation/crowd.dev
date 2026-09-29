@@ -8,6 +8,7 @@ import {
   IProjectForDocsDiscovery,
   IProjectForDocsDiscoveryWithSharedCount,
   IProjectForDocsReadiness,
+  NO_DOCS_URL_ERROR,
   REPO_ONLY_ERROR,
 } from './types'
 
@@ -48,6 +49,14 @@ const CHECK_COLUMNS = [
 ]
   .map((c) => `"${c}"`)
   .join(',\n')
+
+// Held until the transaction ends, so take it before reading or replacing either readiness table.
+export async function lockProjectDocReadiness(qx: QueryExecutor, projectId: string): Promise<void> {
+  await qx.result(
+    `SELECT pg_advisory_xact_lock(hashtextextended('projectDocReadiness:' || $(projectId)::text, 0))`,
+    { projectId },
+  )
+}
 
 // One row per project per run date; a same-day re-run overwrites the earlier result.
 export async function upsertProjectDocReadiness(
@@ -230,7 +239,10 @@ export async function findProjectsForDocsReadiness(
         OR (
           latest."ok" IS DISTINCT FROM TRUE
           AND (
-            latest."error" IS DISTINCT FROM $(repoOnlyError)
+            (
+              latest."error" IS DISTINCT FROM $(noDocsUrlError)
+              AND latest."error" IS DISTINCT FROM $(repoOnlyError)
+            )
             OR EXISTS (
               SELECT 1 FROM "projectDocOverrides" o
               WHERE o."projectId" = p."id" AND o."active"
@@ -245,6 +257,7 @@ export async function findProjectsForDocsReadiness(
     {
       lfOnly: scope === 'lf',
       incremental: mode === 'incremental',
+      noDocsUrlError: NO_DOCS_URL_ERROR,
       repoOnlyError: REPO_ONLY_ERROR,
       afterId: afterId ?? null,
       limit,
@@ -290,4 +303,11 @@ export async function findProjectForDocsDiscovery(
     `,
     { projectId },
   )
+}
+
+export async function findLatestProjectDocReadinessUpdatedAt(
+  qx: QueryExecutor,
+): Promise<Date | null> {
+  const row = await qx.selectOne(`SELECT max("updatedAt") AS "latest" FROM "projectDocReadiness"`)
+  return row.latest ? new Date(row.latest) : null
 }
