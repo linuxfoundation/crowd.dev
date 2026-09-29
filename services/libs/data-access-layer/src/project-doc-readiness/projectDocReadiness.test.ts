@@ -3,17 +3,19 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
+import { createProjectDocOverride, deactivateProjectDocOverride } from '../project-doc-overrides'
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
 import { QueryExecutor } from '../queryExecutor'
 import {
   findLatestProjectDocReadiness,
+  findLatestProjectDocReadinessUpdatedAt,
   findProjectDocReadinessChecks,
   findProjectsForDocsReadiness,
   lockProjectDocReadiness,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from './projectDocReadiness'
-import { IProjectDocReadinessUpsert } from './types'
+import { IProjectDocReadinessUpsert, NO_DOCS_URL_ERROR } from './types'
 
 const test = withQx(base)
 
@@ -214,6 +216,31 @@ describe('replaceProjectDocReadinessChecks', () => {
   })
 })
 
+describe('findLatestProjectDocReadinessUpdatedAt', () => {
+  test('is null when nothing has been written', async ({ qx }) => {
+    expect(await findLatestProjectDocReadinessUpdatedAt(qx)).toBeNull()
+  })
+
+  test('returns the newest updatedAt, including failure rows', async ({ qx }) => {
+    const project = await createInsightsProject(qx, {
+      name: 'Kyverno',
+      slug: 'kyverno',
+      isLF: true,
+    })
+    await upsertProjectDocReadiness(qx, scored(project.id, { runDate: '2026-02-01' }))
+    await qx.result(`UPDATE "projectDocReadiness" SET "updatedAt" = '2026-01-01T00:00:00Z'`)
+    await upsertProjectDocReadiness(
+      qx,
+      scored(project.id, { runDate: '2026-02-02', ok: false, error: 'no-docs-url' }),
+    )
+
+    const latest = await findLatestProjectDocReadinessUpdatedAt(qx)
+
+    expect(latest).toBeInstanceOf(Date)
+    expect(latest!.getTime()).toBeGreaterThan(new Date('2026-01-02').getTime())
+  })
+})
+
 describe('findProjectsForDocsReadiness', () => {
   test('full lf sweep returns enabled, live LF projects ordered by id', async ({ qx }) => {
     const lf = await createInsightsProject(qx, { name: 'LF', slug: 'lf', isLF: true })
@@ -258,6 +285,58 @@ describe('findProjectsForDocsReadiness', () => {
     })
 
     expect(rows.map((r) => r.id).sort()).toEqual([unscored.id, failed.id].sort())
+  })
+
+  test('incremental skips latest no-docs-url unless an active override exists', async ({ qx }) => {
+    const unscored = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
+    const fine = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })
+    const timedOut = await createInsightsProject(qx, { name: 'C', slug: 'c', isLF: true })
+    const noUrl = await createInsightsProject(qx, { name: 'D', slug: 'd', isLF: true })
+    const noUrlOverride = await createInsightsProject(qx, { name: 'E', slug: 'e', isLF: true })
+    const noUrlOldOk = await createInsightsProject(qx, { name: 'F', slug: 'f', isLF: true })
+    const noUrlInactive = await createInsightsProject(qx, { name: 'G', slug: 'g', isLF: true })
+    const noUrlThenTimeout = await createInsightsProject(qx, { name: 'H', slug: 'h', isLF: true })
+
+    const noUrlRow = { ok: false, error: NO_DOCS_URL_ERROR }
+    await upsertProjectDocReadiness(qx, scored(fine.id))
+    await upsertProjectDocReadiness(qx, scored(timedOut.id, { ok: false, error: 'timeout' }))
+    await upsertProjectDocReadiness(qx, scored(noUrl.id, noUrlRow))
+    await upsertProjectDocReadiness(qx, scored(noUrlOverride.id, noUrlRow))
+    await upsertProjectDocReadiness(qx, scored(noUrlOldOk.id, { runDate: '2026-01-01' }))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(noUrlOldOk.id, { runDate: '2026-01-02', ...noUrlRow }),
+    )
+    await upsertProjectDocReadiness(qx, scored(noUrlInactive.id, noUrlRow))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(noUrlThenTimeout.id, { runDate: '2026-01-01', ...noUrlRow }),
+    )
+    await upsertProjectDocReadiness(
+      qx,
+      scored(noUrlThenTimeout.id, { runDate: '2026-01-02', ok: false, error: 'timeout' }),
+    )
+
+    const override = (projectId: string) => ({
+      projectId,
+      docsUrl: 'https://example.com/docs',
+      submittedBy: 'test',
+    })
+    await createProjectDocOverride(qx, override(noUrlOverride.id))
+    await createProjectDocOverride(qx, override(noUrlInactive.id))
+    await deactivateProjectDocOverride(qx, noUrlInactive.id)
+
+    const incremental = await findProjectsForDocsReadiness(qx, {
+      mode: 'incremental',
+      scope: 'lf',
+      limit: 20,
+    })
+    const full = await findProjectsForDocsReadiness(qx, { mode: 'full', scope: 'lf', limit: 20 })
+
+    expect(incremental.map((r) => r.id).sort()).toEqual(
+      [unscored.id, timedOut.id, noUrlOverride.id, noUrlThenTimeout.id].sort(),
+    )
+    expect(full).toHaveLength(8)
   })
 
   test('pages by id with afterId and limit', async ({ qx }) => {
