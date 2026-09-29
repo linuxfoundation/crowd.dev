@@ -26,6 +26,7 @@ function ctx(serpApiKey: string | null = null): IDiscoveryContext {
     name: 'proj',
     slug: 'proj',
     website: 'https://example.com',
+    websiteShared: false,
     repos: [],
     githubToken: null,
     serpApiKey,
@@ -201,6 +202,7 @@ describe('discoverDocs', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://github.com/acme/real-project',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
@@ -219,11 +221,96 @@ describe('discoverDocs', () => {
       name: 'proj',
       slug: 'proj',
       website: 'https://github.com/acme/real-project',
+      websiteShared: false,
       repos: [],
       githubToken: null,
       serpApiKey: null,
     })
 
     expect(result.docsUrl).toBe('https://acme-widgets.io/docs')
+  })
+})
+
+describe('discoverDocs ranking inputs (IN-1393)', () => {
+  const foundationCtx = (over: Partial<IDiscoveryContext> = {}): IDiscoveryContext => ({
+    ...ctx(),
+    website: 'https://foundation.org/projects/x',
+    websiteShared: true,
+    ...over,
+  })
+
+  test('a shared website is not used as the project domain for affinity', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://foundation.org/docs', 'docs-path', true),
+      candidate('https://docs.x-project.dev', 'docs-subdomain', true),
+    ])
+
+    const shared = await discoverDocs(foundationCtx())
+    expect(shared.docsUrl).toBe('https://docs.x-project.dev')
+
+    // Same candidates with an unshared website anchor the pool on its own domain instead.
+    const own = await discoverDocs(foundationCtx({ websiteShared: false }))
+    expect(own.docsUrl).toBe('https://foundation.org/docs')
+  })
+
+  test('a candidate found by findSharedDocsUrls loses to an unshared one', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://docs.lfenergy.org', 'docs-subdomain', true),
+      candidate('https://myproject.org', 'project-website', true),
+    ])
+
+    const result = await discoverDocs({
+      ...ctx(),
+      website: null,
+      findSharedDocsUrls: async () => ['https://docs.lfenergy.org/'],
+    })
+
+    expect(result.docsUrl).toBe('https://myproject.org')
+  })
+
+  test('looks up shared URLs once, for the distinct hosts of the live candidates only', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://www.lfenergy.org/a', 'docs-path', true),
+      candidate('https://lfenergy.org/b', 'docs-path', true),
+      candidate('https://myproject.org', 'project-website', true),
+      candidate('https://dead.example.com', 'docs-path', false),
+    ])
+    const findSharedDocsUrls = vi.fn(async () => [])
+
+    await discoverDocs({ ...ctx(), website: null, findSharedDocsUrls })
+
+    expect(findSharedDocsUrls).toHaveBeenCalledTimes(1)
+    expect(findSharedDocsUrls).toHaveBeenCalledWith(['lfenergy.org', 'myproject.org'])
+  })
+
+  test('skips the shared URL lookup when no candidate is live', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://dead.example.com', 'docs-path', false),
+    ])
+    const findSharedDocsUrls = vi.fn(async () => [])
+
+    const result = await discoverDocs({ ...ctx(), website: null, findSharedDocsUrls })
+
+    expect(result.docsUrl).toBeNull()
+    expect(findSharedDocsUrls).not.toHaveBeenCalled()
+  })
+
+  test('a foundation llms.txt root loses to the repo homepage page (report case 10)', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://openmainframeproject.org', 'llms-txt-probe', true),
+      candidate(
+        'https://openmainframeproject.org/projects/cobol-programming-course',
+        'github-homepage',
+        true,
+      ),
+    ])
+
+    const result = await discoverDocs(
+      foundationCtx({ website: 'https://openmainframeproject.org/projects/cobol' }),
+    )
+
+    expect(result.docsUrl).toBe(
+      'https://openmainframeproject.org/projects/cobol-programming-course',
+    )
   })
 })

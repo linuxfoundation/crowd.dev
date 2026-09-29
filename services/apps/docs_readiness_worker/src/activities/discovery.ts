@@ -5,6 +5,7 @@ import {
   findActiveProjectDocOverride,
   findEnabledRepositoriesForProject,
   findProjectForDocsDiscovery,
+  findSharedDocsUrls,
   upsertProjectDocDiscovery,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -34,7 +35,9 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
     }
   }
 
-  const project = await findProjectForDocsDiscovery(readerQx, projectId)
+  const project = await findProjectForDocsDiscovery(readerQx, projectId, {
+    withWebsiteSharedCount: true,
+  })
   if (!project) {
     throw ApplicationFailure.nonRetryable(`Project ${projectId} not found for docs discovery`)
   }
@@ -47,7 +50,9 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
       name: project.name,
       slug: project.slug,
       website: project.website,
+      websiteShared: project.websiteSharedCount > 0,
       repos,
+      findSharedDocsUrls: (hosts) => findSharedDocsUrls(readerQx, projectId, hosts),
       githubToken,
       serpApiKey: process.env.CROWD_DOCS_READINESS_SERP_API_KEY ?? null,
     }),

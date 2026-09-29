@@ -6,8 +6,10 @@ import {
   IProjectDocReadinessCheckInsert,
   IProjectDocReadinessUpsert,
   IProjectForDocsDiscovery,
+  IProjectForDocsDiscoveryWithSharedCount,
   IProjectForDocsReadiness,
   NO_DOCS_URL_ERROR,
+  REPO_ONLY_ERROR,
 } from './types'
 
 const READINESS_COLUMNS = [
@@ -237,7 +239,10 @@ export async function findProjectsForDocsReadiness(
         OR (
           latest."ok" IS DISTINCT FROM TRUE
           AND (
-            latest."error" IS DISTINCT FROM $(noDocsUrlError)
+            (
+              latest."error" IS DISTINCT FROM $(noDocsUrlError)
+              AND latest."error" IS DISTINCT FROM $(repoOnlyError)
+            )
             OR EXISTS (
               SELECT 1 FROM "projectDocOverrides" o
               WHERE o."projectId" = p."id" AND o."active"
@@ -253,21 +258,48 @@ export async function findProjectsForDocsReadiness(
       lfOnly: scope === 'lf',
       incremental: mode === 'incremental',
       noDocsUrlError: NO_DOCS_URL_ERROR,
+      repoOnlyError: REPO_ONLY_ERROR,
       afterId: afterId ?? null,
       limit,
     },
   )
 }
 
+// Seq-scans insightsProjects (~200ms at 13.7k rows), so callers must opt in.
+const WEBSITE_SHARED_COUNT_COLUMN = `
+  (
+    SELECT count(*)::int
+    FROM "insightsProjects" o
+    WHERE o."id" <> p."id"
+      AND o."enabled"
+      AND o."deletedAt" IS NULL
+      AND COALESCE(p."website", '') <> ''
+      AND lower(regexp_replace(o."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+        = lower(regexp_replace(p."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+  ) AS "websiteSharedCount"`
+
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
+  options: { withWebsiteSharedCount: true },
+): Promise<IProjectForDocsDiscoveryWithSharedCount | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+): Promise<IProjectForDocsDiscovery | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+  options?: { withWebsiteSharedCount?: boolean },
 ): Promise<IProjectForDocsDiscovery | null> {
+  const sharedCountColumn = options?.withWebsiteSharedCount
+    ? `, ${WEBSITE_SHARED_COUNT_COLUMN}`
+    : ''
   return qx.selectOneOrNone(
     `
-    SELECT "id", "slug", "name", "website"
-    FROM "insightsProjects"
-    WHERE "id" = $(projectId) AND "deletedAt" IS NULL
+    SELECT p."id", p."slug", p."name", p."website"${sharedCountColumn}
+    FROM "insightsProjects" p
+    WHERE p."id" = $(projectId) AND p."deletedAt" IS NULL
     `,
     { projectId },
   )
