@@ -7,6 +7,8 @@ export const DOCS_SEGMENT = /^(docs?|documentation|guides?|manual|handbook|refer
 // readthedocs-style leading language folder (en, pt-br, zh_CN) that must stay with its version.
 const LOCALE_SEGMENT = /^[a-z]{2}([-_][a-z]{2,4})?$/i
 const GITHUB_HOSTS = new Set(['github.com', 'www.github.com'])
+// Hosts where the first path segment names the project or space, so a cut must keep it.
+const PATH_TENANT_SUFFIXES = ['github.io', 'gitbook.io']
 
 // Cuts a versioned deep page back to its docs root, or returns null when nothing should be cut.
 export function cutAtVersion(raw: string): string | null {
@@ -56,7 +58,10 @@ export function cutAtDocsSegment(raw: string): string | null {
 
   const segments = url.pathname.split('/').filter(Boolean)
   const docsAt = segments.findIndex((segment) => DOCS_SEGMENT.test(segment))
-  const kept = segments.slice(0, docsAt + 1)
+  const host = url.hostname.toLowerCase()
+  const keepsProjectSegment =
+    docsAt === -1 && PATH_TENANT_SUFFIXES.some((suffix) => host.endsWith(`.${suffix}`))
+  const kept = segments.slice(0, keepsProjectSegment ? 1 : docsAt + 1)
   const original = url.toString()
 
   url.search = ''

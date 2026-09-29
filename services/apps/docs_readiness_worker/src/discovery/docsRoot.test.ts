@@ -135,6 +135,26 @@ describe('cutAtDocsSegment', () => {
     ],
     ['fair.pm', 'https://fair.pm/packages/plugins/itsmanzur-docs/', 'https://fair.pm/'],
     [
+      'github.io keeps the project segment',
+      'https://spidernet-io.github.io/spiderpool/v1.0/usage/install',
+      'https://spidernet-io.github.io/spiderpool',
+    ],
+    [
+      'gitbook.io keeps the space segment',
+      'https://org.gitbook.io/space/page/sub',
+      'https://org.gitbook.io/space',
+    ],
+    [
+      'a docs segment on github.io still wins',
+      'https://org.github.io/proj/docs/intro',
+      'https://org.github.io/proj/docs',
+    ],
+    [
+      'readthedocs goes to the host root',
+      'https://proj.readthedocs.io/en/latest/a',
+      'https://proj.readthedocs.io/',
+    ],
+    [
       'first docs segment wins',
       'https://example.org/a/guide/docs/x',
       'https://example.org/a/guide',
@@ -153,6 +173,7 @@ describe('cutAtDocsSegment', () => {
   it.each([
     ['already the docs root', 'https://example.org/docs'],
     ['already the host root', 'https://docs.example.com/'],
+    ['a single project segment on github.io', 'https://org.github.io/proj'],
     ['a bare host', 'https://docs.example.com'],
     ['not a url', 'not a url'],
   ])('%s: leaves %s untouched', (_name, url) => {
