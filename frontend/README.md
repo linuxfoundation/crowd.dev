@@ -165,13 +165,12 @@ Opens on http://localhost:6006. Stories live next to the component they document
 
 ## Conventions
 
-- Frontend-specific conventions: [`CLAUDE.md`](CLAUDE.md).
 - The Element Plus → ui-kit / structural decisions behind this modernization:
   [ADR-0031](../docs/adr/0031-frontend-modernization.md) (note that `docs/adr/0030-*.md` in this
   repo is an unrelated, earlier ADR about the docs-readiness worker, not the frontend — this one is
   0031).
-- Commit format: `type: description (CM-XXX)`, signed with `--signoff -S`. See the repo root
-  `CLAUDE.md` for the full convention.
+- Commit format: `type: description (CM-XXX)`, signed with `--signoff -S`. See
+  [Commit Message Guidelines](../CONTRIBUTING.md#commit-message-guidelines) for the full convention.
 - One ticket per PR — don't bundle unrelated frontend changes into the same PR.
 
 ## Modernization plan
