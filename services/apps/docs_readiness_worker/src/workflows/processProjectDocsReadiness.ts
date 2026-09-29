@@ -54,6 +54,7 @@ export async function processProjectDocsReadiness(
 
     if (!resolved.docsUrl) {
       failed = 1
+      // shortcut: literal kept because workflows are sandboxed. revisit: keep in sync with NO_DOCS_URL_ERROR (DAL)
       await recordFailure(projectId, runId, resolved, 'no-docs-url')
       runStatus = 'completed'
       return

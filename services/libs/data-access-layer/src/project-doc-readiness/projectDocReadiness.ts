@@ -7,6 +7,7 @@ import {
   IProjectDocReadinessUpsert,
   IProjectForDocsDiscovery,
   IProjectForDocsReadiness,
+  NO_DOCS_URL_ERROR,
 } from './types'
 
 const READINESS_COLUMNS = [
@@ -214,7 +215,7 @@ export async function findProjectsForDocsReadiness(
     SELECT p."id", p."slug", p."name"
     FROM "insightsProjects" p
     LEFT JOIN LATERAL (
-      SELECT r."ok"
+      SELECT r."ok", r."error"
       FROM "projectDocReadiness" r
       WHERE r."projectId" = p."id"
       ORDER BY r."runDate" DESC
@@ -223,7 +224,19 @@ export async function findProjectsForDocsReadiness(
     WHERE p."enabled"
       AND p."deletedAt" IS NULL
       AND ($(lfOnly) = FALSE OR p."isLF")
-      AND ($(incremental) = FALSE OR latest."ok" IS DISTINCT FROM TRUE)
+      AND (
+        $(incremental) = FALSE
+        OR (
+          latest."ok" IS DISTINCT FROM TRUE
+          AND (
+            latest."error" IS DISTINCT FROM $(noDocsUrlError)
+            OR EXISTS (
+              SELECT 1 FROM "projectDocOverrides" o
+              WHERE o."projectId" = p."id" AND o."active"
+            )
+          )
+        )
+      )
       AND ($(afterId)::uuid IS NULL OR p."id" > $(afterId))
     ORDER BY p."id"
     LIMIT $(limit)
@@ -231,6 +244,7 @@ export async function findProjectsForDocsReadiness(
     {
       lfOnly: scope === 'lf',
       incremental: mode === 'incremental',
+      noDocsUrlError: NO_DOCS_URL_ERROR,
       afterId: afterId ?? null,
       limit,
     },

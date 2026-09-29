@@ -9,6 +9,9 @@ export const DOCS_READINESS_SWEEP_MODES = ['full', 'incremental'] as const
 
 export type DocsReadinessSweepMode = (typeof DOCS_READINESS_SWEEP_MODES)[number]
 
+// Written by the worker when discovery finds no docs URL; the incremental sweep skips it.
+export const NO_DOCS_URL_ERROR = 'no-docs-url'
+
 export interface IDbProjectDocReadiness {
   id: string
   projectId: string
