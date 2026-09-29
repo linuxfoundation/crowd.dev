@@ -3,6 +3,7 @@ import { ApplicationFailure } from '@temporalio/client'
 import {
   findLatestProjectDocReadiness,
   findProjectForDocsDiscovery,
+  lockProjectDocReadiness,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from '@crowd/data-access-layer'
@@ -80,6 +81,7 @@ export async function scoreProject(
 
   const writerQx = pgpQx(svc.postgres.writer.connection())
   await writerQx.tx(async (tx) => {
+    await lockProjectDocReadiness(tx, projectId)
     await replaceProjectDocReadinessChecks(tx, projectId, checkRows)
     await upsertProjectDocReadiness(tx, {
       projectId,
@@ -116,6 +118,7 @@ export async function recordFailure(
 
   const writerQx = pgpQx(svc.postgres.writer.connection())
   await writerQx.tx(async (tx) => {
+    await lockProjectDocReadiness(tx, projectId)
     // Check rows always describe the latest row's URL, so keep them only when this run has the same URL.
     const latest = await findLatestProjectDocReadiness(tx, projectId)
     const failedUrl = resolved.docsUrl ? normalizeUrl(resolved.docsUrl) : null

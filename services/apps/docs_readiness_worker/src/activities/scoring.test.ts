@@ -5,6 +5,7 @@ import { recordFailure, scoreProject } from './scoring'
 const mocks = vi.hoisted(() => ({
   findLatestProjectDocReadiness: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
+  lockProjectDocReadiness: vi.fn(),
   replaceProjectDocReadinessChecks: vi.fn(),
   upsertProjectDocReadiness: vi.fn(),
   runChecks: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 vi.mock('@crowd/data-access-layer', () => ({
   findLatestProjectDocReadiness: mocks.findLatestProjectDocReadiness,
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
+  lockProjectDocReadiness: mocks.lockProjectDocReadiness,
   replaceProjectDocReadinessChecks: mocks.replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
 }))
@@ -153,6 +155,31 @@ describe('scoreProject', () => {
       }),
     )
   })
+
+  test('takes the project lock on the write transaction before replacing check rows', async () => {
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: null,
+    })
+    mocks.runChecks.mockResolvedValue({
+      results: [
+        { id: 'llms-txt-exists', category: 'content-discoverability', status: 'pass', message: '' },
+      ],
+    })
+    mocks.tx.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+      await fn('tx-marker')
+    })
+
+    await scoreProject('project-1', 'run-1', RESOLVED)
+
+    expect(mocks.lockProjectDocReadiness).toHaveBeenCalledWith('tx-marker', 'project-1')
+    expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(
+      mocks.replaceProjectDocReadinessChecks,
+    )
+    expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(mocks.upsertProjectDocReadiness)
+  })
 })
 
 describe('recordFailure', () => {
@@ -187,6 +214,24 @@ describe('recordFailure', () => {
           categoryScores: null,
         }),
       )
+
+    test('takes the project lock on the write transaction before reading or writing', async () => {
+      mocks.findLatestProjectDocReadiness.mockResolvedValue({
+        docsUrl: 'https://old.example.com',
+        ok: true,
+      })
+
+      await recordFailure('project-1', 'run-1', RESOLVED, 'timeout')
+
+      expect(mocks.lockProjectDocReadiness).toHaveBeenCalledWith('tx-marker', 'project-1')
+      expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(
+        mocks.findLatestProjectDocReadiness,
+      )
+      expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(
+        mocks.replaceProjectDocReadinessChecks,
+      )
+      expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(mocks.upsertProjectDocReadiness)
+    })
 
     test('keeps check rows when the docs URL matches the latest run', async () => {
       mocks.findLatestProjectDocReadiness.mockResolvedValue({

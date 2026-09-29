@@ -4,16 +4,45 @@ import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
+import { QueryExecutor } from '../queryExecutor'
 import {
   findLatestProjectDocReadiness,
   findProjectDocReadinessChecks,
   findProjectsForDocsReadiness,
+  lockProjectDocReadiness,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from './projectDocReadiness'
 import { IProjectDocReadinessUpsert } from './types'
 
 const test = withQx(base)
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+async function waitForQueuedAdvisoryLock(qx: QueryExecutor) {
+  for (let attempt = 0; attempt < 250; attempt++) {
+    const queued = await qx.select(
+      `
+      SELECT 1
+      FROM pg_locks
+      WHERE locktype = 'advisory'
+        AND NOT granted
+        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+      `,
+    )
+    if (queued.length > 0) {
+      return
+    }
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error('no transaction is queued behind the advisory lock')
+}
 
 function scored(projectId: string, over: Partial<IProjectDocReadinessUpsert> = {}) {
   return {
@@ -88,6 +117,55 @@ describe('upsertProjectDocReadiness', () => {
 
     expect(latest?.runDate).toBe('2026-02-01')
     expect(latest?.overallScore).toBe(70)
+  })
+})
+
+describe('lockProjectDocReadiness', () => {
+  test('makes an overlapping transaction on the same project wait for the first to commit', async ({
+    qx,
+  }) => {
+    const project = await createInsightsProject(qx, {
+      name: 'Kyverno',
+      slug: 'kyverno',
+      isLF: true,
+    })
+    const events: string[] = []
+    const firstHoldsLock = deferred()
+    const firstMayCommit = deferred()
+
+    const first = qx.tx(async (tx) => {
+      await lockProjectDocReadiness(tx, project.id)
+      firstHoldsLock.resolve()
+      await firstMayCommit.promise
+      events.push('first commits')
+    })
+    await firstHoldsLock.promise
+
+    const second = qx.tx(async (tx) => {
+      await lockProjectDocReadiness(tx, project.id)
+      events.push('second holds lock')
+    })
+    try {
+      await waitForQueuedAdvisoryLock(qx)
+    } finally {
+      firstMayCommit.resolve()
+    }
+    await Promise.all([first, second])
+
+    expect(events).toEqual(['first commits', 'second holds lock'])
+  })
+
+  test('does not block a transaction on another project', async ({ qx }) => {
+    const a = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
+    const b = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })
+
+    await qx.tx(async (txA) => {
+      await lockProjectDocReadiness(txA, a.id)
+      await qx.tx(async (txB) => {
+        await txB.selectNone(`SET LOCAL lock_timeout = '2s'`)
+        await lockProjectDocReadiness(txB, b.id)
+      })
+    })
   })
 })
 

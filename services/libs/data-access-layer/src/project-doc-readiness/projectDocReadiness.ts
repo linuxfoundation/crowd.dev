@@ -47,6 +47,14 @@ const CHECK_COLUMNS = [
   .map((c) => `"${c}"`)
   .join(',\n')
 
+// Held until the transaction ends, so take it before reading or replacing either readiness table.
+export async function lockProjectDocReadiness(qx: QueryExecutor, projectId: string): Promise<void> {
+  await qx.result(
+    `SELECT pg_advisory_xact_lock(hashtextextended('projectDocReadiness:' || $(projectId)::text, 0))`,
+    { projectId },
+  )
+}
+
 // One row per project per run date; a same-day re-run overwrites the earlier result.
 export async function upsertProjectDocReadiness(
   qx: QueryExecutor,
