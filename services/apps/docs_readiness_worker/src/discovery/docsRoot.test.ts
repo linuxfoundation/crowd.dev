@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { cutAtVersion, cutToDocsRoot } from './docsRoot'
+import { cutAtDocsSegment, cutAtVersion, cutSerpToDocsRoot, cutToDocsRoot } from './docsRoot'
 
 const httpMocks = vi.hoisted(() => ({ isLiveDocs: vi.fn<(url: string) => Promise<boolean>>() }))
 
@@ -111,6 +111,75 @@ describe('cutToDocsRoot', () => {
     const url = 'https://docs.example.com/docs/getting-started'
 
     expect(await cutToDocsRoot(url)).toBe(url)
+    expect(httpMocks.isLiveDocs).not.toHaveBeenCalled()
+  })
+})
+
+describe('cutAtDocsSegment', () => {
+  it.each([
+    [
+      'rasa',
+      'https://rasa.com/docs/studio/build/content-management/buttons-and-links/',
+      'https://rasa.com/docs',
+    ],
+    ['ketch', 'https://docs.ketch.com/ketch/docs/appcues', 'https://docs.ketch.com/ketch/docs'],
+    [
+      'starlingx',
+      'https://docs.starlingx.io/usertasks/index-usertasks-b18b379ab832.html',
+      'https://docs.starlingx.io/',
+    ],
+    [
+      'opnfv',
+      'https://docs.opnfv.org/projects/barometer/en/latest/release/userguide/feature.userguide.html',
+      'https://docs.opnfv.org/',
+    ],
+    ['fair.pm', 'https://fair.pm/packages/plugins/itsmanzur-docs/', 'https://fair.pm/'],
+    [
+      'first docs segment wins',
+      'https://example.org/a/guide/docs/x',
+      'https://example.org/a/guide',
+    ],
+    [
+      'query and hash on a docs page',
+      'https://example.org/docs?a=1#top',
+      'https://example.org/docs',
+    ],
+    ['query on the host root', 'https://example.org/?a=1', 'https://example.org/'],
+    ['reference segment', 'https://example.org/reference/api/x', 'https://example.org/reference'],
+  ])('%s: cuts %s', (_name, url, expected) => {
+    expect(cutAtDocsSegment(url)).toBe(expected)
+  })
+
+  it.each([
+    ['already the docs root', 'https://example.org/docs'],
+    ['already the host root', 'https://docs.example.com/'],
+    ['a bare host', 'https://docs.example.com'],
+    ['not a url', 'not a url'],
+  ])('%s: leaves %s untouched', (_name, url) => {
+    expect(cutAtDocsSegment(url)).toBeNull()
+  })
+})
+
+describe('cutSerpToDocsRoot', () => {
+  const deep = 'https://rasa.com/docs/studio/x'
+
+  it('returns the cut url when it is live', async () => {
+    httpMocks.isLiveDocs.mockResolvedValue(true)
+
+    expect(await cutSerpToDocsRoot(deep)).toBe('https://rasa.com/docs')
+    expect(httpMocks.isLiveDocs).toHaveBeenCalledWith('https://rasa.com/docs')
+  })
+
+  it('keeps the original url when the cut url is not live', async () => {
+    httpMocks.isLiveDocs.mockResolvedValue(false)
+
+    expect(await cutSerpToDocsRoot(deep)).toBe(deep)
+  })
+
+  it('does not probe anything when there is nothing to cut', async () => {
+    const url = 'https://rasa.com/docs'
+
+    expect(await cutSerpToDocsRoot(url)).toBe(url)
     expect(httpMocks.isLiveDocs).not.toHaveBeenCalled()
   })
 })

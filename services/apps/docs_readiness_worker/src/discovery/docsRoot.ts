@@ -3,7 +3,7 @@
 import { isLiveDocs } from './http'
 
 const VERSION_SEGMENT = /^(v\d+(\.\d+)*|\d+\.\d+(\.\d+)*|latest|stable|main|master|next)$/i
-const DOCS_SEGMENT = /^(docs?|documentation|guides?|manual|handbook|reference|learn)$/i
+export const DOCS_SEGMENT = /^(docs?|documentation|guides?|manual|handbook|reference|learn)$/i
 // readthedocs-style leading language folder (en, pt-br, zh_CN) that must stay with its version.
 const LOCALE_SEGMENT = /^[a-z]{2}([-_][a-z]{2,4})?$/i
 const GITHUB_HOSTS = new Set(['github.com', 'www.github.com'])
@@ -42,5 +42,30 @@ export function cutAtVersion(raw: string): string | null {
 // The cut URL replaces the original only when it is itself a live docs page.
 export async function cutToDocsRoot(url: string): Promise<string> {
   const cut = cutAtVersion(url)
+  return cut && (await isLiveDocs(cut)) ? cut : url
+}
+
+// A deep SERP page cut back to its docs section, or to the host root when it has none.
+export function cutAtDocsSegment(raw: string): string | null {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return null
+  }
+
+  const segments = url.pathname.split('/').filter(Boolean)
+  const docsAt = segments.findIndex((segment) => DOCS_SEGMENT.test(segment))
+  const kept = segments.slice(0, docsAt + 1)
+  const original = url.toString()
+
+  url.search = ''
+  url.hash = ''
+  url.pathname = kept.length === 0 ? '/' : `/${kept.join('/')}`
+  return url.toString() === original ? null : url.toString()
+}
+
+export async function cutSerpToDocsRoot(url: string): Promise<string> {
+  const cut = cutAtDocsSegment(url)
   return cut && (await isLiveDocs(cut)) ? cut : url
 }

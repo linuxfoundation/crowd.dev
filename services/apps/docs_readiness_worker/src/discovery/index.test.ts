@@ -12,7 +12,11 @@ const strategyMocks = vi.hoisted(() => ({
 
 vi.mock('./docsRoot', async () => {
   const actual = await vi.importActual<typeof import('./docsRoot')>('./docsRoot')
-  return { ...actual, cutToDocsRoot: async (url: string) => actual.cutAtVersion(url) ?? url }
+  return {
+    ...actual,
+    cutToDocsRoot: async (url: string) => actual.cutAtVersion(url) ?? url,
+    cutSerpToDocsRoot: async (url: string) => actual.cutAtDocsSegment(url) ?? url,
+  }
 })
 
 vi.mock('./strategies', async () => {
@@ -170,7 +174,33 @@ describe('discoverDocs', () => {
     const result = await discoverDocs({ ...ctx('serp-key'), website: null })
 
     expect(strategyMocks.serpStrategy).toHaveBeenCalledTimes(1)
-    expect(result.docsUrl).toBe('https://proj.readthedocs.io/en/latest')
+    expect(result.docsUrl).toBe('https://proj.readthedocs.io/')
+  })
+
+  test('cuts a deep serp winner to its docs root', async () => {
+    strategyMocks.STRATEGIES.push(async () => [])
+    strategyMocks.serpStrategy.mockResolvedValue([
+      candidate(
+        'https://rasa.com/docs/studio/build/content-management/buttons-and-links/',
+        'serp',
+        true,
+      ),
+    ])
+
+    const result = await discoverDocs({ ...ctx('serp-key'), website: null })
+
+    expect(result.docsUrl).toBe('https://rasa.com/docs')
+    expect(result.discoveryMethod).toBe('serp')
+  })
+
+  test('leaves a non-serp winner at its own path', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://example.com/guides/install/linux', 'readme-scrape', true),
+    ])
+
+    const result = await discoverDocs(ctx())
+
+    expect(result.docsUrl).toBe('https://example.com/guides/install/linux')
   })
 
   test('ranks with the project website domain, favoring it over an unrelated better-shaped domain', async () => {
