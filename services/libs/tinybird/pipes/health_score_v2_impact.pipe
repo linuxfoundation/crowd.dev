@@ -17,7 +17,7 @@ SQL >
         ) AS base
     INNER JOIN
         repos r
-        ON if(r.host IN ('github', 'gitlab', 'gitlab.com'), lower(r.url), r.url)
+        ON if(lower(domain(r.url)) IN ('github.com', 'gitlab.com'), lower(r.url), r.url)
         = if(lower(domain(base.url)) IN ('github.com', 'gitlab.com'), lower(base.url), base.url)
     INNER JOIN packageRepos pr ON pr.repoId = r.id
     INNER JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
