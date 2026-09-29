@@ -133,9 +133,7 @@ setImmediate(async () => {
   // increase security.
   app.use(helmet())
 
-  // Slack's Interactivity API requires a 3-second acknowledgement, so this
-  // is mounted ahead of the rate limiter and tenant/segment middleware,
-  // with its own dedicated body parser.
+  // Mounted before shared middleware to protect Slack's 3-second ack window.
   mountInteractivityRoute(app)
 
   const defaultRateLimiter = createRateLimiter({
