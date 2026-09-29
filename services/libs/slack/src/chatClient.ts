@@ -42,6 +42,24 @@ export async function postSlackMessage(
   }
 }
 
+export async function getSlackPermalink(
+  channel: string,
+  messageTs: string,
+): Promise<string | null> {
+  const client = getBotClient()
+  if (!client) {
+    return null
+  }
+
+  try {
+    const response = await client.chat.getPermalink({ channel, message_ts: messageTs })
+    return response.permalink ?? null
+  } catch (error) {
+    log.error({ error, channel, messageTs }, 'Failed to get Slack message permalink')
+    return null
+  }
+}
+
 export async function updateSlackMessage(
   args: ChatUpdateArguments,
 ): Promise<{ ok: boolean; error?: string }> {

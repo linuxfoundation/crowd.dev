@@ -23,6 +23,12 @@ vi.mock('@crowd/data-access-layer', () => ({
   computeExclusivelyLfOwners: vi.fn(() => new Set()),
   resolvePrecheckSkipReason: vi.fn(() => null),
   markProjectCatalogPreCheckSkipped: vi.fn(),
+  setProjectCatalogSourceUrl: vi.fn(async () => undefined),
+}))
+
+vi.mock('@crowd/slack', () => ({
+  postSlackMessage: vi.fn(),
+  getSlackPermalink: vi.fn(),
 }))
 
 vi.mock('../../api/public/v1/projectEvaluation/evaluateProject', () => ({
@@ -39,9 +45,11 @@ import {
   deriveProjectIdentityFromRepoUrl,
   finalizeProjectCatalogEvaluation,
   markProjectCatalogPreCheckSkipped,
+  setProjectCatalogSourceUrl,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
 import { onboardProject } from '@crowd/project-onboarding'
+import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
 
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
 import { runOnboardProjectCommand } from './onboardProjectCommand'
@@ -258,5 +266,81 @@ describe('runOnboardProjectCommand', () => {
       }),
     )
     expect(lastSlackText()).toContain('onboarding failed')
+  })
+
+  describe('request message', () => {
+    beforeEach(() => {
+      vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
+      vi.mocked(evaluateProject).mockRejectedValue(new Error('stop after claim'))
+      vi.mocked(postSlackMessage).mockResolvedValue({ ok: true, ts: '1700000000.000100' })
+      vi.mocked(getSlackPermalink).mockResolvedValue(
+        'https://slack.test/archives/C1/p1700000000000100',
+      )
+    })
+
+    const run = (channelId?: string) =>
+      runOnboardProjectCommand({
+        repoUrl: catalogEntry.repoUrl,
+        options: mockOptions(),
+        responseUrl: 'https://hooks.slack.com/response',
+        actorId: 'U123',
+        channelId,
+      })
+
+    it('posts the request to the channel and stores its permalink as sourceUrl', async () => {
+      await run('C1')
+
+      expect(postSlackMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'C1', text: expect.stringContaining('<@U123>') }),
+      )
+      expect(getSlackPermalink).toHaveBeenCalledWith('C1', '1700000000.000100')
+      expect(setProjectCatalogSourceUrl).toHaveBeenCalledWith(
+        expect.anything(),
+        catalogEntry.id,
+        'https://slack.test/archives/C1/p1700000000000100',
+      )
+    })
+
+    it('leaves sourceUrl alone and keeps going when the message cannot be posted', async () => {
+      vi.mocked(postSlackMessage).mockResolvedValue({ ok: false, error: 'not_in_channel' })
+
+      await run('C1')
+
+      expect(getSlackPermalink).not.toHaveBeenCalled()
+      expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()
+      expect(evaluateProject).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not post or store anything when Slack sent no channel id', async () => {
+      await run(undefined)
+
+      expect(postSlackMessage).not.toHaveBeenCalled()
+      expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()
+    })
+
+    it('does not store anything when the permalink cannot be fetched', async () => {
+      vi.mocked(getSlackPermalink).mockResolvedValue(null)
+
+      await run('C1')
+
+      expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()
+    })
+
+    it('does not fail the command when storing the sourceUrl throws', async () => {
+      vi.mocked(setProjectCatalogSourceUrl).mockRejectedValueOnce(new Error('db down'))
+
+      await run('C1')
+
+      expect(evaluateProject).toHaveBeenCalledTimes(1)
+    })
+
+    it('posts nothing when the claim is refused', async () => {
+      vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(null)
+
+      await run('C1')
+
+      expect(postSlackMessage).not.toHaveBeenCalled()
+      expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()
+    })
   })
 })

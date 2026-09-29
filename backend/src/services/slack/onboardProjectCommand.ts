@@ -15,10 +15,13 @@ import {
   findRepoUrlsInCdp,
   markProjectCatalogPreCheckSkipped,
   resolvePrecheckSkipReason,
+  setProjectCatalogSourceUrl,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/data-access-layer/src/database'
+import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { onboardProject } from '@crowd/project-onboarding'
+import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
 
 import { createDailyProjectCatalogCap } from '../../api/public/v1/projectCatalog/dailyRequestCap'
 import { createDailyLlmCap } from '../../api/public/v1/projectEvaluation/dailyLlmCap'
@@ -58,16 +61,58 @@ export async function postToResponseUrl(
   }
 }
 
+async function recordRequestMessage(
+  qx: QueryExecutor,
+  {
+    catalogId,
+    repoUrl,
+    channelId,
+    actorId,
+    log,
+  }: {
+    catalogId: string
+    repoUrl: string
+    channelId?: string
+    actorId: string
+    log: IServiceOptions['log']
+  },
+): Promise<void> {
+  try {
+    if (!channelId) {
+      return
+    }
+
+    const posted = await postSlackMessage({
+      channel: channelId,
+      text: `<@${actorId}> requested onboarding of \`${repoUrl}\``,
+    })
+
+    if (!posted.ok || !posted.ts) {
+      log.warn({ channelId, error: posted.error }, 'Could not post onboarding request to Slack.')
+      return
+    }
+
+    const permalink = await getSlackPermalink(channelId, posted.ts)
+    if (permalink) {
+      await setProjectCatalogSourceUrl(qx, catalogId, permalink)
+    }
+  } catch (err) {
+    log.warn(err, 'Failed to record the Slack message of the onboarding request.')
+  }
+}
+
 export async function runOnboardProjectCommand({
   repoUrl: rawRepoUrl,
   options,
   responseUrl,
   actorId,
+  channelId,
 }: {
   repoUrl: string
   options: IServiceOptions
   responseUrl?: string
   actorId: string
+  channelId?: string
 }): Promise<void> {
   const { log } = options
   // Runs detached after the Slack ack (fire-and-forget) — never bind to a
@@ -108,6 +153,14 @@ export async function runOnboardProjectCommand({
     )
     return
   }
+
+  await recordRequestMessage(qx, {
+    catalogId: catalogEntry.id,
+    repoUrl,
+    channelId,
+    actorId,
+    log,
+  })
 
   const canonical = canonicalizeRepoUrl(repoUrl)
   const owners = canonical?.isGithub ? [canonical.owner] : []
