@@ -94,7 +94,7 @@ SQL >
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false
-    LEFT JOIN repos r ON r.url = rep.url
+    LEFT JOIN repos r ON lower(r.url) = lower(rep.url)
     LEFT JOIN packageRepos pr ON pr.repoId = r.id
     LEFT JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
     GROUP BY ip.id, ip.slug, ip.name
