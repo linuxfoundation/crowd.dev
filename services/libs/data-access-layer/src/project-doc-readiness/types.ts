@@ -9,6 +9,8 @@ export const DOCS_READINESS_SWEEP_MODES = ['full', 'incremental'] as const
 
 export type DocsReadinessSweepMode = (typeof DOCS_READINESS_SWEEP_MODES)[number]
 
+export const NO_DOCS_URL_ERROR = 'no-docs-url'
+
 export interface IDbProjectDocReadiness {
   id: string
   projectId: string
