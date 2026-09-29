@@ -85,24 +85,27 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
 
       while (hasMore) {
         const log = ctx.log.child({ prNumber: pullRequest.number, cursor })
-        const { page: data, usedNoStats } = await fetchCommitsPage(
-          ctx,
-          {
-            owner,
-            repo,
-            prNumber: pullRequest.number,
-            first: COMMITS_PAGE_SIZE,
-            cursor,
-          },
-          log,
-          noStats,
-        )
+        const variables = {
+          owner,
+          repo,
+          prNumber: pullRequest.number,
+          first: COMMITS_PAGE_SIZE,
+          cursor,
+        }
+        const { page: data, usedNoStats } = await fetchCommitsPage(ctx, variables, log, noStats)
         noStats = noStats || usedNoStats
 
-        const commits = data.repository.pullRequest?.commits
+        let commits = data.repository.pullRequest?.commits
         if (!commits) {
           log.warn('github returned no commits connection for pull request')
           break
+        }
+
+        if (!noStats && commits.nodes.some((node) => !node?.commit)) {
+          log.warn('github dropped commits from a diff stats page, refetching without them')
+          const { page } = await fetchCommitsPage(ctx, variables, log, true)
+          noStats = true
+          commits = page.repository.pullRequest?.commits ?? commits
         }
 
         const fresh = commits.nodes
