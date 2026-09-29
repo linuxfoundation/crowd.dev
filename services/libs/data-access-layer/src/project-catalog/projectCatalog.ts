@@ -534,6 +534,75 @@ export async function upsertProjectCatalogManualAction(
   )
 }
 
+// Slack-specific: unlike upsertProjectCatalogManualAction, also excludes an existing
+// 'evaluate' row so two near-simultaneous Slack requests can't both trigger evaluateProject.
+export async function claimProjectCatalogForSlackEvaluation(
+  qx: QueryExecutor,
+  data: {
+    projectSlug: string
+    repoName: string
+    repoUrl: string
+    provenance?: ProjectCatalogProvenance | null
+  },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    INSERT INTO "projectCatalog" (
+      "projectSlug",
+      "repoName",
+      "repoUrl",
+      "source",
+      "provenance",
+      "action",
+      "createdAt",
+      "updatedAt",
+      "syncedAt"
+    )
+    VALUES (
+      $(projectSlug),
+      $(repoName),
+      $(repoUrl),
+      'manual',
+      $(provenance),
+      'evaluate',
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("repoUrl") DO UPDATE SET
+      "projectSlug" = EXCLUDED."projectSlug",
+      "repoName" = EXCLUDED."repoName",
+      "source" = 'manual',
+      "provenance" = COALESCE(EXCLUDED."provenance", "projectCatalog"."provenance"),
+      "action" = 'evaluate',
+      "evaluatedAt" = NULL,
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
+    WHERE "projectCatalog"."onboardedAt" IS NULL
+      AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded', 'evaluate')
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { ...data, provenance: data.provenance ?? null },
+  )
+}
+
+// Claims a row queued for onboarding by stamping onboardedAt before the external call —
+// the nightly worker's onboardedAt-truthy guard then treats it as already handled.
+export async function claimProjectCatalogForOnboarding(
+  qx: QueryExecutor,
+  id: string,
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET "onboardedAt" = NOW(), "updatedAt" = NOW()
+    WHERE id = $(id) AND action = 'onboard' AND "onboardedAt" IS NULL
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id },
+  )
+}
+
 export async function updateProjectCatalog(
   qx: QueryExecutor,
   id: string,
