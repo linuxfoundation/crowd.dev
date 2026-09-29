@@ -53,4 +53,28 @@ describe('buildSkippedDiscussionAlert', () => {
     expect(reasonText).toContain('…')
     expect(reasonText.length).toBeLessThan(longReason.length)
   })
+
+  it('labels a slack-bot request as a Slack message', () => {
+    const [linked] = buildSkippedDiscussionAlert(
+      {
+        repoName: 'foo/bar',
+        repoUrl: 'https://github.com/foo/bar',
+        sourceUrl: 'https://acme.slack.com/archives/C1/p1',
+        provenance: 'slack-bot',
+      },
+      'r',
+    )
+    const [unlinked] = buildSkippedDiscussionAlert(
+      {
+        repoName: 'foo/bar',
+        repoUrl: 'https://github.com/foo/bar',
+        sourceUrl: null,
+        provenance: 'slack-bot',
+      },
+      'r',
+    )
+
+    expect(linked.text).toContain('<https://acme.slack.com/archives/C1/p1|Slack request>')
+    expect(unlinked.text).toContain('source Slack message not recorded')
+  })
 })

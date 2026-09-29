@@ -24,6 +24,7 @@ import {
   buildErroredDiscussionAlert,
   buildOnboardedDiscussionAlert,
   isGithubDiscussionRequest,
+  isReviewAlertRequest,
 } from './discussionRequestAlert'
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
 
@@ -177,7 +178,7 @@ export async function notifyErroredHumanRequest(
   project: IDbProjectCatalog,
   reason: string,
 ): Promise<void> {
-  if (!isGithubDiscussionRequest(project)) {
+  if (!isReviewAlertRequest(project)) {
     return
   }
 

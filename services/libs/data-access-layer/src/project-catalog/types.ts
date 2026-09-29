@@ -39,6 +39,16 @@ export function isGithubDiscussionProvenance(
   return value === 'github-discussion'
 }
 
+export function isSlackBotProvenance(value: ProjectCatalogProvenance | null): value is 'slack-bot' {
+  return value === 'slack-bot'
+}
+
+export function isReviewAlertProvenance(
+  value: ProjectCatalogProvenance | null,
+): value is 'github-discussion' | 'slack-bot' {
+  return isGithubDiscussionProvenance(value) || isSlackBotProvenance(value)
+}
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string

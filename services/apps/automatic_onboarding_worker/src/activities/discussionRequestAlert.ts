@@ -1,4 +1,8 @@
-import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
+import {
+  IDbProjectCatalog,
+  isReviewAlertProvenance,
+  isSlackBotProvenance,
+} from '@crowd/data-access-layer/src/project-catalog/types'
 import { deriveProjectSlug } from '@crowd/project-onboarding'
 import { SlackMessageSection } from '@crowd/slack'
 
@@ -9,12 +13,27 @@ export function isGithubDiscussionRequest(project: Pick<IDbProjectCatalog, 'prov
   return project.provenance === 'github-discussion'
 }
 
+export function isReviewAlertRequest(project: Pick<IDbProjectCatalog, 'provenance'>): boolean {
+  return isReviewAlertProvenance(project.provenance)
+}
+
+function formatRequestedIn(
+  project: Pick<IDbProjectCatalog, 'sourceUrl'> & Partial<Pick<IDbProjectCatalog, 'provenance'>>,
+): string {
+  const fromSlack = isSlackBotProvenance(project.provenance ?? null)
+
+  if (!project.sourceUrl) {
+    return fromSlack ? '_source Slack message not recorded_' : '_source discussion not recorded_'
+  }
+
+  return `<${project.sourceUrl}|${fromSlack ? 'Slack request' : project.sourceUrl}>`
+}
+
 function buildDiscussionRequestHeader(
-  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'>,
+  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'> &
+    Partial<Pick<IDbProjectCatalog, 'provenance'>>,
 ): SlackMessageSection {
-  const requestedIn = project.sourceUrl
-    ? `<${project.sourceUrl}|${project.sourceUrl}>`
-    : '_source discussion not recorded_'
+  const requestedIn = formatRequestedIn(project)
 
   return {
     title: '',
@@ -46,7 +65,8 @@ export function buildOnboardedDiscussionAlert(
 }
 
 export function buildErroredDiscussionAlert(
-  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'>,
+  project: Pick<IDbProjectCatalog, 'repoName' | 'repoUrl' | 'sourceUrl'> &
+    Partial<Pick<IDbProjectCatalog, 'provenance'>>,
   reason: string,
 ): SlackMessageSection[] {
   return [
