@@ -85,6 +85,10 @@ export function candidateHasDocsSignal(c: IDocCandidate): boolean {
   return EXPLICIT_DOCS_PROBE_METHODS.has(c.method) || hasDocsSignal(host, pathnameOf(c.url))
 }
 
+// Real evidence for a docs URL: not a SERP guess, not the bare repo page or GitHub's own hosts.
+export const isOrganicCandidate = (c: IDocCandidate): boolean =>
+  c.method !== 'serp' && c.method !== 'repo-url' && !GITHUB_SHARED_HOSTS.has(domainOf(c.url) ?? '')
+
 function isOnProjectDomain(url: string, projectDomain: string): boolean {
   const domain = normalizedDomain(url)
   return domain === projectDomain || (domain?.endsWith(`.${projectDomain}`) ?? false)
@@ -106,10 +110,14 @@ export function rankCandidates(
   projectNameHint: string | null = null,
   sharedDocsUrls: ReadonlySet<string> = new Set(),
 ): IDocCandidate | null {
-  const live = candidates.filter((c) => c.livenessOk)
-  if (live.length === 0) {
+  const allLive = candidates.filter((c) => c.livenessOk)
+  if (allLive.length === 0) {
     return null
   }
+  // SERP is a guess: it may only win when no organic live candidate exists.
+  const live = allLive.some(isOrganicCandidate)
+    ? allLive.filter((c) => c.method !== 'serp')
+    : allLive
 
   // Below this length a token is too common/generic (e.g. a short or generic org name) to
   // safely narrow the pool by substring match.

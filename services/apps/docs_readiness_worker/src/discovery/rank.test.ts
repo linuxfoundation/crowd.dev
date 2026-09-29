@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vitest'
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { normalizedDomain } from './http'
-import { candidateHasDocsSignal, rankCandidates, repoNameAnchor } from './rank'
+import { isOrganicCandidate, rankCandidates, repoNameAnchor } from './rank'
 
 const pocOutcomes = JSON.parse(
   readFileSync(join(__dirname, '__fixtures__/poc-rank-outcomes.json'), 'utf-8'),
@@ -46,11 +46,11 @@ describe('rankCandidates', () => {
   test('method bonus ordering: docs-subdomain > docs-path > serp/package-manifest > readme-scrape/github-homepage/project-website', () => {
     const subdomain = candidate('https://a.com', 'docs-subdomain', true)
     const path = candidate('https://b.com', 'docs-path', true)
-    const serp = candidate('https://c.com', 'serp', true)
+    const manifest = candidate('https://c.com', 'package-manifest', true)
     const readme = candidate('https://d.com', 'readme-scrape', true)
     expect(rankCandidates([path, subdomain])).toEqual(subdomain)
-    expect(rankCandidates([serp, path])).toEqual(path)
-    expect(rankCandidates([readme, serp])).toEqual(serp)
+    expect(rankCandidates([manifest, path])).toEqual(path)
+    expect(rankCandidates([readme, manifest])).toEqual(manifest)
   })
 
   test('URL shape bonus: a docs. host outranks a same-method bare host', () => {
@@ -93,7 +93,11 @@ describe('rankCandidates', () => {
     // project's own on-domain result purely on URL shape.
     const ownHomepage = candidate('https://example.com', 'github-homepage', true)
     const ownDocsPage = candidate('https://example.com/docs', 'readme-scrape', true)
-    const unrelatedDocs = candidate('https://docs.unrelated-vendor.com/reference', 'serp', true)
+    const unrelatedDocs = candidate(
+      'https://docs.unrelated-vendor.com/reference',
+      'package-manifest',
+      true,
+    )
 
     expect(rankCandidates([ownHomepage, ownDocsPage, unrelatedDocs])).toEqual(unrelatedDocs)
     expect(rankCandidates([ownHomepage, ownDocsPage, unrelatedDocs], 'example.com')).toEqual(
@@ -111,7 +115,7 @@ describe('rankCandidates', () => {
 
   test('domain affinity: a signal-less live candidate on the project domain does not shadow real off-domain docs', () => {
     const bareHomepage = candidate('https://example.com', 'project-website', true)
-    const offDomainDocs = candidate('https://docs.other.com/guide', 'serp', true)
+    const offDomainDocs = candidate('https://docs.other.com/guide', 'package-manifest', true)
     expect(rankCandidates([bareHomepage, offDomainDocs], 'example.com')).toEqual(offDomainDocs)
   })
 
@@ -130,7 +134,7 @@ describe('rankCandidates', () => {
   })
 
   test('projectNameHint (third arg) narrows the pool to hosts containing the name token', () => {
-    const ownRepo = candidate('https://acme-widgets.io/docs', 'serp', true)
+    const ownRepo = candidate('https://acme-widgets.io/docs', 'package-manifest', true)
     const unrelated = candidate(
       'https://docs.unrelated-vendor.com/reference',
       'llms-txt-probe',
@@ -151,7 +155,7 @@ describe('rankCandidates', () => {
     const probe = candidate('https://github.com/a', 'llms-txt-probe', true)
     const subdomain = candidate('https://github.com/b', 'docs-subdomain', true)
     const homepage = candidate('https://github.com/c', 'project-website', true)
-    const realDocs = candidate('https://docs.realproject.dev', 'serp', true)
+    const realDocs = candidate('https://docs.realproject.dev', 'package-manifest', true)
     expect(rankCandidates([probe, subdomain, homepage, realDocs])).toEqual(realDocs)
   })
 })
@@ -349,7 +353,7 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
   // discoverDocs would actually produce, not just with rankCandidates on an unreachable input.
   function replayCandidates(allCandidates: IDocCandidate[]): IDocCandidate[] {
     const nonSerp = allCandidates.filter((c) => c.method !== 'serp')
-    return nonSerp.some((c) => c.livenessOk && candidateHasDocsSignal(c)) ? nonSerp : allCandidates
+    return nonSerp.some((c) => c.livenessOk && isOrganicCandidate(c)) ? nonSerp : allCandidates
   }
 
   // Mirrors discoverDocs's own projectDomain derivation (ctx.website), using the fixture's
@@ -389,13 +393,18 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
   // longer counts as a docs signal, so these assert the corrected answer instead.
   const GITHUB_HOST_SUPPRESSED: Record<string, { url: string; method: string }> = {
     lima: { url: 'https://lima-vm.io/docs/', method: 'serp' },
+  }
+
+  // The POC picked a SERP guess over the project's own homepage; SERP never outranks a live organic candidate.
+  const SERP_DEMOTED: Record<string, { url: string; method: string }> = {
+    'ojsf-dojo': { url: 'https://dojo.io', method: 'project-website' },
     'open-resource-discovery': {
-      url: 'https://ord-reference-application.cfapps.sap.hana.ondemand.com/',
-      method: 'serp',
+      url: 'https://open-resource-discovery.org',
+      method: 'project-website',
     },
     'ai-governance-framework': {
-      url: 'https://www.linkedin.com/pulse/ai-governance-documentation-practical-framework-business-derek-martin-sbvfe',
-      method: 'serp',
+      url: 'https://air-governance-framework.finos.org',
+      method: 'project-website',
     },
   }
 
@@ -423,6 +432,7 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     const affinityAdjusted = AFFINITY_ADJUSTED[fixture.projectSlug]
     const githubHostSuppressed = GITHUB_HOST_SUPPRESSED[fixture.projectSlug]
     const rootDemoted = FOUNDATION_ROOT_DEMOTED[fixture.projectSlug]
+    const serpDemoted = SERP_DEMOTED[fixture.projectSlug]
     const testName = gateAdjusted
       ? `${fixture.projectSlug}: winner matches gate-adjusted outcome (recorded serp result is unreachable)`
       : affinityAdjusted
@@ -431,7 +441,9 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
           ? `${fixture.projectSlug}: winner matches corrected outcome (recorded winner was GitHub's shared host)`
           : rootDemoted
             ? `${fixture.projectSlug}: winner matches root-demoted outcome (recorded winner was a bare foundation llms.txt root)`
-            : `${fixture.projectSlug}: winner matches recorded POC outcome`
+            : serpDemoted
+              ? `${fixture.projectSlug}: winner matches serp-demoted outcome (recorded winner was a SERP guess over a live homepage)`
+              : `${fixture.projectSlug}: winner matches recorded POC outcome`
 
     test(testName, () => {
       const winner = rankCandidates(
@@ -442,7 +454,8 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
       const expected = gateAdjusted ??
         affinityAdjusted ??
         githubHostSuppressed ??
-        rootDemoted ?? {
+        rootDemoted ??
+        serpDemoted ?? {
           url: fixture.docsUrl,
           method: fixture.discoveryMethod,
         }
@@ -457,4 +470,41 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
       expect(winner?.method).toBe(expected.method)
     })
   }
+})
+
+describe('rankCandidates — SERP tier (IN-1396)', () => {
+  test('a SERP hit with every ranking bonus never outranks a live bare homepage (5 Spot)', () => {
+    const homepage = candidate('https://5spot.finos.org/', 'github-homepage', true)
+    const serp = candidate('https://docs.buildbot.net/manual/schedulers.html', 'serp', true)
+    expect(rankCandidates([serp, homepage])).toEqual(homepage)
+    expect(rankCandidates([homepage, serp])).toEqual(homepage)
+  })
+
+  test('a SERP hit does not outrank a homepage that only carries a shared-URL penalty', () => {
+    const homepage = candidate('https://example.com', 'project-website', true)
+    const serp = candidate('https://docs.other.com/guide', 'serp', true)
+    expect(rankCandidates([serp, homepage], null, null, new Set(['https://example.com']))).toEqual(
+      homepage,
+    )
+  })
+
+  test.each([
+    ['the repo-url fallback', candidate('https://github.com/acme/proj', 'repo-url', true)],
+    ['a GitHub shared host', candidate('https://docs.github.com/en/x', 'readme-scrape', true)],
+  ])('a SERP hit still beats %s', (_name, fallback) => {
+    const serp = candidate('https://proj.readthedocs.io/en/latest', 'serp', true)
+    expect(rankCandidates([fallback, serp])).toEqual(serp)
+  })
+
+  test('SERP hits still rank among themselves when nothing organic is live', () => {
+    const best = candidate('https://docs.proj.dev/guide', 'serp', true)
+    const worse = candidate('https://proj.dev/blog', 'serp', true)
+    expect(rankCandidates([worse, best])).toEqual(best)
+  })
+
+  test('a dead organic candidate does not block SERP', () => {
+    const dead = candidate('https://example.com', 'project-website', false)
+    const serp = candidate('https://docs.proj.dev', 'serp', true)
+    expect(rankCandidates([dead, serp])).toEqual(serp)
+  })
 })
