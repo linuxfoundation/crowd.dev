@@ -80,6 +80,8 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
       let cursor: string | null = null
       let hasMore = true
       let noStats = false
+      let expectedCount: number | null = null
+      let fetchedCount = 0
 
       while (hasMore) {
         const log = ctx.log.child({ prNumber: pullRequest.number, cursor })
@@ -99,6 +101,7 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
 
         const commits = data.repository.pullRequest?.commits
         if (!commits) {
+          log.warn('github returned no commits connection for pull request')
           break
         }
 
@@ -106,12 +109,22 @@ async function runPullRequestCommitsSync(ctx: SyncContext): Promise<SyncOutcome>
           .map((node) => node?.commit)
           .filter((commit): commit is PrCommitNode['commit'] => Boolean(commit))
 
+        expectedCount = commits.totalCount
+        fetchedCount += fresh.length
+
         if (fresh.length > 0) {
           await ctx.emit(fresh.map((commit) => toCommit(commit, pullRequest.id)))
         }
 
         hasMore = commits.pageInfo.hasNextPage
         cursor = commits.pageInfo.endCursor
+      }
+
+      if (expectedCount !== null && fetchedCount < expectedCount) {
+        ctx.log.warn(
+          { prNumber: pullRequest.number, expectedCount, fetchedCount },
+          'fetched fewer commits than github reports for pull request',
+        )
       }
 
       await onPrProcessed?.(pullRequest)

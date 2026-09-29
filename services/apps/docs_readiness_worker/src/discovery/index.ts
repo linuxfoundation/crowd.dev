@@ -1,6 +1,6 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
-import { normalizedDomain } from './http'
+import { isGithubWebsite, normalizedDomain } from './http'
 import { candidateHasDocsSignal, methodPriority, rankCandidates, repoNameAnchor } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
@@ -51,13 +51,28 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])
       : baseCandidates
 
-  // github.com is a shared host, not a project domain — using it for affinity would wrongly
-  // treat GitHub's own docs as on-domain when a project's website is just its repo URL.
+  // GitHub and shared websites are not this project's domain, so they give no affinity anchor.
   const websiteDomain = ctx.website ? normalizedDomain(ctx.website) : null
-  const isGithubWebsite = websiteDomain === 'github.com'
-  const projectDomain = isGithubWebsite ? null : websiteDomain
-  const projectNameHint = ctx.website && isGithubWebsite ? repoNameAnchor(ctx.website) : null
-  const winner = rankCandidates(allCandidates, projectDomain, projectNameHint)
+  const githubWebsite = !!ctx.website && isGithubWebsite(ctx.website)
+  const projectDomain = githubWebsite || ctx.websiteShared ? null : websiteDomain
+  const projectNameHint = ctx.website && githubWebsite ? repoNameAnchor(ctx.website) : null
+
+  const liveHosts = [
+    ...new Set(
+      allCandidates
+        .filter((c) => c.livenessOk)
+        .map((c) => normalizedDomain(c.url))
+        .filter((host): host is string => !!host),
+    ),
+  ]
+  const sharedDocsUrls =
+    ctx.findSharedDocsUrls && liveHosts.length > 0 ? await ctx.findSharedDocsUrls(liveHosts) : []
+  const winner = rankCandidates(
+    allCandidates,
+    projectDomain,
+    projectNameHint,
+    new Set(sharedDocsUrls),
+  )
 
   return {
     docsUrl: winner?.url ?? null,

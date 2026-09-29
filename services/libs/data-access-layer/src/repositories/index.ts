@@ -202,18 +202,31 @@ export async function getRepositoriesByUrl(
   )
 }
 
+export interface IEnabledRepository {
+  url: string
+  starCount: number | null
+}
+
 export async function findEnabledRepositoriesForProject(
   qx: QueryExecutor,
   insightsProjectId: string,
-): Promise<{ url: string }[]> {
+): Promise<IEnabledRepository[]> {
   return qx.select(
     `
-    SELECT url
-    FROM public.repositories
-    WHERE "insightsProjectId" = $(insightsProjectId)
-      AND enabled
-      AND NOT excluded
-      AND "deletedAt" IS NULL
+    SELECT r.url, s."starCount"
+    FROM public.repositories r
+    LEFT JOIN LATERAL (
+      SELECT "starCount"
+      FROM public."repositoryStarSnapshots"
+      WHERE "repositoryId" = r.id
+      ORDER BY "capturedAt" DESC
+      LIMIT 1
+    ) s ON TRUE
+    WHERE r."insightsProjectId" = $(insightsProjectId)
+      AND r.enabled
+      AND NOT r.excluded
+      AND r."deletedAt" IS NULL
+    ORDER BY s."starCount" DESC NULLS LAST, r.url ASC
     `,
     { insightsProjectId },
   )

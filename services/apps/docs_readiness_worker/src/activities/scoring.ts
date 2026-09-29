@@ -1,13 +1,16 @@
 import { ApplicationFailure } from '@temporalio/client'
 
 import {
+  REPO_ONLY_ERROR,
+  findLatestProjectDocReadiness,
   findProjectForDocsDiscovery,
+  lockProjectDocReadiness,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from '@crowd/data-access-layer'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { isPrivateOrLoopbackHost } from '../discovery/http'
+import { isPrivateOrLoopbackHost, normalizeUrl } from '../discovery/http'
 import { svc } from '../main'
 import { computeScores } from '../scoring/computeScores'
 import { runChecksIsolated } from '../scoring/runChecksIsolated'
@@ -48,6 +51,11 @@ export async function scoreProject(
     )
   }
 
+  // afdocs resolves github.com/llms.txt for a repo page and would score GitHub's own files.
+  if (resolved.discoveryMethod === 'repo-url') {
+    throw ApplicationFailure.nonRetryable(REPO_ONLY_ERROR)
+  }
+
   const readerQx = pgpQx(svc.postgres.reader.connection())
   const project = await findProjectForDocsDiscovery(readerQx, projectId)
   if (!project) {
@@ -75,6 +83,7 @@ export async function scoreProject(
 
   const writerQx = pgpQx(svc.postgres.writer.connection())
   await writerQx.tx(async (tx) => {
+    await lockProjectDocReadiness(tx, projectId)
     await replaceProjectDocReadinessChecks(tx, projectId, checkRows)
     await upsertProjectDocReadiness(tx, {
       projectId,
@@ -111,7 +120,14 @@ export async function recordFailure(
 
   const writerQx = pgpQx(svc.postgres.writer.connection())
   await writerQx.tx(async (tx) => {
-    await replaceProjectDocReadinessChecks(tx, projectId, [])
+    await lockProjectDocReadiness(tx, projectId)
+    // Check rows always describe the latest row's URL, so keep them only when this run has the same URL.
+    const latest = await findLatestProjectDocReadiness(tx, projectId)
+    const failedUrl = resolved.docsUrl ? normalizeUrl(resolved.docsUrl) : null
+    const latestUrl = latest?.docsUrl ? normalizeUrl(latest.docsUrl) : null
+    if (!failedUrl || failedUrl !== latestUrl) {
+      await replaceProjectDocReadinessChecks(tx, projectId, [])
+    }
     await upsertProjectDocReadiness(tx, {
       projectId,
       projectSlug: project.slug,

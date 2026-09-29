@@ -1,3 +1,5 @@
+import { registrableDomain } from '@crowd/common'
+
 export const USER_AGENT = 'LFX-Insights-DocsReadiness/1.0 (+https://insights.linuxfoundation.org)'
 
 export interface IProbeResult {
@@ -148,6 +150,10 @@ export function normalizedDomain(url: string): string | null {
   return normalized ? (domainOf(normalized)?.replace(/^www\./, '') ?? null) : null
 }
 
+export function isGithubWebsite(url: string): boolean {
+  return normalizedDomain(url) === 'github.com'
+}
+
 export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResult> {
   try {
     const response = await guardedFetch(url, timeoutMs)
@@ -168,17 +174,105 @@ export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResu
   }
 }
 
+// fetch reports punycode hosts, so compare through URL's ascii hostname.
+const asciiHost = (url: string): string => {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+export function sameRegistrableDomain(url: string, finalUrl: string): boolean {
+  const from = registrableDomain(asciiHost(url))
+  return from !== null && from === registrableDomain(asciiHost(finalUrl))
+}
+
+const ORG_SUFFIXES = new Set([
+  '',
+  'org',
+  'dev',
+  'ai',
+  'io',
+  'project',
+  'team',
+  'labs',
+  'foundation',
+])
+
+const squash = (label: string): string => label.replace(/[-_]/g, '')
+
+const domainLabel = (domain: string): string => domain.split('.')[0]
+
+const isOrgVariant = (pagesLabel: string, targetLabel: string): boolean => {
+  const [pages, target] = [pagesLabel, targetLabel].map(squash)
+  return (
+    target.length >= 3 && pages.startsWith(target) && ORG_SUFFIXES.has(pages.slice(target.length))
+  )
+}
+
+// Hosted tenants named differently from the site label; explicit, not a prefix rule.
+const TENANT_ALIASES: Record<string, string> = { opentimeline: 'opentimelineio' }
+
+// wiki.<x>.org -> lf-<x>.atlassian.net, x.readthedocs.org -> x.readthedocs.io
+const isTrustedHostingMove = (fromHost: string, fromLabel: string, finalHost: string): boolean => {
+  const [tenant, ...rest] = finalHost.split('.')
+  const hosting = rest.join('.')
+  const label = squash(fromLabel)
+  const named = squash(tenant)
+  const isSiteTenant = named === label || named === TENANT_ALIASES[label]
+  if (hosting === 'atlassian.net') {
+    return isSiteTenant || named === `lf${label}`
+  }
+  if (hosting !== 'readthedocs.io' && hosting !== 'readthedocs.org') {
+    return false
+  }
+  const fromOnLegacyRtd = registrableDomain(fromHost) === 'readthedocs.org'
+  return (fromOnLegacyRtd && tenant === fromHost.split('.')[0]) || isSiteTenant
+}
+
+export function isTrustedRedirect(url: string, finalUrl: string): boolean {
+  if (sameRegistrableDomain(url, finalUrl)) {
+    return true
+  }
+  const from = registrableDomain(asciiHost(url))
+  const finalHost = asciiHost(finalUrl)
+  const to = registrableDomain(finalHost)
+  if (from === null || to === null) {
+    return false
+  }
+  return (
+    isTrustedHostingMove(asciiHost(url), domainLabel(from), finalHost) ||
+    domainLabel(from) === domainLabel(to) ||
+    (from.endsWith('.github.io') &&
+      !to.endsWith('.github.io') &&
+      isOrgVariant(domainLabel(from), domainLabel(to)))
+  )
+}
+
 export async function isLiveDocs(url: string): Promise<boolean> {
   const result = await probe(url)
-  return result.ok && result.contentType.toLowerCase().includes('text/html')
+  return (
+    result.ok &&
+    result.contentType.toLowerCase().includes('text/html') &&
+    isTrustedRedirect(url, result.finalUrl)
+  )
 }
 
 const MAX_FETCH_TEXT_BYTES = 2 * 1024 * 1024
 
-export async function fetchText(url: string, timeoutMs = 5_000): Promise<string | null> {
+export async function fetchText(
+  url: string,
+  timeoutMs = 5_000,
+  requireTrustedRedirect = false,
+): Promise<string | null> {
   try {
     const response = await guardedFetch(url, timeoutMs)
     if (!response || !response.ok || !response.body) {
+      return null
+    }
+    if (requireTrustedRedirect && !isTrustedRedirect(url, response.url)) {
+      await response.body.cancel()
       return null
     }
 
