@@ -34,7 +34,9 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
     }
   }
 
-  const project = await findProjectForDocsDiscovery(readerQx, projectId)
+  const project = await findProjectForDocsDiscovery(readerQx, projectId, {
+    withWebsiteSharedCount: true,
+  })
   if (!project) {
     throw ApplicationFailure.nonRetryable(`Project ${projectId} not found for docs discovery`)
   }

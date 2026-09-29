@@ -6,6 +6,7 @@ import {
   IProjectDocReadinessCheckInsert,
   IProjectDocReadinessUpsert,
   IProjectForDocsDiscovery,
+  IProjectForDocsDiscoveryWithSharedCount,
   IProjectForDocsReadiness,
 } from './types'
 
@@ -237,24 +238,39 @@ export async function findProjectsForDocsReadiness(
   )
 }
 
-// shortcut: sibling count seq-scans insightsProjects (~200ms at 13.7k rows). revisit: if called in a hot loop, add an expression index on the normalised website.
+// Seq-scans insightsProjects (~200ms at 13.7k rows), so callers must opt in.
+const WEBSITE_SHARED_COUNT_COLUMN = `
+  (
+    SELECT count(*)::int
+    FROM "insightsProjects" o
+    WHERE o."id" <> p."id"
+      AND o."enabled"
+      AND o."deletedAt" IS NULL
+      AND COALESCE(p."website", '') <> ''
+      AND lower(regexp_replace(o."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+        = lower(regexp_replace(p."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+  ) AS "websiteSharedCount"`
+
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
+  options: { withWebsiteSharedCount: true },
+): Promise<IProjectForDocsDiscoveryWithSharedCount | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+): Promise<IProjectForDocsDiscovery | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+  options?: { withWebsiteSharedCount?: boolean },
 ): Promise<IProjectForDocsDiscovery | null> {
+  const sharedCountColumn = options?.withWebsiteSharedCount
+    ? `, ${WEBSITE_SHARED_COUNT_COLUMN}`
+    : ''
   return qx.selectOneOrNone(
     `
-    SELECT p."id", p."slug", p."name", p."website",
-      (
-        SELECT count(*)::int
-        FROM "insightsProjects" o
-        WHERE o."id" <> p."id"
-          AND o."enabled"
-          AND o."deletedAt" IS NULL
-          AND COALESCE(p."website", '') <> ''
-          AND lower(regexp_replace(o."website", '^https?://(www[.])?|/+$', '', 'gi'))
-            = lower(regexp_replace(p."website", '^https?://(www[.])?|/+$', '', 'gi'))
-      ) AS "websiteSharedCount"
+    SELECT p."id", p."slug", p."name", p."website"${sharedCountColumn}
     FROM "insightsProjects" p
     WHERE p."id" = $(projectId) AND p."deletedAt" IS NULL
     `,

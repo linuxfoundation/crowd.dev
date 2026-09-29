@@ -71,10 +71,15 @@ function isBadgeOrGithubHost(host: string | null): boolean {
 const usableWebsite = (ctx: IDiscoveryContext): string | null =>
   ctx.website && !ctx.websiteShared && !isGithubWebsite(ctx.website) ? ctx.website : null
 
+const hasPath = (url: string): boolean => new URL(url).pathname !== '/'
+
 const isLlmsTxtBody = (body: string | null): body is string =>
   !!body && body.length > 50 && !/^\s*</.test(body)
 
-export const llmsTxtProbe: DiscoveryStrategy = async (ctx) => {
+export const llmsTxtProbe = async (
+  ctx: IDiscoveryContext,
+  pathScopedOnly = false,
+): Promise<IDocCandidate[]> => {
   const website = usableWebsite(ctx)
   if (!website) {
     return []
@@ -96,8 +101,7 @@ export const llmsTxtProbe: DiscoveryStrategy = async (ctx) => {
     const bases = [
       ...new Set([
         ...(parsed.pathname === '/' ? [] : [websiteBase]),
-        `https://docs.${domain}`,
-        rootBase,
+        ...(pathScopedOnly ? [] : [`https://docs.${domain}`, rootBase]),
       ]),
     ]
 
@@ -279,10 +283,12 @@ export const githubHomepage: DiscoveryStrategy = async (ctx) => {
     }
 
     const derivedCtx: IDiscoveryContext = { ...ctx, website: url, websiteShared: false }
+    // A homepage under a path (npmjs.com/package/x) is no evidence about the host's docs.
+    const pathScoped = hasPath(url)
     const derived = await Promise.all([
       docsPath(derivedCtx),
-      docsSubdomain(derivedCtx),
-      llmsTxtProbe(derivedCtx),
+      pathScoped ? [] : docsSubdomain(derivedCtx),
+      llmsTxtProbe(derivedCtx, pathScoped),
     ])
 
     return [candidate(url, 'github-homepage', await isLiveDocs(url)), ...derived.flat()]

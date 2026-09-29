@@ -96,6 +96,9 @@ describe('resolveDocsUrl', () => {
 
     const result = await resolveDocsUrl('project-1')
 
+    expect(mocks.findProjectForDocsDiscovery).toHaveBeenCalledWith({}, 'project-1', {
+      withWebsiteSharedCount: true,
+    })
     expect(mocks.getGithubInstallationToken).not.toHaveBeenCalled()
     expect(mocks.discoverDocs).toHaveBeenCalledWith({
       name: 'Project',
