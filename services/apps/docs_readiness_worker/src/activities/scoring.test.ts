@@ -1,5 +1,7 @@
+import { ApplicationFailure } from '@temporalio/client'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { DeadlineExceededError } from '../scoring/deadlineError'
 import { recordFailure, scoreProject } from './scoring'
 
 const mocks = vi.hoisted(() => ({
@@ -213,6 +215,51 @@ describe('scoreProject', () => {
       mocks.replaceProjectDocReadinessChecks,
     )
     expect(mocks.lockProjectDocReadiness).toHaveBeenCalledBefore(mocks.upsertProjectDocReadiness)
+  })
+})
+
+describe('scoreProject retry behaviour', () => {
+  beforeEach(() => {
+    mocks.findProjectForDocsDiscovery.mockResolvedValue({
+      id: 'project-1',
+      slug: 'proj',
+      name: 'Project',
+      website: null,
+    })
+  })
+
+  test('the afdocs deadline error is non-retryable and keeps its message', async () => {
+    mocks.runChecks.mockRejectedValue(
+      new DeadlineExceededError('afdocs runChecks exceeded 1500000ms'),
+    )
+
+    const error = await scoreProject('project-1', 'run-1', RESOLVED).catch((err) => err)
+
+    expect(error).toBeInstanceOf(ApplicationFailure)
+    expect(error.nonRetryable).toBe(true)
+    expect(error.message).toBe('afdocs runChecks exceeded 1500000ms')
+    expect(mocks.tx).not.toHaveBeenCalled()
+  })
+
+  test('any other scoring error is left as is, so Temporal still retries it', async () => {
+    const boom = new Error('afdocs worker exited with code 1 without a result')
+    mocks.runChecks.mockRejectedValue(boom)
+
+    const error = await scoreProject('project-1', 'run-1', RESOLVED).catch((err) => err)
+
+    expect(error).toBe(boom)
+    expect(error).not.toBeInstanceOf(ApplicationFailure)
+  })
+
+  test('an unreachable docs host (every check errored) stays retryable', async () => {
+    mocks.runChecks.mockResolvedValue({
+      results: [{ id: 'llms-txt-exists', category: 'content-discoverability', status: 'error' }],
+    })
+
+    const error = await scoreProject('project-1', 'run-1', RESOLVED).catch((err) => err)
+
+    expect(error).toBeInstanceOf(ApplicationFailure)
+    expect(error.nonRetryable).toBe(false)
   })
 })
 

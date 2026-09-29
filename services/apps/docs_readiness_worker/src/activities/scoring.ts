@@ -13,6 +13,7 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { isPrivateOrLoopbackHost, normalizeUrl } from '../discovery/http'
 import { svc } from '../main'
 import { computeScores } from '../scoring/computeScores'
+import { DeadlineExceededError } from '../scoring/deadlineError'
 import { runChecksIsolated } from '../scoring/runChecksIsolated'
 import { trimReport } from '../scoring/trimReport'
 import { IResolvedDocsUrl } from '../types'
@@ -69,7 +70,10 @@ export async function scoreProject(
     resolved.docsUrl,
     SCORING_TIMEOUT_MS,
     `afdocs runChecks exceeded ${SCORING_TIMEOUT_MS}ms for project ${projectId}`,
-  )
+  ).catch((err) => {
+    // A retry would burn another full deadline on the same oversized site.
+    throw err instanceof DeadlineExceededError ? ApplicationFailure.nonRetryable(err.message) : err
+  })
   const durationMs = Date.now() - startedAt
 
   if (report.results.length > 0 && report.results.every((result) => result.status === 'error')) {

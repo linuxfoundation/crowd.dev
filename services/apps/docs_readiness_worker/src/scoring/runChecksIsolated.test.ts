@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
+import { DeadlineExceededError } from './deadlineError'
 import { MAX_CONCURRENT_WORKERS, runChecksIsolated, runInWorker } from './runChecksIsolated'
 
 const fixture = (name: string) => path.join(__dirname, '__fixtures__', 'workers', name)
@@ -58,6 +59,23 @@ describe('runInWorker', () => {
     expect(maxGapMs).toBeLessThan(500)
   })
 
+  test('a worker that outlives its deadline rejects with DeadlineExceededError', async () => {
+    const error = await runInWorker(
+      fixture('busyLoop.mjs'),
+      {},
+      { ...options, timeoutMs: 200 },
+    ).catch((err: Error) => err)
+
+    expect(error).toBeInstanceOf(DeadlineExceededError)
+  })
+
+  test('a worker that fails on its own is not a DeadlineExceededError', async () => {
+    const error = await runInWorker(fixture('throws.mjs'), {}, options).catch((err: Error) => err)
+
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(DeadlineExceededError)
+  })
+
   test('stops a spinning thread once the deadline passes', async () => {
     const counters = new SharedArrayBuffer(8)
     const ticks = new Int32Array(counters)
@@ -102,13 +120,16 @@ describe('runInWorker', () => {
       const counters = new SharedArrayBuffer(8)
       const startedAt = Date.now()
 
-      await expect(
-        runInWorker(
-          fixture('holdsSlot.mjs'),
-          { counters },
-          { ...options, timeoutMs: 150, timeoutMessage: 'queued too long' },
-        ),
-      ).rejects.toThrow('queued too long while waiting for a free scoring thread')
+      const error = await runInWorker(
+        fixture('holdsSlot.mjs'),
+        { counters },
+        { ...options, timeoutMs: 150, timeoutMessage: 'queued too long' },
+      ).catch((err: Error) => err)
+
+      expect(error).toBeInstanceOf(DeadlineExceededError)
+      expect((error as Error).message).toBe(
+        'queued too long while waiting for a free scoring thread',
+      )
 
       expect(Date.now() - startedAt).toBeLessThan(500)
       expect(Atomics.load(new Int32Array(counters), 0)).toBe(0)
@@ -155,9 +176,12 @@ describe('runInWorker', () => {
 
 describe('runInWorker without time left', () => {
   test('rejects with the timeout message and still frees its slot', async () => {
-    await expect(
-      runInWorker(fixture('returns.mjs'), {}, { ...options, timeoutMs: 0 }),
-    ).rejects.toThrow('timed out')
+    const error = await runInWorker(fixture('returns.mjs'), {}, { ...options, timeoutMs: 0 }).catch(
+      (err: Error) => err,
+    )
+
+    expect(error).toBeInstanceOf(DeadlineExceededError)
+    expect((error as Error).message).toContain('timed out')
 
     await expect(runInWorker(fixture('returns.mjs'), { ok: 1 }, options)).resolves.toEqual({
       echoed: { ok: 1 },

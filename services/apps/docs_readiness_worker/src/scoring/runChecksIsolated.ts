@@ -2,6 +2,7 @@ import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 
 import { Afdocs } from './afdocs'
+import { DeadlineExceededError } from './deadlineError'
 
 export type AfdocsReport = Awaited<ReturnType<Afdocs['runChecks']>>
 
@@ -33,7 +34,7 @@ function acquireSlot(timeoutMs: number, timeoutMessage: string): Promise<void> {
     }
     const timer = setTimeout(() => {
       waiting.splice(waiting.indexOf(start), 1)
-      reject(new Error(whileQueued(timeoutMessage)))
+      reject(new DeadlineExceededError(whileQueued(timeoutMessage)))
     }, timeoutMs)
     waiting.push(start)
   })
@@ -66,7 +67,10 @@ function startWorker<T>(
       worker.terminate().then(finish, finish)
     }
 
-    const timer = setTimeout(() => settle(() => reject(new Error(timeoutMessage))), timeoutMs)
+    const timer = setTimeout(
+      () => settle(() => reject(new DeadlineExceededError(timeoutMessage))),
+      timeoutMs,
+    )
 
     worker.once('message', (message: { result?: T; error?: string }) =>
       settle(() =>
@@ -95,7 +99,7 @@ export async function runInWorker<T>(
   try {
     const timeoutMs = options.timeoutMs - (Date.now() - startedAt)
     if (timeoutMs <= 0) {
-      throw new Error(whileQueued(options.timeoutMessage))
+      throw new DeadlineExceededError(whileQueued(options.timeoutMessage))
     }
     return await startWorker<T>(file, workerData, { ...options, timeoutMs })
   } finally {
