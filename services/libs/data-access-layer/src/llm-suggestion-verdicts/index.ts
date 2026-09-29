@@ -51,7 +51,7 @@ export interface ILlmSuggestionVerdictPair {
   secondaryId: string
 }
 
-export async function findLlmApprovedMembersMarkedNoMerge(
+export async function findLlmApprovedMemberPairsToMerge(
   qx: QueryExecutor,
   { afterId, limit }: { afterId: string; limit: number },
 ): Promise<ILlmSuggestionVerdictPair[]> {
@@ -62,16 +62,33 @@ export async function findLlmApprovedMembersMarkedNoMerge(
       WHERE v.type = 'member'
         AND v.id > $(afterId)
         AND (v.response ->> 'decision')::boolean
-        AND EXISTS (
-          SELECT 1
-          FROM "memberNoMerge" nm
-          WHERE (
-              (nm."memberId" = v."primaryId" AND nm."noMergeId" = v."secondaryId")
-              OR (nm."memberId" = v."secondaryId" AND nm."noMergeId" = v."primaryId")
+        AND (
+          EXISTS (
+            SELECT 1
+            FROM "memberNoMerge" nm
+            WHERE (
+                (nm."memberId" = v."primaryId" AND nm."noMergeId" = v."secondaryId")
+                OR (nm."memberId" = v."secondaryId" AND nm."noMergeId" = v."primaryId")
+              )
+              -- only no-merge rows written by the LLM job, not ones added by people
+              AND nm."createdAt" BETWEEN v."createdAt" - INTERVAL '10 minutes'
+                AND v."createdAt" + INTERVAL '10 minutes'
+          )
+          -- re-suggested pairs lose their no-merge row, so find them in the review queue
+          OR (
+            EXISTS (
+              SELECT 1
+              FROM "memberToMerge" mtm
+              WHERE (mtm."memberId" = v."primaryId" AND mtm."toMergeId" = v."secondaryId")
+                OR (mtm."memberId" = v."secondaryId" AND mtm."toMergeId" = v."primaryId")
             )
-            -- only no-merge rows written by the LLM job, not ones added by people
-            AND nm."createdAt" BETWEEN v."createdAt" - INTERVAL '10 minutes'
-              AND v."createdAt" + INTERVAL '10 minutes'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "memberNoMerge" nm
+              WHERE (nm."memberId" = v."primaryId" AND nm."noMergeId" = v."secondaryId")
+                OR (nm."memberId" = v."secondaryId" AND nm."noMergeId" = v."primaryId")
+            )
+          )
         )
         AND NOT EXISTS (
           SELECT 1
