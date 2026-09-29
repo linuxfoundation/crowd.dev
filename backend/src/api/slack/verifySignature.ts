@@ -1,10 +1,12 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 
+import type { Request } from 'express'
+
 import { getSlackBotConfig } from '@crowd/slack'
 
 const MAX_REQUEST_AGE_SECONDS = 60 * 5
 
-export function verifySlackSignature(req): boolean {
+export function verifySlackSignature(req: Request): boolean {
   const { signingSecret } = getSlackBotConfig()
   if (!signingSecret) {
     return false
@@ -12,7 +14,13 @@ export function verifySlackSignature(req): boolean {
 
   const timestamp = req.headers['x-slack-request-timestamp']
   const signature = req.headers['x-slack-signature']
-  if (!timestamp || !signature || !req.rawBody) {
+  if (
+    !timestamp ||
+    !signature ||
+    Array.isArray(timestamp) ||
+    Array.isArray(signature) ||
+    !req.rawBody
+  ) {
     return false
   }
 

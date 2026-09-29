@@ -4,7 +4,7 @@ import os from 'os'
 import bodyParser from 'body-parser'
 import bunyanMiddleware from 'bunyan-middleware'
 import cors from 'cors'
-import express from 'express'
+import express, { Request, Response } from 'express'
 import helmet from 'helmet'
 import { QueryTypes } from 'sequelize'
 
@@ -142,8 +142,10 @@ setImmediate(async () => {
 
   // Slack's Interactivity API signs requests over the exact raw request
   // body, which is not recoverable once body-parser has parsed it.
-  const captureRawBody = (req: any, _res: any, buf: Buffer) => {
-    req.rawBody = buf
+  const captureRawBody = (req: Request, _res: Response, buf: Buffer) => {
+    if (req.path === '/slack/interactivity') {
+      req.rawBody = buf
+    }
   }
 
   app.use(

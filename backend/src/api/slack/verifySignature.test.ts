@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto'
 
+import type { Request } from 'express'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@crowd/slack', () => ({
@@ -8,7 +9,7 @@ vi.mock('@crowd/slack', () => ({
 
 import { verifySlackSignature } from './verifySignature'
 
-function signedRequest(rawBody: string, timestamp: number) {
+function signedRequest(rawBody: string, timestamp: number): Request {
   const signature = `v0=${createHmac('sha256', 'test-signing-secret')
     .update(`v0:${timestamp}:${rawBody}`)
     .digest('hex')}`
@@ -19,7 +20,7 @@ function signedRequest(rawBody: string, timestamp: number) {
       'x-slack-signature': signature,
     },
     rawBody: Buffer.from(rawBody),
-  }
+  } as unknown as Request
 }
 
 describe('verifySlackSignature', () => {
@@ -41,6 +42,8 @@ describe('verifySlackSignature', () => {
   })
 
   it('rejects a request missing required headers', () => {
-    expect(verifySlackSignature({ headers: {}, rawBody: Buffer.from('') })).toBe(false)
+    expect(
+      verifySlackSignature({ headers: {}, rawBody: Buffer.from('') } as unknown as Request),
+    ).toBe(false)
   })
 })
