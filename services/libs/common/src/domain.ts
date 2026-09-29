@@ -71,3 +71,8 @@ export const getDomainRootLabel = (url: string): string | null => {
 
   return parsed.domainWithoutSuffix?.toLowerCase() ?? null
 }
+
+export const registrableDomain = (urlOrHost: string): string | null => {
+  const parsed = parse(urlOrHost, { allowPrivateDomains: true })
+  return parsed.domain ?? null
+}
