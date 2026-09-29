@@ -156,6 +156,187 @@ describe('rankCandidates', () => {
   })
 })
 
+describe('rankCandidates — root-domain demotion (IN-1393)', () => {
+  test('a bare foundation llms.txt root loses to a project page on the same domain (report case 10)', () => {
+    const root = candidate('https://openmainframeproject.org', 'llms-txt-probe', true)
+    const project = candidate(
+      'https://openmainframeproject.org/projects/cobol-programming-course',
+      'github-homepage',
+      true,
+    )
+    expect(rankCandidates([root, project])).toEqual(project)
+    expect(rankCandidates([project, root])).toEqual(project)
+    expect(rankCandidates([root, project], 'openmainframeproject.org')).toEqual(project)
+  })
+
+  test('a docs.-prefixed llms.txt hit keeps its full bonus over a bare project website', () => {
+    const docs = candidate('https://docs.example.com', 'llms-txt-probe', true)
+    const site = candidate('https://example.com/projects/x', 'github-homepage', true)
+    expect(rankCandidates([site, docs])).toEqual(docs)
+  })
+
+  test('a path-preserving llms.txt hit keeps its full bonus', () => {
+    const llms = candidate('https://foundation.org/projects/x', 'llms-txt-probe', true)
+    const site = candidate('https://foundation.org/projects/x/about', 'github-homepage', true)
+    expect(rankCandidates([site, llms])).toEqual(llms)
+  })
+
+  test('a bare llms.txt root is still returned when it is the only live candidate', () => {
+    const root = candidate('https://example.com', 'llms-txt-probe', true)
+    expect(rankCandidates([root])).toEqual(root)
+  })
+})
+
+const sharedSet = (...urls: string[]) => new Set(urls)
+
+describe('rankCandidates — shared docs URL penalty (IN-1393)', () => {
+  test('an unshared candidate beats a shared one even when the shared one has the stronger method', () => {
+    const shared = candidate('https://docs.lfenergy.org', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    expect(
+      rankCandidates([shared, own], null, null, sharedSet('https://docs.lfenergy.org')),
+    ).toEqual(own)
+  })
+
+  test('the penalty matches the same site across scheme, www, query, trailing slash and host case', () => {
+    const shared = candidate('https://Docs.LFEnergy.org/', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    expect(
+      rankCandidates([shared, own], null, null, sharedSet('https://docs.lfenergy.org/')),
+    ).toEqual(own)
+  })
+
+  test.each([
+    'http://docs.lfenergy.org/x',
+    'https://www.docs.lfenergy.org/x',
+    'https://docs.lfenergy.org/x?v=1',
+    'https://docs.lfenergy.org/x/',
+  ])('a stored shared URL %s still penalises https://docs.lfenergy.org/x', (stored) => {
+    const shared = candidate('https://docs.lfenergy.org/x', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    expect(rankCandidates([shared, own], null, null, sharedSet(stored))).toEqual(own)
+  })
+
+  test('path case matters: a shared /ProjectA penalises /ProjectA but not /projecta', () => {
+    const upper = candidate('https://docs.foundation.org/ProjectA', 'docs-subdomain', true)
+    const lower = candidate('https://docs.foundation.org/projecta', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    const set = sharedSet('https://docs.foundation.org/ProjectA')
+    expect(rankCandidates([upper, own], null, null, set)).toEqual(own)
+    expect(rankCandidates([lower, own], null, null, set)).toEqual(lower)
+  })
+
+  test('a different path on the same host is not penalised', () => {
+    const other = candidate('https://docs.lfenergy.org/y', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    expect(
+      rankCandidates([other, own], null, null, sharedSet('https://docs.lfenergy.org/x')),
+    ).toEqual(other)
+  })
+
+  test('a shared URL still beats bare GitHub hosts', () => {
+    const shared = candidate('https://foundation.org', 'project-website', true)
+    const github = candidate('https://github.com', 'project-website', true)
+    expect(
+      rankCandidates([github, shared], null, null, sharedSet('https://foundation.org')),
+    ).toEqual(shared)
+  })
+
+  test('an unshared repo-url beats a shared URL (AC3, open-reg-tech-us-lcr shape)', () => {
+    const shared = candidate('https://community.finos.org/docs/easycla', 'readme-scrape', true)
+    const repo = candidate('https://github.com/finos/open-reg-tech-us-lcr', 'repo-url', true, 'low')
+    const set = sharedSet('https://community.finos.org/docs/easycla')
+    expect(rankCandidates([shared, repo], null, null, set)).toEqual(repo)
+    expect(rankCandidates([repo, shared], null, null, set)).toEqual(repo)
+  })
+
+  test('an unshared repo-url beats a shared repo-url, in either order', () => {
+    const shared = candidate('https://github.com/org/shared-repo', 'repo-url', true, 'low')
+    const own = candidate('https://github.com/org/own-repo', 'repo-url', true, 'low')
+    const set = sharedSet('https://github.com/org/shared-repo')
+    expect(rankCandidates([shared, own], null, null, set)).toEqual(own)
+    expect(rankCandidates([own, shared], null, null, set)).toEqual(own)
+  })
+
+  test('an unshared repo-url beats the strongest possible shared candidate', () => {
+    const url = 'https://docs.big.org/docs'
+    const methods = [
+      'llms-txt-probe',
+      'docs-subdomain',
+      'docs-path',
+      'serp',
+      'package-manifest',
+      'readme-scrape',
+      'github-homepage',
+      'project-website',
+    ] as const
+    const shared = methods.map((m) => candidate(url, m, true))
+    const repo = candidate('https://github.com/o/r', 'repo-url', true, 'low')
+    expect(rankCandidates([...shared, repo], null, null, sharedSet(url))).toEqual(repo)
+  })
+
+  test('a shared root on the project domain does not hide an unshared repo-url (ade shape)', () => {
+    const root = candidate('https://openmainframeproject.org', 'llms-txt-probe', true)
+    const repo = candidate('https://github.com/openmainframeproject/ade', 'repo-url', true, 'low')
+    const set = sharedSet('https://openmainframeproject.org')
+    expect(rankCandidates([root, repo], 'openmainframeproject.org', null, set)).toEqual(repo)
+    expect(rankCandidates([root, repo], 'openmainframeproject.org')).toEqual(root)
+  })
+
+  test('an unshared on-domain docs candidate still anchors the pool over off-domain ones', () => {
+    const own = candidate('https://docs.proj.org', 'docs-subdomain', true)
+    const other = candidate('https://good.io/docs', 'serp', true)
+    const set = sharedSet('https://unrelated.org')
+    expect(rankCandidates([other, own], 'proj.org', null, set)).toEqual(own)
+  })
+
+  test('an unshared repo-url still loses to a weak unshared non-GitHub candidate', () => {
+    const weak = candidate('https://example.com', 'project-website', true)
+    const repo = candidate('https://github.com/o/r', 'repo-url', true, 'low')
+    const set = sharedSet('https://other.example.org')
+    expect(rankCandidates([repo, weak], null, null, set)).toEqual(weak)
+  })
+
+  test('a shared URL is the winner when it is the only live candidate', () => {
+    const shared = candidate('https://foundation.org', 'project-website', true)
+    expect(rankCandidates([shared], null, null, sharedSet('https://foundation.org'))).toEqual(
+      shared,
+    )
+  })
+
+  test('no shared set leaves ranking unchanged', () => {
+    const shared = candidate('https://docs.lfenergy.org', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    expect(rankCandidates([own, shared])).toEqual(shared)
+  })
+})
+
+describe('rankCandidates — GitHub tie-break and repo-url (IN-1393)', () => {
+  test('a github.com/<org>/<repo> candidate beats docs.github.com (report case 19)', () => {
+    const docsGithub = candidate('https://docs.github.com', 'llms-txt-probe', true)
+    const repo = candidate('https://github.com/piraeusdatastore/docs', 'project-website', true)
+    expect(rankCandidates([docsGithub, repo])).toEqual(repo)
+    expect(rankCandidates([repo, docsGithub])).toEqual(repo)
+  })
+
+  test('a github.com repo path beats bare github.com', () => {
+    const bare = candidate('https://github.com', 'project-website', true)
+    const repo = candidate('https://github.com/org/repo', 'readme-scrape', true)
+    expect(rankCandidates([bare, repo])).toEqual(repo)
+  })
+
+  test('repo-url is chosen when it is the only live candidate', () => {
+    const repo = candidate('https://github.com/org/repo', 'repo-url', true, 'low')
+    expect(rankCandidates([repo])).toEqual(repo)
+  })
+
+  test('repo-url loses to any non-GitHub live candidate, however weak', () => {
+    const repo = candidate('https://github.com/org/repo', 'repo-url', true, 'low')
+    const weak = candidate('https://example.com', 'project-website', true)
+    expect(rankCandidates([repo, weak])).toEqual(weak)
+  })
+})
+
 describe('rankCandidates — replay against real POC discovery outcomes', () => {
   const fixtures = pocOutcomes as Array<{
     projectSlug: string
@@ -218,6 +399,19 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     },
   }
 
+  // POC winners that were a bare foundation llms.txt root; a project page or same-site root wins now.
+  const FOUNDATION_ROOT_DEMOTED: Record<string, { url: string; method: string }> = {
+    'project-eve': { url: 'https://www.lfedge.org', method: 'project-website' },
+    compas: { url: 'https://www.lfenergy.org/projects/compas', method: 'project-website' },
+    everest: { url: 'https://lfenergy.org/projects/everest', method: 'project-website' },
+    feilong: {
+      url: 'https://www.openmainframeproject.org/projects/feilong',
+      method: 'github-homepage',
+    },
+    materialx: { url: 'https://www.aswf.io', method: 'project-website' },
+    o3de: { url: 'http://o3d.foundation', method: 'project-website' },
+  }
+
   test('fixture has real, varied outcomes to replay', () => {
     expect(fixtures.length).toBeGreaterThan(20)
     const methods = new Set(fixtures.map((f) => f.discoveryMethod))
@@ -228,13 +422,16 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
     const gateAdjusted = GATE_UNREACHABLE[fixture.projectSlug]
     const affinityAdjusted = AFFINITY_ADJUSTED[fixture.projectSlug]
     const githubHostSuppressed = GITHUB_HOST_SUPPRESSED[fixture.projectSlug]
+    const rootDemoted = FOUNDATION_ROOT_DEMOTED[fixture.projectSlug]
     const testName = gateAdjusted
       ? `${fixture.projectSlug}: winner matches gate-adjusted outcome (recorded serp result is unreachable)`
       : affinityAdjusted
         ? `${fixture.projectSlug}: winner matches affinity-adjusted outcome (recorded outcome predates domain affinity)`
         : githubHostSuppressed
           ? `${fixture.projectSlug}: winner matches corrected outcome (recorded winner was GitHub's shared host)`
-          : `${fixture.projectSlug}: winner matches recorded POC outcome`
+          : rootDemoted
+            ? `${fixture.projectSlug}: winner matches root-demoted outcome (recorded winner was a bare foundation llms.txt root)`
+            : `${fixture.projectSlug}: winner matches recorded POC outcome`
 
     test(testName, () => {
       const winner = rankCandidates(
@@ -244,7 +441,8 @@ describe('rankCandidates — replay against real POC discovery outcomes', () => 
       )
       const expected = gateAdjusted ??
         affinityAdjusted ??
-        githubHostSuppressed ?? {
+        githubHostSuppressed ??
+        rootDemoted ?? {
           url: fixture.docsUrl,
           method: fixture.discoveryMethod,
         }
