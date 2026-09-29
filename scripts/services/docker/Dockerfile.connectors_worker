@@ -11,7 +11,11 @@ COPY ./services ./services
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm i --frozen-lockfile --filter @crowd/connectors-worker...
 
-RUN pnpm --filter @crowd/connectors-worker exec tsc -p tsconfig.check.json
+WORKDIR /usr/crowd/app/services/apps/connectors_worker
+RUN printf '%s' '{"extends":"./tsconfig.json","compilerOptions":{"noEmit":true,"noUncheckedSideEffectImports":true},"include":["src/**/*.ts"],"exclude":["src/**/*.test.ts"]}' > tsconfig.check.json \
+    && pnpm exec tsc -p tsconfig.check.json \
+    && rm tsconfig.check.json
+WORKDIR /usr/crowd/app
 
 FROM node:24-bookworm-slim as runner
 
