@@ -1,5 +1,6 @@
 import { ICanonicalRepoUrl, canonicalizeRepoUrl } from '@crowd/common'
 import {
+  computeExclusivelyLfOwners,
   finalizeProjectCatalogEvaluation,
   findGithubOwnersWithLfProjects,
   findGithubOwnersWithNonLfRepos,
@@ -9,6 +10,7 @@ import {
   finishPipelineRun,
   markProjectCatalogPreCheckSkipped,
   promoteProjectsToEvaluate,
+  resolvePrecheckSkipReason,
   startPipelineRun,
 } from '@crowd/data-access-layer'
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
@@ -23,7 +25,6 @@ import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
-import { computeExclusivelyLfOwners, resolvePrecheckSkipReason } from '../precheck/precheck'
 import { IEvaluationActivityResult, IPrecheckResult, IPriorityConfig } from '../types'
 import { buildSkippedDiscussionAlert } from './skippedRequestAlert'
 
