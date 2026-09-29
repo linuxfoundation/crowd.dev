@@ -110,6 +110,9 @@ setImmediate(async () => {
     next()
   })
 
+  // Mounted before DB/Redis/OpenSearch middleware to protect Slack's 3s ack window.
+  mountInteractivityRoute(app)
+
   // Initializes and adds the database middleware.
   app.use(databaseMiddleware)
 
@@ -132,9 +135,6 @@ setImmediate(async () => {
   // Enables Helmet, a set of tools to
   // increase security.
   app.use(helmet())
-
-  // Mounted before shared middleware to protect Slack's 3-second ack window.
-  mountInteractivityRoute(app)
 
   const defaultRateLimiter = createRateLimiter({
     max: 200,
