@@ -3,6 +3,7 @@ import type { IDocCandidate } from '@crowd/data-access-layer'
 import { cutToDocsRoot } from './docsRoot'
 import { isGithubWebsite, normalizedDomain } from './http'
 import {
+  isClaimedUrl,
   isOnProjectDomain,
   isOrganicCandidate,
   methodPriority,
@@ -87,8 +88,13 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
     new Set(sharedDocsUrls),
   )
 
+  // A cut root another project already claims would bypass the shared-URL penalty.
+  const cut = winner ? await cutToDocsRoot(winner.url) : null
+  const docsUrl =
+    winner && cut && cut !== winner.url && isClaimedUrl(cut, sharedDocsUrls) ? winner.url : cut
+
   return {
-    docsUrl: winner ? await cutToDocsRoot(winner.url) : null,
+    docsUrl,
     discoveryMethod: winner?.method ?? null,
     confidence: winner?.confidence ?? null,
     allCandidates,

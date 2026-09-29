@@ -44,7 +44,7 @@ function scriptNetwork(
 }
 
 const serpCalls = (fetchMock: ReturnType<typeof scriptNetwork>) =>
-  fetchMock.mock.calls.filter(([url]) => String(url).startsWith('https://serpapi.com'))
+  fetchMock.mock.calls.filter(([url]) => new URL(String(url)).hostname === 'serpapi.com')
 
 interface IProject {
   name: string
@@ -186,7 +186,9 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
     )
 
     expect(result.docsUrl).toBeNull()
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('aswf.io'))).toBe(false)
+    expect(
+      fetchMock.mock.calls.some(([url]) => new URL(String(url)).hostname.endsWith('aswf.io')),
+    ).toBe(false)
   })
 
   const ZOT_DEEP = 'https://zotregistry.dev/v2.1.20/install-guides/install-guide-k8s/'

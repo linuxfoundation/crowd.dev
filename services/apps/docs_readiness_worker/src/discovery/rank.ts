@@ -47,6 +47,13 @@ function sharedKey(url: string): string | null {
   return domain ? `${domain}${pathnameOf(url).replace(/\/+$/, '')}` : null
 }
 
+export function isClaimedUrl(url: string, claimedUrls: Iterable<string>): boolean {
+  const key = sharedKey(url)
+  return !!key && [...claimedUrls].some((claimed) => sharedKey(claimed) === key)
+}
+
+const isDocsHost = (url: string): boolean => (domainOf(url) ?? '').startsWith('docs.')
+
 const isBareRoot = (url: string): boolean => {
   const domain = normalizedDomain(url)
   return !!domain && domain === registrableDomain(url) && pathnameOf(url).replace(/\/+$/, '') === ''
@@ -197,11 +204,11 @@ export function rankCandidates(
   const best = scored[0].candidate
 
   // A live docs.<domain> beats the bare marketing root of the same domain, whatever its score.
-  if (best.method !== 'docs-subdomain' && isBareRoot(best.url)) {
+  if (!isDocsHost(best.url) && isBareRoot(best.url)) {
     const root = registrableDomain(best.url)
     const docsHost = scored.find(
       ({ candidate: c }) =>
-        c.method === 'docs-subdomain' &&
+        isDocsHost(c.url) &&
         !isShared(c) &&
         !GITHUB_SHARED_HOSTS.has(domainOf(c.url) ?? '') &&
         registrableDomain(c.url) === root,

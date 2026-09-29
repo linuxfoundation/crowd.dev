@@ -531,6 +531,11 @@ describe('rankCandidates — docs subdomain over the bare root (IN-1396)', () =>
     expect(rankCandidates([docs, ...rootStack], 'vllm.ai')).toEqual(docs)
   })
 
+  test('a docs. host found by another method still displaces the root', () => {
+    const docsLlms = candidate('https://docs.vllm.ai', 'llms-txt-probe', true)
+    expect(rankCandidates([...rootStack, docsLlms], 'vllm.ai')).toEqual(docsLlms)
+  })
+
   test('the www root of the same registrable domain loses too', () => {
     const wwwRoot = candidate('https://www.zowe.org/', 'project-website', true)
     const stack = [

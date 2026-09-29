@@ -10,6 +10,11 @@ const strategyMocks = vi.hoisted(() => ({
   serpStrategy: vi.fn<(ctx: IDiscoveryContext) => Promise<IDocCandidate[]>>(),
 }))
 
+vi.mock('./docsRoot', async () => {
+  const actual = await vi.importActual<typeof import('./docsRoot')>('./docsRoot')
+  return { ...actual, cutToDocsRoot: async (url: string) => actual.cutAtVersion(url) ?? url }
+})
+
 vi.mock('./strategies', async () => {
   const actual = await vi.importActual<typeof import('./strategies')>('./strategies')
   return {
@@ -273,6 +278,18 @@ describe('discoverDocs ranking inputs (IN-1393)', () => {
     })
 
     expect(result.docsUrl).toBe('https://myproject.org')
+  })
+
+  test('a deep versioned url is not cut to a root another project already claims', async () => {
+    const deep = 'https://docs.example.org/v2/page'
+    strategyMocks.STRATEGIES.push(async () => [candidate(deep, 'docs-subdomain', true)])
+    const result = await discoverDocs({
+      ...ctx(),
+      website: null,
+      findSharedDocsUrls: async () => ['https://docs.example.org/'],
+    })
+
+    expect(result.docsUrl).toBe(deep)
   })
 
   test('looks up shared URLs once, for the distinct hosts of the live candidates only', async () => {
