@@ -39,4 +39,21 @@ describe('SlackCommandService.onboardProject', () => {
       log,
     )
   })
+
+  it('passes the originating channel id through to the onboarding flow', async () => {
+    const log = { error: vi.fn(), warn: vi.fn() }
+    vi.mocked(runOnboardProjectCommand).mockResolvedValue(undefined)
+
+    const service = new SlackCommandService({ log } as any)
+
+    await service.onboardProject({ repoUrl: 'https://github.com/foo/bar' }, {
+      responseUrl: 'https://hooks.slack.com/response',
+      userId: 'U123',
+      channelId: 'C456',
+    } as any)
+
+    expect(runOnboardProjectCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: 'U123', channelId: 'C456' }),
+    )
+  })
 })

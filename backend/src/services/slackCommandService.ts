@@ -105,6 +105,7 @@ export default class SlackCommandService {
       options: this.options,
       responseUrl: context.responseUrl,
       actorId: context.userId ?? 'unknown-slack-user',
+      channelId: context.channelId,
     }).catch((err) => {
       this.options.log.error(err, 'Unhandled error running onboard-project command.')
       postToResponseUrl(
@@ -207,6 +208,7 @@ export default class SlackCommandService {
     username: string,
     userId: string,
     responseUrl?: string,
+    channelId?: string,
   ): Promise<SlackMessageDto> {
     if (command === '/crowd-test' && !IS_DEV_ENV) {
       this.options.log.error('Received /crowd-test command in non-dev environment! Ignoring!')
@@ -259,6 +261,7 @@ export default class SlackCommandService {
     return commandDefinition.executor(parsedParams.params, {
       responseUrl,
       userId,
+      channelId,
     })
   }
 

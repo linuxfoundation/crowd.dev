@@ -13,6 +13,7 @@ export default async (req, res) => {
     const username = req.body.user_name
     const userId = req.body.user_id
     const responseUrl = req.body.response_url
+    const channelId = req.body.channel_id
 
     try {
       const result = await new SlackCommandService(req).processCommand(
@@ -21,6 +22,7 @@ export default async (req, res) => {
         username,
         userId,
         responseUrl,
+        channelId,
       )
       res.setHeader('content-type', 'application/json')
       res.send(result)

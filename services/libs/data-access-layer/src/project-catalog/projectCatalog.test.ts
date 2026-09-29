@@ -12,6 +12,7 @@ import {
   markProjectCatalogOnboardingSkipped,
   markProjectCatalogPreCheckSkipped,
   promoteProjectCatalogProvenance,
+  setProjectCatalogSourceUrl,
   updateProjectCatalog,
   upsertProjectCatalog,
   upsertProjectCatalogManualAction,
@@ -28,6 +29,28 @@ function catalogRow(overrides: Partial<Parameters<typeof insertProjectCatalog>[1
     ...overrides,
   }
 }
+
+describe('setProjectCatalogSourceUrl', () => {
+  test('sets the sourceUrl when it is empty', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow())
+
+    await setProjectCatalogSourceUrl(qx, inserted.id, 'https://slack.test/archives/C1/p1')
+    expect((await findProjectCatalogById(qx, inserted.id))?.sourceUrl).toBe(
+      'https://slack.test/archives/C1/p1',
+    )
+  })
+
+  test('never overwrites an existing sourceUrl', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow())
+    await setProjectCatalogSourceUrl(qx, inserted.id, 'https://github.com/foo/bar/discussions/1')
+
+    await setProjectCatalogSourceUrl(qx, inserted.id, 'https://slack.test/archives/C1/p1')
+
+    expect((await findProjectCatalogById(qx, inserted.id))?.sourceUrl).toBe(
+      'https://github.com/foo/bar/discussions/1',
+    )
+  })
+})
 
 describe('markProjectCatalogOnboardingSkipped', () => {
   test('transitions a pending row to skip with the reason, and clears a prior onboarding error', async ({
@@ -419,6 +442,42 @@ describe('claimProjectCatalogForSlackEvaluation', () => {
     expect(claimed?.source).toBe('manual')
     expect(claimed?.action).toBe('evaluate')
     expect(claimed?.provenance).toBe('slack-bot')
+  })
+
+  test('resets a stale Slack permalink but keeps other sourceUrls across repeated claims', async ({
+    qx,
+  }) => {
+    const slackRow = await insertProjectCatalog(
+      qx,
+      catalogRow({ action: 'skip', provenance: 'slack-bot' }),
+    )
+    const otherRow = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'skip',
+        repoUrl: 'https://github.com/foo/bar',
+        provenance: 'github-discussion',
+      }),
+    )
+    await setProjectCatalogSourceUrl(qx, slackRow.id, 'https://acme.slack.com/archives/C1/p1')
+    await setProjectCatalogSourceUrl(qx, otherRow.id, 'https://github.com/foo/bar/discussions/1')
+
+    for (const row of [slackRow, otherRow]) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await claimProjectCatalogForSlackEvaluation(qx, {
+          projectSlug: row.projectSlug,
+          repoName: row.repoName,
+          repoUrl: row.repoUrl,
+          provenance: 'slack-bot',
+        })
+        await updateProjectCatalog(qx, row.id, { action: 'skip' })
+      }
+    }
+
+    expect((await findProjectCatalogById(qx, slackRow.id))?.sourceUrl).toBeNull()
+    expect((await findProjectCatalogById(qx, otherRow.id))?.sourceUrl).toBe(
+      'https://github.com/foo/bar/discussions/1',
+    )
   })
 
   test('does not claim a row already onboarded', async ({ qx }) => {
