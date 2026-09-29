@@ -26,6 +26,8 @@
 
 <!-- Delete this section if the PR does not touch frontend/ -->
 
+Run these commands from `frontend/`, not the repository root.
+
 - [ ] `npm run lint` passes with 0 warnings
 - [ ] `npm run typecheck` error count: before `___`, after `___` (must not rise; skip until the script exists)
 - [ ] `npm run build:production` passes
