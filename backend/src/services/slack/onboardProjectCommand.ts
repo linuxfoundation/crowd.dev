@@ -115,8 +115,14 @@ export async function runOnboardProjectCommand({
   })
 
   if (precheckSkipReason) {
-    await markProjectCatalogPreCheckSkipped(qx, catalogEntry.id, precheckSkipReason)
-    await send(textMessage(`\`${repoUrl}\` was skipped: ${precheckSkipReason}`))
+    const skipped = await markProjectCatalogPreCheckSkipped(qx, catalogEntry.id, precheckSkipReason)
+    await send(
+      textMessage(
+        skipped > 0
+          ? `\`${repoUrl}\` was skipped: ${precheckSkipReason}`
+          : `\`${repoUrl}\` was skipped (${precheckSkipReason}), but a concurrent request had already moved it on — not applying it.`,
+      ),
+    )
     return
   }
 
@@ -140,14 +146,20 @@ export async function runOnboardProjectCommand({
       () => reserveDailyLlmCall(actorId),
     )
   } catch (err) {
-    // Reject leaves the row at action='evaluate' unless we terminate it here — otherwise
-    // the nightly worker re-evaluates it later, bypassing this actor's daily LLM cap.
-    await markProjectCatalogPreCheckSkipped(
+    // Terminate the row here, otherwise the nightly worker re-evaluates it later,
+    // bypassing this actor's daily LLM cap.
+    const terminated = await markProjectCatalogPreCheckSkipped(
       qx,
       catalogEntry.id,
       `slack-bot: rejected before evaluation - ${getErrorMessage(err)}`,
     )
-    await send(textMessage(`:no_entry: ${getErrorMessage(err)}`))
+    await send(
+      textMessage(
+        terminated > 0
+          ? `:no_entry: ${getErrorMessage(err)}`
+          : `:no_entry: ${getErrorMessage(err)} (a concurrent request had already moved \`${repoUrl}\` on)`,
+      ),
+    )
     return
   }
 
@@ -186,9 +198,8 @@ export async function runOnboardProjectCommand({
     return
   }
 
-  // Atomically claims the row by stamping onboardedAt before calling onboardProject — the
-  // nightly automatic_onboarding_worker polls action='onboard' rows too and treats any
-  // non-null onboardedAt as already handled, so this closes the race without touching it.
+  // Stamps onboardedAt so the nightly worker's onboardedAt-truthy check treats
+  // this row as already handled, closing the race without touching that worker.
   const claimed = await claimProjectCatalogForOnboarding(qx, catalogEntry.id)
   if (!claimed) {
     await send(textMessage(`\`${repoUrl}\` was just onboarded by the automatic onboarding job.`))
@@ -211,31 +222,44 @@ export async function runOnboardProjectCommand({
     return
   }
 
-  const onboardingResult = await onboardProject({
-    id: randomUUID(),
-    repoUrl: catalogEntry.repoUrl,
-    repoName: catalogEntry.repoName,
-    projectSlug: catalogEntry.projectSlug,
-  })
+  try {
+    const onboardingResult = await onboardProject({
+      id: randomUUID(),
+      repoUrl: catalogEntry.repoUrl,
+      repoName: catalogEntry.repoName,
+      projectSlug: catalogEntry.projectSlug,
+    })
 
-  if (onboardingResult.outcome === 'error') {
+    if (onboardingResult.outcome === 'error') {
+      await updateProjectCatalog(qx, catalogEntry.id, {
+        action: 'error',
+        onboardingError: onboardingResult.error ?? 'unknown error',
+        onboardedAt: null,
+      })
+      await send(
+        textMessage(
+          `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
+        ),
+      )
+      return
+    }
+
+    await updateProjectCatalog(qx, catalogEntry.id, {
+      action: 'onboarded',
+      onboardingError: null,
+    })
+
+    await send(
+      textMessage(`:white_check_mark: \`${repoUrl}\` evaluated and onboarded successfully!`),
+    )
+  } catch (err) {
+    // Revert the claim on any unexpected throw too, otherwise the row is stuck at
+    // action='onboard' with onboardedAt set — unretryable and invisible to the nightly worker.
     await updateProjectCatalog(qx, catalogEntry.id, {
       action: 'error',
-      onboardingError: onboardingResult.error ?? 'unknown error',
+      onboardingError: getErrorMessage(err),
       onboardedAt: null,
     })
-    await send(
-      textMessage(
-        `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
-      ),
-    )
-    return
+    await send(textMessage(`\`${repoUrl}\` passed evaluation but onboarding failed unexpectedly.`))
   }
-
-  await updateProjectCatalog(qx, catalogEntry.id, {
-    action: 'onboarded',
-    onboardingError: null,
-  })
-
-  await send(textMessage(`:white_check_mark: \`${repoUrl}\` evaluated and onboarded successfully!`))
 }

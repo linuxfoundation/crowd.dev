@@ -95,7 +95,7 @@ export default class SlackCommandService {
   }
 
   public async onboardProject(
-    params: any,
+    params: { repoUrl: string },
     context: SlackCommandExecutionContext,
   ): Promise<SlackMessageDto> {
     const repoUrl = params.repoUrl

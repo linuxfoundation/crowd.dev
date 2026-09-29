@@ -586,10 +586,8 @@ export async function claimProjectCatalogForSlackEvaluation(
   )
 }
 
-// Atomically claims a row queued for onboarding by stamping onboardedAt before the
-// external onboarding call. Any other reader (the nightly automatic_onboarding_worker's
-// pending-onboarding query and its own onboardedAt-truthy guard) then treats the row as
-// already handled, so this closes the race without touching that worker's code.
+// Claims a row queued for onboarding by stamping onboardedAt before the external call —
+// the nightly worker's onboardedAt-truthy guard then treats it as already handled.
 export async function claimProjectCatalogForOnboarding(
   qx: QueryExecutor,
   id: string,
