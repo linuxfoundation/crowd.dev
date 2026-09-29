@@ -7,7 +7,8 @@ by the LF `ui-kit` (`src/ui-kit/`) as part of the frontend modernization epic (s
 [Modernization plan](#modernization-plan)).
 
 This app is a thin client over the CDP backend (`../backend/`) — it does not talk to the database
-or any third-party service directly.
+directly. In the browser it does call a few third parties itself: Auth0 for login, plus Segment,
+Datadog RUM and Hotjar for analytics and telemetry when their keys are configured.
 
 ## Prerequisites
 
@@ -40,10 +41,12 @@ or any third-party service directly.
 
    ```shell
    cd scripts
-   ./cli start
+   ./cli start-be
    ```
 
-   This also creates `frontend/.env.override.local` if it doesn't exist yet.
+   Use `start-be`, not `start`: `start` also launches a `frontend` container that binds port 8081,
+   which would clash with the dev server in the next step. `start-be` also creates
+   `frontend/.env.override.local` if it doesn't exist yet.
 
 4. Back in `frontend/`, start the dev server:
 
@@ -52,7 +55,7 @@ or any third-party service directly.
    ```
 
    This runs Vite on port 8081 and proxies `/api` requests to `BACKEND_URL` (defaults to
-   `http://localhost:8080`, which is where `scripts/cli start` runs the backend).
+   `http://localhost:8080`, which is where `scripts/cli start-be` runs the backend).
 
 5. Open http://localhost:8081.
 
@@ -67,6 +70,7 @@ All scripts run from `frontend/` via `npm run <script>`.
 |---|---|
 | `lint` | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`) |
 | `lint:fix` | Same as `lint`, with `--fix` |
+| `build` | Alias for `build:production` |
 | `start` | `vite --host` — Vite dev server with defaults, no env sourcing |
 | `start:dev` | Alias for `start` |
 | `start:dev:local` | Sources `.env.dist.local` + `.env.override.local`, then runs Vite on port 8081 in `localhost` mode — the normal way to run the app locally |
@@ -76,12 +80,13 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `docs:tailwind` | Opens the Tailwind config viewer |
 | `docs:storybook` | Runs Storybook dev server on port 6006 |
 | `docs:storybook:build` | Builds the static Storybook site |
+| `docs:storybook:ci` | Same as `docs:storybook:build`, with `--quiet` for less log output |
 | `docs` | Runs `docs:tailwind` and `docs:storybook` together |
 
 > This table is generated against the scripts that exist in `package.json` right now. Other
-> tickets in the CM-1480 epic (typecheck, build/preview/analyze, `docs:storybook:ci`,
-> `lint:cycles`, `format`/`format:check`) add scripts that aren't in this worktree yet — whichever
-> of those tickets lands, update this table in the same PR.
+> tickets in the CM-1480 epic (typecheck, preview/analyze, `lint:cycles`, `format`/`format:check`)
+> add scripts that aren't in `package.json` yet — whichever of those tickets lands, update this
+> table in the same PR.
 
 ## Checks before you push
 
@@ -94,8 +99,9 @@ requests that touch `frontend/**`. It does not yet run a type check.
 The root pre-commit hook (`.husky/pre-commit`) runs `npx lint-staged` inside `frontend/` whenever
 a staged file matches `frontend/.+\.(js|ts|vue|scss|html)$`. `lint-staged` (configured in
 `package.json`) runs `eslint --fix` on staged `.js`/`.ts`/`.vue` files. The hook is installed by
-the root `pnpm install` (via `husky`), so `frontend/node_modules` needs to exist for it to work —
-run `npm ci` here even if you only plan to touch backend code in the same commit.
+the root `pnpm install` (via `husky`). Run `npm ci` in `frontend/` before committing frontend
+changes so `lint-staged` can run; a commit with no matching frontend files skips that step and
+doesn't need `frontend/node_modules`.
 
 ## Architecture map
 
