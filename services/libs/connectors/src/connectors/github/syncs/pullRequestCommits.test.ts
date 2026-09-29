@@ -32,6 +32,9 @@ interface HarnessOptions {
   pagesPerPr?: Record<number, number>
   // PR numbers whose commits have no resolvable GitHub user (author.user = null)
   ghostAuthorPrs?: number[]
+  reportedTotalCount?: Record<number, number>
+  nullNodePrs?: number[]
+  missingPullRequestPrs?: number[]
 }
 
 function commitNode(id: string, ghostAuthor = false) {
@@ -55,6 +58,7 @@ function makeHarness(opts: HarnessOptions) {
   const emitted: GithubActivity[] = []
   let prListServed = false
   const commitPagesSeen: Record<number, number> = {}
+  const warn = vi.fn()
 
   const http = {
     request: async (config: { data: { query: string; variables: Record<string, unknown> } }) => {
@@ -98,11 +102,16 @@ function makeHarness(opts: HarnessOptions) {
       commitPagesSeen[prNumber] = (commitPagesSeen[prNumber] ?? 0) + 1
       const totalPages = opts.pagesPerPr?.[prNumber] ?? 1
       const hasNextPage = commitPagesSeen[prNumber] < totalPages
+      if (opts.missingPullRequestPrs?.includes(prNumber)) {
+        return { data: { repository: { pullRequest: null } } }
+      }
+      const reportedTotalCount = opts.reportedTotalCount?.[prNumber]
       return {
         data: {
           repository: {
             pullRequest: {
               commits: {
+                ...(reportedTotalCount === undefined ? {} : { totalCount: reportedTotalCount }),
                 pageInfo: {
                   endCursor: hasNextPage ? `p${commitPagesSeen[prNumber] + 1}` : null,
                   hasNextPage,
@@ -112,6 +121,7 @@ function makeHarness(opts: HarnessOptions) {
                     `${prNumber}-${commitPagesSeen[prNumber]}`,
                     opts.ghostAuthorPrs?.includes(prNumber),
                   ),
+                  ...(opts.nullNodePrs?.includes(prNumber) ? [null] : []),
                 ],
               },
             },
@@ -133,12 +143,12 @@ function makeHarness(opts: HarnessOptions) {
     log: {
       child: () => ctx.log,
       info: () => {},
-      warn: () => {},
+      warn,
       error: () => {},
     } as unknown as Logger,
   }
 
-  return { ctx, requests, emitted }
+  return { ctx, requests, emitted, warn }
 }
 
 describe('pullRequestCommitsSync', () => {
@@ -187,5 +197,42 @@ describe('pullRequestCommitsSync', () => {
     const pr4 = requests.filter((r) => r.prNumber === 4).map((r) => r.usedStatsQuery)
     expect(pr3).toEqual([true, false])
     expect(pr4).toEqual([true])
+  })
+
+  it('warns when github reports more commits than were fetched for a pull request', async () => {
+    const { ctx, emitted, warn } = makeHarness({
+      prNumbers: [6],
+      reportedTotalCount: { 6: 3 },
+      nullNodePrs: [6],
+    })
+
+    await pullRequestCommitsSync.run(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(warn).toHaveBeenCalledWith(
+      { prNumber: 6, expectedCount: 3, fetchedCount: 1 },
+      'fetched fewer commits than github reports for pull request',
+    )
+  })
+
+  it('does not warn when every reported commit was fetched', async () => {
+    const { ctx, warn } = makeHarness({
+      prNumbers: [7],
+      reportedTotalCount: { 7: 2 },
+      pagesPerPr: { 7: 2 },
+    })
+
+    await pullRequestCommitsSync.run(ctx)
+
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('warns when github returns no pull request for a listed one', async () => {
+    const { ctx, emitted, warn } = makeHarness({ prNumbers: [8], missingPullRequestPrs: [8] })
+
+    await pullRequestCommitsSync.run(ctx)
+
+    expect(emitted).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith('github returned no commits connection for pull request')
   })
 })

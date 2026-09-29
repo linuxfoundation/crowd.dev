@@ -7,7 +7,9 @@ import {
   isPrivateOrLoopbackHost,
   normalizeUrl,
   normalizedDomain,
+  isTrustedRedirect,
   probe,
+  sameRegistrableDomain,
 } from './http'
 
 function jsonRouter(routes: Record<string, () => Response>) {
@@ -17,13 +19,23 @@ function jsonRouter(routes: Record<string, () => Response>) {
     if (!match) {
       return Promise.reject(new Error(`no route for ${url}`))
     }
-    return Promise.resolve(routes[match]())
+    const response = routes[match]()
+    if (!response.url) {
+      Object.defineProperty(response, 'url', { value: url })
+    }
+    return Promise.resolve(response)
   })
 }
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+function htmlAt(finalUrl: string, body = '<html></html>') {
+  const response = new Response(body, { status: 200, headers: { 'content-type': 'text/html' } })
+  Object.defineProperty(response, 'url', { value: finalUrl })
+  return response
+}
 
 describe('normalizeUrl', () => {
   it('prefixes https:// when no scheme is present', () => {
@@ -68,7 +80,7 @@ describe('probe', () => {
     expect(result).toEqual({
       ok: true,
       status: 200,
-      finalUrl: '',
+      finalUrl: 'https://example.com/',
       contentType: 'text/html; charset=utf-8',
     })
   })
@@ -163,6 +175,116 @@ describe('isLiveDocs', () => {
     )
 
     expect(await isLiveDocs('https://example.com')).toBe(false)
+  })
+
+  it('is true when the final url stays on the same site (http to https, www, subdomain, path)', async () => {
+    for (const [url, finalUrl] of [
+      ['http://example.com', 'https://example.com/'],
+      ['https://example.com', 'https://www.example.com/'],
+      ['https://example.org', 'https://docs.example.org/en/'],
+      ['https://foo.github.io', 'https://foo.github.io/repo/'],
+    ]) {
+      vi.stubGlobal('fetch', jsonRouter({ [url]: () => htmlAt(finalUrl) }))
+      expect(await isLiveDocs(url)).toBe(true)
+    }
+  })
+
+  it('is false when the redirect lands on another registrable domain', async () => {
+    vi.stubGlobal(
+      'fetch',
+      jsonRouter({ 'https://zotregistry.io': () => htmlAt('https://spam-casino.example.net/') }),
+    )
+
+    expect(await isLiveDocs('https://zotregistry.io')).toBe(false)
+  })
+
+  it('is false when one github.io site redirects to another', async () => {
+    vi.stubGlobal(
+      'fetch',
+      jsonRouter({ 'https://foo.github.io': () => htmlAt('https://bar.github.io/') }),
+    )
+
+    expect(await isLiveDocs('https://foo.github.io')).toBe(false)
+  })
+
+  it('is false for an ip-literal url', async () => {
+    vi.stubGlobal('fetch', jsonRouter({ 'http://8.8.8.8': () => htmlAt('http://8.8.8.8/') }))
+
+    expect(await isLiveDocs('http://8.8.8.8')).toBe(false)
+  })
+})
+
+describe('isTrustedRedirect', () => {
+  it('allows the benign redirects seen in the POC fixture', () => {
+    for (const [url, finalUrl] of [
+      ['https://cloudnative-pg.github.io/docs', 'https://cloudnative-pg.io/docs/'],
+      ['https://c2pa-org.github.io', 'https://spec.c2pa.org/'],
+      ['https://ludwig-ai.github.io/ludwig-docs', 'https://ludwig.ai/'],
+      ['https://envoy-mobile.github.io', 'https://envoymobile.io/'],
+      ['https://docs.opentimeline.io', 'https://opentimelineio.readthedocs.io/en/stable/'],
+      [
+        'https://wiki.opendaylight.org/display/ODL/MD-SAL',
+        'https://lf-opendaylight.atlassian.net/wiki/spaces/ODL',
+      ],
+      [
+        'https://guacamole.readthedocs.org/en/latest/',
+        'https://guacamole.readthedocs.io/en/latest/',
+      ],
+      ['https://wiki.o-ran-sc.org/x', 'https://lf-o-ran-sc.atlassian.net/wiki'],
+      ['https://envoy-mobile.io', 'https://envoymobile.readthedocs.io/'],
+      ['http://metallb.org', 'https://metallb.io/'],
+      ['https://example.com', 'https://www.example.com/'],
+    ]) {
+      expect(isTrustedRedirect(url, finalUrl)).toBe(true)
+    }
+  })
+
+  it('rejects redirects to an unrelated domain', () => {
+    for (const [url, finalUrl] of [
+      ['https://zotregistry.io', 'https://honda.org.mx/'],
+      ['https://jenkins-x.io', 'https://jayex.io/'],
+      ['https://foo.github.io', 'https://bar.github.io/'],
+      ['https://foo.github.io', 'https://spam-casino.net/'],
+      ['https://api.github.io', 'https://apiary-spam.com/'],
+      ['https://zotregistry.io', 'https://casino-spam.atlassian.net/wiki/spaces/X'],
+      ['https://zotregistry.io', 'https://casino-spam.readthedocs.io/en/latest/'],
+      ['https://wiki.opendaylight.org', 'https://lf-anuket.atlassian.net/wiki'],
+      ['https://ray.io', 'https://array-casino.atlassian.net/wiki'],
+      ['https://p4.org', 'https://p4-casino.atlassian.net/wiki'],
+      ['https://fd.io', 'https://xfdx.readthedocs.io/en/latest/'],
+      ['https://docs.mycorp.io', 'https://docs.readthedocs.io/'],
+      ['https://zotregistry.io', 'https://zotregistry-x.fakeatlassian.net/'],
+      ['https://wiki.opendaylight.org', 'https://opendaylight-casino.atlassian.net/wiki'],
+      ['https://opendaylight.org', 'https://opendaylight-casino.readthedocs.io/en/latest/'],
+      ['https://zotregistry.io', 'https://zotregistry-docs.readthedocs.io/'],
+      ['https://docs.opentimeline.io', 'https://opentimelineio-casino.readthedocs.io/'],
+      ['https://foo-casino.github.io', 'https://foo.com'],
+      ['https://ab-org.github.io', 'https://ab.com'],
+      ['https://foo-org.io', 'https://foo.net'],
+      ['http://8.8.8.8/', 'https://example.com/'],
+      ['https://example.com', ''],
+      ['https://example.com', 'https://evil.readthedocs.io.attacker.net/'],
+    ]) {
+      expect(isTrustedRedirect(url, finalUrl)).toBe(false)
+    }
+  })
+
+  it('allows zotregistry.io moving to zotregistry.dev (same label)', () => {
+    expect(isTrustedRedirect('https://zotregistry.io', 'https://zotregistry.dev/')).toBe(true)
+  })
+})
+
+describe('sameRegistrableDomain', () => {
+  it('treats a unicode host and its punycode form as the same site', () => {
+    expect(sameRegistrableDomain('https://münchen.de', 'https://xn--mnchen-3ya.de/')).toBe(true)
+    expect(sameRegistrableDomain('https://münchen.de', 'https://example.com/')).toBe(false)
+  })
+
+  it('compares registrable domains and fails closed on an empty final url', () => {
+    expect(sameRegistrableDomain('https://a.example.com', 'https://b.example.com/x')).toBe(true)
+    expect(sameRegistrableDomain('https://example.com', 'https://example.net')).toBe(false)
+    expect(sameRegistrableDomain('https://example.com', '')).toBe(false)
+    expect(sameRegistrableDomain('not a url', '')).toBe(false)
   })
 })
 
@@ -340,6 +462,25 @@ describe('fetchText', () => {
     )
 
     expect(await fetchText('https://example.com')).toBe('hello world')
+  })
+
+  it('returns null on a cross-domain redirect only when same-site is required', async () => {
+    const stub = () =>
+      vi.stubGlobal(
+        'fetch',
+        jsonRouter({
+          'https://example.com': () => {
+            const response = new Response('x'.repeat(60), { status: 200 })
+            Object.defineProperty(response, 'url', { value: 'https://elsewhere.net/llms.txt' })
+            return response
+          },
+        }),
+      )
+
+    stub()
+    expect(await fetchText('https://example.com/llms.txt', 5_000, true)).toBeNull()
+    stub()
+    expect(await fetchText('https://example.com/llms.txt')).toBe('x'.repeat(60))
   })
 
   it('never calls fetch for a loopback address', async () => {

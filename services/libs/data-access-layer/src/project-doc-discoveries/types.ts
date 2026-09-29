@@ -7,6 +7,7 @@ export const DOC_DISCOVERY_METHODS = [
   'github-homepage',
   'serp',
   'project-website',
+  'repo-url',
   'override',
 ] as const
 
