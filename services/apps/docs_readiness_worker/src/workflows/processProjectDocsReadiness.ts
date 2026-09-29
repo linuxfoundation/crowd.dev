@@ -54,6 +54,7 @@ export async function processProjectDocsReadiness(
 
     if (!resolved.docsUrl) {
       failed = 1
+      // The workflow sandbox cannot import the DAL, so this literal must equal NO_DOCS_URL_ERROR.
       await recordFailure(projectId, runId, resolved, 'no-docs-url')
       runStatus = 'completed'
       return

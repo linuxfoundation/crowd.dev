@@ -1,5 +1,6 @@
 import { QueryExecutor } from '../queryExecutor'
 import {
+  DocReadinessRunStatus,
   DocReadinessRunTrigger,
   IDbDocReadinessRun,
   IDocReadinessRunFinish,
@@ -115,15 +116,32 @@ export async function findDocReadinessRunById(
 export async function findLatestDocReadinessRun(
   qx: QueryExecutor,
   trigger?: DocReadinessRunTrigger,
+  status?: DocReadinessRunStatus,
 ): Promise<IDbDocReadinessRun | null> {
   return qx.selectOneOrNone(
     `
     SELECT ${RUN_COLUMNS}
     FROM "projectDocReadinessRuns"
     WHERE ($(trigger)::text IS NULL OR "trigger" = $(trigger))
+      AND ($(status)::text IS NULL OR "status" = $(status))
     ORDER BY "startedAt" DESC, "id" DESC
     LIMIT 1
     `,
-    { trigger: trigger ?? null },
+    { trigger: trigger ?? null, status: status ?? null },
+  )
+}
+
+export async function findStaleRunningDocReadinessRuns(
+  qx: QueryExecutor,
+  startedBefore: Date,
+): Promise<Pick<IDbDocReadinessRun, 'id' | 'workflowId' | 'temporalRunId' | 'startedAt'>[]> {
+  return qx.select(
+    `
+    SELECT "id", "workflowId", "temporalRunId", "startedAt"
+    FROM "projectDocReadinessRuns"
+    WHERE "status" = 'running' AND "startedAt" < $(startedBefore)
+    ORDER BY "startedAt"
+    `,
+    { startedBefore },
   )
 }
