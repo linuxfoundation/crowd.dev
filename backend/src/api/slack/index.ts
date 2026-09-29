@@ -1,3 +1,5 @@
+import { getSlackBotConfig } from '@crowd/slack'
+
 import { SLACK_CONFIG } from '../../conf/index'
 import { safeWrap } from '../../middlewares/errorMiddleware'
 
@@ -8,5 +10,9 @@ export default (app) => {
     SLACK_CONFIG.onboardingTeamId
   ) {
     app.post('/slack/commands', safeWrap(require('./command').default))
+  }
+
+  if (getSlackBotConfig().signingSecret) {
+    app.post('/slack/interactivity', safeWrap(require('./interactivity').default))
   }
 }

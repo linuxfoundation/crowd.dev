@@ -140,13 +140,20 @@ setImmediate(async () => {
 
   app.use(defaultRateLimiter)
 
+  // Slack's Interactivity API signs requests over the exact raw request
+  // body, which is not recoverable once body-parser has parsed it.
+  const captureRawBody = (req: any, _res: any, buf: Buffer) => {
+    req.rawBody = buf
+  }
+
   app.use(
     bodyParser.json({
       limit: '5mb',
+      verify: captureRawBody,
     }),
   )
 
-  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }))
+  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true, verify: captureRawBody }))
 
   app.use((err: any, req: any, res: any, next: any) => {
     if (err.type === 'entity.parse.failed') {
