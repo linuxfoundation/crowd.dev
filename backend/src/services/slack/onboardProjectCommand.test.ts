@@ -5,8 +5,10 @@ vi.mock('axios', () => ({
   default: { post: vi.fn(async () => undefined) },
 }))
 
-vi.mock('../../database/sequelizeQueryExecutor', () => ({
-  optionsBgQx: vi.fn(() => ({})),
+vi.mock('@crowd/data-access-layer/src/database', () => ({
+  getDbConnection: vi.fn(async () => ({})),
+  WRITE_DB_CONFIG: vi.fn(() => ({})),
+  pgpQx: vi.fn(() => ({})),
 }))
 
 vi.mock('@crowd/data-access-layer', () => ({

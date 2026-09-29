@@ -17,18 +17,26 @@ import {
   resolvePrecheckSkipReason,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
+import { WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/data-access-layer/src/database'
 import { onboardProject } from '@crowd/project-onboarding'
 
 import { createDailyProjectCatalogCap } from '../../api/public/v1/projectCatalog/dailyRequestCap'
 import { createDailyLlmCap } from '../../api/public/v1/projectEvaluation/dailyLlmCap'
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
 import { createDailyProjectOnboardingCap } from '../../api/public/v1/projectOnboarding/dailyRequestCap'
-import { optionsBgQx } from '../../database/sequelizeQueryExecutor'
 import { IServiceOptions } from '../IServiceOptions'
 
 const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
 const reserveDailyLlmCall = createDailyLlmCap()
 const reserveDailyProjectOnboardingRequest = createDailyProjectOnboardingCap()
+
+// optionsBgQx is Sequelize-backed and always issues QueryTypes.SELECT, which the
+// API service's replication config routes to the read replica — fatal for our
+// INSERT/UPDATE ... RETURNING claims. Pin this detached workflow to the writer instead.
+async function getBgQx() {
+  const db = await getDbConnection(WRITE_DB_CONFIG())
+  return pgpQx(db)
+}
 
 export function textMessage(text: string): SlackMessageDto {
   return Message().blocks(Section({ text })).buildToObject()
@@ -65,7 +73,7 @@ export async function runOnboardProjectCommand({
   const { log } = options
   // Runs detached after the Slack ack (fire-and-forget) — never bind to a
   // request-scoped transaction that may already be committed/rolled back.
-  const qx = optionsBgQx(options)
+  const qx = await getBgQx()
   const send = (message: SlackMessageDto) => postToResponseUrl(responseUrl, message, log)
 
   const repoUrl = canonicalizeGithubRepoUrl(rawRepoUrl)
@@ -209,14 +217,16 @@ export async function runOnboardProjectCommand({
   try {
     reserveDailyProjectOnboardingRequest(actorId)
   } catch (err) {
+    // Release the claim back to 'onboard' rather than 'error' — the row already
+    // passed evaluation, so the nightly worker should pick it up, not re-evaluate it.
     await updateProjectCatalog(qx, catalogEntry.id, {
-      action: 'error',
-      onboardingError: getErrorMessage(err),
+      action: 'onboard',
       onboardedAt: null,
+      onboardingError: null,
     })
     await send(
       textMessage(
-        `\`${repoUrl}\` passed evaluation, but onboarding is currently rate-limited: ${getErrorMessage(err)}`,
+        `\`${repoUrl}\` passed evaluation, but onboarding is currently rate-limited: ${getErrorMessage(err)}. It will be picked up by the automatic onboarding job.`,
       ),
     )
     return
