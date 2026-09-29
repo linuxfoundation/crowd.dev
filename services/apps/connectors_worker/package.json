@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "typescript": "catalog:"
   }
 }
