@@ -34,7 +34,7 @@ export async function postSlackMessage(
   }
 
   try {
-    const response = await client.chat.postMessage(args)
+    const response = await client.chat.postMessage({ ...args, token: undefined })
     return { ok: true, ts: response.ts }
   } catch (error) {
     log.error({ error, channel: args.channel }, 'Failed to post Slack bot message')
@@ -51,7 +51,7 @@ export async function updateSlackMessage(
   }
 
   try {
-    await client.chat.update(args)
+    await client.chat.update({ ...args, token: undefined })
     return { ok: true }
   } catch (error) {
     log.error({ error, channel: args.channel, ts: args.ts }, 'Failed to update Slack bot message')
