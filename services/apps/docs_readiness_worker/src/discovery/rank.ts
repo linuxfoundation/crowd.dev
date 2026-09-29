@@ -1,3 +1,4 @@
+import { registrableDomain } from '@crowd/common'
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { domainOf, normalizedDomain } from './http'
@@ -44,6 +45,11 @@ const SHARED_URL_PENALTY = -50
 function sharedKey(url: string): string | null {
   const domain = normalizedDomain(url)
   return domain ? `${domain}${pathnameOf(url).replace(/\/+$/, '')}` : null
+}
+
+const isBareRoot = (url: string): boolean => {
+  const domain = normalizedDomain(url)
+  return !!domain && domain === registrableDomain(url) && pathnameOf(url).replace(/\/+$/, '') === ''
 }
 
 const isGithubRepoPath = (host: string, pathname: string): boolean =>
@@ -188,5 +194,21 @@ export function rankCandidates(
   })
 
   scored.sort((a, b) => b.score - a.score)
-  return scored[0].candidate
+  const best = scored[0].candidate
+
+  // A live docs.<domain> beats the bare marketing root of the same domain, whatever its score.
+  if (best.method !== 'docs-subdomain' && isBareRoot(best.url)) {
+    const root = registrableDomain(best.url)
+    const docsHost = scored.find(
+      ({ candidate: c }) =>
+        c.method === 'docs-subdomain' &&
+        !isShared(c) &&
+        !GITHUB_SHARED_HOSTS.has(domainOf(c.url) ?? '') &&
+        registrableDomain(c.url) === root,
+    )
+    if (docsHost) {
+      return docsHost.candidate
+    }
+  }
+  return best
 }

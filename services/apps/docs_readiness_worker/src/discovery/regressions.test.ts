@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: MIT
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { IDocCandidate } from '@crowd/data-access-layer'
+
+import { normalizedDomain } from './http'
 import { discoverDocs } from './index'
+import { rankCandidates } from './rank'
 import { isUmbrellaWebsite } from './sharedWebsite'
 import type { IDiscoveryContext } from './strategies'
 
@@ -10,13 +14,23 @@ import type { IDiscoveryContext } from './strategies'
 const HTML = { status: 200, headers: { 'content-type': 'text/html' } }
 const stripSlash = (url: string) => url.replace(/\/+$/, '')
 
-function scriptNetwork(live: string[], githubHomepages: Record<string, string> = {}) {
+function scriptNetwork(
+  live: string[],
+  githubHomepages: Record<string, string> = {},
+  llmsTxtRoots: string[] = [],
+) {
   const liveKeys = new Set(live.map(stripSlash))
+  const llmsKeys = new Set(llmsTxtRoots.map((root) => `${stripSlash(root)}/llms.txt`))
   const fetchMock = vi.fn((input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input.toString()
     const repo = url.match(/^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)$/)?.[1]
     if (repo && githubHomepages[repo]) {
       return Promise.resolve(Response.json({ homepage: githubHomepages[repo] }))
+    }
+    if (llmsKeys.has(url)) {
+      const response = new Response('x'.repeat(80), { status: 200 })
+      Object.defineProperty(response, 'url', { value: url })
+      return Promise.resolve(response)
     }
     if (!liveKeys.has(stripSlash(url))) {
       return Promise.reject(new Error(`no route for ${url}`))
@@ -173,5 +187,87 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
 
     expect(result.docsUrl).toBeNull()
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('aswf.io'))).toBe(false)
+  })
+
+  it('vLLM: docs.vllm.ai wins over the vllm.ai root that only has an llms.txt', async () => {
+    scriptNetwork(['https://vllm.ai/', 'https://docs.vllm.ai'], {}, ['https://vllm.ai'])
+
+    const result = await discoverDocs(
+      ctxFor({ name: 'vLLM', slug: 'vllm', website: 'https://vllm.ai' }),
+    )
+
+    expect(result.allCandidates.map((c) => c.url)).toContain('https://vllm.ai')
+    expect(result.docsUrl).toBe('https://docs.vllm.ai')
+    expect(result.discoveryMethod).toBe('docs-subdomain')
+  })
+})
+
+// Stored candidate lists (prod, before this change) of projects that already resolve to docs.<domain>.
+describe('projects that already resolve to their docs host are unchanged', () => {
+  const c = (url: string, method: IDocCandidate['method']): IDocCandidate => ({
+    url,
+    method,
+    confidence: 'high',
+    livenessOk: true,
+  })
+
+  it.each([
+    {
+      project: 'Cilium',
+      website: 'https://cilium.io',
+      docsUrl: 'https://docs.cilium.io',
+      candidates: [
+        c('https://cilium.io', 'llms-txt-probe'),
+        c('https://docs.cilium.io', 'docs-subdomain'),
+        c('https://metallb.universe.tf/', 'github-homepage'),
+        c('https://cilium.io/', 'project-website'),
+      ],
+    },
+    {
+      project: 'Dapr',
+      website: 'https://dapr.io/',
+      docsUrl: 'https://docs.dapr.io',
+      candidates: [
+        c('https://dapr.io', 'llms-txt-probe'),
+        c('https://docs.dapr.io', 'docs-subdomain'),
+        c('https://dapr.io/', 'project-website'),
+      ],
+    },
+    {
+      project: 'Zowe',
+      website: 'https://www.zowe.org/',
+      docsUrl: 'https://docs.zowe.org',
+      candidates: [
+        c('https://docs.zowe.org', 'docs-subdomain'),
+        c('https://www.zowe.org/', 'project-website'),
+      ],
+    },
+    {
+      project: 'Ray',
+      website: 'https://ray.io',
+      docsUrl: 'https://docs.ray.io',
+      candidates: [
+        c('https://docs.ray.io', 'llms-txt-probe'),
+        c('https://ray.io/docs', 'docs-path'),
+        c('https://ray.io/', 'github-homepage'),
+        c('https://github.com/ray-project/ray', 'repo-url'),
+      ],
+    },
+    {
+      project: 'NATS',
+      website: 'https://nats.io',
+      docsUrl: 'https://docs.nats.io',
+      candidates: [
+        c('https://docs.nats.io', 'llms-txt-probe'),
+        c('https://nats.io/docs', 'docs-path'),
+        c('https://docs.nats.io/reference', 'readme-scrape'),
+        c('https://nats.io/', 'github-homepage'),
+        c('https://github.com/nats-io/nats-server', 'repo-url'),
+      ],
+    },
+  ])('$project -> $docsUrl', ({ website, docsUrl, candidates }) => {
+    const winner = rankCandidates(candidates, normalizedDomain(website))
+
+    expect(winner?.url).toBe(docsUrl)
   })
 })

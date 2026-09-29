@@ -508,3 +508,60 @@ describe('rankCandidates — SERP tier (IN-1396)', () => {
     expect(rankCandidates([dead, serp])).toEqual(serp)
   })
 })
+
+describe('rankCandidates — docs subdomain over the bare root (IN-1396)', () => {
+  // Five methods agreeing on the root give it a +12 agreement bonus, outscoring docs.vllm.ai alone.
+  const rootStack = [
+    candidate('https://vllm.ai', 'llms-txt-probe', true),
+    candidate('https://vllm.ai/', 'project-website', true),
+    candidate('https://vllm.ai/', 'github-homepage', true),
+    candidate('https://vllm.ai/', 'readme-scrape', true),
+    candidate('https://vllm.ai/', 'package-manifest', true),
+  ]
+  const docs = candidate('https://docs.vllm.ai', 'docs-subdomain', true)
+
+  test('vLLM: a live docs. subdomain beats the llms.txt root even when the root outscores it', () => {
+    const scoredAlone = rankCandidates([
+      ...rootStack,
+      candidate('https://x.dev/docs', 'docs-path', true),
+    ])
+    expect(scoredAlone?.url).toBe('https://vllm.ai/')
+
+    expect(rankCandidates([...rootStack, docs], 'vllm.ai')).toEqual(docs)
+    expect(rankCandidates([docs, ...rootStack], 'vllm.ai')).toEqual(docs)
+  })
+
+  test('the www root of the same registrable domain loses too', () => {
+    const wwwRoot = candidate('https://www.zowe.org/', 'project-website', true)
+    const stack = [
+      wwwRoot,
+      candidate('https://zowe.org', 'llms-txt-probe', true),
+      candidate('https://zowe.org', 'github-homepage', true),
+      candidate('https://zowe.org', 'package-manifest', true),
+      candidate('https://zowe.org', 'readme-scrape', true),
+    ]
+    const zoweDocs = candidate('https://docs.zowe.org', 'docs-subdomain', true)
+    expect(rankCandidates([...stack, zoweDocs])).toEqual(zoweDocs)
+  })
+
+  test('a docs. subdomain of an unrelated domain does not displace the root', () => {
+    const other = candidate('https://docs.other-vendor.com', 'docs-subdomain', true)
+    expect(rankCandidates([...rootStack, other])?.url).toBe('https://vllm.ai/')
+  })
+
+  test('a root with a path is not a bare root, so the score decides', () => {
+    const projectPage = candidate('https://vllm.ai/projects/vllm', 'llms-txt-probe', true)
+    const stack = rootStack.map((c) => ({ ...c, url: 'https://vllm.ai/projects/vllm' }))
+    expect(rankCandidates([projectPage, ...stack, docs])?.url).toBe('https://vllm.ai/projects/vllm')
+  })
+
+  test('a docs. subdomain claimed by other projects does not displace the root', () => {
+    const shared = new Set(['https://docs.vllm.ai'])
+    expect(rankCandidates([...rootStack, docs], null, null, shared)?.url).toBe('https://vllm.ai/')
+  })
+
+  test('a dead docs. subdomain is ignored', () => {
+    const dead = candidate('https://docs.vllm.ai', 'docs-subdomain', false)
+    expect(rankCandidates([...rootStack, dead])?.url).toBe('https://vllm.ai/')
+  })
+})
