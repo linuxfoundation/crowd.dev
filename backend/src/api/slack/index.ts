@@ -1,5 +1,5 @@
 import bodyParser from 'body-parser'
-import type { Application, Request, Response } from 'express'
+import type { Application, NextFunction, Request, Response } from 'express'
 
 import { getSlackBotConfig } from '@crowd/slack'
 
@@ -23,10 +23,17 @@ export function mountInteractivityRoute(app: Application): void {
     windowMs: 60 * 1000,
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleParserError = (err: Error, req: Request, res: Response, _next: NextFunction) => {
+    req.log.error(err, 'Error parsing Slack interactivity payload!')
+    res.sendStatus(200)
+  }
+
   app.post(
     '/slack/interactivity',
     interactivityRateLimiter,
     bodyParser.urlencoded({ limit: '5mb', extended: true, verify: captureRawBody }),
+    handleParserError,
     require('./interactivity').default,
   )
 }
