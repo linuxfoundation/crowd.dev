@@ -396,6 +396,57 @@ describe('runOnboardProjectCommand', () => {
       )
     })
 
+    it('links the current request message, not a source url retained from discovery', async () => {
+      vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue({
+        ...catalogEntry,
+        sourceUrl: 'https://github.com/foo/bar/discussions/1',
+      } as any)
+      vi.mocked(postSlackMessage).mockResolvedValue({ ok: true, ts: '1.1' })
+      vi.mocked(getSlackPermalink).mockResolvedValue('https://acme.slack.com/archives/C1/p11')
+      vi.mocked(resolvePrecheckSkipReason).mockReturnValueOnce('already in CDP')
+      vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(1)
+
+      await runOnboardProjectCommand({
+        repoUrl: catalogEntry.repoUrl,
+        options: mockOptions(),
+        responseUrl: 'https://hooks.slack.com/response',
+        actorId: 'U123',
+        channelId: 'C1',
+      })
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'skipped',
+        expect.objectContaining({ sourceUrl: 'https://acme.slack.com/archives/C1/p11' }),
+        expect.anything(),
+        expect.anything(),
+      )
+    })
+
+    it('falls back to no link when the request message could not be posted', async () => {
+      vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue({
+        ...catalogEntry,
+        sourceUrl: 'https://github.com/foo/bar/discussions/1',
+      } as any)
+      vi.mocked(postSlackMessage).mockResolvedValue({ ok: false, error: 'not_in_channel' })
+      vi.mocked(resolvePrecheckSkipReason).mockReturnValueOnce('already in CDP')
+      vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(1)
+
+      await runOnboardProjectCommand({
+        repoUrl: catalogEntry.repoUrl,
+        options: mockOptions(),
+        responseUrl: 'https://hooks.slack.com/response',
+        actorId: 'U123',
+        channelId: 'C1',
+      })
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'skipped',
+        expect.objectContaining({ sourceUrl: null }),
+        expect.anything(),
+        expect.anything(),
+      )
+    })
+
     it('does not alert when a concurrent request already moved the pre-check skip on', async () => {
       vi.mocked(resolvePrecheckSkipReason).mockReturnValueOnce('already in CDP')
       vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(0)

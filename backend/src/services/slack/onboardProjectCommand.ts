@@ -171,7 +171,7 @@ export async function runOnboardProjectCommand({
       {
         repoName: catalogEntry.repoName,
         repoUrl,
-        sourceUrl: catalogEntry.sourceUrl ?? permalink,
+        sourceUrl: permalink,
       },
       { reason, actorId },
       log,
