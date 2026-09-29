@@ -33,6 +33,7 @@ import { tenantMiddleware } from '../middlewares/tenantMiddleware'
 import { createRateLimiter } from './apiRateLimiter'
 import authSocial from './auth/authSocial'
 import { publicRouter } from './public'
+import { mountInteractivityRoute } from './slack'
 import WebSockets from './websockets'
 
 const serviceLogger = getServiceLogger()
@@ -109,6 +110,9 @@ setImmediate(async () => {
     next()
   })
 
+  // Mounted before DB/Redis/OpenSearch middleware to protect Slack's 3s ack window.
+  mountInteractivityRoute(app)
+
   // Initializes and adds the database middleware.
   app.use(databaseMiddleware)
 
@@ -140,11 +144,7 @@ setImmediate(async () => {
 
   app.use(defaultRateLimiter)
 
-  app.use(
-    bodyParser.json({
-      limit: '5mb',
-    }),
-  )
+  app.use(bodyParser.json({ limit: '5mb' }))
 
   app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }))
 

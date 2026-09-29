@@ -12,6 +12,7 @@ declare global {
       temporal: TemporalClient
       log: Logger
       responseHandler: ApiResponseHandler
+      rawBody?: Buffer
     }
   }
 }

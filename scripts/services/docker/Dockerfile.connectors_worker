@@ -6,10 +6,16 @@ WORKDIR /usr/crowd/app
 RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
 
 COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
-RUN pnpm fetch
 
 COPY ./services ./services
-RUN pnpm i --frozen-lockfile
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm i --frozen-lockfile --filter @crowd/connectors-worker...
+
+WORKDIR /usr/crowd/app/services/apps/connectors_worker
+RUN printf '%s' '{"extends":"./tsconfig.json","compilerOptions":{"noEmit":true,"noUncheckedSideEffectImports":true},"include":["src/**/*.ts"],"exclude":["src/**/*.test.ts"]}' > tsconfig.check.json \
+    && pnpm exec tsc -p tsconfig.check.json \
+    && rm tsconfig.check.json
+WORKDIR /usr/crowd/app
 
 FROM node:24-bookworm-slim as runner
 
