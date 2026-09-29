@@ -4,7 +4,7 @@ import os from 'os'
 import bodyParser from 'body-parser'
 import bunyanMiddleware from 'bunyan-middleware'
 import cors from 'cors'
-import express, { Request, Response } from 'express'
+import express from 'express'
 import helmet from 'helmet'
 import { QueryTypes } from 'sequelize'
 
@@ -33,6 +33,7 @@ import { tenantMiddleware } from '../middlewares/tenantMiddleware'
 import { createRateLimiter } from './apiRateLimiter'
 import authSocial from './auth/authSocial'
 import { publicRouter } from './public'
+import { mountInteractivityRoute } from './slack'
 import WebSockets from './websockets'
 
 const serviceLogger = getServiceLogger()
@@ -132,6 +133,11 @@ setImmediate(async () => {
   // increase security.
   app.use(helmet())
 
+  // Slack's Interactivity API requires a 3-second acknowledgement, so this
+  // is mounted ahead of the rate limiter and tenant/segment middleware,
+  // with its own dedicated body parser.
+  mountInteractivityRoute(app)
+
   const defaultRateLimiter = createRateLimiter({
     max: 200,
     windowMs: 60 * 1000,
@@ -140,22 +146,9 @@ setImmediate(async () => {
 
   app.use(defaultRateLimiter)
 
-  // Slack's Interactivity API signs requests over the exact raw request
-  // body, which is not recoverable once body-parser has parsed it.
-  const captureRawBody = (req: Request, _res: Response, buf: Buffer) => {
-    if (req.path === '/slack/interactivity') {
-      req.rawBody = buf
-    }
-  }
+  app.use(bodyParser.json({ limit: '5mb' }))
 
-  app.use(
-    bodyParser.json({
-      limit: '5mb',
-      verify: captureRawBody,
-    }),
-  )
-
-  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true, verify: captureRawBody }))
+  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }))
 
   app.use((err: any, req: any, res: any, next: any) => {
     if (err.type === 'entity.parse.failed') {
