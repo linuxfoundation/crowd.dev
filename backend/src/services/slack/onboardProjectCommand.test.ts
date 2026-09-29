@@ -31,6 +31,10 @@ vi.mock('@crowd/slack', () => ({
   getSlackPermalink: vi.fn(),
 }))
 
+vi.mock('./slackBotRequestAlert', () => ({
+  notifySlackBotRequest: vi.fn(async () => undefined),
+}))
+
 vi.mock('../../api/public/v1/projectEvaluation/evaluateProject', () => ({
   evaluateProject: vi.fn(),
 }))
@@ -45,6 +49,7 @@ import {
   deriveProjectIdentityFromRepoUrl,
   finalizeProjectCatalogEvaluation,
   markProjectCatalogPreCheckSkipped,
+  resolvePrecheckSkipReason,
   setProjectCatalogSourceUrl,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
@@ -53,6 +58,7 @@ import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
 
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
 import { runOnboardProjectCommand } from './onboardProjectCommand'
+import { notifySlackBotRequest } from './slackBotRequestAlert'
 
 const catalogEntry = {
   id: 'catalog-1',
@@ -349,6 +355,154 @@ describe('runOnboardProjectCommand', () => {
 
       expect(postSlackMessage).not.toHaveBeenCalled()
       expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('review channel alerts', () => {
+    const run = () =>
+      runOnboardProjectCommand({
+        repoUrl: catalogEntry.repoUrl,
+        options: mockOptions(),
+        responseUrl: 'https://hooks.slack.com/response',
+        actorId: 'U123',
+      })
+
+    const evaluated = (
+      overrides: Partial<Awaited<ReturnType<typeof evaluateProject>>>,
+    ): Awaited<ReturnType<typeof evaluateProject>> => ({
+      outcome: 'onboard',
+      evaluationResult: 'true',
+      evaluationReason: null,
+      metrics: null,
+      ...overrides,
+    })
+
+    beforeEach(() => {
+      vi.mocked(claimProjectCatalogForSlackEvaluation).mockResolvedValue(catalogEntry as any)
+      vi.mocked(finalizeProjectCatalogEvaluation).mockResolvedValue({ ...catalogEntry } as any)
+    })
+
+    it('alerts a skip when the pre-check skips the repo', async () => {
+      vi.mocked(resolvePrecheckSkipReason).mockReturnValueOnce('already in CDP')
+      vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(1)
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'skipped',
+        expect.objectContaining({ repoName: 'bar', repoUrl: catalogEntry.repoUrl }),
+        { reason: 'already in CDP', actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('does not alert when a concurrent request already moved the pre-check skip on', async () => {
+      vi.mocked(resolvePrecheckSkipReason).mockReturnValueOnce('already in CDP')
+      vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(0)
+
+      await run()
+
+      expect(notifySlackBotRequest).not.toHaveBeenCalled()
+    })
+
+    it('alerts a skip when the request is rejected before evaluation', async () => {
+      vi.mocked(evaluateProject).mockRejectedValue(new Error('daily LLM cap exceeded'))
+      vi.mocked(markProjectCatalogPreCheckSkipped).mockResolvedValueOnce(1)
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'skipped',
+        expect.anything(),
+        { reason: expect.stringContaining('daily LLM cap exceeded'), actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('alerts an error when the evaluation errors', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(
+        evaluated({ outcome: 'skip', evaluationResult: 'error', evaluationReason: 'llm down' }),
+      )
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'errored',
+        expect.anything(),
+        { reason: 'llm down', actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('alerts a skip on a negative evaluation', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(
+        evaluated({ outcome: 'skip', evaluationResult: 'false', evaluationReason: 'docs repo' }),
+      )
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'skipped',
+        expect.anything(),
+        { reason: 'docs repo', actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('does not alert when finalize lost the race', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(
+        evaluated({ outcome: 'skip', evaluationResult: 'false', evaluationReason: 'docs repo' }),
+      )
+      vi.mocked(finalizeProjectCatalogEvaluation).mockResolvedValue(null as any)
+
+      await run()
+
+      expect(notifySlackBotRequest).not.toHaveBeenCalled()
+    })
+
+    it('alerts an error when onboarding returns an error', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(evaluated({}))
+      vi.mocked(onboardProject).mockResolvedValue({
+        outcome: 'error',
+        segmentId: null,
+        error: 'pipeline exploded',
+      })
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'errored',
+        expect.anything(),
+        { reason: 'pipeline exploded', actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('alerts an error when onboarding throws', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(evaluated({}))
+      vi.mocked(onboardProject).mockRejectedValue(new Error('network down'))
+
+      await run()
+
+      expect(notifySlackBotRequest).toHaveBeenCalledWith(
+        'errored',
+        expect.anything(),
+        { reason: 'network down', actorId: 'U123' },
+        expect.anything(),
+      )
+    })
+
+    it('does not alert on a successful onboarding', async () => {
+      vi.mocked(evaluateProject).mockResolvedValue(evaluated({}))
+      vi.mocked(onboardProject).mockResolvedValue({
+        outcome: 'onboarded',
+        segmentId: 'segment-1',
+        error: null,
+      })
+
+      await run()
+
+      expect(notifySlackBotRequest).not.toHaveBeenCalled()
     })
   })
 })

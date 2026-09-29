@@ -101,8 +101,8 @@ const job: IJobDefinition = {
           WHERE pc.action = 'skip'
             AND pc."evaluationResult" = 'false'
             AND pc."evaluatedAt"::date = CURRENT_DATE
-            -- reported via a dedicated per-repo alert instead, see CM-1792
-            AND pc."provenance" IS DISTINCT FROM 'github-discussion'
+            -- reported via a dedicated per-repo alert instead, see CM-1792 / CM-1793
+            AND (pc."provenance" IS NULL OR pc."provenance" NOT IN ('github-discussion', 'slack-bot'))
         ) pc
       ),
       repos_norm AS (
@@ -206,8 +206,8 @@ const job: IJobDefinition = {
         AND "evaluationResult" IS NULL
         AND "skipReason" LIKE 'evaluation pre-check:%'
         AND "evaluatedAt"::date = CURRENT_DATE
-        -- reported via a dedicated per-repo alert instead, see CM-1792
-        AND "provenance" IS DISTINCT FROM 'github-discussion'
+        -- reported via a dedicated per-repo alert instead, see CM-1792 / CM-1793
+        AND ("provenance" IS NULL OR "provenance" NOT IN ('github-discussion', 'slack-bot'))
       GROUP BY "skipReason"
       ORDER BY total DESC
       `,

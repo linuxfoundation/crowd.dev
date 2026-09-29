@@ -28,6 +28,7 @@ import { createDailyLlmCap } from '../../api/public/v1/projectEvaluation/dailyLl
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
 import { createDailyProjectOnboardingCap } from '../../api/public/v1/projectOnboarding/dailyRequestCap'
 import { IServiceOptions } from '../IServiceOptions'
+import { type SlackBotRequestAlertKind, notifySlackBotRequest } from './slackBotRequestAlert'
 
 const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
 const reserveDailyLlmCall = createDailyLlmCap()
@@ -76,11 +77,11 @@ async function recordRequestMessage(
     actorId: string
     log: IServiceOptions['log']
   },
-): Promise<void> {
+): Promise<string | null> {
   try {
     if (!channelId) {
       log.warn({ catalogId, repoUrl }, 'Slack sent no channel id, onboarding request not recorded.')
-      return
+      return null
     }
 
     const posted = await postSlackMessage({
@@ -90,15 +91,17 @@ async function recordRequestMessage(
 
     if (!posted.ok || !posted.ts) {
       log.warn({ channelId, error: posted.error }, 'Could not post onboarding request to Slack.')
-      return
+      return null
     }
 
     const permalink = await getSlackPermalink(channelId, posted.ts)
     if (permalink) {
       await setProjectCatalogSourceUrl(qx, catalogId, permalink)
     }
+    return permalink
   } catch (err) {
     log.warn(err, 'Failed to record the Slack message of the onboarding request.')
+    return null
   }
 }
 
@@ -155,13 +158,24 @@ export async function runOnboardProjectCommand({
     return
   }
 
-  await recordRequestMessage(qx, {
+  const permalink = await recordRequestMessage(qx, {
     catalogId: catalogEntry.id,
     repoUrl,
     channelId,
     actorId,
     log,
   })
+  const alert = (kind: SlackBotRequestAlertKind, reason: string) =>
+    notifySlackBotRequest(
+      kind,
+      {
+        repoName: catalogEntry.repoName,
+        repoUrl,
+        sourceUrl: catalogEntry.sourceUrl ?? permalink,
+      },
+      { reason, actorId },
+      log,
+    )
 
   const canonical = canonicalizeRepoUrl(repoUrl)
   const owners = canonical?.isGithub ? [canonical.owner] : []
@@ -184,6 +198,9 @@ export async function runOnboardProjectCommand({
           : `\`${repoUrl}\` was skipped (${precheckSkipReason}), but a concurrent request had already moved it on — not applying it.`,
       ),
     )
+    if (skipped > 0) {
+      await alert('skipped', precheckSkipReason)
+    }
     return
   }
 
@@ -209,11 +226,8 @@ export async function runOnboardProjectCommand({
   } catch (err) {
     // Terminate the row here, otherwise the nightly worker re-evaluates it later,
     // bypassing this actor's daily LLM cap.
-    const terminated = await markProjectCatalogPreCheckSkipped(
-      qx,
-      catalogEntry.id,
-      `slack-bot: rejected before evaluation - ${getErrorMessage(err)}`,
-    )
+    const rejectionReason = `slack-bot: rejected before evaluation - ${getErrorMessage(err)}`
+    const terminated = await markProjectCatalogPreCheckSkipped(qx, catalogEntry.id, rejectionReason)
     await send(
       textMessage(
         terminated > 0
@@ -221,6 +235,9 @@ export async function runOnboardProjectCommand({
           : `:no_entry: ${getErrorMessage(err)} (a concurrent request had already moved \`${repoUrl}\` on)`,
       ),
     )
+    if (terminated > 0) {
+      await alert('skipped', rejectionReason)
+    }
     return
   }
 
@@ -245,6 +262,7 @@ export async function runOnboardProjectCommand({
         `:no_entry: Evaluation for \`${repoUrl}\` failed: ${evaluation.evaluationReason ?? 'unknown error'}`,
       ),
     )
+    await alert('errored', evaluation.evaluationReason ?? 'unknown error')
     return
   }
 
@@ -255,6 +273,10 @@ export async function runOnboardProjectCommand({
           evaluation.evaluationReason ? `\nReason: ${evaluation.evaluationReason}` : ''
         }\n_Forcing onboarding on a negative evaluation isn't available yet (CM-1805)._`,
       ),
+    )
+    await alert(
+      'skipped',
+      evaluation.evaluationReason ?? `evaluation result: ${evaluation.outcome}`,
     )
     return
   }
@@ -302,6 +324,7 @@ export async function runOnboardProjectCommand({
       onboardedAt: null,
     })
     await send(textMessage(`\`${repoUrl}\` passed evaluation but onboarding failed unexpectedly.`))
+    await alert('errored', getErrorMessage(err))
     return
   }
 
@@ -316,6 +339,7 @@ export async function runOnboardProjectCommand({
         `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
       ),
     )
+    await alert('errored', onboardingResult.error ?? 'unknown error')
     return
   }
 
