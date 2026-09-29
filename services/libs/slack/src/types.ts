@@ -42,3 +42,8 @@ export interface SlackMessage {
 export interface SlackChannelConfig {
   webhookUrl: string | undefined
 }
+
+export interface SlackBotConfig {
+  botToken: string | undefined
+  signingSecret: string | undefined
+}
