@@ -3,7 +3,7 @@
 import { registrableDomain } from '@crowd/common'
 
 import { normalizedDomain } from './http'
-import { nameTokens, projectTokens } from './relevance'
+import { nameTokens } from './relevance'
 
 // Foundation sites that host many unrelated projects; sharing one is always an umbrella.
 const UMBRELLA_SITES = [
@@ -15,6 +15,9 @@ const UMBRELLA_SITES = [
   'linuxfoundation.org',
   'lfaidata.foundation',
   'openmainframeproject.org',
+  'lfnetworking.org',
+  'hyperledger.org',
+  'lfdecentralizedtrust.org',
 ]
 
 const MIN_FIRST_TOKEN_LENGTH = 3
@@ -30,7 +33,7 @@ const tokenKey = (name: string): string => [...new Set(nameTokens(name))].sort()
 
 // True only for a site that hosts unrelated projects. A twin entry, a site named after this
 // project, or a family sharing its first name word (ODL ...) is not an umbrella.
-export function isUmbrellaWebsite({ name, slug, website, siblings }: ISharedWebsiteInput): boolean {
+export function isUmbrellaWebsite({ name, website, siblings }: ISharedWebsiteInput): boolean {
   if (!website || siblings.length === 0) {
     return false
   }
@@ -47,7 +50,7 @@ export function isUmbrellaWebsite({ name, slug, website, siblings }: ISharedWebs
   }
 
   const label = registrableDomain(website)?.split('.')[0] ?? ''
-  if (label && projectTokens({ name, slug }).some((token) => label.includes(token))) {
+  if (label && nameTokens(name).some((token) => label.includes(token))) {
     return false
   }
 

@@ -28,6 +28,30 @@ interface ICase {
 
 const CASES: ICase[] = [
   {
+    label: 'LFN CNTT: a slug prefix (lfn) must not match the lfnetworking label',
+    name: 'CNTT',
+    slug: 'lfn-cntt',
+    website: 'https://lfnetworking.org/',
+    siblings: ['ONAP', 'OPNFV'].map(sibling),
+    umbrella: true,
+  },
+  {
+    label: 'Hyperledger Besu: a name token in the hyperledger.org label stays an umbrella',
+    name: 'Hyperledger Besu',
+    slug: 'hyperledger-besu',
+    website: 'https://www.hyperledger.org/',
+    siblings: ['Hyperledger Fabric', 'Hyperledger Indy'].map(sibling),
+    umbrella: true,
+  },
+  {
+    label: 'a slug-only token no longer anchors a shared site',
+    name: 'Something Else',
+    slug: 'acme-thing',
+    website: 'https://acme.example.org/',
+    siblings: ['Unrelated One', 'Unrelated Two'].map(sibling),
+    umbrella: true,
+  },
+  {
     label: 'Electron: the twin "Electron framework" shares the website',
     name: 'Electron',
     slug: 'ojsf-electron',
