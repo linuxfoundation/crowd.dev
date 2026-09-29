@@ -573,6 +573,10 @@ export async function claimProjectCatalogForSlackEvaluation(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = 'manual',
+      "sourceUrl" = CASE
+        WHEN "projectCatalog"."sourceUrl" ~ '^https://[^/]+.slack.com/archives/' THEN NULL
+        ELSE "projectCatalog"."sourceUrl"
+      END,
       "provenance" = COALESCE(EXCLUDED."provenance", "projectCatalog"."provenance"),
       "action" = 'evaluate',
       "evaluatedAt" = NULL,
@@ -753,6 +757,21 @@ export async function markProjectCatalogPreCheckSkipped(
     WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
     `,
     { id, reason },
+  )
+}
+
+export async function setProjectCatalogSourceUrl(
+  qx: QueryExecutor,
+  id: string,
+  sourceUrl: string,
+): Promise<void> {
+  await qx.selectNone(
+    `
+    UPDATE "projectCatalog"
+    SET "sourceUrl" = $(sourceUrl), "updatedAt" = NOW()
+    WHERE id = $(id) AND "sourceUrl" IS NULL
+    `,
+    { id, sourceUrl },
   )
 }
 

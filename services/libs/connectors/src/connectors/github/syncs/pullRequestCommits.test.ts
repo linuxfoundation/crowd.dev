@@ -34,6 +34,7 @@ interface HarnessOptions {
   ghostAuthorPrs?: number[]
   reportedTotalCount?: Record<number, number>
   nullNodePrs?: number[]
+  statsDroppedNodePrs?: number[]
   missingPullRequestPrs?: number[]
 }
 
@@ -57,7 +58,6 @@ function makeHarness(opts: HarnessOptions) {
   const requests: RequestLog[] = []
   const emitted: GithubActivity[] = []
   let prListServed = false
-  const commitPagesSeen: Record<number, number> = {}
   const warn = vi.fn()
 
   const http = {
@@ -99,13 +99,20 @@ function makeHarness(opts: HarnessOptions) {
         throw new ProviderUnavailableError()
       }
 
-      commitPagesSeen[prNumber] = (commitPagesSeen[prNumber] ?? 0) + 1
+      const pageIndex = cursor ? Number(cursor.slice(1)) : 1
       const totalPages = opts.pagesPerPr?.[prNumber] ?? 1
-      const hasNextPage = commitPagesSeen[prNumber] < totalPages
+      const hasNextPage = pageIndex < totalPages
       if (opts.missingPullRequestPrs?.includes(prNumber)) {
         return { data: { repository: { pullRequest: null } } }
       }
       const reportedTotalCount = opts.reportedTotalCount?.[prNumber]
+      const secondNode = opts.statsDroppedNodePrs?.includes(prNumber)
+        ? usedStatsQuery
+          ? null
+          : commitNode(`${prNumber}-${pageIndex}-b`)
+        : opts.nullNodePrs?.includes(prNumber)
+          ? null
+          : undefined
       return {
         data: {
           repository: {
@@ -113,15 +120,12 @@ function makeHarness(opts: HarnessOptions) {
               commits: {
                 ...(reportedTotalCount === undefined ? {} : { totalCount: reportedTotalCount }),
                 pageInfo: {
-                  endCursor: hasNextPage ? `p${commitPagesSeen[prNumber] + 1}` : null,
+                  endCursor: hasNextPage ? `p${pageIndex + 1}` : null,
                   hasNextPage,
                 },
                 nodes: [
-                  commitNode(
-                    `${prNumber}-${commitPagesSeen[prNumber]}`,
-                    opts.ghostAuthorPrs?.includes(prNumber),
-                  ),
-                  ...(opts.nullNodePrs?.includes(prNumber) ? [null] : []),
+                  commitNode(`${prNumber}-${pageIndex}`, opts.ghostAuthorPrs?.includes(prNumber)),
+                  ...(secondNode === undefined ? [] : [secondNode]),
                 ],
               },
             },
@@ -225,6 +229,26 @@ describe('pullRequestCommitsSync', () => {
     await pullRequestCommitsSync.run(ctx)
 
     expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('refetches a page without stats when the stats response drops a commit node', async () => {
+    const { ctx, requests, emitted, warn } = makeHarness({
+      prNumbers: [9],
+      reportedTotalCount: { 9: 2 },
+      statsDroppedNodePrs: [9],
+    })
+
+    await pullRequestCommitsSync.run(ctx)
+
+    expect(requests).toEqual([
+      { prNumber: 9, usedStatsQuery: true, cursor: null },
+      { prNumber: 9, usedStatsQuery: false, cursor: null },
+    ])
+    expect(emitted.map((record) => record.sourceId)).toEqual(['9-1', '9-1-b'])
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      'github dropped commits from a diff stats page, refetching without them',
+    )
   })
 
   it('warns when github returns no pull request for a listed one', async () => {

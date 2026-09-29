@@ -30,6 +30,7 @@ export interface SlackCommandExecutionContext {
   // ack — only present when Slack included one on the originating request.
   responseUrl?: string
   userId?: string
+  channelId?: string
 }
 
 export interface SlackCommandDefinition {
