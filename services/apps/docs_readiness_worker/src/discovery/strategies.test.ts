@@ -1898,13 +1898,13 @@ describe('serpStrategy', () => {
         () =>
           Response.json({
             organic_results: [
-              { link: 'https://docs.example.com/', title: 'proj documentation' },
+              { link: 'https://docs.proj.dev/', title: 'proj documentation' },
               { link: 'https://github.com/example/proj', title: 'proj repo' },
-              { link: 'https://example.com/blog', title: 'unrelated blog post' },
+              { link: 'https://proj.dev/blog', title: 'unrelated blog post' },
             ],
           }),
       ],
-      ['https://docs.example.com', html],
+      ['https://docs.proj.dev', html],
     ])
 
     const result = await serpStrategy({
@@ -1917,7 +1917,7 @@ describe('serpStrategy', () => {
       serpApiKey: 'key123',
     })
     expect(result).toEqual([
-      { url: 'https://docs.example.com/', method: 'serp', confidence: 'low', livenessOk: true },
+      { url: 'https://docs.proj.dev/', method: 'serp', confidence: 'low', livenessOk: true },
     ])
   })
 
@@ -1942,6 +1942,35 @@ describe('serpStrategy', () => {
       serpApiKey: 'key123',
     })
     expect(result).toEqual([])
+  })
+
+  it('drops results whose host is unrelated to the project or is a noise host', async () => {
+    routeFetch([
+      [
+        'https://serpapi.com/search.json',
+        () =>
+          Response.json({
+            organic_results: [
+              { link: 'https://redis.io/docs/latest/', title: 'proj documentation' },
+              { link: 'https://en.wikipedia.org/wiki/proj-docs', title: 'proj documentation' },
+              { link: 'https://www.linkedin.com/proj/docs', title: 'proj documentation' },
+              { link: 'https://proj.readthedocs.io/en/latest/', title: 'proj documentation' },
+            ],
+          }),
+      ],
+      ['https://proj.readthedocs.io/en/latest/', html],
+    ])
+
+    const result = await serpStrategy({
+      name: 'proj',
+      slug: 'proj',
+      website: null,
+      websiteShared: false,
+      repos: [],
+      githubToken: null,
+      serpApiKey: 'key123',
+    })
+    expect(result.map((c) => c.url)).toEqual(['https://proj.readthedocs.io/en/latest/'])
   })
 
   it('returns [] on a fetch error', async () => {

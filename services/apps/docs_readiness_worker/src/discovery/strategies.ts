@@ -22,6 +22,7 @@ import {
   normalizeUrl,
   normalizedDomain,
 } from './http'
+import { isRelevantSerpResult, projectTokens } from './relevance'
 
 export interface IDiscoveryContext {
   name: string
@@ -510,9 +511,14 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
       organic_results?: { link?: string; title?: string }[]
     }
     const results = body.organic_results ?? []
+    const tokens = projectTokens({
+      name: ctx.name,
+      slug: ctx.slug,
+      repoUrl: primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name }),
+    })
 
     const kept = results.filter((result) => {
-      if (!result.link) {
+      if (!result.link || !isRelevantSerpResult(result.link, tokens)) {
         return false
       }
       const host = domainOf(result.link)
