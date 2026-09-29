@@ -187,7 +187,9 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
 
     expect(result.docsUrl).toBeNull()
     expect(
-      fetchMock.mock.calls.some(([url]) => new URL(String(url)).hostname.endsWith('aswf.io')),
+      fetchMock.mock.calls.some(([url]) =>
+        ['aswf.io', 'www.aswf.io'].includes(new URL(String(url)).hostname),
+      ),
     ).toBe(false)
   })
 
