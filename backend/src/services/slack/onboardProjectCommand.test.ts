@@ -311,8 +311,16 @@ describe('runOnboardProjectCommand', () => {
       expect(evaluateProject).toHaveBeenCalledTimes(1)
     })
 
-    it('does not post or store anything when Slack sent no channel id', async () => {
-      await run(undefined)
+    it('warns and stores nothing when Slack sent no channel id', async () => {
+      const options = mockOptions()
+      await runOnboardProjectCommand({
+        repoUrl: catalogEntry.repoUrl,
+        options,
+        responseUrl: 'https://hooks.slack.com/response',
+        actorId: 'U123',
+      })
+
+      expect(options.log.warn).toHaveBeenCalled()
 
       expect(postSlackMessage).not.toHaveBeenCalled()
       expect(setProjectCatalogSourceUrl).not.toHaveBeenCalled()

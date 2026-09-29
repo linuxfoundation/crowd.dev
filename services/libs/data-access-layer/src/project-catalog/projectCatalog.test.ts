@@ -31,12 +31,23 @@ function catalogRow(overrides: Partial<Parameters<typeof insertProjectCatalog>[1
 }
 
 describe('setProjectCatalogSourceUrl', () => {
-  test('sets the sourceUrl', async ({ qx }) => {
+  test('sets the sourceUrl when it is empty', async ({ qx }) => {
     const inserted = await insertProjectCatalog(qx, catalogRow())
 
     await setProjectCatalogSourceUrl(qx, inserted.id, 'https://slack.test/archives/C1/p1')
     expect((await findProjectCatalogById(qx, inserted.id))?.sourceUrl).toBe(
       'https://slack.test/archives/C1/p1',
+    )
+  })
+
+  test('never overwrites an existing sourceUrl', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow())
+    await setProjectCatalogSourceUrl(qx, inserted.id, 'https://github.com/foo/bar/discussions/1')
+
+    await setProjectCatalogSourceUrl(qx, inserted.id, 'https://slack.test/archives/C1/p1')
+
+    expect((await findProjectCatalogById(qx, inserted.id))?.sourceUrl).toBe(
+      'https://github.com/foo/bar/discussions/1',
     )
   })
 })

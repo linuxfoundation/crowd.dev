@@ -769,7 +769,7 @@ export async function setProjectCatalogSourceUrl(
     `
     UPDATE "projectCatalog"
     SET "sourceUrl" = $(sourceUrl), "updatedAt" = NOW()
-    WHERE id = $(id)
+    WHERE id = $(id) AND "sourceUrl" IS NULL
     `,
     { id, sourceUrl },
   )

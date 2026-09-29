@@ -79,6 +79,7 @@ async function recordRequestMessage(
 ): Promise<void> {
   try {
     if (!channelId) {
+      log.warn({ catalogId, repoUrl }, 'Slack sent no channel id, onboarding request not recorded.')
       return
     }
 
