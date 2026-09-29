@@ -34,7 +34,6 @@ interface HarnessOptions {
   ghostAuthorPrs?: number[]
   reportedTotalCount?: Record<number, number>
   nullNodePrs?: number[]
-  // PR numbers whose stats query nulls a commit node that the no-stats query returns intact
   statsDroppedNodePrs?: number[]
   missingPullRequestPrs?: number[]
 }
@@ -107,9 +106,13 @@ function makeHarness(opts: HarnessOptions) {
         return { data: { repository: { pullRequest: null } } }
       }
       const reportedTotalCount = opts.reportedTotalCount?.[prNumber]
-      const dropsNode =
-        opts.nullNodePrs?.includes(prNumber) ||
-        (usedStatsQuery && opts.statsDroppedNodePrs?.includes(prNumber))
+      const secondNode = opts.statsDroppedNodePrs?.includes(prNumber)
+        ? usedStatsQuery
+          ? null
+          : commitNode(`${prNumber}-${pageIndex}-b`)
+        : opts.nullNodePrs?.includes(prNumber)
+          ? null
+          : undefined
       return {
         data: {
           repository: {
@@ -122,7 +125,7 @@ function makeHarness(opts: HarnessOptions) {
                 },
                 nodes: [
                   commitNode(`${prNumber}-${pageIndex}`, opts.ghostAuthorPrs?.includes(prNumber)),
-                  ...(dropsNode ? [null] : []),
+                  ...(secondNode === undefined ? [] : [secondNode]),
                 ],
               },
             },
@@ -232,7 +235,6 @@ describe('pullRequestCommitsSync', () => {
     const { ctx, requests, emitted, warn } = makeHarness({
       prNumbers: [9],
       reportedTotalCount: { 9: 2 },
-      pagesPerPr: { 9: 2 },
       statsDroppedNodePrs: [9],
     })
 
@@ -241,9 +243,8 @@ describe('pullRequestCommitsSync', () => {
     expect(requests).toEqual([
       { prNumber: 9, usedStatsQuery: true, cursor: null },
       { prNumber: 9, usedStatsQuery: false, cursor: null },
-      { prNumber: 9, usedStatsQuery: false, cursor: 'p2' },
     ])
-    expect(emitted.map((record) => record.sourceId)).toEqual(['9-1', '9-2'])
+    expect(emitted.map((record) => record.sourceId)).toEqual(['9-1', '9-1-b'])
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalledWith(
       'github dropped commits from a diff stats page, refetching without them',
