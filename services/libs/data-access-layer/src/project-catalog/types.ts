@@ -12,7 +12,11 @@ export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
 
 export type ProjectCatalogActionCounts = Record<ProjectCatalogAction, number>
 
-export const PROJECT_CATALOG_HUMAN_PROVENANCES = ['github-discussion', 'slack-tag'] as const
+export const PROJECT_CATALOG_HUMAN_PROVENANCES = [
+  'github-discussion',
+  'slack-tag',
+  'slack-bot',
+] as const
 export const PROJECT_CATALOG_BULK_PROVENANCES = ['lf-criticality-score'] as const
 
 export const PROJECT_CATALOG_PROVENANCES = [

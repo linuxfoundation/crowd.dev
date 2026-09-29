@@ -86,7 +86,10 @@
     "reporterChannel": "CROWD_SLACK_REPORTER_CHANNEL",
     "teamId": "CROWD_SLACK_TEAM_ID",
     "appId": "CROWD_SLACK_APP_ID",
-    "appToken": "CROWD_SLACK_APP_TOKEN"
+    "appToken": "CROWD_SLACK_APP_TOKEN",
+    "onboardingTeamId": "CROWD_SLACK_ONBOARDING_TEAM_ID",
+    "onboardingAppId": "CROWD_SLACK_ONBOARDING_APP_ID",
+    "onboardingAppToken": "CROWD_SLACK_ONBOARDING_APP_TOKEN"
   },
   "google": {
     "clientId": "CROWD_GOOGLE_CLIENT_ID",
