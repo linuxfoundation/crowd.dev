@@ -53,7 +53,7 @@ function findViolatingFiles(ruleName, ruleConfig) {
   }
 
   return results
-    .filter((result) => result.errorCount > 0)
+    .filter((result) => result.messages.some((message) => message.ruleId === ruleName))
     .map((result) => path.relative(frontendDir, result.filePath))
     .sort();
 }
