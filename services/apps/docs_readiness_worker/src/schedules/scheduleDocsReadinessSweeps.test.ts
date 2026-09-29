@@ -1,6 +1,7 @@
 import { ScheduleAlreadyRunning } from '@temporalio/client'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import { MAX_CONCURRENT_WORKERS } from '../scoring/runChecksIsolated'
 import { scheduleDocsReadinessSweeps } from './scheduleDocsReadinessSweeps'
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), getHandle: vi.fn(), update: vi.fn() }))
@@ -23,6 +24,14 @@ const EXPECTED_TIMEOUTS = {
   docsReadinessIncrementalSweepHealthCheck: '1 hour',
 }
 
+const EXPECTED_ARGS = {
+  docsReadinessFullSweep: [{ mode: 'full', scope: 'lf', concurrency: MAX_CONCURRENT_WORKERS }],
+  docsReadinessIncrementalSweep: [
+    { mode: 'incremental', scope: 'lf', concurrency: MAX_CONCURRENT_WORKERS },
+  ],
+  docsReadinessIncrementalSweepHealthCheck: [],
+}
+
 afterEach(() => vi.resetAllMocks())
 
 describe('scheduleDocsReadinessSweeps', () => {
@@ -36,6 +45,15 @@ describe('scheduleDocsReadinessSweeps', () => {
       ]),
     )
     expect(timeouts).toEqual(EXPECTED_TIMEOUTS)
+  })
+
+  test('starts no more sweep children than the scoring thread pool has threads', async () => {
+    await scheduleDocsReadinessSweeps()
+
+    const args = Object.fromEntries(
+      mocks.create.mock.calls.map(([options]) => [options.scheduleId, options.action.args]),
+    )
+    expect(args).toEqual(EXPECTED_ARGS)
   })
 
   test('reconciles the action of schedules that already exist, keeping everything else', async () => {
@@ -57,6 +75,7 @@ describe('scheduleDocsReadinessSweeps', () => {
     expect(reconciled.map((r) => r.action.workflowExecutionTimeout)).toEqual(
       Object.values(EXPECTED_TIMEOUTS),
     )
+    expect(reconciled.map((r) => r.action.args)).toEqual(Object.values(EXPECTED_ARGS))
     for (const result of reconciled) {
       expect(result).toMatchObject({
         spec: previous.spec,

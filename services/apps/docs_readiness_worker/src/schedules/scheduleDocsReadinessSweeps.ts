@@ -1,6 +1,7 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../main'
+import { MAX_CONCURRENT_WORKERS } from '../scoring/runChecksIsolated'
 import { DOCS_READINESS_TASK_QUEUE } from '../types'
 import { checkDocsReadinessSweepHealth, runDocsReadinessSweep } from '../workflows'
 
@@ -9,6 +10,9 @@ import { checkDocsReadinessSweepHealth, runDocsReadinessSweep } from '../workflo
 const INCREMENTAL_SWEEP_TIMEOUT = '23 hours'
 const FULL_SWEEP_TIMEOUT = '47 hours'
 const HEALTH_CHECK_TIMEOUT = '1 hour'
+
+// One child per scoring thread, so no scoring waits for a thread inside its 25 minute deadline.
+const SWEEP_CONCURRENCY = MAX_CONCURRENT_WORKERS
 
 type ScheduleAction = Parameters<typeof svc.temporal.schedule.create>[0]['action']
 
@@ -42,7 +46,7 @@ export const scheduleDocsReadinessSweeps = async () => {
     taskQueue: DOCS_READINESS_TASK_QUEUE,
     workflowExecutionTimeout: FULL_SWEEP_TIMEOUT,
     retry: { initialInterval: '15 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
-    args: [{ mode: 'full', scope: 'lf' }],
+    args: [{ mode: 'full', scope: 'lf', concurrency: SWEEP_CONCURRENCY }],
   })
   await createSchedule('docsReadinessIncrementalSweep', '0 3 * * *', {
     type: 'startWorkflow',
@@ -50,7 +54,7 @@ export const scheduleDocsReadinessSweeps = async () => {
     taskQueue: DOCS_READINESS_TASK_QUEUE,
     workflowExecutionTimeout: INCREMENTAL_SWEEP_TIMEOUT,
     retry: { initialInterval: '15 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
-    args: [{ mode: 'incremental', scope: 'lf' }],
+    args: [{ mode: 'incremental', scope: 'lf', concurrency: SWEEP_CONCURRENCY }],
   })
   await createSchedule('docsReadinessIncrementalSweepHealthCheck', '0 6 * * *', {
     type: 'startWorkflow',
