@@ -30,9 +30,8 @@ const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
 const reserveDailyLlmCall = createDailyLlmCap()
 const reserveDailyProjectOnboardingRequest = createDailyProjectOnboardingCap()
 
-// optionsBgQx is Sequelize-backed and always issues QueryTypes.SELECT, which the
-// API service's replication config routes to the read replica — fatal for our
-// INSERT/UPDATE ... RETURNING claims. Pin this detached workflow to the writer instead.
+// optionsBgQx routes QueryTypes.SELECT to the read replica, which breaks our
+// INSERT/UPDATE ... RETURNING claims — pin this detached workflow to the writer instead.
 async function getBgQx() {
   const db = await getDbConnection(WRITE_DB_CONFIG())
   return pgpQx(db)
@@ -232,44 +231,44 @@ export async function runOnboardProjectCommand({
     return
   }
 
+  let onboardingResult
   try {
-    const onboardingResult = await onboardProject({
+    onboardingResult = await onboardProject({
       id: randomUUID(),
       repoUrl: catalogEntry.repoUrl,
       repoName: catalogEntry.repoName,
       projectSlug: catalogEntry.projectSlug,
     })
-
-    if (onboardingResult.outcome === 'error') {
-      await updateProjectCatalog(qx, catalogEntry.id, {
-        action: 'error',
-        onboardingError: onboardingResult.error ?? 'unknown error',
-        onboardedAt: null,
-      })
-      await send(
-        textMessage(
-          `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
-        ),
-      )
-      return
-    }
-
-    await updateProjectCatalog(qx, catalogEntry.id, {
-      action: 'onboarded',
-      onboardingError: null,
-    })
-
-    await send(
-      textMessage(`:white_check_mark: \`${repoUrl}\` evaluated and onboarded successfully!`),
-    )
   } catch (err) {
-    // Revert the claim on any unexpected throw too, otherwise the row is stuck at
-    // action='onboard' with onboardedAt set — unretryable and invisible to the nightly worker.
+    // Only the external call itself reverts the claim — a persistence failure
+    // after a real success must not be treated as a failed onboarding.
     await updateProjectCatalog(qx, catalogEntry.id, {
       action: 'error',
       onboardingError: getErrorMessage(err),
       onboardedAt: null,
     })
     await send(textMessage(`\`${repoUrl}\` passed evaluation but onboarding failed unexpectedly.`))
+    return
   }
+
+  if (onboardingResult.outcome === 'error') {
+    await updateProjectCatalog(qx, catalogEntry.id, {
+      action: 'error',
+      onboardingError: onboardingResult.error ?? 'unknown error',
+      onboardedAt: null,
+    })
+    await send(
+      textMessage(
+        `\`${repoUrl}\` passed evaluation but onboarding failed: ${onboardingResult.error ?? 'unknown error'}`,
+      ),
+    )
+    return
+  }
+
+  await updateProjectCatalog(qx, catalogEntry.id, {
+    action: 'onboarded',
+    onboardingError: null,
+  })
+
+  await send(textMessage(`:white_check_mark: \`${repoUrl}\` evaluated and onboarded successfully!`))
 }
