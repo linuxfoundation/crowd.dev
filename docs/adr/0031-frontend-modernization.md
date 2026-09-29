@@ -37,7 +37,7 @@ Modernize the frontend incrementally on `main`, in small ratcheted PRs, rather t
 ### Alternative 3: Adopt oxlint for the frontend too
 
 - **Pros**: One linter across the whole repo, and oxlint runs roughly 100x faster than ESLint.
-- **Cons**: oxlint has no `eslint-plugin-vue` template rules, which the A-15/U-09 ratchets depend on.
+- **Cons**: oxlint has no `eslint-plugin-vue` template rules, which the ESLint ratchets that lint new `.vue` files and the stricter Vue template rules depend on.
 - **Why not**: Template linting is the point of keeping ESLint on the frontend.
 
 ### Alternative 4: Rewrite the frontend on Nuxt
@@ -64,5 +64,5 @@ Modernize the frontend incrementally on `main`, in small ratcheted PRs, rather t
 ### Risks
 
 - Ratchet lists (type-check error count, cycle allowlist, legacy-file lists) can drift if not enforced; CI enforcement keeps them shrinking rather than growing.
-- Storybook/pnpm peer-dependency issues are a known risk, which is why that work (A-12) is sequenced last.
+- Storybook/pnpm peer-dependency issues are a known risk, which is why that work is sequenced last.
 - TS 7's native compiler may change type-checking semantics; it is evaluated in a separate spike rather than adopted alongside this decision.
