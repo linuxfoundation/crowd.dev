@@ -95,8 +95,73 @@ describe('findSharedDocsUrls', () => {
     await upsert(b.id, 'https://foundation.org')
     await upsert(c.id, null)
 
-    expect(await findSharedDocsUrls(qx, a.id)).toEqual(['https://foundation.org'])
-    expect(await findSharedDocsUrls(qx, c.id)).toEqual(['https://foundation.org'])
+    expect(await findSharedDocsUrls(qx, a.id, ['foundation.org'])).toEqual([
+      'https://foundation.org',
+    ])
+    expect(await findSharedDocsUrls(qx, c.id, ['foundation.org'])).toEqual([
+      'https://foundation.org',
+    ])
+  })
+
+  test('returns only URLs on the given hosts', async ({ qx }) => {
+    const mk = (slug: string) => createInsightsProject(qx, { name: slug, slug, isLF: true })
+    const [me, p1, p2, p3] = await Promise.all([mk('me'), mk('p1'), mk('p2'), mk('p3')])
+    const upsert = (projectId: string, docsUrl: string) =>
+      upsertProjectDocDiscovery(qx, {
+        projectId,
+        docsUrl,
+        discoveryMethod: 'project-website',
+        confidence: 'low',
+        candidates: [],
+      })
+    await upsert(p1.id, 'https://foundation.org/projects/x')
+    await upsert(p2.id, 'https://docs.third.org')
+    await upsert(p3.id, 'https://unrelated.io/docs')
+
+    const rows = await findSharedDocsUrls(qx, me.id, ['foundation.org', 'third.org'])
+
+    expect(rows.sort()).toEqual(['https://docs.third.org', 'https://foundation.org/projects/x'])
+  })
+
+  test('still returns a URL on a host written with other case, www, a port or no scheme', async ({
+    qx,
+  }) => {
+    const mk = (slug: string) => createInsightsProject(qx, { name: slug, slug, isLF: true })
+    const [me, p1, p2, p3] = await Promise.all([mk('me2'), mk('q1'), mk('q2'), mk('q3')])
+    const upsert = (projectId: string, docsUrl: string) =>
+      upsertProjectDocDiscovery(qx, {
+        projectId,
+        docsUrl,
+        discoveryMethod: 'project-website',
+        confidence: 'low',
+        candidates: [],
+      })
+    await upsert(p1.id, 'https://WWW.Foundation.org:8443/x')
+    await upsert(p2.id, 'foundation.org/y')
+    await upsert(p3.id, 'http://foundation.org/z/')
+
+    const rows = await findSharedDocsUrls(qx, me.id, ['foundation.org'])
+
+    expect(rows.sort()).toEqual([
+      'foundation.org/y',
+      'http://foundation.org/z/',
+      'https://WWW.Foundation.org:8443/x',
+    ])
+  })
+
+  test('returns nothing when no host is given', async ({ qx }) => {
+    const [me, other] = await Promise.all(
+      ['me3', 'other3'].map((slug) => createInsightsProject(qx, { name: slug, slug, isLF: true })),
+    )
+    await upsertProjectDocDiscovery(qx, {
+      projectId: other.id,
+      docsUrl: 'https://foundation.org',
+      discoveryMethod: 'project-website',
+      confidence: 'low',
+      candidates: [],
+    })
+
+    expect(await findSharedDocsUrls(qx, me.id, [])).toEqual([])
   })
 
   test('ignores rows of disabled and soft-deleted projects', async ({ qx }) => {
@@ -121,7 +186,7 @@ describe('findSharedDocsUrls', () => {
       id: off.id,
     })
 
-    expect(await findSharedDocsUrls(qx, a.id)).toEqual([])
+    expect(await findSharedDocsUrls(qx, a.id, ['example.org'])).toEqual([])
   })
 
   test('is empty when the only user of a URL is the excluded project', async ({ qx }) => {
@@ -133,6 +198,6 @@ describe('findSharedDocsUrls', () => {
       confidence: 'medium',
       candidates: [],
     })
-    expect(await findSharedDocsUrls(qx, p.id)).toEqual([])
+    expect(await findSharedDocsUrls(qx, p.id, ['solo.dev'])).toEqual([])
   })
 })

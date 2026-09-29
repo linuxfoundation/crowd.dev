@@ -112,7 +112,7 @@ describe('resolveDocsUrl', () => {
       website: 'https://example.com',
       websiteShared: false,
       repos: [],
-      sharedDocsUrls: new Set(),
+      findSharedDocsUrls: expect.any(Function),
       githubToken: null,
       serpApiKey: null,
     })
@@ -163,13 +163,13 @@ describe('resolveDocsUrl', () => {
       website: null,
       websiteShared: false,
       repos: [{ url: 'https://github.com/org/repo', starCount: 42 }],
-      sharedDocsUrls: new Set(),
+      findSharedDocsUrls: expect.any(Function),
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
     })
   })
 
-  test('passes docs URLs used by other projects as sharedDocsUrls', async () => {
+  test('scopes the shared docs URL lookup to this project and the given hosts', async () => {
     mocks.findActiveProjectDocOverride.mockResolvedValue(null)
     mocks.findProjectForDocsDiscovery.mockResolvedValue({
       id: 'project-1',
@@ -189,9 +189,16 @@ describe('resolveDocsUrl', () => {
 
     await resolveDocsUrl('project-1')
 
-    expect(mocks.findSharedDocsUrls).toHaveBeenCalledWith({}, 'project-1')
-    const passed = mocks.discoverDocs.mock.calls[0][0].sharedDocsUrls as Set<string>
-    expect([...passed]).toEqual(['https://foundation.org', 'https://www.aswf.io/'])
+    expect(mocks.findSharedDocsUrls).not.toHaveBeenCalled()
+    const lookup = mocks.discoverDocs.mock.calls[0][0].findSharedDocsUrls
+    expect(await lookup(['foundation.org', 'aswf.io'])).toEqual([
+      'https://foundation.org',
+      'https://www.aswf.io/',
+    ])
+    expect(mocks.findSharedDocsUrls).toHaveBeenCalledWith({}, 'project-1', [
+      'foundation.org',
+      'aswf.io',
+    ])
   })
 
   test('rejects if discoverDocs exceeds the discovery timeout, without upserting anything', async () => {

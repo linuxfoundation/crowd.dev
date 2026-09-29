@@ -217,6 +217,15 @@ describe('rankCandidates — shared docs URL penalty (IN-1393)', () => {
     expect(rankCandidates([shared, own], null, null, sharedSet(stored))).toEqual(own)
   })
 
+  test('path case matters: a shared /ProjectA penalises /ProjectA but not /projecta', () => {
+    const upper = candidate('https://docs.foundation.org/ProjectA', 'docs-subdomain', true)
+    const lower = candidate('https://docs.foundation.org/projecta', 'docs-subdomain', true)
+    const own = candidate('https://myproject.org', 'project-website', true)
+    const set = sharedSet('https://docs.foundation.org/ProjectA')
+    expect(rankCandidates([upper, own], null, null, set)).toEqual(own)
+    expect(rankCandidates([lower, own], null, null, set)).toEqual(lower)
+  })
+
   test('a different path on the same host is not penalised', () => {
     const other = candidate('https://docs.lfenergy.org/y', 'docs-subdomain', true)
     const own = candidate('https://myproject.org', 'project-website', true)
@@ -239,6 +248,14 @@ describe('rankCandidates — shared docs URL penalty (IN-1393)', () => {
     const set = sharedSet('https://community.finos.org/docs/easycla')
     expect(rankCandidates([shared, repo], null, null, set)).toEqual(repo)
     expect(rankCandidates([repo, shared], null, null, set)).toEqual(repo)
+  })
+
+  test('an unshared repo-url beats a shared repo-url, in either order', () => {
+    const shared = candidate('https://github.com/org/shared-repo', 'repo-url', true, 'low')
+    const own = candidate('https://github.com/org/own-repo', 'repo-url', true, 'low')
+    const set = sharedSet('https://github.com/org/shared-repo')
+    expect(rankCandidates([shared, own], null, null, set)).toEqual(own)
+    expect(rankCandidates([own, shared], null, null, set)).toEqual(own)
   })
 
   test('an unshared repo-url beats the strongest possible shared candidate', () => {

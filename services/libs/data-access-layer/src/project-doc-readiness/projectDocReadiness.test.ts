@@ -3,6 +3,7 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
+import { createProjectDocOverride, deactivateProjectDocOverride } from '../project-doc-overrides'
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
 import {
   findLatestProjectDocReadiness,
@@ -12,7 +13,7 @@ import {
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from './projectDocReadiness'
-import { IProjectDocReadinessUpsert } from './types'
+import { IProjectDocReadinessUpsert, REPO_ONLY_ERROR } from './types'
 
 const test = withQx(base)
 
@@ -181,6 +182,62 @@ describe('findProjectsForDocsReadiness', () => {
     })
 
     expect(rows.map((r) => r.id).sort()).toEqual([unscored.id, failed.id].sort())
+  })
+
+  test('incremental skips latest repo-only unless an active override exists', async ({ qx }) => {
+    const unscored = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
+    const fine = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })
+    const timedOut = await createInsightsProject(qx, { name: 'C', slug: 'c', isLF: true })
+    const repoOnly = await createInsightsProject(qx, { name: 'D', slug: 'd', isLF: true })
+    const repoOnlyOverride = await createInsightsProject(qx, { name: 'E', slug: 'e', isLF: true })
+    const repoOnlyOldOk = await createInsightsProject(qx, { name: 'F', slug: 'f', isLF: true })
+    const repoOnlyInactive = await createInsightsProject(qx, { name: 'G', slug: 'g', isLF: true })
+    const repoOnlyThenTimeout = await createInsightsProject(qx, {
+      name: 'H',
+      slug: 'h',
+      isLF: true,
+    })
+
+    const repoOnlyRow = { ok: false, error: REPO_ONLY_ERROR }
+    await upsertProjectDocReadiness(qx, scored(fine.id))
+    await upsertProjectDocReadiness(qx, scored(timedOut.id, { ok: false, error: 'timeout' }))
+    await upsertProjectDocReadiness(qx, scored(repoOnly.id, repoOnlyRow))
+    await upsertProjectDocReadiness(qx, scored(repoOnlyOverride.id, repoOnlyRow))
+    await upsertProjectDocReadiness(qx, scored(repoOnlyOldOk.id, { runDate: '2026-01-01' }))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyOldOk.id, { runDate: '2026-01-02', ...repoOnlyRow }),
+    )
+    await upsertProjectDocReadiness(qx, scored(repoOnlyInactive.id, repoOnlyRow))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyThenTimeout.id, { runDate: '2026-01-01', ...repoOnlyRow }),
+    )
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyThenTimeout.id, { runDate: '2026-01-02', ok: false, error: 'timeout' }),
+    )
+
+    const override = (projectId: string) => ({
+      projectId,
+      docsUrl: 'https://example.com/docs',
+      submittedBy: 'test',
+    })
+    await createProjectDocOverride(qx, override(repoOnlyOverride.id))
+    await createProjectDocOverride(qx, override(repoOnlyInactive.id))
+    await deactivateProjectDocOverride(qx, repoOnlyInactive.id)
+
+    const incremental = await findProjectsForDocsReadiness(qx, {
+      mode: 'incremental',
+      scope: 'lf',
+      limit: 20,
+    })
+    const full = await findProjectsForDocsReadiness(qx, { mode: 'full', scope: 'lf', limit: 20 })
+
+    expect(incremental.map((r) => r.id).sort()).toEqual(
+      [unscored.id, timedOut.id, repoOnlyOverride.id, repoOnlyThenTimeout.id].sort(),
+    )
+    expect(full).toHaveLength(8)
   })
 
   test('pages by id with afterId and limit', async ({ qx }) => {

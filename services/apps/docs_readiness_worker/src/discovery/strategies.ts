@@ -28,8 +28,7 @@ export interface IDiscoveryContext {
   slug: string
   website: string | null
   websiteShared: boolean
-  // shortcut: optional so existing ctx literals stay valid. revisit: when a strategy needs it.
-  sharedDocsUrls?: ReadonlySet<string>
+  findSharedDocsUrls?: (hosts: string[]) => Promise<string[]>
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null

@@ -40,10 +40,10 @@ const GITHUB_REPO_PATH_SCORE = -10
 // Below every organic score (max about +35), above the GitHub floor.
 const SHARED_URL_PENALTY = -50
 
-// Same site regardless of scheme, www, query or trailing slash.
+// Same site regardless of scheme, www, host case, query or trailing slash; path case is kept.
 function sharedKey(url: string): string | null {
   const domain = normalizedDomain(url)
-  return domain ? `${domain}${pathnameOf(url).replace(/\/+$/, '')}`.toLowerCase() : null
+  return domain ? `${domain}${pathnameOf(url).replace(/\/+$/, '')}` : null
 }
 
 const isGithubRepoPath = (host: string, pathname: string): boolean =>
@@ -153,12 +153,13 @@ export function rankCandidates(
     const host = domainOf(c.url) ?? ''
     const pathname = pathnameOf(c.url)
     const domain = normalizedDomain(c.url)
+    const sharedPenalty = isShared(c) ? SHARED_URL_PENALTY : 0
 
     if (GITHUB_SHARED_HOSTS.has(host)) {
-      return {
-        candidate: c,
-        score: isGithubRepoPath(host, pathname) ? GITHUB_REPO_PATH_SCORE : GITHUB_SHARED_HOST_SCORE,
-      }
+      const floor = isGithubRepoPath(host, pathname)
+        ? GITHUB_REPO_PATH_SCORE
+        : GITHUB_SHARED_HOST_SCORE
+      return { candidate: c, score: floor + sharedPenalty }
     }
 
     const bareLlms = isBareRootLlmsHit(c)
@@ -175,11 +176,7 @@ export function rankCandidates(
       score -= 2
     }
 
-    if (isShared(c)) {
-      score += SHARED_URL_PENALTY
-    }
-
-    return { candidate: c, score }
+    return { candidate: c, score: score + sharedPenalty }
   })
 
   scored.sort((a, b) => b.score - a.score)

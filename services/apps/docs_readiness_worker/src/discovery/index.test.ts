@@ -253,7 +253,7 @@ describe('discoverDocs ranking inputs (IN-1393)', () => {
     expect(own.docsUrl).toBe('https://foundation.org/docs')
   })
 
-  test('forwards sharedDocsUrls so a shared candidate loses to an unshared one', async () => {
+  test('a candidate found by findSharedDocsUrls loses to an unshared one', async () => {
     strategyMocks.STRATEGIES.push(async () => [
       candidate('https://docs.lfenergy.org', 'docs-subdomain', true),
       candidate('https://myproject.org', 'project-website', true),
@@ -262,10 +262,37 @@ describe('discoverDocs ranking inputs (IN-1393)', () => {
     const result = await discoverDocs({
       ...ctx(),
       website: null,
-      sharedDocsUrls: new Set(['https://docs.lfenergy.org/']),
+      findSharedDocsUrls: async () => ['https://docs.lfenergy.org/'],
     })
 
     expect(result.docsUrl).toBe('https://myproject.org')
+  })
+
+  test('looks up shared URLs once, for the distinct hosts of the live candidates only', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://www.lfenergy.org/a', 'docs-path', true),
+      candidate('https://lfenergy.org/b', 'docs-path', true),
+      candidate('https://myproject.org', 'project-website', true),
+      candidate('https://dead.example.com', 'docs-path', false),
+    ])
+    const findSharedDocsUrls = vi.fn(async () => [])
+
+    await discoverDocs({ ...ctx(), website: null, findSharedDocsUrls })
+
+    expect(findSharedDocsUrls).toHaveBeenCalledTimes(1)
+    expect(findSharedDocsUrls).toHaveBeenCalledWith(['lfenergy.org', 'myproject.org'])
+  })
+
+  test('skips the shared URL lookup when no candidate is live', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://dead.example.com', 'docs-path', false),
+    ])
+    const findSharedDocsUrls = vi.fn(async () => [])
+
+    const result = await discoverDocs({ ...ctx(), website: null, findSharedDocsUrls })
+
+    expect(result.docsUrl).toBeNull()
+    expect(findSharedDocsUrls).not.toHaveBeenCalled()
   })
 
   test('a foundation llms.txt root loses to the repo homepage page (report case 10)', async () => {
