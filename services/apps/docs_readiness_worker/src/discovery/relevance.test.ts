@@ -96,11 +96,12 @@ const CASES: IRelevanceCase[] = [
     url: 'https://warpx.readthedocs.io/en/26.02/usage/workflows.html',
     relevant: true,
   },
+  // A 3-character token must equal the whole label, so zotregistry.dev no longer matches "zot".
   {
     project: 'zot',
     tokens: zot,
     url: 'https://zotregistry.dev/v2.1.20/install-guides/install-guide-k8s/',
-    relevant: true,
+    relevant: false,
   },
   {
     project: 'CNTT',
@@ -166,6 +167,76 @@ const CASES: IRelevanceCase[] = [
     'https://learn.microsoft.com/ar-sa/entra/architecture/',
     'https://umbrex.com/resources/retail-industry-playbooks/designing-the-sop-architecture-and-documentation-system/',
   ].map((url) => ({ project: 'Architect', tokens: architect, url, relevant: false })),
+  // Right sites behind deep SERP results.
+  ...[
+    [
+      'FAIR Package Manager',
+      'fair-package-manager',
+      'https://fair.pm/packages/plugins/itsmanzur-docs/',
+    ],
+    ['Ketch', 'ketch', 'https://docs.ketch.com/ketch/docs/appcues'],
+    [
+      'OPNFV Documentation',
+      'opnfv',
+      'https://docs.opnfv.org/projects/barometer/en/latest/release/userguide/feature.userguide.html',
+    ],
+    ['Rasa', 'rasa', 'https://rasa.com/docs/studio/build/content-management/buttons-and-links/'],
+    [
+      'StarlingX',
+      'starlingx',
+      'https://docs.starlingx.io/usertasks/index-usertasks-b18b379ab832.html',
+    ],
+    ['Yardstick', 'yardstick', 'https://yardstickone.readthedocs.io/en/latest/'],
+  ].map(([name, slug, url]) => ({
+    project: name,
+    tokens: tokensOf(name, slug),
+    url,
+    relevant: true,
+  })),
+  // Generic name words matching a subdomain, or a substring of another site, are junk.
+  ...[
+    [
+      'Currency Reference Data',
+      'currency-reference-data',
+      'https://reference.wolfram.com/language/tutorial/CurrencyUnits.html',
+    ],
+    ['Edge Cloud', 'edge-cloud', 'https://docs.cloud.google.com/edge-cloud/docs'],
+    ['R Community', 'r-community', 'https://community.plotly.com/t/r-community/1'],
+    [
+      'Secure Data Storage Working Group',
+      'secure-data-storage-wg',
+      'https://datatracker.ietf.org/doc/html/rfc2541',
+    ],
+    [
+      'z/VM Community Tools',
+      'zvm-community-tools',
+      'https://community.broadcom.com/mainframe/zvm-tools',
+    ],
+    ['TorQ application framework', 'torq', 'https://docs.qtorque.io/overview/FAQ'],
+  ].map(([name, slug, url]) => ({
+    project: name,
+    tokens: tokensOf(name, slug),
+    url,
+    relevant: false,
+  })),
+  {
+    project: 'token of 5+ characters may start or end the label',
+    tokens: ['stack'],
+    url: 'https://mystack.com/',
+    relevant: true,
+  },
+  {
+    project: 'token of 5+ characters must not sit in the middle of the label',
+    tokens: ['stack'],
+    url: 'https://mystackhub.com/',
+    relevant: false,
+  },
+  {
+    project: 'token in a subdomain only',
+    tokens: ['proj'],
+    url: 'https://proj.example.com/',
+    relevant: false,
+  },
   // Mechanics.
   {
     project: 'shared hosting tenant that does not match',
