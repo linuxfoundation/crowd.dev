@@ -1,6 +1,7 @@
 import { ApplicationFailure } from '@temporalio/client'
 
 import {
+  REPO_ONLY_ERROR,
   findProjectForDocsDiscovery,
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
@@ -53,7 +54,7 @@ export async function scoreProject(
 
   // afdocs resolves github.com/llms.txt for a repo page and would score GitHub's own files.
   if (resolved.discoveryMethod === 'repo-url') {
-    throw ApplicationFailure.nonRetryable('repo-only')
+    throw ApplicationFailure.nonRetryable(REPO_ONLY_ERROR)
   }
 
   const readerQx = pgpQx(svc.postgres.reader.connection())

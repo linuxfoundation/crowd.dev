@@ -6,7 +6,9 @@ import {
   IProjectDocReadinessCheckInsert,
   IProjectDocReadinessUpsert,
   IProjectForDocsDiscovery,
+  IProjectForDocsDiscoveryWithSharedCount,
   IProjectForDocsReadiness,
+  REPO_ONLY_ERROR,
 } from './types'
 
 const READINESS_COLUMNS = [
@@ -214,7 +216,7 @@ export async function findProjectsForDocsReadiness(
     SELECT p."id", p."slug", p."name"
     FROM "insightsProjects" p
     LEFT JOIN LATERAL (
-      SELECT r."ok"
+      SELECT r."ok", r."error"
       FROM "projectDocReadiness" r
       WHERE r."projectId" = p."id"
       ORDER BY r."runDate" DESC
@@ -223,7 +225,19 @@ export async function findProjectsForDocsReadiness(
     WHERE p."enabled"
       AND p."deletedAt" IS NULL
       AND ($(lfOnly) = FALSE OR p."isLF")
-      AND ($(incremental) = FALSE OR latest."ok" IS DISTINCT FROM TRUE)
+      AND (
+        $(incremental) = FALSE
+        OR (
+          latest."ok" IS DISTINCT FROM TRUE
+          AND (
+            latest."error" IS DISTINCT FROM $(repoOnlyError)
+            OR EXISTS (
+              SELECT 1 FROM "projectDocOverrides" o
+              WHERE o."projectId" = p."id" AND o."active"
+            )
+          )
+        )
+      )
       AND ($(afterId)::uuid IS NULL OR p."id" > $(afterId))
     ORDER BY p."id"
     LIMIT $(limit)
@@ -231,30 +245,46 @@ export async function findProjectsForDocsReadiness(
     {
       lfOnly: scope === 'lf',
       incremental: mode === 'incremental',
+      repoOnlyError: REPO_ONLY_ERROR,
       afterId: afterId ?? null,
       limit,
     },
   )
 }
 
-// shortcut: sibling count seq-scans insightsProjects (~200ms at 13.7k rows). revisit: if called in a hot loop, add an expression index on the normalised website.
+// Seq-scans insightsProjects (~200ms at 13.7k rows), so callers must opt in.
+const WEBSITE_SHARED_COUNT_COLUMN = `
+  (
+    SELECT count(*)::int
+    FROM "insightsProjects" o
+    WHERE o."id" <> p."id"
+      AND o."enabled"
+      AND o."deletedAt" IS NULL
+      AND COALESCE(p."website", '') <> ''
+      AND lower(regexp_replace(o."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+        = lower(regexp_replace(p."website", '^(https?://)?(www[.])?|/+$', '', 'gi'))
+  ) AS "websiteSharedCount"`
+
 export async function findProjectForDocsDiscovery(
   qx: QueryExecutor,
   projectId: string,
+  options: { withWebsiteSharedCount: true },
+): Promise<IProjectForDocsDiscoveryWithSharedCount | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+): Promise<IProjectForDocsDiscovery | null>
+export async function findProjectForDocsDiscovery(
+  qx: QueryExecutor,
+  projectId: string,
+  options?: { withWebsiteSharedCount?: boolean },
 ): Promise<IProjectForDocsDiscovery | null> {
+  const sharedCountColumn = options?.withWebsiteSharedCount
+    ? `, ${WEBSITE_SHARED_COUNT_COLUMN}`
+    : ''
   return qx.selectOneOrNone(
     `
-    SELECT p."id", p."slug", p."name", p."website",
-      (
-        SELECT count(*)::int
-        FROM "insightsProjects" o
-        WHERE o."id" <> p."id"
-          AND o."enabled"
-          AND o."deletedAt" IS NULL
-          AND COALESCE(p."website", '') <> ''
-          AND lower(regexp_replace(o."website", '^https?://(www[.])?|/+$', '', 'gi'))
-            = lower(regexp_replace(p."website", '^https?://(www[.])?|/+$', '', 'gi'))
-      ) AS "websiteSharedCount"
+    SELECT p."id", p."slug", p."name", p."website"${sharedCountColumn}
     FROM "insightsProjects" p
     WHERE p."id" = $(projectId) AND p."deletedAt" IS NULL
     `,

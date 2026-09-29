@@ -56,7 +56,23 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
   const githubWebsite = !!ctx.website && isGithubWebsite(ctx.website)
   const projectDomain = githubWebsite || ctx.websiteShared ? null : websiteDomain
   const projectNameHint = ctx.website && githubWebsite ? repoNameAnchor(ctx.website) : null
-  const winner = rankCandidates(allCandidates, projectDomain, projectNameHint, ctx.sharedDocsUrls)
+
+  const liveHosts = [
+    ...new Set(
+      allCandidates
+        .filter((c) => c.livenessOk)
+        .map((c) => normalizedDomain(c.url))
+        .filter((host): host is string => !!host),
+    ),
+  ]
+  const sharedDocsUrls =
+    ctx.findSharedDocsUrls && liveHosts.length > 0 ? await ctx.findSharedDocsUrls(liveHosts) : []
+  const winner = rankCandidates(
+    allCandidates,
+    projectDomain,
+    projectNameHint,
+    new Set(sharedDocsUrls),
+  )
 
   return {
     docsUrl: winner?.url ?? null,

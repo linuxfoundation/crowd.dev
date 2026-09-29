@@ -9,6 +9,8 @@ export const DOCS_READINESS_SWEEP_MODES = ['full', 'incremental'] as const
 
 export type DocsReadinessSweepMode = (typeof DOCS_READINESS_SWEEP_MODES)[number]
 
+export const REPO_ONLY_ERROR = 'repo-only'
+
 export interface IDbProjectDocReadiness {
   id: string
   projectId: string
@@ -89,5 +91,8 @@ export interface IProjectForDocsDiscovery {
   slug: string
   name: string
   website: string | null
+}
+
+export interface IProjectForDocsDiscoveryWithSharedCount extends IProjectForDocsDiscovery {
   websiteSharedCount: number
 }

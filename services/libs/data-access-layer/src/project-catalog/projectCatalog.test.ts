@@ -4,6 +4,8 @@ import { withQx } from '@crowd/test-kit/db'
 
 import {
   bulkInsertProjectCatalog,
+  claimProjectCatalogForOnboarding,
+  claimProjectCatalogForSlackEvaluation,
   findProjectCatalogById,
   findProjectCatalogByRepoUrl,
   insertProjectCatalog,
@@ -400,6 +402,117 @@ describe('upsertProjectCatalogManualAction', () => {
 
     expect(updated?.source).toBe('manual')
     expect(updated?.provenance).toBe('lf-criticality-score')
+  })
+})
+
+describe('claimProjectCatalogForSlackEvaluation', () => {
+  test('claims a brand-new repo, inserting it as manual/evaluate', async ({ qx }) => {
+    const row = catalogRow({ action: 'auto' })
+
+    const claimed = await claimProjectCatalogForSlackEvaluation(qx, {
+      projectSlug: row.projectSlug,
+      repoName: row.repoName,
+      repoUrl: row.repoUrl,
+      provenance: 'slack-bot',
+    })
+
+    expect(claimed?.source).toBe('manual')
+    expect(claimed?.action).toBe('evaluate')
+    expect(claimed?.provenance).toBe('slack-bot')
+  })
+
+  test('does not claim a row already onboarded', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow())
+    await updateProjectCatalog(qx, inserted.id, {
+      action: 'onboarded',
+      onboardedAt: new Date().toISOString(),
+    })
+
+    const claimed = await claimProjectCatalogForSlackEvaluation(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+    })
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(claimed).toBeNull()
+    expect(row?.action).toBe('onboarded')
+  })
+
+  test('does not claim a row already queued for evaluation, preventing a duplicate evaluateProject call', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+
+    const claimed = await claimProjectCatalogForSlackEvaluation(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+    })
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(claimed).toBeNull()
+    expect(row?.action).toBe('evaluate')
+  })
+
+  test('re-claims a retriable skip row for evaluation', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'skip',
+        skipReason: 'evaluation pre-check: repository already tracked in CDP',
+      }),
+    )
+
+    const claimed = await claimProjectCatalogForSlackEvaluation(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+    })
+
+    expect(claimed?.action).toBe('evaluate')
+    expect(claimed?.evaluatedAt).toBeNull()
+  })
+
+  test('re-claims a retriable error row for evaluation', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'error' }))
+
+    const claimed = await claimProjectCatalogForSlackEvaluation(qx, {
+      projectSlug: inserted.projectSlug,
+      repoName: inserted.repoName,
+      repoUrl: inserted.repoUrl,
+    })
+
+    expect(claimed?.action).toBe('evaluate')
+  })
+})
+
+describe('claimProjectCatalogForOnboarding', () => {
+  test('claims a pending onboard row, stamping onboardedAt', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'onboard' }))
+
+    const claimed = await claimProjectCatalogForOnboarding(qx, inserted.id)
+
+    expect(claimed?.action).toBe('onboard')
+    expect(claimed?.onboardedAt).not.toBeNull()
+  })
+
+  test('does not claim a row a second time', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'onboard' }))
+
+    const firstClaim = await claimProjectCatalogForOnboarding(qx, inserted.id)
+    const secondClaim = await claimProjectCatalogForOnboarding(qx, inserted.id)
+
+    expect(firstClaim).not.toBeNull()
+    expect(secondClaim).toBeNull()
+  })
+
+  test('does not claim a row whose action is no longer onboard', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+
+    const claimed = await claimProjectCatalogForOnboarding(qx, inserted.id)
+
+    expect(claimed).toBeNull()
   })
 })
 

@@ -35,13 +35,14 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
     }
   }
 
-  const project = await findProjectForDocsDiscovery(readerQx, projectId)
+  const project = await findProjectForDocsDiscovery(readerQx, projectId, {
+    withWebsiteSharedCount: true,
+  })
   if (!project) {
     throw ApplicationFailure.nonRetryable(`Project ${projectId} not found for docs discovery`)
   }
 
   const repos = await findEnabledRepositoriesForProject(readerQx, projectId)
-  const sharedDocsUrls = new Set(await findSharedDocsUrls(readerQx, projectId))
   const githubToken = repos.length > 0 ? await getGithubInstallationToken() : null
 
   const result = await withTimeout(
@@ -51,7 +52,7 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
       website: project.website,
       websiteShared: project.websiteSharedCount > 0,
       repos,
-      sharedDocsUrls,
+      findSharedDocsUrls: (hosts) => findSharedDocsUrls(readerQx, projectId, hosts),
       githubToken,
       serpApiKey: process.env.CROWD_DOCS_READINESS_SERP_API_KEY ?? null,
     }),

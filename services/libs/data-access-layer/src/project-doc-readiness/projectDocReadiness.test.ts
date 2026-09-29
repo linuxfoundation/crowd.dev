@@ -3,6 +3,7 @@ import { test as base, describe, expect } from 'vitest'
 import { withQx } from '@crowd/test-kit/db'
 
 import { createInsightsProject } from '../collections'
+import { createProjectDocOverride, deactivateProjectDocOverride } from '../project-doc-overrides'
 import { startDocReadinessRun } from '../project-doc-readiness-runs'
 import {
   findLatestProjectDocReadiness,
@@ -12,7 +13,7 @@ import {
   replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness,
 } from './projectDocReadiness'
-import { IProjectDocReadinessUpsert } from './types'
+import { IProjectDocReadinessUpsert, REPO_ONLY_ERROR } from './types'
 
 const test = withQx(base)
 
@@ -183,6 +184,62 @@ describe('findProjectsForDocsReadiness', () => {
     expect(rows.map((r) => r.id).sort()).toEqual([unscored.id, failed.id].sort())
   })
 
+  test('incremental skips latest repo-only unless an active override exists', async ({ qx }) => {
+    const unscored = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
+    const fine = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })
+    const timedOut = await createInsightsProject(qx, { name: 'C', slug: 'c', isLF: true })
+    const repoOnly = await createInsightsProject(qx, { name: 'D', slug: 'd', isLF: true })
+    const repoOnlyOverride = await createInsightsProject(qx, { name: 'E', slug: 'e', isLF: true })
+    const repoOnlyOldOk = await createInsightsProject(qx, { name: 'F', slug: 'f', isLF: true })
+    const repoOnlyInactive = await createInsightsProject(qx, { name: 'G', slug: 'g', isLF: true })
+    const repoOnlyThenTimeout = await createInsightsProject(qx, {
+      name: 'H',
+      slug: 'h',
+      isLF: true,
+    })
+
+    const repoOnlyRow = { ok: false, error: REPO_ONLY_ERROR }
+    await upsertProjectDocReadiness(qx, scored(fine.id))
+    await upsertProjectDocReadiness(qx, scored(timedOut.id, { ok: false, error: 'timeout' }))
+    await upsertProjectDocReadiness(qx, scored(repoOnly.id, repoOnlyRow))
+    await upsertProjectDocReadiness(qx, scored(repoOnlyOverride.id, repoOnlyRow))
+    await upsertProjectDocReadiness(qx, scored(repoOnlyOldOk.id, { runDate: '2026-01-01' }))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyOldOk.id, { runDate: '2026-01-02', ...repoOnlyRow }),
+    )
+    await upsertProjectDocReadiness(qx, scored(repoOnlyInactive.id, repoOnlyRow))
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyThenTimeout.id, { runDate: '2026-01-01', ...repoOnlyRow }),
+    )
+    await upsertProjectDocReadiness(
+      qx,
+      scored(repoOnlyThenTimeout.id, { runDate: '2026-01-02', ok: false, error: 'timeout' }),
+    )
+
+    const override = (projectId: string) => ({
+      projectId,
+      docsUrl: 'https://example.com/docs',
+      submittedBy: 'test',
+    })
+    await createProjectDocOverride(qx, override(repoOnlyOverride.id))
+    await createProjectDocOverride(qx, override(repoOnlyInactive.id))
+    await deactivateProjectDocOverride(qx, repoOnlyInactive.id)
+
+    const incremental = await findProjectsForDocsReadiness(qx, {
+      mode: 'incremental',
+      scope: 'lf',
+      limit: 20,
+    })
+    const full = await findProjectsForDocsReadiness(qx, { mode: 'full', scope: 'lf', limit: 20 })
+
+    expect(incremental.map((r) => r.id).sort()).toEqual(
+      [unscored.id, timedOut.id, repoOnlyOverride.id, repoOnlyThenTimeout.id].sort(),
+    )
+    expect(full).toHaveLength(8)
+  })
+
   test('pages by id with afterId and limit', async ({ qx }) => {
     for (const slug of ['a', 'b', 'c']) {
       await createInsightsProject(qx, { name: slug, slug, isLF: true })
@@ -201,6 +258,8 @@ describe('findProjectsForDocsReadiness', () => {
     expect(rest[0].id > first[1].id).toBe(true)
   })
 })
+
+const sharedCount = { withWebsiteSharedCount: true } as const
 
 describe('findProjectForDocsDiscovery websiteSharedCount', () => {
   test('counts live enabled siblings sharing the website, ignoring scheme, www and trailing slash', async ({
@@ -231,7 +290,7 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       website: 'https://foundation.org/y',
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(1)
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
   })
 
   test('is 0 for a unique website and for a missing website', async ({ qx }) => {
@@ -244,8 +303,12 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
     const none = await createInsightsProject(qx, { name: 'N', slug: 'n', isLF: true })
     await createInsightsProject(qx, { name: 'N2', slug: 'n2', isLF: true })
 
-    expect((await findProjectForDocsDiscovery(qx, unique.id))?.websiteSharedCount).toBe(0)
-    expect((await findProjectForDocsDiscovery(qx, none.id))?.websiteSharedCount).toBe(0)
+    expect(
+      (await findProjectForDocsDiscovery(qx, unique.id, sharedCount))?.websiteSharedCount,
+    ).toBe(0)
+    expect((await findProjectForDocsDiscovery(qx, none.id, sharedCount))?.websiteSharedCount).toBe(
+      0,
+    )
   })
 
   test('does not count deleted or disabled siblings', async ({ qx }) => {
@@ -272,6 +335,62 @@ describe('findProjectForDocsDiscovery websiteSharedCount', () => {
       id: gone.id,
     })
 
-    expect((await findProjectForDocsDiscovery(qx, a.id))?.websiteSharedCount).toBe(0)
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+  })
+
+  test('matches schemeless www websites against their https form in both directions', async ({
+    qx,
+  }) => {
+    const schemeless = await createInsightsProject(qx, {
+      name: 'S',
+      slug: 's',
+      isLF: true,
+      website: 'www.foundation.org/projects/x',
+    })
+    const https = await createInsightsProject(qx, {
+      name: 'H',
+      slug: 'h',
+      isLF: true,
+      website: 'https://foundation.org/projects/x',
+    })
+
+    expect(
+      (await findProjectForDocsDiscovery(qx, schemeless.id, sharedCount))?.websiteSharedCount,
+    ).toBe(1)
+    expect((await findProjectForDocsDiscovery(qx, https.id, sharedCount))?.websiteSharedCount).toBe(
+      1,
+    )
+  })
+
+  test('does not strip a schemeless host that merely starts with www', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'foundation.org/projects/x',
+    })
+    await createInsightsProject(qx, {
+      name: 'W',
+      slug: 'w',
+      isLF: true,
+      website: 'wwwXfoundation.org/projects/x',
+    })
+
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(0)
+  })
+
+  test('skips the sibling count unless asked for it', async ({ qx }) => {
+    const a = await createInsightsProject(qx, {
+      name: 'A',
+      slug: 'a',
+      isLF: true,
+      website: 'https://s.org',
+    })
+    await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true, website: 'https://s.org' })
+
+    const plain = await findProjectForDocsDiscovery(qx, a.id)
+
+    expect(plain).toEqual({ id: a.id, slug: 'a', name: 'A', website: 'https://s.org' })
+    expect((await findProjectForDocsDiscovery(qx, a.id, sharedCount))?.websiteSharedCount).toBe(1)
   })
 })

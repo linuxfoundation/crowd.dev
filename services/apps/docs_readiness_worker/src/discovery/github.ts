@@ -38,7 +38,6 @@ export interface IPrimaryRepoHint {
 
 const normalizeRepoName = (value: string) => value.toLowerCase().replace(/[-_.\s]/g, '')
 
-// Picks the project's main repo: name matches slug/name, then highest stars, then url.
 export function primaryRepo(repos: IRepoRef[], hint: IPrimaryRepoHint = {}): string | null {
   const githubRepos = repos
     .filter((repo) => isGithubUrl(repo.url))

@@ -95,6 +95,9 @@ export interface SlackConfiguration {
   teamId?: string
   appId?: string
   appToken?: string
+  onboardingTeamId?: string
+  onboardingAppId?: string
+  onboardingAppToken?: string
 }
 
 export interface GoogleConfiguration {
