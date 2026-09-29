@@ -1,7 +1,7 @@
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { isGithubWebsite, normalizedDomain } from './http'
-import { candidateHasDocsSignal, methodPriority, rankCandidates, repoNameAnchor } from './rank'
+import { methodPriority, rankCandidates, repoNameAnchor } from './rank'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -45,7 +45,8 @@ async function runStrategies(
 export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDocsResult> {
   const baseCandidates = dedupeByUrl(await runStrategies(STRATEGIES, ctx))
 
-  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk && candidateHasDocsSignal(c))
+  // A homepage is enough: SERP only runs when nothing but the bare GitHub repo (repo-url) is live.
+  const hasLiveCandidate = baseCandidates.some((c) => c.livenessOk && c.method !== 'repo-url')
   const allCandidates =
     !hasLiveCandidate && ctx.serpApiKey
       ? dedupeByUrl([...baseCandidates, ...(await runStrategies([serpStrategy], ctx))])

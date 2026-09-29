@@ -134,17 +134,38 @@ describe('discoverDocs', () => {
     expect(result.docsUrl).toBe('https://docs.example.com')
   })
 
-  test('prefers the higher-priority method when serp returns the same live URL as a live, signal-less base candidate', async () => {
+  test('does not call serp when the only live candidate is a signal-less homepage (5 Spot)', async () => {
     strategyMocks.STRATEGIES.push(async () => [
-      candidate('https://example.com', 'project-website', true),
+      candidate('https://5spot.finos.org/', 'github-homepage', true),
+      candidate('https://github.com/finos/5-spot', 'repo-url', true),
     ])
-    strategyMocks.serpStrategy.mockResolvedValue([candidate('https://example.com', 'serp', true)])
+    strategyMocks.serpStrategy.mockResolvedValue([
+      candidate(
+        'https://docs.buildbot.net/2.0.1/manual/configuration/schedulers.html',
+        'serp',
+        true,
+      ),
+    ])
 
-    const result = await discoverDocs(ctx('serp-key'))
+    const result = await discoverDocs({ ...ctx('serp-key'), website: null })
 
-    expect(result.allCandidates).toHaveLength(1)
-    expect(result.allCandidates[0].method).toBe('serp')
-    expect(result.discoveryMethod).toBe('serp')
+    expect(strategyMocks.serpStrategy).not.toHaveBeenCalled()
+    expect(result.docsUrl).toBe('https://5spot.finos.org/')
+    expect(result.discoveryMethod).toBe('github-homepage')
+  })
+
+  test('calls serp when the only live candidate is the repo-url fallback', async () => {
+    strategyMocks.STRATEGIES.push(async () => [
+      candidate('https://github.com/acme/proj', 'repo-url', true),
+    ])
+    strategyMocks.serpStrategy.mockResolvedValue([
+      candidate('https://proj.readthedocs.io/en/latest', 'serp', true),
+    ])
+
+    const result = await discoverDocs({ ...ctx('serp-key'), website: null })
+
+    expect(strategyMocks.serpStrategy).toHaveBeenCalledTimes(1)
+    expect(result.docsUrl).toBe('https://proj.readthedocs.io/en/latest')
   })
 
   test('ranks with the project website domain, favoring it over an unrelated better-shaped domain', async () => {
@@ -161,20 +182,6 @@ describe('discoverDocs', () => {
     const result = await discoverDocs(ctx())
 
     expect(result.docsUrl).toBe('https://example.com/docs')
-  })
-
-  test('falls back to serp when the only live candidate has no docs signal', async () => {
-    strategyMocks.STRATEGIES.push(async () => [
-      candidate('https://example.com', 'project-website', true),
-    ])
-    strategyMocks.serpStrategy.mockResolvedValue([
-      candidate('https://docs.example.com/guide', 'serp', true),
-    ])
-
-    const result = await discoverDocs(ctx('serp-key'))
-
-    expect(strategyMocks.serpStrategy).toHaveBeenCalledTimes(1)
-    expect(result.docsUrl).toBe('https://docs.example.com/guide')
   })
 
   test('falls back to serp only when no live candidate exists and a key is set', async () => {
