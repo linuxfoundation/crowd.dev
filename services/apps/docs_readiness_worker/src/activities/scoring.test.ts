@@ -24,10 +24,10 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer', () => ({
-  REPO_ONLY_ERROR: 'repo-only',
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
   replaceProjectDocReadinessChecks: mocks.replaceProjectDocReadinessChecks,
   upsertProjectDocReadiness: mocks.upsertProjectDocReadiness,
+  REPO_ONLY_ERROR: 'repo-only',
 }))
 
 vi.mock('../scoring/afdocs', () => ({
