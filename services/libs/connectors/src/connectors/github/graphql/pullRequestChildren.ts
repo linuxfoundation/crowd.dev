@@ -90,6 +90,7 @@ export interface PrCommitsPage {
   repository: {
     pullRequest: {
       commits: {
+        totalCount: number
         pageInfo: {
           endCursor: string | null
           hasNextPage: boolean
@@ -204,6 +205,7 @@ export const PR_COMMITS_QUERY = `
     repository(name: $repo, owner: $owner) {
       pullRequest(number: $prNumber) {
         commits(first: $first, after: $cursor) {
+          totalCount
           pageInfo {
             endCursor
             hasNextPage
@@ -244,6 +246,7 @@ export const PR_COMMITS_QUERY_NO_STATS = `
     repository(name: $repo, owner: $owner) {
       pullRequest(number: $prNumber) {
         commits(first: $first, after: $cursor) {
+          totalCount
           pageInfo {
             endCursor
             hasNextPage
