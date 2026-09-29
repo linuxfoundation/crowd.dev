@@ -444,7 +444,9 @@ describe('claimProjectCatalogForSlackEvaluation', () => {
     expect(claimed?.provenance).toBe('slack-bot')
   })
 
-  test('resets a stale sourceUrl only when the row was already slack-bot', async ({ qx }) => {
+  test('resets a stale Slack permalink but keeps other sourceUrls across repeated claims', async ({
+    qx,
+  }) => {
     const slackRow = await insertProjectCatalog(
       qx,
       catalogRow({ action: 'skip', provenance: 'slack-bot' }),
@@ -457,16 +459,19 @@ describe('claimProjectCatalogForSlackEvaluation', () => {
         provenance: 'github-discussion',
       }),
     )
-    await setProjectCatalogSourceUrl(qx, slackRow.id, 'https://slack.test/old')
+    await setProjectCatalogSourceUrl(qx, slackRow.id, 'https://acme.slack.com/archives/C1/p1')
     await setProjectCatalogSourceUrl(qx, otherRow.id, 'https://github.com/foo/bar/discussions/1')
 
     for (const row of [slackRow, otherRow]) {
-      await claimProjectCatalogForSlackEvaluation(qx, {
-        projectSlug: row.projectSlug,
-        repoName: row.repoName,
-        repoUrl: row.repoUrl,
-        provenance: 'slack-bot',
-      })
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await claimProjectCatalogForSlackEvaluation(qx, {
+          projectSlug: row.projectSlug,
+          repoName: row.repoName,
+          repoUrl: row.repoUrl,
+          provenance: 'slack-bot',
+        })
+        await updateProjectCatalog(qx, row.id, { action: 'skip' })
+      }
     }
 
     expect((await findProjectCatalogById(qx, slackRow.id))?.sourceUrl).toBeNull()

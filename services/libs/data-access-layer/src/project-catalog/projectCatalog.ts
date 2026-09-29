@@ -574,7 +574,7 @@ export async function claimProjectCatalogForSlackEvaluation(
       "repoName" = EXCLUDED."repoName",
       "source" = 'manual',
       "sourceUrl" = CASE
-        WHEN "projectCatalog"."provenance" = 'slack-bot' THEN NULL
+        WHEN "projectCatalog"."sourceUrl" ~ '^https://[^/]+.slack.com/archives/' THEN NULL
         ELSE "projectCatalog"."sourceUrl"
       END,
       "provenance" = COALESCE(EXCLUDED."provenance", "projectCatalog"."provenance"),
