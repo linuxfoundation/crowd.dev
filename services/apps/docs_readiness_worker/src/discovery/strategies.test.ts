@@ -368,9 +368,9 @@ describe('githubHomepage derived probes', () => {
       ]),
     )
     expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).startsWith('https://api.github.com')),
+      fetchMock.mock.calls.filter((call) => new URL(String(call[0])).hostname === 'api.github.com'),
     ).toHaveLength(1)
-    expect(result.some((c) => c.url.includes('foundation.org'))).toBe(false)
+    expect(result.some((c) => new URL(c.url).hostname === 'foundation.org')).toBe(false)
   })
 
   it('derives an llms-txt-probe candidate from the homepage domain', async () => {
@@ -408,7 +408,7 @@ describe('githubHomepage derived probes', () => {
 
       const probed = fetchMock.mock.calls
         .map((call) => String(call[0]))
-        .filter((url) => !url.startsWith('https://api.github.com'))
+        .filter((url) => new URL(url).hostname !== 'api.github.com')
       expect(probed.filter((url) => new URL(url).hostname.startsWith('docs.'))).toEqual([])
       expect(probed.filter((url) => new URL(url).pathname === '/llms.txt')).toEqual([])
       expect(probed.sort()).toEqual(
@@ -550,7 +550,9 @@ describe('discoverDocs with a shared website', () => {
     })
 
     expect(result.docsUrl).toBe('https://www.openvdb.org/documentation')
-    expect(result.allCandidates.some((c) => c.url.includes('foundation.org'))).toBe(false)
+    expect(result.allCandidates.some((c) => new URL(c.url).hostname === 'foundation.org')).toBe(
+      false,
+    )
   })
 })
 
