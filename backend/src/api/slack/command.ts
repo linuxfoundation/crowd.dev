@@ -4,9 +4,9 @@ import SlackCommandService from '../../services/slackCommandService'
 export default async (req, res) => {
   // verify request
   if (
-    req.body.token === SLACK_CONFIG.appToken &&
-    req.body.team_id === SLACK_CONFIG.teamId &&
-    req.body.api_app_id === SLACK_CONFIG.appId
+    req.body.token === SLACK_CONFIG.onboardingAppToken &&
+    req.body.team_id === SLACK_CONFIG.onboardingTeamId &&
+    req.body.api_app_id === SLACK_CONFIG.onboardingAppId
   ) {
     const command = req.body.command
     const params = req.body.text
