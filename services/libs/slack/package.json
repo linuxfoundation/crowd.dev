@@ -5,6 +5,7 @@
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
+    "@slack/web-api": "^7.19.0",
     "@slack/webhook": "^6.1.0"
   },
   "devDependencies": {
