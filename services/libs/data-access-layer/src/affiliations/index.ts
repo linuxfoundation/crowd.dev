@@ -332,12 +332,13 @@ function resolveCurrentAffiliationForMember(
     return findFallbackOrg(keepPreferredOrganizations(cleaned, preferredOrganizationIds))
   }
 
-  const activeToday = keepPreferredOrganizations(
-    orgsActiveAt(cleaned, startOfDay(new Date())),
-    preferredOrganizationIds,
-  )
+  const activeToday = orgsActiveAt(cleaned, startOfDay(new Date()))
   if (activeToday.length === 0) return null
-  return selectPrimaryWorkExperience(activeToday)
+
+  const preferredDated = activeToday.filter(
+    (r) => r.dateStart && preferredOrganizationIds?.has(r.organizationId),
+  )
+  return selectPrimaryWorkExperience(preferredDated.length > 0 ? preferredDated : activeToday)
 }
 
 function resolveAffiliationsForMember(rows: IWorkExperienceResolution[]): IAffiliationPeriod[] {
