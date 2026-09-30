@@ -1,14 +1,10 @@
-import { useAuthStore } from '@/modules/auth/store/auth.store';
-import { storeToRefs } from 'pinia';
 import { ref } from 'vue';
 import config from '@/config';
+import type { User } from '@/modules/auth/types/User.type';
 import { createSession, updateSession } from './tracking-service';
 
-const useSessionTracking = () => {
+const useSessionTracking = (getUser: () => User | null) => {
   const inactivityTimeout = ref<number | undefined>();
-
-  const authStore = useAuthStore();
-  const { user } = storeToRefs(authStore);
 
   const INACTIVITY_PERIOD = 30 * 60 * 1000;
 
@@ -45,11 +41,12 @@ const useSessionTracking = () => {
     const userSession = sessionStorage.getItem('userSession');
 
     if (!userSession) {
-      if (user.value) {
+      const user = getUser();
+      if (user) {
         return createSession({
           startTime: new Date().toISOString(),
-          userId: user.value.id,
-          userEmail: user.value.email,
+          userId: user.id,
+          userEmail: user.email,
         }).then((session) => {
           if (session.id) {
             sessionStorage.setItem('userSession', session.id);

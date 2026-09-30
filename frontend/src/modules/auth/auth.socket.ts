@@ -4,10 +4,7 @@ import { h } from 'vue';
 import config from '@/config';
 
 import { ToastStore } from '@/shared/message/notification';
-import { useOrganizationStore } from '@/modules/organization/store/pinia';
-import useOrganizationMergeMessage from '@/shared/modules/merge/config/useOrganizationMergeMessage';
-import { useAuthStore } from '@/modules/auth/store/auth.store';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import type { User } from '@/modules/auth/types/User.type';
 
 let socketIoClient: any;
 
@@ -23,9 +20,7 @@ const SocketEvents = {
 
 export const isSocketConnected = () => socketIoClient && socketIoClient.connected;
 
-export const connectSocket = (token) => {
-  const authStore = useAuthStore();
-  const { user } = storeToRefs(authStore);
+export const connectSocket = (token: string, getUser: () => User | null) => {
   if (socketIoClient && socketIoClient.connected) {
     socketIoClient.disconnect();
   }
@@ -63,170 +58,185 @@ export const connectSocket = (token) => {
     // );
   });
 
-  socketIoClient.on(SocketEvents.memberMerge, (data) => {
+  socketIoClient.on(SocketEvents.memberMerge, async (data) => {
     const parsedData = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
-    const lsSegmentsStore = useLfSegmentsStore();
-    const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-    const {
-      primaryDisplayName,
-      secondaryDisplayName,
-      primaryId,
-      secondaryId,
-      userId,
-    } = parsedData;
+    try {
+      const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
+      const lsSegmentsStore = useLfSegmentsStore();
+      const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+      const {
+        primaryDisplayName,
+        secondaryDisplayName,
+        primaryId,
+        secondaryId,
+        userId,
+      } = parsedData;
 
-    if (user.value?.id !== userId) {
-      return;
+      if (getUser()?.id !== userId) {
+        return;
+      }
+
+      const primaryMember = h(
+        'a',
+        {
+          href: `${window.location.origin}/people/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        primaryDisplayName,
+      );
+      const secondaryMember = h(
+        'a',
+        {
+          href: `${window.location.origin}/people/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        secondaryDisplayName,
+      );
+      const between = h(
+        'span',
+        {},
+        ' merged into ',
+      );
+      const after = h(
+        'span',
+        {},
+        '. Finalizing profile merging might take some time to complete.',
+      );
+      ToastStore.closeAll();
+      ToastStore.success(h(
+        'div',
+        {},
+        [secondaryMember, between, primaryMember, after],
+      ), {
+        title: 'Profiles merged successfully',
+      });
+    } catch (error) {
+      console.error('Socket memberMerge: failed to load segments module', error);
     }
-
-    const primaryMember = h(
-      'a',
-      {
-        href: `${window.location.origin}/people/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      primaryDisplayName,
-    );
-    const secondaryMember = h(
-      'a',
-      {
-        href: `${window.location.origin}/people/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      secondaryDisplayName,
-    );
-    const between = h(
-      'span',
-      {},
-      ' merged into ',
-    );
-    const after = h(
-      'span',
-      {},
-      '. Finalizing profile merging might take some time to complete.',
-    );
-    ToastStore.closeAll();
-    ToastStore.success(h(
-      'div',
-      {},
-      [secondaryMember, between, primaryMember, after],
-    ), {
-      title: 'Profiles merged successfully',
-    });
   });
 
-  socketIoClient.on(SocketEvents.memberUnmerge, (data) => {
+  socketIoClient.on(SocketEvents.memberUnmerge, async (data) => {
     console.info('Member unmerge done', data);
     const parsedData = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
-    const lsSegmentsStore = useLfSegmentsStore();
-    const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-    const {
-      primaryDisplayName,
-      secondaryDisplayName,
-      primaryId,
-      secondaryId,
-      userId,
-    } = parsedData;
+    try {
+      const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
+      const lsSegmentsStore = useLfSegmentsStore();
+      const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+      const {
+        primaryDisplayName,
+        secondaryDisplayName,
+        primaryId,
+        secondaryId,
+        userId,
+      } = parsedData;
 
-    if (user.value?.id !== userId) {
-      return;
+      if (getUser()?.id !== userId) {
+        return;
+      }
+
+      const primaryMember = h(
+        'a',
+        {
+          href: `${window.location.origin}/people/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        primaryDisplayName,
+      );
+      const secondaryMember = h(
+        'a',
+        {
+          href: `${window.location.origin}/people/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        secondaryDisplayName,
+      );
+      const between = h(
+        'span',
+        {},
+        ' unmerged from ',
+      );
+      const after = h(
+        'span',
+        {},
+        '. Finalizing profile unmerging might take some time to complete.',
+      );
+      ToastStore.closeAll();
+      ToastStore.success(h(
+        'div',
+        {},
+        [secondaryMember, between, primaryMember, after],
+      ), {
+        title: 'Profiles unmerged successfully',
+      });
+    } catch (error) {
+      console.error('Socket memberUnmerge: failed to load segments module', error);
     }
-
-    const primaryMember = h(
-      'a',
-      {
-        href: `${window.location.origin}/people/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      primaryDisplayName,
-    );
-    const secondaryMember = h(
-      'a',
-      {
-        href: `${window.location.origin}/people/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      secondaryDisplayName,
-    );
-    const between = h(
-      'span',
-      {},
-      ' unmerged from ',
-    );
-    const after = h(
-      'span',
-      {},
-      '. Finalizing profile unmerging might take some time to complete.',
-    );
-    ToastStore.closeAll();
-    ToastStore.success(h(
-      'div',
-      {},
-      [secondaryMember, between, primaryMember, after],
-    ), {
-      title: 'Profiles unmerged successfully',
-    });
   });
 
-  socketIoClient.on(SocketEvents.organizationUnmerge, (data) => {
+  socketIoClient.on(SocketEvents.organizationUnmerge, async (data) => {
     console.info('Organization unmerge done', data);
     const parsedData = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
-    const lsSegmentsStore = useLfSegmentsStore();
-    const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-    const {
-      primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId,
-    } = parsedData;
+    try {
+      const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
+      const lsSegmentsStore = useLfSegmentsStore();
+      const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
+      const {
+        primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId,
+      } = parsedData;
 
-    if (user.value?.id !== userId) {
-      return;
+      if (getUser()?.id !== userId) {
+        return;
+      }
+
+      const primaryOrganization = h(
+        'a',
+        {
+          href: `${window.location.origin}/organizations/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        primaryDisplayName,
+      );
+      const secondaryOrganization = h(
+        'a',
+        {
+          href: `${window.location.origin}/organizations/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          class: 'underline text-gray-600',
+        },
+        secondaryDisplayName,
+      );
+      const between = h(
+        'span',
+        {},
+        ' unmerged from ',
+      );
+      const after = h(
+        'span',
+        {},
+        '. Syncing organization activities might take some time to complete.',
+      );
+      ToastStore.closeAll();
+      ToastStore.success(h(
+        'div',
+        {},
+        [secondaryOrganization, between, primaryOrganization, after],
+      ), {
+        title: 'Organizations unmerged successfully',
+      });
+    } catch (error) {
+      console.error('Socket organizationUnmerge: failed to load segments module', error);
     }
-
-    const primaryOrganization = h(
-      'a',
-      {
-        href: `${window.location.origin}/organizations/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      primaryDisplayName,
-    );
-    const secondaryOrganization = h(
-      'a',
-      {
-        href: `${window.location.origin}/organizations/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
-        class: 'underline text-gray-600',
-      },
-      secondaryDisplayName,
-    );
-    const between = h(
-      'span',
-      {},
-      ' unmerged from ',
-    );
-    const after = h(
-      'span',
-      {},
-      '. Syncing organization activities might take some time to complete.',
-    );
-    ToastStore.closeAll();
-    ToastStore.success(h(
-      'div',
-      {},
-      [secondaryOrganization, between, primaryOrganization, after],
-    ), {
-      title: 'Organizations unmerged successfully',
-    });
   });
 
-  socketIoClient.on(SocketEvents.orgMerge, (payload) => {
+  socketIoClient.on(SocketEvents.orgMerge, async (payload) => {
     const {
       success,
       userId,
@@ -235,34 +245,40 @@ export const connectSocket = (token) => {
       toMerge,
     } = JSON.parse(payload);
 
-    if (user.value.id !== userId) {
+    if (getUser().id !== userId) {
       return;
     }
 
-    const { removeMergedOrganizations } = useOrganizationStore();
-    const primaryOrganization = {
-      id: primaryOrgId,
-      displayName: original,
-    };
-    const secondaryOrganization = {
-      displayName: toMerge,
-    };
+    try {
+      const { useOrganizationStore } = await import('@/modules/organization/store/pinia');
+      const { removeMergedOrganizations } = useOrganizationStore();
+      const primaryOrganization = {
+        id: primaryOrgId,
+        displayName: original,
+      };
+      const secondaryOrganization = {
+        displayName: toMerge,
+      };
 
-    ToastStore.closeAll();
+      ToastStore.closeAll();
 
-    removeMergedOrganizations(primaryOrgId);
+      removeMergedOrganizations(primaryOrgId);
 
-    const { successMessage, socketErrorMessage } = useOrganizationMergeMessage;
-    if (success) {
-      successMessage({
-        primaryOrganization,
-        secondaryOrganization,
-      });
-    } else {
-      socketErrorMessage({
-        primaryOrganization,
-        secondaryOrganization,
-      });
+      const { default: useOrganizationMergeMessage } = await import('@/shared/modules/merge/config/useOrganizationMergeMessage');
+      const { successMessage, socketErrorMessage } = useOrganizationMergeMessage;
+      if (success) {
+        successMessage({
+          primaryOrganization,
+          secondaryOrganization,
+        });
+      } else {
+        socketErrorMessage({
+          primaryOrganization,
+          secondaryOrganization,
+        });
+      }
+    } catch (error) {
+      console.error('Socket orgMerge: failed to load organization module', error);
     }
   });
 };
