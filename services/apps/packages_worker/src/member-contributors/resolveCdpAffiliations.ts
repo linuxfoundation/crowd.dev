@@ -40,11 +40,14 @@ export async function resolveCdpAffiliations(
   const affiliations = await resolveCurrentAffiliationsByMemberIds(cdpQx, memberIds)
   const membersByOrgId = indexMembersByCdpOrganizationId(members)
 
+  const candidatesByIdentity = new Map<string, ResolvedCdpAffiliation[]>()
   for (const row of rows) {
     const affiliation = affiliations.get(row.memberId)
     const member = affiliation ? membersByOrgId.get(affiliation.organizationId) : undefined
     if (!member) continue
-    resolved.set(rowIdentityKey(row), {
+    const key = rowIdentityKey(row)
+    const candidates = candidatesByIdentity.get(key) ?? []
+    candidates.push({
       memberId: row.memberId,
       displayName: row.displayName,
       akritesMember: member.name,
@@ -52,6 +55,15 @@ export async function resolveCdpAffiliations(
       confidence: 'cdp',
       confidenceScore: 1,
     })
+    candidatesByIdentity.set(key, candidates)
+  }
+
+  for (const [key, candidates] of candidatesByIdentity) {
+    resolved.set(key, pickDeterministic(candidates))
   }
   return resolved
+}
+
+function pickDeterministic(candidates: ResolvedCdpAffiliation[]): ResolvedCdpAffiliation {
+  return candidates.reduce((best, c) => (c.memberId < best.memberId ? c : best))
 }
