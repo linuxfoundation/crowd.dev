@@ -185,7 +185,11 @@ export async function resolveProjectSegment(
     }
 
     const connectedRepoUrls = await queryGithubIntegrationRepoUrls(existingSegmentId, apiUrl, token)
-    if (!connectedRepoUrls || connectedRepoUrls.includes(repoUrl.toLowerCase())) {
+    const isOnlyRequestedRepo =
+      connectedRepoUrls !== null &&
+      connectedRepoUrls.length > 0 &&
+      connectedRepoUrls.every((url) => url === repoUrl.toLowerCase())
+    if (connectedRepoUrls === null || isOnlyRequestedRepo) {
       return existingSegmentId
     }
   }

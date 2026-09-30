@@ -158,6 +158,44 @@ describe('resolveProjectSegment', () => {
     expect(backend.createdNames).toEqual([])
   })
 
+  it('does not reuse a segment whose integration has the requested repo plus other repos', async () => {
+    const backend = installFakeBackend([
+      {
+        name: 'Dynamo',
+        id: 'shared-segment',
+        connectedRepoUrls: [repoUrl, otherRepoUrl.toLowerCase()],
+      },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Ai Dynamo Dynamo'])
+    expect(segmentId).toBe('created-Ai Dynamo Dynamo')
+  })
+
+  it('does not reuse a segment whose integration has no mapped repos', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'unmapped-segment', connectedRepoUrls: [] },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Ai Dynamo Dynamo'])
+    expect(segmentId).toBe('created-Ai Dynamo Dynamo')
+  })
+
   it('matches the requested repo url case-insensitively', async () => {
     installFakeBackend([
       {
