@@ -37,8 +37,12 @@ export async function resolveCdpAffiliations(
   if (rows.length === 0) return resolved
 
   const memberIds = [...new Set(rows.map((r) => r.memberId))]
-  const affiliations = await resolveCurrentAffiliationsByMemberIds(cdpQx, memberIds)
   const membersByOrgId = indexMembersByCdpOrganizationId(members)
+  const affiliations = await resolveCurrentAffiliationsByMemberIds(
+    cdpQx,
+    memberIds,
+    new Set(membersByOrgId.keys()),
+  )
 
   const candidatesByIdentity = new Map<string, ResolvedCdpAffiliation[]>()
   for (const row of rows) {

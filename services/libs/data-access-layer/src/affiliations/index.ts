@@ -314,13 +314,28 @@ function dropUndatedRivalsOfPrimary(
     : rows
 }
 
+function keepPreferredOrganizations(
+  rows: IWorkExperienceResolution[],
+  preferredOrganizationIds?: ReadonlySet<string>,
+): IWorkExperienceResolution[] {
+  if (!preferredOrganizationIds) return rows
+  const preferred = rows.filter((r) => preferredOrganizationIds.has(r.organizationId))
+  return preferred.length > 0 ? preferred : rows
+}
+
 function resolveCurrentAffiliationForMember(
   rows: IWorkExperienceResolution[],
+  preferredOrganizationIds?: ReadonlySet<string>,
 ): IWorkExperienceResolution | null {
   const cleaned = dropUndatedRivalsOfPrimary(rows)
-  if (!cleaned.some((r) => r.dateStart)) return findFallbackOrg(cleaned)
+  if (!cleaned.some((r) => r.dateStart)) {
+    return findFallbackOrg(keepPreferredOrganizations(cleaned, preferredOrganizationIds))
+  }
 
-  const activeToday = orgsActiveAt(cleaned, startOfDay(new Date()))
+  const activeToday = keepPreferredOrganizations(
+    orgsActiveAt(cleaned, startOfDay(new Date())),
+    preferredOrganizationIds,
+  )
   if (activeToday.length === 0) return null
   return selectPrimaryWorkExperience(activeToday)
 }
@@ -384,13 +399,17 @@ export async function resolveAffiliationsByMemberIds(
 export async function resolveCurrentAffiliationsByMemberIds(
   qx: QueryExecutor,
   memberIds: string[],
+  preferredOrganizationIds?: ReadonlySet<string>,
 ): Promise<Map<string, IWorkExperienceResolution | null>> {
   const result = new Map<string, IWorkExperienceResolution | null>()
   if (memberIds.length === 0) return result
 
   const byMember = await fetchAffiliationRowsByMember(qx, memberIds)
   for (const id of memberIds) {
-    result.set(id, resolveCurrentAffiliationForMember(byMember.get(id) ?? []))
+    result.set(
+      id,
+      resolveCurrentAffiliationForMember(byMember.get(id) ?? [], preferredOrganizationIds),
+    )
   }
   return result
 }
