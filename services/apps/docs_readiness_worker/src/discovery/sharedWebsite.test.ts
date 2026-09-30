@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { describe, expect, it } from 'vitest'
 
-import { isUmbrellaWebsite } from './sharedWebsite'
+import { isUmbrellaWebsite, isUnnamedParentPage } from './sharedWebsite'
 
 const sibling = (name: string) => ({ name, slug: name.toLowerCase().replace(/\W+/g, '-') })
 
@@ -176,5 +176,66 @@ const CASES: ICase[] = [
 describe('isUmbrellaWebsite', () => {
   it.each(CASES)('$label', ({ name, slug, website, siblings, umbrella }) => {
     expect(isUmbrellaWebsite({ name, slug, website, siblings })).toBe(umbrella)
+  })
+})
+
+describe('isUnnamedParentPage', () => {
+  it.each([
+    ['shared docs tree', 'https://graphql.org/docs', 'GraphQL.js', true, true],
+    ['shared docs host', 'https://docs.fd.io', 'Golang Toolset for VPP (GoVPP)', true, true],
+    ['foundation home page', 'https://chipsalliance.org/', 'Chisel Workgroup', false, true],
+    [
+      'foundation home page, www and trailing slash',
+      'https://www.cncf.io',
+      'CNCF Binary Project',
+      false,
+      true,
+    ],
+    [
+      'foundation fund is no foundation',
+      'https://chipsalliance.org/',
+      'CHIPS Alliance Fund',
+      false,
+      true,
+    ],
+    [
+      'parent on its shared docs host',
+      'https://docs.opendaylight.org',
+      'OpenDaylight',
+      true,
+      false,
+    ],
+    ['fund twin on its project docs host', 'https://docs.dent.dev', 'DENT Fund', true, false],
+    [
+      'parent on its foundation home page',
+      'https://chipsalliance.org/',
+      'CHIPS Alliance',
+      false,
+      false,
+    ],
+    [
+      'foundation named by its bracketed alias',
+      'https://www.cncf.io/',
+      'Cloud Native Computing Foundation (CNCF)',
+      false,
+      false,
+    ],
+    [
+      'foundation with a corporate suffix',
+      'https://www.r-consortium.org/',
+      'R Consortium, Inc.',
+      false,
+      false,
+    ],
+    [
+      'project page on a foundation site',
+      'https://www.lfedge.org/projects/akraino',
+      'Akraino',
+      false,
+      false,
+    ],
+    ['unshared page of another site', 'https://docs.example.org/', 'Solo', false, false],
+  ])('%s', (_label, url, name, shared, unnamed) => {
+    expect(isUnnamedParentPage(url, name, shared)).toBe(unnamed)
   })
 })
