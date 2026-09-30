@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./verifySignature', () => ({ verifySlackSignature: vi.fn(() => true) }))
 vi.mock('@/services/slack/forceOnboardingCommand', () => ({
   runForceOnboardingCommand: vi.fn(async () => undefined),
+  replaceWithForceOnboardingFailure: vi.fn(async () => undefined),
 }))
 
-import { runForceOnboardingCommand } from '@/services/slack/forceOnboardingCommand'
+import {
+  replaceWithForceOnboardingFailure,
+  runForceOnboardingCommand,
+} from '@/services/slack/forceOnboardingCommand'
 
 import interactivity from './interactivity'
 import { verifySlackSignature } from './verifySignature'
@@ -42,6 +46,19 @@ describe('interactivity', () => {
         responseUrl: 'https://hooks.slack.com/response',
         actorId: 'U123',
       }),
+    )
+  })
+
+  it('replaces the original message when the background flow rejects', async () => {
+    vi.mocked(runForceOnboardingCommand).mockRejectedValueOnce(new Error('db down'))
+
+    const { req } = await call(forcePayload)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(req.log.error).toHaveBeenCalled()
+    expect(replaceWithForceOnboardingFailure).toHaveBeenCalledWith(
+      'https://hooks.slack.com/response',
+      req.log,
     )
   })
 

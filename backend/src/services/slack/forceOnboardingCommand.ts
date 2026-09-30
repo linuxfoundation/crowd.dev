@@ -22,6 +22,17 @@ function replaceOriginal(responseUrl: string, text: string, log: IServiceOptions
   return postToResponseUrl(responseUrl, message, log)
 }
 
+export function replaceWithForceOnboardingFailure(
+  responseUrl: string,
+  log: IServiceOptions['log'],
+) {
+  return replaceOriginal(
+    responseUrl,
+    ':no_entry: Forced onboarding failed with an unexpected error.',
+    log,
+  )
+}
+
 export async function runForceOnboardingCommand({
   catalogId: rawCatalogId,
   responseUrl,

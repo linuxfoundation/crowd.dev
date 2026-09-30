@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { runForceOnboardingCommand } from '@/services/slack/forceOnboardingCommand'
+import {
+  replaceWithForceOnboardingFailure,
+  runForceOnboardingCommand,
+} from '@/services/slack/forceOnboardingCommand'
 import { FORCE_ONBOARDING_ACTION_ID } from '@/services/slack/slackActionIds'
 import { validateOrThrow } from '@/utils/validation'
 
@@ -26,12 +29,16 @@ function dispatchForceOnboarding(payload: InteractivityPayload, req: Request) {
     return false
   }
 
+  const responseUrl = payload.response_url
   runForceOnboardingCommand({
     catalogId: action.value,
-    responseUrl: payload.response_url,
+    responseUrl,
     actorId: payload.user.id,
     log: req.log,
-  }).catch((err) => req.log.error(err, 'Force onboarding failed unexpectedly!'))
+  }).catch((err) => {
+    req.log.error(err, 'Force onboarding failed unexpectedly!')
+    replaceWithForceOnboardingFailure(responseUrl, req.log)
+  })
   return true
 }
 
