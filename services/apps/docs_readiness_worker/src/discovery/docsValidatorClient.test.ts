@@ -58,7 +58,60 @@ describe('createAnthropicAwsDocsValidatorClient', () => {
     })
     expect(JSON.parse(init.body as string)).toMatchObject({
       model: DOCS_VALIDATOR_MODEL,
+      max_tokens: 300,
+      temperature: 0,
       messages: [{ role: 'user', content: 'the prompt' }],
+    })
+  })
+
+  it('passes the abort signal to fetch', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+
+    await createAnthropicAwsDocsValidatorClient().complete('the prompt', controller.signal)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.signal).toBe(controller.signal)
+  })
+
+  it('returns an empty reply for an empty content array', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ content: [] }))),
+    )
+    expect(await createAnthropicAwsDocsValidatorClient().complete('p')).toBe('')
+  })
+
+  it('ignores non-text content blocks', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              content: [
+                { type: 'thinking', thinking: 'hmm' },
+                { type: 'text', text: 'answer' },
+              ],
+            }),
+          ),
+      ),
+    )
+    expect(await createAnthropicAwsDocsValidatorClient().complete('p')).toBe('answer')
+  })
+
+  it('returns unclear when a 200 response has a malformed JSON body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not json {')),
+    )
+
+    const result = await validateDocsUrl(createAnthropicAwsDocsValidatorClient(), project, page)
+
+    expect(result).toEqual({
+      verdict: 'unclear',
+      reason: 'validator failed: Anthropic response parse failed (SyntaxError)',
     })
   })
 
@@ -85,6 +138,19 @@ describe('createAnthropicAwsDocsValidatorClient', () => {
     expect(result.verdict).toBe('unclear')
     expect(result.reason).toContain('HTTP 401')
     expect(result.reason).not.toContain(API_KEY)
+    expect(result.reason).not.toContain('wrkspc_test')
+  })
+
+  it('does not leak a malformed key that makes fetch throw', async () => {
+    process.env.CROWD_AKRITES_ANTHROPIC_AWS_API_KEY = 'SECRETKEY\nTAIL'
+
+    const result = await validateDocsUrl(createAnthropicAwsDocsValidatorClient(), project, page)
+
+    expect(result.verdict).toBe('unclear')
+    expect(result.reason).toMatch(/^validator failed: Anthropic request failed \(\w+\)$/)
+    for (const secret of ['SECRETKEY', 'TAIL', 'wrkspc_test']) {
+      expect(result.reason).not.toContain(secret)
+    }
   })
 
   it('returns unclear on a network failure', async () => {
@@ -97,6 +163,9 @@ describe('createAnthropicAwsDocsValidatorClient', () => {
 
     const result = await validateDocsUrl(createAnthropicAwsDocsValidatorClient(), project, page)
 
-    expect(result).toEqual({ verdict: 'unclear', reason: 'validator failed: fetch failed' })
+    expect(result).toEqual({
+      verdict: 'unclear',
+      reason: 'validator failed: Anthropic request failed (TypeError)',
+    })
   })
 })
