@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { discoverDocs } from './index'
@@ -1006,9 +1009,9 @@ describe('readmeScrape', () => {
     routeFetch([
       [
         'https://api.github.com/repos/torvalds/linux/readme',
-        () => new Response('See the [Documentation](https://docs.example.com) for more.'),
+        () => new Response('See the [Documentation](https://docs.proj.dev) for more.'),
       ],
-      ['https://docs.example.com', html],
+      ['https://docs.proj.dev', html],
     ])
 
     const result = await readmeScrape({
@@ -1022,7 +1025,7 @@ describe('readmeScrape', () => {
     })
     expect(result).toEqual([
       {
-        url: 'https://docs.example.com',
+        url: 'https://docs.proj.dev',
         method: 'readme-scrape',
         confidence: 'medium',
         livenessOk: true,
@@ -1146,25 +1149,26 @@ describe('readmeScrape filtering', () => {
   it('excludes by whole slug: security-model is dropped, issuers and bugzilla are kept', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://a.io/docs/security-model) [Docs](https://b.io/docs/issuers) [Docs](https://c.io/docs/bugzilla)',
+        '[Docs](https://proj.io/docs/security-model) [Docs](https://proj.io/docs/issuers) [Docs](https://proj.io/docs/bugzilla)',
       ),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://b.io/docs/issuers', 'https://c.io/docs/bugzilla'])
+    expect(probed(fetchMock)).toEqual([
+      'https://proj.io/docs/issuers',
+      'https://proj.io/docs/bugzilla',
+    ])
   })
 
   it('keeps a path whose segment merely contains an excluded word', async () => {
     const fetchMock = routeFetch([
-      readmeRoute(
-        '[Docs](https://example.io/docs/debugging) [Docs](https://example.io/docs/security)',
-      ),
-      ['https://example.io', html],
+      readmeRoute('[Docs](https://proj.io/docs/debugging) [Docs](https://proj.io/docs/security)'),
+      ['https://proj.io', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://example.io/docs/debugging'])
+    expect(probed(fetchMock)).toEqual(['https://proj.io/docs/debugging'])
   })
 
   it('keeps the docs-labelled text when a fragment variant of the link came first', async () => {
@@ -1259,15 +1263,25 @@ describe('readmeScrape filtering', () => {
     expect(probed(fetchMock)).toEqual(['https://urunc.io/'])
   })
 
-  it('keeps foreign links when no own-domain link survives', async () => {
+  it('keeps a project-related foreign link when no own-domain link survives', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Proj docs](https://proj.readthedocs.io/en/latest/)'),
+      ['https://proj.readthedocs.io', html],
+    ])
+
+    const result = await scrape('https://marquezproject.ai')
+    expect(probed(fetchMock)).toEqual(['https://proj.readthedocs.io/en/latest/'])
+    expect(result).toHaveLength(1)
+  })
+
+  it('drops a foreign link that is not related to the project', async () => {
     const fetchMock = routeFetch([
       readmeRoute('[OpenLineage docs](https://openlineage.io/docs/)'),
       ['https://openlineage.io', html],
     ])
 
-    const result = await scrape('https://marquezproject.ai')
-    expect(probed(fetchMock)).toEqual(['https://openlineage.io/docs/'])
-    expect(result).toHaveLength(1)
+    expect(await scrape('https://marquezproject.ai')).toEqual([])
+    expect(probed(fetchMock)).toEqual([])
   })
 
   it('drops foreign links once an own-domain link survives', async () => {
@@ -1302,17 +1316,14 @@ describe('readmeScrape filtering', () => {
   it('does not treat a root homepage on the shared website host as an own domain', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.real-project.dev/start)',
+        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.proj.dev/start)',
       ),
       homepageRoute('https://www.lfedge.org'),
       ['https://', html],
     ])
 
     await scrapeSharedWebsite('https://www.lfedge.org/projects/x')
-    expect(probed(fetchMock)).toEqual([
-      'https://www.lfedge.org/projects/other/docs/guide/page',
-      'https://docs.real-project.dev/start',
-    ])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it.each([
@@ -1324,13 +1335,13 @@ describe('readmeScrape filtering', () => {
     ['https://hub.docker.com', 'https://hub.docker.com/r/x/docs/api'],
   ])('does not make the homepage %s an own domain', async (homepage, link) => {
     const fetchMock = routeFetch([
-      readmeRoute(`[Docs](${link}) [Guide](https://docs.real-project.dev/start)`),
+      readmeRoute(`[Docs](${link}) [Guide](https://docs.proj.dev/start)`),
       homepageRoute(homepage),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual([link, 'https://docs.real-project.dev/start'])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it('keeps a root homepage on a host other than the shared website as an own domain', async () => {
@@ -1501,16 +1512,13 @@ describe('readmeScrape foreign links', () => {
 
   it('keeps a foreign link whose text or host says docs', async () => {
     const fetchMock = routeFetch([
-      readme('[OpenLineage docs](https://openlineage.io/x) [Ext](https://docs.docker.com/engine/)'),
-      ['https://openlineage.io', html],
-      ['https://docs.docker.com', html],
+      readme('[Proj docs](https://proj.io/x) [Ext](https://docs.proj.dev/engine/)'),
+      ['https://proj.io', html],
+      ['https://docs.proj.dev', html],
     ])
 
     await scrape()
-    expect(apiFree(fetchMock)).toEqual([
-      'https://openlineage.io/x',
-      'https://docs.docker.com/engine/',
-    ])
+    expect(apiFree(fetchMock)).toEqual(['https://proj.io/x', 'https://docs.proj.dev/engine/'])
   })
 
   it('never proposes google docs documents', async () => {
@@ -1531,6 +1539,46 @@ describe('readmeScrape foreign links', () => {
 
     expect(await scrape()).toEqual([])
     expect(apiFree(fetchMock)).toEqual([])
+  })
+})
+
+interface IReadmeLinkRow {
+  name: string
+  repo?: string
+  url: string
+}
+
+// IN-1305 human verdicts: readme-scrape picks judged wrong (another product's docs) vs docs/site.
+const readmeLinks: { wrong: IReadmeLinkRow[]; right: IReadmeLinkRow[] } = JSON.parse(
+  readFileSync(join(__dirname, '__fixtures__/readme-scrape-links.json'), 'utf-8'),
+)
+
+describe('readmeScrape against IN-1305 verdicts', () => {
+  const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const scrapeRow = async ({ name, repo, url }: IReadmeLinkRow) => {
+    const repoPath = (repo ?? 'unknown-owner/unknown-repo').toLowerCase()
+    routeFetch([
+      [`https://api.github.com/repos/${repoPath}/readme`, () => new Response(`[Docs](${url})`)],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug: slugOf(name),
+      website: null,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repoPath}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each(readmeLinks.wrong)('drops another product docs link: $name -> $url', async (row) => {
+    expect(await scrapeRow(row)).toEqual([])
+  })
+
+  it.each(readmeLinks.right)('keeps the project own docs link: $name -> $url', async (row) => {
+    expect((await scrapeRow(row)).length).toBeGreaterThan(0)
   })
 })
 
@@ -1606,14 +1654,14 @@ describe('readmeScrape and llms coverage gaps', () => {
   it('x.com exclusion is dot-bounded (box.com / dropbox.com stay)', async () => {
     const m = routeFetch([
       readmeRoute(
-        '[Docs](https://docs.box.com/guide) [Docs](https://docs.dropbox.com/documentation)',
+        '[Docs](https://docs.p-box.com/guide) [Docs](https://docs.p-dropbox.com/documentation)',
       ),
       ['https://', html],
     ])
     await scrape(null)
     expect(probed(m)).toEqual([
-      'https://docs.box.com/guide',
-      'https://docs.dropbox.com/documentation',
+      'https://docs.p-box.com/guide',
+      'https://docs.p-dropbox.com/documentation',
     ])
   })
   it('excluded hosts gitter/x/slack/youtu.be/githubassets/shields', async () => {

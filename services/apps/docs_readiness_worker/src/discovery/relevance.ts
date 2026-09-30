@@ -44,6 +44,7 @@ const SHARED_HOSTING = [
   'netlify.app',
   'vercel.app',
   'pages.dev',
+  'docs.rs',
 ]
 
 const words = (value: string): string[] =>
@@ -78,9 +79,10 @@ export function projectTokens({ name, slug, repoUrl }: IProjectTokenSource): str
   return [...new Set(all.filter((word) => word.length >= MIN_TOKEN_LENGTH || word === wholeSlug))]
 }
 
-// Short tokens must be the whole label, so "torq" never matches "qtorque".
+// Short tokens must be the whole label or a hyphen part, so "torq" never matches "qtorque".
 const matchesLabel = (label: string, token: string): boolean =>
   label === token ||
+  label.split('-').includes(token) ||
   (token.length >= MIN_AFFIX_TOKEN_LENGTH && (label.startsWith(token) || label.endsWith(token)))
 
 export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
@@ -101,7 +103,7 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
   if (hosting) {
     const tenant =
       host
-        .slice(0, host.length - hosting.length - 1)
+        .slice(0, -hosting.length - 1)
         .split('.')
         .pop() ?? ''
     const firstSegment = parsed.pathname.split('/').filter(Boolean)[0] ?? ''

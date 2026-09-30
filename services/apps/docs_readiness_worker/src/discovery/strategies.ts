@@ -341,12 +341,17 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       return registrableDomain(url) === ownerPages ? 1 : 2
     }
 
+    const tokens = projectTokens({ name: ctx.name, slug: ctx.slug, repoUrl: repo })
     const filtered: { url: string; fallback?: string }[] = []
     for (const { url, text } of links.values()) {
       if (!DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(url)) {
         continue
       }
       const foreign = rank(url) === 2
+      // Another product's docs (docs.docker.com, docs.conda.io) are linked from many READMEs.
+      if (foreign && !isRelevantSerpResult(url, tokens)) {
+        continue
+      }
       if (foreign && !DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(domainOf(url) ?? '')) {
         continue
       }

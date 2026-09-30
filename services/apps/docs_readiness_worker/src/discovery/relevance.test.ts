@@ -237,6 +237,31 @@ const CASES: IRelevanceCase[] = [
     url: 'https://proj.example.com/',
     relevant: false,
   },
+  // A short token matches one hyphen-delimited part of the label, a docs.rs crate is a tenant.
+  {
+    project: 'short token as a hyphen part of the domain label',
+    tokens: ['besu'],
+    url: 'https://docs.besu-eth.org/',
+    relevant: true,
+  },
+  {
+    project: 'short token inside a hyphen part stays unmatched',
+    tokens: ['torq'],
+    url: 'https://docs.qtorque-labs.org/',
+    relevant: false,
+  },
+  {
+    project: 'docs.rs crate named after the project',
+    tokens: ['sev'],
+    url: 'https://docs.rs/sev',
+    relevant: true,
+  },
+  {
+    project: 'docs.rs crate of another project',
+    tokens: ['sev'],
+    url: 'https://docs.rs/cargo-audit',
+    relevant: false,
+  },
   // Mechanics.
   {
     project: 'shared hosting tenant that does not match',
