@@ -524,6 +524,34 @@ describe('githubHomepage derived probes', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it.each([
+    'https://insights.linuxfoundation.org/project/katalis/repository/neonephos-katalis_opg-ewbi-operator?timeRange=past365days',
+    'https://landscape.lfenergy.org/',
+    'https://l.aswf.io/',
+    'https://gerrit.o-ran-sc.org/r/admin/repos/sim/ns3-o-ran-e2',
+    'https://huggingface.co/spaces/finosfoundation/Open-Financial-LLM-Leaderboard',
+  ])('rejects the platform page %s as a repo homepage without probing it', async (homepage) => {
+    const fetchMock = routeFetch([
+      ['https://api.github.com/repos/torvalds/linux', () => Response.json({ homepage })],
+    ])
+
+    expect(await githubHomepage(ctx())).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a huggingface.co/docs homepage', async () => {
+    routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://huggingface.co/docs/transformers' }),
+      ],
+      ['https://huggingface.co', html],
+    ])
+
+    const result = await githubHomepage(ctx({ website: null, websiteShared: false }))
+    expect(result.map((c) => c.method)).toContain('github-homepage')
+  })
+
   it('does no derived probing when the homepage is a github url', async () => {
     const fetchMock = routeFetch([
       [

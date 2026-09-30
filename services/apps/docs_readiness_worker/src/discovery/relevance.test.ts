@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { describe, expect, it } from 'vitest'
 
-import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
+import { isPlatformPage, isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 
 describe('projectTokens', () => {
   it('lowercases alphanumeric words from name, slug and repo owner/name', () => {
@@ -358,5 +358,36 @@ const CASES: IRelevanceCase[] = [
 describe('isRelevantSerpResult', () => {
   it.each(CASES)('$project: $url -> $relevant', ({ tokens, url, relevant, hyphenTokens }) => {
     expect(isRelevantSerpResult(url, tokens, { hyphenTokens })).toBe(relevant)
+  })
+})
+
+describe('isPlatformPage', () => {
+  it.each([
+    'https://insights.linuxfoundation.org/project/katalis?timeRange=past365days',
+    'https://gerrit.o-ran-sc.org/r/admin/repos/sim/ns3-o-ran-e2',
+    'https://gerrit.onap.org/',
+    'https://landscape.lfenergy.org/',
+    'https://landscape.cncf.io',
+    'https://l.aswf.io/',
+    'https://huggingface.co/spaces/finosfoundation/Open-Financial-LLM-Leaderboard',
+    'https://huggingface.co/spaces',
+    'https://www.huggingface.co/Spaces/foo/bar',
+  ])('flags %s', (url) => {
+    expect(isPlatformPage(url)).toBe(true)
+  })
+
+  it.each([
+    'https://huggingface.co/docs',
+    'https://huggingface.co/docs/transformers',
+    'https://huggingface.co/spaces-docs',
+    'https://linuxfoundation.org/',
+    'https://insights.example.org/',
+    'https://aswf.io/',
+    'https://docs.gerrit.example.org/',
+    'https://mygerrit.example.org/',
+    'https://lfenergy.org/landscape',
+    'not a url',
+  ])('keeps %s', (url) => {
+    expect(isPlatformPage(url)).toBe(false)
   })
 })

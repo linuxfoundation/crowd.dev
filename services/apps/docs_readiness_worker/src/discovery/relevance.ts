@@ -48,6 +48,11 @@ export const SHARED_HOSTING = [
   'docs.rs',
 ]
 
+// Tool pages that are not a project's docs: exact hosts, hosts led by one of these labels, host + path prefix.
+const PLATFORM_HOSTS = ['insights.linuxfoundation.org', 'l.aswf.io']
+const PLATFORM_HOST_LABELS = ['gerrit', 'landscape']
+const PLATFORM_PATHS = [{ host: 'huggingface.co', pathPrefix: '/spaces/' }]
+
 const words = (value: string): string[] =>
   value
     .toLowerCase()
@@ -56,6 +61,26 @@ const words = (value: string): string[] =>
 
 const isOnDomain = (host: string, domain: string): boolean =>
   host === domain || host.endsWith(`.${domain}`)
+
+export function isPlatformPage(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  const path = parsed.pathname.toLowerCase()
+  return (
+    PLATFORM_HOSTS.includes(host) ||
+    PLATFORM_HOST_LABELS.some((label) => host.startsWith(`${label}.`)) ||
+    PLATFORM_PATHS.some(
+      (rule) =>
+        host === rule.host && (path.startsWith(rule.pathPrefix) || `${path}/` === rule.pathPrefix),
+    )
+  )
+}
 
 // Name words minus generic ones ("Electron framework" -> ["electron"]).
 export function nameTokens(name: string): string[] {
