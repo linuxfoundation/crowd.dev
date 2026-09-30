@@ -12,8 +12,7 @@ interface ISegmentQueryResponse {
 }
 
 interface IIntegrationQueryResponse {
-  rows?: unknown[]
-  count?: number
+  rows?: Array<{ settings?: { orgs?: Array<{ repos?: Array<{ url?: string }> }> } }>
 }
 
 const GITHUB_NANGO_PLATFORM = 'github-nango'
@@ -135,11 +134,11 @@ async function queryProjectByName(
   return null
 }
 
-async function segmentHasGithubIntegration(
+async function queryGithubIntegrationRepoUrls(
   segmentId: string,
   apiUrl: string,
   token: string,
-): Promise<boolean> {
+): Promise<string[] | null> {
   const response = await fetch(`${apiUrl}/integration/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -158,8 +157,14 @@ async function segmentHasGithubIntegration(
     )
   }
 
-  const body = (await response.json()) as IIntegrationQueryResponse
-  return (body.count ?? body.rows?.length ?? 0) > 0
+  const [integration] = ((await response.json()) as IIntegrationQueryResponse).rows ?? []
+  if (!integration) {
+    return null
+  }
+
+  return (integration.settings?.orgs ?? [])
+    .flatMap((org) => org.repos ?? [])
+    .flatMap((repo) => (repo.url ? [repo.url.toLowerCase()] : []))
 }
 
 export function deriveProjectNameCandidates(owner: string, repoName: string): string[] {
@@ -169,6 +174,7 @@ export function deriveProjectNameCandidates(owner: string, repoName: string): st
 export async function resolveProjectSegment(
   candidateNames: string[],
   slug: string,
+  repoUrl: string,
   apiUrl: string,
   token: string,
 ): Promise<string> {
@@ -177,7 +183,9 @@ export async function resolveProjectSegment(
     if (!existingSegmentId) {
       return createProjectSegment(name, slug, apiUrl, token)
     }
-    if (!(await segmentHasGithubIntegration(existingSegmentId, apiUrl, token))) {
+
+    const connectedRepoUrls = await queryGithubIntegrationRepoUrls(existingSegmentId, apiUrl, token)
+    if (!connectedRepoUrls || connectedRepoUrls.includes(repoUrl.toLowerCase())) {
       return existingSegmentId
     }
   }
@@ -313,6 +321,7 @@ export async function onboardProject(input: IOnboardingInput): Promise<IOnboardi
     segmentId = await resolveProjectSegment(
       deriveProjectNameCandidates(owner, input.repoName),
       slug,
+      input.repoUrl,
       apiUrl,
       apiToken,
     )
