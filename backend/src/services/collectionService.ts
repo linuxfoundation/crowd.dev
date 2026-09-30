@@ -297,7 +297,7 @@ export class CollectionService extends LoggerBase {
     })
   }
 
-  async createInsightsProjectDocOverride(projectId: string, docsUrl: string) {
+  async createInsightsProjectDocOverride(projectId: string, docsUrl: string | null) {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
     const override = await createProjectDocOverride(qx, {
       projectId,

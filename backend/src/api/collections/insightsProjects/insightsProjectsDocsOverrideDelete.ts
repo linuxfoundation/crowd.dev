@@ -5,10 +5,10 @@ import PermissionChecker from '../../../services/user/permissionChecker'
 
 /**
  * DELETE /collections/insights-projects/{id}/docs-override
- * @summary Revert the manual documentation URL override for an insights project
+ * @summary Revert the manual documentation override for an insights project
  * @tag Collections
  * @security Bearer
- * @description Deactivates the active documentation URL override for a project and starts a
+ * @description Deactivates the active documentation override (a URL or "no docs") for a project and starts a
  *   docs readiness run so it re-discovers a URL naturally.
  * @pathParam {string} id - The ID of the insights project
  * @response 200 - Ok
