@@ -4,7 +4,9 @@ import type {
   DocDiscoveryMethod,
   IDocCandidate,
 } from '@crowd/data-access-layer'
+import type { Logger } from '@crowd/logging'
 
+import type { IDocsValidation, IDocsValidatorPage, IDocsValidatorProject } from './docsValidator'
 import {
   type IRepoRef,
   getPackageJson,
@@ -24,6 +26,11 @@ import {
 } from './http'
 import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 
+export type DocsPickValidator = (
+  project: IDocsValidatorProject,
+  page: IDocsValidatorPage,
+) => Promise<IDocsValidation>
+
 export interface IDiscoveryContext {
   name: string
   slug: string
@@ -35,6 +42,9 @@ export interface IDiscoveryContext {
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
+  // Null or absent turns off the language-model check of search and README picks.
+  docsValidator?: DocsPickValidator | null
+  log?: Pick<Logger, 'info' | 'warn'>
 }
 
 export type DiscoveryStrategy = (ctx: IDiscoveryContext) => Promise<IDocCandidate[]>

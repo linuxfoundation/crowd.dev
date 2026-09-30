@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   upsertProjectDocDiscovery: vi.fn(),
   getGithubInstallationToken: vi.fn(),
   discoverDocs: vi.fn(),
+  createClient: vi.fn(() => ({ complete: vi.fn() })),
 }))
 
 vi.mock('../main', () => ({
@@ -41,6 +42,10 @@ vi.mock('../discovery', () => ({
   discoverDocs: mocks.discoverDocs,
 }))
 
+vi.mock('../discovery/docsValidatorClient', () => ({
+  createAnthropicAwsDocsValidatorClient: mocks.createClient,
+}))
+
 beforeEach(() => {
   mocks.findSharedDocsUrls.mockResolvedValue([])
 })
@@ -48,6 +53,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks()
   delete process.env.CROWD_DOCS_READINESS_SERP_API_KEY
+  delete process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED
 })
 
 describe('resolveDocsUrl', () => {
@@ -138,6 +144,7 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: null,
       serpApiKey: null,
+      docsValidator: null,
     })
     expect(mocks.upsertProjectDocDiscovery).toHaveBeenCalledWith(
       {},
@@ -190,6 +197,45 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
+      docsValidator: null,
+    })
+  })
+
+  describe('docs validator flag', () => {
+    async function validatorPassedToDiscovery() {
+      mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+      mocks.findProjectForDocsDiscovery.mockResolvedValue({
+        id: 'project-1',
+        slug: 'proj',
+        name: 'Project',
+        website: null,
+        websiteSharedWith: [],
+      })
+      mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+      mocks.discoverDocs.mockResolvedValue({
+        docsUrl: null,
+        discoveryMethod: null,
+        confidence: null,
+        allCandidates: [],
+      })
+      await resolveDocsUrl('project-1')
+      return mocks.discoverDocs.mock.calls[0][0].docsValidator
+    }
+
+    test.each([undefined, 'false', '1', 'TRUE'])('is off when the env var is %s', async (value) => {
+      if (value !== undefined) {
+        process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED = value
+      }
+
+      expect(await validatorPassedToDiscovery()).toBeNull()
+      expect(mocks.createClient).not.toHaveBeenCalled()
+    })
+
+    test('is on only when the env var is exactly true', async () => {
+      process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED = 'true'
+
+      expect(await validatorPassedToDiscovery()).toEqual(expect.any(Function))
+      expect(mocks.createClient).toHaveBeenCalledTimes(1)
     })
   })
 

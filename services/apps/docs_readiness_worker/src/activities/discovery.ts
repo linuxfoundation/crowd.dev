@@ -11,7 +11,10 @@ import {
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { discoverDocs } from '../discovery'
+import { validateDocsUrl } from '../discovery/docsValidator'
+import { createAnthropicAwsDocsValidatorClient } from '../discovery/docsValidatorClient'
 import { isUmbrellaWebsite } from '../discovery/sharedWebsite'
+import type { DocsPickValidator } from '../discovery/strategies'
 import { svc } from '../main'
 import { IResolvedDocsUrl } from '../types'
 import { withTimeout } from './withTimeout'
@@ -22,6 +25,15 @@ import { withTimeout } from './withTimeout'
 // 5-minute activity timeout, permanently occupying a worker concurrency slot instead of freeing
 // it (the same failure mode fixed in scoring.ts's SCORING_TIMEOUT_MS).
 const DISCOVERY_TIMEOUT_MS = 4 * 60 * 1000
+
+// Off unless explicitly enabled; the client reads its credentials only when a check runs.
+function buildDocsValidator(): DocsPickValidator | null {
+  if (process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED !== 'true') {
+    return null
+  }
+  const client = createAnthropicAwsDocsValidatorClient()
+  return (project, page) => validateDocsUrl(client, project, page)
+}
 
 export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUrl> {
   const readerQx = pgpQx(svc.postgres.reader.connection())
@@ -75,6 +87,8 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
       findSharedDocsUrls: (hosts) => findSharedDocsUrls(readerQx, projectId, hosts),
       githubToken,
       serpApiKey: process.env.CROWD_DOCS_READINESS_SERP_API_KEY ?? null,
+      docsValidator: buildDocsValidator(),
+      log: svc.log,
     }),
     DISCOVERY_TIMEOUT_MS,
     `discoverDocs exceeded ${DISCOVERY_TIMEOUT_MS}ms for project ${projectId}`,
