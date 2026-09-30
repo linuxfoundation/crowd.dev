@@ -11,6 +11,7 @@ import {
   rankCandidates,
   repoNameAnchor,
 } from './rank'
+import { isUnnamedParentPage } from './sharedWebsite'
 import { type IDiscoveryContext, STRATEGIES, serpStrategy } from './strategies'
 
 export interface IDiscoverDocsResult {
@@ -84,7 +85,15 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
     : claimedDocsUrls
   const rank = (pool: IDocCandidate[]) =>
     rankCandidates(pool, projectDomain, projectNameHint, new Set(sharedDocsUrls))
-  const winner = await pickValidatedWinner(ctx, allCandidates, rank)
+  // A parent or foundation page no sub-project names is no answer; the next candidate is tried.
+  const isShared = (url: string) =>
+    !isGithubWebsite(url) &&
+    !isClaimedUrl(url, ctx.website ? [ctx.website] : []) &&
+    (isClaimedUrl(url, claimedDocsUrls) || (!!familyDomain && isOnProjectDomain(url, familyDomain)))
+  const eligible = allCandidates.filter(
+    (c) => !isUnnamedParentPage(c.url, ctx.name, isShared(c.url)),
+  )
+  const winner = await pickValidatedWinner(ctx, eligible, rank)
 
   // A cut root another project already claims would bypass the shared-URL penalty.
   const cutRoot = winner?.method === 'serp' ? cutSerpToDocsRoot : cutToDocsRoot

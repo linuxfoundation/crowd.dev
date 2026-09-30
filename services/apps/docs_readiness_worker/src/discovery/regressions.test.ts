@@ -125,7 +125,7 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
   it.each([
     { name: 'ODL Service Abstraction Framework (SAF)', slug: 'odl-saf' },
     { name: 'ODL Guice', slug: 'odl-guice' },
-  ])('$name keeps docs.opendaylight.org although the family claims it', async (project) => {
+  ])('$name drops the family docs tree its page does not name (IN-1432)', async (project) => {
     scriptNetwork(['https://www.opendaylight.org/', 'https://docs.opendaylight.org'])
 
     const result = await discoverDocs(
@@ -135,11 +135,29 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
       ),
     )
 
+    expect(result.docsUrl).toBe('https://www.opendaylight.org/')
+  })
+
+  it('OpenDaylight, the parent, keeps docs.opendaylight.org although its family claims it', async () => {
+    scriptNetwork(['https://www.opendaylight.org/', 'https://docs.opendaylight.org'])
+
+    const result = await discoverDocs(
+      ctxFor(
+        {
+          name: 'OpenDaylight',
+          slug: 'opendaylight',
+          website: 'https://www.opendaylight.org/',
+          sharedWith: ODL_SIBLINGS,
+        },
+        async () => ['https://docs.opendaylight.org'],
+      ),
+    )
+
     expect(result.docsUrl).toBe('https://docs.opendaylight.org')
     expect(result.discoveryMethod).toBe('docs-subdomain')
   })
 
-  it('GraphQL IDE Monorepo keeps graphql.org/docs although its siblings claim it', async () => {
+  it('GraphQL IDE Monorepo no longer gets graphql.org/docs from its siblings (IN-1432)', async () => {
     scriptNetwork(['https://graphql.org/', 'https://graphql.org/docs'])
 
     const result = await discoverDocs(
@@ -157,8 +175,40 @@ describe('discovery regressions from the IN-1396 prod re-run', () => {
       ),
     )
 
-    expect(result.docsUrl).toBe('https://graphql.org/docs')
-    expect(result.discoveryMethod).toBe('docs-path')
+    expect(result.docsUrl).toBe('https://graphql.org/')
+    expect(result.discoveryMethod).toBe('project-website')
+  })
+
+  it('GoVPP drops the shared docs.fd.io tree and keeps its own wiki page', async () => {
+    scriptNetwork(['https://wiki.fd.io/view/GoVPP', 'https://docs.fd.io'])
+
+    const result = await discoverDocs(
+      ctxFor(
+        {
+          name: 'Golang Toolset for VPP (GoVPP)',
+          slug: 'fdio-govpp',
+          website: 'https://wiki.fd.io/view/GoVPP',
+        },
+        async () => ['https://docs.fd.io'],
+      ),
+    )
+
+    expect(result.docsUrl).toBe('https://wiki.fd.io/view/GoVPP')
+  })
+
+  it('a sub-project on a foundation home page gets no URL, the foundation keeps it', async () => {
+    scriptNetwork(['https://chipsalliance.org/'])
+    const chips = { website: 'https://chipsalliance.org/', sharedWith: [{ name: 'X', slug: 'x' }] }
+
+    const subProject = await discoverDocs(
+      ctxFor({ name: 'Chisel Workgroup', slug: 'chisel-wg', ...chips }),
+    )
+    const foundation = await discoverDocs(
+      ctxFor({ name: 'CHIPS Alliance', slug: 'chips-alliance', ...chips }),
+    )
+
+    expect(subProject.docsUrl).toBeNull()
+    expect(foundation.docsUrl).toBe('https://chipsalliance.org/')
   })
 
   it('a docs URL claimed by another project still loses when the site is not this family', async () => {
