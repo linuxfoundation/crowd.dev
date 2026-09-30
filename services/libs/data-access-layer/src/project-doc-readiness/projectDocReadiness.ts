@@ -246,6 +246,7 @@ export async function findProjectsForDocsReadiness(
             OR EXISTS (
               SELECT 1 FROM "projectDocOverrides" o
               WHERE o."projectId" = p."id" AND o."active"
+                AND (o."docsUrl" IS NOT NULL OR latest."error" IS DISTINCT FROM $(noDocsUrlError))
             )
           )
         )
