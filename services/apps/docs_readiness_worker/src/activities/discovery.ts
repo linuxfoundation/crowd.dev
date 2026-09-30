@@ -28,6 +28,17 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
 
   const override = await findActiveProjectDocOverride(readerQx, projectId)
   if (override) {
+    if (!override.docsUrl) {
+      // A no-docs override is recorded as a discovery too, so a stale discovered URL is cleared.
+      await upsertProjectDocDiscovery(pgpQx(svc.postgres.writer.connection()), {
+        projectId,
+        docsUrl: null,
+        discoveryMethod: 'override',
+        confidence: 'authoritative',
+        candidates: [],
+      })
+    }
+
     return {
       docsUrl: override.docsUrl,
       discoveryMethod: 'override',

@@ -1,7 +1,8 @@
 export interface IDbProjectDocOverride {
   id: string
   projectId: string
-  docsUrl: string
+  // null means the project has no docs.
+  docsUrl: string | null
   submittedBy: string
   submittedAt: string
   active: boolean
@@ -11,6 +12,6 @@ export interface IDbProjectDocOverride {
 
 export interface IProjectDocOverrideCreate {
   projectId: string
-  docsUrl: string
+  docsUrl: string | null
   submittedBy: string
 }
