@@ -46,6 +46,7 @@ interface IRelevanceCase {
   project: string
   tokens: string[]
   url: string
+  hyphenTokens?: string[]
   relevant: boolean
 }
 
@@ -237,6 +238,100 @@ const CASES: IRelevanceCase[] = [
     url: 'https://proj.example.com/',
     relevant: false,
   },
+  // A short token matches one hyphen-delimited part of the label, a docs.rs crate is a tenant.
+  {
+    project: 'README mode: 4-char token as a hyphen part of the domain label',
+    tokens: ['besu'],
+    url: 'https://docs.besu-eth.org/',
+    hyphenTokens: ['besu'],
+    relevant: true,
+  },
+  {
+    project: 'README mode: 4-char token as a hyphen part of the tenant',
+    tokens: ['oxia'],
+    url: 'https://oxia-db.github.io/oxia/',
+    hyphenTokens: ['oxia'],
+    relevant: true,
+  },
+  {
+    project: 'README mode: 3-char token never matches a hyphen part',
+    tokens: ['sev'],
+    url: 'https://docs.sev-labs.org/',
+    hyphenTokens: ['sev'],
+    relevant: false,
+  },
+  {
+    project: 'README mode: token inside a hyphen part stays unmatched',
+    tokens: ['torq'],
+    url: 'https://docs.qtorque-labs.org/',
+    hyphenTokens: ['torq'],
+    relevant: false,
+  },
+  // Owner halves (kcl-lang -> lang) are tokens but not name/slug tokens, so they never match a hyphen part.
+  ...[
+    ['KCL', 'kcl', 'kcl-lang/kcl', 'lang', 'https://doc.rust-lang.org/book/'],
+    [
+      'Hyperledger Foo',
+      'hyperledger-foo',
+      'hyperledger-labs/foo',
+      'labs',
+      'https://docs.acme-labs.io/',
+    ],
+    ['Agones', 'agones', 'agones-dev/agones', 'dev', 'https://docs.acme-dev.io/'],
+    ['Kubed', 'kubed', 'kubernetes-sigs/kubed', 'sigs', 'https://docs.kube-sigs.io/'],
+  ].map(([name, slug, repo, half, url]) => {
+    const tokens = tokensOf(name, slug, `https://github.com/${repo}`)
+    return {
+      project: `README mode: owner half "${half}" of ${repo} is not a hyphen part`,
+      tokens,
+      url,
+      hyphenTokens: [...nameTokens(name), ...nameTokens(slug)],
+      relevant: false,
+    }
+  }),
+  {
+    project: 'README mode: name token besu still matches besu-eth with the owner repo tokens',
+    tokens: tokensOf('Besu', 'besu', 'https://github.com/hyperledger/besu'),
+    url: 'https://docs.besu-eth.org/',
+    hyphenTokens: ['besu'],
+    relevant: true,
+  },
+  {
+    project: 'search mode: 4-char token is not a hyphen part',
+    tokens: ['besu'],
+    url: 'https://docs.besu-eth.org/',
+    relevant: false,
+  },
+  {
+    project: 'docs.rs crate named after the project',
+    tokens: ['sev'],
+    url: 'https://docs.rs/sev',
+    relevant: true,
+  },
+  {
+    project: 'docs.rs crate of another project',
+    tokens: ['sev'],
+    url: 'https://docs.rs/cargo-audit',
+    relevant: false,
+  },
+  // Search mode (default) never matches a generic token inside another product's hyphenated domain.
+  ...[
+    ['node', 'https://docs.node-red.org/'],
+    ['cli', 'https://docs.aws-cli.io/'],
+    ['sigs', 'https://kube-sigs.io/'],
+    ['data', 'https://docs.open-data.io/'],
+    ['edge', 'https://docs.edge-runtime.dev/'],
+    ['go', 'https://docs.django-go.io/'],
+    ['go', 'https://get-go.dev/'],
+    ['go', 'https://go-task.dev/docs'],
+    ['ai', 'https://docs.open-ai.com/'],
+    ['r', 'https://r-bloggers.com/docs'],
+  ].map(([token, url]) => ({
+    project: `search mode: token "${token}" is not a hyphen part`,
+    tokens: [token],
+    url,
+    relevant: false,
+  })),
   // Mechanics.
   {
     project: 'shared hosting tenant that does not match',
@@ -261,7 +356,7 @@ const CASES: IRelevanceCase[] = [
 ]
 
 describe('isRelevantSerpResult', () => {
-  it.each(CASES)('$project: $url -> $relevant', ({ tokens, url, relevant }) => {
-    expect(isRelevantSerpResult(url, tokens)).toBe(relevant)
+  it.each(CASES)('$project: $url -> $relevant', ({ tokens, url, relevant, hyphenTokens }) => {
+    expect(isRelevantSerpResult(url, tokens, { hyphenTokens })).toBe(relevant)
   })
 })

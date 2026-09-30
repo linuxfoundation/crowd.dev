@@ -18,6 +18,7 @@ const GENERIC_WORDS = new Set([
 
 const MIN_TOKEN_LENGTH = 3
 const MIN_AFFIX_TOKEN_LENGTH = 5
+const MIN_HYPHEN_PART_TOKEN_LENGTH = 4
 
 // Hosts that never carry a project's own documentation, whatever the query returned.
 const NOISE_HOSTS = [
@@ -44,6 +45,7 @@ const SHARED_HOSTING = [
   'netlify.app',
   'vercel.app',
   'pages.dev',
+  'docs.rs',
 ]
 
 const words = (value: string): string[] =>
@@ -79,11 +81,19 @@ export function projectTokens({ name, slug, repoUrl }: IProjectTokenSource): str
 }
 
 // Short tokens must be the whole label, so "torq" never matches "qtorque".
-const matchesLabel = (label: string, token: string): boolean =>
+// hyphenTokens (README links, name/slug only) may match a 4+ char hyphen part: besu -> besu-eth.
+const matchesLabel = (label: string, token: string, hyphenTokens: string[]): boolean =>
   label === token ||
+  (hyphenTokens.includes(token) &&
+    token.length >= MIN_HYPHEN_PART_TOKEN_LENGTH &&
+    label.split('-').includes(token)) ||
   (token.length >= MIN_AFFIX_TOKEN_LENGTH && (label.startsWith(token) || label.endsWith(token)))
 
-export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
+export function isRelevantSerpResult(
+  url: string,
+  tokens: string[],
+  { hyphenTokens = [] }: { hyphenTokens?: string[] } = {},
+): boolean {
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -101,7 +111,7 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
   if (hosting) {
     const tenant =
       host
-        .slice(0, host.length - hosting.length - 1)
+        .slice(0, -hosting.length - 1)
         .split('.')
         .pop() ?? ''
     const firstSegment = parsed.pathname.split('/').filter(Boolean)[0] ?? ''
@@ -114,5 +124,5 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
     }
   }
 
-  return tokens.some((token) => labels.some((label) => matchesLabel(label, token)))
+  return tokens.some((token) => labels.some((label) => matchesLabel(label, token, hyphenTokens)))
 }
