@@ -1,4 +1,4 @@
-import { githubRepoPath } from '@crowd/common'
+import { canonicalizeRepoUrl, githubRepoPath } from '@crowd/common'
 
 import { IOnboardingInput, IOnboardingResult } from './types'
 
@@ -11,6 +11,11 @@ interface ISegmentQueryResponse {
   count?: number
 }
 
+interface IIntegrationQueryResponse {
+  rows?: Array<{ settings?: { orgs?: Array<{ repos?: Array<{ url?: string }> }> } }>
+}
+
+const GITHUB_NANGO_PLATFORM = 'github-nango'
 const SEGMENT_QUERY_PAGE_SIZE = 20
 const BACKEND_REQUEST_TIMEOUT_MS = 30_000
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000
@@ -129,17 +134,83 @@ async function queryProjectByName(
   return null
 }
 
+function comparableRepoUrl(url: string): string {
+  return canonicalizeRepoUrl(url)?.url ?? url.toLowerCase()
+}
+
+async function queryGithubIntegrationRepoUrls(
+  segmentId: string,
+  apiUrl: string,
+  token: string,
+): Promise<string[] | null> {
+  const response = await fetch(`${apiUrl}/integration/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      segments: [segmentId],
+      filter: { and: [{ platform: { eq: GITHUB_NANGO_PLATFORM } }] },
+      limit: 1,
+      offset: 0,
+    }),
+    signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      `Integration query returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+    )
+  }
+
+  const [integration] = ((await response.json()) as IIntegrationQueryResponse).rows ?? []
+  if (!integration) {
+    return null
+  }
+
+  return (integration.settings?.orgs ?? [])
+    .flatMap((org) => org.repos ?? [])
+    .flatMap((repo) => (repo.url ? [comparableRepoUrl(repo.url)] : []))
+}
+
+export function deriveProjectNameCandidates(owner: string, repoName: string): string[] {
+  return [deriveProjectName(repoName), deriveProjectName(`${owner} ${repoName}`)]
+}
+
+export async function resolveProjectSegment(
+  candidateNames: string[],
+  slug: string,
+  repoUrl: string,
+  apiUrl: string,
+  token: string,
+): Promise<string> {
+  const requestedRepoUrl = comparableRepoUrl(repoUrl)
+
+  for (const name of candidateNames) {
+    const existingSegmentId = await queryProjectByName(name, apiUrl, token)
+    if (!existingSegmentId) {
+      return createProjectSegment(name, slug, apiUrl, token)
+    }
+
+    const connectedRepoUrls = await queryGithubIntegrationRepoUrls(existingSegmentId, apiUrl, token)
+    const isOnlyRequestedRepo =
+      connectedRepoUrls !== null &&
+      connectedRepoUrls.length > 0 &&
+      connectedRepoUrls.every((url) => url === requestedRepoUrl)
+    if (connectedRepoUrls === null || isOnlyRequestedRepo) {
+      return existingSegmentId
+    }
+  }
+
+  throw new Error(
+    `Every candidate project name (${candidateNames.map((name) => `"${name}"`).join(', ')}) is already used by a project with a GitHub integration`,
+  )
+}
+
 async function createProjectSegment(
   name: string,
   slug: string,
   apiUrl: string,
   token: string,
 ): Promise<string> {
-  const existingSegmentId = await queryProjectByName(name, apiUrl, token)
-  if (existingSegmentId) {
-    return existingSegmentId
-  }
-
   const response = await fetch(`${apiUrl}/segment/project`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -243,7 +314,6 @@ export async function onboardProject(input: IOnboardingInput): Promise<IOnboardi
   }
   const githubToken = githubTokens.split(',')[0].trim()
 
-  const name = deriveProjectName(input.repoName)
   const slug = deriveProjectSlug(input.projectSlug)
 
   let owner: string
@@ -258,7 +328,13 @@ export async function onboardProject(input: IOnboardingInput): Promise<IOnboardi
 
   let segmentId: string
   try {
-    segmentId = await createProjectSegment(name, slug, apiUrl, apiToken)
+    segmentId = await resolveProjectSegment(
+      deriveProjectNameCandidates(owner, input.repoName),
+      slug,
+      input.repoUrl,
+      apiUrl,
+      apiToken,
+    )
   } catch (err) {
     return { outcome: 'error', segmentId: null, error: (err as Error).message }
   }

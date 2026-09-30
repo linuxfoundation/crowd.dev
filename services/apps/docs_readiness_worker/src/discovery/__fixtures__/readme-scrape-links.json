@@ -1,0 +1,187 @@
+{
+  "wrong": [
+    {
+      "name": "Academy Software Foundation (ASWF)",
+      "repo": "AcademySoftwareFoundation/aswf-docker",
+      "url": "https://docs.linuxfoundation.org/lfx/project-control-center/v2-latest-version/operations/project-definition"
+    },
+    {
+      "name": "Akraino",
+      "url": "https://docs.docker.com/engine/install/ubuntu/",
+      "repo": "akraino-edge-stack/kni-blueprint-pae"
+    },
+    {
+      "name": "Elyra",
+      "repo": "elyra-ai/elyra",
+      "url": "https://docs.conda.io/en/latest/"
+    },
+    {
+      "name": "FINOS Code Scanning",
+      "url": "https://docs.rs/cargo-audit",
+      "repo": "finos/code-scanning"
+    },
+    {
+      "name": "FINOS Labs",
+      "url": "https://huggingface.co/docs/leaderboards/en/leaderboards/building_page",
+      "repo": "finos-labs/fdc3-security"
+    },
+    {
+      "name": "Hexa",
+      "url": "https://www.keycloak.org/guides",
+      "repo": "hexa-org/policy"
+    },
+    {
+      "name": "KubeSlice",
+      "repo": "kubeslice/kubeslice",
+      "url": "https://helm.sh/docs/"
+    },
+    {
+      "name": "OpenAPV",
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-avtcore-rtp-apv/",
+      "repo": "AcademySoftwareFoundation/openapv"
+    },
+    {
+      "name": "Open Resource Discovery",
+      "url": "https://ord-reference-application.cfapps.sap.hana.ondemand.com/",
+      "repo": "open-resource-discovery/metadata-compactor-golang"
+    },
+    {
+      "name": "O-RAN Simulations (SIM)",
+      "repo": "o-ran-sc/sim-ns3-o-ran-e2",
+      "url": "https://openrangym.com/tutorials/ns-o-ran"
+    },
+    {
+      "name": "Recommenders",
+      "url": "https://docs.astral.sh/uv/",
+      "repo": "recommenders-team/recommenders"
+    },
+    {
+      "name": "SC Decarbonisation Hub",
+      "url": "https://nextjs.org/docs",
+      "repo": "sc-decarbonization-hub/SCDH"
+    },
+    {
+      "name": "SlimToolkit",
+      "url": "https://www.amazon.co.jp/dp/4839970505",
+      "repo": "slimtoolkit/slim"
+    },
+    {
+      "name": "VS Code Kubernetes Tools",
+      "url": "https://code.visualstudio.com/docs/editor/variables-reference",
+      "repo": "vscode-kubernetes-tools/vscode-kubernetes-tools"
+    }
+  ],
+  "right": [
+    {
+      "name": "Agones",
+      "repo": "agones-dev/agones",
+      "url": "https://agones.dev/site/docs/"
+    },
+    {
+      "name": "AMReX",
+      "repo": "AMReX-Codes/amrex",
+      "url": "https://amrex-codes.github.io/amrex/docs_html/"
+    },
+    {
+      "name": "Besu",
+      "repo": "besu-eth/besu",
+      "url": "https://docs.besu-eth.org/"
+    },
+    {
+      "name": "CDM",
+      "repo": "finos/common-domain-model",
+      "url": "https://cdm.finos.org/"
+    },
+    {
+      "name": "Copa",
+      "repo": "project-copacetic/copacetic",
+      "url": "https://project-copacetic.github.io/copacetic/"
+    },
+    {
+      "name": "EasyCLA",
+      "repo": "linuxfoundation/easycla",
+      "url": "https://docs.linuxfoundation.org/lfx/easycla"
+    },
+    {
+      "name": "Egeria",
+      "repo": "odpi/egeria",
+      "url": "https://egeria-project.org/"
+    },
+    {
+      "name": "Express",
+      "repo": "expressjs/express",
+      "url": "https://expressjs.com/en/guide"
+    },
+    {
+      "name": "KCL",
+      "repo": "kcl-lang/kcl",
+      "url": "https://kcl-lang.io/docs/user_docs/guides/configuration",
+      "website": "https://kcl-lang.io"
+    },
+    {
+      "name": "Keylime",
+      "repo": "keylime/keylime",
+      "url": "https://keylime.readthedocs.io/en/latest/"
+    },
+    {
+      "name": "Legend",
+      "repo": "finos/legend",
+      "url": "https://legend.finos.org/docs/getting-started/installation-guide"
+    },
+    {
+      "name": "LFX CDP",
+      "repo": "linuxfoundation/crowd.dev",
+      "url": "https://docs.crowd.dev/docs/getting-started-with-self-hosting"
+    },
+    {
+      "name": "VirTEE",
+      "repo": "virtee/sev",
+      "url": "https://docs.rs/sev"
+    },
+    {
+      "name": "React",
+      "repo": "react/react",
+      "url": "https://react.dev/reference"
+    },
+    {
+      "name": "Kokkos Project",
+      "repo": "kokkos/kokkos",
+      "url": "https://kokkos.org/"
+    },
+    {
+      "name": "kube-rs",
+      "repo": "kube-rs/kube",
+      "url": "https://kube.rs/"
+    },
+    {
+      "name": "ONNX",
+      "repo": "onnx/onnx",
+      "url": "https://onnx.ai/"
+    },
+    {
+      "name": "Web3j",
+      "url": "http://docs.web3j.io/",
+      "repo": "LFDT-web3j/web3j"
+    },
+    {
+      "name": "OpenAssetIO",
+      "url": "https://docs.openassetio.org/OpenAssetIO",
+      "repo": "OpenAssetIO/openassetio.github.io"
+    },
+    {
+      "name": "Tremor",
+      "url": "https://tremor.rs/docs/0.12/index",
+      "repo": "tremor-rs/tremor-otelapis"
+    },
+    {
+      "name": "Kserve",
+      "url": "https://kserve.github.io/website/docs/community/adopters",
+      "repo": "kserve/artwork"
+    },
+    {
+      "name": "Garden Linux",
+      "url": "https://docs.gardenlinux.org/reference/releases/maintained-releases.html",
+      "repo": "gardenlinux/gardenlinux"
+    }
+  ]
+}
