@@ -81,10 +81,10 @@ export function projectTokens({ name, slug, repoUrl }: IProjectTokenSource): str
 }
 
 // Short tokens must be the whole label, so "torq" never matches "qtorque".
-// hyphenParts (README links only) also accepts a token of 4+ chars as one part: besu -> besu-eth.
-const matchesLabel = (label: string, token: string, hyphenParts: boolean): boolean =>
+// hyphenTokens (README links, name/slug only) may match a 4+ char hyphen part: besu -> besu-eth.
+const matchesLabel = (label: string, token: string, hyphenTokens: string[]): boolean =>
   label === token ||
-  (hyphenParts &&
+  (hyphenTokens.includes(token) &&
     token.length >= MIN_HYPHEN_PART_TOKEN_LENGTH &&
     label.split('-').includes(token)) ||
   (token.length >= MIN_AFFIX_TOKEN_LENGTH && (label.startsWith(token) || label.endsWith(token)))
@@ -92,7 +92,7 @@ const matchesLabel = (label: string, token: string, hyphenParts: boolean): boole
 export function isRelevantSerpResult(
   url: string,
   tokens: string[],
-  { hyphenParts = false }: { hyphenParts?: boolean } = {},
+  { hyphenTokens = [] }: { hyphenTokens?: string[] } = {},
 ): boolean {
   let parsed: URL
   try {
@@ -124,5 +124,5 @@ export function isRelevantSerpResult(
     }
   }
 
-  return tokens.some((token) => labels.some((label) => matchesLabel(label, token, hyphenParts)))
+  return tokens.some((token) => labels.some((label) => matchesLabel(label, token, hyphenTokens)))
 }

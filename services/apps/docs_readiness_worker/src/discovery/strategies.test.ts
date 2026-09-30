@@ -1284,6 +1284,29 @@ describe('readmeScrape filtering', () => {
     expect(probed(fetchMock)).toEqual([])
   })
 
+  it('does not match a generic owner half against a foreign hyphenated domain (kcl-lang)', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/kcl-lang/kcl/readme',
+        () =>
+          new Response('[Rust docs](https://doc.rust-lang.org/book/) [Docs](https://kcl.io/docs/)'),
+      ],
+      ['https://doc.rust-lang.org', html],
+      ['https://kcl.io', html],
+    ])
+
+    await readmeScrape({
+      name: 'KCL',
+      slug: 'kcl',
+      website: null,
+      websiteShared: false,
+      repos: [{ url: 'https://github.com/kcl-lang/kcl', starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+    expect(probed(fetchMock)).toEqual(['https://kcl.io/docs/'])
+  })
+
   it('drops foreign links once an own-domain link survives', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
@@ -1546,6 +1569,7 @@ interface IReadmeLinkRow {
   name: string
   repo: string
   url: string
+  website?: string
 }
 
 // IN-1305 human verdicts: readme-scrape picks judged wrong (another product's docs) vs docs/site.
@@ -1555,7 +1579,7 @@ const readmeLinks: { wrong: IReadmeLinkRow[]; right: IReadmeLinkRow[] } = JSON.p
 
 describe('readmeScrape against IN-1305 verdicts', () => {
   const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  const scrapeRow = async ({ name, repo, url }: IReadmeLinkRow) => {
+  const scrapeRow = async ({ name, repo, url, website }: IReadmeLinkRow) => {
     const repoPath = repo.toLowerCase()
     routeFetch([
       [`https://api.github.com/repos/${repoPath}/readme`, () => new Response(`[Docs](${url})`)],
@@ -1565,7 +1589,7 @@ describe('readmeScrape against IN-1305 verdicts', () => {
     return readmeScrape({
       name,
       slug: slugOf(name),
-      website: null,
+      website: website ?? null,
       websiteShared: false,
       repos: [{ url: `https://github.com/${repoPath}`, starCount: null }],
       githubToken: 'token',

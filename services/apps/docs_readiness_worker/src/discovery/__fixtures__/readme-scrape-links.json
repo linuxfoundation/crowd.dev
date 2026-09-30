@@ -115,7 +115,8 @@
     {
       "name": "KCL",
       "repo": "kcl-lang/kcl",
-      "url": "https://kcl-lang.io/docs/user_docs/guides/configuration"
+      "url": "https://kcl-lang.io/docs/user_docs/guides/configuration",
+      "website": "https://kcl-lang.io"
     },
     {
       "name": "Keylime",

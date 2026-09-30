@@ -22,7 +22,7 @@ import {
   normalizeUrl,
   normalizedDomain,
 } from './http'
-import { isRelevantSerpResult, projectTokens } from './relevance'
+import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 
 export interface IDiscoveryContext {
   name: string
@@ -342,6 +342,7 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
     }
 
     const tokens = projectTokens({ name: ctx.name, slug: ctx.slug, repoUrl: repo })
+    const hyphenTokens = [...nameTokens(ctx.name), ...nameTokens(ctx.slug)]
     const filtered: { url: string; fallback?: string }[] = []
     for (const { url, text } of links.values()) {
       if (!DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(url)) {
@@ -349,7 +350,7 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       }
       const foreign = rank(url) === 2
       // Another product's docs (docs.docker.com, docs.conda.io) are linked from many READMEs.
-      if (foreign && !isRelevantSerpResult(url, tokens, { hyphenParts: true })) {
+      if (foreign && !isRelevantSerpResult(url, tokens, { hyphenTokens })) {
         continue
       }
       if (foreign && !DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(domainOf(url) ?? '')) {
