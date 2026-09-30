@@ -23,7 +23,7 @@ const useProductTracking = () => {
       return;
     }
 
-    const { startSession } = useSessionTracking();
+    const { startSession } = useSessionTracking(() => user.value);
     const userSession = sessionStorage.getItem('userSession');
 
     if (user.value && userSession) {

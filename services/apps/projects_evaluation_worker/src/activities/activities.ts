@@ -16,7 +16,7 @@ import {
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import {
   IDbProjectCatalog,
-  isGithubDiscussionProvenance,
+  isReviewAlertProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -91,7 +91,7 @@ export async function precheckPendingProjects(
   const recordSkip = (project: IDbProjectCatalog, reason: string) => {
     skippedPreCheck++
     breakdown[reason] = (breakdown[reason] ?? 0) + 1
-    if (isGithubDiscussionProvenance(project.provenance)) {
+    if (isReviewAlertProvenance(project.provenance)) {
       skippedDiscussionRequests.push({ project, reason })
     }
   }
@@ -229,7 +229,7 @@ export async function notifySkippedHumanRequest(
   project: IDbProjectCatalog,
   reason: string,
 ): Promise<void> {
-  if (!isGithubDiscussionProvenance(project.provenance)) {
+  if (!isReviewAlertProvenance(project.provenance)) {
     return
   }
 

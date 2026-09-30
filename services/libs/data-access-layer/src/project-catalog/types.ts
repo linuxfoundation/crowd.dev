@@ -39,6 +39,22 @@ export function isGithubDiscussionProvenance(
   return value === 'github-discussion'
 }
 
+export function isSlackBotProvenance(value: ProjectCatalogProvenance | null): value is 'slack-bot' {
+  return value === 'slack-bot'
+}
+
+const SLACK_PERMALINK_PATTERN = /^https:\/\/[^/]+\.slack\.com\/archives\//
+
+export function isSlackPermalink(url: string): boolean {
+  return SLACK_PERMALINK_PATTERN.test(url)
+}
+
+export function isReviewAlertProvenance(
+  value: ProjectCatalogProvenance | null,
+): value is 'github-discussion' | 'slack-bot' {
+  return isGithubDiscussionProvenance(value) || isSlackBotProvenance(value)
+}
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string

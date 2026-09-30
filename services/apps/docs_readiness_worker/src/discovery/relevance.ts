@@ -17,6 +17,7 @@ const GENERIC_WORDS = new Set([
 ])
 
 const MIN_TOKEN_LENGTH = 3
+const MIN_AFFIX_TOKEN_LENGTH = 5
 
 // Hosts that never carry a project's own documentation, whatever the query returned.
 const NOISE_HOSTS = [
@@ -77,6 +78,11 @@ export function projectTokens({ name, slug, repoUrl }: IProjectTokenSource): str
   return [...new Set(all.filter((word) => word.length >= MIN_TOKEN_LENGTH || word === wholeSlug))]
 }
 
+// Short tokens must be the whole label, so "torq" never matches "qtorque".
+const matchesLabel = (label: string, token: string): boolean =>
+  label === token ||
+  (token.length >= MIN_AFFIX_TOKEN_LENGTH && (label.startsWith(token) || label.endsWith(token)))
+
 export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
   let parsed: URL
   try {
@@ -91,15 +97,22 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
   }
 
   const hosting = SHARED_HOSTING.find((suffix) => isOnDomain(host, suffix))
-  let haystack: string
+  const labels: string[] = []
   if (hosting) {
+    const tenant =
+      host
+        .slice(0, host.length - hosting.length - 1)
+        .split('.')
+        .pop() ?? ''
     const firstSegment = parsed.pathname.split('/').filter(Boolean)[0] ?? ''
-    haystack = `${host.slice(0, host.length - hosting.length)}${firstSegment.toLowerCase()}`
+    labels.push(tenant, firstSegment.toLowerCase())
   } else {
-    // Subdomain plus the registrable label, so the public suffix (.org, .dev) never matches.
+    // Only the registrable label counts: subdomains and the public suffix never match.
     const root = registrableDomain(host)
-    haystack = root ? `${host.slice(0, host.length - root.length)}${root.split('.')[0]}` : host
+    if (root) {
+      labels.push(root.split('.')[0])
+    }
   }
 
-  return tokens.some((token) => haystack.includes(token))
+  return tokens.some((token) => labels.some((label) => matchesLabel(label, token)))
 }

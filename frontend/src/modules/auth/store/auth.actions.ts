@@ -90,7 +90,7 @@ export default {
           () => this.loaded,
           async (loaded) => {
             if (!loaded) {
-              const { startSession, attachListeners } = useSessionTracking();
+              const { startSession, attachListeners } = useSessionTracking(() => this.user);
 
               this.loaded = true;
 
@@ -138,7 +138,7 @@ export default {
       return Promise.reject();
     }
     if (!isSocketConnected()) {
-      connectSocket(t);
+      connectSocket(t, () => this.user);
     }
     AuthService.setToken(t);
     return AuthApiService.fetchMe()

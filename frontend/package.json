@@ -19,11 +19,20 @@
     "docs:storybook": "storybook dev -p 6006",
     "docs:storybook:build": "storybook build",
     "docs:storybook:ci": "storybook build --quiet",
-    "docs": "npm run docs:tailwind & npm run docs:storybook"
+    "docs": "npm run docs:tailwind & npm run docs:storybook",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "lint-staged": {
-    "**/!(components.d).{js,ts,vue}": [
+    "**/!(components.d).{js,ts}": [
+      "prettier --write",
       "eslint --fix --max-warnings=0"
+    ],
+    "**/*.vue": [
+      "eslint --fix --max-warnings=0"
+    ],
+    "**/*.{scss,css,json,md,yml,yaml}": [
+      "prettier --write"
     ]
   },
   "dependencies": {
@@ -79,11 +88,13 @@
     "autoprefixer": "^10.4.14",
     "dotenv": "^16.0.3",
     "eslint": "^8.57.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^3.6.1",
     "eslint-plugin-storybook": "^10.2.12",
     "eslint-plugin-vue": "^9.33.0",
     "lint-staged": "^15.4.3",
     "postcss": "^8.5.15",
+    "prettier": "^3.9.9",
     "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.80.0",
     "storybook": "^10.2.12",

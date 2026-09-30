@@ -234,6 +234,7 @@ describe('isTrustedRedirect', () => {
       ['https://envoy-mobile.io', 'https://envoymobile.readthedocs.io/'],
       ['http://metallb.org', 'https://metallb.io/'],
       ['https://example.com', 'https://www.example.com/'],
+      ['https://docs.opea.dev', 'https://opea-project.github.io/latest/index.html'],
     ]) {
       expect(isTrustedRedirect(url, finalUrl)).toBe(true)
     }
@@ -263,6 +264,9 @@ describe('isTrustedRedirect', () => {
       ['https://foo-org.io', 'https://foo.net'],
       ['http://8.8.8.8/', 'https://example.com/'],
       ['https://example.com', ''],
+      ['https://docs.flyte.org', 'https://www.union.ai/'],
+      ['https://docs.opea.dev', 'https://unrelated.github.io/latest/'],
+      ['https://docs.opea.dev', 'https://opea-casino.github.io/'],
       ['https://example.com', 'https://evil.readthedocs.io.attacker.net/'],
     ]) {
       expect(isTrustedRedirect(url, finalUrl)).toBe(false)

@@ -151,6 +151,10 @@ describe('runOnboardProjectCommand', () => {
 
     expect(onboardProject).not.toHaveBeenCalled()
     expect(lastSlackText()).toContain('skip')
+    const calls = vi.mocked(axios.post).mock.calls
+    const lastMessage = calls[calls.length - 1][1] as any
+    const button = lastMessage.blocks.find((b: any) => b.type === 'actions').elements[0]
+    expect(button).toMatchObject({ action_id: 'force_onboarding', value: catalogEntry.id })
   })
 
   it('reports back without erroring when the repo is already onboarded or a duplicate evaluate request is in flight', async () => {

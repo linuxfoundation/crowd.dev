@@ -56,4 +56,20 @@ describe('SlackCommandService.onboardProject', () => {
       expect.objectContaining({ actorId: 'U123', channelId: 'C456' }),
     )
   })
+
+  it('strips Slack formatting from the repo url before running the flow', async () => {
+    const log = { error: vi.fn(), warn: vi.fn() }
+    vi.mocked(runOnboardProjectCommand).mockResolvedValue(undefined)
+
+    const service = new SlackCommandService({ log } as any)
+
+    await service.onboardProject({ repoUrl: '`https://github.com/foo/bar`' }, {
+      responseUrl: 'https://hooks.slack.com/response',
+      userId: 'U123',
+    } as any)
+
+    expect(runOnboardProjectCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ repoUrl: 'https://github.com/foo/bar' }),
+    )
+  })
 })

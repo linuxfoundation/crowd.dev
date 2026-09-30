@@ -5,7 +5,7 @@ import { Error404, Error409 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   ILlmSuggestionVerdictPair,
-  findLlmApprovedMembersMarkedNoMerge,
+  findLlmApprovedMemberPairsToMerge,
   pgpQx,
   removeMemberNoMerge,
 } from '@crowd/data-access-layer'
@@ -55,7 +55,7 @@ setImmediate(async () => {
     let candidates: ILlmSuggestionVerdictPair[] = []
 
     do {
-      candidates = await findLlmApprovedMembersMarkedNoMerge(qx, { afterId, limit: BATCH_SIZE })
+      candidates = await findLlmApprovedMemberPairsToMerge(qx, { afterId, limit: BATCH_SIZE })
 
       const seenMemberIds = new Set<string>()
       const pairs = candidates.filter(({ primaryId, secondaryId }) => {
