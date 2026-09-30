@@ -20,9 +20,18 @@ describe('normalizeSlackRepoUrl', () => {
     expect(normalizeSlackRepoUrl(raw)).toBe(url)
   })
 
-  it('keeps underscores inside the url', () => {
-    expect(normalizeSlackRepoUrl('`https://github.com/foo/bar_baz`')).toBe(
-      'https://github.com/foo/bar_baz',
+  it.each([
+    ['an underscore inside the path', 'https://github.com/foo/bar_baz'],
+    ['a trailing underscore in the repo name', 'https://github.com/foo/bar_'],
+    ['a leading underscore in the owner', 'https://github.com/_foo/bar'],
+  ])('keeps %s', (_label, raw) => {
+    expect(normalizeSlackRepoUrl(raw)).toBe(raw)
+    expect(normalizeSlackRepoUrl(`\`${raw}\``)).toBe(raw)
+  })
+
+  it('returns a slack link target unchanged', () => {
+    expect(normalizeSlackRepoUrl('<https://github.com/foo/bar_|foo/bar_>')).toBe(
+      'https://github.com/foo/bar_',
     )
   })
 })
