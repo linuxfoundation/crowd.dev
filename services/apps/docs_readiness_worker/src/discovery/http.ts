@@ -180,9 +180,16 @@ async function probeOnce(
   }
 }
 
-export async function probe(url: string, timeoutMs = 15_000): Promise<IProbeResult> {
+export const PROBE_TIMEOUT_MS = 10_000
+
+// Only the docs.<domain> and docs-path checks pass retry: a hung host then costs two timeouts.
+export async function probe(
+  url: string,
+  timeoutMs = PROBE_TIMEOUT_MS,
+  retry = false,
+): Promise<IProbeResult> {
   const first = await probeOnce(url, timeoutMs)
-  return first.retry ? (await probeOnce(url, timeoutMs)).result : first.result
+  return retry && first.retry ? (await probeOnce(url, timeoutMs)).result : first.result
 }
 
 // fetch reports punycode hosts, so compare through URL's ascii hostname.
@@ -264,8 +271,8 @@ export function isTrustedRedirect(url: string, finalUrl: string): boolean {
   )
 }
 
-export async function isLiveDocs(url: string): Promise<boolean> {
-  const result = await probe(url)
+export async function isLiveDocs(url: string, retry = false): Promise<boolean> {
+  const result = await probe(url, PROBE_TIMEOUT_MS, retry)
   return (
     result.ok &&
     result.contentType.toLowerCase().includes('text/html') &&
