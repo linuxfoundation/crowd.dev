@@ -38,7 +38,7 @@ const NOISE_HOSTS = [
 ]
 
 // One tenant per project, so the host alone says nothing: the tenant and first path segment do.
-const SHARED_HOSTING = [
+export const SHARED_HOSTING = [
   'readthedocs.io',
   'github.io',
   'gitbook.io',

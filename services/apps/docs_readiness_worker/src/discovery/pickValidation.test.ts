@@ -158,22 +158,107 @@ describe('discoverDocs with the docs validator', () => {
     expect(result.docsUrl).toBe(REPO_URL)
   })
 
-  test.each<DocsVerdict>(['other', 'unclear'])(
-    'a %s README winner is replaced by the next candidate, accepted unchecked',
-    async (verdict) => {
-      withCandidates(
-        candidate('https://example.com/docs', 'readme-scrape'),
-        candidate('https://example.com', 'project-website'),
-      )
-      const validator = fakeValidator(verdict)
+  test('an other README winner is replaced by the next candidate, accepted unchecked', async () => {
+    withCandidates(
+      candidate('https://example.com/docs', 'readme-scrape'),
+      candidate('https://example.com', 'project-website'),
+    )
+    const validator = fakeValidator('other')
 
-      const result = await discoverDocs(ctxWith(validator))
+    const result = await discoverDocs(ctxWith(validator))
 
-      expect(result.docsUrl).toBe('https://example.com')
-      expect(result.discoveryMethod).toBe('project-website')
-      expect(validator).toHaveBeenCalledTimes(1)
+    expect(result.docsUrl).toBe('https://example.com')
+    expect(result.discoveryMethod).toBe('project-website')
+    expect(validator).toHaveBeenCalledTimes(1)
+  })
+
+  test.each<[string, string, Partial<IDiscoveryContext>]>([
+    [
+      'the project website',
+      'https://docs.example.com/guide',
+      {
+        name: 'Zed',
+        slug: 'zed',
+        repos: [{ url: 'https://github.com/acme/zed', starCount: null }],
+      },
+    ],
+    [
+      'the repo owner',
+      'http://help.openfido.org/',
+      {
+        name: 'FIDOPower',
+        slug: 'fidopower',
+        website: null,
+        repos: [{ url: 'https://github.com/openfido/concatenate', starCount: null }],
+      },
+    ],
+    ['the project name', 'https://example.dev/docs', { website: null, repos: [] }],
+  ])('an unclear README winner on a domain matching %s is kept', async (_label, url, overrides) => {
+    withCandidates(candidate(url, 'readme-scrape'), candidate(REPO_URL, 'repo-url'))
+    const log = { info: vi.fn(), warn: vi.fn() }
+
+    const result = await discoverDocs({ ...ctxWith(fakeValidator('unclear'), log), ...overrides })
+
+    expect(result.docsUrl).toBe(url)
+    expect(result.discoveryMethod).toBe('readme-scrape')
+    expect(log.info.mock.calls.map(([fields]) => fields.outcome)).toContain('unclear-related')
+  })
+
+  test('an unclear README winner on an unrelated domain is dropped', async () => {
+    withCandidates(
+      candidate('https://docs.other-product.dev/guide', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    )
+
+    const result = await discoverDocs(ctxWith(fakeValidator('unclear')))
+
+    expect(result.docsUrl).toBe(REPO_URL)
+    expect(result.discoveryMethod).toBe('repo-url')
+  })
+
+  test('an unclear winner on a shared website is not kept for sharing its domain', async () => {
+    withCandidates(
+      candidate('https://docs.umbrella.org/other-project', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    )
+
+    const result = await discoverDocs({
+      ...ctxWith(fakeValidator('unclear')),
+      website: 'https://www.umbrella.org',
+      websiteShared: true,
+    })
+
+    expect(result.discoveryMethod).toBe('repo-url')
+  })
+
+  test.each([
+    ['a multi-tenant host', 'https://docs.rs/foo', 'https://docs.rs/bar'],
+    [
+      'an umbrella host',
+      'https://wiki.linuxfoundation.org/foo',
+      'https://events.linuxfoundation.org/bar',
+    ],
+  ])(
+    'an unclear winner on the same domain as a website on %s is dropped',
+    async (_l, website, url) => {
+      withCandidates(candidate(url, 'readme-scrape'), candidate(REPO_URL, 'repo-url'))
+
+      const result = await discoverDocs({ ...ctxWith(fakeValidator('unclear')), website })
+
+      expect(result.discoveryMethod).toBe('repo-url')
     },
   )
+
+  test('an other verdict drops a winner even on a matching domain', async () => {
+    withCandidates(
+      candidate('https://example.com/docs', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    )
+
+    const result = await discoverDocs(ctxWith(fakeValidator('other')))
+
+    expect(result.discoveryMethod).toBe('repo-url')
+  })
 
   test('rejected README winner with nothing else live falls back to the repo URL', async () => {
     withCandidates(
@@ -181,7 +266,7 @@ describe('discoverDocs with the docs validator', () => {
       candidate(REPO_URL, 'repo-url'),
     )
 
-    const result = await discoverDocs(ctxWith(fakeValidator('unclear')))
+    const result = await discoverDocs(ctxWith(fakeValidator('other')))
 
     expect(result.docsUrl).toBe(REPO_URL)
     expect(result.discoveryMethod).toBe('repo-url')
@@ -217,18 +302,19 @@ describe('discoverDocs with the docs validator', () => {
     expect(mocks.fetchText).not.toHaveBeenCalled()
   })
 
-  test('makes at most 2 model calls and drops a third unchecked pick', async () => {
+  test('makes at most 3 model calls and drops a fourth unchecked pick', async () => {
     withCandidates(
       candidate('https://docs.aaa.dev/docs', 'readme-scrape'),
       candidate('https://docs.bbb.dev/docs', 'readme-scrape'),
       candidate('https://docs.ccc.dev/docs', 'readme-scrape'),
+      candidate('https://docs.ddd.dev/docs', 'readme-scrape'),
       candidate(REPO_URL, 'repo-url'),
     )
-    const validator = fakeValidator('other', 'other', 'documents_project')
+    const validator = fakeValidator('other', 'other', 'other', 'documents_project')
 
     const result = await discoverDocs(ctxWith(validator))
 
-    expect(validator).toHaveBeenCalledTimes(2)
+    expect(validator).toHaveBeenCalledTimes(3)
     expect(result.discoveryMethod).toBe('repo-url')
     expect(result.docsUrl).toBe(REPO_URL)
   })
@@ -306,11 +392,12 @@ describe('discoverDocs with the docs validator', () => {
       candidate('https://docs.aaa.dev/docs', 'readme-scrape'),
       candidate('https://docs.bbb.dev/docs', 'readme-scrape'),
       candidate('https://docs.ccc.dev/docs', 'readme-scrape'),
+      candidate('https://docs.ddd.dev/docs', 'readme-scrape'),
       candidate(REPO_URL, 'repo-url'),
     )
     const log = { info: vi.fn(), warn: vi.fn() }
 
-    await discoverDocs(ctxWith(fakeValidator('other', 'other'), log))
+    await discoverDocs(ctxWith(fakeValidator('other', 'other', 'other'), log))
 
     const capped = log.info.mock.calls.filter(([fields]) => fields.outcome === 'call-cap')
     expect(capped).toHaveLength(1)
@@ -441,13 +528,12 @@ describe('validation time bound', () => {
     return { result: await done, elapsedMs, validator, log }
   }
 
-  test('two validated picks after 150 s of discovery finish by 210 s', async () => {
+  test('three validated picks after 150 s of discovery finish by 235 s', async () => {
     const { result, elapsedMs, validator } = await run(150_000)
 
-    expect(validator).toHaveBeenCalledTimes(2)
+    expect(validator).toHaveBeenCalledTimes(3)
     expect(result.discoveryMethod).toBe('repo-url')
-    // 150 + 2 x (5 + 20) + 10 cut
-    expect(elapsedMs).toBe(210_000)
+    expect(elapsedMs).toBe(235_000)
   })
 
   test('the last validation that still fits leaves the cut probe under the bound', async () => {
