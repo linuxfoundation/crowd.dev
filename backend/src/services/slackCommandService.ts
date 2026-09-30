@@ -15,6 +15,7 @@ import {
   SlackParameterParseResult,
 } from '../types/slackTypes'
 import { IServiceOptions } from './IServiceOptions'
+import { normalizeSlackRepoUrl } from './slack/normalizeSlackRepoUrl'
 import {
   postToResponseUrl,
   runOnboardProjectCommand,
@@ -98,7 +99,7 @@ export default class SlackCommandService {
     params: { repoUrl: string },
     context: SlackCommandExecutionContext,
   ): Promise<SlackMessageDto> {
-    const repoUrl = params.repoUrl
+    const repoUrl = normalizeSlackRepoUrl(params.repoUrl)
 
     runOnboardProjectCommand({
       repoUrl,
