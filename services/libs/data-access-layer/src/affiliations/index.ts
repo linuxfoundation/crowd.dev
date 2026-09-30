@@ -303,13 +303,46 @@ export function buildTimeline(
   return affiliations
 }
 
-function resolveAffiliationsForMember(rows: IWorkExperienceResolution[]): IAffiliationPeriod[] {
-  // If one undated work-experience org is marked primary, drop other undated work-experience orgs
-  // to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
+// If one undated work-experience org is marked primary, drop other undated work-experience orgs
+// to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
+function dropUndatedRivalsOfPrimary(
+  rows: IWorkExperienceResolution[],
+): IWorkExperienceResolution[] {
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
-  const cleaned = primaryUndated
+  return primaryUndated
     ? rows.filter((r) => r.segmentId !== null || r.dateStart || r.id === primaryUndated.id)
     : rows
+}
+
+function keepPreferredOrganizations(
+  rows: IWorkExperienceResolution[],
+  preferredOrganizationIds?: ReadonlySet<string>,
+): IWorkExperienceResolution[] {
+  if (!preferredOrganizationIds) return rows
+  const preferred = rows.filter((r) => preferredOrganizationIds.has(r.organizationId))
+  return preferred.length > 0 ? preferred : rows
+}
+
+function resolveCurrentAffiliationForMember(
+  rows: IWorkExperienceResolution[],
+  preferredOrganizationIds?: ReadonlySet<string>,
+): IWorkExperienceResolution | null {
+  const cleaned = dropUndatedRivalsOfPrimary(rows)
+  if (!cleaned.some((r) => r.dateStart)) {
+    return findFallbackOrg(keepPreferredOrganizations(cleaned, preferredOrganizationIds))
+  }
+
+  const activeToday = orgsActiveAt(cleaned, startOfDay(new Date()))
+  if (activeToday.length === 0) return null
+
+  const preferredDated = activeToday.filter(
+    (r) => r.dateStart && preferredOrganizationIds?.has(r.organizationId),
+  )
+  return selectPrimaryWorkExperience(preferredDated.length > 0 ? preferredDated : activeToday)
+}
+
+function resolveAffiliationsForMember(rows: IWorkExperienceResolution[]): IAffiliationPeriod[] {
+  const cleaned = dropUndatedRivalsOfPrimary(rows)
 
   const fallbackOrg = findFallbackOrg(cleaned)
   const datedRows = cleaned.filter((r) => r.dateStart)
@@ -333,10 +366,10 @@ function resolveAffiliationsForMember(rows: IWorkExperienceResolution[]): IAffil
   })
 }
 
-export async function resolveAffiliationsByMemberIds(
+async function fetchAffiliationRowsByMember(
   qx: QueryExecutor,
   memberIds: string[],
-): Promise<Map<string, IAffiliationPeriod[]>> {
+): Promise<Map<string, IWorkExperienceResolution[]>> {
   const [workExperiences, manualAffiliations] = await Promise.all([
     findWorkExperiencesBulk(qx, memberIds),
     findManualAffiliationsBulk(qx, memberIds),
@@ -348,10 +381,36 @@ export async function resolveAffiliationsByMemberIds(
     list.push(row)
     byMember.set(row.memberId, list)
   }
+  return byMember
+}
+
+export async function resolveAffiliationsByMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<Map<string, IAffiliationPeriod[]>> {
+  const byMember = await fetchAffiliationRowsByMember(qx, memberIds)
 
   const result = new Map<string, IAffiliationPeriod[]>()
   for (const id of memberIds) {
     result.set(id, resolveAffiliationsForMember(byMember.get(id) ?? []))
+  }
+  return result
+}
+
+export async function resolveCurrentAffiliationsByMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+  preferredOrganizationIds?: ReadonlySet<string>,
+): Promise<Map<string, IWorkExperienceResolution | null>> {
+  const result = new Map<string, IWorkExperienceResolution | null>()
+  if (memberIds.length === 0) return result
+
+  const byMember = await fetchAffiliationRowsByMember(qx, memberIds)
+  for (const id of memberIds) {
+    result.set(
+      id,
+      resolveCurrentAffiliationForMember(byMember.get(id) ?? [], preferredOrganizationIds),
+    )
   }
   return result
 }
