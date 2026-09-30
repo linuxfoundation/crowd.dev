@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PROBE_TIMEOUT_MS } from './http'
@@ -1007,9 +1010,9 @@ describe('readmeScrape', () => {
     routeFetch([
       [
         'https://api.github.com/repos/torvalds/linux/readme',
-        () => new Response('See the [Documentation](https://docs.example.com) for more.'),
+        () => new Response('See the [Documentation](https://docs.proj.dev) for more.'),
       ],
-      ['https://docs.example.com', html],
+      ['https://docs.proj.dev', html],
     ])
 
     const result = await readmeScrape({
@@ -1023,7 +1026,7 @@ describe('readmeScrape', () => {
     })
     expect(result).toEqual([
       {
-        url: 'https://docs.example.com',
+        url: 'https://docs.proj.dev',
         method: 'readme-scrape',
         confidence: 'medium',
         livenessOk: true,
@@ -1147,25 +1150,26 @@ describe('readmeScrape filtering', () => {
   it('excludes by whole slug: security-model is dropped, issuers and bugzilla are kept', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://a.io/docs/security-model) [Docs](https://b.io/docs/issuers) [Docs](https://c.io/docs/bugzilla)',
+        '[Docs](https://proj.io/docs/security-model) [Docs](https://proj.io/docs/issuers) [Docs](https://proj.io/docs/bugzilla)',
       ),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://b.io/docs/issuers', 'https://c.io/docs/bugzilla'])
+    expect(probed(fetchMock)).toEqual([
+      'https://proj.io/docs/issuers',
+      'https://proj.io/docs/bugzilla',
+    ])
   })
 
   it('keeps a path whose segment merely contains an excluded word', async () => {
     const fetchMock = routeFetch([
-      readmeRoute(
-        '[Docs](https://example.io/docs/debugging) [Docs](https://example.io/docs/security)',
-      ),
-      ['https://example.io', html],
+      readmeRoute('[Docs](https://proj.io/docs/debugging) [Docs](https://proj.io/docs/security)'),
+      ['https://proj.io', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://example.io/docs/debugging'])
+    expect(probed(fetchMock)).toEqual(['https://proj.io/docs/debugging'])
   })
 
   it('keeps the docs-labelled text when a fragment variant of the link came first', async () => {
@@ -1260,15 +1264,48 @@ describe('readmeScrape filtering', () => {
     expect(probed(fetchMock)).toEqual(['https://urunc.io/'])
   })
 
-  it('keeps foreign links when no own-domain link survives', async () => {
+  it('keeps a project-related foreign link when no own-domain link survives', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Proj docs](https://proj.readthedocs.io/en/latest/)'),
+      ['https://proj.readthedocs.io', html],
+    ])
+
+    const result = await scrape('https://marquezproject.ai')
+    expect(probed(fetchMock)).toEqual(['https://proj.readthedocs.io/en/latest/'])
+    expect(result).toHaveLength(1)
+  })
+
+  it('drops a foreign link that is not related to the project', async () => {
     const fetchMock = routeFetch([
       readmeRoute('[OpenLineage docs](https://openlineage.io/docs/)'),
       ['https://openlineage.io', html],
     ])
 
-    const result = await scrape('https://marquezproject.ai')
-    expect(probed(fetchMock)).toEqual(['https://openlineage.io/docs/'])
-    expect(result).toHaveLength(1)
+    expect(await scrape('https://marquezproject.ai')).toEqual([])
+    expect(probed(fetchMock)).toEqual([])
+  })
+
+  it('does not match a generic owner half against a foreign hyphenated domain (kcl-lang)', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/kcl-lang/kcl/readme',
+        () =>
+          new Response('[Rust docs](https://doc.rust-lang.org/book/) [Docs](https://kcl.io/docs/)'),
+      ],
+      ['https://doc.rust-lang.org', html],
+      ['https://kcl.io', html],
+    ])
+
+    await readmeScrape({
+      name: 'KCL',
+      slug: 'kcl',
+      website: null,
+      websiteShared: false,
+      repos: [{ url: 'https://github.com/kcl-lang/kcl', starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+    expect(probed(fetchMock)).toEqual(['https://kcl.io/docs/'])
   })
 
   it('drops foreign links once an own-domain link survives', async () => {
@@ -1303,17 +1340,14 @@ describe('readmeScrape filtering', () => {
   it('does not treat a root homepage on the shared website host as an own domain', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.real-project.dev/start)',
+        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.proj.dev/start)',
       ),
       homepageRoute('https://www.lfedge.org'),
       ['https://', html],
     ])
 
     await scrapeSharedWebsite('https://www.lfedge.org/projects/x')
-    expect(probed(fetchMock)).toEqual([
-      'https://www.lfedge.org/projects/other/docs/guide/page',
-      'https://docs.real-project.dev/start',
-    ])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it.each([
@@ -1325,13 +1359,13 @@ describe('readmeScrape filtering', () => {
     ['https://hub.docker.com', 'https://hub.docker.com/r/x/docs/api'],
   ])('does not make the homepage %s an own domain', async (homepage, link) => {
     const fetchMock = routeFetch([
-      readmeRoute(`[Docs](${link}) [Guide](https://docs.real-project.dev/start)`),
+      readmeRoute(`[Docs](${link}) [Guide](https://docs.proj.dev/start)`),
       homepageRoute(homepage),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual([link, 'https://docs.real-project.dev/start'])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it('keeps a root homepage on a host other than the shared website as an own domain', async () => {
@@ -1502,16 +1536,13 @@ describe('readmeScrape foreign links', () => {
 
   it('keeps a foreign link whose text or host says docs', async () => {
     const fetchMock = routeFetch([
-      readme('[OpenLineage docs](https://openlineage.io/x) [Ext](https://docs.docker.com/engine/)'),
-      ['https://openlineage.io', html],
-      ['https://docs.docker.com', html],
+      readme('[Proj docs](https://proj.io/x) [Ext](https://docs.proj.dev/engine/)'),
+      ['https://proj.io', html],
+      ['https://docs.proj.dev', html],
     ])
 
     await scrape()
-    expect(apiFree(fetchMock)).toEqual([
-      'https://openlineage.io/x',
-      'https://docs.docker.com/engine/',
-    ])
+    expect(apiFree(fetchMock)).toEqual(['https://proj.io/x', 'https://docs.proj.dev/engine/'])
   })
 
   it('never proposes google docs documents', async () => {
@@ -1532,6 +1563,144 @@ describe('readmeScrape foreign links', () => {
 
     expect(await scrape()).toEqual([])
     expect(apiFree(fetchMock)).toEqual([])
+  })
+})
+
+interface IReadmeLinkRow {
+  name: string
+  repo: string
+  url: string
+  website?: string
+}
+
+// IN-1305 human verdicts: readme-scrape picks judged wrong (another product's docs) vs docs/site.
+const readmeLinks: { wrong: IReadmeLinkRow[]; right: IReadmeLinkRow[] } = JSON.parse(
+  readFileSync(join(__dirname, '__fixtures__/readme-scrape-links.json'), 'utf-8'),
+)
+
+describe('readmeScrape against IN-1305 verdicts', () => {
+  const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const scrapeRow = async ({ name, repo, url, website }: IReadmeLinkRow) => {
+    const repoPath = repo.toLowerCase()
+    routeFetch([
+      [`https://api.github.com/repos/${repoPath}/readme`, () => new Response(`[Docs](${url})`)],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug: slugOf(name),
+      website: website ?? null,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repoPath}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each(readmeLinks.wrong)('drops another product docs link: $name -> $url', async (row) => {
+    expect(await scrapeRow(row)).toEqual([])
+  })
+
+  it.each(readmeLinks.right)('keeps the project own docs link: $name -> $url', async (row) => {
+    expect((await scrapeRow(row)).length).toBeGreaterThan(0)
+  })
+})
+
+interface IKnownLimitation {
+  name: string
+  slug: string
+  website: string
+  repo: string
+  url: string
+}
+
+// Pins today's wrong picks and dropped right ones; the IN-1427 validator is expected to flip them.
+describe('readmeScrape known limitations', () => {
+  const scrapeProject = async ({ name, slug, website, repo, url }: IKnownLimitation) => {
+    routeFetch([
+      [
+        `https://api.github.com/repos/${repo.toLowerCase()}/readme`,
+        () => new Response(`[Docs](${url})`),
+      ],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug,
+      website,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repo}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'FINOS (The Fintech Open Source Foundation)',
+      slug: 'finos',
+      website: 'https://www.finos.org/',
+      repo: 'finos/fdc3-dotnet',
+      url: 'https://community.finos.org/docs/governance/Software-Projects/easycla',
+    },
+    {
+      name: 'GraphQL Foundation',
+      slug: 'gql',
+      website: 'https://foundation.graphql.org/',
+      repo: 'graphql/EasyCLA',
+      url: 'https://www.graphql-js.org/',
+    },
+    {
+      name: 'Spring Bot',
+      slug: 'symphony-java-toolkit',
+      website: 'https://springbot.finos.org',
+      repo: 'finos/spring-bot',
+      url: 'https://docs.spring.io/spring-framework/docs/6.0.x/reference/html/web.html',
+    },
+    {
+      name: 'Symphony WDK',
+      slug: 'symphony-wdk',
+      website: 'https://landscape.finos.org',
+      repo: 'finos/symphony-wdk',
+      url: 'https://docs.developers.symphony.com/building-bots-on-symphony/datafeed/real-time-events',
+    },
+    {
+      name: 'Unified Acceleration Foundation',
+      slug: 'oneapi',
+      website: 'https://uxlfoundation.org',
+      repo: 'uxlfoundation/oneAPI-spec',
+      url: 'https://uxlfoundation.github.io/oneTBB',
+    },
+  ])('still picks a wrong link: $name -> $url', async (row) => {
+    expect((await scrapeProject(row)).length).toBeGreaterThan(0)
+  })
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'dstack',
+      slug: 'dstack',
+      website: 'https://dstack.org',
+      repo: 'Dstack-TEE/dstack',
+      url: 'https://docs.phala.com/dstack',
+    },
+    {
+      name: 'Flyte',
+      slug: 'flyte',
+      website: 'https://flyte.org/',
+      repo: 'flyteorg/flyte-sdk-rs',
+      url: 'https://www.union.ai/docs',
+    },
+    {
+      name: 'Open Policy Registry (OPCR)',
+      slug: 'opcr',
+      website: 'https://openpolicyregistry.io',
+      repo: 'opcr-io/artwork',
+      url: 'https://www.openpolicycontainers.com/docs/intro',
+    },
+  ])('still drops the right link: $name -> $url', async (row) => {
+    expect(await scrapeProject(row)).toEqual([])
   })
 })
 
@@ -1611,7 +1780,15 @@ describe('readmeScrape and llms coverage gaps', () => {
       ),
       ['https://', html],
     ])
-    await scrape(null)
+    await readmeScrape({
+      name: 'Box Dropbox',
+      slug: 'box-dropbox',
+      website: null,
+      websiteShared: false,
+      repos,
+      githubToken: 't',
+      serpApiKey: null,
+    })
     expect(probed(m)).toEqual([
       'https://docs.box.com/guide',
       'https://docs.dropbox.com/documentation',
