@@ -2,6 +2,7 @@ import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import { cutSerpToDocsRoot, cutToDocsRoot } from './docsRoot'
 import { isGithubWebsite, normalizedDomain } from './http'
+import { pickValidatedWinner } from './pickValidation'
 import {
   isClaimedUrl,
   isOnProjectDomain,
@@ -81,12 +82,9 @@ export async function discoverDocs(ctx: IDiscoveryContext): Promise<IDiscoverDoc
   const sharedDocsUrls = familyDomain
     ? claimedDocsUrls.filter((url) => !isOnProjectDomain(url, familyDomain))
     : claimedDocsUrls
-  const winner = rankCandidates(
-    allCandidates,
-    projectDomain,
-    projectNameHint,
-    new Set(sharedDocsUrls),
-  )
+  const rank = (pool: IDocCandidate[]) =>
+    rankCandidates(pool, projectDomain, projectNameHint, new Set(sharedDocsUrls))
+  const winner = await pickValidatedWinner(ctx, allCandidates, rank)
 
   // A cut root another project already claims would bypass the shared-URL penalty.
   const cutRoot = winner?.method === 'serp' ? cutSerpToDocsRoot : cutToDocsRoot

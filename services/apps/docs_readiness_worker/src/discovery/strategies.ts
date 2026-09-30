@@ -4,7 +4,9 @@ import type {
   DocDiscoveryMethod,
   IDocCandidate,
 } from '@crowd/data-access-layer'
+import type { Logger } from '@crowd/logging'
 
+import type { IDocsValidation, IDocsValidatorPage, IDocsValidatorProject } from './docsValidator'
 import {
   type IRepoRef,
   getPackageJson,
@@ -24,6 +26,11 @@ import {
 } from './http'
 import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 
+export type DocsPickValidator = (
+  project: IDocsValidatorProject,
+  page: IDocsValidatorPage,
+) => Promise<IDocsValidation>
+
 export interface IDiscoveryContext {
   name: string
   slug: string
@@ -35,6 +42,11 @@ export interface IDiscoveryContext {
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
+  // Null or absent turns off the language-model check of search and README picks.
+  docsValidator?: DocsPickValidator | null
+  // Epoch ms by which discovery must finish; validation is skipped when little time is left.
+  deadlineAt?: number
+  log?: Pick<Logger, 'info' | 'warn'>
 }
 
 export type DiscoveryStrategy = (ctx: IDiscoveryContext) => Promise<IDocCandidate[]>
@@ -221,7 +233,7 @@ export const docsSubdomain: DiscoveryStrategy = async (ctx) => {
       return []
     }
     const url = `https://docs.${domain}`
-    return (await isLiveDocs(url)) ? [candidate(url, 'docs-subdomain', true)] : []
+    return (await isLiveDocs(url, true)) ? [candidate(url, 'docs-subdomain', true)] : []
   } catch {
     return []
   }
@@ -246,7 +258,7 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
     for (const suffix of ['/docs', '/documentation', '/doc']) {
       parsed.pathname = `${basePath}${suffix}`
       const url = parsed.toString()
-      if (await isLiveDocs(url)) {
+      if (await isLiveDocs(url, true)) {
         candidates.push(candidate(url, 'docs-path', true))
       }
     }

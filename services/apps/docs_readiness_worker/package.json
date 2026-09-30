@@ -10,6 +10,7 @@
     "script:apply-docs-overrides": "tsx src/bin/apply-docs-overrides.ts"
   },
   "dependencies": {
+    "@crowd/anthropic-aws": "workspace:*",
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
