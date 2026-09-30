@@ -1,5 +1,5 @@
 frontend_files=`git --no-pager diff --name-only --cached |
-grep -E "^frontend/.+\.(js|ts|vue|scss|html)$" |
+grep -E "^frontend/.+\.(js|ts|vue|scss|html|css|json|md|yml|yaml)$" |
 wc -l`
 
 if [ $frontend_files -gt 0 ]

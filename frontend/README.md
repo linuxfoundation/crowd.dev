@@ -70,6 +70,8 @@ All scripts run from `frontend/` via `npm run <script>`.
 |---|---|
 | `lint` | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`) |
 | `lint:fix` | Same as `lint`, with `--fix` |
+| `format` | Prettier `--write` over the frontend (`.vue` files are ignored by Prettier) |
+| `format:check` | Prettier `--check`, without writing |
 | `build` | Alias for `build:production` |
 | `start` | `vite --host` — Vite dev server with defaults, no env sourcing |
 | `start:dev` | Alias for `start` |
@@ -84,7 +86,7 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `docs` | Runs `docs:tailwind` and `docs:storybook` together |
 
 > This table is generated against the scripts that exist in `package.json` right now. Other
-> tickets in the CM-1480 epic (typecheck, preview/analyze, `lint:cycles`, `format`/`format:check`)
+> tickets in the CM-1480 epic (typecheck, preview/analyze, `lint:cycles`)
 > add scripts that aren't in `package.json` yet — whichever of those tickets lands, update this
 > table in the same PR.
 
@@ -97,8 +99,10 @@ CI (`.github/workflows/frontend-checks.yml`) runs `npm run lint` and a productio
 requests that touch `frontend/**`. It does not yet run a type check.
 
 The root pre-commit hook (`.husky/pre-commit`) runs `npx lint-staged` inside `frontend/` whenever
-a staged file matches `frontend/.+\.(js|ts|vue|scss|html)$`. `lint-staged` (configured in
-`package.json`) runs `eslint --fix` on staged `.js`/`.ts`/`.vue` files. The hook is installed by
+a staged file matches `frontend/.+\.(js|ts|vue|scss|html|css|json|md|yml|yaml)$`. `lint-staged`
+(configured in `package.json`) runs Prettier and then `eslint --fix` on staged `.js`/`.ts` files,
+`eslint --fix` on `.vue` files, and Prettier on `.scss`/`.css`/`.json`/`.md`/`.yml`/`.yaml`
+files. The hook is installed by
 the root `pnpm install` (via `husky`). Run `npm ci` in `frontend/` before committing frontend
 changes so `lint-staged` can run; a commit with no matching frontend files skips that step and
 doesn't need `frontend/node_modules`.

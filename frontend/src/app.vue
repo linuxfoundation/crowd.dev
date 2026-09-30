@@ -43,7 +43,7 @@ export default {
 
   setup() {
     const authStore = useAuthStore();
-    const { detachListeners } = useSessionTracking();
+    const { detachListeners } = useSessionTracking(() => authStore.user);
     const { listProjectGroups } = useLfSegmentsStore();
     const { init } = authStore;
     const { tenant, loaded } = storeToRefs(authStore);

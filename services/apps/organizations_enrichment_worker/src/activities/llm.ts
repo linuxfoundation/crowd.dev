@@ -1,3 +1,5 @@
+import { ApplicationFailure } from '@temporalio/client'
+
 import { parseLlmJson } from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import {
@@ -12,7 +14,7 @@ import { IOrganizationIdentity, LlmQueryType, OrganizationIdentityType } from '@
 import { svc } from '../main'
 
 interface LlmDomainSelection {
-  domain: string
+  index: number
   reason: string
 }
 
@@ -80,8 +82,10 @@ export async function selectMostRelevantDomainWithLLM(
     svc.log,
   )
 
+  const numberedDomains = domainValues.map((domain, i) => `${i + 1}. ${domain}`).join('\n    ')
+
   // Generate prompt
-  const PROMPT = `    
+  const PROMPT = `
     Analyze the following organization data and determine which domain is the most relevant primary domain.
 
     <organization>
@@ -89,20 +93,19 @@ export async function selectMostRelevantDomainWithLLM(
     </organization>
 
     <domains>
-    ${JSON.stringify(domainValues)}
+    ${numberedDomains}
     </domains>
 
     REQUIREMENTS:
-    - Select exactly ONE domain from <domains>.
-    - Do NOT invent, modify, or return any domain not in the list.
+    - Select exactly ONE domain from <domains> and return its number as "index".
+    - Only the numbered domains are valid choices. Never consider a domain outside the list, even if it seems more likely.
     - Use the organization data as context and pick the most relevant domain from the list.
-    - Return the EXACT domain string as it appears in the list.
 
     SELECTION RULES:
     1. Choose the domain representing the organization's main corporate identity and primary brand. 
     2. Use identities (GitHub, LinkedIn, and other social media platforms) to validate the main domain. 
     3. Avoid subsidiary or acquired domains unless they represent the main identity.
-    4. Prefer .com if multiple TLDs exist, unless a regional domain is clearly dominant.
+    4. If listed domains differ only by TLD, prefer the listed .com domain if there is one, unless a regional domain is clearly dominant.
     5. Ignore temporary, testing, or unrelated domains.
 
     OUTPUT FORMAT:
@@ -110,16 +113,15 @@ export async function selectMostRelevantDomainWithLLM(
     - The JSON must begin with '{' and end with '}'.
 
     {
-      "domain": "example.com",
+      "index": <number of the selected domain in <domains>>,
       "reason": "<short explanation>"
     }
   `
 
-  const RETRY_PROMPT = `
-    Your previous selection was NOT in the provided domain list.
-    You MUST choose one of the following domains only:
-    ${domainValues.join(', ')}
-    
+  const buildRetryPrompt = (invalidIndex: unknown) => `
+    Your previous answer ("index": ${JSON.stringify(invalidIndex)}) is not valid.
+    "index" MUST be a whole number from 1 to ${domains.length}, matching one of the numbered domains in <domains>.
+
     Re-read the original instructions below.
     ---------------
     ${PROMPT}
@@ -139,24 +141,24 @@ export async function selectMostRelevantDomainWithLLM(
   const MAX_RETRIES = 1
 
   try {
+    let invalidIndex: unknown
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const prompt = attempt === 0 ? PROMPT : RETRY_PROMPT
-      const response = await executeLlmQuery(prompt)
+      const prompt = attempt === 0 ? PROMPT : buildRetryPrompt(invalidIndex)
+      const selection = await executeLlmQuery(prompt)
+      const index = selection?.index
 
-      if (!response || typeof response.domain !== 'string') {
-        throw new Error(`Invalid LLM response on attempt ${attempt + 1}`)
-      }
-
-      const selected = domains.find((d) => d.value === response.domain)
-
+      const selected = Number.isInteger(index) ? domains[index - 1] : undefined
       if (selected) return selected
 
-      if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `LLM returned invalid domain "${response.domain}" after ${attempt + 1} attempts`,
-        )
-      }
+      invalidIndex = index
     }
+
+    // temperature is 0, so Temporal retries would return the same answer
+    throw ApplicationFailure.nonRetryable(
+      `LLM returned invalid domain index ${JSON.stringify(invalidIndex)} for [${domainValues.join(', ')}] after ${MAX_RETRIES + 1} attempts`,
+      'LLM_INVALID_DOMAIN_SELECTION',
+    )
   } catch (err) {
     svc.log.error({ organizationId, err: (err as Error).message }, 'Failed to select domain')
     throw err

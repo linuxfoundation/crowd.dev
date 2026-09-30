@@ -11,6 +11,7 @@ import {
 import * as activities from '../activities'
 import { DEFAULT_SWEEP_CONCURRENCY, IRunDocsReadinessSweepArgs } from '../types'
 import { processProjectDocsReadiness } from './processProjectDocsReadiness'
+import { settlePool } from './settlePool'
 
 const { startRun, finishRun, findProjectsForSweep } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
@@ -57,28 +58,27 @@ export async function runDocsReadinessSweep(args: IRunDocsReadinessSweepArgs): P
       lastProjectId = projects[projects.length - 1].id
     }
 
-    for (let i = 0; i < projects.length; i += concurrency) {
-      const window = projects.slice(i, i + concurrency)
-      const results = await Promise.allSettled(
-        window.map((project) =>
-          executeChild(processProjectDocsReadiness, {
-            workflowId: `${runId}-${project.id}`,
-            args: [{ projectId: project.id, runId }],
-          }),
-        ),
-      )
+    const results = await settlePool(
+      projects,
+      concurrency,
+      (project) =>
+        executeChild(processProjectDocsReadiness, {
+          workflowId: `${runId}-${project.id}`,
+          args: [{ projectId: project.id, runId }],
+        }),
+      isCancellation,
+    )
 
-      for (const result of results) {
-        if (result.status === 'rejected') {
-          if (isCancellation(result.reason)) {
-            throw result.reason
-          }
-
-          failed++
-          log.warn('docs readiness child workflow failed', {
-            error: (result.reason as Error)?.message ?? result.reason,
-          })
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        if (isCancellation(result.reason)) {
+          throw result.reason
         }
+
+        failed++
+        log.warn('docs readiness child workflow failed', {
+          error: (result.reason as Error)?.message ?? result.reason,
+        })
       }
     }
   } catch (err) {
