@@ -9,6 +9,7 @@
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug"
   },
   "dependencies": {
+    "@crowd/anthropic-aws": "workspace:*",
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
