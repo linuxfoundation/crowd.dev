@@ -30,6 +30,27 @@ describe('createProjectDocOverride', () => {
     expect((await findActiveProjectDocOverride(qx, project.id))?.id).toBe(override.id)
   })
 
+  test('stores an override without a docs URL, meaning no docs', async ({ qx }) => {
+    const project = await createInsightsProject(qx, {
+      name: 'Kyverno',
+      slug: 'kyverno',
+      isLF: true,
+    })
+
+    const override = await createProjectDocOverride(qx, {
+      projectId: project.id,
+      docsUrl: null,
+      submittedBy: 'someone@example.com',
+    })
+
+    expect(override.active).toBe(true)
+    expect(override.docsUrl).toBeNull()
+    expect(await findActiveProjectDocOverride(qx, project.id)).toMatchObject({
+      id: override.id,
+      docsUrl: null,
+    })
+  })
+
   test('deactivates the previous override and keeps it as history', async ({ qx }) => {
     const project = await createInsightsProject(qx, {
       name: 'OpenFGA',

@@ -340,6 +340,34 @@ describe('findProjectsForDocsReadiness', () => {
     expect(full).toHaveLength(8)
   })
 
+  test('incremental re-selects a no-docs override once, until no-docs-url is recorded', async ({
+    qx,
+  }) => {
+    const recorded = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
+    const repoOnly = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })
+
+    await upsertProjectDocReadiness(
+      qx,
+      scored(recorded.id, { ok: false, error: NO_DOCS_URL_ERROR }),
+    )
+    await upsertProjectDocReadiness(qx, scored(repoOnly.id, { ok: false, error: REPO_ONLY_ERROR }))
+    for (const project of [recorded, repoOnly]) {
+      await createProjectDocOverride(qx, {
+        projectId: project.id,
+        docsUrl: null,
+        submittedBy: 'test',
+      })
+    }
+
+    const incremental = await findProjectsForDocsReadiness(qx, {
+      mode: 'incremental',
+      scope: 'lf',
+      limit: 20,
+    })
+
+    expect(incremental.map((r) => r.id)).toEqual([repoOnly.id])
+  })
+
   test('incremental skips latest repo-only unless an active override exists', async ({ qx }) => {
     const unscored = await createInsightsProject(qx, { name: 'A', slug: 'a', isLF: true })
     const fine = await createInsightsProject(qx, { name: 'B', slug: 'b', isLF: true })

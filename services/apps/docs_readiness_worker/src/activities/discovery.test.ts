@@ -68,6 +68,28 @@ describe('resolveDocsUrl', () => {
     expect(mocks.upsertProjectDocDiscovery).not.toHaveBeenCalled()
   })
 
+  test('resolves a no-docs override to no URL, records it, and skips discovery', async () => {
+    mocks.findActiveProjectDocOverride.mockResolvedValue({ docsUrl: null })
+
+    const result = await resolveDocsUrl('project-1')
+
+    expect(result).toEqual({
+      docsUrl: null,
+      discoveryMethod: 'override',
+      confidence: 'authoritative',
+      isOverride: true,
+    })
+    expect(mocks.upsertProjectDocDiscovery).toHaveBeenCalledWith(expect.anything(), {
+      projectId: 'project-1',
+      docsUrl: null,
+      discoveryMethod: 'override',
+      confidence: 'authoritative',
+      candidates: [],
+    })
+    expect(mocks.findProjectForDocsDiscovery).not.toHaveBeenCalled()
+    expect(mocks.discoverDocs).not.toHaveBeenCalled()
+  })
+
   test('throws a non-retryable failure when the project does not exist', async () => {
     mocks.findActiveProjectDocOverride.mockResolvedValue(null)
     mocks.findProjectForDocsDiscovery.mockResolvedValue(null)
