@@ -190,15 +190,21 @@ export async function runShadowDiffForChannel(
         }
         if (failedCount > 0) {
           svc.log.warn(
-            { unitId: unit.id, day, channelName: channel.channelName, failedCount },
-            'failed to confirm force-pushed commit candidates against github, keeping them as missing_in_shadow',
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              syncName: unit.syncName,
+              checkFailedCount: failedCount,
+            },
+            'shadow diff check_failed: force-pushed commit candidates not confirmed against github, excluded from missing_in_shadow',
           )
         }
         result = { ...result, mismatches }
       }
 
       if (hasDeletedRecordCandidates(unit.syncName, result.mismatches)) {
-        const { mismatches, confirmedDeletedCount, keptUnconfirmedCount } =
+        const { mismatches, confirmedDeletedCount, unconfirmedCount } =
           await dropConfirmedDeletedRecords(unit.syncName, result.mismatches, http, svc.log)
         if (confirmedDeletedCount > 0) {
           svc.log.info(
@@ -206,10 +212,16 @@ export async function runShadowDiffForChannel(
             'skipped records confirmed deleted on github',
           )
         }
-        if (keptUnconfirmedCount > 0) {
+        if (unconfirmedCount > 0) {
           svc.log.warn(
-            { unitId: unit.id, day, channelName: channel.channelName, keptUnconfirmedCount },
-            'failed to confirm deleted-record candidates against github, keeping them as missing_in_shadow',
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              syncName: unit.syncName,
+              checkFailedCount: unconfirmedCount,
+            },
+            'shadow diff check_failed: deleted-record candidates not confirmed against github, excluded from missing_in_shadow',
           )
         }
         result = { ...result, mismatches }

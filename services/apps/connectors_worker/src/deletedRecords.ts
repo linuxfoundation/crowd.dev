@@ -40,7 +40,7 @@ export function hasDeletedRecordCandidates(
 export interface DeletedRecordFilterResult {
   mismatches: IShadowDiffMismatch[]
   confirmedDeletedCount: number
-  keptUnconfirmedCount: number
+  unconfirmedCount: number
 }
 
 function toBatches<T>(items: T[], size: number): T[][] {
@@ -106,7 +106,7 @@ export async function dropConfirmedDeletedRecords(
   log: Logger,
 ): Promise<DeletedRecordFilterResult> {
   if (!hasDeletedRecordCandidates(syncName, mismatches)) {
-    return { mismatches, confirmedDeletedCount: 0, keptUnconfirmedCount: 0 }
+    return { mismatches, confirmedDeletedCount: 0, unconfirmedCount: 0 }
   }
 
   const candidates = mismatches.filter(
@@ -139,10 +139,10 @@ export async function dropConfirmedDeletedRecords(
         !(
           m.kind === 'missing_in_shadow' &&
           isNodeIdCandidate(m) &&
-          confirmedDeletedIds.has(m.sourceId)
+          (confirmedDeletedIds.has(m.sourceId) || uncheckedIds.has(m.sourceId))
         ),
     ),
     confirmedDeletedCount: confirmedDeletedIds.size,
-    keptUnconfirmedCount: uncheckedIds.size,
+    unconfirmedCount: uncheckedIds.size,
   }
 }

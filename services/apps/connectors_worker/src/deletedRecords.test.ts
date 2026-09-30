@@ -52,10 +52,10 @@ describe('dropConfirmedDeletedRecords', () => {
 
     expect(result.mismatches).toEqual([missingMismatch('IC_alive')])
     expect(result.confirmedDeletedCount).toBe(1)
-    expect(result.keptUnconfirmedCount).toBe(0)
+    expect(result.unconfirmedCount).toBe(0)
   })
 
-  it('keeps records when the graphql request errors', async () => {
+  it('excludes records when the graphql request errors', async () => {
     const mismatches = [missingMismatch('IC_unknown')]
     const http = httpWithHandler(async () => {
       throw new Error('network exploded')
@@ -63,20 +63,20 @@ describe('dropConfirmedDeletedRecords', () => {
 
     const result = await dropConfirmedDeletedRecords('issue-comments', mismatches, http, log)
 
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.mismatches).toEqual([])
     expect(result.confirmedDeletedCount).toBe(0)
-    expect(result.keptUnconfirmedCount).toBe(1)
+    expect(result.unconfirmedCount).toBe(1)
   })
 
-  it('keeps records when the response has no top-level data', async () => {
+  it('excludes records when the response has no top-level data', async () => {
     const mismatches = [missingMismatch('IC_unknown')]
     const http = httpWithHandler(async () => ({ errors: [{ type: 'FORBIDDEN' }] }))
 
     const result = await dropConfirmedDeletedRecords('issue-comments', mismatches, http, log)
 
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.mismatches).toEqual([])
     expect(result.confirmedDeletedCount).toBe(0)
-    expect(result.keptUnconfirmedCount).toBe(1)
+    expect(result.unconfirmedCount).toBe(1)
   })
 
   it('treats NOT_FOUND per-id errors alongside data as a valid confirmation', async () => {
@@ -92,10 +92,14 @@ describe('dropConfirmedDeletedRecords', () => {
     expect(result.confirmedDeletedCount).toBe(1)
   })
 
-  it('keeps null nodes whose error is not NOT_FOUND (e.g. FORBIDDEN)', async () => {
-    const mismatches = [missingMismatch('IC_forbidden'), missingMismatch('IC_deleted')]
+  it('excludes null nodes whose error is not NOT_FOUND (e.g. FORBIDDEN) as unconfirmed, not deleted', async () => {
+    const mismatches = [
+      missingMismatch('IC_forbidden'),
+      missingMismatch('IC_deleted'),
+      missingMismatch('IC_alive'),
+    ]
     const http = httpWithHandler(async (ids) => ({
-      data: { nodes: ids.map(() => null) },
+      data: { nodes: ids.map((id) => (id === 'IC_alive' ? { id } : null)) },
       errors: [
         { type: 'FORBIDDEN', path: ['nodes', 0] },
         { type: 'NOT_FOUND', path: ['nodes', 1] },
@@ -104,12 +108,12 @@ describe('dropConfirmedDeletedRecords', () => {
 
     const result = await dropConfirmedDeletedRecords('issue-comments', mismatches, http, log)
 
-    expect(result.mismatches).toEqual([missingMismatch('IC_forbidden')])
+    expect(result.mismatches).toEqual([missingMismatch('IC_alive')])
     expect(result.confirmedDeletedCount).toBe(1)
-    expect(result.keptUnconfirmedCount).toBe(1)
+    expect(result.unconfirmedCount).toBe(1)
   })
 
-  it('keeps null nodes that have no matching error entry at all', async () => {
+  it('excludes null nodes that have no matching error entry at all', async () => {
     const mismatches = [missingMismatch('IC_unresolved')]
     const http = httpWithHandler(async (ids) => ({
       data: { nodes: ids.map(() => null) },
@@ -117,9 +121,9 @@ describe('dropConfirmedDeletedRecords', () => {
 
     const result = await dropConfirmedDeletedRecords('issue-comments', mismatches, http, log)
 
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.mismatches).toEqual([])
     expect(result.confirmedDeletedCount).toBe(0)
-    expect(result.keptUnconfirmedCount).toBe(1)
+    expect(result.unconfirmedCount).toBe(1)
   })
 
   it('never checks pull-request-commits candidates and leaves them untouched', async () => {
@@ -157,7 +161,7 @@ describe('dropConfirmedDeletedRecords', () => {
     expect(requestSpy.mock.calls[0][0].data.variables.ids).toEqual(['PR_1'])
   })
 
-  it('keeps every candidate unconfirmed once the time budget is already exhausted', async () => {
+  it('excludes every candidate as unconfirmed once the time budget is already exhausted', async () => {
     const manyIds = Array.from({ length: 150 }, (_, i) => `IC_${i}`)
     const mismatches = manyIds.map((id) => missingMismatch(id))
     const requestSpy = vi.fn()
@@ -169,7 +173,7 @@ describe('dropConfirmedDeletedRecords', () => {
 
     expect(requestSpy).not.toHaveBeenCalled()
     expect(result.confirmedDeletedCount).toBe(0)
-    expect(result.keptUnconfirmedCount).toBe(manyIds.length)
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.unconfirmedCount).toBe(manyIds.length)
+    expect(result.mismatches).toEqual([])
   })
 })

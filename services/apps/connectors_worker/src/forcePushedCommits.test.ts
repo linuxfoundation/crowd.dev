@@ -80,9 +80,9 @@ describe('dropConfirmedForcePushedCommits', () => {
     expect(result.failedCount).toBe(0)
   })
 
-  it('keeps commits GitHub cannot resolve and counts them as unconfirmed', async () => {
-    const mismatches = [missingMismatch('gone'), missingMismatch('odd')]
-    const http = httpWithHandler(async () => repositoryOf([null, undefined]))
+  it('excludes commits GitHub cannot resolve and counts them as unconfirmed', async () => {
+    const mismatches = [missingMismatch('gone'), missingMismatch('odd'), missingMismatch('live')]
+    const http = httpWithHandler(async () => repositoryOf([null, undefined, 1]))
 
     const result = await dropConfirmedForcePushedCommits(
       'pull-request-commits',
@@ -93,12 +93,12 @@ describe('dropConfirmedForcePushedCommits', () => {
       log,
     )
 
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.mismatches).toEqual([missingMismatch('live')])
     expect(result.skippedCount).toBe(0)
     expect(result.failedCount).toBe(2)
   })
 
-  it('keeps the whole batch and counts it as unconfirmed when the request errors', async () => {
+  it('excludes the whole batch and counts it as unconfirmed when the request errors', async () => {
     const mismatches = [missingMismatch('a'), missingMismatch('b')]
     const http = httpWithHandler(async () => {
       throw new Error('network exploded')
@@ -113,7 +113,7 @@ describe('dropConfirmedForcePushedCommits', () => {
       log,
     )
 
-    expect(result.mismatches).toEqual(mismatches)
+    expect(result.mismatches).toEqual([])
     expect(result.skippedCount).toBe(0)
     expect(result.failedCount).toBe(2)
   })

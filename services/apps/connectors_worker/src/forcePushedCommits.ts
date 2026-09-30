@@ -140,7 +140,11 @@ export async function dropConfirmedForcePushedCommits(
 
   return {
     mismatches: mismatches.filter(
-      (m) => !(m.kind === 'missing_in_shadow' && orphanedShas.has(m.sourceId)),
+      (m) =>
+        !(
+          m.kind === 'missing_in_shadow' &&
+          (orphanedShas.has(m.sourceId) || unconfirmedShas.has(m.sourceId))
+        ),
     ),
     skippedCount: orphanedShas.size,
     failedCount: unconfirmedShas.size,
