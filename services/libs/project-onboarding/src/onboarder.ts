@@ -1,4 +1,4 @@
-import { githubRepoPath } from '@crowd/common'
+import { canonicalizeRepoUrl, githubRepoPath } from '@crowd/common'
 
 import { IOnboardingInput, IOnboardingResult } from './types'
 
@@ -134,6 +134,10 @@ async function queryProjectByName(
   return null
 }
 
+function comparableRepoUrl(url: string): string {
+  return canonicalizeRepoUrl(url)?.url ?? url.toLowerCase()
+}
+
 async function queryGithubIntegrationRepoUrls(
   segmentId: string,
   apiUrl: string,
@@ -164,7 +168,7 @@ async function queryGithubIntegrationRepoUrls(
 
   return (integration.settings?.orgs ?? [])
     .flatMap((org) => org.repos ?? [])
-    .flatMap((repo) => (repo.url ? [repo.url.toLowerCase()] : []))
+    .flatMap((repo) => (repo.url ? [comparableRepoUrl(repo.url)] : []))
 }
 
 export function deriveProjectNameCandidates(owner: string, repoName: string): string[] {
@@ -178,6 +182,8 @@ export async function resolveProjectSegment(
   apiUrl: string,
   token: string,
 ): Promise<string> {
+  const requestedRepoUrl = comparableRepoUrl(repoUrl)
+
   for (const name of candidateNames) {
     const existingSegmentId = await queryProjectByName(name, apiUrl, token)
     if (!existingSegmentId) {
@@ -188,7 +194,7 @@ export async function resolveProjectSegment(
     const isOnlyRequestedRepo =
       connectedRepoUrls !== null &&
       connectedRepoUrls.length > 0 &&
-      connectedRepoUrls.every((url) => url === repoUrl.toLowerCase())
+      connectedRepoUrls.every((url) => url === requestedRepoUrl)
     if (connectedRepoUrls === null || isOnlyRequestedRepo) {
       return existingSegmentId
     }

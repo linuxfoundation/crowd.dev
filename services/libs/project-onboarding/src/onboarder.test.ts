@@ -196,8 +196,14 @@ describe('resolveProjectSegment', () => {
     expect(segmentId).toBe('created-Ai Dynamo Dynamo')
   })
 
-  it('matches the requested repo url case-insensitively', async () => {
-    installFakeBackend([
+  it.each([
+    'https://github.com/AI-Dynamo/Dynamo',
+    'https://github.com/ai-dynamo/dynamo/',
+    'https://github.com/ai-dynamo/dynamo.git',
+    'https://www.github.com/ai-dynamo/dynamo',
+    'https://github.com/ai-dynamo/dynamo?tab=readme',
+  ])('treats %s as the requested repo already connected', async (requestedUrl) => {
+    const backend = installFakeBackend([
       {
         name: 'Dynamo',
         id: 'own-segment',
@@ -208,7 +214,28 @@ describe('resolveProjectSegment', () => {
     const segmentId = await resolveProjectSegment(
       candidates,
       'slug',
-      'https://github.com/AI-Dynamo/Dynamo',
+      requestedUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('own-segment')
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('matches a stored url in a different form than the requested one', async () => {
+    installFakeBackend([
+      {
+        name: 'Dynamo',
+        id: 'own-segment',
+        connectedRepoUrls: ['https://www.github.com/AI-Dynamo/Dynamo.git'],
+      },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      'https://github.com/ai-dynamo/dynamo',
       'http://api',
       'token',
     )
