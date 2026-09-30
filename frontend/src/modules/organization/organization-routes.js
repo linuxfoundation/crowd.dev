@@ -1,5 +1,4 @@
 import Layout from '@/modules/layout/components/layout.vue';
-import { store } from '@/store';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
