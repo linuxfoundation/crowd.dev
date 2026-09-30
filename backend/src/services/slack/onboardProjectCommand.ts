@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 
 import axios from 'axios'
-import { Message, Section, SlackMessageDto } from 'slack-block-builder'
+import { Actions, Bits, Button, Message, Section, SlackMessageDto } from 'slack-block-builder'
 
 import { canonicalizeGithubRepoUrl, canonicalizeRepoUrl, getErrorMessage } from '@crowd/common'
 import {
@@ -18,7 +18,6 @@ import {
   setProjectCatalogSourceUrl,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
-import { WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/data-access-layer/src/database'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { onboardProject } from '@crowd/project-onboarding'
 import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
@@ -26,23 +25,43 @@ import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
 import { createDailyProjectCatalogCap } from '../../api/public/v1/projectCatalog/dailyRequestCap'
 import { createDailyLlmCap } from '../../api/public/v1/projectEvaluation/dailyLlmCap'
 import { evaluateProject } from '../../api/public/v1/projectEvaluation/evaluateProject'
-import { createDailyProjectOnboardingCap } from '../../api/public/v1/projectOnboarding/dailyRequestCap'
 import { IServiceOptions } from '../IServiceOptions'
+import { FORCE_ONBOARDING_ACTION_ID } from './slackActionIds'
+import { getBgQx, reserveDailyProjectOnboardingRequest } from './slackBackground'
 import { type SlackBotRequestAlertKind, notifySlackBotRequest } from './slackBotRequestAlert'
 
 const reserveDailyProjectCatalogRequest = createDailyProjectCatalogCap()
 const reserveDailyLlmCall = createDailyLlmCap()
-const reserveDailyProjectOnboardingRequest = createDailyProjectOnboardingCap()
-
-// optionsBgQx routes QueryTypes.SELECT to the read replica, which breaks our
-// INSERT/UPDATE ... RETURNING claims — pin this detached workflow to the writer instead.
-async function getBgQx() {
-  const db = await getDbConnection(WRITE_DB_CONFIG())
-  return pgpQx(db)
-}
 
 export function textMessage(text: string): SlackMessageDto {
   return Message().blocks(Section({ text })).buildToObject()
+}
+
+function forceOnboardingPrompt(
+  repoUrl: string,
+  catalogId: string,
+  evaluation: { outcome: string; evaluationReason?: string | null },
+): SlackMessageDto {
+  const reason = evaluation.evaluationReason ? `\nReason: ${evaluation.evaluationReason}` : ''
+  return Message()
+    .blocks(
+      Section({
+        text: `\`${repoUrl}\` evaluation result: *${evaluation.outcome}*${reason}`,
+      }),
+      Actions().elements(
+        Button({ text: 'Force onboarding', actionId: FORCE_ONBOARDING_ACTION_ID, value: catalogId })
+          .danger()
+          .confirm(
+            Bits.ConfirmationDialog({
+              title: 'Force onboarding?',
+              text: `The evaluation did not approve ${repoUrl}. Onboard it anyway?`,
+              confirm: 'Force onboarding',
+              deny: 'Cancel',
+            }),
+          ),
+      ),
+    )
+    .buildToObject()
 }
 
 export async function postToResponseUrl(
@@ -267,13 +286,7 @@ export async function runOnboardProjectCommand({
   }
 
   if (evaluation.outcome !== 'onboard') {
-    await send(
-      textMessage(
-        `\`${repoUrl}\` evaluation result: *${evaluation.outcome}*${
-          evaluation.evaluationReason ? `\nReason: ${evaluation.evaluationReason}` : ''
-        }\n_Forcing onboarding on a negative evaluation isn't available yet (CM-1805)._`,
-      ),
-    )
+    await send(forceOnboardingPrompt(repoUrl, catalogEntry.id, evaluation))
     await alert(
       'skipped',
       evaluation.evaluationReason ?? `evaluation result: ${evaluation.outcome}`,

@@ -4,6 +4,7 @@ import { withQx } from '@crowd/test-kit/db'
 
 import {
   bulkInsertProjectCatalog,
+  claimProjectCatalogForForcedOnboarding,
   claimProjectCatalogForOnboarding,
   claimProjectCatalogForSlackEvaluation,
   findProjectCatalogById,
@@ -572,6 +573,72 @@ describe('claimProjectCatalogForOnboarding', () => {
     const claimed = await claimProjectCatalogForOnboarding(qx, inserted.id)
 
     expect(claimed).toBeNull()
+  })
+})
+
+describe('claimProjectCatalogForForcedOnboarding', () => {
+  async function insertEvaluated(
+    qx: Parameters<typeof insertProjectCatalog>[0],
+    {
+      provenance = 'slack-bot',
+      action = 'skip',
+      evaluationResult = 'false',
+    }: {
+      provenance?: 'slack-bot' | 'github-discussion'
+      action?: 'skip' | 'unsure' | 'onboard'
+      evaluationResult?: string | null
+    } = {},
+  ) {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ provenance, action }))
+    await updateProjectCatalog(qx, inserted.id, { evaluationResult })
+    return inserted
+  }
+
+  test('claims a negatively evaluated slack-bot row, flipping it to onboard', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx)
+
+    const claimed = await claimProjectCatalogForForcedOnboarding(qx, inserted.id)
+
+    expect(claimed?.action).toBe('onboard')
+    expect(claimed?.onboardedAt).not.toBeNull()
+  })
+
+  test('claims an unsure row that has a real evaluation result', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx, { action: 'unsure' })
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).not.toBeNull()
+  })
+
+  test('does not claim a row a second time', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx)
+
+    await claimProjectCatalogForForcedOnboarding(qx, inserted.id)
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).toBeNull()
+  })
+
+  test('does not claim a row whose evaluation errored', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx, { action: 'unsure', evaluationResult: 'error' })
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).toBeNull()
+  })
+
+  test('does not claim a row skipped by the pre-check', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx, { evaluationResult: null })
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).toBeNull()
+  })
+
+  test('does not claim rows from other provenances', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx, { provenance: 'github-discussion' })
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).toBeNull()
+  })
+
+  test('does not claim a row that is not skipped or unsure', async ({ qx }) => {
+    const inserted = await insertEvaluated(qx, { action: 'onboard' })
+
+    expect(await claimProjectCatalogForForcedOnboarding(qx, inserted.id)).toBeNull()
   })
 })
 

@@ -607,6 +607,26 @@ export async function claimProjectCatalogForOnboarding(
   )
 }
 
+export async function claimProjectCatalogForForcedOnboarding(
+  qx: QueryExecutor,
+  id: string,
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET action = 'onboard', "onboardedAt" = NOW(), "updatedAt" = NOW()
+    WHERE id = $(id)
+      AND provenance = 'slack-bot'
+      AND action IN ('skip', 'unsure')
+      AND "evaluationResult" IS NOT NULL
+      AND "evaluationResult" <> 'error'
+      AND "onboardedAt" IS NULL
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id },
+  )
+}
+
 export async function updateProjectCatalog(
   qx: QueryExecutor,
   id: string,
