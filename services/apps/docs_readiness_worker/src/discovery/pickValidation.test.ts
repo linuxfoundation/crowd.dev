@@ -231,6 +231,24 @@ describe('discoverDocs with the docs validator', () => {
     expect(result.discoveryMethod).toBe('repo-url')
   })
 
+  test.each([
+    ['a multi-tenant host', 'https://docs.rs/foo', 'https://docs.rs/bar'],
+    [
+      'an umbrella host',
+      'https://wiki.linuxfoundation.org/foo',
+      'https://events.linuxfoundation.org/bar',
+    ],
+  ])(
+    'an unclear winner on the same domain as a website on %s is dropped',
+    async (_l, website, url) => {
+      withCandidates(candidate(url, 'readme-scrape'), candidate(REPO_URL, 'repo-url'))
+
+      const result = await discoverDocs({ ...ctxWith(fakeValidator('unclear')), website })
+
+      expect(result.discoveryMethod).toBe('repo-url')
+    },
+  )
+
   test('an other verdict drops a winner even on a matching domain', async () => {
     withCandidates(
       candidate('https://example.com/docs', 'readme-scrape'),
@@ -515,7 +533,6 @@ describe('validation time bound', () => {
 
     expect(validator).toHaveBeenCalledTimes(3)
     expect(result.discoveryMethod).toBe('repo-url')
-    // 150 + 3 x (5 + 20) + 10 cut
     expect(elapsedMs).toBe(235_000)
   })
 

@@ -5,8 +5,9 @@ import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import type { IDocsValidatorPage } from './docsValidator'
 import { primaryRepo } from './github'
-import { fetchText, probe } from './http'
-import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
+import { fetchText, normalizedDomain, probe } from './http'
+import { SHARED_HOSTING, isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
+import { UMBRELLA_SITES } from './sharedWebsite'
 import type { IDiscoveryContext } from './strategies'
 
 // Search and README links are where almost all wrong docs URLs come from; other sources are trusted.
@@ -172,13 +173,27 @@ async function fetchPageEvidence(url: string): Promise<IDocsValidatorPage | null
   return html === null ? null : extractPageEvidence(html, result.finalUrl || url, result.status)
 }
 
+// A website on a host that serves many unrelated projects says nothing about a pick on its domain.
+function isSharedHost(website: string): boolean {
+  const host = normalizedDomain(website)
+  return (
+    !!host &&
+    [...SHARED_HOSTING, ...UMBRELLA_SITES].some(
+      (site) => host === site || host.endsWith(`.${site}`),
+    )
+  )
+}
+
 function isRelatedToProject(ctx: IDiscoveryContext, repoUrl: string | null, url: string): boolean {
   const tokens = projectTokens({ name: ctx.name, slug: ctx.slug, repoUrl })
   const hyphenTokens = [...nameTokens(ctx.name), ...nameTokens(ctx.slug)]
   if (isRelevantSerpResult(url, tokens, { hyphenTokens })) {
     return true
   }
-  const siteRoot = ctx.website && !ctx.websiteShared ? registrableDomain(ctx.website) : null
+  const siteRoot =
+    ctx.website && !ctx.websiteShared && !isSharedHost(ctx.website)
+      ? registrableDomain(ctx.website)
+      : null
   return !!siteRoot && siteRoot === registrableDomain(url)
 }
 

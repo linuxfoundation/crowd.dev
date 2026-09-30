@@ -6,7 +6,7 @@ import { normalizedDomain } from './http'
 import { nameTokens } from './relevance'
 
 // Foundation sites that host many unrelated projects; sharing one is always an umbrella.
-const UMBRELLA_SITES = [
+export const UMBRELLA_SITES = [
   'aswf.io',
   'lfenergy.org',
   'openssf.org',
