@@ -24,7 +24,7 @@ import {
   normalizeUrl,
   normalizedDomain,
 } from './http'
-import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
+import { isPlatformPage, isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 
 export type DocsPickValidator = (
   project: IDocsValidatorProject,
@@ -447,7 +447,7 @@ export const githubHomepage: DiscoveryStrategy = async (ctx) => {
     }
 
     const repoUrl = normalizeUrl(repo)
-    if (isBadgeOrGithubHost(domainOf(url)) || url === repoUrl) {
+    if (isBadgeOrGithubHost(domainOf(url)) || isPlatformPage(url) || url === repoUrl) {
       return []
     }
 
