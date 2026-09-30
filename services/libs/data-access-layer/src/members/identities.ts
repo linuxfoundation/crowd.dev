@@ -556,6 +556,55 @@ export async function findMembersByVerifiedEmails(
   return resultMap
 }
 
+export interface IVerifiedIdentityMemberRow {
+  memberId: string
+  displayName: string | null
+  type: MemberIdentityType
+  value: string
+}
+
+export async function findVerifiedMembersByIdentities(
+  qx: QueryExecutor,
+  identities: { githubLogins: string[]; emails: string[] },
+): Promise<IVerifiedIdentityMemberRow[]> {
+  const githubLogins = identities.githubLogins.map((v) => v.toLowerCase())
+  const emails = identities.emails.map((v) => v.toLowerCase())
+
+  const selects: string[] = []
+  if (githubLogins.length > 0) {
+    selects.push(`
+      SELECT DISTINCT mi."memberId", m."displayName", mi.type, lower(mi.value) AS value
+      FROM "memberIdentities" mi
+      JOIN members m ON m.id = mi."memberId" AND m."deletedAt" IS NULL
+      WHERE mi.platform = $(githubPlatform)
+        AND mi.type = $(usernameType)
+        AND mi.verified = true
+        AND mi."deletedAt" IS NULL
+        AND lower(mi.value) IN ($(githubLogins:csv))
+    `)
+  }
+  if (emails.length > 0) {
+    selects.push(`
+      SELECT DISTINCT mi."memberId", m."displayName", mi.type, lower(mi.value) AS value
+      FROM "memberIdentities" mi
+      JOIN members m ON m.id = mi."memberId" AND m."deletedAt" IS NULL
+      WHERE mi.type = $(emailType)
+        AND mi.verified = true
+        AND mi."deletedAt" IS NULL
+        AND lower(mi.value) IN ($(emails:csv))
+    `)
+  }
+  if (selects.length === 0) return []
+
+  return qx.select(selects.join(' UNION ALL '), {
+    githubPlatform: PlatformType.GITHUB,
+    usernameType: MemberIdentityType.USERNAME,
+    emailType: MemberIdentityType.EMAIL,
+    githubLogins,
+    emails,
+  })
+}
+
 export async function findMembersByVerifiedUsernames(
   qx: QueryExecutor,
   params: { segmentId: string; platform: string; username: string }[],
