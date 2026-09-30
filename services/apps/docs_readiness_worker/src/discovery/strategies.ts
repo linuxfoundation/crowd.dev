@@ -233,7 +233,7 @@ export const docsSubdomain: DiscoveryStrategy = async (ctx) => {
       return []
     }
     const url = `https://docs.${domain}`
-    return (await isLiveDocs(url)) ? [candidate(url, 'docs-subdomain', true)] : []
+    return (await isLiveDocs(url, true)) ? [candidate(url, 'docs-subdomain', true)] : []
   } catch {
     return []
   }
@@ -258,7 +258,7 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
     for (const suffix of ['/docs', '/documentation', '/doc']) {
       parsed.pathname = `${basePath}${suffix}`
       const url = parsed.toString()
-      if (await isLiveDocs(url)) {
+      if (await isLiveDocs(url, true)) {
         candidates.push(candidate(url, 'docs-path', true))
       }
     }
