@@ -7,21 +7,21 @@ still applies here, including its "no comments" rule, and commits follow
 ## Components
 
 - `<script setup lang="ts">` only. No Options API.
-- Use `defineOptions({ name })` for the component name instead of a second,
-  non-setup `<script>` block.
+- Use `defineOptions({ name: 'ComponentName' })` for the component name instead
+  of a second, non-setup `<script>` block.
 - Typed `defineProps` / `defineEmits` — no untyped prop objects.
 - No globally registered components going forward: each component explicitly
   imports what it uses.
 - Prefer `Lf*` ui-kit components over Element Plus and raw HTML primitives.
   Element Plus (`el-*`) is acceptable only where no ui-kit equivalent exists
   yet.
-- Every ui-kit component ships a Storybook story.
+- Every new ui-kit component ships a Storybook story.
 
 ## Data
 
-- No fetching inside components.
-- Call `*.api.service.ts` functions instead of `authAxios` directly.
-- TanStack Vue Query for server state.
+- No raw HTTP calls in components. Server state goes through TanStack Vue Query,
+  whose query functions call `*.api.service.ts` modules instead of `authAxios`
+  directly.
 - Pinia setup stores for shared client state.
 - Vuex is legacy — do not add new stores or actions to it.
 
@@ -43,7 +43,6 @@ still applies here, including its "no comments" rule, and commits follow
 - `npm run build:localhost` — must succeed.
 - The legacy-file list (`.eslint/legacy-files.json`) only shrinks, never
   grows.
-- Vitest is the test runner for new tests.
 
 ## Ownership
 
