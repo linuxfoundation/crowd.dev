@@ -8,6 +8,7 @@ import {
   normalizeUrl,
   normalizedDomain,
   isTrustedRedirect,
+  PROBE_TIMEOUT_MS,
   probe,
   sameRegistrableDomain,
 } from './http'
@@ -113,6 +114,80 @@ describe('probe', () => {
     await probe('https://example.com/')
 
     expect(cancel).toHaveBeenCalledOnce()
+  })
+})
+
+describe('probe retry', () => {
+  const html = () => htmlAt('https://example.com/')
+  const withRetry = (url: string) => probe(url, PROBE_TIMEOUT_MS, true)
+
+  it('retries once after a timeout and returns the second result', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'))
+      .mockResolvedValueOnce(html())
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await withRetry('https://example.com/')).ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries once after a 5xx and gives up after the second failure', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 503 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await withRetry('https://example.com/')
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(503)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry a 404', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 404 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await withRetry('https://example.com/')).status).toBe(404)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a blocked url', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await withRetry('http://127.0.0.1/')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not retry unless asked to', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error('reset')))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('https://example.com/')
+    await isLiveDocs('https://example.com/')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('isLiveDocs is true when the first attempt fails and the retry succeeds', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValueOnce(new Error('reset')).mockResolvedValueOnce(html()),
+    )
+
+    expect(await isLiveDocs('https://example.com/', true)).toBe(true)
+  })
+
+  it('gives every attempt the same 10s timeout so a retried probe costs at most 20s', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('reset')))
+
+    await withRetry('https://example.com/')
+
+    expect(PROBE_TIMEOUT_MS).toBe(10_000)
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([PROBE_TIMEOUT_MS, PROBE_TIMEOUT_MS])
+    timeout.mockRestore()
   })
 })
 
