@@ -1,16 +1,18 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
+import { registrableDomain } from '@crowd/common'
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import type { IDocsValidatorPage } from './docsValidator'
 import { primaryRepo } from './github'
 import { fetchText, probe } from './http'
+import { isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
 import type { IDiscoveryContext } from './strategies'
 
 // Search and README links are where almost all wrong docs URLs come from; other sources are trusted.
 const VALIDATED_METHODS = new Set<IDocCandidate['method']>(['serp', 'readme-scrape'])
 
-export const MAX_VALIDATOR_CALLS_PER_PROJECT = 2
+export const MAX_VALIDATOR_CALLS_PER_PROJECT = 3
 
 const MAX_HTML_CHARS = 200_000
 const MAX_TEXT_CHARS = 1500
@@ -170,8 +172,19 @@ async function fetchPageEvidence(url: string): Promise<IDocsValidatorPage | null
   return html === null ? null : extractPageEvidence(html, result.finalUrl || url, result.status)
 }
 
+function isRelatedToProject(ctx: IDiscoveryContext, repoUrl: string | null, url: string): boolean {
+  const tokens = projectTokens({ name: ctx.name, slug: ctx.slug, repoUrl })
+  const hyphenTokens = [...nameTokens(ctx.name), ...nameTokens(ctx.slug)]
+  if (isRelevantSerpResult(url, tokens, { hyphenTokens })) {
+    return true
+  }
+  const siteRoot = ctx.website && !ctx.websiteShared ? registrableDomain(ctx.website) : null
+  return !!siteRoot && siteRoot === registrableDomain(url)
+}
+
 // Fail open: a pick the validator could not judge (error, timeout, no credentials, no evidence,
-// little time left) is kept; only a real model verdict other than documents_project drops it.
+// little time left) is kept; a verdict of other drops it, and unclear drops it unless the pick's
+// domain is tied to the project.
 export async function pickValidatedWinner(
   ctx: IDiscoveryContext,
   candidates: IDocCandidate[],
@@ -182,6 +195,7 @@ export async function pickValidatedWinner(
     return rank(candidates)
   }
 
+  const repoUrl = primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name })
   let pool = candidates
   let calls = 0
   for (;;) {
@@ -215,16 +229,13 @@ export async function pickValidatedWinner(
         return winner
       }
       calls++
-      const { verdict } = await validate(
-        {
-          name: ctx.name,
-          website: ctx.website,
-          repoUrl: primaryRepo(ctx.repos, { slug: ctx.slug, name: ctx.name }),
-        },
-        page,
-      )
+      const { verdict } = await validate({ name: ctx.name, website: ctx.website, repoUrl }, page)
       ctx.log?.info({ ...fields, verdict }, 'docs pick validated')
       if (verdict === 'documents_project') {
+        return winner
+      }
+      if (verdict === 'unclear' && isRelatedToProject(ctx, repoUrl, winner.url)) {
+        ctx.log?.info({ ...fields, outcome: 'unclear-related' }, 'docs pick kept, domain matches')
         return winner
       }
       pool = others
