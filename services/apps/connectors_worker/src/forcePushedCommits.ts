@@ -23,14 +23,15 @@ interface CommitAssociationsResult {
   repository: Record<string, CommitAssociationNode | null> | null
 }
 
+export function isForcePushCandidate(syncName: string, mismatch: IShadowDiffMismatch): boolean {
+  return syncName === PULL_REQUEST_COMMITS_SYNC_NAME && mismatch.kind === 'missing_in_shadow'
+}
+
 export function hasForcePushCandidates(
   syncName: string,
   mismatches: IShadowDiffMismatch[],
 ): boolean {
-  return (
-    syncName === PULL_REQUEST_COMMITS_SYNC_NAME &&
-    mismatches.some((m) => m.kind === 'missing_in_shadow')
-  )
+  return mismatches.some((m) => isForcePushCandidate(syncName, m))
 }
 
 export interface ForcePushedCommitFilterResult {

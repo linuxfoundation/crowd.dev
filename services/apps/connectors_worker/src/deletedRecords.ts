@@ -27,14 +27,19 @@ function isNodeIdCandidate(mismatch: IShadowDiffMismatch): boolean {
   return !mismatch.sourceId.startsWith(SYNTHETIC_SOURCE_ID_PREFIX)
 }
 
+export function isDeletedRecordCandidate(syncName: string, mismatch: IShadowDiffMismatch): boolean {
+  return (
+    syncName !== COMMIT_SYNC_NAME &&
+    mismatch.kind === 'missing_in_shadow' &&
+    isNodeIdCandidate(mismatch)
+  )
+}
+
 export function hasDeletedRecordCandidates(
   syncName: string,
   mismatches: IShadowDiffMismatch[],
 ): boolean {
-  return (
-    syncName !== COMMIT_SYNC_NAME &&
-    mismatches.some((m) => m.kind === 'missing_in_shadow' && isNodeIdCandidate(m))
-  )
+  return mismatches.some((m) => isDeletedRecordCandidate(syncName, m))
 }
 
 export interface DeletedRecordFilterResult {
