@@ -116,6 +116,58 @@ describe('probe', () => {
   })
 })
 
+describe('probe retry', () => {
+  const html = () => htmlAt('https://example.com/')
+
+  it('retries once after a timeout and returns the second result', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'))
+      .mockResolvedValueOnce(html())
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await probe('https://example.com/')).ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries once after a 5xx and gives up after the second failure', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 503 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await probe('https://example.com/')
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(503)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry a 404', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('', { status: 404 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await probe('https://example.com/')).status).toBe(404)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a blocked url', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await probe('http://127.0.0.1/')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('isLiveDocs is true when the first attempt fails and the retry succeeds', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValueOnce(new Error('reset')).mockResolvedValueOnce(html()),
+    )
+
+    expect(await isLiveDocs('https://example.com/')).toBe(true)
+  })
+})
+
 describe('isLiveDocs', () => {
   it('is true only for an ok html response', async () => {
     vi.stubGlobal(
