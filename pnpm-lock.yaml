@@ -817,6 +817,9 @@ importers:
 
   services/apps/docs_readiness_worker:
     dependencies:
+      '@crowd/anthropic-aws':
+        specifier: workspace:*
+        version: link:../../libs/anthropic-aws
       '@crowd/archetype-standard':
         specifier: workspace:*
         version: link:../../archetypes/standard
