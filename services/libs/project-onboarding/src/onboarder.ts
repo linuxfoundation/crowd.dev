@@ -11,6 +11,12 @@ interface ISegmentQueryResponse {
   count?: number
 }
 
+interface IIntegrationQueryResponse {
+  rows?: unknown[]
+  count?: number
+}
+
+const GITHUB_NANGO_PLATFORM = 'github-nango'
 const SEGMENT_QUERY_PAGE_SIZE = 20
 const BACKEND_REQUEST_TIMEOUT_MS = 30_000
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000
@@ -129,17 +135,64 @@ async function queryProjectByName(
   return null
 }
 
+async function segmentHasGithubIntegration(
+  segmentId: string,
+  apiUrl: string,
+  token: string,
+): Promise<boolean> {
+  const response = await fetch(`${apiUrl}/integration/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      segments: [segmentId],
+      filter: { and: [{ platform: { eq: GITHUB_NANGO_PLATFORM } }] },
+      limit: 1,
+      offset: 0,
+    }),
+    signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      `Integration query returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+    )
+  }
+
+  const body = (await response.json()) as IIntegrationQueryResponse
+  return (body.count ?? body.rows?.length ?? 0) > 0
+}
+
+export function deriveProjectNameCandidates(owner: string, repoName: string): string[] {
+  return [deriveProjectName(repoName), deriveProjectName(`${owner} ${repoName}`)]
+}
+
+export async function resolveProjectSegment(
+  candidateNames: string[],
+  slug: string,
+  apiUrl: string,
+  token: string,
+): Promise<string> {
+  for (const name of candidateNames) {
+    const existingSegmentId = await queryProjectByName(name, apiUrl, token)
+    if (!existingSegmentId) {
+      return createProjectSegment(name, slug, apiUrl, token)
+    }
+    if (!(await segmentHasGithubIntegration(existingSegmentId, apiUrl, token))) {
+      return existingSegmentId
+    }
+  }
+
+  throw new Error(
+    `Every candidate project name (${candidateNames.map((name) => `"${name}"`).join(', ')}) is already used by a project with a GitHub integration`,
+  )
+}
+
 async function createProjectSegment(
   name: string,
   slug: string,
   apiUrl: string,
   token: string,
 ): Promise<string> {
-  const existingSegmentId = await queryProjectByName(name, apiUrl, token)
-  if (existingSegmentId) {
-    return existingSegmentId
-  }
-
   const response = await fetch(`${apiUrl}/segment/project`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -243,7 +296,6 @@ export async function onboardProject(input: IOnboardingInput): Promise<IOnboardi
   }
   const githubToken = githubTokens.split(',')[0].trim()
 
-  const name = deriveProjectName(input.repoName)
   const slug = deriveProjectSlug(input.projectSlug)
 
   let owner: string
@@ -258,7 +310,12 @@ export async function onboardProject(input: IOnboardingInput): Promise<IOnboardi
 
   let segmentId: string
   try {
-    segmentId = await createProjectSegment(name, slug, apiUrl, apiToken)
+    segmentId = await resolveProjectSegment(
+      deriveProjectNameCandidates(owner, input.repoName),
+      slug,
+      apiUrl,
+      apiToken,
+    )
   } catch (err) {
     return { outcome: 'error', segmentId: null, error: (err as Error).message }
   }
