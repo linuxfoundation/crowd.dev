@@ -6,7 +6,7 @@ import type { IDocCandidate } from '@crowd/data-access-layer'
 
 import type { DocsVerdict, IDocsValidation } from './docsValidator'
 import { discoverDocs } from './index'
-import { extractPageEvidence } from './pickValidation'
+import { MIN_VALIDATION_BUDGET_MS, extractPageEvidence } from './pickValidation'
 import type { DocsPickValidator, IDiscoveryContext } from './strategies'
 
 const mocks = vi.hoisted(() => ({
@@ -14,13 +14,17 @@ const mocks = vi.hoisted(() => ({
   serpStrategy: vi.fn<(ctx: IDiscoveryContext) => Promise<IDocCandidate[]>>(),
   probe: vi.fn(),
   fetchText: vi.fn(),
+  cutDelayMs: 0,
 }))
 
 vi.mock('./docsRoot', async () => {
   const actual = await vi.importActual<typeof import('./docsRoot')>('./docsRoot')
   return {
     ...actual,
-    cutToDocsRoot: async (url: string) => url,
+    cutToDocsRoot: async (url: string) => {
+      await new Promise((resolve) => setTimeout(resolve, mocks.cutDelayMs))
+      return url
+    },
     cutSerpToDocsRoot: async (url: string) => url,
   }
 })
@@ -89,6 +93,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  mocks.cutDelayMs = 0
   mocks.STRATEGIES.length = 0
   mocks.serpStrategy.mockReset()
   mocks.probe.mockReset()
@@ -96,16 +101,23 @@ afterEach(() => {
 })
 
 describe('discoverDocs with the docs validator', () => {
-  test.each([undefined, null])('flag off (%s): no fetch, no model call, same pick', async (off) => {
-    withCandidates(
+  test('flag off: the complete result equals the unflagged one, with no fetch at all', async () => {
+    const candidates = [
       candidate('https://example.com/docs', 'readme-scrape'),
       candidate('https://example.com', 'project-website'),
-    )
+    ]
+    withCandidates(...candidates)
 
-    const result = await discoverDocs(ctxWith(off))
+    const unflagged = await discoverDocs(ctxWith(undefined))
+    const nulled = await discoverDocs(ctxWith(null))
 
-    expect(result.docsUrl).toBe('https://example.com/docs')
-    expect(result.discoveryMethod).toBe('readme-scrape')
+    expect(unflagged).toEqual({
+      docsUrl: 'https://example.com/docs',
+      discoveryMethod: 'readme-scrape',
+      confidence: 'medium',
+      allCandidates: candidates,
+    })
+    expect(nulled).toEqual(unflagged)
     expect(mocks.fetchText).not.toHaveBeenCalled()
     expect(mocks.probe).not.toHaveBeenCalled()
   })
@@ -288,24 +300,176 @@ describe('discoverDocs with the docs validator', () => {
       'documents_project',
     ])
   })
+
+  test('logs a dropped pick once when the call cap is reached, with an outcome and no verdict', async () => {
+    withCandidates(
+      candidate('https://docs.aaa.dev/docs', 'readme-scrape'),
+      candidate('https://docs.bbb.dev/docs', 'readme-scrape'),
+      candidate('https://docs.ccc.dev/docs', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    )
+    const log = { info: vi.fn(), warn: vi.fn() }
+
+    await discoverDocs(ctxWith(fakeValidator('other', 'other'), log))
+
+    const capped = log.info.mock.calls.filter(([fields]) => fields.outcome === 'call-cap')
+    expect(capped).toHaveLength(1)
+    expect(capped[0][0]).not.toHaveProperty('verdict')
+  })
+
+  test('no page evidence is logged as an outcome, never as a verdict', async () => {
+    withCandidates(candidate('https://example.com/docs', 'readme-scrape'))
+    mocks.fetchText.mockResolvedValue(null)
+    const log = { info: vi.fn(), warn: vi.fn() }
+
+    await discoverDocs(ctxWith(fakeValidator('other'), log))
+
+    expect(log.info).toHaveBeenCalledTimes(1)
+    expect(log.info.mock.calls[0][0]).toMatchObject({ outcome: 'no-page-evidence' })
+    expect(log.info.mock.calls[0][0]).not.toHaveProperty('verdict')
+  })
+
+  test('a validator error is logged as an outcome with only the error name', async () => {
+    withCandidates(candidate('https://example.com/docs', 'readme-scrape'))
+    const log = { info: vi.fn(), warn: vi.fn() }
+    const boom = Object.assign(new Error('secret-key-123'), { name: 'BoomError' })
+
+    await discoverDocs(ctxWith(vi.fn<DocsPickValidator>().mockRejectedValue(boom), log))
+
+    expect(log.warn.mock.calls[0][0]).toEqual({
+      slug: 'proj',
+      method: 'readme-scrape',
+      url: 'https://example.com/docs',
+      outcome: 'validator-error',
+      errorName: 'BoomError',
+    })
+  })
 })
 
 describe('known wrong README picks are rejected by the validator', () => {
-  test.each([
+  const WRONG = [
     'https://community.finos.org/docs/governance/Software-Projects/easycla',
     'https://www.graphql-js.org/',
     'https://docs.spring.io/spring-framework/docs/6.0.x/reference/html/web.html',
     'https://docs.developers.symphony.com/building-bots-on-symphony/datafeed/real-time-events',
     'https://uxlfoundation.github.io/oneTBB',
-  ])('%s is dropped', async (url) => {
+  ]
+  // Decides from the page it is shown, like the model does, not from the call order.
+  const byFinalUrl = () =>
+    vi.fn<DocsPickValidator>(async (_project, page): Promise<IDocsValidation> => ({
+      verdict: WRONG.includes(page.finalUrl) ? 'other' : 'documents_project',
+      reason: 'test',
+    }))
+
+  test.each(WRONG)('%s is dropped', async (url) => {
     withCandidates(candidate(url, 'readme-scrape'), candidate(REPO_URL, 'repo-url'))
-    const validator = fakeValidator('other')
+    const validator = byFinalUrl()
 
     const result = await discoverDocs(ctxWith(validator))
 
     expect(validator).toHaveBeenCalledTimes(1)
+    expect(validator.mock.calls[0][1].finalUrl).toBe(url)
     expect(result.docsUrl).toBe(REPO_URL)
     expect(result.discoveryMethod).toBe('repo-url')
+  })
+
+  test('a correct README pick is kept', async () => {
+    withCandidates(
+      candidate('https://example.com/docs', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    )
+
+    const result = await discoverDocs(ctxWith(byFinalUrl()))
+
+    expect(result.docsUrl).toBe('https://example.com/docs')
+    expect(result.discoveryMethod).toBe('readme-scrape')
+  })
+})
+
+describe('validation time bound', () => {
+  // DISCOVERY_TIMEOUT_MS in activities/discovery.ts is 240 s.
+  const DISCOVERY_MS = 240_000
+  // Hosts answer only at their 5 s evidence timeout, the model only at its 20 s timeout and the
+  // docs-root cut probe only at its 10 s timeout: the slowest case every step can have.
+  const EVIDENCE_MS = 5_000
+  const MODEL_MS = 20_000
+  const CUT_MS = 10_000
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function run(discoveryTakesMs: number) {
+    vi.useFakeTimers()
+    mocks.cutDelayMs = CUT_MS
+    mocks.probe.mockImplementation(async (url: string) => {
+      await sleep(EVIDENCE_MS)
+      return { ok: true, status: 200, finalUrl: url, contentType: 'text/html' }
+    })
+    mocks.fetchText.mockImplementation(async () => {
+      await sleep(EVIDENCE_MS)
+      return '<title>Other</title>'
+    })
+    const candidates = [
+      candidate('https://docs.aaa.dev/docs', 'readme-scrape'),
+      candidate('https://docs.bbb.dev/docs', 'readme-scrape'),
+      candidate('https://docs.ccc.dev/docs', 'readme-scrape'),
+      candidate(REPO_URL, 'repo-url'),
+    ]
+    mocks.STRATEGIES.push(async () => {
+      await sleep(discoveryTakesMs)
+      return candidates
+    })
+    const validator = vi.fn<DocsPickValidator>(async () => {
+      await sleep(MODEL_MS)
+      return { verdict: 'other', reason: 'test' }
+    })
+    const log = { info: vi.fn(), warn: vi.fn() }
+
+    const startedAt = Date.now()
+    let elapsedMs = -1
+    const done = discoverDocs({
+      ...ctxWith(validator, log),
+      deadlineAt: startedAt + DISCOVERY_MS,
+    }).then((result) => {
+      elapsedMs = Date.now() - startedAt
+      return result
+    })
+    await vi.advanceTimersByTimeAsync(600_000)
+    return { result: await done, elapsedMs, validator, log }
+  }
+
+  test('two validated picks after 150 s of discovery finish by 210 s', async () => {
+    const { result, elapsedMs, validator } = await run(150_000)
+
+    expect(validator).toHaveBeenCalledTimes(2)
+    expect(result.discoveryMethod).toBe('repo-url')
+    // 150 + 2 x (5 + 20) + 10 cut
+    expect(elapsedMs).toBe(210_000)
+  })
+
+  test('the last validation that still fits leaves the cut probe under the bound', async () => {
+    const { elapsedMs, validator, log } = await run(DISCOVERY_MS - MIN_VALIDATION_BUDGET_MS - 1_000)
+
+    expect(validator).toHaveBeenCalledTimes(1)
+    expect(log.info.mock.calls.filter(([f]) => f.outcome === 'budget')).toHaveLength(1)
+    // 199 + 5 + 20 + 10 cut: the second pick is kept unvalidated because 16 s remain
+    expect(elapsedMs).toBe(DISCOVERY_MS - 6_000)
+  })
+
+  test('validation is skipped, once, when less than 40 s remain', async () => {
+    const { result, elapsedMs, validator, log } = await run(
+      DISCOVERY_MS - MIN_VALIDATION_BUDGET_MS + 1,
+    )
+
+    // the slow strategy finishes at 200.001 s, leaving 39.999 s
+    expect(validator).not.toHaveBeenCalled()
+    expect(mocks.fetchText).not.toHaveBeenCalled()
+    expect(result.discoveryMethod).toBe('readme-scrape')
+    expect(log.info.mock.calls.filter(([f]) => f.outcome === 'budget')).toHaveLength(1)
+    expect(elapsedMs).toBe(DISCOVERY_MS - MIN_VALIDATION_BUDGET_MS + 1 + CUT_MS)
   })
 })
 
@@ -338,5 +502,46 @@ describe('extractPageEvidence', () => {
     expect(page.h1).toBeNull()
     expect(page.description).toBeNull()
     expect(page.status).toBe(404)
+  })
+
+  test('finds tags case-insensitively and ignores look-alike names', () => {
+    const html =
+      '<TITLE>Big</TITLE><titlex>no</titlex><H1 class="a">Head</H1><META PROPERTY="og:description" CONTENT="Og text">'
+
+    expect(extractPageEvidence(html, 'https://x.dev', 200)).toMatchObject({
+      title: 'Big',
+      h1: 'Head',
+      description: 'Og text',
+    })
+  })
+
+  test('drops an unterminated comment or script and keeps a stray less-than as text', () => {
+    expect(extractPageEvidence('<p>kept</p><!-- never closed <p>gone</p>', 'u', 200).text).toBe(
+      'kept',
+    )
+    expect(extractPageEvidence('<p>kept</p><script>var x = 1', 'u', 200).text).toBe('kept')
+    expect(extractPageEvidence('<p>1 < 2 and more', 'u', 200).text).toBe('1 < 2 and more')
+  })
+
+  test('only reads the first 200000 characters', () => {
+    const html = `${' '.repeat(200_000)}<title>Late</title>`
+
+    expect(extractPageEvidence(html, 'u', 200).title).toBeNull()
+  })
+
+  // The scan is synchronous, so a slow one would stall the whole worker (see the IN-1398 freeze).
+  test.each([
+    ['only less-than signs', '<'.repeat(300_000)],
+    ['less-than signs inside words', 'a<b '.repeat(75_000)],
+    ['unclosed tags', '<a'.repeat(150_000)],
+    ['unclosed title, meta and script', '<title><meta <h1 <script '.repeat(12_000)],
+    ['many closed tags', '<i>x</i>'.repeat(40_000)],
+  ])('extracts from adversarial html (%s) in well under a second', (_name, html) => {
+    const startedAt = performance.now()
+
+    const page = extractPageEvidence(html, 'https://x.dev', 200)
+
+    expect(performance.now() - startedAt).toBeLessThan(1000)
+    expect(page.text?.length).toBeLessThanOrEqual(1500)
   })
 })

@@ -44,6 +44,8 @@ export interface IDiscoveryContext {
   serpApiKey: string | null
   // Null or absent turns off the language-model check of search and README picks.
   docsValidator?: DocsPickValidator | null
+  // Epoch ms by which discovery must finish; validation is skipped when little time is left.
+  deadlineAt?: number
   log?: Pick<Logger, 'info' | 'warn'>
 }
 
