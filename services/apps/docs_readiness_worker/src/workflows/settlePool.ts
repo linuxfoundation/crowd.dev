@@ -19,7 +19,9 @@ export async function settlePool<T, R>(
         results[index] = { status: 'fulfilled', value: await run(items[index]) }
       } catch (reason) {
         results[index] = { status: 'rejected', reason }
-        stopped = stopOn(reason)
+        if (stopOn(reason)) {
+          stopped = true
+        }
       }
     }
   }

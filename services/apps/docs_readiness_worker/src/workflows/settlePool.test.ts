@@ -98,6 +98,31 @@ describe('settlePool', () => {
     expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled'])
   })
 
+  it('keeps the stop latched when a later child fails with an ordinary error', async () => {
+    const started: number[] = []
+    const fatal = new Error('cancelled')
+    const gates = [deferred<number>(), deferred<number>()]
+
+    const pool = settlePool(
+      [0, 1, 2, 3],
+      2,
+      (i) => {
+        started.push(i)
+        return gates[i].promise
+      },
+      (reason) => reason === fatal,
+    )
+
+    await tick()
+    gates[0].reject(fatal)
+    await tick()
+    gates[1].reject(new Error('ordinary'))
+
+    const results = await pool
+    expect(started).toEqual([0, 1])
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+  })
+
   it('returns nothing for no items', async () => {
     expect(await settlePool([], 4, async () => 1)).toEqual([])
   })
