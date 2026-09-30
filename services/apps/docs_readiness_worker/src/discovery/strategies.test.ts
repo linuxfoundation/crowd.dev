@@ -1544,7 +1544,7 @@ describe('readmeScrape foreign links', () => {
 
 interface IReadmeLinkRow {
   name: string
-  repo?: string
+  repo: string
   url: string
 }
 
@@ -1556,7 +1556,7 @@ const readmeLinks: { wrong: IReadmeLinkRow[]; right: IReadmeLinkRow[] } = JSON.p
 describe('readmeScrape against IN-1305 verdicts', () => {
   const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const scrapeRow = async ({ name, repo, url }: IReadmeLinkRow) => {
-    const repoPath = (repo ?? 'unknown-owner/unknown-repo').toLowerCase()
+    const repoPath = repo.toLowerCase()
     routeFetch([
       [`https://api.github.com/repos/${repoPath}/readme`, () => new Response(`[Docs](${url})`)],
       ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
@@ -1579,6 +1579,103 @@ describe('readmeScrape against IN-1305 verdicts', () => {
 
   it.each(readmeLinks.right)('keeps the project own docs link: $name -> $url', async (row) => {
     expect((await scrapeRow(row)).length).toBeGreaterThan(0)
+  })
+})
+
+interface IKnownLimitation {
+  name: string
+  slug: string
+  website: string
+  repo: string
+  url: string
+}
+
+// Pins today's wrong picks and dropped right ones; the IN-1427 validator is expected to flip them.
+describe('readmeScrape known limitations', () => {
+  const scrapeProject = async ({ name, slug, website, repo, url }: IKnownLimitation) => {
+    routeFetch([
+      [
+        `https://api.github.com/repos/${repo.toLowerCase()}/readme`,
+        () => new Response(`[Docs](${url})`),
+      ],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug,
+      website,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repo}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'FINOS (The Fintech Open Source Foundation)',
+      slug: 'finos',
+      website: 'https://www.finos.org/',
+      repo: 'finos/fdc3-dotnet',
+      url: 'https://community.finos.org/docs/governance/Software-Projects/easycla',
+    },
+    {
+      name: 'GraphQL Foundation',
+      slug: 'gql',
+      website: 'https://foundation.graphql.org/',
+      repo: 'graphql/EasyCLA',
+      url: 'https://www.graphql-js.org/',
+    },
+    {
+      name: 'Spring Bot',
+      slug: 'symphony-java-toolkit',
+      website: 'https://springbot.finos.org',
+      repo: 'finos/spring-bot',
+      url: 'https://docs.spring.io/spring-framework/docs/6.0.x/reference/html/web.html',
+    },
+    {
+      name: 'Symphony WDK',
+      slug: 'symphony-wdk',
+      website: 'https://landscape.finos.org',
+      repo: 'finos/symphony-wdk',
+      url: 'https://docs.developers.symphony.com/building-bots-on-symphony/datafeed/real-time-events',
+    },
+    {
+      name: 'Unified Acceleration Foundation',
+      slug: 'oneapi',
+      website: 'https://uxlfoundation.org',
+      repo: 'uxlfoundation/oneAPI-spec',
+      url: 'https://uxlfoundation.github.io/oneTBB',
+    },
+  ])('still picks a wrong link: $name -> $url', async (row) => {
+    expect((await scrapeProject(row)).length).toBeGreaterThan(0)
+  })
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'dstack',
+      slug: 'dstack',
+      website: 'https://dstack.org',
+      repo: 'Dstack-TEE/dstack',
+      url: 'https://docs.phala.com/dstack',
+    },
+    {
+      name: 'Flyte',
+      slug: 'flyte',
+      website: 'https://flyte.org/',
+      repo: 'flyteorg/flyte-sdk-rs',
+      url: 'https://www.union.ai/docs',
+    },
+    {
+      name: 'Open Policy Registry (OPCR)',
+      slug: 'opcr',
+      website: 'https://openpolicyregistry.io',
+      repo: 'opcr-io/artwork',
+      url: 'https://www.openpolicycontainers.com/docs/intro',
+    },
+  ])('still drops the right link: $name -> $url', async (row) => {
+    expect(await scrapeProject(row)).toEqual([])
   })
 })
 
@@ -1654,14 +1751,22 @@ describe('readmeScrape and llms coverage gaps', () => {
   it('x.com exclusion is dot-bounded (box.com / dropbox.com stay)', async () => {
     const m = routeFetch([
       readmeRoute(
-        '[Docs](https://docs.p-box.com/guide) [Docs](https://docs.p-dropbox.com/documentation)',
+        '[Docs](https://docs.box.com/guide) [Docs](https://docs.dropbox.com/documentation)',
       ),
       ['https://', html],
     ])
-    await scrape(null)
+    await readmeScrape({
+      name: 'Box Dropbox',
+      slug: 'box-dropbox',
+      website: null,
+      websiteShared: false,
+      repos,
+      githubToken: 't',
+      serpApiKey: null,
+    })
     expect(probed(m)).toEqual([
-      'https://docs.p-box.com/guide',
-      'https://docs.p-dropbox.com/documentation',
+      'https://docs.box.com/guide',
+      'https://docs.dropbox.com/documentation',
     ])
   })
   it('excluded hosts gitter/x/slack/youtu.be/githubassets/shields', async () => {

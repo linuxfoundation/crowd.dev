@@ -349,7 +349,7 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       }
       const foreign = rank(url) === 2
       // Another product's docs (docs.docker.com, docs.conda.io) are linked from many READMEs.
-      if (foreign && !isRelevantSerpResult(url, tokens)) {
+      if (foreign && !isRelevantSerpResult(url, tokens, { hyphenParts: true })) {
         continue
       }
       if (foreign && !DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(domainOf(url) ?? '')) {

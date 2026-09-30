@@ -7,7 +7,8 @@
     },
     {
       "name": "Akraino",
-      "url": "https://docs.docker.com/engine/install/ubuntu/"
+      "url": "https://docs.docker.com/engine/install/ubuntu/",
+      "repo": "akraino-edge-stack/kni-blueprint-pae"
     },
     {
       "name": "Elyra",
@@ -16,15 +17,18 @@
     },
     {
       "name": "FINOS Code Scanning",
-      "url": "https://docs.rs/cargo-audit"
+      "url": "https://docs.rs/cargo-audit",
+      "repo": "finos/code-scanning"
     },
     {
       "name": "FINOS Labs",
-      "url": "https://huggingface.co/docs/leaderboards/en/leaderboards/building_page"
+      "url": "https://huggingface.co/docs/leaderboards/en/leaderboards/building_page",
+      "repo": "finos-labs/fdc3-security"
     },
     {
       "name": "Hexa",
-      "url": "https://www.keycloak.org/guides"
+      "url": "https://www.keycloak.org/guides",
+      "repo": "hexa-org/policy"
     },
     {
       "name": "KubeSlice",
@@ -33,11 +37,13 @@
     },
     {
       "name": "OpenAPV",
-      "url": "https://datatracker.ietf.org/doc/draft-ietf-avtcore-rtp-apv/"
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-avtcore-rtp-apv/",
+      "repo": "AcademySoftwareFoundation/openapv"
     },
     {
       "name": "Open Resource Discovery",
-      "url": "https://ord-reference-application.cfapps.sap.hana.ondemand.com/"
+      "url": "https://ord-reference-application.cfapps.sap.hana.ondemand.com/",
+      "repo": "open-resource-discovery/metadata-compactor-golang"
     },
     {
       "name": "O-RAN Simulations (SIM)",
@@ -46,19 +52,23 @@
     },
     {
       "name": "Recommenders",
-      "url": "https://docs.astral.sh/uv/"
+      "url": "https://docs.astral.sh/uv/",
+      "repo": "recommenders-team/recommenders"
     },
     {
       "name": "SC Decarbonisation Hub",
-      "url": "https://nextjs.org/docs"
+      "url": "https://nextjs.org/docs",
+      "repo": "sc-decarbonization-hub/SCDH"
     },
     {
       "name": "SlimToolkit",
-      "url": "https://www.amazon.co.jp/dp/4839970505"
+      "url": "https://www.amazon.co.jp/dp/4839970505",
+      "repo": "slimtoolkit/slim"
     },
     {
       "name": "VS Code Kubernetes Tools",
-      "url": "https://code.visualstudio.com/docs/editor/variables-reference"
+      "url": "https://code.visualstudio.com/docs/editor/variables-reference",
+      "repo": "vscode-kubernetes-tools/vscode-kubernetes-tools"
     }
   ],
   "right": [
@@ -149,23 +159,28 @@
     },
     {
       "name": "Web3j",
-      "url": "http://docs.web3j.io/"
+      "url": "http://docs.web3j.io/",
+      "repo": "LFDT-web3j/web3j"
     },
     {
       "name": "OpenAssetIO",
-      "url": "https://docs.openassetio.org/OpenAssetIO"
+      "url": "https://docs.openassetio.org/OpenAssetIO",
+      "repo": "OpenAssetIO/openassetio.github.io"
     },
     {
       "name": "Tremor",
-      "url": "https://tremor.rs/docs/0.12/index"
+      "url": "https://tremor.rs/docs/0.12/index",
+      "repo": "tremor-rs/tremor-otelapis"
     },
     {
       "name": "Kserve",
-      "url": "https://kserve.github.io/website/docs/community/adopters"
+      "url": "https://kserve.github.io/website/docs/community/adopters",
+      "repo": "kserve/artwork"
     },
     {
       "name": "Garden Linux",
-      "url": "https://docs.gardenlinux.org/reference/releases/maintained-releases.html"
+      "url": "https://docs.gardenlinux.org/reference/releases/maintained-releases.html",
+      "repo": "gardenlinux/gardenlinux"
     }
   ]
 }

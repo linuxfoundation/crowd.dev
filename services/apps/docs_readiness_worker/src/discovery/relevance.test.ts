@@ -46,6 +46,7 @@ interface IRelevanceCase {
   project: string
   tokens: string[]
   url: string
+  hyphenParts?: boolean
   relevant: boolean
 }
 
@@ -239,15 +240,37 @@ const CASES: IRelevanceCase[] = [
   },
   // A short token matches one hyphen-delimited part of the label, a docs.rs crate is a tenant.
   {
-    project: 'short token as a hyphen part of the domain label',
+    project: 'README mode: 4-char token as a hyphen part of the domain label',
     tokens: ['besu'],
     url: 'https://docs.besu-eth.org/',
+    hyphenParts: true,
     relevant: true,
   },
   {
-    project: 'short token inside a hyphen part stays unmatched',
+    project: 'README mode: 4-char token as a hyphen part of the tenant',
+    tokens: ['oxia'],
+    url: 'https://oxia-db.github.io/oxia/',
+    hyphenParts: true,
+    relevant: true,
+  },
+  {
+    project: 'README mode: 3-char token never matches a hyphen part',
+    tokens: ['sev'],
+    url: 'https://docs.sev-labs.org/',
+    hyphenParts: true,
+    relevant: false,
+  },
+  {
+    project: 'README mode: token inside a hyphen part stays unmatched',
     tokens: ['torq'],
     url: 'https://docs.qtorque-labs.org/',
+    hyphenParts: true,
+    relevant: false,
+  },
+  {
+    project: 'search mode: 4-char token is not a hyphen part',
+    tokens: ['besu'],
+    url: 'https://docs.besu-eth.org/',
     relevant: false,
   },
   {
@@ -262,6 +285,24 @@ const CASES: IRelevanceCase[] = [
     url: 'https://docs.rs/cargo-audit',
     relevant: false,
   },
+  // Search mode (default) never matches a generic token inside another product's hyphenated domain.
+  ...[
+    ['node', 'https://docs.node-red.org/'],
+    ['cli', 'https://docs.aws-cli.io/'],
+    ['sigs', 'https://kube-sigs.io/'],
+    ['data', 'https://docs.open-data.io/'],
+    ['edge', 'https://docs.edge-runtime.dev/'],
+    ['go', 'https://docs.django-go.io/'],
+    ['go', 'https://get-go.dev/'],
+    ['go', 'https://go-task.dev/docs'],
+    ['ai', 'https://docs.open-ai.com/'],
+    ['r', 'https://r-bloggers.com/docs'],
+  ].map(([token, url]) => ({
+    project: `search mode: token "${token}" is not a hyphen part`,
+    tokens: [token],
+    url,
+    relevant: false,
+  })),
   // Mechanics.
   {
     project: 'shared hosting tenant that does not match',
@@ -286,7 +327,7 @@ const CASES: IRelevanceCase[] = [
 ]
 
 describe('isRelevantSerpResult', () => {
-  it.each(CASES)('$project: $url -> $relevant', ({ tokens, url, relevant }) => {
-    expect(isRelevantSerpResult(url, tokens)).toBe(relevant)
+  it.each(CASES)('$project: $url -> $relevant', ({ tokens, url, relevant, hyphenParts }) => {
+    expect(isRelevantSerpResult(url, tokens, { hyphenParts })).toBe(relevant)
   })
 })
