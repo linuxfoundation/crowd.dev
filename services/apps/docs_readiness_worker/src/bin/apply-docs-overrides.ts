@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 // Bulk-apply reviewed docs overrides (IN-1425). Dry run by default; writes only with --apply.
 // Usage: pnpm run script:apply-docs-overrides <file.csv> [--apply]  (CSV columns: project,docsUrl)
+// A relative CSV path resolves against services/apps/docs_readiness_worker under pnpm run.
 // project is an insightsProjects id or slug; docsUrl is an http(s) URL, or none for "no docs".
+// Env (CROWD_DB_*): READ_HOST (dry run), WRITE_HOST (--apply), PORT, DATABASE, USERNAME, PASSWORD
+// exit 0 ok, 1 invalid or failed rows or fatal error, 2 usage
 import { readFileSync } from 'node:fs'
 
 import {
@@ -47,6 +50,8 @@ export function parseCsv(text: string): string[][] {
   let record: string[] = []
   let field = ''
   let quoted = false
+  let closed = false // a quoted field just ended
+  const bad = (why: string) => new Error(`CSV row ${records.length + 1}: ${why}`)
 
   for (let i = 0; i < s.length; i++) {
     const c = s[i]
@@ -55,17 +60,25 @@ export function parseCsv(text: string): string[][] {
       else if (s[i + 1] === '"') {
         field += '"'
         i++
-      } else quoted = false
-    } else if (c === '"') quoted = true
-    else if (c === ',') {
+      } else {
+        quoted = false
+        closed = true
+      }
+    } else if (c === ',') {
       record.push(field)
       field = ''
+      closed = false
     } else if (c === '\n' || c === '\r') {
       if (c === '\r' && s[i + 1] === '\n') i++
       record.push(field)
       records.push(record)
       record = []
       field = ''
+      closed = false
+    } else if (closed) throw bad('text after a closing quote')
+    else if (c === '"') {
+      if (field !== '') throw bad('quote inside an unquoted field')
+      quoted = true
     } else field += c
   }
 
@@ -80,23 +93,29 @@ export function parseCsv(text: string): string[][] {
 
 // Returns the URL string, null for "no docs", or an error message.
 export function parseDocsUrl(value: string): { url: string | null } | { error: string } {
-  const trimmed = value.trim()
+  const trimmed = value.replace(/^ +| +$/g, '')
   if (trimmed === 'none') return { url: null }
   if (trimmed === '') return { error: 'empty docsUrl (write none for "no docs")' }
 
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch {
-    return { error: `invalid URL "${trimmed}"` }
+  const invalid = {
+    error: `invalid URL ${JSON.stringify(trimmed)} (need http(s)://host, no spaces)`,
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return { error: `URL must be http or https: "${trimmed}"` }
+  if (/[\s\p{Cc}]/u.test(trimmed) || !/^https?:\/\/[^\s/]/i.test(trimmed)) {
+    return invalid
+  }
+  try {
+    new URL(trimmed)
+  } catch {
+    return invalid
   }
   return { url: trimmed }
 }
 
-async function findProjectIds(qx: QueryExecutor, keys: string[]): Promise<Map<string, string>> {
+// A key maps to every project whose id or slug equals it; more than one means it is ambiguous.
+async function findProjectIds(
+  qx: QueryExecutor,
+  keys: string[],
+): Promise<Map<string, Set<string>>> {
   const rows: { id: string; slug: string }[] = keys.length
     ? await qx.select(
         `
@@ -109,10 +128,9 @@ async function findProjectIds(qx: QueryExecutor, keys: string[]): Promise<Map<st
       )
     : []
 
-  const byKey = new Map<string, string>()
+  const byKey = new Map<string, Set<string>>()
   for (const r of rows) {
-    byKey.set(r.id, r.id)
-    byKey.set(r.slug, r.id)
+    for (const k of [r.id, r.slug]) byKey.set(k, (byKey.get(k) ?? new Set()).add(r.id))
   }
   return byKey
 }
@@ -153,8 +171,11 @@ export async function run(
   records.forEach((r, i) => {
     if (r.every((f) => f.trim() === '')) return
     const entry: Entry = { row: i + 2, project: (r[projectCol] ?? '').trim(), status: 'change' }
-    const parsed = parseDocsUrl(r[urlCol] ?? '')
-    if (!entry.project) {
+    const parsed = r.length === cols.length ? parseDocsUrl(r[urlCol]) : undefined
+    if (!parsed) {
+      const why = `expected ${cols.length} fields, got ${r.length} (quote URLs that contain commas)`
+      Object.assign(entry, { status: 'error', detail: why })
+    } else if (!entry.project) {
       Object.assign(entry, { status: 'error', detail: 'empty project' })
     } else if ('error' in parsed) {
       Object.assign(entry, { status: 'error', detail: parsed.error })
@@ -164,23 +185,39 @@ export async function run(
     entries.push(entry)
   })
 
-  const valid = entries.filter((e) => e.status !== 'error')
-  const ids = await findProjectIds(qx, [
-    ...new Set(valid.map((e) => (UUID_RE.test(e.project) ? e.project.toLowerCase() : e.project))),
-  ])
-  const lastRowByProject = new Map<string, number>()
-  for (const e of valid) {
-    const key = UUID_RE.test(e.project) ? e.project.toLowerCase() : e.project
-    e.projectId = ids.get(key)
-    if (!e.projectId) {
-      Object.assign(e, {
-        status: 'error',
-        detail: 'project not found among enabled, non-deleted projects',
-      })
-    } else {
-      lastRowByProject.set(e.projectId, e.row)
+  const keyOf = (e: Entry) => (UUID_RE.test(e.project) ? e.project.toLowerCase() : e.project)
+  const named = entries.filter((e) => e.project)
+  const ids = await findProjectIds(qx, [...new Set(named.map(keyOf))])
+  for (const e of named) {
+    const found = ids.get(keyOf(e)) ?? new Set<string>()
+    if (found.size === 1) e.projectId = [...found][0]
+    if (e.status === 'error') continue
+    if (found.size === 0) {
+      const why = 'project not found among enabled, non-deleted projects'
+      Object.assign(e, { status: 'error', detail: why })
+    } else if (found.size > 1) {
+      Object.assign(e, { status: 'error', detail: 'ambiguous: key matches more than one project' })
     }
   }
+
+  // One invalid row poisons every row of the same project, so nothing is applied for it.
+  const byProject = new Map<string, Entry[]>()
+  for (const e of named) {
+    const key = e.projectId ?? `key:${keyOf(e)}`
+    byProject.set(key, [...(byProject.get(key) ?? []), e])
+  }
+  for (const group of byProject.values()) {
+    const bad = group.filter((e) => e.status === 'error')
+    if (bad.length === 0) continue
+    for (const e of group.filter((x) => x.status !== 'error')) {
+      const why = `project has invalid row ${bad.map((b) => b.row).join(', ')}; nothing applied`
+      Object.assign(e, { status: 'error', detail: why })
+    }
+  }
+
+  const valid = entries.filter((e) => e.status !== 'error')
+  const lastRowByProject = new Map<string, number>()
+  for (const e of valid) lastRowByProject.set(e.projectId, e.row)
 
   // Duplicate rows for one project: the last one wins, earlier ones are skipped.
   for (const e of valid) {
@@ -215,6 +252,8 @@ export async function run(
         out(`row ${e.row} (${e.project}) failed: ${e.detail}`)
       }
     }
+    out('Final statuses:')
+    printTable(entries, out)
   }
 
   const count = (s: Status) => entries.filter((e) => e.status === s).length
@@ -231,28 +270,38 @@ export async function run(
       `${summary.unchanged} unchanged, ${summary.superseded} superseded, ` +
       `${summary.error} invalid, ${summary.failed} failed`,
   )
+  if (apply) out('Re-run the same file; applied rows show as unchanged and are skipped.')
   return summary
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2).filter((a) => a !== '--')
+type Connect = (apply: boolean) => Promise<QueryExecutor>
+
+// Dry run connects to the read replica, so it cannot write even by mistake.
+const connectDb: Connect = async (apply) =>
+  pgpQx(await getDbConnection(apply ? WRITE_DB_CONFIG() : READ_DB_CONFIG()))
+
+// Returns the process exit code.
+export async function main(argv: string[], connect: Connect = connectDb): Promise<number> {
+  const args = argv.filter((a) => a !== '--')
   const apply = args.includes('--apply')
   const paths = args.filter((a) => a !== '--apply')
   if (paths.length !== 1 || paths[0].startsWith('--')) {
     console.error('Usage: apply-docs-overrides <file.csv> [--apply]')
-    process.exit(2)
+    return 2
   }
 
-  // Dry run connects to the read replica, so it cannot write even by mistake.
-  const db = await getDbConnection(apply ? WRITE_DB_CONFIG() : READ_DB_CONFIG())
+  // Read the file first so a missing one never opens a DB connection.
   const csvText = readFileSync(paths[0], 'utf8')
-  const summary = await run(pgpQx(db), csvText, { apply })
-  process.exit(apply && summary.error + summary.failed > 0 ? 1 : 0)
+  const summary = await run(await connect(apply), csvText, { apply })
+  return summary.error + summary.failed > 0 ? 1 : 0
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    console.error(err)
-    process.exit(1)
-  })
+  main(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err)
+      process.exit(1)
+    },
+  )
 }
