@@ -80,28 +80,33 @@ DESCRIPTION >
 
 SQL >
     SELECT
-        ip.id AS projectId,
-        ip.slug AS slug,
-        ip.name AS name,
+        project_packages.projectId AS projectId,
+        project_packages.slug AS slug,
+        project_packages.name AS name,
         max(pk.dependentCount) AS directDependents,
         max(pk.transitiveDependentCount) AS transitiveDependents,
         sum(pk.downloadsLast30d) AS downloads,
         max(toFloat64OrNull(pk.centralityScore)) AS centrality,
         max(toFloat64OrNull(pk.sonatypePopularityScore)) AS sonatypePopularityScore
-    FROM insightsProjects ip FINAL
-    LEFT JOIN
-        repositories rep FINAL
-        ON rep.insightsProjectId = ip.id
-        AND rep.enabled = true
-        AND rep.excluded = false
-        AND rep.deletedAt IS NULL
-    LEFT JOIN
-        repos r
-        ON if(lower(domain(r.url)) IN ('github.com', 'gitlab.com'), lower(r.url), r.url)
-        = if(lower(domain(rep.url)) IN ('github.com', 'gitlab.com'), lower(rep.url), rep.url)
-    LEFT JOIN packageRepos pr ON pr.repoId = r.id
-    LEFT JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
-    GROUP BY ip.id, ip.slug, ip.name
+    FROM
+        (
+            SELECT DISTINCT
+                ip.id AS projectId, ip.slug AS slug, ip.name AS name, pr.packageId AS packageId
+            FROM insightsProjects ip FINAL
+            LEFT JOIN
+                repositories rep FINAL
+                ON rep.insightsProjectId = ip.id
+                AND rep.enabled = true
+                AND rep.excluded = false
+                AND rep.deletedAt IS NULL
+            LEFT JOIN
+                repos r
+                ON if(lower(domain(r.url)) IN ('github.com', 'gitlab.com'), lower(r.url), r.url)
+                = if(lower(domain(rep.url)) IN ('github.com', 'gitlab.com'), lower(rep.url), rep.url)
+            LEFT JOIN packageRepos pr ON pr.repoId = r.id
+        ) AS project_packages
+    LEFT JOIN ossPackages_enriched_ds pk ON pk.id = project_packages.packageId
+    GROUP BY project_packages.projectId, project_packages.slug, project_packages.name
 
 NODE project_impact_ranked
 DESCRIPTION >
