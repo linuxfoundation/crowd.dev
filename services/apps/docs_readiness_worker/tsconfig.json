@@ -3,6 +3,9 @@
   "include": ["src/**/*.ts"],
   "references": [
     {
+      "path": "../../libs/anthropic-aws"
+    },
+    {
       "path": "../../archetypes/standard"
     },
     {

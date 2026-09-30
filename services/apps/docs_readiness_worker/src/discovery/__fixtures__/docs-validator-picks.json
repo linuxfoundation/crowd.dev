@@ -1,0 +1,182 @@
+[
+  {
+    "name": "Academy Software Foundation (ASWF)",
+    "website": "https://www.aswf.io/",
+    "repoUrl": "https://github.com/AcademySoftwareFoundation/aswf-landscape",
+    "expected": "other",
+    "why": "LFX PCC docs page, unrelated to ASWF",
+    "page": {
+      "finalUrl": "https://docs.linuxfoundation.org/lfx/project-control-center/v2-latest-version/operations/project-definition",
+      "status": 200,
+      "title": "Project Definition | Linux Foundation Documentation",
+      "h1": "Project Definition",
+      "description": "",
+      "text": "Project Definition | Linux Foundation Documentation ⌘ Ctrl k LFX Platform Single Sign-On (SSO) Individual Dashboard (MyProfile) Community Data Platform Project Control Center Release Notes V2 (Latest Version) Overview Homepage Reports Operations Project Definition YouTube Account Configuration Membership Domains Cloud Providers User permissions Development Collaborations Bookmarks PCC FAQs V1 (Prior Version) Organiza"
+    }
+  },
+  {
+    "name": "Akraino",
+    "website": "https://www.lfedge.org/projects/akraino/",
+    "repoUrl": "https://github.com/akraino-edge-stack/kni-blueprint-pae",
+    "expected": "other",
+    "why": "Docker install guide, unrelated",
+    "page": {
+      "finalUrl": "https://docs.docker.com/engine/install/ubuntu/",
+      "status": 200,
+      "title": "Install Docker Engine on Ubuntu | Docker Docs",
+      "h1": "",
+      "description": "Jumpstart your client-side server applications with Docker Engine on Ubuntu. This guide details prerequisites and multiple methods to install Docker Engine on Ubuntu.",
+      "text": "Install Docker Engine on Ubuntu | Docker Docs Get started Guides Manuals Reference Gordon Gordon, your AI assistant for Docker docs Search { if (theme === 'auto') document.firstElementChild.className = e.matches ? 'dark' : 'light'; }; mql.addEventListener('change', handler); $watch('theme', val => applyTheme(val)); return () => mql.removeEventListener('change', handler); \" @click=\"theme = (theme === 'light' ? 'dark' "
+    }
+  },
+  {
+    "name": "Amundsen",
+    "website": "https://www.amundsen.io/",
+    "repoUrl": "https://github.com/amundsen-io/amundsenrds",
+    "expected": "other",
+    "why": "Confluent Schema Registry docs, unrelated",
+    "page": {
+      "finalUrl": "https://docs.confluent.io/platform/current/schema-registry/index.html",
+      "status": 200,
+      "title": "Schema Registry for Confluent Platform &#124; Confluent Documentation",
+      "h1": "Schema Registry for Confluent Platform ",
+      "description": "",
+      "text": ", ahead of the OneTrust/referrer-utils script below, so the parser discovers and starts fetching font files before it stalls on that blocking --> Documentation Schema Registry for Confluent Platform Search the docs or ask a question / Confluent Developer Marketplace Get started Home Confluent Cloud Confluent Platform Connectors Clients Home Platform Manage Schemas on Confluent Platform Ask Copy as markdown View as pl"
+    }
+  },
+  {
+    "name": "composefs",
+    "website": null,
+    "repoUrl": "https://github.com/composefs/composefs",
+    "expected": "other",
+    "why": "Linux kernel dm-verity page, not composefs",
+    "page": {
+      "finalUrl": "https://docs.kernel.org/admin-guide/device-mapper/verity.html",
+      "status": 200,
+      "title": "dm-verity &#8212; The Linux Kernel documentation",
+      "h1": "The Linux Kernel",
+      "description": "",
+      "text": "dm-verity &#8212; The Linux Kernel documentation The Linux Kernel 7.3.0-rc5 Quick search Contents Working with the development community Development process Submitting patches Code of conduct Maintainer handbook All development-process docs Internal API manuals Core API Driver APIs Subsystems Locking Development tools and processes Licensing rules Writing documentation Development tools Testing guide Hacking guide Tr"
+    }
+  },
+  {
+    "name": "Allstar",
+    "website": null,
+    "repoUrl": "https://github.com/ossf/allstar",
+    "expected": "other",
+    "why": "AllStarLink forum, unrelated to OSSF Allstar",
+    "page": {
+      "finalUrl": "https://community.allstarlink.org/",
+      "status": 200,
+      "title": "AllStarLink Community Forum - AllStarLink Community Forum",
+      "h1": "",
+      "description": "Discussion for all matters related to AllStarLink",
+      "text": "AllStarLink Community Forum - AllStarLink Community Forum = 40rem)\" rel=\"stylesheet\" data-target=\"discourse-reactions_desktop\" /> = 40rem)\" rel=\"stylesheet\" data-target=\"poll_desktop\" /> AllStarLink Community Forum Discussion for all matters related to AllStarLink Topic Replies Views Activity Connect AllStarLink on Linux to Baofeng UV-17RPlus AllStarLink new-users , asl3 5 137 September 30, 2026 2026.09.24 - Package "
+    }
+  },
+  {
+    "name": "Agones",
+    "website": "https://agones.dev",
+    "repoUrl": "https://github.com/agones-dev/agones",
+    "expected": "documents_project",
+    "why": "agones.dev documentation",
+    "page": {
+      "finalUrl": "https://agones.dev/site/docs/",
+      "status": 200,
+      "title": "Agones Documentation | Agones",
+      "h1": "Agones Documentation",
+      "description": "Documentation and usage guides on how to develop and host dedicated game servers on top of Agones.",
+      "text": "Agones Documentation | Agones Agones Documentation Blog Community GitHub Release Development 1.61.0 1.60.0 1.59.0 1.58.0 1.57.0 1.56.0 1.55.0 1.54.0 1.53.0 1.52.0 1.51.0 1.50.0 1.49.0 1.48.0 1.47.0 1.46.0 1.45.0 1.44.0 1.43.0 Light Dark Auto Documentation Overview Prerequisite Knowledge Installation Create Cluster Google Cloud Amazon Web Services Azure Oracle Cloud Minikube Install Agones YAML Helm Install with Terra"
+    }
+  },
+  {
+    "name": "Aeraki Mesh",
+    "website": "https://www.aeraki.net/",
+    "repoUrl": "https://github.com/aeraki-mesh/aeraki",
+    "expected": "documents_project",
+    "why": "aeraki.net/docs documentation versions page",
+    "page": {
+      "finalUrl": "https://www.aeraki.net/docs/",
+      "status": 200,
+      "title": "Documentation versions | Aeraki Mesh",
+      "h1": "Documentation versions",
+      "description": "Manage any layer-7 protocols in a service mesh",
+      "text": "Documentation versions | Aeraki Mesh Aeraki Mesh Docs Blog Community Install Versions English 中文 English 中文 Versions v1.x Quickstart Install Tutorials How to configure traffic routing How to configure local rate limit How to configure global rate limit How to configure circuit breaking How to configure load balancing policy How to query and visualize metrics How to modify headers How to implement a custom protocol Re"
+    }
+  },
+  {
+    "name": "Adversarial Robustness Toolbox",
+    "website": "https://adversarial-robustness-toolbox.org/",
+    "repoUrl": "https://github.com/Trusted-AI/adversarial-robustness-toolbox",
+    "expected": "documents_project",
+    "why": "Official landing page with Docs link",
+    "page": {
+      "finalUrl": "https://adversarial-robustness-toolbox.org/",
+      "status": 200,
+      "title": "Adversarial Robustness Toolbox",
+      "h1": "",
+      "description": "",
+      "text": "Adversarial Robustness Toolbox Skip to main content Search Close Search search Menu Quick Start Docs GitHub search Adversarial Robustness Toolbox is an LF AI &amp; Data Foundation Project Adversarial Robustness Toolbox: A Python library for ML Security Adversarial Robustness Toolbox (ART) provides tools that enable developers and researchers to evaluate, defend, and verify Machine Learning models and applications aga"
+    }
+  },
+  {
+    "name": "AnonCreds",
+    "website": "https://www.lfdecentralizedtrust.org/projects/anoncreds",
+    "repoUrl": "https://github.com/anoncreds/anoncreds-spec-v2",
+    "expected": "documents_project",
+    "why": "LFDT project page for AnonCreds",
+    "page": {
+      "finalUrl": "https://www.lfdecentralizedtrust.org/projects/anoncreds",
+      "status": 200,
+      "title": "Anoncreds",
+      "h1": "Anoncreds",
+      "description": "Hyperledger AnonCreds - short for “Anonymous Credentials”- is the most commonly used Verifiable Credential (VC) format in the world.",
+      "text": "Anoncreds 80 institutional platforms now run on LF Decentralized Trust tech. Read the report → Search Join About About Explore membership Members Technical Advisory Council Governing Board Speakers Bureau Staff FAQ Store Contact us Technologies Ledger technologies Interoperability Integration &amp; implementation Decentralized identity Cryptographic tools &amp; protocols Smart Contracts Project matrix Labs All projec"
+    }
+  },
+  {
+    "name": "Architect",
+    "website": "https://arc.codes/",
+    "repoUrl": null,
+    "expected": "documents_project",
+    "why": "arc.codes landing page with Docs link",
+    "page": {
+      "finalUrl": "https://arc.codes/",
+      "status": 200,
+      "title": "Architect",
+      "h1": "",
+      "description": "Architect is a simple framework for building and delivering powerful Functional Web Apps (FWAs) on AWS.",
+      "text": "Architect Home Docs Cloud infra for humans Architect gives you the power to configure, locally build, and globally deploy web apps to the cloud using concise, declarative statements. Built on rock solid AWS foundations, Architect makes advanced web development a breeze. Get started Open governance Sponsored development Seamless development, from local to cloud Scaffold a fresh Architect project with a single command."
+    }
+  },
+  {
+    "name": "Acumos",
+    "website": "https://acumos.org/",
+    "repoUrl": null,
+    "expected": "documents_project",
+    "why": "docs.acumos.org Sphinx documentation",
+    "page": {
+      "finalUrl": "https://docs.acumos.org/en/elpis/",
+      "status": 200,
+      "title": "Acumos Documentation &#8212; Acumos 1.0 documentation",
+      "h1": "Acumos Documentation ¶",
+      "description": "",
+      "text": "Acumos Documentation &#8212; Acumos 1.0 documentation --> Navigation index next | Acumos 1.0 documentation &#187; Acumos Documentation ¶ Acumos AI is a platform and open source framework that makes it easy to build, share, and deploy AI apps. Acumos standardizes the infrastructure stack and components required to run an out-of-the-box general AI environment. This frees data scientists and model trainers to focus on t"
+    }
+  },
+  {
+    "name": "Mapzen",
+    "website": "https://mapzen.com/",
+    "repoUrl": null,
+    "expected": "unclear",
+    "why": "Only a redirect stub, mapzen.com defunct",
+    "page": {
+      "finalUrl": "https://www.mapzen.com/docs/",
+      "status": 200,
+      "title": "Redirecting...",
+      "h1": "Redirecting...",
+      "description": "",
+      "text": "Redirecting... Redirecting... Click here if you are not redirected."
+    }
+  }
+]
