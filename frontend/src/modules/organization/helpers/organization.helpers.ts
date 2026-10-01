@@ -1,4 +1,5 @@
-import { Organization, OrganizationIdentityType } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
+import { OrganizationIdentityType } from '@/modules/organization/types/Organization';
 import organizationOrder from '@/shared/modules/identities/config/identitiesOrder/organization';
 import { lfIdentities } from '@/config/identities';
 import { dateHelper } from '@/shared/date-helper/date-helper';

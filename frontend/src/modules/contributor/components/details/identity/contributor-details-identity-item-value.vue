@@ -27,7 +27,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { ContributorIdentity } from '@/modules/contributor/types/Contributor';
 import { lfIdentities } from '@/config/identities';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 

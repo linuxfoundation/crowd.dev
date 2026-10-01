@@ -1,4 +1,4 @@
-import { SelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { SelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 // Days period is -1 to include today's data

@@ -1,5 +1,5 @@
-import { Platform } from '@/shared/modules/platform/types/Platform';
-import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
+import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 
 export interface OrganizationAttribute extends Record<string, any[]>{
   default: any;

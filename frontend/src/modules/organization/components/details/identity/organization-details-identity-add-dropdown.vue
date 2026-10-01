@@ -20,7 +20,7 @@
 <script setup lang="ts">
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
-import { OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { OrganizationIdentity } from '@/modules/organization/types/Organization';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 
 const emit = defineEmits<{(e: 'add', value: Partial<OrganizationIdentity>): void}>();

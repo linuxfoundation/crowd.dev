@@ -27,7 +27,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
-import { CollectionModel } from '../models/collection.model';
+import type { CollectionModel } from '../models/collection.model';
 
 const emit = defineEmits<{(e: 'onEditCollection', id: string): void,
   (e: 'onDeleteCollection', id: string): void,

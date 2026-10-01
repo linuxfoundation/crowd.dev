@@ -1,6 +1,6 @@
 import LogRocket from 'logrocket';
 import config from '@/config';
-import { User } from '@/modules/user/types/User';
+import type { User } from '@/modules/user/types/User';
 
 const APP_ID = 'nm6fil/crowddev';
 

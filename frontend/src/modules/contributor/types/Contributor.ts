@@ -1,5 +1,5 @@
-import { Organization } from '@/modules/organization/types/Organization';
-import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
+import type { Organization } from '@/modules/organization/types/Organization';
+import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 
 export interface ContributorAttribute {
   default: any;

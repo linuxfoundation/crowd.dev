@@ -1,4 +1,4 @@
-import { NumberFilterValue } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
+import type { NumberFilterValue } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
 import { FilterNumberOperator } from '@/shared/modules/filters/config/constants/number.constants';
 
 interface QueryUrlNumberValue {

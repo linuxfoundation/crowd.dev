@@ -1,6 +1,6 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { ContributorAffiliation } from '@/modules/contributor/types/Contributor';
-import { MemberOrganizationAffiliationOverride } from '@/modules/organization/types/Organization';
+import type { ContributorAffiliation } from '@/modules/contributor/types/Contributor';
+import type { MemberOrganizationAffiliationOverride } from '@/modules/organization/types/Organization';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 

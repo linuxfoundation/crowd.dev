@@ -1,7 +1,7 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { Pagination } from '@/shared/types/Pagination';
-import { QueryFunction } from '@tanstack/vue-query';
-import { Project, ProjectGroup, ProjectRequest } from './types/Segments';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import type { Project, ProjectGroup, ProjectRequest } from './types/Segments';
 
 class SegmentsService {
   queryProjectGroups(

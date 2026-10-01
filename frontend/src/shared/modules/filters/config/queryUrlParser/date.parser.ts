@@ -1,4 +1,4 @@
-import { DateFilterValue } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
+import type { DateFilterValue } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
 import { FilterDateOperator } from '@/shared/modules/filters/config/constants/date.constants';
 
 interface QueryUrlDateValue {

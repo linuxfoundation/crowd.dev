@@ -5,8 +5,8 @@ import workExperienceMissingPeriod from '@/modules/data-quality/config/types/wor
 import tooManyIdentitiesPerPlatform from '@/modules/data-quality/config/types/too-many-identities-per-platform';
 import tooManyEmails from '@/modules/data-quality/config/types/too-many-emails';
 import tooManyIdentities from '@/modules/data-quality/config/types/too-many-identities';
-import { Contributor } from '@/modules/contributor/types/Contributor';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Organization } from '@/modules/organization/types/Organization';
 import conflictingWorkExperience from '@/modules/data-quality/config/types/conflicting-work-experience';
 
 export interface DataIssueTypeConfig{

@@ -1,13 +1,13 @@
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import { ContributorApiService } from '@/modules/contributor/services/contributor.api.service';
-import {
+import type {
   Contributor, ContributorAffiliation, ContributorIdentity, CreateContributorIdentity, UpdateContributorIdentityPayload,
 } from '@/modules/contributor/types/Contributor';
 import { ContributorIdentitiesApiService } from '@/modules/contributor/services/contributor.identities.api.service';
 import { MergeActionsService } from '@/shared/modules/merge/services/merge-actions.service';
-import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
-import { MemberOrganization, Organization } from '@/modules/organization/types/Organization';
+import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
+import type { MemberOrganization, Organization } from '@/modules/organization/types/Organization';
 import { ContributorOrganizationsApiService } from '@/modules/contributor/services/contributor.organizations.api.service';
 import { ContributorAffiliationsApiService } from '@/modules/contributor/services/contributor.affiliations.api.service';
 import { ContributorAttributesApiService } from '@/modules/contributor/services/contributor.attributes.api.service';

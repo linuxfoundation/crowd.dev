@@ -118,18 +118,20 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppDeleteConfirmDialog from '@/shared/dialog/delete-confirm-dialog.vue';
 import { cloneDeep } from 'lodash';
 import { TanstackKey } from '@/shared/types/tanstack';
-import {
+import type {
   QueryFunction,
+} from '@tanstack/vue-query';
+import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
 } from '@tanstack/vue-query';
 import { useDebounce } from '@vueuse/core';
-import { Pagination } from '@/shared/types/Pagination';
+import type { Pagination } from '@/shared/types/Pagination';
 import { useRoute, useRouter } from 'vue-router';
 import LfInsightsProjectAdd from '../components/lf-insights-project-add.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '../services/insights-projects.service';
-import { InsightsProjectModel } from '../models/insights-project.model';
+import type { InsightsProjectModel } from '../models/insights-project.model';
 
 const queryClient = useQueryClient();
 

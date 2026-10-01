@@ -1,4 +1,4 @@
-import { SavedView } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { SavedView } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 const toReview: SavedView = {
   id: 'to-review',

@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import {
+import type {
   SelectFilterConfig,
   SelectFilterOptions,
   SelectFilterValue,

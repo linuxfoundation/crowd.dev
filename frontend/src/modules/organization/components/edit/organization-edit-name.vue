@@ -22,7 +22,7 @@ import { reactive, ref } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 

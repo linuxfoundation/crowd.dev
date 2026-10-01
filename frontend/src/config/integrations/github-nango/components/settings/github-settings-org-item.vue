@@ -81,7 +81,7 @@
 </template>
 
 <script lang="ts" setup>
-import {
+import type {
   GitHubOrganization,
   GitHubRepository,
   GitHubSettingsRepository,

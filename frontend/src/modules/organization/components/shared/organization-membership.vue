@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Organization } from '../../types/Organization';
+import type { Organization } from '../../types/Organization';
 
 const props = withDefaults(
   defineProps<{

@@ -72,7 +72,7 @@ import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import { computed, reactive } from 'vue';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 
 const props = defineProps<{
   form: InsightsProjectAddFormModel;

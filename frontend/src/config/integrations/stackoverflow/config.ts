@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfStackoverflowSettingsDrawer from '@/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue';
 import StackoverflowConnect from './components/stackoverflow-connect.vue';
 import StackoverflowDropdown from './components/stackoverflow-dropdown.vue';

@@ -11,7 +11,7 @@ import LfContributorDetailsProjects
   from '@/modules/contributor/components/details/overview/contributor-details-projects.vue';
 import LfContributorDetailsAttributes
   from '@/modules/contributor/components/details/overview/contributor-details-attributes.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
 const props = defineProps<{
   contributor: Contributor,

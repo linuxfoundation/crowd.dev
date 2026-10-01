@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import GroupsioConnect from './components/groupsio-connect.vue';
 import GroupsioParams from './components/groupsio-params.vue';
 import GroupsioDropdown from './components/groupsio-dropdown.vue';

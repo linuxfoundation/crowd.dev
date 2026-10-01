@@ -1,11 +1,11 @@
-import { Pagination } from '@/shared/types/Pagination';
-import { OrganizationState } from '@/modules/organization/store/pinia/state';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { OrganizationState } from '@/modules/organization/store/pinia/state';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { OrganizationService } from '@/modules/organization/organization-service';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { MergeActionsService } from '@/shared/modules/merge/services/merge-actions.service';
-import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
+import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 
 let lastRequestId = 0;
 

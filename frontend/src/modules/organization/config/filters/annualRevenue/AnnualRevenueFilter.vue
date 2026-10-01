@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
-import {
+import type {
   NumberFilterConfig,
   NumberFilterOptions,
   NumberFilterValue,

@@ -1,5 +1,5 @@
-import { Category } from '@/modules/admin/modules/categories/types/Category';
-import { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
+import type { Category } from '@/modules/admin/modules/categories/types/Category';
+import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 
 export interface CollectionModel {
   id: string;

@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import { Activity } from '@/shared/modules/activity/types/Activity';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 

@@ -1,5 +1,5 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import {
+import type {
   BooleanFilterConfig, BooleanFilterOptions,
   BooleanFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';

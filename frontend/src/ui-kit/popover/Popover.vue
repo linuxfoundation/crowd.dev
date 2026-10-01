@@ -27,8 +27,8 @@
 import {
   computed, onBeforeUnmount, ref, watch,
 } from 'vue';
-import { PopoverPlacement } from '@/ui-kit/popover/types/PopoverPlacement';
-import { PopoverTrigger } from '@/ui-kit/popover/types/PopoverTrigger';
+import type { PopoverPlacement } from '@/ui-kit/popover/types/PopoverPlacement';
+import type { PopoverTrigger } from '@/ui-kit/popover/types/PopoverTrigger';
 
 const props = withDefaults(defineProps<{
   placement?: PopoverPlacement,

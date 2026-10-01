@@ -1,6 +1,6 @@
-import { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
+import type { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import WorkExperience from './type-work-experience.vue';
 

@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { storeToRefs } from 'pinia';
-import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { lfPermissions } from '@/config/permissions';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { LfRole } from '@/shared/modules/permissions/types/Roles';

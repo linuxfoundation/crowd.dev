@@ -1,4 +1,4 @@
-import { SelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { SelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 
 const options: SelectFilterOptionGroup[] = [
   {

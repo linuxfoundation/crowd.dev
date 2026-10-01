@@ -15,7 +15,7 @@
 import { defineProps, computed } from 'vue';
 import useMemberIdentities from '@/shared/modules/identities/config/useMemberIdentities';
 import memberOrder from '@/shared/modules/identities/config/identitiesOrder/member';
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import AppIdentitiesHorizontalList from '@/shared/modules/identities/components/identities-horizontal-list.vue';
 
 const props = defineProps<{

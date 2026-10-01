@@ -1,5 +1,5 @@
 import { IncludeEnum } from '@/modules/organization/config/saved-views/settings/types/IncludeEnum';
-import { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 export const organizationDefaultFilterRenderer = ({ teamOrganization }: DefaultFiltersSettings) => {
   if (teamOrganization === IncludeEnum.EXCLUDE) {

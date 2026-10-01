@@ -261,7 +261,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useVuelidate from '@vuelidate/core';
 import { reactive, ref } from 'vue';
 import AppKeywordsInput from '@/shared/form/keywords-input.vue';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 import LfInsightsProjectsAddCollectionDropdown from './add-details-tab/lf-insights-projects-add-collection-dropdown.vue';
 import LfInsightsProjectsAddOrganizationsDropdown from './add-details-tab/lf-insights-projects-add-organizations-dropdown.vue';
 

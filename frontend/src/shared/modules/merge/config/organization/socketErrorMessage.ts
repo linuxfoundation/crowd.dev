@@ -1,5 +1,5 @@
 import { ToastStore } from '@/shared/message/notification';
-import { SocketErrorMessage } from '../../types/OrganizationMessage';
+import type { SocketErrorMessage } from '../../types/OrganizationMessage';
 
 export default ({ primaryOrganization, secondaryOrganization }: SocketErrorMessage) => {
   const { displayName: primaryDisplayName } = primaryOrganization;

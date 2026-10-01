@@ -90,7 +90,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatNumber } from '@/utils/number';
 import LfContributorEngagementLevel from '@/modules/contributor/components/shared/contributor-engagement-level.vue';
 import LfContributorSentiment from '@/modules/contributor/components/shared/contributor-sentiment.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfLoading from '@/ui-kit/loading/Loading.vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfContributorDetailsMaintainer

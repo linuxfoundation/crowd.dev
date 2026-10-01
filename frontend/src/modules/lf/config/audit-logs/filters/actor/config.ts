@@ -1,7 +1,7 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
-import {
+import type {
   SelectAsyncFilterConfig, SelectAsyncFilterValue,
   SelectAsyncFilterOptions,
 } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';

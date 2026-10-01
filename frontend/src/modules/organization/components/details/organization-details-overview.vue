@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfOrganizationDetailsCommunity
   from '@/modules/organization/components/details/overview/organization-details-community.vue';
 import LfOrganizationDetailsAttributes

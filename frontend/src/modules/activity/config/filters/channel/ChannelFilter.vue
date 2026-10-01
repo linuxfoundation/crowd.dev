@@ -7,10 +7,10 @@ import {
   computed, watch,
 } from 'vue';
 import LfMultiSelectFilter from '@/shared/modules/filters/components/filterTypes/MultiSelectFilter.vue';
-import {
+import type {
   MultiSelectFilterConfig, MultiSelectFilterOptionGroup,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import { extractRepoNameFromUrl } from '@/utils/string';
 import { useActivityStore } from '@/modules/activity/store/pinia';
 import { storeToRefs } from 'pinia';

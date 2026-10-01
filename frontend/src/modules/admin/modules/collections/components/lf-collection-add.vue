@@ -225,13 +225,13 @@ import LfField from '@/ui-kit/field/Field.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 
 import { ToastStore } from '@/shared/message/notification';
-import { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
 import AppDrawer from '@/shared/drawer/drawer.vue';
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
 import LfCollectionAddProjectsTab from './lf-collection-add-projects-tab.vue';
-import {
+import type {
   CollectionFormModel,
   CollectionModel,
   CollectionRequest,

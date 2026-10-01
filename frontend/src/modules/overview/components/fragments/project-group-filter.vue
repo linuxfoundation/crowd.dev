@@ -105,14 +105,15 @@ import {
 } from 'vue';
 import { storeToRefs } from 'pinia';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import type { Pagination } from '@/shared/types/Pagination';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { useDebounce } from '@vueuse/core';
 
 import { ToastStore } from '@/shared/message/notification';
 import { segmentService } from '@/modules/lf/segments/segments.service';
-import { ProjectGroup } from '@/modules/lf/segments/types/Segments';
+import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import LfxDropdownSelect from '@/ui-kit/lfx/dropdown/dropdown-select.vue';
 import LfxDropdownSelector from '@/ui-kit/lfx/dropdown/dropdown-selector.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';

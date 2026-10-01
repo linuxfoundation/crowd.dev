@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { RadioSize } from '@/ui-kit/radio/types/RadioSize';
+import type { RadioSize } from '@/ui-kit/radio/types/RadioSize';
 import { computed, withDefaults } from 'vue';
 
 const props = withDefaults(defineProps<{

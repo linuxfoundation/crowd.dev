@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfDiscourseSettingsDrawer from '@/config/integrations/discourse/components/discourse-settings-drawer.vue';
 import DiscourseConnect from './components/discourse-connect.vue';
 import DiscourseParams from './components/discourse-params.vue';

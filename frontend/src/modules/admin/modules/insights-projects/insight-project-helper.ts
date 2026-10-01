@@ -1,5 +1,5 @@
-import { InsightsProjectAddFormModel } from './models/insights-project-add-form.model';
-import {
+import type { InsightsProjectAddFormModel } from './models/insights-project-add-form.model';
+import type {
   InsightsProjectModel,
   InsightsProjectRequest,
 } from './models/insights-project.model';

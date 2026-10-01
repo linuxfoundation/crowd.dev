@@ -115,9 +115,9 @@ import { cloneDeep, sortBy } from 'lodash';
 import LfInsightsProjectsListDropdown from './lf-insights-projects-list-dropdown.vue';
 import LfCollectionAddDropdown from './lf-collection-add-dropdown.vue';
 import { useInsightsProjectsStore } from '../../insights-projects/pinia';
-import { CollectionFormModel } from '../models/collection.model';
+import type { CollectionFormModel } from '../models/collection.model';
 import LfInsightsProjectAdd from '../../insights-projects/components/lf-insights-project-add.vue';
-import { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
+import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 
 const insightsProjectsStore = useInsightsProjectsStore();
 

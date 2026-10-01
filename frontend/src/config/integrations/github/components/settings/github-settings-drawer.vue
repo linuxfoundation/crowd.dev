@@ -228,7 +228,7 @@ import {
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import AppGithubSettingsBulkSelect from '@/config/integrations/github/components/settings/github-settings-bulk-select.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
+import type { ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import AppDrawer from '@/shared/drawer/drawer.vue';

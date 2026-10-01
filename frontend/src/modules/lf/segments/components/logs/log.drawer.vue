@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import { computed } from 'vue';
 import AppDrawer from '@/shared/drawer/drawer.vue';
 import AppLfAuditLogsJson from '@/modules/lf/segments/components/logs/sections/log-json.vue';

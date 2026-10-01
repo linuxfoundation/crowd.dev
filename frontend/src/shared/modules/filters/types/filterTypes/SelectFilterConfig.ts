@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 
 interface SelectFilterOption {
   label: string;

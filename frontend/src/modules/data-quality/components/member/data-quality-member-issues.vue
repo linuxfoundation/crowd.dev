@@ -53,7 +53,7 @@
 import { onMounted, ref, watch } from 'vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
+import type { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
 import { DataQualityApiService } from '@/modules/data-quality/services/data-quality.api.service';
 import LfDataQualityMemberIssuesItem
   from '@/modules/data-quality/components/member/data-quality-member-issues-item.vue';

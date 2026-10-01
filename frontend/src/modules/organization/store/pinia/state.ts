@@ -1,5 +1,5 @@
-import { Filter } from '@/shared/modules/filters/types/FilterConfig';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
+import type { Organization } from '@/modules/organization/types/Organization';
 import allOrganizations from '@/modules/organization/config/saved-views/views/all-organizations';
 
 export interface OrganizationState {

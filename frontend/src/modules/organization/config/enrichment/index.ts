@@ -1,4 +1,4 @@
-import { AttributeType } from '@/modules/organization/types/Attributes';
+import type { AttributeType } from '@/modules/organization/types/Attributes';
 import naics from '@/modules/organization/config/enrichment/naics';
 import allSubsidiaries from './allSubsidiaries';
 import averageEmployeeTenure from './averageEmployeeTenure';

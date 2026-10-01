@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import DiscordConnect from './components/discord-connect.vue';
 import DiscordParams from './components/discord-params.vue';
 

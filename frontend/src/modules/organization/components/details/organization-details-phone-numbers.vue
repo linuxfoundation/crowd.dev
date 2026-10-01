@@ -65,7 +65,7 @@ import { computed, ref } from 'vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import AppOrganizationManagePhoneNumbersDrawer

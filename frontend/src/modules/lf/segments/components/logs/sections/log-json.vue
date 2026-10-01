@@ -19,7 +19,7 @@
 
 <script setup lang="ts">
 import LfButton from '@/ui-kit/button/Button.vue';
-import { AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import { ref } from 'vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';

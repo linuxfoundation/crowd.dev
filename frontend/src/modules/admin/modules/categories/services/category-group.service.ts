@@ -1,10 +1,10 @@
 import authAxios from '@/shared/axios/auth-axios';
-import {
+import type {
   CategoryGroup,
   CategoryGroupListFilters,
   CreateCategoryGroup,
 } from '@/modules/admin/modules/categories/types/CategoryGroup';
-import { Pagination } from '@/shared/types/Pagination';
+import type { Pagination } from '@/shared/types/Pagination';
 
 export class CategoryGroupService {
   static async create(categoryGroup: CreateCategoryGroup): Promise<boolean> {

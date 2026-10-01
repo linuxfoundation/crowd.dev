@@ -28,10 +28,10 @@
 </template>
 
 <script setup lang="ts">
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { computed, ref } from 'vue';
-import { MemberIdentity } from '@/modules/member/types/Member';
+import type { MemberIdentity } from '@/modules/member/types/Member';
 import pluralize from 'pluralize';
 import LfOrganizationDetailsDomainItem
   from '@/modules/organization/components/details/domains/organization-details-domain-item.vue';

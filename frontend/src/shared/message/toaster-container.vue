@@ -30,10 +30,12 @@
 </template>
 
 <script setup lang="ts">
+import type { VNode } from 'vue';
 import {
-  computed, h, isVNode, VNode,
+  computed, h, isVNode,
 } from 'vue';
-import { NotificationTypes, ToastStore as store } from './notification';
+import type { NotificationTypes } from './notification';
+import { ToastStore as store } from './notification';
 
 const props = withDefaults(
   defineProps<{

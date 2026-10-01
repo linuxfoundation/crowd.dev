@@ -1,4 +1,4 @@
-import {
+import type {
   SelectAsyncFilterOptions,
   SelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';

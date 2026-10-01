@@ -1,8 +1,8 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import ChannelFilter from '@/modules/activity/config/filters/channel/ChannelFilter.vue';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
-import {
+import type {
   MultiSelectFilterOptions,
   MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';

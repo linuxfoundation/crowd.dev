@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import AppActivityTimeline from '@/modules/activity/components/activity-timeline.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';

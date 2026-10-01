@@ -102,8 +102,8 @@
 </template>
 
 <script lang="ts" setup>
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
-import { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppPlatformSvg from '@/shared/modules/platform/components/platform-svg.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';

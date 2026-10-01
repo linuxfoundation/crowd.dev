@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import AppActivityTimeline from '@/modules/activity/components/activity-timeline.vue';
 import { useRoute } from 'vue-router';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';

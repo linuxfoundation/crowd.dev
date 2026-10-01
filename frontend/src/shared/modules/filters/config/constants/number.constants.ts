@@ -1,4 +1,4 @@
-import { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
+import type { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
 
 export enum FilterNumberOperator {
   EQ = 'eq',

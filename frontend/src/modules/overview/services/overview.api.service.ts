@@ -3,9 +3,9 @@ import { type ComputedRef, computed } from 'vue';
 import { useInfiniteQuery, useQuery } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
 import authAxios from '@/shared/axios/auth-axios';
-import { Project } from '@/modules/lf/segments/types/Segments';
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
-import {
+import type { Project } from '@/modules/lf/segments/types/Segments';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type {
   DashboardMetrics,
   GlobalIntegrationStatusCount,
   IntegrationStatusResponse,

@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { memberFilters, memberSearchFilter } from '@/modules/member/config/filters/main';
 import { memberSavedViews } from '@/modules/member/config/saved-views/main';
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
@@ -130,10 +130,10 @@ import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { MemberService } from '@/modules/member/member-service';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
-import { Filter } from '@/shared/modules/filters/types/FilterConfig';
-import { Pagination } from '@/shared/types/Pagination';
-import { Member } from '@/modules/member/types/Member';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { Member } from '@/modules/member/types/Member';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';

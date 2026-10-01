@@ -1,4 +1,4 @@
-import { IntegrationStatus } from '../types/overview.types';
+import type { IntegrationStatus } from '../types/overview.types';
 
 export const mockOverviewData: IntegrationStatus[] = [
   // In Progress integrations

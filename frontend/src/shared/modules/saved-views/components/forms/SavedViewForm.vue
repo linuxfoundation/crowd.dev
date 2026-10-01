@@ -206,8 +206,8 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
-import { SavedView, SavedViewCreate, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
-import { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { SavedView, SavedViewCreate, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import LfFilterItem from '@/shared/modules/filters/components/FilterItem.vue';
 import { SavedViewsService } from '@/shared/modules/saved-views/services/saved-views.service';
 

@@ -76,7 +76,7 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
 import LfOrganizationDetailsIdentityAddDropdown
   from '@/modules/organization/components/details/identity/organization-details-identity-add-dropdown.vue';

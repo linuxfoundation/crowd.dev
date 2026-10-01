@@ -1,4 +1,4 @@
-import { ProjectGroup, Project, SubProject } from '@/modules/lf/segments/types/Segments';
+import type { ProjectGroup, Project, SubProject } from '@/modules/lf/segments/types/Segments';
 
 export interface SegmentsState {
   selectedProjectGroup: ProjectGroup | null

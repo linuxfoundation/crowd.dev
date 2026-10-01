@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { TooltipPlacement } from '@/ui-kit/tooltip/types/TooltipPlacement';
+import type { TooltipPlacement } from '@/ui-kit/tooltip/types/TooltipPlacement';
 
 const props = withDefaults(defineProps<{
   placement?: TooltipPlacement,

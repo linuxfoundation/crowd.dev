@@ -79,14 +79,14 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import { onMounted, ref } from 'vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { OrganizationApiService } from '@/modules/organization/services/organization.api.service';
 import AppOrganizationMergeSuggestionsDialog
   from '@/modules/organization/components/organization-merge-suggestions-dialog.vue';
 import AppOrganizationMergeDialog from '@/modules/organization/components/organization-merge-dialog.vue';
 import LfOrganizationDropdown from '@/modules/organization/components/shared/organization-dropdown.vue';
 import pluralize from 'pluralize';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
 

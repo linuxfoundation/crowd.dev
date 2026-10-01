@@ -1,7 +1,7 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
-import {
+import type {
   DateFilterConfig,
   DateFilterOptions,
   DateFilterValue,

@@ -1,12 +1,12 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
-import {
+import type {
   MultiSelectAsyncFilterConfig,
   MultiSelectAsyncFilterOptions, MultiSelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
 import { MemberService } from '@/modules/member/member-service';
 import { DEFAULT_MEMBER_FILTERS } from '@/modules/member/store/constants';
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 

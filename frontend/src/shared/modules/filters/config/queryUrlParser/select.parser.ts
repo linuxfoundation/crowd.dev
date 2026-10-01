@@ -1,4 +1,4 @@
-import { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 
 interface QueryUrlSelectValue {
   value: string,

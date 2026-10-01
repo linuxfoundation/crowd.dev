@@ -147,7 +147,7 @@ import {
   FeatureEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { Project, ProjectRequest } from '@/modules/lf/segments/types/Segments';
+import type { Project, ProjectRequest } from '@/modules/lf/segments/types/Segments';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { segmentService } from '@/modules/lf/segments/segments.service';
@@ -156,7 +156,7 @@ import { ToastStore } from '@/shared/message/notification';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfSvg from '@/shared/svg/svg.vue';
-import { AxiosError } from 'axios';
+import type { AxiosError } from 'axios';
 
 const enum ProjectType {
   LF = 'LF',

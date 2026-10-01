@@ -146,8 +146,8 @@ import {
   computed,
   onMounted, onUnmounted, ref,
 } from 'vue';
-import { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
-import { SavedView, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { SavedView, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import { isEqual } from 'lodash';
 import LfSavedViewsForm from '@/shared/modules/saved-views/components/forms/SavedViewForm.vue';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';

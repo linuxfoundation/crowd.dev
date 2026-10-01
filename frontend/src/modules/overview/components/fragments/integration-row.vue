@@ -78,7 +78,7 @@ import LfxDropdown from '@/ui-kit/lfx/dropdown/dropdown.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import StatusDisplay from './status-display.vue';
-import { IntegrationStatus } from '../../types/overview.types';
+import type { IntegrationStatus } from '../../types/overview.types';
 
 const { trackEvent } = useProductTracking();
 

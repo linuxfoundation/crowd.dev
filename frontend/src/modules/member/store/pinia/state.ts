@@ -1,10 +1,10 @@
-import {
+import type {
   Filter,
   FilterConfig,
 } from '@/shared/modules/filters/types/FilterConfig';
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import allMembers from '@/modules/member/config/saved-views/views/all-members';
-import { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 
 export interface MemberState {
   filters: Filter;

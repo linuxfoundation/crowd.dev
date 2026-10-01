@@ -1,4 +1,4 @@
-import { Project } from '@/modules/lf/segments/types/Segments';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 
 export const filterLabel = (value: string[], parentValues: string[], options: Project[]) => {
   let text: string[] = [];

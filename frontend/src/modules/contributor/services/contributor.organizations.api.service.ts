@@ -1,5 +1,5 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { MemberOrganization } from '@/modules/organization/types/Organization';
+import type { MemberOrganization } from '@/modules/organization/types/Organization';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 

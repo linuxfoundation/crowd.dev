@@ -78,7 +78,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import { contributorDetailsHeaderProfilePlatforms } from '@/modules/contributor/config/details-header-profile-platforms';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { lfIdentities } from '@/config/identities';
 
 const props = defineProps<{

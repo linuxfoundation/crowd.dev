@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import HackernewsConnect from './components/hackernews-connect.vue';
 import HackernewsParams from './components/hackernews-params.vue';
 

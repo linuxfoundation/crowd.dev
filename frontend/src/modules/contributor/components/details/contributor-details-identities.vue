@@ -80,7 +80,7 @@
 
 <script setup lang="ts">
 import LfButton from '@/ui-kit/button/Button.vue';
-import {
+import type {
   Contributor,
   ContributorIdentity,
 } from '@/modules/contributor/types/Contributor';

@@ -1,5 +1,5 @@
 import { Platform } from '@/shared/modules/platform/types/Platform';
-import { ActivityDisplayConfig } from '@/shared/modules/activity/types/DisplayConfig';
+import type { ActivityDisplayConfig } from '@/shared/modules/activity/types/DisplayConfig';
 import LfGitActivityContent from './git-activity-content.vue';
 import LfGitActivityHeaderContent from './git-activity-header-content.vue';
 

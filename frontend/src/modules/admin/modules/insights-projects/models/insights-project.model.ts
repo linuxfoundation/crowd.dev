@@ -1,4 +1,4 @@
-import { CollectionModel } from '../../collections/models/collection.model';
+import type { CollectionModel } from '../../collections/models/collection.model';
 
 export interface InsightsProjectModel {
   id: string;

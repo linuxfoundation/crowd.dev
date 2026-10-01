@@ -1,4 +1,4 @@
-import { ActivityState } from '@/modules/activity/store/pinia/state';
+import type { ActivityState } from '@/modules/activity/store/pinia/state';
 import { ActivityService } from '@/modules/activity/activity-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 

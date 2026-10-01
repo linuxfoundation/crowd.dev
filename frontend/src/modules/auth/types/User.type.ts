@@ -1,4 +1,4 @@
-import { TenantUser } from '@/modules/auth/types/TenantUser.type';
+import type { TenantUser } from '@/modules/auth/types/TenantUser.type';
 
 export interface User {
   acceptedTermsAndPrivacy: boolean;

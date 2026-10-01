@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { Project, ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
+import type { Project, ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
 
 export const useOverviewStore = defineStore('overview', () => {
   const selectedProjectGroupId = ref<string>('');

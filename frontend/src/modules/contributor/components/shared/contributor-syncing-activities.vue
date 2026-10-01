@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { computed } from 'vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

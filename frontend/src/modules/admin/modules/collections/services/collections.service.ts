@@ -1,7 +1,7 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { Pagination } from '@/shared/types/Pagination';
-import { QueryFunction } from '@tanstack/vue-query';
-import { CollectionModel, CollectionRequest } from '../models/collection.model';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import type { CollectionModel, CollectionRequest } from '../models/collection.model';
 
 export class CollectionsService {
   query(

@@ -67,7 +67,8 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { computed, withDefaults } from 'vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
-import { DataIssueTypeMenu, dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
+import type { DataIssueTypeMenu } from '@/modules/data-quality/config/data-issue-types';
+import { dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const suggestionTypeLabels: Record<string, string> = {

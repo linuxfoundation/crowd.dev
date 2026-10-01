@@ -53,7 +53,7 @@
 </template>
 
 <script lang="ts" setup>
-import { GitHubRepository } from '@/config/integrations/github-nango/types/GithubSettings';
+import type { GitHubRepository } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, watch } from 'vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';

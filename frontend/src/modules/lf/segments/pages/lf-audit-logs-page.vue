@@ -137,11 +137,11 @@
 <script setup lang="ts">
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
 import { auditLogsFilters } from '@/modules/lf/config/audit-logs/filters/main';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import { reactive, ref } from 'vue';
-import { Filter } from '@/shared/modules/filters/types/FilterConfig';
+import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import AppLfAuditLogsDrawer from '@/modules/lf/segments/components/logs/log.drawer.vue';
-import { AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';

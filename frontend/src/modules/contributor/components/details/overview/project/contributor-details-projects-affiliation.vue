@@ -105,7 +105,7 @@
 
 <script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { ContributorAffiliation } from '@/modules/contributor/types/Contributor';
+import type { ContributorAffiliation } from '@/modules/contributor/types/Contributor';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';

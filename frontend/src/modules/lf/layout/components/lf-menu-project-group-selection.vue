@@ -107,14 +107,15 @@ import {
   FeatureEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import type { Pagination } from '@/shared/types/Pagination';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { useDebounce } from '@vueuse/core';
 
 import { ToastStore } from '@/shared/message/notification';
 import { segmentService } from '../../segments/segments.service';
-import { ProjectGroup } from '../../segments/types/Segments';
+import type { ProjectGroup } from '../../segments/types/Segments';
 
 const SearchIcon = h(
   'i', // type

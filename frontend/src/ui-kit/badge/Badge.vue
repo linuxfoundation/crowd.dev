@@ -11,8 +11,8 @@
 </template>
 
 <script setup lang="ts">
-import { BadgeSize } from '@/ui-kit/badge/types/BadgeSize';
-import { BadgeType } from '@/ui-kit/badge/types/BadgeType';
+import type { BadgeSize } from '@/ui-kit/badge/types/BadgeSize';
+import type { BadgeType } from '@/ui-kit/badge/types/BadgeType';
 
 const props = withDefaults(defineProps<{
   size?: BadgeSize,

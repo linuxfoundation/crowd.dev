@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import ConfluenceConnect from './components/confluence-connect.vue';
 import ConfluenceParams from './components/confluence-params.vue';
 import ConfluenceDropdown from './components/confluence-dropdown.vue';

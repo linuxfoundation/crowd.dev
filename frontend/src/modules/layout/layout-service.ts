@@ -1,4 +1,4 @@
-import { Status } from '@/modules/layout/types/SystemStatus';
+import type { Status } from '@/modules/layout/types/SystemStatus';
 import authAxios from '@/shared/axios/auth-axios';
 
 export default {

@@ -1,6 +1,6 @@
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import { formatFloatToYears } from '@/utils/number';
-import { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
+import type { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
 
 const averageEmployeeTenure: OrganizationEnrichmentConfig = {
   name: 'averageEmployeeTenure',
