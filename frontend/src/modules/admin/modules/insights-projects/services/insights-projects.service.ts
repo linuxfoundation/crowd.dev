@@ -4,6 +4,8 @@ import type { QueryFunction } from '@tanstack/vue-query';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 import type {
   InsightsProjectDetailsResponse,
+  InsightsProjectDocsOverride,
+  InsightsProjectDocsOverrideRequest,
   InsightsProjectModel,
   InsightsProjectRequest,
 } from '../models/insights-project.model';
@@ -48,6 +50,21 @@ export class InsightsProjectsService {
   delete(id: string) {
     return authAxios
       .delete(`/collections/insights-projects/${id}`)
+      .then((res) => res.data);
+  }
+
+  setDocsOverride(id: string, request: InsightsProjectDocsOverrideRequest) {
+    return authAxios
+      .post<InsightsProjectDocsOverride>(
+        `/collections/insights-projects/${id}/docs-override`,
+        request,
+      )
+      .then((res) => res.data);
+  }
+
+  clearDocsOverride(id: string) {
+    return authAxios
+      .delete(`/collections/insights-projects/${id}/docs-override`)
       .then((res) => res.data);
   }
 

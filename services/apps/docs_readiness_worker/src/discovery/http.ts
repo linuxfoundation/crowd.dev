@@ -154,9 +154,11 @@ export function isGithubWebsite(url: string): boolean {
   return normalizedDomain(url) === 'github.com'
 }
 
+const RETRYABLE_4XX = new Set([408, 429])
+
 const PROBE_FAILED: IProbeResult = { ok: false, status: 0, finalUrl: '', contentType: '' }
 
-// One attempt; retry is set for a timeout, network error or 5xx, never for a 4xx or a blocked url.
+// One attempt; retry is set for a timeout, network error, 408/429 or 5xx, never for a blocked url.
 async function probeOnce(
   url: string,
   timeoutMs: number,
@@ -174,22 +176,29 @@ async function probeOnce(
       contentType: response.headers.get('content-type') ?? '',
     }
     await response.body?.cancel()
-    return { result, retry: response.status >= 500 }
+    return { result, retry: response.status >= 500 || RETRYABLE_4XX.has(response.status) }
   } catch {
     return { result: PROBE_FAILED, retry: true }
   }
 }
 
 export const PROBE_TIMEOUT_MS = 10_000
+export const PROBE_RETRY_BACKOFF_MS = 2_000
+// Mutable so tests that hit a retry can skip the wait.
+export const probeRetry = { backoffMs: PROBE_RETRY_BACKOFF_MS }
 
-// Only the docs.<domain> and docs-path checks pass retry: a hung host then costs two timeouts.
+// Only the docs.<domain> and docs-path checks pass retry: a hung host costs two timeouts + backoff.
 export async function probe(
   url: string,
   timeoutMs = PROBE_TIMEOUT_MS,
   retry = false,
 ): Promise<IProbeResult> {
   const first = await probeOnce(url, timeoutMs)
-  return retry && first.retry ? (await probeOnce(url, timeoutMs)).result : first.result
+  if (!retry || !first.retry) {
+    return first.result
+  }
+  await new Promise((resolve) => setTimeout(resolve, probeRetry.backoffMs))
+  return (await probeOnce(url, timeoutMs)).result
 }
 
 // fetch reports punycode hosts, so compare through URL's ascii hostname.

@@ -5,7 +5,7 @@
     title="Discourse"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -31,7 +31,7 @@
           class="mb-6"
           :validation="$v.discourseURL"
           label="Discourse URL"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
             url: 'Enter valid URL',
@@ -43,7 +43,6 @@
             Hostname of your community instance in Discourse.
           </div>
           <el-input
-            ref="focus"
             v-model="form.discourseURL"
             placeholder="https://community.lfx.dev"
             @blur="onBlurDiscourseURL()"
@@ -53,7 +52,7 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="API Key"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"
@@ -64,7 +63,6 @@
             Create a new API key in your Discourse account's settings page. You must be an admin user to connect your acount. <a href="https://docs.crowd.dev/docs/discourse-integration#api-key" target="_blank" rel="noopener noreferrer" class="hover:underline">Read more</a>
           </div>
           <el-input
-            ref="focus"
             v-model="form.apiKey"
             type="password"
             @blur="onBlurAPIKey()"
@@ -96,7 +94,7 @@
         :class="isAPIConnectionValid ? 'opacity-100' : 'opacity-50'"
       >
         <app-form-item label="Payload URL">
-          <el-input :value="payloadURL" :readonly="true" :disabled="!isAPIConnectionValid">
+          <el-input :value="payloadURL" readonly :disabled="!isAPIConnectionValid">
             <template #append>
               <el-tooltip
                 content="Copy to clipboard"
@@ -213,6 +211,7 @@
 import {
   computed, defineEmits, defineProps, onMounted, reactive, ref,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import discourse from '@/config/integrations/discourse/config';
 import { helpers, required, url } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
@@ -243,10 +242,10 @@ const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
-const inputRef = ref();
+const inputRef = ref<InputInstance>();
 const showToken = ref(false);
 const payloadURL = ref<string | undefined>(undefined);
-const webhookSecret = ref(undefined);
+const webhookSecret = ref<string | undefined>(undefined);
 
 const { doDiscourseConnect } = mapActions('integration');
 
@@ -280,7 +279,7 @@ const form = reactive({
 const isValidating = ref(false);
 const isAPIConnectionValid = ref(false);
 const loading = ref(false);
-const isWebhookVerifying = ref(null);
+const isWebhookVerifying = ref<boolean | null>(null);
 const isWebhookValid = ref(false);
 
 // validate that url doesn't end with a slash

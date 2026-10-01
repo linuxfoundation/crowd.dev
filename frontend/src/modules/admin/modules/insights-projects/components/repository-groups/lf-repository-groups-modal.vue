@@ -4,7 +4,7 @@
       <h5 class="text-h5 mb-4">
         {{ isEdit ? 'Edit' : 'Add' }} repository group
       </h5>
-      <lf-field label-text="Group name" :required="true" class="mb-6">
+      <lf-field label-text="Group name" required class="mb-6">
         <lf-input
           v-model="form.name"
           :invalid="$v.name.$invalid && $v.name.$dirty"
@@ -17,7 +17,7 @@
         />
       </lf-field>
 
-      <lf-field label-text="Repositories" :required="true">
+      <lf-field label-text="Repositories" required>
         <div>
           <el-select
             v-model="form.repositories"

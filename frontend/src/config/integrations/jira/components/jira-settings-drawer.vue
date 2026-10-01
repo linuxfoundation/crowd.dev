@@ -4,7 +4,7 @@
     title="Jira"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -32,7 +32,7 @@
           class="mb-6"
           :validation="$v.jiraURL"
           label="Jira URL"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"

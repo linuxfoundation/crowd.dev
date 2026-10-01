@@ -123,7 +123,7 @@
                   v-if="activity.title || activity.body"
                   class="text-sm bg-gray-50 rounded-lg p-4 mt-3"
                   :activity="activity"
-                  :show-more="true"
+                  show-more
                 >
                   <template
                     v-if="
@@ -263,7 +263,7 @@ const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(ls
 const enabledPlatforms: IdentityConfig[] = Object.values(lfIdentities);
 
 const loading = ref(false);
-const platform = ref(null);
+const platform = ref<string | null>(null);
 const query = ref('');
 const activities = ref([]);
 const limit = ref(10);

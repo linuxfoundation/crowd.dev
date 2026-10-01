@@ -11,7 +11,7 @@
 
 <script lang="ts" setup>
 const props = withDefaults(defineProps<{
-  width: string;
+  width?: string;
 }>(), {
   width: '1rem',
 });

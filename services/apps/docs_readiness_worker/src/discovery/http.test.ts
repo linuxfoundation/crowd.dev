@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   domainOf,
@@ -8,8 +8,10 @@ import {
   normalizeUrl,
   normalizedDomain,
   isTrustedRedirect,
+  PROBE_RETRY_BACKOFF_MS,
   PROBE_TIMEOUT_MS,
   probe,
+  probeRetry,
   sameRegistrableDomain,
 } from './http'
 
@@ -121,6 +123,10 @@ describe('probe retry', () => {
   const html = () => htmlAt('https://example.com/')
   const withRetry = (url: string) => probe(url, PROBE_TIMEOUT_MS, true)
 
+  beforeEach(() => {
+    probeRetry.backoffMs = 0
+  })
+
   it('retries once after a timeout and returns the second result', async () => {
     const fetchMock = vi
       .fn()
@@ -188,6 +194,71 @@ describe('probe retry', () => {
     expect(PROBE_TIMEOUT_MS).toBe(10_000)
     expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([PROBE_TIMEOUT_MS, PROBE_TIMEOUT_MS])
     timeout.mockRestore()
+  })
+
+  it('retries once after a 429 and returns the second result', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+      .mockResolvedValueOnce(html())
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await withRetry('https://example.com/')).ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('probe retry timing', () => {
+  const hangUntilAborted = (_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('timed out')))
+    })
+
+  async function timed(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.useFakeTimers()
+    probeRetry.backoffMs = PROBE_RETRY_BACKOFF_MS
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms)
+      return controller.signal
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const startedAt = Date.now()
+    let elapsedMs = -1
+    const done = probe('https://example.com/', PROBE_TIMEOUT_MS, true).then((result) => {
+      elapsedMs = Date.now() - startedAt
+      return result
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    return { result: await done, elapsedMs }
+  }
+
+  afterEach(() => {
+    probeRetry.backoffMs = 0
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('answers live when a slow first attempt is followed by a live one after the backoff', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(hangUntilAborted)
+      .mockResolvedValueOnce(htmlAt('https://example.com/'))
+
+    const { result } = await timed(fetchMock)
+
+    expect(result.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns not live for a dead host after two attempts, within two timeouts plus the backoff', async () => {
+    const fetchMock = vi.fn(hangUntilAborted)
+
+    const { result, elapsedMs } = await timed(fetchMock)
+
+    expect(result.ok).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(elapsedMs).toBe(2 * PROBE_TIMEOUT_MS + PROBE_RETRY_BACKOFF_MS)
   })
 })
 

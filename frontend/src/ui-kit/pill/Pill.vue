@@ -13,7 +13,7 @@
 import type { PillType } from '@/ui-kit/pill/types/PillType';
 
 const props = withDefaults(defineProps<{
-  type: PillType;
+  type?: PillType;
 }>(), {
   type: 'primary',
 });

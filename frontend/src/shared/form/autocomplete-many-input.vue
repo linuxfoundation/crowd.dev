@@ -5,12 +5,12 @@
     :loading="loading || initialLoading"
     :remote-method="handleSearch"
     :model-value="initialLoading ? null : model"
-    :clearable="true"
-    :default-first-option="true"
-    :filterable="true"
-    :multiple="true"
+    clearable
+    default-first-option
+    filterable
+    multiple
     :placeholder="placeholder || ''"
-    :remote="true"
+    remote
     :reserve-keyword="false"
     :allow-create="allowCreate"
     :suffix-icon="initialLoading ? 'app-loader' : null"
@@ -32,7 +32,7 @@
     <el-option
       v-show="showCreateSuggestion"
       :label="currentQuery"
-      :created="true"
+      created
       @mouseleave="onSelectMouseLeave"
     >
       <span class="prefix">{{ createPrefix }}</span>

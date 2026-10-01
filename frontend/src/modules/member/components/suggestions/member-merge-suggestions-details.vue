@@ -256,7 +256,7 @@
         <app-identities-vertical-list-members
           :member="member"
           :order="memberOrder.suggestions"
-          :include-emails="true"
+          include-emails
         />
       </div>
       <slot name="below" />

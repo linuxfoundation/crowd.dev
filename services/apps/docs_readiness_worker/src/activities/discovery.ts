@@ -4,6 +4,7 @@ import { getGithubInstallationToken } from '@crowd/common_services'
 import {
   findActiveProjectDocOverride,
   findEnabledRepositoriesForProject,
+  findProjectDocDiscovery,
   findProjectForDocsDiscovery,
   findSharedDocsUrls,
   upsertProjectDocDiscovery,
@@ -97,6 +98,9 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
     siblings: project.websiteSharedWith,
   })
 
+  const stored = await findProjectDocDiscovery(readerQx, projectId)
+  const storedSerpUrl = stored?.discoveryMethod === 'serp' ? stored.docsUrl : null
+
   const repos = await findEnabledRepositoriesForProject(readerQx, projectId)
   const githubToken = repos.length > 0 ? await getGithubInstallationToken() : null
 
@@ -111,6 +115,7 @@ export async function resolveDocsUrl(projectId: string): Promise<IResolvedDocsUr
       findSharedDocsUrls: (hosts) => findSharedDocsUrls(readerQx, projectId, hosts),
       githubToken,
       serpApiKey: process.env.CROWD_DOCS_READINESS_SERP_API_KEY ?? null,
+      storedSerpUrl,
       docsValidator: buildDocsValidator(),
       deadlineAt: Date.now() + DISCOVERY_TIMEOUT_MS,
       log: svc.log,

@@ -22,7 +22,7 @@
         <lf-button
           type="secondary"
           size="small"
-          :icon-only="true"
+          icon-only
           @click="isEditModalOpen = true; editOrganization = null"
         >
           <lf-icon name="plus" />

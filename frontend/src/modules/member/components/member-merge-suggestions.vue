@@ -8,7 +8,7 @@
             type="secondary"
             size="small"
             :disabled="loading || offset <= 0 || !hasSuggestion"
-            :icon-only="true"
+            icon-only
             @click="fetch(offset - 1)"
           >
             <lf-icon name="chevron-left" :size="16" />
@@ -17,7 +17,7 @@
             type="secondary"
             size="small"
             :disabled="loading || !hasMore"
-            :icon-only="true"
+            icon-only
             @click="fetch(offset + 1)"
           >
             <lf-icon name="chevron-right" :size="16" />
@@ -67,20 +67,20 @@
         <div class="w-1/3 rounded-lg">
           <app-member-merge-suggestions-details
             :member="null"
-            :loading="true"
-            :is-primary="true"
+            loading
+            is-primary
           />
         </div>
         <div class="w-1/3 -ml-px rounded-lg">
           <app-member-merge-suggestions-details
             :member="null"
-            :loading="true"
+            loading
           />
         </div>
         <div class="w-1/3 ml-8 rounded-lg bg-primary-25">
           <app-member-merge-suggestions-details
             :member="null"
-            :loading="true"
+            loading
           />
         </div>
       </div>
@@ -106,7 +106,7 @@
         <div class="w-1/3 ml-8">
           <app-member-merge-suggestions-details
             :member="preview"
-            :is-preview="true"
+            is-preview
             class="rounded-lg bg-primary-25"
           />
         </div>

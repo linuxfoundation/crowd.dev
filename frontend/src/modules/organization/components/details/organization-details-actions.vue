@@ -36,7 +36,7 @@
         <template #trigger>
           <lf-button
             type="secondary"
-            :icon-only="true"
+            icon-only
             :class="hasPermission(LfPermission.mergeOrganizations) ? '!rounded-l-none -ml-px' : ''"
           >
             <lf-icon name="ellipsis" type="regular" />

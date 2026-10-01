@@ -2,7 +2,6 @@
   <el-popover v-model:visible="open" placement="bottom-start" size="large" width="39rem" popper-class="!p-0" trigger="click">
     <template #reference>
       <el-select
-        ref="focus"
         v-model="currentSelection"
         class="w-full"
         popper-class="attribute-dropdown-popper"
@@ -13,7 +12,6 @@
 
     <div class="border-b border-gray-100 p-2">
       <el-input
-        ref="queryInput"
         v-model="search"
         placeholder="Search..."
         class="filter-dropdown-search"

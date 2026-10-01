@@ -93,6 +93,7 @@ export default [
         indent: 'warn',
         'no-trailing-spaces': 'warn',
         'vue/no-unused-components': 'error',
+        'vue/no-unused-refs': 'error',
         'vue/html-closing-bracket-spacing': 'warn',
         'vue/html-indent': 'warn',
         'vue/html-self-closing': 'warn',
@@ -110,8 +111,7 @@ export default [
         'no-shadow-restricted-names': ['error', { reportGlobalThis: false }],
         'no-useless-computed-key': ['error', { enforceForClassMembers: false }],
         'vue/no-v-html': 'off',
-        // New in eslint-plugin-vue 10's recommended preset; off to keep the enabled rule set unchanged.
-        'vue/no-required-prop-with-default': 'off',
+        'vue/no-required-prop-with-default': ['error', { autofix: true }],
         'import/prefer-default-export': 'off',
         'import/no-named-as-default': 'off',
         'class-methods-use-this': 'off',
@@ -127,6 +127,8 @@ export default [
           { order: ['defineOptions', 'defineProps', 'defineEmits', 'defineSlots'], defineExposeLast: true },
         ],
         'vue/no-ref-object-reactivity-loss': 'error',
+        'vue/require-typed-ref': 'error',
+        'vue/prefer-true-attribute-shorthand': 'error',
         'vue/max-len': ['error', { code: 150, ignoreComments: true, ignoreUrls: true }],
         'import/extensions': [
           'error',

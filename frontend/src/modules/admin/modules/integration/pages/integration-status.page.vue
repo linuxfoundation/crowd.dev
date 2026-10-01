@@ -13,7 +13,7 @@
       </lf-tabs>
       <lf-admin-integration-platform-select v-model="platform" />
     </div>
-    <lf-search v-model="query" :lazy="true" placeholder="Search sub-projects..." class="!h-9" />
+    <lf-search v-model="query" lazy placeholder="Search sub-projects..." class="!h-9" />
     <div class="pt-5">
       <div v-if="loading && offset === 0" class="pt-3 flex justify-center">
         <lf-spinner />
@@ -71,7 +71,7 @@
                             <lf-icon name="circle-notch" type="solid" class="text-gray-500 animate-spin" :size="16" />
                             <app-integration-progress-bar
                               :progress="progress.find((p) => p.platform === integration.platform)"
-                              :hide-bar="true"
+                              hide-bar
                               text-class="!text-tiny"
                             />
                           </div>
@@ -99,7 +99,7 @@
                     :is="lfIntegrations()[integration.platform].connectComponent"
                     v-if="status === 'notConnected' && lfIntegrations()[integration.platform].connectComponent"
                     :integration="integration"
-                    :hide-details="true"
+                    hide-details
                     :segment-id="integration.segmentId"
                     :grandparent-id="integration.grandparentId"
                   >
@@ -113,7 +113,7 @@
                     :grandparent-id="integration.grandparentId"
                   />
                   <template v-if="status !== 'notConnected'">
-                    <lf-dropdown placement="bottom-end" width="14.5rem" :persistent="true">
+                    <lf-dropdown placement="bottom-end" width="14.5rem" persistent>
                       <template #trigger>
                         <lf-button type="secondary-ghost" icon-only>
                           <lf-icon name="ellipsis" />

@@ -147,6 +147,21 @@ describe('discoverDocs with the docs validator', () => {
     )
   })
 
+  test('still validates a search winner reused from a previous run', async () => {
+    mocks.serpStrategy.mockResolvedValue([candidate('https://docs.example.org', 'serp')])
+    const validator = fakeValidator('other')
+
+    const result = await discoverDocs({
+      ...ctxWith(validator),
+      website: null,
+      serpApiKey: 'serp-key',
+      storedSerpUrl: 'https://docs.example.org',
+    })
+
+    expect(validator).toHaveBeenCalledTimes(1)
+    expect(result.docsUrl).toBeNull()
+  })
+
   test('validates a search winner when no organic candidate is live', async () => {
     withCandidates(candidate(REPO_URL, 'repo-url'), candidate('https://elsewhere.dev/x', 'serp'))
     const validator = fakeValidator('other')

@@ -20,7 +20,7 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="API Key"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"
@@ -34,7 +34,7 @@
             >settings</a>
             page.
           </div>
-          <el-input ref="focus" v-model="form.apiKey" type="password" @blur="onBlurAPIKey()">
+          <el-input v-model="form.apiKey" type="password" @blur="onBlurAPIKey()">
             <template #suffix>
               <div
                 v-if="isValidating"
