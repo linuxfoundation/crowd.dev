@@ -1,8 +1,12 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import LfGerritSettingsDrawer from '@/config/integrations/gerrit/components/gerrit-settings-drawer.vue';
-import GerritConnect from './components/gerrit-connect.vue';
-import GerritParams from './components/gerrit-params.vue';
-import GerritDropdown from './components/gerrit-dropdown.vue';
+
+const LfGerritSettingsDrawer = defineAsyncComponent(
+  () => import('@/config/integrations/gerrit/components/gerrit-settings-drawer.vue'),
+);
+const GerritConnect = defineAsyncComponent(() => import('./components/gerrit-connect.vue'));
+const GerritParams = defineAsyncComponent(() => import('./components/gerrit-params.vue'));
+const GerritDropdown = defineAsyncComponent(() => import('./components/gerrit-dropdown.vue'));
 
 const image = new URL('@/assets/images/integrations/gerrit.png', import.meta.url).href;
 
