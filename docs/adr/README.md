@@ -38,6 +38,9 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0029](./0029-typescript-project-references.md)                | TypeScript project references                                                                        | accepted | 2026-09-22 |
 | [ADR-0030](./0030-docs-readiness-worker-architecture.md)           | Docs readiness worker — architecture                                                                 | accepted | 2026-09-23 |
 | [ADR-0031](./0031-frontend-modernization.md)                       | Frontend modernization decisions                                                                     | accepted | 2026-09-29 |
+| [ADR-0032](./0032-collection-type-discriminator.md)                | Explicit `collections.type` discriminator                                                            | proposed | 2026-09-29 |
+| [ADR-0033](./0033-salesforce-org-slugs.md)                         | Salesforce account slugs for Insights org pages                                                      | proposed | 2026-10-01 |
+| [ADR-0034](./0034-snowflake-salesforce-data-through-cdp.md)        | Salesforce data from Snowflake reaches Insights through CDP                                          | proposed | 2026-10-01 |
 
 ## Why ADRs?
 
