@@ -3,7 +3,7 @@
     class="mb-6"
     :validation="$v.projectId"
     label="Project"
-    :required="true"
+    required
     :error-messages="{
       required: 'Project is required',
     }"
@@ -48,7 +48,6 @@
     <div class="mb-2 border-b border-gray-100 px-2 pt-2 pb-1 w-full">
       <el-input
         id="filterSearch"
-        ref="searchQueryInput"
         v-model="searchQuery"
         placeholder="Search..."
         class="filter-dropdown-search"
@@ -106,6 +105,7 @@ import { required } from '@vuelidate/validators';
 import {
   reactive, h, ref, onMounted, computed, nextTick, onBeforeUnmount, watch,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '@/modules/admin/modules/insights-projects/services/insights-projects.service';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -143,7 +143,7 @@ const ArrowUpIcon = h(
   [],
 );
 
-const inputRef = ref(null);
+const inputRef = ref<InputInstance | null>(null);
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 let scrollContainer: HTMLElement | null = null;

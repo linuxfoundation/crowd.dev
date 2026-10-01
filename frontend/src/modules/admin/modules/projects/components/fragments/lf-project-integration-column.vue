@@ -69,8 +69,8 @@
             <app-integration-progress
               v-if="!progressError"
               :progress="getProgress(props.segmentId, integration.platform)"
-              :show-bar="true"
-              :show-parts="true"
+              show-bar
+              show-parts
             >
               <h6 class="text-xs text-black leading-5 pb-3">
                 Connecting

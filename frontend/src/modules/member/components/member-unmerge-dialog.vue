@@ -72,7 +72,7 @@
           <app-member-suggestions-details
             v-if="!preview && props.modelValue"
             :member="props.modelValue"
-            :is-primary="true"
+            is-primary
           >
             <template #header>
               <div class="h-13 flex justify-between items-start">
@@ -106,7 +106,7 @@
             v-else-if="preview"
             :member="preview.primary"
             :compare-member="preview.secondary"
-            :is-primary="true"
+            is-primary
           >
             <template #header>
               <div class="h-13 flex justify-between items-start">

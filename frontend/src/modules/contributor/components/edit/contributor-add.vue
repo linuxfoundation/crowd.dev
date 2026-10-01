@@ -3,7 +3,7 @@
     <!-- Header -->
     <section class="py-4 pr-4 pl-6 flex justify-between items-center">
       <h5>Add person</h5>
-      <lf-button type="secondary-ghost-light" :icon-only="true" @click="isModalOpen = false">
+      <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
         <lf-icon name="xmark" />
       </lf-button>
     </section>
@@ -24,7 +24,7 @@
         <div class="px-6 py-5">
           <!-- Contributor name -->
           <article class="mb-5">
-            <lf-field label-text="Name" :required="true">
+            <lf-field label-text="Name" required>
               <lf-input
                 v-model="form.name"
                 class="h-10"
@@ -38,7 +38,7 @@
 
           <!-- Contributor email -->
           <article class="mb-5">
-            <lf-field label-text="Email address" :required="true">
+            <lf-field label-text="Email address" required>
               <div class="flex flex-col items-start gap-3">
                 <lf-contributor-add-email-item
                   v-for="(_, ei) of form.email"
@@ -51,7 +51,7 @@
                       type="secondary-ghost-light"
                       size="large"
                       class="ml-2"
-                      :icon-only="true"
+                      icon-only
                       @click="form.email.splice(ei, 1)"
                     >
                       <lf-icon name="trash-can" />

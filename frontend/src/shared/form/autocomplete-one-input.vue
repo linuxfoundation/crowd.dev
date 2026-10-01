@@ -1,15 +1,14 @@
 <template>
   <el-select
-    ref="input"
     :disabled="disabled"
     :loading="loading"
     :remote-method="handleSearch"
     :model-value="modelValue"
     :clearable="clearable"
-    :default-first-option="true"
-    :filterable="true"
+    default-first-option
+    filterable
     :placeholder="placeholder || ''"
-    :remote="true"
+    remote
     :reserve-keyword="false"
     :allow-create="allowCreate"
     fit-input-width
@@ -30,7 +29,7 @@
     <el-option
       v-show="showCreateSuggestion"
       :label="currentQuery"
-      :created="true"
+      created
       @mouseleave="onSelectMouseLeave"
     >
       <span class="prefix">{{ createPrefix }}</span>

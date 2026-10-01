@@ -32,7 +32,7 @@
         >{{ organization.displayName }}</span>
         <lf-organization-lf-member-tag
           :organization="organization"
-          :only-show-icon="true"
+          only-show-icon
         />
       </div>
     </div>

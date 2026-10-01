@@ -2,7 +2,7 @@
   <div>
     <lf-report-data-issue-modal
       v-if="reportDataModal !== null"
-      :model-value="true"
+      model-value
       v-bind="reportDataModal"
       @update:model-value="reportDataModal = null"
     />

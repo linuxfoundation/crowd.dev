@@ -93,6 +93,7 @@ export default [
         indent: 'warn',
         'no-trailing-spaces': 'warn',
         'vue/no-unused-components': 'error',
+        'vue/no-unused-refs': 'error',
         'vue/html-closing-bracket-spacing': 'warn',
         'vue/html-indent': 'warn',
         'vue/html-self-closing': 'warn',
@@ -126,6 +127,8 @@ export default [
           { order: ['defineOptions', 'defineProps', 'defineEmits', 'defineSlots'], defineExposeLast: true },
         ],
         'vue/no-ref-object-reactivity-loss': 'error',
+        'vue/require-typed-ref': 'error',
+        'vue/prefer-true-attribute-shorthand': 'error',
         'vue/max-len': ['error', { code: 150, ignoreComments: true, ignoreUrls: true }],
         'import/extensions': [
           'error',

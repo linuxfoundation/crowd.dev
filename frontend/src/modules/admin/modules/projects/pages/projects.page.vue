@@ -38,7 +38,7 @@
         <app-lf-project-groups-dropdown
           v-if="hasPermission(LfPermission.projectGroupCreate)"
           :id="projectGroupForm.id"
-          :show-edit-only="true"
+          show-edit-only
           @on-edit-project-group="onEditProjectGroup"
         />
       </div>
@@ -98,7 +98,7 @@
             :page-size="Number(pagination.pageSize)"
             :current-page="pagination.currentPage || 1"
             :is-loading="projects.paginating"
-            :use-slot="true"
+            use-slot
             @load-more="onLoadMore"
           >
             <div

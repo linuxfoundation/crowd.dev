@@ -2,7 +2,7 @@
   <lf-popover
     :placement="props.placement"
     :persistent="props.persistent"
-    :is-dropdown="true"
+    is-dropdown
     :z-index="props.zIndex"
   >
     <template #trigger>

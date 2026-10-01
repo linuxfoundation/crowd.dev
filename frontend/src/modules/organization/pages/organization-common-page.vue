@@ -1,7 +1,6 @@
 <template>
   <div class="pt-8">
     <lf-filter
-      ref="organizationFilter"
       v-model="filters"
       :config="organizationCommonFilters"
       :search-config="organizationSearchFilter"
@@ -33,7 +32,7 @@
             :total="totalOrganizations"
             :page-size="Number(pagination.perPage)"
             :current-page="pagination.page || 1"
-            :hide-sorting="true"
+            hide-sorting
             @change-current-page="onPaginationChange({ page: $event })"
             @change-page-size="onPaginationChange({ perPage: $event })"
           />

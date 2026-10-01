@@ -1,7 +1,7 @@
 <template>
   <!-- Project name -->
   <article class="mb-5">
-    <lf-field label-text="Project name" :required="true">
+    <lf-field label-text="Project name" required>
       <template #label>
         <label class="c-field__label leading-5">
           Project name <span class="c-field__required">*</span>
@@ -38,7 +38,7 @@
 
   <!-- Description -->
   <article class="mb-5">
-    <lf-field label-text="Description" :required="true">
+    <lf-field label-text="Description" required>
       <template #label>
         <label class="c-field__label leading-5">
           Description <span class="c-field__required">*</span>
@@ -74,7 +74,7 @@
 
   <!-- Logo -->
   <article class="mb-5">
-    <lf-field label-text="Logo URL" :required="true">
+    <lf-field label-text="Logo URL" required>
       <template #label>
         <label class="c-field__label leading-5">
           Logo URL <span class="c-field__required">*</span>
@@ -132,7 +132,7 @@
       </template>
       <app-keywords-input
         v-model="cForm.keywords"
-        :show-hint="true"
+        show-hint
         placeholder="Enter topic(s)"
         hint-text="Press ENTER or comma (,) to separate topics."
       />
@@ -173,7 +173,7 @@
       <app-keywords-input
         v-model="cForm.searchKeywords"
         placeholder="Enter keyword(s)"
-        :show-hint="true"
+        show-hint
       />
     </lf-field>
   </article>

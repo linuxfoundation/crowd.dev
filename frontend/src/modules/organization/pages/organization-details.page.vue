@@ -22,7 +22,7 @@
             @mouseover.stop
             @mouseout.stop
           >
-            <lf-button type="secondary-ghost" :icon-only="true">
+            <lf-button type="secondary-ghost" icon-only>
               <lf-icon name="chevron-left" />
             </lf-button>
           </lf-back>

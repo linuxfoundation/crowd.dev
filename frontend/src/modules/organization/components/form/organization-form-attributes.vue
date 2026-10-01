@@ -23,7 +23,7 @@
           :key="attribute.name"
           :type="attribute.type"
           :label="attribute.label"
-          :is-enrichment-field="true"
+          is-enrichment-field
         >
           <app-autocomplete-many-input
             v-if="attribute.type === AttributeType.ARRAY"
@@ -31,7 +31,7 @@
             disabled
             input-class="w-full multi-select-field"
             placeholder=" "
-            :collapse-tags="true"
+            collapse-tags
           />
           <app-organization-form-json
             v-else-if="attribute.type === AttributeType.JSON"

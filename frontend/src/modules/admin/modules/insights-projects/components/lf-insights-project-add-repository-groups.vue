@@ -27,10 +27,10 @@
               </div>
             </lf-badge>
             <div class="flex items-center gap-2">
-              <lf-button :icon-only="true" type="secondary-ghost-light" @click="edit(gi)">
+              <lf-button icon-only type="secondary-ghost-light" @click="edit(gi)">
                 <lf-icon name="edit" />
               </lf-button>
-              <lf-button :icon-only="true" type="secondary-ghost-light" @click="remove(gi)">
+              <lf-button icon-only type="secondary-ghost-light" @click="remove(gi)">
                 <lf-icon name="trash-can" />
               </lf-button>
             </div>

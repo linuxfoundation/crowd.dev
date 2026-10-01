@@ -71,7 +71,7 @@
             <div @click.stop.prevent>
               <lf-dropdown placement="bottom-end" @click.stop.prevent>
                 <template #trigger>
-                  <lf-button type="secondary-ghost-light" :icon-only="true" size="small" @click.prevent>
+                  <lf-button type="secondary-ghost-light" icon-only size="small" @click.prevent>
                     <lf-icon name="ellipsis" :size="20" />
                   </lf-button>
                 </template>
@@ -98,7 +98,7 @@
 
       <tfoot class="border-b border-gray-100" style="z-index: 0">
         <tr>
-          <lf-table-cell class="py-4" :sticky="true" colspan="2" style="z-index: 0">
+          <lf-table-cell class="py-4" sticky colspan="2" style="z-index: 0">
             <slot name="pagination" />
           </lf-table-cell>
         </tr>

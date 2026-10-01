@@ -15,7 +15,7 @@
       <template #actions>
         <lf-button
           type="secondary-ghost-light"
-          :icon-only="true"
+          icon-only
           @click="isModalOpen = false"
         >
           <lf-icon name="xmark" :size="16" />

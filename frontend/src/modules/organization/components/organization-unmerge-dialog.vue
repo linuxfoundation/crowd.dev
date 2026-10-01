@@ -72,7 +72,7 @@
           <app-organization-merge-suggestions-details
             v-if="!preview && props.modelValue"
             :organization="props.modelValue"
-            :is-primary="true"
+            is-primary
           >
             <template #header>
               <div class="h-13 flex justify-between items-start">
@@ -88,8 +88,8 @@
             v-else-if="preview"
             :organization="preview.primary"
             :compare-organization="preview.secondary"
-            :is-primary="true"
-            :is-preview="true"
+            is-primary
+            is-preview
           >
             <template #header>
               <div class="h-13 flex justify-between items-start">
@@ -115,7 +115,7 @@
             <app-organization-merge-suggestions-details
               :organization="preview.secondary"
               :compare-organization="preview.primary"
-              :is-preview="true"
+              is-preview
             >
               <template #header>
                 <div class="h-13">
