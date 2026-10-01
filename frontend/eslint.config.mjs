@@ -112,9 +112,6 @@ export default [
         'vue/no-v-html': 'off',
         // New in eslint-plugin-vue 10's recommended preset; off to keep the enabled rule set unchanged.
         'vue/no-required-prop-with-default': 'off',
-        'vue/no-deprecated-delete-set': 'off',
-        'vue/no-deprecated-model-definition': 'off',
-        'vue/valid-define-options': 'off',
         'import/prefer-default-export': 'off',
         'import/no-named-as-default': 'off',
         'class-methods-use-this': 'off',
