@@ -70,12 +70,14 @@ All scripts run from `frontend/` via `npm run <script>`.
 |---|---|
 | `lint` | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`) |
 | `lint:fix` | Same as `lint`, with `--fix` |
+| `typecheck` | `vue-tsc --noEmit -p tsconfig.json`. Exits non-zero while existing type errors remain; CI does not run it yet |
 | `format` | Prettier `--write` over the frontend (`.vue` files are ignored by Prettier) |
 | `format:check` | Prettier `--check`, without writing |
-| `build` | Alias for `build:production` |
+| `build` | `vite build` (Vite's default `production` mode); the Dockerfile and CI use `build:production` |
 | `start` | `vite --host` — Vite dev server with defaults, no env sourcing |
 | `start:dev` | Alias for `start` |
 | `start:dev:local` | Sources `.env.dist.local` + `.env.override.local`, then runs Vite on port 8081 in `localhost` mode — the normal way to run the app locally |
+| `preview` | `vite preview` — serves the built `dist/` locally; run `build` first. Without `VUE_APP_*` set at build time the bundle keeps `CROWD_VUE_APP_*` placeholders (see `docs/environment.md`) |
 | `build:localhost` | `vite build --mode localhost` |
 | `build:production` | `vite build --mode prod` |
 | `build:staging` | `vite build --mode staging` |
@@ -87,7 +89,7 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `docs` | Runs `docs:tailwind` and `docs:storybook` together |
 
 > This table is generated against the scripts that exist in `package.json` right now. Other
-> tickets in the CM-1480 epic (typecheck, preview, `lint:cycles`)
+> tickets in the CM-1480 epic (`lint:cycles`)
 > add scripts that aren't in `package.json` yet — whichever of those tickets lands, update this
 > table in the same PR.
 
