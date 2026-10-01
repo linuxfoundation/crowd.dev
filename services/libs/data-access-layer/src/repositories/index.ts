@@ -232,6 +232,26 @@ export async function findEnabledRepositoriesForProject(
   )
 }
 
+export async function findInsightsProjectIdsWithRepositories(
+  qx: QueryExecutor,
+  insightsProjectIds: string[],
+): Promise<string[]> {
+  if (insightsProjectIds.length === 0) {
+    return []
+  }
+
+  const rows: { insightsProjectId: string }[] = await qx.select(
+    `
+    SELECT DISTINCT "insightsProjectId"
+    FROM public.repositories
+    WHERE "insightsProjectId" IN ($(insightsProjectIds:csv))
+      AND "deletedAt" IS NULL
+    `,
+    { insightsProjectIds },
+  )
+  return rows.map((row) => row.insightsProjectId)
+}
+
 // Mirrors the URL forms canonicalizeRepoUrl accepts: https, ssh://git@ with an optional
 // numeric port, ssh://git@host:owner/repo (colon with no port), scp-style git@host:, and
 // a bare host with no scheme at all. Order matters: the port alternative must be tried
