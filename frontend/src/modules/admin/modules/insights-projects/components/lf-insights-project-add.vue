@@ -70,13 +70,22 @@
           </lf-tabs>
           <div class="pt-2.5">
             <div class="tab-content">
-              <lf-insights-project-add-details-tab
-                v-if="activeTab === 'details'"
-                :form="form"
-                :old-form="oldForm"
-                :new-form="newForm"
-                :rules="rules"
-              />
+              <template v-if="activeTab === 'details'">
+                <lf-insights-project-add-details-tab
+                  :form="form"
+                  :old-form="oldForm"
+                  :new-form="newForm"
+                  :rules="rules"
+                />
+                <template v-if="isEditForm && insightsProject">
+                  <hr class="my-5" />
+                  <lf-insights-project-docs-override
+                    :insights-project-id="insightsProject.id"
+                    :docs-override="insightsProject.docsOverride"
+                    @change="insightsProject.docsOverride = $event"
+                  />
+                </template>
+              </template>
               <lf-insights-project-add-repository-tab
                 v-else-if="activeTab === 'repositories'"
                 :form="form"
@@ -138,6 +147,7 @@ import { TanstackKey } from '@/shared/types/tanstack';
 import LfInsightsProjectAddRepositoryGroups
   from '@/modules/admin/modules/insights-projects/components/lf-insights-project-add-repository-groups.vue';
 import LfInsightsProjectAddDetailsTab from './lf-insights-project-add-details-tab.vue';
+import LfInsightsProjectDocsOverride from './add-details-tab/lf-insights-project-docs-override.vue';
 import LfInsightsProjectAddRepositoryTab from './lf-insights-project-add-repository-tab.vue';
 import type {
   InsightsProjectDetailsResponse,
