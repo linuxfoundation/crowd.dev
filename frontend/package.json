@@ -8,6 +8,8 @@
   "scripts": {
     "lint": "eslint \"src/**/*.{js,ts,vue}\" --max-warnings=0",
     "lint:fix": "npm run lint -- --fix",
+    "lint:cycles": "node scripts/check-cycles.mjs",
+    "lint:cycles:update": "node scripts/check-cycles.mjs --update",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
     "build": "vite build",
     "build:localhost": "vite build --mode localhost",
@@ -96,6 +98,7 @@
     "eslint-plugin-storybook": "^10.2.12",
     "eslint-plugin-vue": "^9.33.0",
     "lint-staged": "^15.4.3",
+    "madge": "^8.0.0",
     "postcss": "^8.5.15",
     "prettier": "^3.9.9",
     "rollup-plugin-visualizer": "^7.1.1",
