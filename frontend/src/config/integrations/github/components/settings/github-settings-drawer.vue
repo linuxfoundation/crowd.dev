@@ -291,6 +291,7 @@ const githubDetails = computed(() => github);
 
 // Form
 const form = ref<Record<string, string>>(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   repos.value.reduce(
     (a: Record<string, any>, b: any) => ({
       ...a,

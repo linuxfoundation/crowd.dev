@@ -284,6 +284,7 @@ const form = reactive<SavedViewForm>({
   name: '',
   relation: 'and',
   filters: {},
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   settings: { ...settingsDefaultValue.value },
   sorting: {
     prop: Object.keys(props.config.sorting).length > 0 ? Object.keys(props.config.sorting)[0] : props.config.defaultView.config.order.prop,

@@ -276,9 +276,9 @@ const firstHiddenAttributeIndex = computed(() => customAttributes.value.findInde
 const { doUpdateCustomAttributes } = mapActions('member');
 const model = computed(() => props.modelValue);
 
-watch(model.value, (newModel) => {
+watch(model, (newModel) => {
   emit('update:modelValue', newModel);
-});
+}, { deep: true });
 
 const updateAttribute = (id, data) => {
   ConfirmDialog({

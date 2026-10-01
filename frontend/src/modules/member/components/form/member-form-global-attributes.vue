@@ -167,6 +167,7 @@ const initialModel = ref(
     ),
   ),
 );
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const model = ref(cloneDeep(initialModel.value));
 
 const isFormInvalid = computed(() => Object.entries(model.value).some(
