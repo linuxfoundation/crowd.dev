@@ -215,7 +215,7 @@ export async function pickValidatedWinner(
   let calls = 0
   for (;;) {
     const winner = rank(pool)
-    if (!winner || !VALIDATED_METHODS.has(winner.method) || winner.url === ctx.storedSerpUrl) {
+    if (!winner || !VALIDATED_METHODS.has(winner.method)) {
       return winner
     }
     const others = pool.filter((c) => c !== winner)

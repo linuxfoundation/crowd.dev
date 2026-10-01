@@ -147,7 +147,7 @@ describe('discoverDocs with the docs validator', () => {
     )
   })
 
-  test('does not validate a search winner reused from a previous run', async () => {
+  test('still validates a search winner reused from a previous run', async () => {
     mocks.serpStrategy.mockResolvedValue([candidate('https://docs.example.org', 'serp')])
     const validator = fakeValidator('other')
 
@@ -158,8 +158,8 @@ describe('discoverDocs with the docs validator', () => {
       storedSerpUrl: 'https://docs.example.org',
     })
 
-    expect(result.docsUrl).toBe('https://docs.example.org')
-    expect(validator).not.toHaveBeenCalled()
+    expect(validator).toHaveBeenCalledTimes(1)
+    expect(result.docsUrl).toBeNull()
   })
 
   test('validates a search winner when no organic candidate is live', async () => {
