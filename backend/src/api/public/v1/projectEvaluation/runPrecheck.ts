@@ -10,7 +10,6 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { IProjectEvaluationResponse } from './types'
 
-// Returns the pre-check skip reason, or null when the repo should go on to the LLM evaluation.
 export async function runPrecheck(qx: QueryExecutor, repoUrl: string): Promise<string | null> {
   const canonical = canonicalizeRepoUrl(repoUrl)
   const githubCanonical = canonical?.isGithub ? canonical : null

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import {
-  IProjectEvaluationRequest,
+  IProjectEvaluationRequest as IProjectEvaluationInput,
   IProjectEvaluationResponse,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 
@@ -15,4 +15,8 @@ export const projectEvaluationRequestSchema = z.object({
   precheck: z.boolean().optional().default(false),
 })
 
-export type { IProjectEvaluationRequest, IProjectEvaluationResponse }
+export type IProjectEvaluationRequest = IProjectEvaluationInput & {
+  precheck?: boolean
+}
+
+export type { IProjectEvaluationResponse }
