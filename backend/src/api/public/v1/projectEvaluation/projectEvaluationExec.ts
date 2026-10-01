@@ -6,6 +6,7 @@ import { validateOrThrow } from '@/utils/validation'
 
 import { createDailyLlmCap } from './dailyLlmCap'
 import { evaluateProject } from './evaluateProject'
+import { precheckSkipResult, runPrecheck } from './runPrecheck'
 import { IProjectEvaluationRequest, projectEvaluationRequestSchema } from './types'
 
 const reserveDailyLlmCall = createDailyLlmCap()
@@ -21,9 +22,19 @@ export default async (req: Request, res: Response): Promise<void> => {
     source: parsed.source ?? null,
   }
 
+  const qx = optionsQx(req)
+
+  if (parsed.precheck) {
+    const skipReason = await runPrecheck(qx, input.repoUrl)
+    if (skipReason) {
+      ok(res, precheckSkipResult(skipReason))
+      return
+    }
+  }
+
   const response = await evaluateProject(
     input,
-    optionsQx(req),
+    qx,
     {
       accessKeyId: process.env.CROWD_AWS_BEDROCK_ACCESS_KEY_ID,
       secretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,

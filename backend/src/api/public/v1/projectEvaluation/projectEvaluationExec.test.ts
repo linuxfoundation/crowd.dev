@@ -1,13 +1,20 @@
 import type { Request, Response } from 'express'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PRECHECK_SKIP_REASONS } from '@crowd/data-access-layer/src/project-catalog/precheck'
 import { IProjectEvaluationResponse } from '@crowd/data-access-layer/src/project-catalog/types'
 
 import { evaluateProject } from './evaluateProject'
 import projectEvaluationExec from './projectEvaluationExec'
+import { runPrecheck } from './runPrecheck'
 
 vi.mock('./evaluateProject', () => ({
   evaluateProject: vi.fn(),
+}))
+
+vi.mock('./runPrecheck', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runPrecheck')>()),
+  runPrecheck: vi.fn(),
 }))
 
 function mockReqRes(body: unknown, actorId = 'test-actor', apiKeyId?: string) {
@@ -133,6 +140,83 @@ describe('projectEvaluationExec', () => {
     } finally {
       delete process.env.CROWD_PROJECT_EVALUATION_DAILY_LLM_CAP
     }
+  })
+
+  describe('precheck flag', () => {
+    const body = {
+      id: 'catalog-1',
+      repoUrl: 'https://github.com/foo/bar',
+      repoName: 'bar',
+      projectSlug: 'foo',
+      lfCriticalityScore: null,
+      source: null,
+    }
+    const onboardResponse: IProjectEvaluationResponse = {
+      outcome: 'onboard',
+      evaluationResult: 'true',
+      evaluationReason: null,
+      metrics: null,
+    }
+
+    beforeEach(() => {
+      vi.mocked(evaluateProject).mockReset().mockResolvedValue(onboardResponse)
+      vi.mocked(runPrecheck).mockReset()
+    })
+
+    it('does not run the pre-check when the flag is absent', async () => {
+      const { req, res, json } = mockReqRes(body)
+
+      await projectEvaluationExec(req, res)
+
+      expect(runPrecheck).not.toHaveBeenCalled()
+      expect(evaluateProject).toHaveBeenCalledTimes(1)
+      expect(json).toHaveBeenCalledWith(onboardResponse)
+    })
+
+    it('does not run the pre-check when the flag is false', async () => {
+      const { req, res } = mockReqRes({ ...body, precheck: false })
+
+      await projectEvaluationExec(req, res)
+
+      expect(runPrecheck).not.toHaveBeenCalled()
+      expect(evaluateProject).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips without calling the LLM when the pre-check matches', async () => {
+      vi.mocked(runPrecheck).mockResolvedValue(PRECHECK_SKIP_REASONS.lfOwner)
+      const { req, res, status, json } = mockReqRes({ ...body, precheck: true })
+
+      await projectEvaluationExec(req, res)
+
+      expect(runPrecheck).toHaveBeenCalledWith(expect.anything(), body.repoUrl)
+      expect(evaluateProject).not.toHaveBeenCalled()
+      expect(status).toHaveBeenCalledWith(200)
+      expect(json).toHaveBeenCalledWith({
+        outcome: 'skip',
+        evaluationResult: 'false',
+        evaluationReason: PRECHECK_SKIP_REASONS.lfOwner,
+        metrics: null,
+      })
+    })
+
+    it('falls through to the LLM evaluation when the pre-check does not match', async () => {
+      vi.mocked(runPrecheck).mockResolvedValue(null)
+      const { req, res, json } = mockReqRes({ ...body, precheck: true })
+
+      await projectEvaluationExec(req, res)
+
+      expect(runPrecheck).toHaveBeenCalledTimes(1)
+      expect(evaluateProject).toHaveBeenCalledTimes(1)
+      expect(json).toHaveBeenCalledWith(onboardResponse)
+    })
+
+    it('lets a pre-check failure propagate instead of masking it as a result', async () => {
+      vi.mocked(runPrecheck).mockRejectedValue(new Error('db down'))
+      const { req, res } = mockReqRes({ ...body, precheck: true })
+
+      await expect(projectEvaluationExec(req, res)).rejects.toThrow('db down')
+      expect(evaluateProject).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects a request missing required fields', async () => {
