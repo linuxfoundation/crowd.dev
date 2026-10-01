@@ -1,8 +1,12 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import GitConnect from './components/git-connect.vue';
-import GitDropdown from './components/git-dropdown.vue';
-import GitParams from './components/git-params.vue';
-import LfGitSettingsDrawer from './components/git-settings-drawer.vue';
+
+const GitConnect = defineAsyncComponent(() => import('./components/git-connect.vue'));
+const GitDropdown = defineAsyncComponent(() => import('./components/git-dropdown.vue'));
+const GitParams = defineAsyncComponent(() => import('./components/git-params.vue'));
+const LfGitSettingsDrawer = defineAsyncComponent(
+  () => import('./components/git-settings-drawer.vue'),
+);
 
 const image = new URL('@/assets/images/integrations/git.png', import.meta.url).href;
 

@@ -1,9 +1,13 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import LfLinkedinSettingsDrawer from '@/config/integrations/linkedin/components/linkedin-settings-drawer.vue';
-import LinkedinConnect from './components/linkedin-connect.vue';
-import LinkedinParams from './components/linkedin-params.vue';
-import LinkedinAction from './components/linkedin-action.vue';
-import LinkedinDropdown from './components/linkedin-dropdown.vue';
+
+const LfLinkedinSettingsDrawer = defineAsyncComponent(
+  () => import('@/config/integrations/linkedin/components/linkedin-settings-drawer.vue'),
+);
+const LinkedinConnect = defineAsyncComponent(() => import('./components/linkedin-connect.vue'));
+const LinkedinParams = defineAsyncComponent(() => import('./components/linkedin-params.vue'));
+const LinkedinAction = defineAsyncComponent(() => import('./components/linkedin-action.vue'));
+const LinkedinDropdown = defineAsyncComponent(() => import('./components/linkedin-dropdown.vue'));
 
 const image = new URL('@/assets/images/integrations/linkedin.png', import.meta.url).href;
 

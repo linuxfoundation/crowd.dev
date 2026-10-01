@@ -1,9 +1,13 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import GithubConnect from './components/github-connect.vue';
-import GithubStatus from './components/github-status.vue';
-import GithubAction from './components/github-action.vue';
-import GithubParams from './components/github-params.vue';
-import GithubMappedRepos from './components/github-mapped-repos.vue';
+
+const GithubConnect = defineAsyncComponent(() => import('./components/github-connect.vue'));
+const GithubStatus = defineAsyncComponent(() => import('./components/github-status.vue'));
+const GithubAction = defineAsyncComponent(() => import('./components/github-action.vue'));
+const GithubParams = defineAsyncComponent(() => import('./components/github-params.vue'));
+const GithubMappedRepos = defineAsyncComponent(
+  () => import('./components/github-mapped-repos.vue'),
+);
 
 const image = new URL('@/assets/images/integrations/github.png', import.meta.url).href;
 
@@ -11,7 +15,8 @@ const github: IntegrationConfig = {
   key: 'github',
   name: 'GitHub',
   image,
-  description: 'Sync profile information, star counts, forks, pull requests, issues, and discussions.',
+  description:
+    'Sync profile information, star counts, forks, pull requests, issues, and discussions.',
   link: 'https://docs.linuxfoundation.org/lfx/community-management/integrations/github-integration',
   connectComponent: GithubConnect,
   statusComponent: GithubStatus,

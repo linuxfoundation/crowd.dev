@@ -1,6 +1,8 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import DiscordConnect from './components/discord-connect.vue';
-import DiscordParams from './components/discord-params.vue';
+
+const DiscordConnect = defineAsyncComponent(() => import('./components/discord-connect.vue'));
+const DiscordParams = defineAsyncComponent(() => import('./components/discord-params.vue'));
 
 const image = new URL('@/assets/images/integrations/discord.png', import.meta.url).href;
 
