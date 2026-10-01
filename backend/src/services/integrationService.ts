@@ -87,6 +87,10 @@ import { getIntegrationRunWorkerEmitter } from '../serverless/utils/queueService
 import { ConfluenceIntegrationData } from '../types/confluenceTypes'
 import { JiraIntegrationData } from '../types/jiraTypes'
 import { CollectionService } from './collectionService'
+import {
+  findProjectIdsGettingFirstRepository,
+  startDocsReadinessForProjects,
+} from './docsReadinessOnFirstRepoLink'
 import { IServiceOptions } from './IServiceOptions'
 
 const discordToken = DISCORD_CONFIG.token || DISCORD_CONFIG.token2
@@ -3270,6 +3274,7 @@ export default class IntegrationService {
       const qx = SequelizeRepository.getQueryExecutor(txOptions)
       const mappedUrls = Object.keys(mapping)
       const mappedUrlSet = new Set(mappedUrls)
+      const firstLinkedProjectIds = new Set<string>()
 
       const [existingMappedRepos, activeIntegrationRepos] = await Promise.all([
         getRepositoriesByUrl(qx, mappedUrls, true),
@@ -3324,6 +3329,8 @@ export default class IntegrationService {
           forkedFromMap,
         )
         if (payloads.length > 0) {
+          const firstLinked = await findProjectIdsGettingFirstRepository(qx, payloads)
+          firstLinked.forEach((id) => firstLinkedProjectIds.add(id))
           await insertRepositories(qx, payloads)
           this.options.log.info(`Inserted ${payloads.length} repos into public.repositories`)
         }
@@ -3342,6 +3349,8 @@ export default class IntegrationService {
           forkedFromMap,
         )
         if (restorePayloads.length > 0) {
+          const firstLinked = await findProjectIdsGettingFirstRepository(qx, restorePayloads)
+          firstLinked.forEach((id) => firstLinkedProjectIds.add(id))
           await restoreRepositories(qx, restorePayloads)
           this.options.log.info(`Restored ${restorePayloads.length} repos in public.repositories`)
         }
@@ -3363,9 +3372,15 @@ export default class IntegrationService {
         )
       }
 
+      const startDocsReadiness = () =>
+        startDocsReadinessForProjects(this.options, [...firstLinkedProjectIds])
+
       // Only commit if we created the transaction ourselves
       if (!existingTransaction) {
         await SequelizeRepository.commitTransaction(transaction)
+        await startDocsReadiness()
+      } else if (firstLinkedProjectIds.size > 0) {
+        existingTransaction.afterCommit(startDocsReadiness)
       }
     } catch (err) {
       this.options.log.error(err, 'Error while mapping unified repositories!')
