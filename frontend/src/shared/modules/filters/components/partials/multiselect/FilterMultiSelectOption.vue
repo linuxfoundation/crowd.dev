@@ -20,7 +20,7 @@ import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 const props = withDefaults(defineProps<{
   modelValue: string[],
   value: string,
-  checkbox: boolean
+  checkbox?: boolean
 }>(), { checkbox: true });
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string[]): void}>();
