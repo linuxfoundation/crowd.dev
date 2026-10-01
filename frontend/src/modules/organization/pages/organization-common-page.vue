@@ -1,7 +1,6 @@
 <template>
   <div class="pt-8">
     <lf-filter
-      ref="organizationFilter"
       v-model="filters"
       :config="organizationCommonFilters"
       :search-config="organizationSearchFilter"

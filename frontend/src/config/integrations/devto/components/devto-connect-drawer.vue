@@ -34,7 +34,7 @@
             >settings</a>
             page.
           </div>
-          <el-input ref="focus" v-model="form.apiKey" type="password" @blur="onBlurAPIKey()">
+          <el-input v-model="form.apiKey" type="password" @blur="onBlurAPIKey()">
             <template #suffix>
               <div
                 v-if="isValidating"

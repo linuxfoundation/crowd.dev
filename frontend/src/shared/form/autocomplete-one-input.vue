@@ -1,6 +1,5 @@
 <template>
   <el-select
-    ref="input"
     :disabled="disabled"
     :loading="loading"
     :remote-method="handleSearch"

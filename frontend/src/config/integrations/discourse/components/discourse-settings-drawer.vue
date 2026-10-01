@@ -43,7 +43,6 @@
             Hostname of your community instance in Discourse.
           </div>
           <el-input
-            ref="focus"
             v-model="form.discourseURL"
             placeholder="https://community.lfx.dev"
             @blur="onBlurDiscourseURL()"
@@ -64,7 +63,6 @@
             Create a new API key in your Discourse account's settings page. You must be an admin user to connect your acount. <a href="https://docs.crowd.dev/docs/discourse-integration#api-key" target="_blank" rel="noopener noreferrer" class="hover:underline">Read more</a>
           </div>
           <el-input
-            ref="focus"
             v-model="form.apiKey"
             type="password"
             @blur="onBlurAPIKey()"

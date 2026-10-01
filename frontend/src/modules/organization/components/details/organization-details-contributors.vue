@@ -1,6 +1,5 @@
 <template>
   <lf-filter
-    ref="memberFilter"
     v-model="filters"
     :config="filterConfig"
     :search-config="memberSearchFilter"

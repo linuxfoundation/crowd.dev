@@ -119,7 +119,6 @@
                 <div class="-m-2">
                   <div class="border-b border-gray-100 p-2">
                     <el-input
-                      ref="queryInput"
                       v-model="dropdownSearch"
                       placeholder="Search..."
                       class="filter-dropdown-search"
