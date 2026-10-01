@@ -38,6 +38,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0029](./0029-typescript-project-references.md)                | TypeScript project references                                                                        | accepted | 2026-09-22 |
 | [ADR-0030](./0030-docs-readiness-worker-architecture.md)           | Docs readiness worker — architecture                                                                 | accepted | 2026-09-23 |
 | [ADR-0031](./0031-frontend-modernization.md)                       | Frontend modernization decisions                                                                     | accepted | 2026-09-29 |
+| [ADR-0032](./0032-frontend-eslint-flat-config.md)                  | Frontend ESLint 10 flat config with frozen Airbnb values                                             | accepted | 2026-10-01 |
 
 ## Why ADRs?
 
