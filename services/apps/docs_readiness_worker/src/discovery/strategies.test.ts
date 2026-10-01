@@ -2199,6 +2199,57 @@ describe('serpStrategy', () => {
   })
 })
 
+describe('serpStrategy stored result', () => {
+  const ctx = {
+    name: 'proj',
+    slug: 'proj',
+    website: null,
+    websiteShared: false,
+    repos: [],
+    githubToken: null,
+    serpApiKey: 'key123',
+    storedSerpUrl: 'https://docs.proj.dev/',
+  }
+  const searchRoute: [string, () => Response] = [
+    'https://serpapi.com/search.json',
+    () =>
+      Response.json({
+        organic_results: [{ link: 'https://proj.readthedocs.io/en/latest/', title: 'proj docs' }],
+      }),
+  ]
+
+  it('reuses a live stored URL without searching', async () => {
+    const fetchMock = routeFetch([['https://docs.proj.dev', html]])
+
+    expect(await serpStrategy(ctx)).toEqual([
+      { url: 'https://docs.proj.dev/', method: 'serp', confidence: 'low', livenessOk: true },
+    ])
+    expect(
+      fetchMock.mock.calls.some(([url]) => new URL(String(url)).hostname === 'serpapi.com'),
+    ).toBe(false)
+  })
+
+  it('replaces a stored URL that returns 404 with a fresh search result', async () => {
+    routeFetch([
+      ['https://docs.proj.dev', notFound],
+      searchRoute,
+      ['https://proj.readthedocs.io/en/latest/', html],
+    ])
+
+    expect((await serpStrategy(ctx)).map((c) => c.url)).toEqual([
+      'https://proj.readthedocs.io/en/latest/',
+    ])
+  })
+
+  it('searches as before when no URL is stored', async () => {
+    routeFetch([searchRoute, ['https://proj.readthedocs.io/en/latest/', html]])
+
+    expect((await serpStrategy({ ...ctx, storedSerpUrl: null })).map((c) => c.url)).toEqual([
+      'https://proj.readthedocs.io/en/latest/',
+    ])
+  })
+})
+
 describe('repoUrl', () => {
   const base = {
     name: 'Marquez',

@@ -7,6 +7,7 @@ import { resolveDocsUrl } from './discovery'
 
 const mocks = vi.hoisted(() => ({
   findActiveProjectDocOverride: vi.fn(),
+  findProjectDocDiscovery: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
   findSharedDocsUrls: vi.fn(),
   findEnabledRepositoriesForProject: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 
 vi.mock('@crowd/data-access-layer', () => ({
   findActiveProjectDocOverride: mocks.findActiveProjectDocOverride,
+  findProjectDocDiscovery: mocks.findProjectDocDiscovery,
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
   findSharedDocsUrls: mocks.findSharedDocsUrls,
   findEnabledRepositoriesForProject: mocks.findEnabledRepositoriesForProject,
@@ -59,6 +61,7 @@ vi.mock('../discovery/docsValidatorClient', () => ({
 }))
 
 beforeEach(() => {
+  mocks.findProjectDocDiscovery.mockResolvedValue(null)
   mocks.findSharedDocsUrls.mockResolvedValue([])
 })
 
@@ -157,6 +160,7 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: null,
       serpApiKey: null,
+      storedSerpUrl: null,
       docsValidator: null,
       deadlineAt: expect.any(Number),
     })
@@ -211,8 +215,50 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
+      storedSerpUrl: null,
       docsValidator: null,
       deadlineAt: expect.any(Number),
+    })
+  })
+
+  describe('stored search result', () => {
+    async function storedUrlPassedToDiscovery(stored: unknown) {
+      mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+      mocks.findProjectDocDiscovery.mockResolvedValue(stored)
+      mocks.findProjectForDocsDiscovery.mockResolvedValue({
+        id: 'project-1',
+        slug: 'proj',
+        name: 'Project',
+        website: null,
+        websiteSharedWith: [],
+      })
+      mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+      mocks.discoverDocs.mockResolvedValue({
+        docsUrl: null,
+        discoveryMethod: null,
+        confidence: null,
+        allCandidates: [],
+      })
+      await resolveDocsUrl('project-1')
+      return mocks.discoverDocs.mock.calls[0][0].storedSerpUrl
+    }
+
+    test('passes the stored URL when the previous method was serp', async () => {
+      expect(
+        await storedUrlPassedToDiscovery({
+          docsUrl: 'https://docs.proj.dev',
+          discoveryMethod: 'serp',
+        }),
+      ).toBe('https://docs.proj.dev')
+    })
+
+    test('ignores a stored URL from any other method', async () => {
+      expect(
+        await storedUrlPassedToDiscovery({
+          docsUrl: 'https://docs.proj.dev',
+          discoveryMethod: 'docs-path',
+        }),
+      ).toBeNull()
     })
   })
 

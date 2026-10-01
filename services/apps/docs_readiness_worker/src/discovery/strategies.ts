@@ -42,6 +42,8 @@ export interface IDiscoveryContext {
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
+  // Previous search pick; reused while live so results stay stable between runs.
+  storedSerpUrl?: string | null
   // Null or absent turns off the language-model check of search and README picks.
   docsValidator?: DocsPickValidator | null
   // Epoch ms by which discovery must finish; validation is skipped when little time is left.
@@ -518,6 +520,10 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
   }
 
   try {
+    if (ctx.storedSerpUrl && (await isLiveDocs(ctx.storedSerpUrl))) {
+      return [candidate(ctx.storedSerpUrl, 'serp', true)]
+    }
+
     const query = encodeURIComponent(`${ctx.name} documentation`)
     const response = await fetch(
       `https://serpapi.com/search.json?q=${query}&num=5&api_key=${ctx.serpApiKey}`,
