@@ -32,5 +32,5 @@ Run these commands from `frontend/`, not the repository root.
 - [ ] `npm run typecheck` error count: before `___`, after `___` (must not rise)
 - [ ] `npm run build:production` passes
 - [ ] Screenshots for UI changes (side by side for Element Plus → ui-kit swaps)
-- [ ] Bundle size delta for dependency bumps (`npm run analyze`, once the script exists)
+- [ ] Bundle size delta for dependency bumps (`npm run analyze`)
 - [ ] Other open tickets touching the same files: `___`

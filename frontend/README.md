@@ -81,6 +81,7 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `build:localhost` | `vite build --mode localhost` |
 | `build:production` | `vite build --mode prod` |
 | `build:staging` | `vite build --mode staging` |
+| `analyze` | `ANALYZE=1 vite build --mode localhost` — also writes the bundle treemap to `analyse.html` (gitignored) |
 | `docs:tailwind` | Opens the Tailwind config viewer |
 | `docs:storybook` | Runs Storybook dev server on port 6006 |
 | `docs:storybook:build` | Builds the static Storybook site |
