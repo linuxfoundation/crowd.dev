@@ -2220,7 +2220,9 @@ describe('serpStrategy stored result', () => {
     expect(await serpStrategy(ctx)).toEqual([
       { url: 'https://docs.proj.dev/', method: 'serp', confidence: 'low', livenessOk: true },
     ])
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('serpapi.com'))).toBe(false)
+    expect(
+      fetchMock.mock.calls.some(([url]) => new URL(String(url)).hostname === 'serpapi.com'),
+    ).toBe(false)
   })
 
   it('replaces a stored URL that returns 404 with a fresh search result', async () => {
