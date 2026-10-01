@@ -1,6 +1,0 @@
-dist
-storybook-static
-coverage
-node_modules
-tailwind.config.js
-components.d.ts
