@@ -23,7 +23,8 @@ import { OnboardAndUpdateProjectOutcome } from '../types'
 import {
   buildErroredDiscussionAlert,
   buildOnboardedDiscussionAlert,
-  isGithubDiscussionRequest,
+  buildOnboardedDiscussionTitle,
+  groupGithubDiscussionRequestsBySource,
   isReviewAlertRequest,
 } from './discussionRequestAlert'
 import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
@@ -134,23 +135,21 @@ export async function onboardAndUpdateProject(
   return 'onboarded'
 }
 
-export async function notifyOnboardedHumanRequest(project: IDbProjectCatalog): Promise<void> {
-  if (!isGithubDiscussionRequest(project)) {
-    return
-  }
-
-  const sent = await sendSlackNotificationAsync(
-    SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
-    SlackPersona.SUCCESS_ANNOUNCER,
-    `Onboarded from GitHub discussion — ${project.repoName}`,
-    buildOnboardedDiscussionAlert(project),
-  )
-
-  if (!sent) {
-    log.warn(
-      { id: project.id, repoUrl: project.repoUrl },
-      'Onboarded-discussion Slack alert was not sent.',
+export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]): Promise<void> {
+  for (const group of groupGithubDiscussionRequestsBySource(projects)) {
+    const sent = await sendSlackNotificationAsync(
+      SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+      SlackPersona.SUCCESS_ANNOUNCER,
+      buildOnboardedDiscussionTitle(group),
+      buildOnboardedDiscussionAlert(group),
     )
+
+    if (!sent) {
+      log.warn(
+        { ids: group.map((project) => project.id), sourceUrl: group[0].sourceUrl },
+        'Onboarded-discussion Slack alert was not sent.',
+      )
+    }
   }
 }
 

@@ -7,6 +7,8 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import type { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
+
 import type * as activities from '../activities'
 import type { IOnboardProjectsInput } from '../types'
 
@@ -55,6 +57,7 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
   let skipped = 0
   let racedOut = 0
   let failed = 0
+  const onboardedProjects: IDbProjectCatalog[] = []
 
   try {
     const projects = await fetchActivities.fetchProjectsPendingOnboarding(batchSize)
@@ -71,14 +74,7 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
           const outcome = await onboardActivities.onboardAndUpdateProject(project)
           if (outcome === 'onboarded') {
             succeeded++
-            try {
-              await notifyActivities.notifyOnboardedHumanRequest(project)
-            } catch (notifyErr) {
-              // A failed alert must never turn a successful onboarding into a batch failure.
-              log.error(
-                `Failed to send onboarded-request alert for project id=${project.id}: ${String(notifyErr)}`,
-              )
-            }
+            onboardedProjects.push(project)
           } else {
             skipped++
             if (outcome === 'catalog-changed') {
@@ -145,5 +141,14 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
       }),
     )
     throw err
+  } finally {
+    await CancellationScope.nonCancellable(async () => {
+      try {
+        await notifyActivities.notifyOnboardedHumanRequests(onboardedProjects)
+      } catch (notifyErr) {
+        // A failed alert must never turn a successful onboarding into a batch failure.
+        log.error(`Failed to send onboarded-request alerts: ${String(notifyErr)}`)
+      }
+    })
   }
 }
