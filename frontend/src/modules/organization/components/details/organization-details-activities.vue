@@ -49,7 +49,7 @@ const loadMore = () => {
   timeline.value.fetchActivities();
 };
 
-// eslint-disable-next-line vue/define-macros-order -- the plain <script> block below counts as last
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });

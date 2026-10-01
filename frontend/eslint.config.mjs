@@ -111,10 +111,6 @@ export default [
         'no-useless-computed-key': ['error', { enforceForClassMembers: false }],
         'vue/no-v-html': 'off',
         'vue/no-required-prop-with-default': ['error', { autofix: true }],
-        // New in eslint-plugin-vue 10's recommended preset; off to keep the enabled rule set unchanged.
-        'vue/no-deprecated-delete-set': 'off',
-        'vue/no-deprecated-model-definition': 'off',
-        'vue/valid-define-options': 'off',
         'import/prefer-default-export': 'off',
         'import/no-named-as-default': 'off',
         'class-methods-use-this': 'off',
