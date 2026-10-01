@@ -19,12 +19,12 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { mapActions } from '@/shared/vuex/vuex.helpers';
 
-const { doLinkedinConnect } = mapActions('integration');
-
 const props = defineProps<{
   segmentId: string;
   grandparentId: string;
 }>();
+
+const { doLinkedinConnect } = mapActions('integration');
 
 const callOnboard = useThrottleFn(async () => {
   await doLinkedinConnect({

@@ -83,6 +83,19 @@ import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 
+const props = defineProps({
+  selectedSubproject: {
+    type: Object,
+    default: () => {},
+  },
+  selectedSubprojectParent: {
+    type: Object,
+    default: () => {},
+  },
+});
+
+const emit = defineEmits(['onChange']);
+
 const SearchIcon = h(
   'i', // type
   { class: 'fa-light fa-magnifying-glass c-icon' }, // props
@@ -100,18 +113,6 @@ const ArrowUpIcon = h(
   { class: 'fa-light fa-chevron-up c-icon' }, // props
   [],
 );
-
-const emit = defineEmits(['onChange']);
-const props = defineProps({
-  selectedSubproject: {
-    type: Object,
-    default: () => {},
-  },
-  selectedSubprojectParent: {
-    type: Object,
-    default: () => {},
-  },
-});
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);

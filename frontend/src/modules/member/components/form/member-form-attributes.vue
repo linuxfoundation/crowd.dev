@@ -186,19 +186,6 @@ import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const CalendarIcon = h(
-  'i', // type
-  {
-    class:
-      'fa-calendar fa-light text-base leading-none text-gray-400',
-  }, // props
-  [],
-);
-
-const emit = defineEmits([
-  'update:modelValue',
-  'openDrawer',
-]);
 const props = defineProps({
   attributes: {
     type: Array,
@@ -217,6 +204,20 @@ const props = defineProps({
     default: () => {},
   },
 });
+
+const emit = defineEmits([
+  'update:modelValue',
+  'openDrawer',
+]);
+
+const CalendarIcon = h(
+  'i', // type
+  {
+    class:
+      'fa-calendar fa-light text-base leading-none text-gray-400',
+  }, // props
+  [],
+);
 
 const customAttributes = computed(() => props.attributes
   .filter((attribute) => {

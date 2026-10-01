@@ -238,14 +238,14 @@ import type {
 } from '../models/collection.model';
 import { COLLECTIONS_SERVICE } from '../services/collections.service';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
-  (e: 'onCollectionEdited'): void;
-  (e: 'onCollectionCreated'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   collection?: CollectionModel;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'onCollectionEdited'): void;
+  (e: 'onCollectionCreated'): void;
 }>();
 
 const activeTab = ref('details');

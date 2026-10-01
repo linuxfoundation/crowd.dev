@@ -438,24 +438,6 @@ import AppMemberBadge from '../member-badge.vue';
 import AppMemberDropdownContent from '../member-dropdown-content.vue';
 import AppMemberSentiment from '../member-sentiment.vue';
 
-const { trackEvent } = useProductTracking();
-const store = useStore();
-const table = ref(null);
-const scrollbarRef = ref();
-const tableBodyRef = ref();
-const tableHeaderRef = ref();
-const isScrollbarVisible = ref(false);
-const isTableHovered = ref(false);
-const isCursorDown = ref(false);
-
-const isMergeDialogOpen = ref(null);
-
-const showMemberDropdownPopover = ref(false);
-const actionBtnRefs = ref({});
-const selectedActionMember = ref(null);
-
-const isFindGithubDrawerOpen = ref(null);
-
 const props = defineProps({
   hasIntegrations: {
     type: Boolean,
@@ -481,8 +463,24 @@ const props = defineProps({
     }),
   },
 });
-
 const emit = defineEmits(['onAddMember', 'update:pagination']);
+const { trackEvent } = useProductTracking();
+const store = useStore();
+const table = ref(null);
+const scrollbarRef = ref();
+const tableBodyRef = ref();
+const tableHeaderRef = ref();
+const isScrollbarVisible = ref(false);
+const isTableHovered = ref(false);
+const isCursorDown = ref(false);
+
+const isMergeDialogOpen = ref(null);
+
+const showMemberDropdownPopover = ref(false);
+const actionBtnRefs = ref({});
+const selectedActionMember = ref(null);
+
+const isFindGithubDrawerOpen = ref(null);
 
 const memberStore = useMemberStore();
 const {

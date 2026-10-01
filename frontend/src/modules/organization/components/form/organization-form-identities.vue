@@ -89,8 +89,6 @@ import { lfIdentities } from '@/config/identities';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { OrganizationIdentityType } from '../../types/Organization';
 
-const emit = defineEmits(['update:modelValue', 'unmerge']);
-
 const props = defineProps({
   modelValue: {
     type: Object,
@@ -105,6 +103,8 @@ const props = defineProps({
     default: false,
   },
 });
+
+const emit = defineEmits(['update:modelValue', 'unmerge']);
 
 // TODO: move this to identities config
 const identitiesForm = {

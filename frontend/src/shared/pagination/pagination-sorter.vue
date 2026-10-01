@@ -36,11 +36,6 @@
 import { computed } from 'vue';
 import pluralize from 'pluralize';
 
-const emit = defineEmits([
-  'changeSorter',
-  'update:modelValue',
-  'export',
-]);
 const props = defineProps({
   currentPage: {
     type: Number,
@@ -80,7 +75,11 @@ const props = defineProps({
     default: () => false,
   },
 });
-
+const emit = defineEmits([
+  'changeSorter',
+  'update:modelValue',
+  'export',
+]);
 const model = computed({
   get() {
     if (

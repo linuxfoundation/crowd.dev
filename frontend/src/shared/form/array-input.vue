@@ -31,8 +31,6 @@ import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const emit = defineEmits(['update:modelValue']);
-
 const props = defineProps({
   modelValue: {
     type: String,
@@ -55,6 +53,8 @@ const props = defineProps({
     default: '',
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
 
 const rules = {
   required,

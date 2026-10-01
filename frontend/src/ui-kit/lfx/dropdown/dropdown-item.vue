@@ -44,10 +44,10 @@ const props = defineProps<{
   type?: DropdownItemType;
 }>();
 
-const attrs = useAttrs();
-
 const emit = defineEmits<{(e: 'click', value: { value?: string; label?: string; [key: string]: any }): void;
 }>();
+
+const attrs = useAttrs();
 
 // Determine if the item is currently selected
 const isSelected = computed(() => props.selected);

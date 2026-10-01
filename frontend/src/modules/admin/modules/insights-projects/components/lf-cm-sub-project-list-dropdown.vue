@@ -119,6 +119,12 @@ import type { Project } from '@/modules/lf/segments/types/Segments';
 
 import { ToastStore } from '@/shared/message/notification';
 
+const props = defineProps<{
+  selectedProjectId: string;
+}>();
+
+const emit = defineEmits<{(e: 'onChange', value: any): void }>();
+
 const SearchIcon = h(
   'i', // type
   { class: 'fa-light fa-magnifying-glass c-icon' }, // props
@@ -136,12 +142,6 @@ const ArrowUpIcon = h(
   { class: 'fa-light fa-chevron-up c-icon' }, // props
   [],
 );
-
-const emit = defineEmits<{(e: 'onChange', value: any): void }>();
-
-const props = defineProps<{
-  selectedProjectId: string;
-}>();
 
 const inputRef = ref(null);
 const searchQuery = ref('');
