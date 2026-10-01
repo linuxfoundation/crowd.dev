@@ -71,6 +71,8 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `lint` | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`) |
 | `lint:fix` | Same as `lint`, with `--fix` |
 | `typecheck` | `vue-tsc --noEmit -p tsconfig.json`. Exits non-zero while existing type errors remain; CI does not run it yet |
+| `lint:cycles` | Fails on any cycle madge reports that is not listed in `cycles-allowlist.json`, and on any listed cycle madge no longer reports |
+| `lint:cycles:update` | Regenerates `cycles-allowlist.json`; run it after breaking a cycle and commit the result |
 | `format` | Prettier `--write` over the frontend (`.vue` files are ignored by Prettier) |
 | `format:check` | Prettier `--check`, without writing |
 | `build` | `vite build` (Vite's default `production` mode); the Dockerfile and CI use `build:production` |
@@ -88,18 +90,19 @@ All scripts run from `frontend/` via `npm run <script>`.
 | `docs:storybook:ci` | Same as `docs:storybook:build`, with `--quiet` for less log output |
 | `docs` | Runs `docs:tailwind` and `docs:storybook` together |
 
-> This table is generated against the scripts that exist in `package.json` right now. Other
-> tickets in the CM-1480 epic (`lint:cycles`)
-> add scripts that aren't in `package.json` yet — whichever of those tickets lands, update this
-> table in the same PR.
-
 ## Checks before you push
 
 - `npm run lint` — must pass with 0 warnings.
+- `npm run lint:cycles` — must pass; break a new circular import instead of adding it to
+  `cycles-allowlist.json`. madge lists cycles from a single depth-first walk, so it does not
+  enumerate every cycle: a new import between modules that are already in cycles can slip through,
+  and removing an import can re-route other entries. Run `npm run lint:cycles:update` and review
+  the diff.
 - `npm run build:localhost` (or `build:staging`/`build:production`) — must succeed.
 
-CI (`.github/workflows/frontend-checks.yml`) runs `npm run lint` and a production build on pull
-requests that touch `frontend/**`. It does not yet run a type check.
+CI (`.github/workflows/frontend-checks.yml`) runs `npm run lint`, `npm run lint:cycles`, a
+production build and a Storybook build on pull requests that touch `frontend/**`. It does not yet
+run a type check.
 
 The root pre-commit hook (`.husky/pre-commit`) runs `npx lint-staged` inside `frontend/` whenever
 a staged file matches `frontend/.+\.(js|ts|vue|scss|html|css|json|md|yml|yaml)$`. `lint-staged`

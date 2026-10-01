@@ -32,6 +32,10 @@ jobs:
         run: npm ci && npm run lint
         working-directory: frontend
 
+      - name: Check circular imports
+        run: npm run lint:cycles
+        working-directory: frontend
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
