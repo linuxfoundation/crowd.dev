@@ -29,7 +29,7 @@
 Run these commands from `frontend/`, not the repository root.
 
 - [ ] `npm run lint` passes with 0 warnings
-- [ ] `npm run typecheck` error count: before `___`, after `___` (must not rise; skip until the script exists)
+- [ ] `npm run typecheck` error count: before `___`, after `___` (must not rise)
 - [ ] `npm run build:production` passes
 - [ ] Screenshots for UI changes (side by side for Element Plus → ui-kit swaps)
 - [ ] Bundle size delta for dependency bumps (`npm run analyze`, once the script exists)
