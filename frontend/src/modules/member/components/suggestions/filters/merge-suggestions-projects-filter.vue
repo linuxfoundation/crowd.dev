@@ -19,7 +19,6 @@
     <div class="border-t border-gray-100 px-2 pt-2 pb-1 w-full sticky top-0 bg-white z-10">
       <el-input
         id="filterSearch"
-        ref="searchQueryInput"
         v-model="searchQuery"
         placeholder="Search for projects"
         class="lf-filter-input filter-dropdown-search"

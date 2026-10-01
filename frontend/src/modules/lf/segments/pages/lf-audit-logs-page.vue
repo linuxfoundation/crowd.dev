@@ -1,7 +1,6 @@
 <template>
   <div class="pt-6">
     <lf-filter
-      ref="memberFilter"
       v-model="filters"
       :config="auditLogsFilters"
       :lock-relation="true"
@@ -21,7 +20,6 @@
   <div v-else>
     <lf-table
       id="audit-logs-table"
-      ref="table"
       v-loading="loading"
       type="bordered"
       class="!overflow-visible mt-4 cursor-pointer"

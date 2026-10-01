@@ -93,6 +93,7 @@ export default [
         indent: 'warn',
         'no-trailing-spaces': 'warn',
         'vue/no-unused-components': 'error',
+        'vue/no-unused-refs': 'error',
         'vue/html-closing-bracket-spacing': 'warn',
         'vue/html-indent': 'warn',
         'vue/html-self-closing': 'warn',

@@ -1,7 +1,6 @@
 <template>
   <div class="reach">
     <el-tooltip
-      ref="tooltip"
       placement="top-start"
       :disabled="reach.total === -1 || (!reach.github && !reach.twitter)"
     >

@@ -8,9 +8,7 @@
         </h2>
       </div>
       <div class="flex items-center">
-        <integrations-filter
-          ref="integrationsFilterRef"
-        />
+        <integrations-filter />
       </div>
     </div>
 

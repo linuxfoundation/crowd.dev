@@ -20,7 +20,6 @@
     <div class="mb-2 border-b border-gray-100 px-2 pt-2 pb-1 w-full">
       <el-input
         id="filterSearch"
-        ref="searchQueryInput"
         v-model="searchQuery"
         placeholder="Search..."
         class="filter-dropdown-search"

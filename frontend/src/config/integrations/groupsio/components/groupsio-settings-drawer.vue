@@ -40,7 +40,6 @@
           }"
         >
           <el-input
-            ref="focus"
             v-model="form.email"
             type="email"
             @blur="onBlurEmail()"
@@ -57,7 +56,6 @@
           }"
         >
           <el-input
-            ref="focus"
             v-model="form.password"
             :type="'password'"
             @blur="onBlurPassword()"
@@ -83,7 +81,6 @@
           label="2FA Code (optional)"
         >
           <el-input
-            ref="focus"
             v-model="form.twoFactorCode"
             type="password"
             @blur="onBlurTwoFactorCode()"

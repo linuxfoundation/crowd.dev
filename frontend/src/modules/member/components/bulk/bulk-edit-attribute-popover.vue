@@ -8,7 +8,6 @@
   >
     <div class="px-6 pb-6">
       <el-form
-        ref="formRef"
         :model="formModel"
         class="attributes-form mt-1 mb-5"
         label-position="top"
