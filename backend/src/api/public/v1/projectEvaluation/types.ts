@@ -12,6 +12,7 @@ export const projectEvaluationRequestSchema = z.object({
   projectSlug: z.string().min(1),
   lfCriticalityScore: z.number().nullable(),
   source: z.string().nullable(),
+  precheck: z.boolean().optional().default(false),
 })
 
 export type { IProjectEvaluationRequest, IProjectEvaluationResponse }
