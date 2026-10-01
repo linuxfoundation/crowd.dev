@@ -30,7 +30,7 @@ const props = defineProps<{
 
 const { updateContributor } = useContributorStore();
 
-const nameEdit = ref(null);
+const nameEdit = ref<HTMLDivElement | null>(null);
 
 const form = reactive({
   name: props.contributor.displayName,

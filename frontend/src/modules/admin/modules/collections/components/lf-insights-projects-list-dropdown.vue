@@ -69,6 +69,7 @@
 import {
   h, ref, computed, onMounted, nextTick, watch, onBeforeUnmount,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import type { InsightsProjectModel } from '@/modules/admin/modules/insights-projects/models/insights-project.model';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import type { QueryFunction } from '@tanstack/vue-query';
@@ -109,7 +110,7 @@ let scrollContainer: HTMLElement | null = null;
 
 const insightsProjectsStore = useInsightsProjectsStore();
 
-const inputRef = ref(null);
+const inputRef = ref<InputInstance | null>(null);
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 const isPopoverVisible = ref(false);

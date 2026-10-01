@@ -94,8 +94,8 @@ const editEmail = ref<OrganizationIdentity | null>(null);
 const emailList = computed(() => emails(props.organization));
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 const unmerge = (identity: any) => {
   if (identity) {
     selectedIdentity.value = identity;

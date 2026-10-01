@@ -45,7 +45,7 @@ const props = defineProps<{
 
 const route = useRoute();
 
-const timeline = ref(null);
+const timeline = ref<InstanceType<typeof AppActivityTimeline> | null>(null);
 
 const { subProjectId } = route.query;
 

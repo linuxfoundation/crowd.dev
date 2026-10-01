@@ -105,6 +105,7 @@ import { required } from '@vuelidate/validators';
 import {
   reactive, h, ref, onMounted, computed, nextTick, onBeforeUnmount, watch,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '@/modules/admin/modules/insights-projects/services/insights-projects.service';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -142,7 +143,7 @@ const ArrowUpIcon = h(
   [],
 );
 
-const inputRef = ref(null);
+const inputRef = ref<InputInstance | null>(null);
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 let scrollContainer: HTMLElement | null = null;

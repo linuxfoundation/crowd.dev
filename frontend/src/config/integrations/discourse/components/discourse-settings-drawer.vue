@@ -211,6 +211,7 @@
 import {
   computed, defineEmits, defineProps, onMounted, reactive, ref,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import discourse from '@/config/integrations/discourse/config';
 import { helpers, required, url } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
@@ -241,10 +242,10 @@ const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
-const inputRef = ref();
+const inputRef = ref<InputInstance>();
 const showToken = ref(false);
 const payloadURL = ref<string | undefined>(undefined);
-const webhookSecret = ref(undefined);
+const webhookSecret = ref<string | undefined>(undefined);
 
 const { doDiscourseConnect } = mapActions('integration');
 
@@ -278,7 +279,7 @@ const form = reactive({
 const isValidating = ref(false);
 const isAPIConnectionValid = ref(false);
 const loading = ref(false);
-const isWebhookVerifying = ref(null);
+const isWebhookVerifying = ref<boolean | null>(null);
 const isWebhookValid = ref(false);
 
 // validate that url doesn't end with a slash

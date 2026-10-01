@@ -32,7 +32,7 @@ const props = defineProps<{
 const { updateOrganization } = useOrganizationStore();
 const { displayName } = useOrganizationHelpers();
 
-const nameEdit = ref(null);
+const nameEdit = ref<HTMLDivElement | null>(null);
 
 const form = reactive({
   name: displayName(props.organization),
