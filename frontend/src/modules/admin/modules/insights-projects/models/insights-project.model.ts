@@ -1,5 +1,14 @@
 import type { CollectionModel } from '../../collections/models/collection.model';
 
+export interface InsightsProjectDocsOverride {
+  id: string;
+  docsUrl: string | null;
+}
+
+export type InsightsProjectDocsOverrideRequest =
+  | { docsUrl: string }
+  | { noDocs: true };
+
 export interface InsightsProjectModel {
   id: string;
   slug: string;
@@ -33,6 +42,7 @@ export interface InsightsProjectModel {
   widgets: string[];
   keywords: string[];
   searchKeywords: string[];
+  docsOverride?: InsightsProjectDocsOverride | null;
 }
 
 export interface InsightsProjectRequest {
