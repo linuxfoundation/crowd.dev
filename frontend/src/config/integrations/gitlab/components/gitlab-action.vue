@@ -24,6 +24,7 @@ const props = defineProps<{
 
 const isMapping = computed(() => props.integration.status === 'mapping');
 
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const isSettingsDrawerOpen = ref(isMapping.value);
 </script>
 

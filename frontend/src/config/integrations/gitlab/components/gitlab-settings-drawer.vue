@@ -294,6 +294,7 @@ const gitlabDetails = gitlab;
 
 // Form
 const form = ref<Record<string, string>>(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   allProjects.value.reduce(
     (a: Record<string, any>, b: any) => ({
       ...a,

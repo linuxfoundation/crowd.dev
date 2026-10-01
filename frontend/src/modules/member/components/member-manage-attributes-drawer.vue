@@ -172,6 +172,7 @@ const initialModel = computed(() => {
     ...(Object.keys(attributes).length && attributes),
   };
 });
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const memberModel = ref(cloneDeep(initialModel.value));
 
 const hasFormChanged = computed(() => !isEqual(
