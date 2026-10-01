@@ -18,7 +18,7 @@ Only variables prefixed `VUE_APP_` are exposed to the app via `import.meta.env` 
 
 ### 2. CI / Docker build
 
-`Dockerfile` runs `npm run build:production` with no `VUE_APP_*` variables set. `src/config.js` picks its export based on `defaultConfig.backendUrl`:
+`scripts/services/docker/Dockerfile.frontend` runs `pnpm --filter frontend run build:production` with no `VUE_APP_*` variables set. `src/config.js` picks its export based on `defaultConfig.backendUrl`:
 
 ```js
 const config = defaultConfig.backendUrl ? defaultConfig : composedConfig;
@@ -34,38 +34,38 @@ A key only reaches the running app in production if it's in **both** places: `EN
 
 ## Key reference
 
-| Key | Read in | Substituted at container start | In `.env.dist.local` | Status |
-|---|---|---|---|---|
-| `VUE_APP_AUTH0_CLIENT_ID` | `config.js` | yes | no | active |
-| `VUE_APP_AUTH0_DATABASE` | `config.js` | yes | no | active |
-| `VUE_APP_AUTH0_DOMAIN` | `config.js` | yes | no | active |
-| `VUE_APP_BACKEND_URL` | `config.js` | yes | yes | active |
-| `VUE_APP_COMMUNITY_PREMIUM` | `config.js` | yes | yes | active, owned by N-01/N-02 |
-| `VUE_APP_DATADOG_RUM_APPLICATION_ID` | `config.js` | yes | no | active |
-| `VUE_APP_DATADOG_RUM_CLIENT_TOKEN` | `config.js` | yes | no | active |
-| `VUE_APP_DISCORD_INSTALLATION_URL` | `config.js` | yes | yes | active |
-| `VUE_APP_EDITION` | `config.js` | yes | yes | active, owned by N-01/N-02 |
-| `VUE_APP_ENV` | `config.js` | yes | yes | active |
-| `VUE_APP_FRONTEND_HOST` | `config.js` | yes | yes | active |
-| `VUE_APP_FRONTEND_PROTOCOL` | `config.js` | yes | yes | active |
-| `VUE_APP_GITHUB_INSTALLATION_URL` | `config.js` | yes | yes | active |
-| `VUE_APP_HOTJAR_KEY` | `config.js` | yes | no | active, owned by N-01/N-02 |
-| `VUE_APP_INTERCOM_APP_ID` | `config.js` | yes | yes | active |
-| `VUE_APP_IS_CONFLUENCE_ENABLED` | `config.js` | no | no | local-only; always `false` in prod; N-05 (CM-1643) decides honour-or-delete |
-| `VUE_APP_IS_GERRIT_ENABLED` | `config.js` | no | no | local-only; always `false` in prod; N-05 (CM-1643) decides honour-or-delete |
-| `VUE_APP_IS_GIT_ENABLED` | `config.js` | yes | no | active |
-| `VUE_APP_IS_GROUPSIO_ENABLED` | `config.js` | yes | no | active |
-| `VUE_APP_IS_TWITTER_ENABLED` | `config.js` | yes | no | active |
-| `VUE_APP_LF_TENANT_ID` | `config.js` | yes | no | active |
-| `VUE_APP_NANGO_URL` | `config.js` | yes | yes | active |
-| `VUE_APP_SEGMENT_KEY` | `index.html` | yes | no | active; moves into `config.js` after A-05 |
-| `VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK` | `config.js` | yes | no | active, owned by N-01/N-02 |
-| `VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK` | `config.js` | yes | no | active, owned by N-01/N-02 |
-| `VUE_APP_STRIPE_PUBLISHABLE_KEY` | `config.js` | yes | no | active, owned by N-01/N-02 |
-| `VUE_APP_TEAM_USER_IDS` | `config.js` | yes | no | active |
-| `VUE_APP_TYPEFORM_ID` | `config.js` (`composedConfig` only) | no | no | local-only; scheduled for removal by N-03 (CM-1641) |
-| `VUE_APP_TYPEFORM_TITLE` | `config.js` (`composedConfig` only) | no | no | local-only; scheduled for removal by N-03 (CM-1641) |
-| `VUE_APP_WEBSOCKETS_URL` | `config.js` | yes | yes | active |
+| Key                                       | Read in                             | Substituted at container start | In `.env.dist.local` | Status                                                                      |
+| ----------------------------------------- | ----------------------------------- | ------------------------------ | -------------------- | --------------------------------------------------------------------------- |
+| `VUE_APP_AUTH0_CLIENT_ID`                 | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_AUTH0_DATABASE`                  | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_AUTH0_DOMAIN`                    | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_BACKEND_URL`                     | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_COMMUNITY_PREMIUM`               | `config.js`                         | yes                            | yes                  | active, owned by N-01/N-02                                                  |
+| `VUE_APP_DATADOG_RUM_APPLICATION_ID`      | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_DATADOG_RUM_CLIENT_TOKEN`        | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_DISCORD_INSTALLATION_URL`        | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_EDITION`                         | `config.js`                         | yes                            | yes                  | active, owned by N-01/N-02                                                  |
+| `VUE_APP_ENV`                             | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_FRONTEND_HOST`                   | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_FRONTEND_PROTOCOL`               | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_GITHUB_INSTALLATION_URL`         | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_HOTJAR_KEY`                      | `config.js`                         | yes                            | no                   | active, owned by N-01/N-02                                                  |
+| `VUE_APP_INTERCOM_APP_ID`                 | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_IS_CONFLUENCE_ENABLED`           | `config.js`                         | no                             | no                   | local-only; always `false` in prod; N-05 (CM-1643) decides honour-or-delete |
+| `VUE_APP_IS_GERRIT_ENABLED`               | `config.js`                         | no                             | no                   | local-only; always `false` in prod; N-05 (CM-1643) decides honour-or-delete |
+| `VUE_APP_IS_GIT_ENABLED`                  | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_IS_GROUPSIO_ENABLED`             | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_IS_TWITTER_ENABLED`              | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_LF_TENANT_ID`                    | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_NANGO_URL`                       | `config.js`                         | yes                            | yes                  | active                                                                      |
+| `VUE_APP_SEGMENT_KEY`                     | `index.html`                        | yes                            | no                   | active; moves into `config.js` after A-05                                   |
+| `VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK`     | `config.js`                         | yes                            | no                   | active, owned by N-01/N-02                                                  |
+| `VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK` | `config.js`                         | yes                            | no                   | active, owned by N-01/N-02                                                  |
+| `VUE_APP_STRIPE_PUBLISHABLE_KEY`          | `config.js`                         | yes                            | no                   | active, owned by N-01/N-02                                                  |
+| `VUE_APP_TEAM_USER_IDS`                   | `config.js`                         | yes                            | no                   | active                                                                      |
+| `VUE_APP_TYPEFORM_ID`                     | `config.js` (`composedConfig` only) | no                             | no                   | local-only; scheduled for removal by N-03 (CM-1641)                         |
+| `VUE_APP_TYPEFORM_TITLE`                  | `config.js` (`composedConfig` only) | no                             | no                   | local-only; scheduled for removal by N-03 (CM-1641)                         |
+| `VUE_APP_WEBSOCKETS_URL`                  | `config.js`                         | yes                            | yes                  | active                                                                      |
 
 "owned by N-01/N-02" keys stay in the entrypoint and `composedConfig` until those tickets land — not touched here.
 

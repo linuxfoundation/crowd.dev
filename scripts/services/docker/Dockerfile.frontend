@@ -1,0 +1,27 @@
+FROM node:24-alpine AS dependencies
+
+WORKDIR /usr/crowd/app
+COPY ./package.json ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+COPY ./frontend/package.json ./frontend/package.json
+RUN corepack enable && corepack prepare --activate && apk add --update --no-cache python3 build-base
+RUN pnpm install --frozen-lockfile --filter 'frontend...'
+
+COPY ./frontend/.browserslistrc ./frontend/postcss.config.js ./frontend/tailwind.config.js ./frontend/vite.config.ts ./frontend/tsconfig.json ./frontend/index.html ./frontend/
+COPY ./frontend/public ./frontend/public
+COPY ./frontend/src ./frontend/src
+COPY ./frontend/.tailwind ./frontend/.tailwind
+COPY ./frontend/config ./frontend/config
+
+FROM dependencies AS builder
+
+RUN NODE_ENV=production pnpm --filter frontend run build:production
+
+FROM nginx:1.23-alpine AS release
+
+RUN apk add --no-cache bash
+
+COPY frontend/nginx.kube.conf /etc/nginx/nginx.conf
+COPY frontend/scripts/docker-entrypoint.sh /docker-entrypoint.sh
+COPY --from=builder /usr/crowd/app/frontend/dist /etc/nginx/html
+
+ENTRYPOINT [ "/docker-entrypoint.sh" ]

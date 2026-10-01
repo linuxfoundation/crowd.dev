@@ -39,15 +39,15 @@ still applies here, including its "no comments" rule, and commits follow
 
 ## Checks
 
-- `npm run lint` — must pass with 0 warnings.
-- `npm run lint:cycles` — must pass; break new circular imports instead of
+- `pnpm run lint` — must pass with 0 warnings.
+- `pnpm run lint:cycles` — must pass; break new circular imports instead of
   adding them to `cycles-allowlist.json`.
-- `npm run build:localhost` — must succeed.
+- `pnpm run build:localhost` — must succeed.
 - The legacy-file list (`.eslint/legacy-files.json`) only shrinks, never
   grows.
 - The cycles allowlist (`cycles-allowlist.json`) never gains a cycle you
   introduced. Removing an import can re-route entries, so review the
-  `npm run lint:cycles:update` diff.
+  `pnpm run lint:cycles:update` diff.
 
 ## Ownership
 
