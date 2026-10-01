@@ -43,7 +43,6 @@ import { defineProps, defineEmits } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const emit = defineEmits(['ctaClick', 'secondaryClick']);
 defineProps({
   icon: {
     type: String,
@@ -74,6 +73,7 @@ defineProps({
     default: () => false,
   },
 });
+const emit = defineEmits(['ctaClick', 'secondaryClick']);
 </script>
 
 <style lang="scss">

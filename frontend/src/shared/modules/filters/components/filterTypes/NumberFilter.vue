@@ -49,7 +49,7 @@
         :error-messages="{
           'valueTo-minValue': `Number should be higher than “From” field`,
         }"
-        :hide-default="true"
+        hide-default
       />
     </div>
   </div>

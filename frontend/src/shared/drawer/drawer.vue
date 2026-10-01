@@ -11,7 +11,7 @@
         hasScroll ? 'has-scroll' : ''
       }`"
       :show-close="false"
-      :destroy-on-close="true"
+      destroy-on-close
       :close-on-click-modal="closeOnClickModal"
       :size="size"
       :z-index="zIndex"
@@ -79,7 +79,6 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { number } from 'yup';
 
-const emit = defineEmits(['update:modelValue', 'close']);
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -132,7 +131,7 @@ const props = defineProps({
     },
   },
 });
-
+const emit = defineEmits(['update:modelValue', 'close']);
 const model = computed({
   get() {
     return props.modelValue;

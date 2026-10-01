@@ -29,14 +29,14 @@ import useVuelidate from '@vuelidate/core';
 import { email } from '@vuelidate/validators';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const emit = defineEmits(['update:modelValue']);
-
 const props = defineProps({
   modelValue: {
     type: String,
     default: '',
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
 
 const model = computed({
   get() {

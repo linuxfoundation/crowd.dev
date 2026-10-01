@@ -2,7 +2,7 @@
   <lf-popover
     :placement="props.placement"
     :persistent="props.persistent"
-    :is-dropdown="true"
+    is-dropdown
     :z-index="props.zIndex"
   >
     <template #trigger>
@@ -27,7 +27,7 @@ import LfPopover from '@/ui-kit/popover/Popover.vue';
 import { ClickOutside as vClickOutside } from 'element-plus';
 
 const props = withDefaults(defineProps<{
-  placement: DropdownPlacement;
+  placement?: DropdownPlacement;
   width?: string;
   persistent?: boolean;
   zIndex?: number | string;

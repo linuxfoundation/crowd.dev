@@ -2,7 +2,6 @@ import Axios from 'axios';
 import { stringify } from 'qs';
 import config from '@/config';
 import { storeToRefs } from 'pinia';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
@@ -27,6 +26,7 @@ const authAxios = Axios.create({
 
 authAxios.interceptors.request.use(
   async (options) => {
+    const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
     const lsSegmentsStore = useLfSegmentsStore();
     const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
     const setOptions = { ...options };

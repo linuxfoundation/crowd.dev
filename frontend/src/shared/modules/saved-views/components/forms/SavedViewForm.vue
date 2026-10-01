@@ -32,7 +32,7 @@
               required: 'This field is required',
             }"
             label="View name"
-            :required="true"
+            required
             class="mb-0"
           >
             <el-input
@@ -96,7 +96,7 @@
                 v-model="form.filters[filter]"
                 v-model:open="openedFilter"
                 :config="allFilters[filter]"
-                :hide-remove="true"
+                hide-remove
                 class="flex-grow"
                 chip-classes="w-full !h-10"
               />
@@ -119,7 +119,6 @@
                 <div class="-m-2">
                   <div class="border-b border-gray-100 p-2">
                     <el-input
-                      ref="queryInput"
                       v-model="dropdownSearch"
                       placeholder="Search..."
                       class="filter-dropdown-search"
@@ -284,6 +283,7 @@ const form = reactive<SavedViewForm>({
   name: '',
   relation: 'and',
   filters: {},
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   settings: { ...settingsDefaultValue.value },
   sorting: {
     prop: Object.keys(props.config.sorting).length > 0 ? Object.keys(props.config.sorting)[0] : props.config.defaultView.config.order.prop,

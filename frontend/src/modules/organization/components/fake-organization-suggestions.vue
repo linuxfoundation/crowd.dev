@@ -7,7 +7,7 @@
             type="secondary"
             size="small"
             :disabled="loading || currentOffset <= 0 || !hasSuggestion"
-            :icon-only="true"
+            icon-only
             @click="fetch(currentOffset - 1)"
           >
             <lf-icon name="chevron-left" :size="16" />
@@ -16,7 +16,7 @@
             type="secondary"
             size="small"
             :disabled="loading || !hasMore"
-            :icon-only="true"
+            icon-only
             @click="fetch(currentOffset + 1)"
           >
             <lf-icon name="chevron-right" :size="16" />
@@ -64,7 +64,7 @@
           <app-organization-merge-suggestions-details
             :organization="suggestion.organization"
             :loading="loading"
-            :is-preview="true"
+            is-preview
             class="rounded-lg bg-primary-25"
           />
         </div>

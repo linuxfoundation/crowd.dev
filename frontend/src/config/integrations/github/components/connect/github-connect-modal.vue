@@ -11,7 +11,7 @@
         <lf-button
           type="secondary-ghost-light"
           size="large"
-          :icon-only="true"
+          icon-only
           class="-mt-2 -mr-2"
           @click="isModalOpen = false"
         >

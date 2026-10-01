@@ -35,7 +35,7 @@
         :integration="integrationStatus"
         :segment-id="integrationStatus.segmentId"
         :grandparent-id="integrationStatus.grandparentId"
-        :prevent-auto-open="true"
+        prevent-auto-open
       />
       <!-- Actions Column -->
       <div class="w-10">
@@ -80,14 +80,14 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import StatusDisplay from './status-display.vue';
 import type { IntegrationStatus } from '../../types/overview.types';
 
-const { trackEvent } = useProductTracking();
-
-const { doDestroy } = mapActions('integration');
 const props = defineProps<{
   integrationStatus: IntegrationStatus;
   tabKey: string
 }>();
 
+const { trackEvent } = useProductTracking();
+
+const { doDestroy } = mapActions('integration');
 const status = computed(() => getIntegrationStatus(props.integrationStatus));
 // TODO: Check with Gasper what is the best way to handle this
 const integration = computed(() => (props.integrationStatus.platform === 'github-nango'

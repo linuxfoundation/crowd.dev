@@ -48,7 +48,7 @@
         <div>
           <div class="text-small flex items-center" :class="status.actionBar.color">
             <div v-if="isInProgress && !integration.isNango">
-              <app-integration-progress-bar :progress="selectedProgress" :hide-bar="true" text-class="!text-secondary-500 text-small" />
+              <app-integration-progress-bar :progress="selectedProgress" hide-bar text-class="!text-secondary-500 text-small" />
             </div>
             <div v-else-if="hasError">
               {{ props.config.name }} integration failed to connect due to an API error.

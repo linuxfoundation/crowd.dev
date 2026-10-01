@@ -35,7 +35,7 @@
             >{{ activity.organization.displayName }}</span>
             <lf-organization-lf-member-tag
               :organization="activity.organization"
-              :only-show-icon="true"
+              only-show-icon
             />
           </div>
         </router-link>

@@ -1,7 +1,6 @@
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 
 import { ToastStore } from '@/shared/message/notification';
-import { router } from '@/router';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { storeToRefs } from 'pinia';
 import { LfRole } from '@/shared/modules/permissions/types/Roles';
@@ -326,6 +325,7 @@ export default {
       await this.fetchSubprojectsForProjectGroup(projectGroup.slug);
 
       if (sendToDashboard) {
+        const { router } = await import('@/router');
         router.push({
           name: 'member',
         });

@@ -95,7 +95,7 @@
     v-if="isProjectDialogOpen"
     v-model="isProjectDialogOpen"
     :insights-project-id="projectEditObject?.id"
-    :display-back-button="true"
+    display-back-button
     @on-insights-project-created="onInsightsProjectDialogCloseSuccess"
     @on-insights-project-edited="onInsightsProjectDialogCloseSuccess"
     @update:model-value="onInsightsProjectDialogClose"
@@ -119,11 +119,11 @@ import type { CollectionFormModel } from '../models/collection.model';
 import LfInsightsProjectAdd from '../../insights-projects/components/lf-insights-project-add.vue';
 import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 
-const insightsProjectsStore = useInsightsProjectsStore();
-
 const props = defineProps<{
   form: CollectionFormModel;
 }>();
+
+const insightsProjectsStore = useInsightsProjectsStore();
 
 const cForm = reactive<CollectionFormModel>(props.form);
 const isProjectDialogOpen = ref(false);

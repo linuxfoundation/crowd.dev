@@ -104,12 +104,12 @@ import type {
   InsightsProjectRequest,
 } from '../models/insights-project.model';
 
-const emit = defineEmits<{(e: 'onEditProject', id: string): void;
-  (e: 'onDeleteProject', id: string): void;
-}>();
-
 defineProps<{
   projects: InsightsProjectModel[];
+}>();
+
+const emit = defineEmits<{(e: 'onEditProject', id: string): void;
+  (e: 'onDeleteProject', id: string): void;
 }>();
 
 const queryClient = useQueryClient();

@@ -26,7 +26,7 @@
           </p>
           <lf-organization-lf-member-tag
             :organization="activeOrganization"
-            :only-show-icon="true"
+            only-show-icon
           />
         </div>
       </router-link>
@@ -105,7 +105,7 @@
         }}</span>
         <lf-organization-lf-member-tag
           :organization="activeOrganization"
-          :only-show-icon="true"
+          only-show-icon
         />
       </router-link>
     </div>

@@ -4,7 +4,7 @@
     title="GitLab"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -294,6 +294,7 @@ const gitlabDetails = gitlab;
 
 // Form
 const form = ref<Record<string, string>>(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   allProjects.value.reduce(
     (a: Record<string, any>, b: any) => ({
       ...a,

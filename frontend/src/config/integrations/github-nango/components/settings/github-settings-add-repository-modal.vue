@@ -28,7 +28,7 @@
 
         <lf-search
           v-model="search"
-          :lazy="true"
+          lazy
           class="!h-9"
           :placeholder="
             tab === 'repositories'

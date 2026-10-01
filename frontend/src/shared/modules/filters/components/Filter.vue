@@ -219,10 +219,6 @@ onMounted(() => {
   alignQueryUrl();
 });
 
-defineExpose({
-  alignFilterList,
-});
-
 const copyToClipboard = async () => {
   const parsedPayload = buildApiFilter(filters.value, { ...props.config, ...props.customConfig }, props.searchConfig, props.savedViewsConfig);
 
@@ -235,6 +231,11 @@ const copyToClipboard = async () => {
 
   ToastStore.success('Filters payload successfully copied to your clipboard');
 };
+
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
+defineExpose({
+  alignFilterList,
+});
 </script>
 
 <script lang="ts">

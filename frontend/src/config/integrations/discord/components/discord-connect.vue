@@ -21,12 +21,11 @@ import { Platform } from '@/shared/modules/platform/types/Platform';
 import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { useRoute } from 'vue-router';
 
-const route = useRoute();
 const props = defineProps<{
   segmentId: string | null;
   grandparentId: string | null;
 }>();
-
+const route = useRoute();
 const { doDiscordConnect } = mapActions('integration');
 
 const connectUrl = computed(() => config.discordInstallationUrl);

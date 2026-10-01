@@ -256,7 +256,7 @@
         <app-identities-vertical-list-members
           :member="member"
           :order="memberOrder.suggestions"
-          :include-emails="true"
+          include-emails
         />
       </div>
       <slot name="below" />
@@ -345,6 +345,7 @@ const formatJoinedDate = (date) => {
   return dateHelper(date).format('YYYY-MM-DD');
 };
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   more,
 });

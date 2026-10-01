@@ -13,16 +13,14 @@ import { h, ref, watch } from 'vue';
 import debounce from 'lodash/debounce';
 import { useRoute } from 'vue-router';
 
-const route = useRoute();
-const emit = defineEmits(['onChange']);
-
 defineProps({
   placeholder: {
     type: String,
     default: () => null,
   },
 });
-
+const emit = defineEmits(['onChange']);
+const route = useRoute();
 const searchInput = ref();
 
 const SearchIcon = h(

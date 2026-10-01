@@ -4,7 +4,7 @@
       <h5>
         Update {{ modelValue?.type?.replace('-', ' ') }}
       </h5>
-      <lf-button type="secondary-ghost-light" :icon-only="true" @click="isModalOpen = false">
+      <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
         <lf-icon name="xmark" />
       </lf-button>
     </div>

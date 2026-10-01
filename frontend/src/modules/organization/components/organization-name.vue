@@ -16,7 +16,7 @@
         </app-avatar-image>
         <app-avatar-new-badge
           :entity="organization"
-          :is-small-avatar="true"
+          is-small-avatar
           entity-name="organization"
         />
       </div>
@@ -40,7 +40,7 @@
         </el-tooltip>
         <lf-organization-lf-member-tag
           :organization="organization"
-          :only-show-icon="true"
+          only-show-icon
         />
       </div>
       <app-organization-badge

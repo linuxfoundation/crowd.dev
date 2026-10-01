@@ -75,7 +75,7 @@
             <app-activity-content
               class="text-sm bg-gray-50 rounded-lg p-4"
               :activity="activity"
-              :show-more="true"
+              show-more
               :display-thread="false"
             >
               <template v-if="platform?.activityDisplay?.showContentDetails" #details>

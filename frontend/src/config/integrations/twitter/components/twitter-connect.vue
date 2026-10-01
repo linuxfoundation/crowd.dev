@@ -22,14 +22,13 @@ import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const route = useRoute();
-const router = useRouter();
-
 const props = defineProps<{
   segmentId: string | null;
   grandparentId: string | null;
   integration: any;
 }>();
+const route = useRoute();
+const router = useRouter();
 
 // Only render twitter drawer and settings button, if integration has settings
 const hashtags = computed(() => props.integration?.settings?.hashtags || []);

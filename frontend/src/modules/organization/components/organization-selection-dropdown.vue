@@ -55,7 +55,6 @@ import { OrganizationService } from '@/modules/organization/organization-service
 import { useRoute } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const emit = defineEmits('update:modelValue');
 const props = defineProps({
   modelValue: {
     type: Object,
@@ -70,7 +69,7 @@ const props = defineProps({
     required: true,
   },
 });
-
+const emit = defineEmits('update:modelValue');
 const route = useRoute();
 
 const segments = ref([]);

@@ -12,7 +12,7 @@
       </div>
       <lf-button
         type="secondary-ghost-light"
-        :icon-only="true"
+        icon-only
         @click="isModalOpen = false;reset()"
       >
         <lf-icon name="xmark" />
@@ -63,7 +63,7 @@
         </lf-field>
       </article>
       <article v-if="!props.type" class="pb-5">
-        <lf-field label-text="Data type" :required="true">
+        <lf-field label-text="Data type" required>
           <el-select
             v-model="form.type"
             placeholder="Select option"
@@ -85,7 +85,7 @@
       <article class="pb-5">
         <lf-field
           label-text="Description"
-          :required="true"
+          required
           description="Please identity and describe which data attribute is incorrect or missing from this profile."
         >
           <lf-textarea

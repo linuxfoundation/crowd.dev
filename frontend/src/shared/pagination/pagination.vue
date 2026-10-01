@@ -30,26 +30,6 @@
 <script setup>
 import { defineProps, defineEmits, h } from 'vue';
 
-const ArrowPrevIcon = h(
-  'i', // type
-  {
-    class: 'fa-chevron-left fa-light text-lg leading-none',
-  }, // props
-  [],
-);
-
-const ArrowNextIcon = h(
-  'i', // type
-  {
-    class: 'fa-chevron-right fa-light text-lg leading-none',
-  }, // props
-  [],
-);
-
-const emit = defineEmits([
-  'changeCurrentPage',
-  'changePageSize',
-]);
 defineProps({
   currentPage: {
     type: Number,
@@ -73,6 +53,28 @@ defineProps({
     default: () => '',
   },
 });
+
+const emit = defineEmits([
+  'changeCurrentPage',
+  'changePageSize',
+]);
+
+const ArrowPrevIcon = h(
+  'i', // type
+  {
+    class: 'fa-chevron-left fa-light text-lg leading-none',
+  }, // props
+  [],
+);
+
+const ArrowNextIcon = h(
+  'i', // type
+  {
+    class: 'fa-chevron-right fa-light text-lg leading-none',
+  }, // props
+  [],
+);
+
 </script>
 
 <script>

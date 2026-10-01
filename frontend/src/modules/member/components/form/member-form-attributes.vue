@@ -83,12 +83,14 @@
                 clearable
                 placeholder="Select option"
               >
+                <!-- eslint-disable vue/prefer-true-attribute-shorthand -- value accepts non-boolean values -->
                 <el-option
                   key="true"
                   label="True"
                   :value="true"
                   @mouseleave="onSelectMouseLeave"
                 />
+                <!-- eslint-enable vue/prefer-true-attribute-shorthand -->
                 <el-option
                   key="false"
                   label="False"
@@ -109,10 +111,10 @@
                 "
                 placeholder="Select an option or create one"
                 input-class="w-full multi-select-field"
-                :create-if-not-found="true"
-                :collapse-tags="true"
-                :parse-model="true"
-                :are-options-in-memory="true"
+                create-if-not-found
+                collapse-tags
+                parse-model
+                are-options-in-memory
                 :options-limit="10"
               />
               <el-input
@@ -186,19 +188,6 @@ import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const CalendarIcon = h(
-  'i', // type
-  {
-    class:
-      'fa-calendar fa-light text-base leading-none text-gray-400',
-  }, // props
-  [],
-);
-
-const emit = defineEmits([
-  'update:modelValue',
-  'openDrawer',
-]);
 const props = defineProps({
   attributes: {
     type: Array,
@@ -217,6 +206,20 @@ const props = defineProps({
     default: () => {},
   },
 });
+
+const emit = defineEmits([
+  'update:modelValue',
+  'openDrawer',
+]);
+
+const CalendarIcon = h(
+  'i', // type
+  {
+    class:
+      'fa-calendar fa-light text-base leading-none text-gray-400',
+  }, // props
+  [],
+);
 
 const customAttributes = computed(() => props.attributes
   .filter((attribute) => {
@@ -275,9 +278,9 @@ const firstHiddenAttributeIndex = computed(() => customAttributes.value.findInde
 const { doUpdateCustomAttributes } = mapActions('member');
 const model = computed(() => props.modelValue);
 
-watch(model.value, (newModel) => {
+watch(model, (newModel) => {
   emit('update:modelValue', newModel);
-});
+}, { deep: true });
 
 const updateAttribute = (id, data) => {
   ConfirmDialog({

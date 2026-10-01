@@ -8,7 +8,7 @@
       <lf-search
         v-model="search"
         class="h-9 flex-grow"
-        :lazy="true"
+        lazy
         placeholder="Search projects..."
       />
       <lf-button

@@ -41,16 +41,14 @@ import { mapActions } from '@/shared/vuex/vuex.helpers';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 
-const { doDestroy } = mapActions('integration');
-const { trackEvent } = useProductTracking();
-
 const props = defineProps<{
   modelValue: boolean;
   platform: string;
   integrationId: string;
 }>();
-
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
+const { doDestroy } = mapActions('integration');
+const { trackEvent } = useProductTracking();
 
 const disconnectConfirm = ref('');
 

@@ -51,7 +51,6 @@ import AppAutocompleteOneInput from '@/shared/form/autocomplete-one-input.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const emit = defineEmits('update:modelValue');
 const props = defineProps({
   modelValue: {
     type: Object,
@@ -62,6 +61,7 @@ const props = defineProps({
     required: true,
   },
 });
+const emit = defineEmits('update:modelValue');
 const loadingMemberToMerge = ref();
 const computedMemberToMerge = computed({
   get() {

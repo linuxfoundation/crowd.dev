@@ -123,7 +123,7 @@
                   v-if="activity.title || activity.body"
                   class="text-sm bg-gray-50 rounded-lg p-4 mt-3"
                   :activity="activity"
-                  :show-more="true"
+                  show-more
                 >
                   <template
                     v-if="
@@ -231,13 +231,6 @@ import LfTimelineItem from '@/ui-kit/timeline/TimelineItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ActivityService } from '../activity-service';
 
-const SearchIcon = h(
-  'i', // type
-  { class: 'fa-magnifying-glass fa-light' }, // props
-  [],
-);
-
-const store = useStore();
 const props = defineProps({
   entityType: {
     type: String,
@@ -257,13 +250,20 @@ const props = defineProps({
   },
 });
 
+const SearchIcon = h(
+  'i', // type
+  { class: 'fa-magnifying-glass fa-light' }, // props
+  [],
+);
+
+const store = useStore();
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 
 const enabledPlatforms: IdentityConfig[] = Object.values(lfIdentities);
 
 const loading = ref(false);
-const platform = ref(null);
+const platform = ref<string | null>(null);
 const query = ref('');
 const activities = ref([]);
 const limit = ref(10);
@@ -425,6 +425,7 @@ onMounted(async () => {
   await fetchActivities();
 });
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   fetchActivities,
 });
