@@ -1,9 +1,9 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { PROBE_TIMEOUT_MS } from './http'
+import { PROBE_RETRY_BACKOFF_MS, PROBE_TIMEOUT_MS, probeRetry } from './http'
 import { discoverDocs } from './index'
 import {
   docsPath,
@@ -48,6 +48,10 @@ const htmlAt = (finalUrl: string) => {
   return response
 }
 const notFound = () => new Response('not found', { status: 404 })
+
+beforeAll(() => {
+  probeRetry.backoffMs = 0
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -2329,12 +2333,14 @@ describe('discovery time bound', () => {
   const BUDGET_MS = 200_000
 
   afterEach(() => {
+    probeRetry.backoffMs = 0
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
   it('finishes a project whose every host hangs well inside the discovery bound', async () => {
     vi.useFakeTimers()
+    probeRetry.backoffMs = PROBE_RETRY_BACKOFF_MS
     vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
       const controller = new AbortController()
       setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms)
@@ -2392,7 +2398,7 @@ describe('discovery time bound', () => {
 
     expect(result.discoveryMethod).toBe('repo-url')
     expect(hung).toBeGreaterThan(20)
-    // Measured 170s; the cut probe of a live winner is not reached here, so budget one more probe.
+    // Measured 126s with the retry backoff; the cut probe of a live winner is not reached here, so budget one more probe.
     expect(elapsedMs + PROBE_TIMEOUT_MS).toBeLessThanOrEqual(BUDGET_MS)
   })
 })

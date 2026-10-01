@@ -89,7 +89,7 @@
             <lf-table-cell>
               <lf-dropdown placement="bottom-end" width="160px">
                 <template #trigger>
-                  <lf-button type="secondary-ghost" size="small" :icon-only="true">
+                  <lf-button type="secondary-ghost" size="small" icon-only>
                     <lf-icon name="ellipsis-vertical" type="regular" />
                   </lf-button>
                 </template>

@@ -107,7 +107,9 @@ const hashtagField = new StringField(
 );
 const formSchema = ref(new FormSchema([hashtagField]));
 const model = ref(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   formSchema.value.initialValues({
+    // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
     hashtag: parsedHashtags.value,
   }),
 );

@@ -20,7 +20,6 @@
     <div class="mb-2 border-b border-gray-100 px-2 pt-2 pb-1 w-full">
       <el-input
         id="filterSearch"
-        ref="searchQueryInput"
         v-model="searchQuery"
         placeholder="Search..."
         class="filter-dropdown-search"
@@ -70,6 +69,7 @@
 import {
   h, ref, computed, onMounted, nextTick, watch, onBeforeUnmount,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import type { InsightsProjectModel } from '@/modules/admin/modules/insights-projects/models/insights-project.model';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import type { QueryFunction } from '@tanstack/vue-query';
@@ -81,6 +81,12 @@ import { TanstackKey } from '@/shared/types/tanstack';
 import { ToastStore } from '@/shared/message/notification';
 import { INSIGHTS_PROJECTS_SERVICE } from '../../insights-projects/services/insights-projects.service';
 import { useInsightsProjectsStore } from '../../insights-projects/pinia';
+
+const props = defineProps<{
+  selectedProjects: InsightsProjectModel[];
+}>();
+
+const emit = defineEmits<{(e: 'onAddProject', projectId: string): void }>();
 
 const SearchIcon = h(
   'i', // type
@@ -100,15 +106,11 @@ const ArrowUpIcon = h(
   [],
 );
 
-const emit = defineEmits<{(e: 'onAddProject', projectId: string): void }>();
-const props = defineProps<{
-  selectedProjects: InsightsProjectModel[];
-}>();
 let scrollContainer: HTMLElement | null = null;
 
 const insightsProjectsStore = useInsightsProjectsStore();
 
-const inputRef = ref(null);
+const inputRef = ref<InputInstance | null>(null);
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 const isPopoverVisible = ref(false);

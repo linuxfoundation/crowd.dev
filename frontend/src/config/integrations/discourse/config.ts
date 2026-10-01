@@ -1,8 +1,12 @@
+import { defineAsyncComponent } from 'vue';
 import type { IntegrationConfig } from '@/config/integrations';
-import LfDiscourseSettingsDrawer from '@/config/integrations/discourse/components/discourse-settings-drawer.vue';
-import DiscourseConnect from './components/discourse-connect.vue';
-import DiscourseParams from './components/discourse-params.vue';
-import DiscourseDropdown from './components/discourse-dropdown.vue';
+
+const LfDiscourseSettingsDrawer = defineAsyncComponent(
+  () => import('@/config/integrations/discourse/components/discourse-settings-drawer.vue'),
+);
+const DiscourseConnect = defineAsyncComponent(() => import('./components/discourse-connect.vue'));
+const DiscourseParams = defineAsyncComponent(() => import('./components/discourse-params.vue'));
+const DiscourseDropdown = defineAsyncComponent(() => import('./components/discourse-dropdown.vue'));
 
 const image = new URL('@/assets/images/integrations/discourse.png', import.meta.url).href;
 

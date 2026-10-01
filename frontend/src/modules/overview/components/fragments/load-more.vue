@@ -23,14 +23,14 @@ SPDX-License-Identifier: MIT
 import { ref, onMounted, watch } from 'vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 
-const emit = defineEmits<{(e: 'loadMore'): void }>();
-
 const props = defineProps<{
   text: string;
   isFetchingNextPage: boolean;
 }>();
 
-const loadMore = ref(null);
+const emit = defineEmits<{(e: 'loadMore'): void }>();
+
+const loadMore = ref<HTMLDivElement | null>(null);
 
 const options = {
   root: null,

@@ -7,7 +7,7 @@
       <div class="flex-grow">
         <lf-search
           v-model="search"
-          :lazy="true"
+          lazy
           placeholder="Search category groups, categories..."
           class="!h-9"
         />

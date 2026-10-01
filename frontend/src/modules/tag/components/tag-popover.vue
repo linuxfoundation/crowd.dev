@@ -13,7 +13,7 @@
           v-model="editTagsModel"
           :fetch-fn="fields.tags.fetchFn"
           :mapper-fn="fields.tags.mapperFn"
-          :create-if-not-found="true"
+          create-if-not-found
           placeholder="Type to search/create tags"
         />
       </form>

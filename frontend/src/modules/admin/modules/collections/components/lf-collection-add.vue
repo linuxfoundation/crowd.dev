@@ -25,7 +25,7 @@
             <div v-if="activeTab === 'details'">
               <!-- Collection name -->
               <article class="mb-6">
-                <lf-field label-text="Collection name" :required="true">
+                <lf-field label-text="Collection name" required>
                   <lf-input
                     v-model="form.name"
                     class="h-10"
@@ -42,7 +42,7 @@
 
               <!-- Description -->
               <article class="mb-6">
-                <lf-field label-text="Description" :required="true">
+                <lf-field label-text="Description" required>
                   <lf-textarea
                     v-model="form.description"
                     :invalid="$v.description.$invalid && $v.description.$dirty"
@@ -128,7 +128,7 @@
 
                 <!-- Card image URL -->
                 <article class="mb-6">
-                  <lf-field label-text="Card image URL" :required="true">
+                  <lf-field label-text="Card image URL" required>
                     <lf-input
                       v-model="form.imageUrl"
                       class="h-10"
@@ -147,7 +147,7 @@
 
                 <!-- Collection logo URL -->
                 <article class="mb-6">
-                  <lf-field label-text="Collection logo URL" :required="true">
+                  <lf-field label-text="Collection logo URL" required>
                     <lf-input
                       v-model="form.logoUrl"
                       class="h-10"
@@ -238,14 +238,14 @@ import type {
 } from '../models/collection.model';
 import { COLLECTIONS_SERVICE } from '../services/collections.service';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
-  (e: 'onCollectionEdited'): void;
-  (e: 'onCollectionCreated'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   collection?: CollectionModel;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'onCollectionEdited'): void;
+  (e: 'onCollectionCreated'): void;
 }>();
 
 const activeTab = ref('details');

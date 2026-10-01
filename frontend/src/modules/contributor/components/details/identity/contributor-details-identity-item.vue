@@ -45,7 +45,7 @@
     <!-- Dropdown -->
     <lf-dropdown v-show="hovered" placement="bottom-end" width="232px">
       <template #trigger>
-        <lf-button type="secondary-ghost" size="small" :icon-only="true">
+        <lf-button type="secondary-ghost" size="small" icon-only>
           <lf-icon name="ellipsis" />
         </lf-button>
       </template>

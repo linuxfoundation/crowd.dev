@@ -70,14 +70,13 @@ const props = defineProps<{
   modelValue: string[]
 }>();
 
+const emit = defineEmits<{(e: 'update:modelValue', value: string[]): void}>();
 const { trackEvent } = useProductTracking();
 const router = useRouter();
 
 const visible = ref<boolean>(false);
 
 const model = ref<string[]>(props.modelValue);
-
-const emit = defineEmits<{(e: 'update:modelValue', value: string[]): void}>();
 
 const label = computed(() => {
   if (props.modelValue.length > 0) {

@@ -3,7 +3,7 @@
     class="mb-0"
     :validation="$v.subprojectId"
     label="Sub-project"
-    :required="true"
+    required
     :error-messages="{
       required: 'Sub-project is required',
     }"
@@ -32,7 +32,6 @@
     <div class="mb-2 border-b border-gray-100 px-2 pt-2 pb-1 w-full">
       <el-input
         id="filterSearch"
-        ref="searchQueryInput"
         v-model="searchQuery"
         placeholder="Search..."
         class="filter-dropdown-search"
@@ -83,6 +82,19 @@ import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 
+const props = defineProps({
+  selectedSubproject: {
+    type: Object,
+    default: () => {},
+  },
+  selectedSubprojectParent: {
+    type: Object,
+    default: () => {},
+  },
+});
+
+const emit = defineEmits(['onChange']);
+
 const SearchIcon = h(
   'i', // type
   { class: 'fa-light fa-magnifying-glass c-icon' }, // props
@@ -100,18 +112,6 @@ const ArrowUpIcon = h(
   { class: 'fa-light fa-chevron-up c-icon' }, // props
   [],
 );
-
-const emit = defineEmits(['onChange']);
-const props = defineProps({
-  selectedSubproject: {
-    type: Object,
-    default: () => {},
-  },
-  selectedSubprojectParent: {
-    type: Object,
-    default: () => {},
-  },
-});
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);

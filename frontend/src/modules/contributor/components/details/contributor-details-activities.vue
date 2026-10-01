@@ -25,7 +25,7 @@
     ref="timeline"
     :entity="props.contributor"
     entity-type="member"
-    :show-affiliations="true"
+    show-affiliations
     :selected-segment="subProjectId || null"
     class="max-w-full"
   />
@@ -45,7 +45,7 @@ const props = defineProps<{
 
 const route = useRoute();
 
-const timeline = ref(null);
+const timeline = ref<InstanceType<typeof AppActivityTimeline> | null>(null);
 
 const { subProjectId } = route.query;
 
@@ -53,6 +53,7 @@ const loadMore = () => {
   timeline.value.fetchActivities();
 };
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });

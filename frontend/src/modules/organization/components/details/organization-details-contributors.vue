@@ -1,6 +1,5 @@
 <template>
   <lf-filter
-    ref="memberFilter"
     v-model="filters"
     :config="filterConfig"
     :search-config="memberSearchFilter"
@@ -271,6 +270,7 @@ onMounted(() => {
   fetch();
 });
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });

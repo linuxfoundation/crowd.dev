@@ -13,7 +13,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
             class="my-1"
           >
             <lf-icon name="plus" type="regular" />
@@ -96,8 +96,8 @@ const { identities } = useOrganizationHelpers();
 const identityList = computed(() => identities(props.organization));
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 
 const addIdentity = ref<boolean>(false);
 const addIdentityTemplate = ref<Partial<OrganizationIdentity> | null>(null);

@@ -5,7 +5,7 @@
     title="Groups.io"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -33,14 +33,13 @@
           class="mb-6"
           :validation="$v.email"
           label="Email"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
             url: 'Enter valid email',
           }"
         >
           <el-input
-            ref="focus"
             v-model="form.email"
             type="email"
             @blur="onBlurEmail()"
@@ -51,13 +50,12 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="Password"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"
         >
           <el-input
-            ref="focus"
             v-model="form.password"
             :type="'password'"
             @blur="onBlurPassword()"
@@ -83,7 +81,6 @@
           label="2FA Code (optional)"
         >
           <el-input
-            ref="focus"
             v-model="form.twoFactorCode"
             type="password"
             @blur="onBlurTwoFactorCode()"
@@ -287,8 +284,6 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const { doGroupsioConnect } = mapActions('integration');
-
 const props = defineProps({
   integration: {
     type: Object,
@@ -307,6 +302,10 @@ const props = defineProps({
     default: null,
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
+
+const { doGroupsioConnect } = mapActions('integration');
 
 const form = reactive({
   email: '',
@@ -478,8 +477,6 @@ const canVerify = async () => {
     isVerificationEnabled.value = false;
   }
 };
-
-const emit = defineEmits(['update:modelValue']);
 
 const { hasFormChanged, formSnapshot } = formChangeDetector(form);
 

@@ -16,15 +16,11 @@ import { useRouter } from 'vue-router';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 
-const router = useRouter();
-const lsSegmentsStore = useLfSegmentsStore();
-const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-
 const props = withDefaults(
   defineProps<{
-    icon: string;
-    message: string;
-    backMessage: string;
+    icon?: string;
+    message?: string;
+    backMessage?: string;
     to: Record<string, unknown>;
     projectGroup?: boolean;
   }>(),
@@ -35,6 +31,9 @@ const props = withDefaults(
     projectGroup: true,
   },
 );
+const router = useRouter();
+const lsSegmentsStore = useLfSegmentsStore();
+const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const goBack = () => {
   const { back } = router.options.history.state;

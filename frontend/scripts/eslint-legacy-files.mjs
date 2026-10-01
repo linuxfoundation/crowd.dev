@@ -1,7 +1,7 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
 
-// Regenerates .eslint/legacy-files.json: the SFCs still violating each ratchet rule, exempted in .eslintrc.js.
+// Regenerates .eslint/legacy-files.json: the SFCs still violating each ratchet rule, exempted in eslint.config.mjs.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -22,7 +22,9 @@ const RULES = {
 function findViolatingFiles(ruleName, ruleConfig) {
   const args = [
     'src/**/*.vue',
-    '--no-eslintrc',
+    '--no-config-lookup',
+    '--ext',
+    '.vue',
     '--parser',
     'vue-eslint-parser',
     '--parser-options',

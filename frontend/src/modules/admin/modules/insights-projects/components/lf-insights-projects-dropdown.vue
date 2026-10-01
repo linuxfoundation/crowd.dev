@@ -24,12 +24,12 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 
-const emit = defineEmits<{(e: 'onEditProject', id: string): void,
-  (e: 'onDeleteProject', id: string): void,
-}>();
-
 const props = defineProps<{
   id: string,
+}>();
+
+const emit = defineEmits<{(e: 'onEditProject', id: string): void,
+  (e: 'onDeleteProject', id: string): void,
 }>();
 
 const editProject = () => {

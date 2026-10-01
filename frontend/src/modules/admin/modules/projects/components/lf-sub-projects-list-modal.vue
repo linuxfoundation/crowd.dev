@@ -40,7 +40,6 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import AppLfSubProjectsListDropdown from './lf-sub-projects-list-dropdown.vue';
 
-const emit = defineEmits(['update:modelValue', 'onSubmit']);
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -51,7 +50,7 @@ const props = defineProps({
     required: true,
   },
 });
-
+const emit = defineEmits(['update:modelValue', 'onSubmit']);
 const model = computed({
   get() {
     return props.modelValue;

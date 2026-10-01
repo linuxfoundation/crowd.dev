@@ -12,8 +12,6 @@
 <script lang="ts" setup>
 import { onMounted, ref } from 'vue';
 
-const infinitePaginationWrapper = ref();
-
 const props = defineProps({
   currentPage: {
     type: Number,
@@ -40,6 +38,8 @@ const props = defineProps({
 const emit = defineEmits([
   'loadMore',
 ]);
+
+const infinitePaginationWrapper = ref<HTMLDivElement>();
 
 onMounted(() => {
   observeSections();

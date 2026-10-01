@@ -4,7 +4,7 @@
       <header class="pb-4">
         <h5>Add category</h5>
       </header>
-      <lf-field label-text="Category name" :required="true">
+      <lf-field label-text="Category name" required>
         <lf-input
           v-model="form.name"
           :invalid="$v.name.$invalid && $v.name.$dirty"

@@ -8,7 +8,7 @@
         v-if="hasPermission(LfPermission.organizationEdit)"
         type="secondary"
         size="small"
-        :icon-only="true"
+        icon-only
         @click="edit = true"
       >
         <lf-icon name="pen fa-sharp" />
