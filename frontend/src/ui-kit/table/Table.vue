@@ -27,7 +27,7 @@ import {
 } from 'vue';
 
 const props = withDefaults(defineProps<{
-  type: 'regular' | 'bordered',
+  type?: 'regular' | 'bordered',
   showHover?: boolean,
 }>(), {
   type: 'regular',

@@ -43,7 +43,7 @@ import { lfIdentities } from '@/config/identities';
 const props = withDefaults(
   defineProps<{
     platform: string;
-    size: string;
+    size?: string;
     identities?: {
       handle: string;
       link: string;
