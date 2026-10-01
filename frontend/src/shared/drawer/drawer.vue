@@ -11,7 +11,7 @@
         hasScroll ? 'has-scroll' : ''
       }`"
       :show-close="false"
-      :destroy-on-close="true"
+      destroy-on-close
       :close-on-click-modal="closeOnClickModal"
       :size="size"
       :z-index="zIndex"

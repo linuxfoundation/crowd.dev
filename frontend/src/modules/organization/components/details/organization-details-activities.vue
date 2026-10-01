@@ -28,7 +28,7 @@
       organizations: [props.organization],
     }"
     entity-type="organization"
-    :show-affiliations="true"
+    show-affiliations
   />
 </template>
 

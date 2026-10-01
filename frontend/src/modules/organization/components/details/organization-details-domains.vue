@@ -10,7 +10,7 @@
             v-if="hasPermission(LfPermission.organizationEdit)"
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
           >
             <lf-icon name="plus" type="regular" />
           </lf-button>

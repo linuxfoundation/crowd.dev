@@ -24,7 +24,7 @@
         icon="user-group-simple"
         title="No people in your community yet"
         description="Please consider that the first people may take a couple of minutes to be displayed"
-        :has-warning-icon="true"
+        has-warning-icon
       />
 
       <app-empty-state-cta
@@ -100,7 +100,7 @@
             >
               <thead>
                 <tr>
-                  <lf-table-head class="!py-4 px-2 min-w-19" :sticky="true">
+                  <lf-table-head class="!py-4 px-2 min-w-19" sticky>
                     <lf-checkbox
                       class="!m-0"
                       :model-value="selectedRows.length === members.length"
@@ -115,7 +115,7 @@
                     property="displayName"
                     :model-value="sorting"
                     class="!py-4 !px-3 min-w-76 !left-19"
-                    :sticky="true"
+                    sticky
                     @update:model-value="doChangeSort($event)"
                   >
                     Person
@@ -179,7 +179,7 @@
 
                   <lf-table-head
                     v-if="hasPermissions"
-                    :sticky="true"
+                    sticky
                     class="!py-4 min-w-19"
                   />
                 </tr>
@@ -191,7 +191,7 @@
                   :class="isSelected(member) ? 'is-selected' : ''"
                   :data-qa="`member-${member.id}`"
                 >
-                  <lf-table-cell :sticky="true" class="!py-4 pl-2">
+                  <lf-table-cell sticky class="!py-4 pl-2">
                     <lf-checkbox
                       class="!m-0"
                       :model-value="isSelected(member)"
@@ -200,7 +200,7 @@
                   </lf-table-cell>
 
                   <!-- Contacts -->
-                  <lf-table-cell :sticky="true" class="!py-4 pl-2 !left-19">
+                  <lf-table-cell sticky class="!py-4 pl-2 !left-19">
                     <router-link
                       :to="{
                         name: 'memberView',
@@ -306,7 +306,7 @@
                   <!-- Action button -->
                   <lf-table-cell
                     v-if="hasPermissions"
-                    :sticky="true"
+                    sticky
                     class="!py-4 pr-2"
                   >
                     <router-link
@@ -380,7 +380,7 @@
         <app-member-dropdown-content
           v-if="selectedActionMember"
           :member="selectedActionMember"
-          :hide-unmerge="true"
+          hide-unmerge
           @find-github="isFindGithubDrawerOpen = selectedActionMember"
           @merge="isMergeDialogOpen = selectedActionMember"
           @close-dropdown="closeDropdown"

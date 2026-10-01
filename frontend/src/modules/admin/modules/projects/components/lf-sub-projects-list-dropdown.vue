@@ -3,7 +3,7 @@
     class="mb-0"
     :validation="$v.subprojectId"
     label="Sub-project"
-    :required="true"
+    required
     :error-messages="{
       required: 'Sub-project is required',
     }"

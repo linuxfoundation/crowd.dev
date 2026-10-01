@@ -3,7 +3,7 @@
     <lf-filter
       v-model="filters"
       :config="auditLogsFilters"
-      :lock-relation="true"
+      lock-relation
       hash="audit-logs"
       class="flex flex-row-reverse justify-between"
       @fetch="onFilterChange($event)"

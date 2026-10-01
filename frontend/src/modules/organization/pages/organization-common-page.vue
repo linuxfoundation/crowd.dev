@@ -32,7 +32,7 @@
             :total="totalOrganizations"
             :page-size="Number(pagination.perPage)"
             :current-page="pagination.page || 1"
-            :hide-sorting="true"
+            hide-sorting
             @change-current-page="onPaginationChange({ page: $event })"
             @change-page-size="onPaginationChange({ perPage: $event })"
           />

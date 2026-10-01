@@ -3,7 +3,7 @@
     class="mb-6"
     :validation="$v.projectId"
     label="Project"
-    :required="true"
+    required
     :error-messages="{
       required: 'Project is required',
     }"

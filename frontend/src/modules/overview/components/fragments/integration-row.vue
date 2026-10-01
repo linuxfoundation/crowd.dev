@@ -35,7 +35,7 @@
         :integration="integrationStatus"
         :segment-id="integrationStatus.segmentId"
         :grandparent-id="integrationStatus.grandparentId"
-        :prevent-auto-open="true"
+        prevent-auto-open
       />
       <!-- Actions Column -->
       <div class="w-10">

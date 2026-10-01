@@ -29,7 +29,7 @@
         </p>
         <lf-organization-lf-member-tag
           :organization="currentOrganization[0]"
-          :only-show-icon="true"
+          only-show-icon
         />
       </div>
     </router-link>

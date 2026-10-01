@@ -19,7 +19,7 @@
         v-if="activity.body"
         class="text-sm text-gray-900"
         :activity="activity"
-        :show-more="true"
+        show-more
         :display-thread="false"
       />
     </div>

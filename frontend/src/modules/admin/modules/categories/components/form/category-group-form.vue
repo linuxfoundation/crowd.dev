@@ -17,7 +17,7 @@
     </header>
 
     <div class="px-6 pb-8">
-      <lf-field label-text="Category group name" :required="true" class="mb-6">
+      <lf-field label-text="Category group name" required class="mb-6">
         <lf-input
           v-model="form.name"
           :invalid="$v.name.$invalid && $v.name.$dirty"
@@ -29,7 +29,7 @@
           :error-messages="{ required: 'This field is required' }"
         />
       </lf-field>
-      <lf-field label-text="Type" :required="true">
+      <lf-field label-text="Type" required>
         <div class="flex items-center pt-2">
           <lf-radio v-model="form.type" value="vertical" class="mr-4">
             Industry

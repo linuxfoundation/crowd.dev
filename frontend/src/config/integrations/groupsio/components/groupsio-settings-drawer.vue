@@ -5,7 +5,7 @@
     title="Groups.io"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -33,7 +33,7 @@
           class="mb-6"
           :validation="$v.email"
           label="Email"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
             url: 'Enter valid email',
@@ -50,7 +50,7 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="Password"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"

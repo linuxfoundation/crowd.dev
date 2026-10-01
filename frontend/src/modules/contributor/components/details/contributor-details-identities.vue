@@ -16,7 +16,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
             class="my-1"
           >
             <lf-icon name="plus" />

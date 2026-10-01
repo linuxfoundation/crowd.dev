@@ -36,7 +36,7 @@
                 </p>
                 <lf-organization-lf-member-tag
                   :organization="option"
-                  :only-show-icon="true"
+                  only-show-icon
                 />
               </div>
               <p

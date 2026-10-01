@@ -10,7 +10,7 @@
             </div>
             <app-integration-progress-bar
               :progress="progress.find((p) => p.platform === integrationStatus.platform)"
-              :hide-bar="true"
+              hide-bar
               text-class="!text-tiny"
             />
           </div>

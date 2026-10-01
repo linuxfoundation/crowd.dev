@@ -4,7 +4,7 @@
     v-model="drawerModel"
     size="35%"
     :show-close="false"
-    :destroy-on-close="true"
+    destroy-on-close
     :close-on-click-modal="false"
     :custom-class="
       isEditingAttributes

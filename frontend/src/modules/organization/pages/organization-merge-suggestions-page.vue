@@ -74,7 +74,7 @@
 
                       <lf-organization-lf-member-tag
                         :organization="suggestion.organizations[0]"
-                        :only-show-icon="true"
+                        only-show-icon
                       />
                     </div>
                   </div>
@@ -110,7 +110,7 @@
 
                       <lf-organization-lf-member-tag
                         :organization="suggestion.organizations[1]"
-                        :only-show-icon="true"
+                        only-show-icon
                       />
                     </div>
                   </div>
@@ -131,7 +131,7 @@
                       size="small"
                       type="secondary-ghost-light"
                       :loading="sending === `${suggestion.organizations[0].id}:${suggestion.organizations[1].id}`"
-                      :icon-only="true"
+                      icon-only
                     >
                       <lf-icon name="ellipsis" type="regular" />
                     </lf-button>

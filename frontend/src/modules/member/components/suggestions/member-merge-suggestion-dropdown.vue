@@ -4,7 +4,7 @@
       <lf-button
         size="small"
         type="secondary-ghost"
-        :icon-only="true"
+        icon-only
       >
         <lf-icon name="ellipsis" />
       </lf-button>

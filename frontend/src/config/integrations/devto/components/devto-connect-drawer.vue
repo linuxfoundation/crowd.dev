@@ -20,7 +20,7 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="API Key"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"
