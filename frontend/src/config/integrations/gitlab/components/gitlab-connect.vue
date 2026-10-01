@@ -23,13 +23,13 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { mapActions } from '@/shared/vuex/vuex.helpers';
 
-const route = useRoute();
-
 const props = defineProps<{
   integration: any,
   segmentId: string | null,
   grandparentId: string | null,
 }>();
+
+const route = useRoute();
 
 const { doGitlabConnect } = mapActions('integration');
 

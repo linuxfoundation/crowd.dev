@@ -233,15 +233,15 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const { trackEvent } = useProductTracking();
-const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
-
 const props = defineProps<{
   modelValue: boolean,
   integration: any,
   segmentId: string | null;
   grandparentId: string | null;
 }>();
+const emit = defineEmits(['update:modelValue']);
+const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const inputRef = ref();
 const showToken = ref(false);
@@ -343,8 +343,6 @@ const onBlurAPIKey = async () => {
   $v.value.apiKey.$touch();
   await validate();
 };
-
-const emit = defineEmits(['update:modelValue']);
 
 const { hasFormChanged, formSnapshot } = formChangeDetector(form);
 

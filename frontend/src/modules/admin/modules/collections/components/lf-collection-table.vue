@@ -66,13 +66,13 @@ import AppLfProjectColumn from '@/shared/project-column/lf-project-column.vue';
 import LfCollectionDropdown from './lf-collection-dropdown.vue';
 import type { CollectionModel } from '../models/collection.model';
 
+defineProps<{
+  collections: CollectionModel[],
+}>();
+
 const emit = defineEmits<{(e: 'onEditCollection', id: string): void,
   (e: 'onDeleteCollection', id: string): void,
   (e: 'onStarCollection', id: string): void,
-}>();
-
-defineProps<{
-  collections: CollectionModel[],
 }>();
 
 </script>

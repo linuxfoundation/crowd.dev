@@ -38,12 +38,12 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import type { Organization, OrganizationIdentity } from '../../types/Organization';
 import { OrganizationIdentityType } from '../../types/Organization';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
-
 const props = defineProps<{
   modelValue: Organization;
 
 }>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
 
 const model = ref<OrganizationIdentity[]>([]);
 

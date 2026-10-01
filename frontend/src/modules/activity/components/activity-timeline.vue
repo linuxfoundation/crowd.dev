@@ -231,13 +231,6 @@ import LfTimelineItem from '@/ui-kit/timeline/TimelineItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ActivityService } from '../activity-service';
 
-const SearchIcon = h(
-  'i', // type
-  { class: 'fa-magnifying-glass fa-light' }, // props
-  [],
-);
-
-const store = useStore();
 const props = defineProps({
   entityType: {
     type: String,
@@ -257,6 +250,13 @@ const props = defineProps({
   },
 });
 
+const SearchIcon = h(
+  'i', // type
+  { class: 'fa-magnifying-glass fa-light' }, // props
+  [],
+);
+
+const store = useStore();
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 
@@ -425,6 +425,7 @@ onMounted(async () => {
   await fetchActivities();
 });
 
+// eslint-disable-next-line vue/define-macros-order -- the plain <script> block below counts as last
 defineExpose({
   fetchActivities,
 });

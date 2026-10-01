@@ -209,16 +209,18 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import formChangeDetector from '@/shared/form/form-change';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 
-const { doDevtoConnect } = mapActions('integration');
-
-const { trackEvent } = useProductTracking();
-
 const props = defineProps<{
   integration: any;
   modelValue: boolean;
   segmentId: string;
   grandparentId: string;
 }>();
+
+const emit = defineEmits(['update:modelValue']);
+
+const { doDevtoConnect } = mapActions('integration');
+
+const { trackEvent } = useProductTracking();
 
 const logoUrl = devto.image;
 const users = ref([]);
@@ -482,8 +484,6 @@ watch(
     }
   },
 );
-
-const emit = defineEmits(['update:modelValue']);
 
 const isVisible = computed({
   get() {

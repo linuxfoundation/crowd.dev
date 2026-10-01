@@ -345,6 +345,7 @@ const formatJoinedDate = (date) => {
   return dateHelper(date).format('YYYY-MM-DD');
 };
 
+// eslint-disable-next-line vue/define-macros-order -- the plain <script> block below counts as last
 defineExpose({
   more,
 });

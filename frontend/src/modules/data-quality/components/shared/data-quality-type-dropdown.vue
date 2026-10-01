@@ -71,11 +71,6 @@ import type { DataIssueTypeMenu } from '@/modules/data-quality/config/data-issue
 import { dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const suggestionTypeLabels: Record<string, string> = {
-  'bot-suggestions': 'Bot suggestions',
-  'fake-suggestions': 'Fake organization suggestions',
-};
-
 const props = withDefaults(defineProps<{
   modelValue: string;
   config: DataIssueTypeMenu[]
@@ -85,6 +80,11 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
+
+const suggestionTypeLabels: Record<string, string> = {
+  'bot-suggestions': 'Bot suggestions',
+  'fake-suggestions': 'Fake organization suggestions',
+};
 
 const selectedType = computed({
   get: () => props.modelValue,

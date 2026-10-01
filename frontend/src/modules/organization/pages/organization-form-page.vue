@@ -173,6 +173,12 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { useOrganizationStore } from '../store/pinia';
 
+const props = defineProps({
+  id: {
+    type: String,
+    default: null,
+  },
+});
 const LoaderIcon = h(
   'i',
   {
@@ -187,13 +193,6 @@ const ArrowPrevIcon = h(
   }, // props
   [],
 );
-
-const props = defineProps({
-  id: {
-    type: String,
-    default: null,
-  },
-});
 
 const { fields } = OrganizationModel;
 const formSchema = new FormSchema([

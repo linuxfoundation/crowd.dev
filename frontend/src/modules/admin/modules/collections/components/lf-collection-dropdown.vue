@@ -29,14 +29,14 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import type { CollectionModel } from '../models/collection.model';
 
-const emit = defineEmits<{(e: 'onEditCollection', id: string): void,
-  (e: 'onDeleteCollection', id: string): void,
-  (e: 'onStarCollection', id: string): void,
-}>();
-
 const props = defineProps<{
   id: string,
   collection: CollectionModel
+}>();
+
+const emit = defineEmits<{(e: 'onEditCollection', id: string): void,
+  (e: 'onDeleteCollection', id: string): void,
+  (e: 'onStarCollection', id: string): void,
 }>();
 
 const editCollection = () => {

@@ -96,15 +96,14 @@ import LfxDropdownSeparator from '@/ui-kit/lfx/dropdown/dropdown-separator.vue';
 import LfxDropdownSearch from '@/ui-kit/lfx/dropdown/dropdown-search.vue';
 import { useOverviewStore } from '../../store/overview.store';
 
+const props = defineProps<{
+  projects: Project[];
+}>();
 const overviewStore = useOverviewStore();
 const { selectedProject, selectedProjectId } = storeToRefs(overviewStore);
 
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
-
-const props = defineProps<{
-  projects: Project[];
-}>();
 
 const trimDisplay = (name: string) => (name.length > 20 ? `${name.slice(0, 20)}...` : name);
 

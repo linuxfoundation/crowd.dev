@@ -37,14 +37,14 @@ import AppOrganizationFormPhoneNumberItem
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const emit = defineEmits(['update:modelValue']);
-
 const props = defineProps({
   modelValue: {
     type: Object,
     default: () => {},
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
 
 const model = ref([]);
 

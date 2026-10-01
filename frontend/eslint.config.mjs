@@ -122,6 +122,10 @@ export default [
         'vue/component-api-style': ['error', ['script-setup']],
         'vue/block-lang': ['error', { script: { lang: 'ts' } }],
         'vue/prefer-define-options': 'error',
+        'vue/define-macros-order': [
+          'error',
+          { order: ['defineOptions', 'defineProps', 'defineEmits', 'defineSlots'], defineExposeLast: true },
+        ],
         'vue/max-len': ['error', { code: 150, ignoreComments: true, ignoreUrls: true }],
         'import/extensions': [
           'error',

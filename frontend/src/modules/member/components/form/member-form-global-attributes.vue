@@ -141,14 +141,13 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const emit = defineEmits(['update:modelValue']);
 const props = defineProps({
   modelValue: {
     type: Boolean,
     default: () => false,
   },
 });
-
+const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 
 const store = useStore();
