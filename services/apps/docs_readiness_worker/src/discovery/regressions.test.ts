@@ -1,10 +1,10 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { IDocCandidate } from '@crowd/data-access-layer'
 
-import { normalizedDomain } from './http'
+import { normalizedDomain, probeRetry } from './http'
 import { discoverDocs } from './index'
 import { rankCandidates } from './rank'
 import { isUmbrellaWebsite } from './sharedWebsite'
@@ -70,6 +70,10 @@ function ctxFor(project: IProject, findSharedDocsUrls?: (hosts: string[]) => Pro
     findSharedDocsUrls,
   } satisfies IDiscoveryContext
 }
+
+beforeAll(() => {
+  probeRetry.backoffMs = 0
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
