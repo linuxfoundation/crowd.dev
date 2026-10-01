@@ -47,9 +47,9 @@ import LfButton from '@/ui-kit/button/Button.vue';
 
 withDefaults(
   defineProps<{
-    code: number | null;
-    title: string | null;
-    subtitle: string | null;
+    code?: number | null;
+    title?: string | null;
+    subtitle?: string | null;
   }>(),
   {
     code: null,

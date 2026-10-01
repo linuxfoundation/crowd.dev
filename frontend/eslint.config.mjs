@@ -110,8 +110,8 @@ export default [
         'no-shadow-restricted-names': ['error', { reportGlobalThis: false }],
         'no-useless-computed-key': ['error', { enforceForClassMembers: false }],
         'vue/no-v-html': 'off',
+        'vue/no-required-prop-with-default': ['error', { autofix: true }],
         // New in eslint-plugin-vue 10's recommended preset; off to keep the enabled rule set unchanged.
-        'vue/no-required-prop-with-default': 'off',
         'vue/no-deprecated-delete-set': 'off',
         'vue/no-deprecated-model-definition': 'off',
         'vue/valid-define-options': 'off',

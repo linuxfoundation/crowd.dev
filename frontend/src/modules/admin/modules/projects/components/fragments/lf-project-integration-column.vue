@@ -116,8 +116,8 @@ const props = withDefaults(
   defineProps<{
     segmentId: string;
     integrations: Integrations[];
-    progress: any[];
-    progressError: boolean;
+    progress?: any[];
+    progressError?: boolean;
   }>(),
   {
     progress: () => [],

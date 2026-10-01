@@ -18,9 +18,9 @@ import { storeToRefs } from 'pinia';
 
 const props = withDefaults(
   defineProps<{
-    icon: string;
-    message: string;
-    backMessage: string;
+    icon?: string;
+    message?: string;
+    backMessage?: string;
     to: Record<string, unknown>;
     projectGroup?: boolean;
   }>(),

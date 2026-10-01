@@ -24,11 +24,11 @@ import type { TagSize } from './types/TagSize';
 import type { TagType } from './types/TagType';
 
 const props = withDefaults(defineProps<{
-    size: TagSize,
-    type: TagType,
-    closeable: boolean,
-    rounded: boolean,
-    bgColor: string,
+    size?: TagSize,
+    type?: TagType,
+    closeable?: boolean,
+    rounded?: boolean,
+    bgColor?: string,
 }>(), {
   size: 'small',
   type: 'primary',
