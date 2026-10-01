@@ -14,7 +14,7 @@ set -a && . ./.env.dist.local && . ./.env.override.local && set +a && vite --mod
 
 `.env.dist.local` (tracked) and `.env.override.local` (personal, gitignored, created by `scripts/cli`) are sourced as shell files with `set -a`, so every variable they define is exported into the process environment before Vite starts. This is plain shell sourcing, not Vite's own `.env.<mode>` loading — the file names here don't match that convention, so Vite itself reads no `.env.*` file in this path.
 
-Only variables prefixed `VUE_APP_` are exposed to the app via `import.meta.env` (see `envPrefix` in `vite.config.js`). `src/config.js`'s `defaultConfig` reads them directly, e.g. `import.meta.env.VUE_APP_BACKEND_URL`.
+Only variables prefixed `VUE_APP_` are exposed to the app via `import.meta.env` (see `envPrefix` in `vite.config.ts`). `src/config.js`'s `defaultConfig` reads them directly, e.g. `import.meta.env.VUE_APP_BACKEND_URL`.
 
 ### 2. CI / Docker build
 

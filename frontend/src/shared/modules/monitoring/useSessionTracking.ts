@@ -4,7 +4,7 @@ import type { User } from '@/modules/auth/types/User.type';
 import { createSession, updateSession } from './tracking-service';
 
 const useSessionTracking = (getUser: () => User | null) => {
-  const inactivityTimeout = ref<number | undefined>();
+  const inactivityTimeout = ref<ReturnType<typeof setTimeout> | undefined>();
 
   const INACTIVITY_PERIOD = 30 * 60 * 1000;
 
