@@ -16,12 +16,12 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { IntegrationTabs } from '../../types/overview.types';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string): void;
-}>();
-
 const props = defineProps<{
   tabs: IntegrationTabs[];
   modelValue: string;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void;
 }>();
 
 const activeTab = computed<string>({

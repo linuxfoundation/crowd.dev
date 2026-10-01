@@ -165,14 +165,6 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const MAX_STACK_OVERFLOW_QUESTIONS_PER_TAG = 350000;
-const MAX_STACK_OVERFLOW_QUESTIONS_FOR_KEYWORDS = 1100;
-
-const { trackEvent } = useProductTracking();
-const changesConfirmationModalRef = ref(null);
-
-const store = useStore();
-
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -191,8 +183,15 @@ const props = defineProps({
     required: true,
   },
 });
-
 const emit = defineEmits(['update:modelValue']);
+const MAX_STACK_OVERFLOW_QUESTIONS_PER_TAG = 350000;
+const MAX_STACK_OVERFLOW_QUESTIONS_FOR_KEYWORDS = 1100;
+
+const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref(null);
+
+const store = useStore();
+
 const tags = computed(() => {
   if (props.integration?.settings?.tags?.length > 0) {
     return props.integration?.settings?.tags.map((i) => ({
@@ -215,8 +214,10 @@ const keywords = computed(
   () => props.integration?.settings?.keywords || [],
 );
 
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const model = ref(JSON.parse(JSON.stringify(tags.value)));
 const modelKeywords = ref(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   JSON.parse(JSON.stringify(keywords.value)),
 );
 const keywordsCount = computed(

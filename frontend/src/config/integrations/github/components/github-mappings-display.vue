@@ -65,14 +65,14 @@ import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 
+const props = defineProps<{
+  mappings: IntegrationMapping[];
+}>();
+
 const gitRepositoryIcon = new URL(
   '@/assets/images/integrations/git-repository-line.svg',
   import.meta.url,
 ).href;
-
-const props = defineProps<{
-  mappings: IntegrationMapping[];
-}>();
 
 const repoNameFromUrl = (url: string) => url.split('/').at(-1);
 

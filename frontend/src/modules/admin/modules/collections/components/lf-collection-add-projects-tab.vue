@@ -119,11 +119,11 @@ import type { CollectionFormModel } from '../models/collection.model';
 import LfInsightsProjectAdd from '../../insights-projects/components/lf-insights-project-add.vue';
 import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 
-const insightsProjectsStore = useInsightsProjectsStore();
-
 const props = defineProps<{
   form: CollectionFormModel;
 }>();
+
+const insightsProjectsStore = useInsightsProjectsStore();
 
 const cForm = reactive<CollectionFormModel>(props.form);
 const isProjectDialogOpen = ref(false);

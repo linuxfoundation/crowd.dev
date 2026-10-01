@@ -72,13 +72,12 @@ import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { useRoute } from 'vue-router';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
 
-const route = useRoute();
 const props = defineProps<{
   integration: any,
   segmentId: string | null;
   grandparentId: string | null;
 }>();
-
+const route = useRoute();
 const isV2SettingsDrawerOpen = ref(false);
 const isV1SettingsDrawerOpen = ref(false);
 const isDropdownVisible = ref(false);

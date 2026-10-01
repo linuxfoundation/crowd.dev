@@ -287,8 +287,6 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const { doGroupsioConnect } = mapActions('integration');
-
 const props = defineProps({
   integration: {
     type: Object,
@@ -307,6 +305,10 @@ const props = defineProps({
     default: null,
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
+
+const { doGroupsioConnect } = mapActions('integration');
 
 const form = reactive({
   email: '',
@@ -478,8 +480,6 @@ const canVerify = async () => {
     isVerificationEnabled.value = false;
   }
 };
-
-const emit = defineEmits(['update:modelValue']);
 
 const { hasFormChanged, formSnapshot } = formChangeDetector(form);
 

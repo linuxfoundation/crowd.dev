@@ -166,6 +166,15 @@ import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 
+const props = defineProps({
+  modelValue: {
+    type: Boolean,
+    default: false,
+  },
+});
+
+const emits = defineEmits(['reload', 'update:modelValue']);
+
 const CalendarIcon = h(
   'i', // type
   {
@@ -192,15 +201,6 @@ const formSchema = computed(
     }),
   ]),
 );
-
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-});
-
-const emits = defineEmits(['reload', 'update:modelValue']);
 
 const computedVisible = computed({
   get() {

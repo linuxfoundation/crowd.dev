@@ -43,7 +43,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 
-const emit = defineEmits(['update:options', 'onChange']);
 const props = defineProps({
   options: {
     type: Array,
@@ -58,7 +57,7 @@ const props = defineProps({
     default: false,
   },
 });
-
+const emit = defineEmits(['update:options', 'onChange']);
 const model = computed({
   get() {
     return props.options;

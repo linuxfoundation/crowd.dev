@@ -19,14 +19,14 @@ import {
 } from 'vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const emit = defineEmits(['update:modelValue']);
-
 const props = defineProps({
   modelValue: {
     type: Object,
     default: () => {},
   },
 });
+
+const emit = defineEmits(['update:modelValue']);
 
 const model = computed({
   get() {

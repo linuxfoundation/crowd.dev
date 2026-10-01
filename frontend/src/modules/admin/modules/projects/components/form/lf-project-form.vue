@@ -163,15 +163,15 @@ const enum ProjectType {
   NON_LF = 'nonLF',
 }
 
-const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
-  (e: 'onSuccess'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   id?: string | null;
   parentSlug: string;
   isLFProject?: boolean;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
+  (e: 'onSuccess'): void;
 }>();
 
 const route = useRoute();

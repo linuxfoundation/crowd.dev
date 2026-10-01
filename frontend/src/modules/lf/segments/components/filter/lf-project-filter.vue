@@ -27,12 +27,6 @@ import {
 } from 'vue';
 import AppLfRadioCascader from '@/modules/lf/segments/components/filter/lf-radio-cascader.vue';
 
-const SearchIcon = h(
-  'i', // type
-  { class: 'fa-light fa-magnifying-glass c-icon' }, // props
-);
-
-const emit = defineEmits(['update:options', 'onChange', 'onSearchChange']);
 const props = defineProps({
   options: {
     type: Array,
@@ -43,6 +37,13 @@ const props = defineProps({
     default: false,
   },
 });
+
+const emit = defineEmits(['update:options', 'onChange', 'onSearchChange']);
+
+const SearchIcon = h(
+  'i', // type
+  { class: 'fa-light fa-magnifying-glass c-icon' }, // props
+);
 
 const modelOptions = computed({
   get() {
