@@ -85,8 +85,8 @@ const {
 
 const add = ref<Partial<OrganizationIdentity> | null>(null);
 const edit = ref<OrganizationIdentity | null>(null);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 
 const unmerge = (identity: any) => {
   if (identity) {

@@ -30,7 +30,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'loadMore'): void }>();
 
-const loadMore = ref(null);
+const loadMore = ref<HTMLDivElement | null>(null);
 
 const options = {
   root: null,

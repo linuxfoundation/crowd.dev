@@ -138,7 +138,7 @@ const identityList = computed(() => {
 });
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
+const isUnmergeDialogOpen = ref<Contributor | null>(null);
 const selectedIdentity = ref<string | null>(null);
 
 const addIdentity = ref<boolean>(false);

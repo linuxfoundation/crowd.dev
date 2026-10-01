@@ -39,7 +39,7 @@ const emit = defineEmits([
   'loadMore',
 ]);
 
-const infinitePaginationWrapper = ref();
+const infinitePaginationWrapper = ref<HTMLDivElement>();
 
 onMounted(() => {
   observeSections();

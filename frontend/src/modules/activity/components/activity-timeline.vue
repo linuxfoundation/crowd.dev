@@ -263,7 +263,7 @@ const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(ls
 const enabledPlatforms: IdentityConfig[] = Object.values(lfIdentities);
 
 const loading = ref(false);
-const platform = ref(null);
+const platform = ref<string | null>(null);
 const query = ref('');
 const activities = ref([]);
 const limit = ref(10);
