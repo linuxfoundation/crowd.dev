@@ -95,7 +95,7 @@
               >
                 <thead>
                   <tr>
-                    <lf-table-head class="!py-4 min-w-19" :sticky="true">
+                    <lf-table-head class="!py-4 min-w-19" sticky>
                       <lf-checkbox
                         class="!m-0"
                         :model-value="
@@ -112,7 +112,7 @@
                       property="displayName"
                       :model-value="sorting"
                       class="!py-4 px-3 min-w-76 !left-19"
-                      :sticky="true"
+                      sticky
                       @update:model-value="doChangeSort($event)"
                     >
                       Organization
@@ -178,7 +178,7 @@
 
                     <lf-table-head
                       v-if="hasPermissions"
-                      :sticky="true"
+                      sticky
                       class="!py-4 min-w-19"
                     />
                   </tr>
@@ -190,7 +190,7 @@
                     :class="isSelected(org) ? 'is-selected' : ''"
                     :data-qa="`organization-${org.id}`"
                   >
-                    <lf-table-cell :sticky="true" class="!py-4">
+                    <lf-table-cell sticky class="!py-4">
                       <lf-checkbox
                         class="!m-0"
                         :model-value="isSelected(org)"
@@ -199,7 +199,7 @@
                     </lf-table-cell>
 
                     <!-- Organization logo and name -->
-                    <lf-table-cell :sticky="true" class="!py-4 pl-2 !left-19">
+                    <lf-table-cell sticky class="!py-4 pl-2 !left-19">
                       <router-link
                         :to="{
                           name: 'organizationView',
@@ -344,7 +344,7 @@
                     <!-- Action button -->
                     <lf-table-cell
                       v-if="hasPermissions"
-                      :sticky="true"
+                      sticky
                       class="!py-4 pr-2"
                     >
                       <router-link
@@ -418,7 +418,7 @@
         <app-organization-dropdown-content
           v-if="selectedActionOrganization"
           :organization="selectedActionOrganization"
-          :hide-unmerge="true"
+          hide-unmerge
           @merge="isMergeDialogOpen = selectedActionOrganization"
           @close-dropdown="closeDropdown"
         />

@@ -11,7 +11,7 @@
         <lf-button
           v-if="displayBackButton"
           type="secondary"
-          :icon-only="true"
+          icon-only
           class="mr-4"
           @click="onCancel"
         >

@@ -4,7 +4,7 @@
       <lf-search
         v-model="search"
         class="h-9"
-        :lazy="true"
+        lazy
         placeholder="Search users..."
         @update:model-value="searchUsers()"
       />

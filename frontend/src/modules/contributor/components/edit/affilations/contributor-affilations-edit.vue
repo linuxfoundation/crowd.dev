@@ -5,7 +5,7 @@
         <h5>
           Activities affiliation
         </h5>
-        <lf-button type="secondary-ghost-light" :icon-only="true" @click="isModalOpen = false">
+        <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
           <lf-icon name="xmark" />
         </lf-button>
       </div>
@@ -59,7 +59,7 @@
                           <lf-button
                             type="secondary-ghost"
                             class="ml-2 my-1"
-                            :icon-only="true"
+                            icon-only
                           >
                             <lf-icon name="ellipsis" type="regular" />
                           </lf-button>

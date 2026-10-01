@@ -128,6 +128,7 @@ export default [
         ],
         'vue/no-ref-object-reactivity-loss': 'error',
         'vue/require-typed-ref': 'error',
+        'vue/prefer-true-attribute-shorthand': 'error',
         'vue/max-len': ['error', { code: 150, ignoreComments: true, ignoreUrls: true }],
         'import/extensions': [
           'error',

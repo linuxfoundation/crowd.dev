@@ -4,13 +4,13 @@
       <div class="px-6 pt-4 pb-10">
         <div class="flex items-center justify-between pb-6">
           <h5>{{ isEdit ? 'Edit' : 'Add' }} work experience</h5>
-          <lf-button type="secondary-ghost-light" :icon-only="true" @click="close">
+          <lf-button type="secondary-ghost-light" icon-only @click="close">
             <lf-icon name="xmark" />
           </lf-button>
         </div>
 
         <div>
-          <lf-field label-text="Organization" :required="true" class="mb-5">
+          <lf-field label-text="Organization" required class="mb-5">
             <lf-organization-select
               v-model="form.organization"
               class="w-full"

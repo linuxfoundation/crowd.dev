@@ -17,7 +17,7 @@
         <app-form-item
           label="Name"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.name"
           :error-messages="{
             required: 'Name is required',
@@ -35,7 +35,7 @@
         <app-form-item
           label="Slug"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.slug"
           :error-messages="{
             required: 'Slug is required',
@@ -50,7 +50,7 @@
           v-if="isLFProject"
           label="Source ID"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.sourceId"
           :error-messages="{
             required: 'Source ID is required',
@@ -64,7 +64,7 @@
           v-if="isLFProject"
           label="Status"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.status"
           :error-messages="{
             required: 'Status is required',

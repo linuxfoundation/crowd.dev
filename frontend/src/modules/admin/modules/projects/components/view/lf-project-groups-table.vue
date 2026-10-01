@@ -48,7 +48,7 @@
         :page-size="pagination.limit"
         :current-page="(pagination.offset / pagination.limit) || 1"
         :is-loading="isFetchingNextPage"
-        :use-slot="true"
+        use-slot
         @load-more="onLoadMore"
       >
         <div

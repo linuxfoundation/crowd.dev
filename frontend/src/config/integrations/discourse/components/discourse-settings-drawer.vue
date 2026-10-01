@@ -5,7 +5,7 @@
     title="Discourse"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -31,7 +31,7 @@
           class="mb-6"
           :validation="$v.discourseURL"
           label="Discourse URL"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
             url: 'Enter valid URL',
@@ -52,7 +52,7 @@
           class="mb-6"
           :validation="$v.apiKey"
           label="API Key"
-          :required="true"
+          required
           :error-messages="{
             required: 'This field is required',
           }"
@@ -94,7 +94,7 @@
         :class="isAPIConnectionValid ? 'opacity-100' : 'opacity-50'"
       >
         <app-form-item label="Payload URL">
-          <el-input :value="payloadURL" :readonly="true" :disabled="!isAPIConnectionValid">
+          <el-input :value="payloadURL" readonly :disabled="!isAPIConnectionValid">
             <template #append>
               <el-tooltip
                 content="Copy to clipboard"

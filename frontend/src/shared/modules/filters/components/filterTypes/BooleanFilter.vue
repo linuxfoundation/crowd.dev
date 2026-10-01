@@ -5,6 +5,7 @@
         {{ props.config.label }}
       </p>
       <el-radio-group v-model="form.value" class="flex-col !items-start">
+        <!-- eslint-disable-next-line vue/prefer-true-attribute-shorthand -- label accepts non-boolean values -->
         <el-radio :label="true" size="large" class="!mr-0 !h-6 !font-normal !mb-3 flex items-center" data-qa="filter-boolean-true">
           True
         </el-radio>

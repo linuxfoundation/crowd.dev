@@ -123,7 +123,7 @@
                   v-if="activity.title || activity.body"
                   class="text-sm bg-gray-50 rounded-lg p-4 mt-3"
                   :activity="activity"
-                  :show-more="true"
+                  show-more
                 >
                   <template
                     v-if="

@@ -11,7 +11,7 @@
         :as-link="false"
         size="large"
         class="mt-1"
-        :show-platform-tooltip="true"
+        show-platform-tooltip
       />
 
       <div class="flex flex-wrap items-center gap-2">

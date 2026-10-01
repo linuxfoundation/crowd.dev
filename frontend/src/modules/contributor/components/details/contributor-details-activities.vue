@@ -25,7 +25,7 @@
     ref="timeline"
     :entity="props.contributor"
     entity-type="member"
-    :show-affiliations="true"
+    show-affiliations
     :selected-segment="subProjectId || null"
     class="max-w-full"
   />

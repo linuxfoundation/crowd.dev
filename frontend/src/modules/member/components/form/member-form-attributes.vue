@@ -83,12 +83,14 @@
                 clearable
                 placeholder="Select option"
               >
+                <!-- eslint-disable vue/prefer-true-attribute-shorthand -- value accepts non-boolean values -->
                 <el-option
                   key="true"
                   label="True"
                   :value="true"
                   @mouseleave="onSelectMouseLeave"
                 />
+                <!-- eslint-enable vue/prefer-true-attribute-shorthand -->
                 <el-option
                   key="false"
                   label="False"
@@ -109,10 +111,10 @@
                 "
                 placeholder="Select an option or create one"
                 input-class="w-full multi-select-field"
-                :create-if-not-found="true"
-                :collapse-tags="true"
-                :parse-model="true"
-                :are-options-in-memory="true"
+                create-if-not-found
+                collapse-tags
+                parse-model
+                are-options-in-memory
                 :options-limit="10"
               />
               <el-input

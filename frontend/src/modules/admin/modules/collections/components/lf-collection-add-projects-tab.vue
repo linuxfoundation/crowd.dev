@@ -95,7 +95,7 @@
     v-if="isProjectDialogOpen"
     v-model="isProjectDialogOpen"
     :insights-project-id="projectEditObject?.id"
-    :display-back-button="true"
+    display-back-button
     @on-insights-project-created="onInsightsProjectDialogCloseSuccess"
     @on-insights-project-edited="onInsightsProjectDialogCloseSuccess"
     @update:model-value="onInsightsProjectDialogClose"

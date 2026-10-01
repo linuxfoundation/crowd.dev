@@ -32,7 +32,7 @@
               required: 'This field is required',
             }"
             label="View name"
-            :required="true"
+            required
             class="mb-0"
           >
             <el-input
@@ -96,7 +96,7 @@
                 v-model="form.filters[filter]"
                 v-model:open="openedFilter"
                 :config="allFilters[filter]"
-                :hide-remove="true"
+                hide-remove
                 class="flex-grow"
                 chip-classes="w-full !h-10"
               />
