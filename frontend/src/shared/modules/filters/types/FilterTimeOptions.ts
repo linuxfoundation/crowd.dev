@@ -1,4 +1,4 @@
-import {
+import type {
   FilterDateOperator,
 } from '@/shared/modules/filters/config/constants/date.constants';
 

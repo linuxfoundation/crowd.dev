@@ -34,7 +34,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { useAttrs, computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { DropdownItemType } from '@/ui-kit/lfx/dropdown/types/dropdown.types';
+import type { DropdownItemType } from '@/ui-kit/lfx/dropdown/types/dropdown.types';
 
 const props = defineProps<{
   value?: string;

@@ -139,12 +139,12 @@ import LfInsightsProjectAddRepositoryGroups
   from '@/modules/admin/modules/insights-projects/components/lf-insights-project-add-repository-groups.vue';
 import LfInsightsProjectAddDetailsTab from './lf-insights-project-add-details-tab.vue';
 import LfInsightsProjectAddRepositoryTab from './lf-insights-project-add-repository-tab.vue';
-import {
+import type {
   InsightsProjectDetailsResponse,
   InsightsProjectModel,
   InsightsProjectRequest,
 } from '../models/insights-project.model';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 import LfInsightsProjectAddWidgetsTab from './lf-insights-project-add-widgets-tab.vue';
 import { getDefaultWidgets } from '../widgets';
 import {

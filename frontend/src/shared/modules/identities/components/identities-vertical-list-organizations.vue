@@ -28,8 +28,8 @@
 import useOrganizationIdentities from '@/shared/modules/identities/config/useOrganizationIdentities';
 import AppIdentitiesVerticalList from '@/shared/modules/identities/components/identities-vertical-list.vue';
 import { computed } from 'vue';
-import { Platform } from '@/shared/modules/platform/types/Platform';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
+import type { Organization } from '@/modules/organization/types/Organization';
 
 const props = defineProps<{
   organization: Organization;

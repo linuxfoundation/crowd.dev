@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import {
+import type {
   BooleanFilterValue,
   BooleanFilterOptions,
   BooleanFilterConfig,

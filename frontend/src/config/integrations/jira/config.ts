@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfJiraSettingsDrawer from '@/config/integrations/jira/components/jira-settings-drawer.vue';
 import JiraConnect from './components/jira-connect.vue';
 import JiraParams from './components/jira-params.vue';

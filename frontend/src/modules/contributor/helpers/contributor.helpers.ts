@@ -1,6 +1,6 @@
 import { lfIdentities } from '@/config/identities';
-import { Contributor } from '@/modules/contributor/types/Contributor';
-import { MemberIdentity } from '@/modules/member/types/Member';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { MemberIdentity } from '@/modules/member/types/Member';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import memberOrder from '@/shared/modules/identities/config/identitiesOrder/member';
 

@@ -1,5 +1,5 @@
-import { Member } from '@/modules/member/types/Member';
-import { AxiosError } from 'axios';
+import type { Member } from '@/modules/member/types/Member';
+import type { AxiosError } from 'axios';
 
 export interface SuccessMessage {
     primaryMember: Member;

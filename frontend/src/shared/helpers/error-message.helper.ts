@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import type { AxiosError } from 'axios';
 import { h } from 'vue';
 import { ToastStore } from '../message/notification';
 

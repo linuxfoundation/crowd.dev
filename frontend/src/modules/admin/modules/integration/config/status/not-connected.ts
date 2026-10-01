@@ -1,4 +1,4 @@
-import { IntegrationStatusConfig } from '@/modules/admin/modules/integration/config/status/index';
+import type { IntegrationStatusConfig } from '@/modules/admin/modules/integration/config/status/index';
 
 const notConnected: IntegrationStatusConfig = {
   key: 'notConnected',

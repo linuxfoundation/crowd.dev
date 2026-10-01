@@ -112,9 +112,10 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import { useDebounce } from '@vueuse/core';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { Pagination } from '@/shared/types/Pagination';
-import { Project } from '@/modules/lf/segments/types/Segments';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 
 import { ToastStore } from '@/shared/message/notification';
 

@@ -1,4 +1,4 @@
-import {
+import type {
   MultiSelectFilterOptions,
   MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';

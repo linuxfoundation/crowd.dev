@@ -1,26 +1,28 @@
-import { FilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import { FilterCustomAttribute, FilterCustomAttributeType } from '@/shared/modules/filters/types/FilterCustomAttribute';
-import {
+import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import { FilterCustomAttributeType } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import type {
   NumberFilterConfig,
   NumberFilterOptions,
   NumberFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
-import {
+import type {
   BooleanFilterConfig, BooleanFilterOptions,
   BooleanFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
-import {
+import type {
   DateFilterConfig,
   DateFilterOptions,
   DateFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
-import {
+import type {
   MultiSelectFilterConfig, MultiSelectFilterOptions,
   MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
-import {
+import type {
   StringFilterConfig,
   StringFilterOptions,
   StringFilterValue,

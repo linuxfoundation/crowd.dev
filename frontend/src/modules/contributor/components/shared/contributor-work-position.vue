@@ -40,7 +40,7 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 
 const props = defineProps<{

@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
+import type { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();

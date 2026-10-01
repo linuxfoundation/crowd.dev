@@ -1,4 +1,4 @@
-import { DataIssueTypeConfig } from '@/modules/data-quality/config/data-issue-types';
+import type { DataIssueTypeConfig } from '@/modules/data-quality/config/data-issue-types';
 
 const tooManyIdentities: DataIssueTypeConfig = {
   label: 'More than 30 identities',

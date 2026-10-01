@@ -106,7 +106,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import { computed } from 'vue';
 import useMemberIdentities from '@/shared/modules/identities/config/useMemberIdentities';
 import memberOrder from '@/shared/modules/identities/config/identitiesOrder/member';

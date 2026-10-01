@@ -130,7 +130,7 @@ import {
   FeatureEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 
 const props = withDefaults(
   defineProps<{

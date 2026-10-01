@@ -14,7 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { IntegrationTabs } from '../../types/overview.types';
+import type { IntegrationTabs } from '../../types/overview.types';
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void;
 }>();

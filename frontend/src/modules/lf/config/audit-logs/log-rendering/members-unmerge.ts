@@ -1,4 +1,4 @@
-import { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
+import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
 const membersMerge: LogRenderingConfig = {
   label: 'Profiles unmerged',

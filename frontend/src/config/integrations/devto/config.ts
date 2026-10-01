@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import DevtoConnect from './components/devto-connect.vue';
 import DevtoParams from './components/devto-params.vue';
 

@@ -86,7 +86,7 @@ import { storeToRefs } from 'pinia';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useDebounce } from '@vueuse/core';
 
-import { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 import LfxDropdownSelect from '@/ui-kit/lfx/dropdown/dropdown-select.vue';
 import LfxDropdownSelector from '@/ui-kit/lfx/dropdown/dropdown-selector.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';

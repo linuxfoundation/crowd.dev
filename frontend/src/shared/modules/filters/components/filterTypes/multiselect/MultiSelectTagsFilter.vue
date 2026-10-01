@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import {
+import type {
   MultiSelectFilterOptions,
   MultiSelectFilterConfig, MultiSelectFilterOptionGroup,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';

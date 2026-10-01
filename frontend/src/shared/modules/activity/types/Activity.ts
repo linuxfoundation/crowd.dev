@@ -1,6 +1,6 @@
-import { Member } from '@/modules/member/types/Member';
-import { Organization } from '@/modules/organization/types/Organization';
-import { Platform } from '../../platform/types/Platform';
+import type { Member } from '@/modules/member/types/Member';
+import type { Organization } from '@/modules/organization/types/Organization';
+import type { Platform } from '../../platform/types/Platform';
 
 export interface Activity {
   id: string;

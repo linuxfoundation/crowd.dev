@@ -1,4 +1,4 @@
-import { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
+import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { OrganizationService } from '@/modules/organization/organization-service';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';

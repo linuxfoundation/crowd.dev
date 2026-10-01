@@ -1,5 +1,5 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { SavedViewCreate } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { SavedViewCreate } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 export class SavedViewsService {
   static query(params: any) {

@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfGerritSettingsDrawer from '@/config/integrations/gerrit/components/gerrit-settings-drawer.vue';
 import GerritConnect from './components/gerrit-connect.vue';
 import GerritParams from './components/gerrit-params.vue';

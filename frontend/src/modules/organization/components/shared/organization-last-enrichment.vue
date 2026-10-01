@@ -7,7 +7,7 @@
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 const props = defineProps<{

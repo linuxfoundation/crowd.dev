@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfGithubSettingsDrawer from '@/config/integrations/github-nango/components/settings/github-settings-drawer.vue';
 // For now we will be referencing the connect component from the github (old) integration
 import GithubConnect from '@/config/integrations/github/components/github-connect.vue';

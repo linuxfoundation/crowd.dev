@@ -1,12 +1,12 @@
-import { NumberFilterConfig } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
-import { MultiSelectFilterConfig } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
-import { SelectFilterConfig } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
-import { BooleanFilterConfig } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
-import { DateFilterConfig } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
-import { StringFilterConfig } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
-import { MultiSelectAsyncFilterConfig } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
-import { SelectAsyncFilterConfig } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';
+import type { NumberFilterConfig } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
+import type { MultiSelectFilterConfig } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
+import type { SelectFilterConfig } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { BooleanFilterConfig } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
+import type { DateFilterConfig } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { StringFilterConfig } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
+import type { MultiSelectAsyncFilterConfig } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
+import type { SelectAsyncFilterConfig } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';
 
 export enum FilterConfigType {
   NUMBER = 'number',

@@ -1,4 +1,4 @@
-import { DataIssueTypeConfig } from '@/modules/data-quality/config/data-issue-types';
+import type { DataIssueTypeConfig } from '@/modules/data-quality/config/data-issue-types';
 
 const workExperienceMissingInfo: DataIssueTypeConfig = {
   label: 'Work experience(s) with missing information',

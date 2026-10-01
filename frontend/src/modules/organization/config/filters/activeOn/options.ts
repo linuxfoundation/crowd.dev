@@ -1,4 +1,4 @@
-import { MultiSelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
+import type { MultiSelectFilterOptionGroup } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 
 const options: MultiSelectFilterOptionGroup[] = [
   {

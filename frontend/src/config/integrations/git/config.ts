@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import GitConnect from './components/git-connect.vue';
 import GitDropdown from './components/git-dropdown.vue';
 import GitParams from './components/git-params.vue';

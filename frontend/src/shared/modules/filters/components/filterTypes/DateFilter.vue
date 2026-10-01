@@ -63,7 +63,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
-import {
+import type {
   DateFilterConfig,
   DateFilterOptions,
   DateFilterValue,
@@ -75,7 +75,7 @@ import {
   dateFilterTimePickerOptions,
   FilterDateOperator,
 } from '@/shared/modules/filters/config/constants/date.constants';
-import { FilterTimeOptions } from '../../types/FilterTimeOptions';
+import type { FilterTimeOptions } from '../../types/FilterTimeOptions';
 
 const props = defineProps<{
   modelValue: DateFilterValue,

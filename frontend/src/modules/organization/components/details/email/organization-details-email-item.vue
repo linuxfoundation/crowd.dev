@@ -98,9 +98,11 @@ import { ToastStore } from '@/shared/message/notification';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { ref } from 'vue';
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';

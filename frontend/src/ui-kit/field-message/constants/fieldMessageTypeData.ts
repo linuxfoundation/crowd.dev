@@ -1,4 +1,4 @@
-import { FieldMessageType } from '@/ui-kit/field-message/types/FieldMessageType';
+import type { FieldMessageType } from '@/ui-kit/field-message/types/FieldMessageType';
 
 interface FieldMessageTypeData{
   icon: string

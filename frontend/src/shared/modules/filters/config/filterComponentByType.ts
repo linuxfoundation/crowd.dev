@@ -1,5 +1,5 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import { Component } from 'vue';
+import type { Component } from 'vue';
 import BooleanFilter from '@/shared/modules/filters/components/filterTypes/BooleanFilter.vue';
 import MultiSelectFilter from '@/shared/modules/filters/components/filterTypes/MultiSelectFilter.vue';
 import SelectFilter from '@/shared/modules/filters/components/filterTypes/SelectFilter.vue';

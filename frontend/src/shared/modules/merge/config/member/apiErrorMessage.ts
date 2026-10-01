@@ -1,5 +1,5 @@
 import { ToastStore } from '@/shared/message/notification';
-import { ErrorMessage } from '../../types/MemberMessage';
+import type { ErrorMessage } from '../../types/MemberMessage';
 
 export default ({ error }: ErrorMessage) => {
   ToastStore.closeAll();

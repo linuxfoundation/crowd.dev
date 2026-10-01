@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import GitlabConnect from './components/gitlab-connect.vue';
 import GitlabParams from './components/gitlab-params.vue';
 import GitlabAction from './components/gitlab-action.vue';

@@ -81,7 +81,7 @@ import useOrganizationHelpers from '@/modules/organization/helpers/organization.
 import {
   organizationDetailsHeaderProfilePlatforms,
 } from '@/modules/organization/config/details-header-profile-platforms';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { lfIdentities } from '@/config/identities';
 
 const props = defineProps<{

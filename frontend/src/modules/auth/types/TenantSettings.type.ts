@@ -1,4 +1,4 @@
-import { TenantSettingsAttributeSettings } from '@/modules/auth/types/TenantSettingsAttributeSettings.type';
+import type { TenantSettingsAttributeSettings } from '@/modules/auth/types/TenantSettingsAttributeSettings.type';
 
 export interface TenantSettings {
   attributeSettings: TenantSettingsAttributeSettings;

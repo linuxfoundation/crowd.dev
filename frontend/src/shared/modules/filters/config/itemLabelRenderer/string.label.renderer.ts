@@ -1,4 +1,4 @@
-import { StringFilterValue } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
+import type { StringFilterValue } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
 import { FilterStringOperator, stringOperatorLabels } from '@/shared/modules/filters/config/constants/string.constants';
 
 export const stringItemLabelRenderer = (

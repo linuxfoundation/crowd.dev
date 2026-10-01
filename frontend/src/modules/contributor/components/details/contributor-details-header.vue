@@ -39,7 +39,7 @@ import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { computed } from 'vue';
 import { contributorDetailsHeaderProfilePlatforms } from '@/modules/contributor/config/details-header-profile-platforms';
 import LfContributorEditName from '@/modules/contributor/components/edit/contributor-edit-name.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import LfContributorWorkPosition from '@/modules/contributor/components/shared/contributor-work-position.vue';
 import LfContributorDetailsHeaderProfiles

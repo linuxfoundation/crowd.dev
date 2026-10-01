@@ -14,7 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import config from '@/modules/activity/config/display/main';
-import { Activity } from '../types/Activity';
+import type { Activity } from '../types/Activity';
 
 defineProps<{
   activity: Activity;

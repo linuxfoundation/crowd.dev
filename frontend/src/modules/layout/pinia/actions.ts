@@ -1,4 +1,4 @@
-import { FooterState } from './state';
+import type { FooterState } from './state';
 
 export default {
   setVisibility(this: FooterState, visible: boolean) {

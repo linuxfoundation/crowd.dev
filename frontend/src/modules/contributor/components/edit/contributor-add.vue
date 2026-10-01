@@ -125,7 +125,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfField from '@/ui-kit/field/Field.vue';
-import { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
@@ -141,7 +141,8 @@ import { ToastStore } from '@/shared/message/notification';
 import Errors from '@/shared/error/errors';
 import AppLfSubProjectsListDropdown from '@/modules/admin/modules/projects/components/lf-sub-projects-list-dropdown.vue';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
-import { IdentityConfig, lfIdentities } from '@/config/identities';
+import type { IdentityConfig } from '@/config/identities';
+import { lfIdentities } from '@/config/identities';
 
 const props = defineProps<{
   modelValue: boolean,

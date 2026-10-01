@@ -1,4 +1,4 @@
-import { User } from '@/modules/auth/types/User.type';
+import type { User } from '@/modules/auth/types/User.type';
 
 export interface AuthState {
   token: string | null,

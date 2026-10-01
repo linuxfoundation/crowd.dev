@@ -1,7 +1,7 @@
 import { h } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import { router } from '@/router';
-import { SuccessMessage } from '../../types/MemberMessage';
+import type { SuccessMessage } from '../../types/MemberMessage';
 
 export default ({ primaryMember, secondaryMember, selectedProjectGroupId }: SuccessMessage) => {
   const { id, displayName: primaryDisplayName } = primaryMember;

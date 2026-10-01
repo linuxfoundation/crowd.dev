@@ -1,5 +1,5 @@
 import { ToastStore } from '@/shared/message/notification';
-import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 

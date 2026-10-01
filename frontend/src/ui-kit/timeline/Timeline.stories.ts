@@ -2,7 +2,7 @@ import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfTimeline from './Timeline.vue';
 import LfTimelineItem from './TimelineItem.vue';
-import { TimelineGroup } from './types/TimelineTypes';
+import type { TimelineGroup } from './types/TimelineTypes';
 
 export default {
   title: 'LinuxFoundation/Timeline',

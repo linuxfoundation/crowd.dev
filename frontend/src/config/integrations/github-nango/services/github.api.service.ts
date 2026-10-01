@@ -1,9 +1,9 @@
 import authAxios from '@/shared/axios/auth-axios';
-import {
+import type {
   GitHubOrganization,
   GitHubRepository,
 } from '@/config/integrations/github-nango/types/GithubSettings';
-import { Pagination } from '@/shared/types/Pagination';
+import type { Pagination } from '@/shared/types/Pagination';
 
 export class GithubApiService {
   static async searchRepositories(

@@ -1,4 +1,4 @@
-import { ReportDataEntity } from '@/shared/modules/report-issue/constants/report-data-entity.enum';
+import type { ReportDataEntity } from '@/shared/modules/report-issue/constants/report-data-entity.enum';
 
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import person from './entity/person';

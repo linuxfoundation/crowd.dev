@@ -42,11 +42,12 @@ import {
 
 import { ToastStore } from '@/shared/message/notification';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import type { Pagination } from '@/shared/types/Pagination';
 import { debounce } from 'lodash';
-import { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
-import { CollectionModel } from '../../../collections/models/collection.model';
+import type { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
+import type { CollectionModel } from '../../../collections/models/collection.model';
 
 const props = defineProps<{
   form: InsightsProjectAddFormModel;

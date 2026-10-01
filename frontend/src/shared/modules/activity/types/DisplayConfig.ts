@@ -1,4 +1,4 @@
-import { Platform } from '@/shared/modules/platform/types/Platform';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
 import { type Component } from 'vue';
 
 export interface ActivityDisplayConfig {

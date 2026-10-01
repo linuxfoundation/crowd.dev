@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 import { WIDGETS_GROUPS } from '../widgets';
 
 const props = defineProps<{

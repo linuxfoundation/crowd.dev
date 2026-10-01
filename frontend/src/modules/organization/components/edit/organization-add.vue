@@ -111,9 +111,11 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';

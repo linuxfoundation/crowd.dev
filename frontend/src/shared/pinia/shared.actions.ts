@@ -1,6 +1,6 @@
-import { Contributor } from '@/modules/contributor/types/Contributor';
-import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
+import type { Organization } from '@/modules/organization/types/Organization';
 
 export default {
   /** Report Data Modal * */

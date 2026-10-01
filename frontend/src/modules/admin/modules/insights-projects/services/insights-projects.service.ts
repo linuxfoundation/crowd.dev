@@ -1,13 +1,13 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { Pagination } from '@/shared/types/Pagination';
-import { QueryFunction } from '@tanstack/vue-query';
-import { Project } from '@/modules/lf/segments/types/Segments';
-import {
+import type { Pagination } from '@/shared/types/Pagination';
+import type { QueryFunction } from '@tanstack/vue-query';
+import type { Project } from '@/modules/lf/segments/types/Segments';
+import type {
   InsightsProjectDetailsResponse,
   InsightsProjectModel,
   InsightsProjectRequest,
 } from '../models/insights-project.model';
-import { Widgets } from '../widgets';
+import type { Widgets } from '../widgets';
 
 export class InsightsProjectsService {
   query(

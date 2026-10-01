@@ -149,8 +149,8 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { segmentService } from '@/modules/lf/segments/segments.service';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { ProjectGroup } from '@/modules/lf/segments/types/Segments';
-import { AxiosError } from 'axios';
+import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
+import type { AxiosError } from 'axios';
 import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 
 import { ToastStore } from '@/shared/message/notification';

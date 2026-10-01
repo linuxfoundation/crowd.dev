@@ -58,7 +58,7 @@ import { storeToRefs } from 'pinia';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import { useOverviewStore } from '../../store/overview.store';
 import IntegrationsFilter from '../fragments/integrations-filter.vue';
-import { GlobalIntegrationStatusCount } from '../../types/overview.types';
+import type { GlobalIntegrationStatusCount } from '../../types/overview.types';
 import { OVERVIEW_API_SERVICE } from '../../services/overview.api.service';
 
 const {

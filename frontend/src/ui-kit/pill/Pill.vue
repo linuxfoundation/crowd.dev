@@ -10,7 +10,7 @@
 </template>
 
 <script lang="ts" setup>
-import { PillType } from '@/ui-kit/pill/types/PillType';
+import type { PillType } from '@/ui-kit/pill/types/PillType';
 
 const props = withDefaults(defineProps<{
   type: PillType;

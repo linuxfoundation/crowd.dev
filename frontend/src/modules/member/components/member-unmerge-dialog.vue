@@ -348,7 +348,7 @@ import { useRouter } from 'vue-router';
 import { lfIdentities } from '@/config/identities';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import AppMemberSuggestionsDetails from './suggestions/member-merge-suggestions-details.vue';
 

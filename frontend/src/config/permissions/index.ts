@@ -1,5 +1,5 @@
-import { LfRole } from '@/shared/modules/permissions/types/Roles';
-import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { LfRole } from '@/shared/modules/permissions/types/Roles';
+import type { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import readonly from './readonly';
 import admin from './admin';
 import projectAdmin from './projectAdmin';

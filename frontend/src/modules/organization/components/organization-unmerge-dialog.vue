@@ -261,7 +261,7 @@ import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import { lfIdentities } from '@/config/identities';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
-import {
+import type {
   Organization,
   OrganizationIdentity,
   OrganizationIdentityParsed,

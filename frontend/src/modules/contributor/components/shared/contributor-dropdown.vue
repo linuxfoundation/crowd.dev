@@ -46,7 +46,7 @@ import { doManualAction } from '@/shared/helpers/manualAction.helpers';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { computed } from 'vue';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 
 const props = defineProps<{

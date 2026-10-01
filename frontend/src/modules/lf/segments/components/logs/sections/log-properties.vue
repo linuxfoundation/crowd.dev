@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ActionType, AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { ActionType, AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';

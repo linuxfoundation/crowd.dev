@@ -1,4 +1,4 @@
-import { BooleanFilterValue } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
+import type { BooleanFilterValue } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
 
 export const booleanApiFilterRenderer = (property: string, { value }: BooleanFilterValue): any[] => [
   {

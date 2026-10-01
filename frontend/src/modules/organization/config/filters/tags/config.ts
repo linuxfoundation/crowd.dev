@@ -1,5 +1,5 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import {
+import type {
   StringFilterConfig,
   StringFilterOptions,
   StringFilterValue,

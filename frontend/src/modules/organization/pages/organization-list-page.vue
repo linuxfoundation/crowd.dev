@@ -97,7 +97,7 @@ import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import AppPageWrapper from '@/shared/layout/page-wrapper.vue';
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
 import { filterApiService } from '@/shared/modules/filters/services/filter-api.service';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue';

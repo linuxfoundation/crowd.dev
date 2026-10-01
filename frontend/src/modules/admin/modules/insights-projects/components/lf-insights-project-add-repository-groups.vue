@@ -71,7 +71,7 @@ import LfRepositoryGroupsModal
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 
 interface RepositoryGroup {
   id?: string;

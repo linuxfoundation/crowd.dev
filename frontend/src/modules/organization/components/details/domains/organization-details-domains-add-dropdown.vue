@@ -14,7 +14,8 @@
 </template>
 
 <script setup lang="ts">
-import { OrganizationIdentity, OrganizationIdentityType } from '@/modules/organization/types/Organization';
+import type { OrganizationIdentity } from '@/modules/organization/types/Organization';
+import { OrganizationIdentityType } from '@/modules/organization/types/Organization';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 

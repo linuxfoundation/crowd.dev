@@ -39,7 +39,7 @@
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ref } from 'vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 import LfOrganizationEditLogo from '@/modules/organization/components/edit/organization-edit-logo.vue';
 

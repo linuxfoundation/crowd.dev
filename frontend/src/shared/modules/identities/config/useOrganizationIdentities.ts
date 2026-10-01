@@ -1,6 +1,8 @@
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';

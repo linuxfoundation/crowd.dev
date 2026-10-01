@@ -70,11 +70,12 @@
 import {
   h, ref, computed, onMounted, nextTick, watch, onBeforeUnmount,
 } from 'vue';
-import { InsightsProjectModel } from '@/modules/admin/modules/insights-projects/models/insights-project.model';
+import type { InsightsProjectModel } from '@/modules/admin/modules/insights-projects/models/insights-project.model';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
 import { useDebounce } from '@vueuse/core';
-import { Pagination } from '@/shared/types/Pagination';
+import type { Pagination } from '@/shared/types/Pagination';
 import { TanstackKey } from '@/shared/types/tanstack';
 
 import { ToastStore } from '@/shared/message/notification';

@@ -167,7 +167,7 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { Member } from '../types/Member';
+import type { Member } from '../types/Member';
 
 enum Actions {
   DELETE_CONTACT = 'deleteContact',

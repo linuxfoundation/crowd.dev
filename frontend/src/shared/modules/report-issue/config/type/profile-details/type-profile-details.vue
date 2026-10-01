@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 
 const props = defineProps<{

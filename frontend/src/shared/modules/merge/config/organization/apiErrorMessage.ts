@@ -1,5 +1,5 @@
 import { ToastStore } from '@/shared/message/notification';
-import { ApiErrorMessage } from '../../types/OrganizationMessage';
+import type { ApiErrorMessage } from '../../types/OrganizationMessage';
 
 export default ({ error }: ApiErrorMessage) => {
   ToastStore.closeAll();

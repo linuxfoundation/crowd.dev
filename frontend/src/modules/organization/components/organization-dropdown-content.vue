@@ -165,7 +165,7 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { OrganizationService } from '../organization-service';
-import { Organization } from '../types/Organization';
+import type { Organization } from '../types/Organization';
 
 enum Actions {
   DELETE_ORGANIZATION = 'deleteOrganization',

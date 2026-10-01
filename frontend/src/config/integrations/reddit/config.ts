@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import LfRedditSettingsDrawer from '@/config/integrations/reddit/components/reddit-settings-drawer.vue';
 import RedditConnect from './components/reddit-connect.vue';
 import RedditParams from './components/reddit-params.vue';

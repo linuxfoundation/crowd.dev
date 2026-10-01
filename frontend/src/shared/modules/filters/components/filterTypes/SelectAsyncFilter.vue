@@ -55,11 +55,11 @@ import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 import LfFilterSelectOption from '@/shared/modules/filters/components/partials/select/FilterSelectOption.vue';
-import {
+import type {
   SelectAsyncFilterConfig, SelectAsyncFilterOption, SelectAsyncFilterOptions,
   SelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';
-import { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const props = defineProps<{

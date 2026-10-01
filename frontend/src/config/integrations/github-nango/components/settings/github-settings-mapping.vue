@@ -79,7 +79,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import LfGithubSettingsRepositoriesBulkSelect
   from '@/config/integrations/github-nango/components/settings/github-settings-repositories-bulk-select.vue';
-import {
+import type {
   GitHubOrganization,
   GitHubSettingsRepository,
 } from '@/config/integrations/github-nango/types/GithubSettings';

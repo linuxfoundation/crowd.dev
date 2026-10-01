@@ -60,13 +60,13 @@ import {
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import CrFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
-import {
+import type {
   MultiSelectAsyncFilterConfig,
   MultiSelectAsyncFilterOption,
   MultiSelectAsyncFilterOptions,
   MultiSelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
-import { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
+import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 

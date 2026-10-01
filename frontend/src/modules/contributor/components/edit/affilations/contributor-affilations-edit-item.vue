@@ -105,7 +105,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import useVuelidate from '@vuelidate/core';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';

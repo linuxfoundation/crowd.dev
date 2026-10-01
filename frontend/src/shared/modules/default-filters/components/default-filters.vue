@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import {
+import type {
   SavedViewsConfig, DefaultFiltersSettings,
 } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 

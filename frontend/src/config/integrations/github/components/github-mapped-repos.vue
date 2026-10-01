@@ -25,7 +25,7 @@ import { onMounted, ref, computed } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfGithubMappingsDisplay from '@/config/integrations/github/components/github-mappings-display.vue';
-import { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 import pluralize from 'pluralize';
 
 const props = defineProps<{

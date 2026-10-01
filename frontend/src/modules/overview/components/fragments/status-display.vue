@@ -43,8 +43,8 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import AppIntegrationProgressWrapper from '@/modules/integration/components/integration-progress-wrapper.vue';
 import AppIntegrationProgressBar from '@/modules/integration/components/integration-progress-bar.vue';
-import { IntegrationConfig } from '@/config/integrations';
-import { IntegrationStatus } from '../../types/overview.types';
+import type { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationStatus } from '../../types/overview.types';
 
 const props = defineProps<{
   integration:IntegrationConfig;

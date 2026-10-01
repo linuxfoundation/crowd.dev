@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { Contributor, ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { computed } from 'vue';
 

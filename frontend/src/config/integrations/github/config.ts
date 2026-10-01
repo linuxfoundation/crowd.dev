@@ -1,4 +1,4 @@
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import GithubConnect from './components/github-connect.vue';
 import GithubStatus from './components/github-status.vue';
 import GithubAction from './components/github-action.vue';

@@ -27,11 +27,12 @@
 
 <script lang="ts" setup>
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { computed } from 'vue';
-import { DataIssueTypeConfig, dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
+import type { DataIssueTypeConfig } from '@/modules/data-quality/config/data-issue-types';
+import { dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import pluralize from 'pluralize';
 import { formatNumber } from '@/utils/number';
 

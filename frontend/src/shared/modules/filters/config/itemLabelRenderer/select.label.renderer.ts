@@ -1,4 +1,4 @@
-import {
+import type {
   SelectFilterOptions,
   SelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';

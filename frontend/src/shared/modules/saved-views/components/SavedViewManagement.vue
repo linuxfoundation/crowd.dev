@@ -57,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { SavedView, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { SavedView, SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import { VueDraggableNext } from 'vue-draggable-next';
 import { computed } from 'vue';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';

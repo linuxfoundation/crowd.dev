@@ -62,7 +62,7 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import {
   computed, h, reactive, ref,
 } from 'vue';
-import { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';

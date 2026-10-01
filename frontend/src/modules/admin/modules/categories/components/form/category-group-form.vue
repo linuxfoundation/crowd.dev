@@ -153,10 +153,10 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfCategoryForm from '@/modules/admin/modules/categories/components/form/category-form.vue';
 import { CategoryGroupService } from '@/modules/admin/modules/categories/services/category-group.service';
-import { CategoryGroup, CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import type { CategoryGroup, CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { ToastStore } from '@/shared/message/notification';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
-import { Category } from '@/modules/admin/modules/categories/types/Category';
+import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
 const props = defineProps<{
   modelValue: boolean;

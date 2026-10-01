@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Organization } from '../../types/Organization';
+import type { Organization } from '../../types/Organization';
 
 withDefaults(
   defineProps<{

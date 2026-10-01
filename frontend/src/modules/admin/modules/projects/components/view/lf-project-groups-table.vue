@@ -79,8 +79,8 @@ import LfTable from '@/ui-kit/table/Table.vue';
 import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import LfTableHead from '@/ui-kit/table/TableHead.vue';
 import AppLfProjectColumn from '@/shared/project-column/lf-project-column.vue';
-import { ProjectGroup } from '@/modules/lf/segments/types/Segments';
-import { Pagination } from '@/shared/types/Pagination';
+import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
+import type { Pagination } from '@/shared/types/Pagination';
 import AppLfStatusPill from '../fragments/lf-status-pill.vue';
 
 defineProps<{

@@ -1,7 +1,8 @@
-import { Filter, FilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
-import { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 export const filterQueryService = () => {
   // Parses url query params and puts them in nested object format

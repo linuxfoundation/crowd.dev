@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { DropdownPlacement } from '@/ui-kit/dropdown/types/DropdownPlacement';
+import type { DropdownPlacement } from '@/ui-kit/dropdown/types/DropdownPlacement';
 import LfPopover from '@/ui-kit/popover/Popover.vue';
 import { ClickOutside as vClickOutside } from 'element-plus';
 
