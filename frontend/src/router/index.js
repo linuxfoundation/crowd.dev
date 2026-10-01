@@ -8,6 +8,7 @@ import ProgressBar from '@/shared/progress-bar/progress-bar';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import auth from '@/modules/auth';
 import navigationGuard from '@/middleware/navigation/navigation-guard';
+import { setRouter } from '@/router/instance';
 
 /**
  * Loads all the routes from src/modules/ folders, and adds the catch-all rule to handle 404s
@@ -50,6 +51,7 @@ export const createRouter = () => {
         return { x: 0, y: 0 };
       },
     });
+    setRouter(router);
 
     const originalPush = router.push;
     router.push = function push(location) {

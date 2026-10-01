@@ -1,6 +1,5 @@
 import { h } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
-import { router } from '@/router';
 import type { SuccessMessage } from '../../types/OrganizationMessage';
 
 export default ({ primaryOrganization, secondaryOrganization }: SuccessMessage) => {
@@ -11,7 +10,8 @@ export default ({ primaryOrganization, secondaryOrganization }: SuccessMessage) 
     'button',
     {
       class: 'c-btn c-btn--tiny c-btn--secondary-gray !h-6 !w-fit',
-      onClick: () => {
+      onClick: async () => {
+        const { router } = await import('@/router');
         router.push({
           name: 'organizationView',
           params: { id },

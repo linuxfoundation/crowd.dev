@@ -1,5 +1,5 @@
 import { useLogRocket } from '@/utils/logRocket';
-import { router } from '@/router';
+import { getRouter } from '@/router/instance';
 import { ToastStore } from '@/shared/message/notification';
 import { AuthService } from '@/modules/auth/services/auth.service';
 
@@ -60,7 +60,7 @@ export default class Errors {
         ToastStore.error(error.response.data, { duration: 0 });
         return;
       }
-      router.push('/403');
+      getRouter().push('/403');
       return;
     }
 
