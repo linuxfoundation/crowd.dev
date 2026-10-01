@@ -68,7 +68,7 @@ Fix any errors it reports before proceeding:
 **Frontend** — no dependency-graph tooling exists for it yet; run manually if `frontend/` has changed files:
 
 ```bash
-cd frontend && npm run lint
+cd frontend && pnpm run lint
 ```
 
 Frontend has no `format-check` or `tsc-check` script — skip both.

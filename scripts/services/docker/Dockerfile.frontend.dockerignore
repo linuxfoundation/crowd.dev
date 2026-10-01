@@ -1,0 +1,16 @@
+**/.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/.idea
+**/.vscode
+.vscode/
+.github/
+.claude/
+backend/
+services/
+scripts/
+docs/
+*.md
+Makefile

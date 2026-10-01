@@ -3,14 +3,15 @@ version: "3.6"
 services:
   frontend:
     build:
-      context: ../../frontend
+      context: ../../
+      dockerfile: scripts/services/docker/Dockerfile.frontend
       target: dependencies
     env_file:
       - ../../frontend/.env.dist.local
       - ../../frontend/.env.dist.composed
       - ../../frontend/.env.override.local
       - ../../frontend/.env.override.composed
-    command: npm run start:dev
+    command: pnpm --filter frontend run start:dev
     environment:
       - DOCKER_BUILDKIT=1
       - BACKEND_URL=http://api:8080
@@ -22,14 +23,15 @@ services:
 
   frontend-dev:
     build:
-      context: ../../frontend
+      context: ../../
+      dockerfile: scripts/services/docker/Dockerfile.frontend
       target: dependencies
     env_file:
       - ../../frontend/.env.dist.local
       - ../../frontend/.env.dist.composed
       - ../../frontend/.env.override.local
       - ../../frontend/.env.override.composed
-    command: npm run start:dev
+    command: pnpm --filter frontend run start:dev
     environment:
       - DOCKER_BUILDKIT=1
       - BACKEND_URL=http://api:8080
@@ -39,8 +41,8 @@ services:
       - crowd-bridge
     hostname: frontend
     volumes:
-      - ../../frontend/src:/usr/crowd/frontend/src
-      - ../../frontend/public:/usr/crowd/frontend/public
+      - ../../frontend/src:/usr/crowd/app/frontend/src
+      - ../../frontend/public:/usr/crowd/app/frontend/public
 
 networks:
   crowd-bridge:
