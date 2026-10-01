@@ -137,6 +137,32 @@ export const Default = {
 
 
 
+## 🎬 Events and Actions
+
+Storybook no longer auto-detects event props from a name-matched regex pattern (that config was removed from `.storybook/preview.ts`). Wire event args explicitly with `fn()` from `storybook/test` so they show up in the Actions panel and can be asserted against in interaction tests:
+
+```typescript
+import { fn } from 'storybook/test';
+import LfButton from './Button.vue';
+
+export default {
+  title: 'LinuxFoundation/Button',
+  component: LfButton,
+  tags: ['autodocs'],
+  args: {
+    onClick: fn(),
+  },
+};
+```
+
+## ♿ Accessibility
+
+`@storybook/addon-a11y` is enabled for every story (`.storybook/main.ts`). Each story's **Accessibility** panel runs an automated scan — check it while developing and fix any violations before merging.
+
+## ✅ CI Build Check
+
+`npm run docs:storybook:ci` builds the full Storybook in headless mode (`storybook build --quiet`). Run it locally before opening a PR to catch a story that fails to build.
+
 ## 🔔 Best Practices
 
 ✅ Use consistent prop naming across components.

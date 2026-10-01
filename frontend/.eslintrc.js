@@ -94,7 +94,15 @@ module.exports = {
     },
   },
 
-  overrides: Object.entries(legacy)
-    .filter(([, files]) => files.length > 0)
-    .map(([rule, files]) => ({ files, rules: { [rule]: 'off' } })),
+  overrides: [
+    {
+      files: ['vite.config.ts'],
+      // the alias resolver throws on ESM-only packages such as rollup-plugin-visualizer
+      settings: { 'import/resolver': 'typescript' },
+      rules: { 'import/no-extraneous-dependencies': ['error', { devDependencies: true }] },
+    },
+    ...Object.entries(legacy)
+      .filter(([, files]) => files.length > 0)
+      .map(([rule, files]) => ({ files, rules: { [rule]: 'off' } })),
+  ],
 };
