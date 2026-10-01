@@ -214,8 +214,10 @@ const keywords = computed(
   () => props.integration?.settings?.keywords || [],
 );
 
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const model = ref(JSON.parse(JSON.stringify(tags.value)));
 const modelKeywords = ref(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   JSON.parse(JSON.stringify(keywords.value)),
 );
 const keywordsCount = computed(

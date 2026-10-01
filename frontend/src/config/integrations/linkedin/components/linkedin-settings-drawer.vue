@@ -122,6 +122,7 @@ const organizations = computed(
 const selectedOrg = computed(() => organizations.value.find((o: any) => o.inUse === true));
 
 const model = ref(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   selectedOrg.value ? selectedOrg.value.id : null,
 );
 const loading = ref(false);

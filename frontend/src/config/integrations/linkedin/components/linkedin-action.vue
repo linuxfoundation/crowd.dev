@@ -28,6 +28,7 @@ const props = defineProps<{
 
 const isPendingAction = computed(() => props.integration.status === 'pending-action');
 
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const isLinkedinSettingsDrawerOpen = ref(isPendingAction.value);
 </script>
 

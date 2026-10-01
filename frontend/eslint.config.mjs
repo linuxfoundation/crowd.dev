@@ -129,6 +129,7 @@ export default [
           'error',
           { order: ['defineOptions', 'defineProps', 'defineEmits', 'defineSlots'], defineExposeLast: true },
         ],
+        'vue/no-ref-object-reactivity-loss': 'error',
         'vue/max-len': ['error', { code: 150, ignoreComments: true, ignoreUrls: true }],
         'import/extensions': [
           'error',
