@@ -155,13 +155,13 @@ import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 
 import { ToastStore } from '@/shared/message/notification';
 
-const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
-  (e: 'onProjectGroupEdited'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   id: string | null;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
+  (e: 'onProjectGroupEdited'): void;
 }>();
 
 const { trackEvent } = useProductTracking();

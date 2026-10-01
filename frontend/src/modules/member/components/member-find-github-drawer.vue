@@ -98,14 +98,14 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const store = useStore();
 const props = defineProps({
   modelValue: {
     type: Object,
     required: true,
   },
 });
-
+const emit = defineEmits(['update:modelValue']);
+const store = useStore();
 const memberModel = reactive(cloneDeep(props.modelValue));
 
 const suggestions = ref([]);
@@ -116,8 +116,6 @@ onMounted(async () => {
   suggestions.value = await MemberService.findGithub(props.modelValue.id);
   loading.value = false;
 });
-
-const emit = defineEmits(['update:modelValue']);
 
 const drawerModel = computed({
   get() {

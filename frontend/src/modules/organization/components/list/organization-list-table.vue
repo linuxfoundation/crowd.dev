@@ -467,9 +467,6 @@ import AppOrganizationDropdownContent from '../organization-dropdown-content.vue
 import AppOrganizationName from '../organization-name.vue';
 import AppOrganizationListToolbar from './organization-list-toolbar.vue';
 
-const { trackEvent } = useProductTracking();
-const router = useRouter();
-
 const props = defineProps({
   hasOrganizations: {
     type: Boolean,
@@ -491,8 +488,9 @@ const props = defineProps({
     }),
   },
 });
-
 const emit = defineEmits(['update:pagination']);
+const { trackEvent } = useProductTracking();
+const router = useRouter();
 
 const { hasPermission } = usePermissions();
 

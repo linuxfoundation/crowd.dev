@@ -47,8 +47,6 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 
-const emit = defineEmits(['onEditProjectGroup', 'onAddProject']);
-
 defineProps({
   id: {
     type: String,
@@ -59,6 +57,8 @@ defineProps({
     default: false,
   },
 });
+
+const emit = defineEmits(['onEditProjectGroup', 'onAddProject']);
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { updateSelectedProjectGroup } = lsSegmentsStore;

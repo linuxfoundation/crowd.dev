@@ -144,14 +144,13 @@ import LfGerritSettingsEmpty from '@/config/integrations/gerrit/components/gerri
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const emit = defineEmits(['update:modelValue']);
 const props = defineProps<{
   integration: any;
   modelValue: boolean;
   segmentId: string | null;
   grandparentId: string | null;
 }>();
-
+const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 

@@ -163,11 +163,11 @@ const props = defineProps<{
   categoryGroup?: CategoryGroup,
 }>();
 
-const categories = ref(props.categoryGroup?.categories || []);
-
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
   (e: 'reload'): void;
 }>();
+
+const categories = ref(props.categoryGroup?.categories || []);
 
 const isDrawerOpen = computed({
   get: () => props.modelValue,

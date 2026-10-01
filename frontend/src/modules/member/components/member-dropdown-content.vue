@@ -181,14 +181,13 @@ enum Actions {
   FIND_GITHUB = 'findGithub'
 }
 
-const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void, (e: 'findGithub'): void }>();
 const props = defineProps<{
   member: Member;
   hideMerge?: boolean;
   hideEdit?: boolean;
   hideUnmerge?: boolean;
 }>();
-
+const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void, (e: 'findGithub'): void }>();
 const route = useRoute();
 const queryClient = useQueryClient();
 

@@ -381,6 +381,7 @@ onMounted(() => {
   }, 0);
 });
 
+// eslint-disable-next-line vue/define-macros-order -- the plain <script> block below counts as last
 defineExpose({
   more,
 });

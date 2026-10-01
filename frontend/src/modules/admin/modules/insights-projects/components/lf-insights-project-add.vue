@@ -158,15 +158,15 @@ import {
 } from '../insight-project-helper';
 import LfCmSubProjectListDropdown from './lf-cm-sub-project-list-dropdown.vue';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
-  (e: 'onInsightsProjectCreated', project: InsightsProjectModel): void;
-  (e: 'onInsightsProjectEdited', project: InsightsProjectModel): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   insightsProjectId?: string;
   displayBackButton?: boolean;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'onInsightsProjectCreated', project: InsightsProjectModel): void;
+  (e: 'onInsightsProjectEdited', project: InsightsProjectModel): void;
 }>();
 
 const activeTab = ref('details');

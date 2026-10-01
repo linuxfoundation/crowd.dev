@@ -82,6 +82,12 @@ import { ToastStore } from '@/shared/message/notification';
 import { INSIGHTS_PROJECTS_SERVICE } from '../../insights-projects/services/insights-projects.service';
 import { useInsightsProjectsStore } from '../../insights-projects/pinia';
 
+const props = defineProps<{
+  selectedProjects: InsightsProjectModel[];
+}>();
+
+const emit = defineEmits<{(e: 'onAddProject', projectId: string): void }>();
+
 const SearchIcon = h(
   'i', // type
   { class: 'fa-light fa-magnifying-glass c-icon' }, // props
@@ -100,10 +106,6 @@ const ArrowUpIcon = h(
   [],
 );
 
-const emit = defineEmits<{(e: 'onAddProject', projectId: string): void }>();
-const props = defineProps<{
-  selectedProjects: InsightsProjectModel[];
-}>();
 let scrollContainer: HTMLElement | null = null;
 
 const insightsProjectsStore = useInsightsProjectsStore();
