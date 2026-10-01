@@ -4,5 +4,5 @@ wc -l`
 
 if [ $frontend_files -gt 0 ]
 then
-    cd frontend && npx lint-staged && cd ..
+    pnpm --filter frontend exec lint-staged
 fi

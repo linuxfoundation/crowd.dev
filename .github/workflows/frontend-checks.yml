@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
       - ".github/workflows/frontend-checks.yml"
 
 concurrency:
@@ -21,20 +24,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-          cache-dependency-path: "frontend/package-lock.json"
+          runtime: node@24
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "frontend..."
 
       - name: Lint code
-        run: npm ci && npm run lint
-        working-directory: frontend
+        run: pnpm --filter frontend run lint
 
       - name: Check circular imports
-        run: npm run lint:cycles
-        working-directory: frontend
+        run: pnpm --filter frontend run lint:cycles
 
   build:
     runs-on: ubuntu-latest
@@ -43,29 +46,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-          cache-dependency-path: "frontend/package-lock.json"
+          runtime: node@24
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "frontend..."
 
       - name: Build production bundle
-        run: npm ci && npm run build:production
-        working-directory: frontend
+        run: pnpm --filter frontend run build:production
 
   storybook-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-          cache-dependency-path: "frontend/package-lock.json"
-      - run: npm ci
-      - run: npm run docs:storybook:ci
+          runtime: node@24
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "frontend..."
+
+      - run: pnpm --filter frontend run docs:storybook:ci
