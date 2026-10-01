@@ -38,7 +38,7 @@
         <lf-button
           type="secondary-ghost"
           size="small"
-          :disabled="!docsOverride || isPending"
+          :disabled="!currentOverride || isPending"
           @click="clearMutation.mutate()"
         >
           Clear override
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfField from '@/ui-kit/field/Field.vue';
@@ -70,19 +70,22 @@ const props = defineProps<{
   docsOverride?: InsightsProjectDocsOverride | null;
 }>();
 
-const emit = defineEmits<{(e: 'change', value: InsightsProjectDocsOverride | null): void }>();
-
 const queryClient = useQueryClient();
 const docsUrl = ref('');
+const currentOverride = ref<InsightsProjectDocsOverride | null>(props.docsOverride ?? null);
+
+watch(() => props.docsOverride, (value) => {
+  currentOverride.value = value ?? null;
+});
 
 const isValidDocsUrl = computed(() => isHttpUrl(docsUrl.value));
 
 const statusText = computed(() => {
-  if (!props.docsOverride) {
+  if (!currentOverride.value) {
     return 'No override set';
   }
-  return props.docsOverride.docsUrl
-    ? `Active override: ${props.docsOverride.docsUrl}`
+  return currentOverride.value.docsUrl
+    ? `Active override: ${currentOverride.value.docsUrl}`
     : 'Active override: project has no docs';
 });
 
@@ -94,7 +97,7 @@ const markStale = () => queryClient.invalidateQueries({
 const setMutation = useMutation({
   mutationFn: (request: InsightsProjectDocsOverrideRequest) => INSIGHTS_PROJECTS_SERVICE.setDocsOverride(props.insightsProjectId, request),
   onSuccess: (saved) => {
-    emit('change', saved);
+    currentOverride.value = saved;
     docsUrl.value = '';
     ToastStore.closeAll();
     ToastStore.success('Docs override saved');
@@ -109,7 +112,7 @@ const setMutation = useMutation({
 const clearMutation = useMutation({
   mutationFn: () => INSIGHTS_PROJECTS_SERVICE.clearDocsOverride(props.insightsProjectId),
   onSuccess: () => {
-    emit('change', null);
+    currentOverride.value = null;
     ToastStore.closeAll();
     ToastStore.success('Docs override cleared');
     markStale();

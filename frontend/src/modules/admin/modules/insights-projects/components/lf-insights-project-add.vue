@@ -82,7 +82,6 @@
                   <lf-insights-project-docs-override
                     :insights-project-id="insightsProject.id"
                     :docs-override="insightsProject.docsOverride"
-                    @change="insightsProject.docsOverride = $event"
                   />
                 </template>
               </template>
