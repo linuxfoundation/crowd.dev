@@ -39,5 +39,6 @@ export {
   ingestSecurityContactsForPurlWorkflow,
   ingestReportingProtocols,
 } from '../security-contacts/workflows'
+export { syncGovernanceFileContributors } from '../member-contributors/workflows'
 export { analyzeBlastRadius } from '../blast-radius/workflows'
 export { sweepPackageRepoConfidence } from '../package-repos/workflows'
