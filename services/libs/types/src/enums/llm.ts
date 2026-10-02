@@ -18,4 +18,5 @@ export enum LlmQueryType {
   SELECT_MOST_RELEVANT_DOMAIN = 'select_most_relevant_domain',
   FAKE_ORGANIZATION_ANALYSIS = 'fake_organization_analysis',
   PROJECT_EVALUATION = 'project_evaluation',
+  ONBOARDING_REQUEST_PARSING = 'onboarding_request_parsing',
 }
