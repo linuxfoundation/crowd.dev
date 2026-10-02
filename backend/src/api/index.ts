@@ -112,7 +112,7 @@ setImmediate(async () => {
 
   // Mounted before DB/Redis/OpenSearch middleware to protect Slack's 3s ack window.
   mountInteractivityRoute(app)
-  mountEventsRoute(app)
+  mountEventsRoute(app, redis)
 
   // Initializes and adds the database middleware.
   app.use(databaseMiddleware)
