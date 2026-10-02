@@ -1,4 +1,4 @@
-import { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
+import type { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
 import { lfIdentities } from '@/config/identities';
 import Identity from './type-identity.vue';
 

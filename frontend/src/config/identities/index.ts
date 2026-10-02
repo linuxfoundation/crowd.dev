@@ -1,5 +1,5 @@
-import { ContributorAttribute, ContributorIdentity } from '@/modules/contributor/types/Contributor';
-import { OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { ContributorAttribute, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { OrganizationIdentity } from '@/modules/organization/types/Organization';
 import confluence from './confluence/config';
 import crunchbase from './crunchbase/config';
 import cvent from './cvent/config';

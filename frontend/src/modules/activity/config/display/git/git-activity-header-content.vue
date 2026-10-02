@@ -66,7 +66,7 @@ import AppActivitySentiment from '@/modules/activity/components/activity-sentime
 import AppMemberDisplayName from '@/modules/member/components/member-display-name.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfActivityMemberOrganization from '@/shared/modules/activity/components/activity-member-organization.vue';
-import { Activity } from '@/shared/modules/activity/types/Activity';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatDateToTimeAgo } from '@/utils/date';
 import { toSentenceCase } from '@/utils/string';

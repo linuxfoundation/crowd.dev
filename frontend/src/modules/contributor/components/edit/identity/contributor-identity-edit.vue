@@ -4,7 +4,7 @@
       <div class="px-6 pt-4 pb-10">
         <div class="flex items-center justify-between pb-6">
           <h5>Edit identity</h5>
-          <lf-button type="secondary-ghost-light" :icon-only="true" @click="close">
+          <lf-button type="secondary-ghost-light" icon-only @click="close">
             <lf-icon name="xmark" />
           </lf-button>
         </div>
@@ -62,7 +62,7 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import {
   computed, h, reactive, ref,
 } from 'vue';
-import { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';

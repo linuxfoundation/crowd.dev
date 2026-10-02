@@ -27,8 +27,8 @@
 </template>
 
 <script setup lang="ts">
-import { ContributorIdentity } from '@/modules/contributor/types/Contributor';
-import { OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { OrganizationIdentity } from '@/modules/organization/types/Organization';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { lfIdentities } from '@/config/identities';

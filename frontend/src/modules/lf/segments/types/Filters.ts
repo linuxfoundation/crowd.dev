@@ -1,5 +1,5 @@
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
-import { Project } from '@/modules/lf/segments/types/Segments';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 
 export interface ProjectsFilterValue {
   value: string[];

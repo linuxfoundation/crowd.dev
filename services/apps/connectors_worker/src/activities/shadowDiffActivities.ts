@@ -11,9 +11,18 @@ import {
 import { getNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { dropConfirmedDeletedRecords, hasDeletedRecordCandidates } from '../deletedRecords'
-import { dropConfirmedForcePushedCommits, hasForcePushCandidates } from '../forcePushedCommits'
+import {
+  dropConfirmedDeletedRecords,
+  hasDeletedRecordCandidates,
+  isDeletedRecordCandidate,
+} from '../deletedRecords'
+import {
+  dropConfirmedForcePushedCommits,
+  hasForcePushCandidates,
+  isForcePushCandidate,
+} from '../forcePushedCommits'
 import { svc } from '../main'
+import { IShadowDiffMismatch } from '../shadowDiff'
 import {
   IShadowDiffUnitResult,
   countMismatchesByKind,
@@ -83,6 +92,19 @@ export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
   }
 
   return [...byChannel.values()]
+}
+
+function dropUncheckedCandidates(
+  syncName: string,
+  result: IShadowDiffUnitResult,
+): { result: IShadowDiffUnitResult; droppedCount: number } {
+  const isCandidate = (m: IShadowDiffMismatch) =>
+    isForcePushCandidate(syncName, m) || isDeletedRecordCandidate(syncName, m)
+  const mismatches = result.mismatches.filter((m) => !isCandidate(m))
+  return {
+    result: { ...result, mismatches },
+    droppedCount: result.mismatches.length - mismatches.length,
+  }
 }
 
 async function persistUnitDiffResult(
@@ -165,11 +187,19 @@ export async function runShadowDiffForChannel(
       try {
         http = await confirmationHttp
       } catch (err) {
+        const dropped = dropUncheckedCandidates(unit.syncName, result)
         svc.log.warn(
-          { err, unitId: unit.id, day, channelName: channel.channelName },
-          'failed to set up github client for missing_in_shadow confirmation, keeping candidates as missing_in_shadow',
+          {
+            err,
+            unitId: unit.id,
+            day,
+            channelName: channel.channelName,
+            syncName: unit.syncName,
+            checkFailedCount: dropped.droppedCount,
+          },
+          'shadow diff check_failed: github client setup failed, candidates excluded from missing_in_shadow',
         )
-        unitDiffs.push({ unit, result })
+        unitDiffs.push({ unit, result: dropped.result })
         continue
       }
 
@@ -190,15 +220,21 @@ export async function runShadowDiffForChannel(
         }
         if (failedCount > 0) {
           svc.log.warn(
-            { unitId: unit.id, day, channelName: channel.channelName, failedCount },
-            'failed to confirm force-pushed commit candidates against github, keeping them as missing_in_shadow',
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              syncName: unit.syncName,
+              checkFailedCount: failedCount,
+            },
+            'shadow diff check_failed: force-pushed commit candidates not confirmed against github, excluded from missing_in_shadow',
           )
         }
         result = { ...result, mismatches }
       }
 
       if (hasDeletedRecordCandidates(unit.syncName, result.mismatches)) {
-        const { mismatches, confirmedDeletedCount, keptUnconfirmedCount } =
+        const { mismatches, confirmedDeletedCount, unconfirmedCount } =
           await dropConfirmedDeletedRecords(unit.syncName, result.mismatches, http, svc.log)
         if (confirmedDeletedCount > 0) {
           svc.log.info(
@@ -206,10 +242,16 @@ export async function runShadowDiffForChannel(
             'skipped records confirmed deleted on github',
           )
         }
-        if (keptUnconfirmedCount > 0) {
+        if (unconfirmedCount > 0) {
           svc.log.warn(
-            { unitId: unit.id, day, channelName: channel.channelName, keptUnconfirmedCount },
-            'failed to confirm deleted-record candidates against github, keeping them as missing_in_shadow',
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              syncName: unit.syncName,
+              checkFailedCount: unconfirmedCount,
+            },
+            'shadow diff check_failed: deleted-record candidates not confirmed against github, excluded from missing_in_shadow',
           )
         }
         result = { ...result, mismatches }

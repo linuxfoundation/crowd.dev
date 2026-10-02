@@ -28,11 +28,11 @@
 </template>
 
 <script setup lang="ts">
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import useMemberIdentities from '@/shared/modules/identities/config/useMemberIdentities';
 import AppIdentitiesVerticalList from '@/shared/modules/identities/components/identities-vertical-list.vue';
 import { computed } from 'vue';
-import { Platform } from '@/shared/modules/platform/types/Platform';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
 import AppEmailsVerticalList from '@/shared/modules/identities/components/emails-vertical-list.vue';
 
 const props = defineProps<{

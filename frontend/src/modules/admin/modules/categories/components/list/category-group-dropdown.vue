@@ -58,7 +58,7 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { ref } from 'vue';
 import { CategoryGroupService } from '@/modules/admin/modules/categories/services/category-group.service';
-import { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { ToastStore } from '@/shared/message/notification';
 
 const props = defineProps<{

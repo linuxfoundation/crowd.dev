@@ -20,7 +20,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import {
+import type {
   MultiSelectFilterValue,
   MultiSelectFilterOptions,
   MultiSelectFilterConfig,

@@ -57,7 +57,7 @@
 <script setup lang="ts">
 import LfCard from '@/ui-kit/card/Card.vue';
 import { formatNumber } from '@/utils/number';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import pluralize from 'pluralize';
 import {
   computed, onMounted, ref,

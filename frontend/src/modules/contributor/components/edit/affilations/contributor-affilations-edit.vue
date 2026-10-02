@@ -5,7 +5,7 @@
         <h5>
           Activities affiliation
         </h5>
-        <lf-button type="secondary-ghost-light" :icon-only="true" @click="isModalOpen = false">
+        <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
           <lf-icon name="xmark" />
         </lf-button>
       </div>
@@ -59,7 +59,7 @@
                           <lf-button
                             type="secondary-ghost"
                             class="ml-2 my-1"
-                            :icon-only="true"
+                            icon-only
                           >
                             <lf-icon name="ellipsis" type="regular" />
                           </lf-button>
@@ -110,12 +110,13 @@
 <script setup lang="ts">
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
-import { Contributor, ContributorAffiliation } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorAffiliation } from '@/modules/contributor/types/Contributor';
 import { computed, onMounted, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { AffilationForm } from '@/modules/contributor/components/edit/affilations/contributor-affilations-edit-item.vue';
 import LfContributorEditAffilationsItem
-, { AffilationForm } from '@/modules/contributor/components/edit/affilations/contributor-affilations-edit-item.vue';
+  from '@/modules/contributor/components/edit/affilations/contributor-affilations-edit-item.vue';
 import useVuelidate from '@vuelidate/core';
 
 import { ToastStore } from '@/shared/message/notification';

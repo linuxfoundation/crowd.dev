@@ -4,7 +4,7 @@
       <header class="pb-4">
         <h5>Add category</h5>
       </header>
-      <lf-field label-text="Category name" :required="true">
+      <lf-field label-text="Category name" required>
         <lf-input
           v-model="form.name"
           :invalid="$v.name.$invalid && $v.name.$dirty"
@@ -46,7 +46,7 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { Category } from '@/modules/admin/modules/categories/types/Category';
+import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
 const props = defineProps<{
   modelValue: boolean;

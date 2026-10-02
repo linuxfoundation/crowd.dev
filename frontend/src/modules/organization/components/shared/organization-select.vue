@@ -5,7 +5,7 @@
     :create-fn="createOrganization"
     :placeholder="isCreatingOrganization ? 'Creating organization...' : 'Select organization'"
     input-class="organization-input"
-    :create-if-not-found="true"
+    create-if-not-found
     :in-memory-filter="false"
     :clearable="false"
     class="w-full"
@@ -57,7 +57,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { OrganizationService } from '@/modules/organization/organization-service';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfProjectGroupsTags from '@/shared/modules/project-groups/components/project-groups-tags.vue';

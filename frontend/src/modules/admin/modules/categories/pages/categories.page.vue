@@ -7,7 +7,7 @@
       <div class="flex-grow">
         <lf-search
           v-model="search"
-          :lazy="true"
+          lazy
           placeholder="Search category groups, categories..."
           class="!h-9"
         />
@@ -113,7 +113,8 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfCategoryGroupForm from '@/modules/admin/modules/categories/components/form/category-group-form.vue';
 import { onMounted, ref, watch } from 'vue';
 import { CategoryGroupService } from '@/modules/admin/modules/categories/services/category-group.service';
-import { CategoryGroup, CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import { CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import LfTable from '@/ui-kit/table/Table.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import LfCategoryGroupDropdown from '@/modules/admin/modules/categories/components/list/category-group-dropdown.vue';

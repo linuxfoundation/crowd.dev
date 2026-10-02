@@ -32,7 +32,7 @@
         >{{ organization.displayName }}</span>
         <lf-organization-lf-member-tag
           :organization="organization"
-          :only-show-icon="true"
+          only-show-icon
         />
       </div>
     </div>
@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';

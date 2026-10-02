@@ -1,6 +1,8 @@
-import { IntegrationConfig } from '@/config/integrations';
-import DevtoConnect from './components/devto-connect.vue';
-import DevtoParams from './components/devto-params.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const DevtoConnect = defineAsyncComponent(() => import('./components/devto-connect.vue'));
+const DevtoParams = defineAsyncComponent(() => import('./components/devto-params.vue'));
 
 const image = new URL('@/assets/images/integrations/devto.png', import.meta.url).href;
 

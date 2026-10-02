@@ -65,7 +65,7 @@
 
 <script setup lang="ts">
 import LfBadge from '@/ui-kit/badge/Badge.vue';
-import { ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
+import type { ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
 import { computed } from 'vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import { lfIdentities } from '@/config/identities';

@@ -1,6 +1,6 @@
 import { includeFilterRenderer } from '@/modules/member/config/saved-views/settings/common/includeFilterRenderer';
 import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
-import { SavedViewsSetting } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { SavedViewsSetting } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 const config: SavedViewsSetting<IncludeEnum> = {
   inSettings: true,

@@ -27,10 +27,10 @@
               </div>
             </lf-badge>
             <div class="flex items-center gap-2">
-              <lf-button :icon-only="true" type="secondary-ghost-light" @click="edit(gi)">
+              <lf-button icon-only type="secondary-ghost-light" @click="edit(gi)">
                 <lf-icon name="edit" />
               </lf-button>
-              <lf-button :icon-only="true" type="secondary-ghost-light" @click="remove(gi)">
+              <lf-button icon-only type="secondary-ghost-light" @click="remove(gi)">
                 <lf-icon name="trash-can" />
               </lf-button>
             </div>
@@ -71,7 +71,7 @@ import LfRepositoryGroupsModal
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 
 interface RepositoryGroup {
   id?: string;

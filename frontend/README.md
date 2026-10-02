@@ -14,8 +14,8 @@ Datadog RUM and Hotjar for analytics and telemetry when their keys are configure
 
 - **Node 24** — the repo root `.nvmrc` pins this. Run `nvm use` from the repo root before
   installing.
-- **npm** — the frontend is intentionally outside the root pnpm workspace and uses its own
-  `package-lock.json`. Don't run `pnpm install` in this directory.
+- **pnpm** — the frontend is a package in the root pnpm workspace. The version is pinned by
+  `packageManager` in the root `package.json`; `corepack enable` provides it. Use `pnpm`, not `npm`.
 - **Docker** and `docker-compose` — the backend and its infra (Postgres, Redis, etc.) run via
   `../scripts/cli`, which needs Docker.
 
@@ -25,8 +25,9 @@ Datadog RUM and Hotjar for analytics and telemetry when their keys are configure
 
    ```shell
    nvm use
+   corepack enable
+   pnpm install --filter "frontend..."
    cd frontend
-   npm ci
    ```
 
 2. Env files: `.env.dist.local` is tracked and holds the shared local defaults (backend URL,
@@ -51,7 +52,7 @@ Datadog RUM and Hotjar for analytics and telemetry when their keys are configure
 4. Back in `frontend/`, start the dev server:
 
    ```shell
-   npm run start:dev:local
+   pnpm run start:dev:local
    ```
 
    This runs Vite on port 8081 and proxies `/api` requests to `BACKEND_URL` (defaults to
@@ -59,49 +60,59 @@ Datadog RUM and Hotjar for analytics and telemetry when their keys are configure
 
 5. Open http://localhost:8081.
 
-If you only need the frontend build tools (lint, build) without running the app, `npm ci` is
-enough — you don't need the backend running for those.
+If you only need the frontend build tools (lint, build) without running the app,
+`pnpm install --filter "frontend..."` is enough — you don't need the backend running for those.
 
 ## Scripts
 
-All scripts run from `frontend/` via `npm run <script>`.
+All scripts run from `frontend/` via `pnpm run <script>`.
 
-| Script | What it does |
-|---|---|
-| `lint` | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`) |
-| `lint:fix` | Same as `lint`, with `--fix` |
-| `build` | Alias for `build:production` |
-| `start` | `vite --host` — Vite dev server with defaults, no env sourcing |
-| `start:dev` | Alias for `start` |
-| `start:dev:local` | Sources `.env.dist.local` + `.env.override.local`, then runs Vite on port 8081 in `localhost` mode — the normal way to run the app locally |
-| `build:localhost` | `vite build --mode localhost` |
-| `build:production` | `vite build --mode prod` |
-| `build:staging` | `vite build --mode staging` |
-| `docs:tailwind` | Opens the Tailwind config viewer |
-| `docs:storybook` | Runs Storybook dev server on port 6006 |
-| `docs:storybook:build` | Builds the static Storybook site |
-| `docs:storybook:ci` | Same as `docs:storybook:build`, with `--quiet` for less log output |
-| `docs` | Runs `docs:tailwind` and `docs:storybook` together |
-
-> This table is generated against the scripts that exist in `package.json` right now. Other
-> tickets in the CM-1480 epic (typecheck, preview/analyze, `lint:cycles`, `format`/`format:check`)
-> add scripts that aren't in `package.json` yet — whichever of those tickets lands, update this
-> table in the same PR.
+| Script                 | What it does                                                                                                                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lint`                 | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`)                                                                                                           |
+| `lint:fix`             | Same as `lint`, with `--fix`                                                                                                                                                            |
+| `typecheck`            | `vue-tsc --noEmit -p tsconfig.json`. Exits non-zero while existing type errors remain; CI does not run it yet                                                                           |
+| `lint:cycles`          | Fails on any cycle madge reports that is not listed in `cycles-allowlist.json`, and on any listed cycle madge no longer reports                                                         |
+| `lint:cycles:update`   | Regenerates `cycles-allowlist.json`; run it after breaking a cycle and commit the result                                                                                                |
+| `format`               | Prettier `--write` over the frontend (`.vue` files are ignored by Prettier)                                                                                                             |
+| `format:check`         | Prettier `--check`, without writing                                                                                                                                                     |
+| `build`                | `vite build` (Vite's default `production` mode); the Dockerfile and CI use `build:production`                                                                                           |
+| `start`                | `vite --host` — Vite dev server with defaults, no env sourcing                                                                                                                          |
+| `start:dev`            | Alias for `start`                                                                                                                                                                       |
+| `start:dev:local`      | Sources `.env.dist.local` + `.env.override.local`, then runs Vite on port 8081 in `localhost` mode — the normal way to run the app locally                                              |
+| `preview`              | `vite preview` — serves the built `dist/` locally; run `build` first. Without `VUE_APP_*` set at build time the bundle keeps `CROWD_VUE_APP_*` placeholders (see `docs/environment.md`) |
+| `build:localhost`      | `vite build --mode localhost`                                                                                                                                                           |
+| `build:production`     | `vite build --mode prod`                                                                                                                                                                |
+| `build:staging`        | `vite build --mode staging`                                                                                                                                                             |
+| `analyze`              | `ANALYZE=1 vite build --mode localhost` — also writes the bundle treemap to `analyse.html` (gitignored)                                                                                 |
+| `docs:tailwind`        | Opens the Tailwind config viewer                                                                                                                                                        |
+| `docs:storybook`       | Runs Storybook dev server on port 6006                                                                                                                                                  |
+| `docs:storybook:build` | Builds the static Storybook site                                                                                                                                                        |
+| `docs:storybook:ci`    | Same as `docs:storybook:build`, with `--quiet` for less log output                                                                                                                      |
+| `docs`                 | Runs `docs:tailwind` and `docs:storybook` together                                                                                                                                      |
 
 ## Checks before you push
 
-- `npm run lint` — must pass with 0 warnings.
-- `npm run build:localhost` (or `build:staging`/`build:production`) — must succeed.
+- `pnpm run lint` — must pass with 0 warnings.
+- `pnpm run lint:cycles` — must pass; break a new circular import instead of adding it to
+  `cycles-allowlist.json`. madge lists cycles from a single depth-first walk, so it does not
+  enumerate every cycle: a new import between modules that are already in cycles can slip through,
+  and removing an import can re-route other entries. Run `pnpm run lint:cycles:update` and review
+  the diff.
+- `pnpm run build:localhost` (or `build:staging`/`build:production`) — must succeed.
 
-CI (`.github/workflows/frontend-checks.yml`) runs `npm run lint` and a production build on pull
-requests that touch `frontend/**`. It does not yet run a type check.
+CI (`.github/workflows/frontend-checks.yml`) runs `pnpm run lint`, `pnpm run lint:cycles`, a
+production build and a Storybook build on pull requests that touch `frontend/**`. It does not yet
+run a type check.
 
-The root pre-commit hook (`.husky/pre-commit`) runs `npx lint-staged` inside `frontend/` whenever
-a staged file matches `frontend/.+\.(js|ts|vue|scss|html)$`. `lint-staged` (configured in
-`package.json`) runs `eslint --fix` on staged `.js`/`.ts`/`.vue` files. The hook is installed by
-the root `pnpm install` (via `husky`). Run `npm ci` in `frontend/` before committing frontend
-changes so `lint-staged` can run; a commit with no matching frontend files skips that step and
-doesn't need `frontend/node_modules`.
+The root pre-commit hook (`.husky/pre-commit`) runs `pnpm --filter frontend exec lint-staged` whenever
+a staged file matches `frontend/.+\.(js|ts|vue|scss|html|css|json|md|yml|yaml)$`. `lint-staged`
+(configured in `package.json`) runs Prettier and then `eslint --fix` on staged `.js`/`.ts` files,
+`eslint --fix` on `.vue` files, and Prettier on `.scss`/`.css`/`.json`/`.md`/`.yml`/`.yaml`
+files. The hook is installed by
+the root `pnpm install` (via `husky`). Run `pnpm install --filter "frontend..."` before committing
+frontend changes so `lint-staged` can run; a commit with no matching frontend files skips that
+step and doesn't need `frontend/node_modules`.
 
 ## Architecture map
 
@@ -157,7 +168,7 @@ other engineers discover it.
 ## Storybook
 
 ```shell
-npm run docs:storybook
+pnpm run docs:storybook
 ```
 
 Opens on http://localhost:6006. Stories live next to the component they document

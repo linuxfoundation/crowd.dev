@@ -4,7 +4,9 @@ import type {
   DocDiscoveryMethod,
   IDocCandidate,
 } from '@crowd/data-access-layer'
+import type { Logger } from '@crowd/logging'
 
+import type { IDocsValidation, IDocsValidatorPage, IDocsValidatorProject } from './docsValidator'
 import {
   type IRepoRef,
   getPackageJson,
@@ -22,7 +24,12 @@ import {
   normalizeUrl,
   normalizedDomain,
 } from './http'
-import { isRelevantSerpResult, projectTokens } from './relevance'
+import { isPlatformPage, isRelevantSerpResult, nameTokens, projectTokens } from './relevance'
+
+export type DocsPickValidator = (
+  project: IDocsValidatorProject,
+  page: IDocsValidatorPage,
+) => Promise<IDocsValidation>
 
 export interface IDiscoveryContext {
   name: string
@@ -35,6 +42,13 @@ export interface IDiscoveryContext {
   repos: IRepoRef[]
   githubToken: string | null
   serpApiKey: string | null
+  // Previous search pick; reused while live so results stay stable between runs.
+  storedSerpUrl?: string | null
+  // Null or absent turns off the language-model check of search and README picks.
+  docsValidator?: DocsPickValidator | null
+  // Epoch ms by which discovery must finish; validation is skipped when little time is left.
+  deadlineAt?: number
+  log?: Pick<Logger, 'info' | 'warn'>
 }
 
 export type DiscoveryStrategy = (ctx: IDiscoveryContext) => Promise<IDocCandidate[]>
@@ -221,7 +235,7 @@ export const docsSubdomain: DiscoveryStrategy = async (ctx) => {
       return []
     }
     const url = `https://docs.${domain}`
-    return (await isLiveDocs(url)) ? [candidate(url, 'docs-subdomain', true)] : []
+    return (await isLiveDocs(url, true)) ? [candidate(url, 'docs-subdomain', true)] : []
   } catch {
     return []
   }
@@ -246,7 +260,7 @@ export const docsPath: DiscoveryStrategy = async (ctx) => {
     for (const suffix of ['/docs', '/documentation', '/doc']) {
       parsed.pathname = `${basePath}${suffix}`
       const url = parsed.toString()
-      if (await isLiveDocs(url)) {
+      if (await isLiveDocs(url, true)) {
         candidates.push(candidate(url, 'docs-path', true))
       }
     }
@@ -341,12 +355,18 @@ export const readmeScrape: DiscoveryStrategy = async (ctx) => {
       return registrableDomain(url) === ownerPages ? 1 : 2
     }
 
+    const tokens = projectTokens({ name: ctx.name, slug: ctx.slug, repoUrl: repo })
+    const hyphenTokens = [...nameTokens(ctx.name), ...nameTokens(ctx.slug)]
     const filtered: { url: string; fallback?: string }[] = []
     for (const { url, text } of links.values()) {
       if (!DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(url)) {
         continue
       }
       const foreign = rank(url) === 2
+      // Another product's docs (docs.docker.com, docs.conda.io) are linked from many READMEs.
+      if (foreign && !isRelevantSerpResult(url, tokens, { hyphenTokens })) {
+        continue
+      }
       if (foreign && !DOCS_KEYWORDS.test(text) && !DOCS_KEYWORDS.test(domainOf(url) ?? '')) {
         continue
       }
@@ -429,7 +449,7 @@ export const githubHomepage: DiscoveryStrategy = async (ctx) => {
     }
 
     const repoUrl = normalizeUrl(repo)
-    if (isBadgeOrGithubHost(domainOf(url)) || url === repoUrl) {
+    if (isBadgeOrGithubHost(domainOf(url)) || isPlatformPage(url) || url === repoUrl) {
       return []
     }
 
@@ -500,6 +520,10 @@ export const serpStrategy: DiscoveryStrategy = async (ctx) => {
   }
 
   try {
+    if (ctx.storedSerpUrl && (await isLiveDocs(ctx.storedSerpUrl))) {
+      return [candidate(ctx.storedSerpUrl, 'serp', true)]
+    }
+
     const query = encodeURIComponent(`${ctx.name} documentation`)
     const response = await fetch(
       `https://serpapi.com/search.json?q=${query}&num=5&api_key=${ctx.serpApiKey}`,

@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import LfBadge from '@/ui-kit/badge/Badge.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 import LfOrganizationMembership from '@/modules/organization/components/shared/organization-membership.vue';

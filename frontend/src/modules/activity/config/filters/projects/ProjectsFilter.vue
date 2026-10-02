@@ -21,10 +21,10 @@ import {
 } from 'vue';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
-import {
+import type {
   ProjectsFilterValue, ProjectsOption, ProjectsCustomFilterConfig, ProjectsCustomFilterOptions,
 } from '@/modules/lf/segments/types/Filters';
-import { Project } from '@/modules/lf/segments/types/Segments';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 
 const props = defineProps<
   {

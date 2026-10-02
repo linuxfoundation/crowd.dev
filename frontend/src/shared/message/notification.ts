@@ -1,4 +1,5 @@
-import { reactive, VNode } from 'vue';
+import type { VNode } from 'vue';
+import { reactive } from 'vue';
 
 export const notificationTypes = ['info', 'success', 'error'] as const;
 

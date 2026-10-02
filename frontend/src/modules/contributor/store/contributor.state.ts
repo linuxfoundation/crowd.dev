@@ -1,4 +1,4 @@
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
 export interface ContributorState {
   contributor: Contributor | null;

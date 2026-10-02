@@ -1,8 +1,10 @@
-import { IntegrationConfig } from '@/config/integrations';
-import GitlabConnect from './components/gitlab-connect.vue';
-import GitlabParams from './components/gitlab-params.vue';
-import GitlabAction from './components/gitlab-action.vue';
-import GitlabStatus from './components/gitlab-status.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const GitlabConnect = defineAsyncComponent(() => import('./components/gitlab-connect.vue'));
+const GitlabParams = defineAsyncComponent(() => import('./components/gitlab-params.vue'));
+const GitlabAction = defineAsyncComponent(() => import('./components/gitlab-action.vue'));
+const GitlabStatus = defineAsyncComponent(() => import('./components/gitlab-status.vue'));
 
 const image = new URL('@/assets/images/integrations/gitlab.png', import.meta.url).href;
 

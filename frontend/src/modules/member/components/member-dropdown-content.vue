@@ -167,7 +167,7 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { Member } from '../types/Member';
+import type { Member } from '../types/Member';
 
 enum Actions {
   DELETE_CONTACT = 'deleteContact',
@@ -181,14 +181,13 @@ enum Actions {
   FIND_GITHUB = 'findGithub'
 }
 
-const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void, (e: 'findGithub'): void }>();
 const props = defineProps<{
   member: Member;
   hideMerge?: boolean;
   hideEdit?: boolean;
   hideUnmerge?: boolean;
 }>();
-
+const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void, (e: 'findGithub'): void }>();
 const route = useRoute();
 const queryClient = useQueryClient();
 

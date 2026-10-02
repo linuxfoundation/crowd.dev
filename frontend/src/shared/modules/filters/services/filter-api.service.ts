@@ -1,7 +1,7 @@
-import { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
-import { SearchFilterConfig } from '@/shared/modules/filters/types/filterTypes/SearchFilterConfig';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
-import { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { SearchFilterConfig } from '@/shared/modules/filters/types/filterTypes/SearchFilterConfig';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 export const filterApiService = () => {
   function buildApiFilter(

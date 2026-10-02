@@ -1,4 +1,4 @@
-import { Member } from '@/modules/member/types/Member';
+import type { Member } from '@/modules/member/types/Member';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { lfIdentities } from '@/config/identities';
 

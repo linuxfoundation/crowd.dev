@@ -9,7 +9,6 @@
 
     <div v-if="options.length > 5" class="border-b border-gray-100 p-2">
       <el-input
-        ref="queryInput"
         v-model="search"
         placeholder="Search..."
         class="filter-dropdown-search"
@@ -48,7 +47,7 @@ import {
   computed,
   defineProps, ref,
 } from 'vue';
-import { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 

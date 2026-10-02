@@ -40,7 +40,7 @@
         <template #trigger>
           <lf-button
             type="secondary"
-            :icon-only="true"
+            icon-only
             :class="hasPermission(LfPermission.mergeMembers) ? '!rounded-l-none -ml-px' : ''"
           >
             <lf-icon name="ellipsis" />
@@ -98,7 +98,7 @@ import { MemberService } from '@/modules/member/member-service';
 import pluralize from 'pluralize';
 import LfContributorDropdown from '@/modules/contributor/components/shared/contributor-dropdown.vue';
 import { ContributorApiService } from '@/modules/contributor/services/contributor.api.service';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import AppMemberUnmergeDialog from '@/modules/member/components/member-unmerge-dialog.vue';
 

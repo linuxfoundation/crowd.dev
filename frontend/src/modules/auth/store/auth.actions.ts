@@ -1,7 +1,7 @@
 import { Auth0Service } from '@/modules/auth/services/auth0.service';
 import { AuthApiService } from '@/modules/auth/services/auth.api.service';
 import { AuthService } from '@/modules/auth/services/auth.service';
-import { User } from '@/modules/auth/types/User.type';
+import type { User } from '@/modules/auth/types/User.type';
 import Errors from '@/shared/error/errors';
 import { disconnectSocket, connectSocket, isSocketConnected } from '@/modules/auth/auth.socket';
 import identify from '@/shared/modules/monitoring/identify';
@@ -90,7 +90,7 @@ export default {
           () => this.loaded,
           async (loaded) => {
             if (!loaded) {
-              const { startSession, attachListeners } = useSessionTracking();
+              const { startSession, attachListeners } = useSessionTracking(() => this.user);
 
               this.loaded = true;
 
@@ -138,7 +138,7 @@ export default {
       return Promise.reject();
     }
     if (!isSocketConnected()) {
-      connectSocket(t);
+      connectSocket(t, () => this.user);
     }
     AuthService.setToken(t);
     return AuthApiService.fetchMe()

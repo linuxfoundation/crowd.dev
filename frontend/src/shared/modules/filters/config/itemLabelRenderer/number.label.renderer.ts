@@ -1,4 +1,4 @@
-import { NumberFilterOptions, NumberFilterValue } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
+import type { NumberFilterOptions, NumberFilterValue } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
 import {
   FilterNumberOperator,
   numberFilterOperators,

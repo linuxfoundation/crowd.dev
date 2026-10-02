@@ -32,7 +32,7 @@
         width="232px"
       >
         <template #trigger>
-          <lf-button type="secondary-ghost" size="small" :icon-only="true">
+          <lf-button type="secondary-ghost" size="small" icon-only>
             <lf-icon name="ellipsis" type="regular" />
           </lf-button>
         </template>
@@ -86,9 +86,11 @@
 </template>
 
 <script setup lang="ts">
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

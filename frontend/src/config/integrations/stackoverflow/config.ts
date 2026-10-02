@@ -1,8 +1,18 @@
-import { IntegrationConfig } from '@/config/integrations';
-import LfStackoverflowSettingsDrawer from '@/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue';
-import StackoverflowConnect from './components/stackoverflow-connect.vue';
-import StackoverflowDropdown from './components/stackoverflow-dropdown.vue';
-import StackoverflowParams from './components/stackoverflow-params.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const LfStackoverflowSettingsDrawer = defineAsyncComponent(
+  () => import('@/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue'),
+);
+const StackoverflowConnect = defineAsyncComponent(
+  () => import('./components/stackoverflow-connect.vue'),
+);
+const StackoverflowDropdown = defineAsyncComponent(
+  () => import('./components/stackoverflow-dropdown.vue'),
+);
+const StackoverflowParams = defineAsyncComponent(
+  () => import('./components/stackoverflow-params.vue'),
+);
 
 const image = new URL('@/assets/images/integrations/stackoverflow.png', import.meta.url).href;
 

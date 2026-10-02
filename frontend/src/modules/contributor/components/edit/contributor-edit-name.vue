@@ -1,7 +1,6 @@
 <template>
   <div ref="nameEdit">
     <lf-conteneditable
-      ref="editor"
       v-model="form.name"
       class="edit-name px-1 py-px font-secondary text-h5 rounded-md font-semibold transition mb-1
         border border-transparent w-min
@@ -23,7 +22,7 @@ import { ToastStore } from '@/shared/message/notification';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
 const props = defineProps<{
   contributor: Contributor,
@@ -31,7 +30,7 @@ const props = defineProps<{
 
 const { updateContributor } = useContributorStore();
 
-const nameEdit = ref(null);
+const nameEdit = ref<HTMLDivElement | null>(null);
 
 const form = reactive({
   name: props.contributor.displayName,

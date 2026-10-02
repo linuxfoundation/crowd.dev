@@ -36,7 +36,7 @@ Below is an example Storybook file for the `Avatar` component:
 import LfAvatar from './Avatar.vue';
 
 export default {
-  title: 'LinuxFoundation/Avatar',  // Adjust path to match design system or team conventions
+  title: 'LinuxFoundation/Avatar', // Adjust path to match design system or team conventions
   component: LfAvatar,
   tags: ['autodocs'],
   argTypes: {
@@ -82,34 +82,32 @@ export const NoImage = {
 Import the Component
 
 ```typescript
-
 import LfAvatar from './Avatar.vue';
-
 ```
+
 ✅ **Define the Default Export**
 
 This includes:
 
-*   **title**: Follows the format ``DesignSystem/ComponentName``. Adjust it based on your design system structure (e.g. `LinuxFoundation/Button`, `LinuxFoundation/Avatar`).
-    
-*   **component**: The imported Vue component.
-    
-*   **tags**: Optional, e.g. `['autodocs']` for automatic documentation.
-    
-*   **argTypes**: An object defining the component’s props with:
-    
-    *   `description`: A short explanation of what the prop does.
-        
-    *   `defaultValue`: The default value for documentation.
-        
-    *   `control`: Specifies the control type for the Storybook UI (e.g. `'number'`, `'text'`, `'boolean'`).
+- **title**: Follows the format `DesignSystem/ComponentName`. Adjust it based on your design system structure (e.g. `LinuxFoundation/Button`, `LinuxFoundation/Avatar`).
+
+- **component**: The imported Vue component.
+
+- **tags**: Optional, e.g. `['autodocs']` for automatic documentation.
+
+- **argTypes**: An object defining the component’s props with:
+
+  - `description`: A short explanation of what the prop does.
+
+  - `defaultValue`: The default value for documentation.
+
+  - `control`: Specifies the control type for the Storybook UI (e.g. `'number'`, `'text'`, `'boolean'`).
 
 ✅ **Define Stories**
 
-Use ``named exports`` (export const Default, export const NoImage, etc.) to define different variations of the component.
+Use `named exports` (export const Default, export const NoImage, etc.) to define different variations of the component.
 
 ```typescript
-
 export const Default = {
   args: {
     size: 96,
@@ -117,13 +115,11 @@ export const Default = {
     src: 'https://example.com/avatar.jpg',
   },
 };
-
 ```
 
 ✅ **Use args**
 
 `args` allows dynamic control of component props through the Storybook UI.
-
 
 ## ✏️ Creating a New Story
 
@@ -135,7 +131,31 @@ export const Default = {
 
 4️⃣ **Create at least one story export** (like `Default`).
 
+## 🎬 Events and Actions
 
+Storybook no longer auto-detects event props from a name-matched regex pattern (that config was removed from `.storybook/preview.ts`). Wire event args explicitly with `fn()` from `storybook/test` so they show up in the Actions panel and can be asserted against in interaction tests:
+
+```typescript
+import { fn } from 'storybook/test';
+import LfButton from './Button.vue';
+
+export default {
+  title: 'LinuxFoundation/Button',
+  component: LfButton,
+  tags: ['autodocs'],
+  args: {
+    onClick: fn(),
+  },
+};
+```
+
+## ♿ Accessibility
+
+`@storybook/addon-a11y` is enabled for every story (`.storybook/main.ts`). Each story's **Accessibility** panel runs an automated scan — check it while developing and fix any violations before merging.
+
+## ✅ CI Build Check
+
+`pnpm run docs:storybook:ci` builds the full Storybook in headless mode (`storybook build --quiet`). Run it locally before opening a PR to catch a story that fails to build.
 
 ## 🔔 Best Practices
 

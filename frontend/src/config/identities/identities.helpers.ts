@@ -1,4 +1,5 @@
-import { IdentityConfig, lfIdentities } from '@/config/identities/index';
+import type { IdentityConfig } from '@/config/identities/index';
+import { lfIdentities } from '@/config/identities/index';
 
 const useIdentitiesHelpers = () => {
   const getPlatformsLabel = (platforms: string[]) => platforms

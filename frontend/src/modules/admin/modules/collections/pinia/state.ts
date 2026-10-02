@@ -1,4 +1,4 @@
-import { CollectionModel } from '../models/collection.model';
+import type { CollectionModel } from '../models/collection.model';
 
 export interface CollectionsState {
   collections: CollectionModel[];

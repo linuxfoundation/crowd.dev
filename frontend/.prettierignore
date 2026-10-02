@@ -2,5 +2,8 @@ dist
 storybook-static
 coverage
 node_modules
-tailwind.config.js
 components.d.ts
+auto-imports.d.ts
+package-lock.json
+public
+**/*.vue

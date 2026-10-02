@@ -1,0 +1,7 @@
+{
+  "detectiveOptions": {
+    "es6": { "skipTypeImports": true, "skipAsyncImports": true },
+    "ts": { "skipTypeImports": true, "skipAsyncImports": true },
+    "vue": { "skipTypeImports": true, "skipAsyncImports": true }
+  }
+}

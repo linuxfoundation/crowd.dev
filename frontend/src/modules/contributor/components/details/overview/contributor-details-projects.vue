@@ -89,7 +89,7 @@
             <lf-table-cell>
               <lf-dropdown placement="bottom-end" width="160px">
                 <template #trigger>
-                  <lf-button type="secondary-ghost" size="small" :icon-only="true">
+                  <lf-button type="secondary-ghost" size="small" icon-only>
                     <lf-icon name="ellipsis-vertical" type="regular" />
                   </lf-button>
                 </template>
@@ -135,7 +135,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Contributor, ContributorAffiliation } from '@/modules/contributor/types/Contributor';
+import type { Contributor, ContributorAffiliation } from '@/modules/contributor/types/Contributor';
 import LfContributorEditAffilations from '@/modules/contributor/components/edit/affilations/contributor-affilations-edit.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';

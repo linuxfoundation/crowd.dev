@@ -1,9 +1,17 @@
-import { InsightsProjectAddFormModel } from './models/insights-project-add-form.model';
-import {
+import type { InsightsProjectAddFormModel } from './models/insights-project-add-form.model';
+import type {
   InsightsProjectModel,
   InsightsProjectRequest,
 } from './models/insights-project.model';
 import { getDefaultWidgets } from './widgets';
+
+export const isHttpUrl = (value: string): boolean => {
+  try {
+    return ['http:', 'https:'].includes(new URL(value.trim()).protocol);
+  } catch {
+    return false;
+  }
+};
 
 export const buildRequest = (
   form: InsightsProjectAddFormModel,

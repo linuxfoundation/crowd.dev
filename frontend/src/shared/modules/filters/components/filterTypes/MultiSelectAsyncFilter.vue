@@ -57,13 +57,13 @@ import {
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
-import {
+import type {
   MultiSelectAsyncFilterConfig,
   MultiSelectAsyncFilterOption,
   MultiSelectAsyncFilterOptions,
   MultiSelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
-import { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
+import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
 const props = defineProps<

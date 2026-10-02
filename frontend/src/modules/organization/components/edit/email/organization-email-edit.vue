@@ -4,7 +4,7 @@
       <div class="px-6 pt-4 pb-10">
         <div class="flex items-center justify-between pb-6">
           <h5>Edit email</h5>
-          <lf-button type="secondary-ghost-light" :icon-only="true" @click="close">
+          <lf-button type="secondary-ghost-light" icon-only @click="close">
             <lf-icon name="xmark" />
           </lf-button>
         </div>
@@ -61,9 +61,11 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import { ToastStore } from '@/shared/message/notification';
 import { email, required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';

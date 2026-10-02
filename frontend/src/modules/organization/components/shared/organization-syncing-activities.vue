@@ -19,7 +19,7 @@
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 
 const props = defineProps<{
   organization: Organization,

@@ -17,9 +17,9 @@
 </template>
 
 <script setup lang="ts">
-import { ButtonType } from '@/ui-kit/button/types/ButtonType';
-import { ButtonSize } from '@/ui-kit/button/types/ButtonSize';
-import { ButtonNativeType } from '@/ui-kit/button/types/ButtonNativeType';
+import type { ButtonType } from '@/ui-kit/button/types/ButtonType';
+import type { ButtonSize } from '@/ui-kit/button/types/ButtonSize';
+import type { ButtonNativeType } from '@/ui-kit/button/types/ButtonNativeType';
 
 const props = withDefaults(defineProps<{
   type?: ButtonType,

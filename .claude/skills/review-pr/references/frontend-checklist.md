@@ -92,6 +92,6 @@ const isLoading = ref(false)
 
 ---
 
-## 7. Element Plus usage patterns (NIT)
+## 7. Prefer ui-kit over Element Plus (NIT)
 
-The project uses Element Plus (`el-*`). Follow existing component usage patterns — check how similar components are used elsewhere before introducing a new pattern.
+Prefer `Lf*` ui-kit components. Element Plus (`el-*`) is acceptable only where no ui-kit equivalent exists yet — in that case, follow existing usage patterns for that component.

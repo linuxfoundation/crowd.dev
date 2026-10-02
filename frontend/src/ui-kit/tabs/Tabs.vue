@@ -9,7 +9,7 @@ import {
   computed, onMounted, watch,
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { TabsSize } from '@/ui-kit/tabs/types/TabsSize';
+import type { TabsSize } from '@/ui-kit/tabs/types/TabsSize';
 
 const props = withDefaults(defineProps<{
   modelValue?: string,

@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
-import { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import { FilterNumberOperator } from '@/shared/modules/filters/config/constants/number.constants';
-import { ValidationRuleWithoutParams } from '@vuelidate/core';
+import type { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { FilterNumberOperator } from '@/shared/modules/filters/config/constants/number.constants';
+import type { ValidationRuleWithoutParams } from '@vuelidate/core';
 
 export interface NumberFilterOptions {
   suffix?: string;

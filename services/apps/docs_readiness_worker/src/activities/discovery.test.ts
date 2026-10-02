@@ -1,15 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { IDocCandidate } from '@crowd/data-access-layer'
+
+import { pickValidatedWinner } from '../discovery/pickValidation'
 import { resolveDocsUrl } from './discovery'
 
 const mocks = vi.hoisted(() => ({
   findActiveProjectDocOverride: vi.fn(),
+  findProjectDocDiscovery: vi.fn(),
   findProjectForDocsDiscovery: vi.fn(),
   findSharedDocsUrls: vi.fn(),
   findEnabledRepositoriesForProject: vi.fn(),
   upsertProjectDocDiscovery: vi.fn(),
   getGithubInstallationToken: vi.fn(),
   discoverDocs: vi.fn(),
+  createClient: vi.fn((): import('../discovery/docsValidator').DocsValidatorClient => ({
+    complete: vi.fn(),
+  })),
+  probe: vi.fn(),
+  fetchText: vi.fn(),
 }))
 
 vi.mock('../main', () => ({
@@ -27,6 +36,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 
 vi.mock('@crowd/data-access-layer', () => ({
   findActiveProjectDocOverride: mocks.findActiveProjectDocOverride,
+  findProjectDocDiscovery: mocks.findProjectDocDiscovery,
   findProjectForDocsDiscovery: mocks.findProjectForDocsDiscovery,
   findSharedDocsUrls: mocks.findSharedDocsUrls,
   findEnabledRepositoriesForProject: mocks.findEnabledRepositoriesForProject,
@@ -41,13 +51,25 @@ vi.mock('../discovery', () => ({
   discoverDocs: mocks.discoverDocs,
 }))
 
+vi.mock('../discovery/http', async () => {
+  const actual = await vi.importActual<typeof import('../discovery/http')>('../discovery/http')
+  return { ...actual, probe: mocks.probe, fetchText: mocks.fetchText }
+})
+
+vi.mock('../discovery/docsValidatorClient', () => ({
+  createAnthropicAwsDocsValidatorClient: mocks.createClient,
+}))
+
 beforeEach(() => {
+  mocks.findProjectDocDiscovery.mockResolvedValue(null)
   mocks.findSharedDocsUrls.mockResolvedValue([])
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   delete process.env.CROWD_DOCS_READINESS_SERP_API_KEY
+  delete process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED
 })
 
 describe('resolveDocsUrl', () => {
@@ -66,6 +88,28 @@ describe('resolveDocsUrl', () => {
     })
     expect(mocks.discoverDocs).not.toHaveBeenCalled()
     expect(mocks.upsertProjectDocDiscovery).not.toHaveBeenCalled()
+  })
+
+  test('resolves a no-docs override to no URL, records it, and skips discovery', async () => {
+    mocks.findActiveProjectDocOverride.mockResolvedValue({ docsUrl: null })
+
+    const result = await resolveDocsUrl('project-1')
+
+    expect(result).toEqual({
+      docsUrl: null,
+      discoveryMethod: 'override',
+      confidence: 'authoritative',
+      isOverride: true,
+    })
+    expect(mocks.upsertProjectDocDiscovery).toHaveBeenCalledWith(expect.anything(), {
+      projectId: 'project-1',
+      docsUrl: null,
+      discoveryMethod: 'override',
+      confidence: 'authoritative',
+      candidates: [],
+    })
+    expect(mocks.findProjectForDocsDiscovery).not.toHaveBeenCalled()
+    expect(mocks.discoverDocs).not.toHaveBeenCalled()
   })
 
   test('throws a non-retryable failure when the project does not exist', async () => {
@@ -116,6 +160,9 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: null,
       serpApiKey: null,
+      storedSerpUrl: null,
+      docsValidator: null,
+      deadlineAt: expect.any(Number),
     })
     expect(mocks.upsertProjectDocDiscovery).toHaveBeenCalledWith(
       {},
@@ -168,6 +215,209 @@ describe('resolveDocsUrl', () => {
       findSharedDocsUrls: expect.any(Function),
       githubToken: 'gh-token',
       serpApiKey: 'serp-key',
+      storedSerpUrl: null,
+      docsValidator: null,
+      deadlineAt: expect.any(Number),
+    })
+  })
+
+  describe('stored search result', () => {
+    async function storedUrlPassedToDiscovery(stored: unknown) {
+      mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+      mocks.findProjectDocDiscovery.mockResolvedValue(stored)
+      mocks.findProjectForDocsDiscovery.mockResolvedValue({
+        id: 'project-1',
+        slug: 'proj',
+        name: 'Project',
+        website: null,
+        websiteSharedWith: [],
+      })
+      mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+      mocks.discoverDocs.mockResolvedValue({
+        docsUrl: null,
+        discoveryMethod: null,
+        confidence: null,
+        allCandidates: [],
+      })
+      await resolveDocsUrl('project-1')
+      return mocks.discoverDocs.mock.calls[0][0].storedSerpUrl
+    }
+
+    test('passes the stored URL when the previous method was serp', async () => {
+      expect(
+        await storedUrlPassedToDiscovery({
+          docsUrl: 'https://docs.proj.dev',
+          discoveryMethod: 'serp',
+        }),
+      ).toBe('https://docs.proj.dev')
+    })
+
+    test('ignores a stored URL from any other method', async () => {
+      expect(
+        await storedUrlPassedToDiscovery({
+          docsUrl: 'https://docs.proj.dev',
+          discoveryMethod: 'docs-path',
+        }),
+      ).toBeNull()
+    })
+  })
+
+  describe('docs validator flag', () => {
+    async function validatorPassedToDiscovery() {
+      mocks.findActiveProjectDocOverride.mockResolvedValue(null)
+      mocks.findProjectForDocsDiscovery.mockResolvedValue({
+        id: 'project-1',
+        slug: 'proj',
+        name: 'Project',
+        website: null,
+        websiteSharedWith: [],
+      })
+      mocks.findEnabledRepositoriesForProject.mockResolvedValue([])
+      mocks.discoverDocs.mockResolvedValue({
+        docsUrl: null,
+        discoveryMethod: null,
+        confidence: null,
+        allCandidates: [],
+      })
+      await resolveDocsUrl('project-1')
+      return mocks.discoverDocs.mock.calls[0][0].docsValidator
+    }
+
+    test.each([undefined, 'false', '1', 'TRUE'])('is off when the env var is %s', async (value) => {
+      if (value !== undefined) {
+        process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED = value
+      }
+
+      expect(await validatorPassedToDiscovery()).toBeNull()
+      expect(mocks.createClient).not.toHaveBeenCalled()
+    })
+
+    test('is on only when the env var is exactly true', async () => {
+      process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED = 'true'
+
+      expect(await validatorPassedToDiscovery()).toEqual(expect.any(Function))
+      expect(mocks.createClient).toHaveBeenCalledTimes(1)
+    })
+
+    // The real validateDocsUrl turns every client failure into an `unclear` verdict; these run it
+    // through the real pick logic to show a failed client keeps the stored URL.
+    describe('with the real validateDocsUrl', () => {
+      const README_PICK: IDocCandidate = {
+        url: 'https://example.com/docs',
+        method: 'readme-scrape',
+        confidence: 'medium',
+        livenessOk: true,
+      }
+      const REPO_PICK: IDocCandidate = {
+        url: 'https://github.com/example/proj',
+        method: 'repo-url',
+        confidence: 'low',
+        livenessOk: true,
+      }
+      const CREDENTIAL_VARS = [
+        'CROWD_AKRITES_ANTHROPIC_AWS_REGION',
+        'CROWD_AKRITES_ANTHROPIC_AWS_WORKSPACE_ID',
+        'CROWD_AKRITES_ANTHROPIC_AWS_API_KEY',
+      ]
+
+      beforeEach(() => {
+        process.env.CROWD_DOCS_READINESS_VALIDATOR_ENABLED = 'true'
+        mocks.probe.mockResolvedValue({
+          ok: true,
+          status: 200,
+          finalUrl: README_PICK.url,
+          contentType: 'text/html',
+        })
+        mocks.fetchText.mockResolvedValue('<title>Some page</title>')
+      })
+
+      afterEach(() => {
+        CREDENTIAL_VARS.forEach((name) => delete process.env[name])
+        mocks.createClient.mockImplementation(() => ({ complete: vi.fn() }))
+      })
+
+      async function pick() {
+        const docsValidator = await validatorPassedToDiscovery()
+        const log = { info: vi.fn(), warn: vi.fn() }
+        const winner = await pickValidatedWinner(
+          {
+            name: 'Project',
+            slug: 'proj',
+            website: null,
+            websiteShared: false,
+            repos: [],
+            githubToken: null,
+            serpApiKey: null,
+            docsValidator,
+            log,
+          },
+          [README_PICK, REPO_PICK],
+          (pool) => pool[0] ?? null,
+        )
+        return { winner, log }
+      }
+
+      test('an HTTP error from the client keeps the pick', async () => {
+        mocks.createClient.mockReturnValue({
+          complete: vi.fn().mockRejectedValue(new Error('Anthropic API responded with HTTP 503')),
+        })
+
+        const { winner, log } = await pick()
+
+        expect(winner).toBe(README_PICK)
+        expect(log.warn).toHaveBeenCalledTimes(1)
+        expect(log.warn.mock.calls[0][0]).toMatchObject({ outcome: 'validator-error' })
+        expect(JSON.stringify(log.warn.mock.calls)).not.toContain('503')
+      })
+
+      test('missing credentials keep the pick', async () => {
+        const actual = await vi.importActual<typeof import('../discovery/docsValidatorClient')>(
+          '../discovery/docsValidatorClient',
+        )
+        mocks.createClient.mockImplementation(actual.createAnthropicAwsDocsValidatorClient)
+        CREDENTIAL_VARS.forEach((name) => delete process.env[name])
+
+        const { winner, log } = await pick()
+
+        expect(winner).toBe(README_PICK)
+        expect(log.warn.mock.calls[0][0]).toMatchObject({
+          outcome: 'validator-error',
+          errorName: 'Error',
+        })
+        expect(JSON.stringify(log.warn.mock.calls)).not.toContain('CROWD_AKRITES')
+      })
+
+      test('a client that never answers keeps the pick after the 20 s timeout', async () => {
+        vi.useFakeTimers()
+        mocks.createClient.mockReturnValue({ complete: vi.fn(() => new Promise<string>(() => {})) })
+
+        const done = pick()
+        await vi.advanceTimersByTimeAsync(20_001)
+        const { winner, log } = await done
+
+        expect(winner).toBe(README_PICK)
+        expect(log.warn.mock.calls[0][0]).toMatchObject({ outcome: 'validator-error' })
+      })
+
+      test('a genuine unclear answer still drops the pick', async () => {
+        mocks.createClient.mockReturnValue({
+          complete: vi.fn().mockResolvedValue('{"verdict":"unclear","reason":"too little text"}'),
+        })
+
+        const { winner, log } = await pick()
+
+        expect(winner).toBe(REPO_PICK)
+        expect(log.warn).not.toHaveBeenCalled()
+        expect(log.info.mock.calls[0][0]).toMatchObject({ verdict: 'unclear' })
+      })
+
+      test('a documents_project answer keeps the pick', async () => {
+        mocks.createClient.mockReturnValue({
+          complete: vi.fn().mockResolvedValue('{"verdict":"documents_project","reason":"ok"}'),
+        })
+
+        expect((await pick()).winner).toBe(README_PICK)
+      })
     })
   })
 

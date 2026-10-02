@@ -1,8 +1,14 @@
-import { IntegrationConfig } from '@/config/integrations';
-import ConfluenceConnect from './components/confluence-connect.vue';
-import ConfluenceParams from './components/confluence-params.vue';
-import ConfluenceDropdown from './components/confluence-dropdown.vue';
-import LfConfluenceSettingsDrawer from './components/confluence-settings-drawer.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const ConfluenceConnect = defineAsyncComponent(() => import('./components/confluence-connect.vue'));
+const ConfluenceParams = defineAsyncComponent(() => import('./components/confluence-params.vue'));
+const ConfluenceDropdown = defineAsyncComponent(
+  () => import('./components/confluence-dropdown.vue'),
+);
+const LfConfluenceSettingsDrawer = defineAsyncComponent(
+  () => import('./components/confluence-settings-drawer.vue'),
+);
 
 const image = new URL('@/assets/images/integrations/confluence.svg', import.meta.url).href;
 

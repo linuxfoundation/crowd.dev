@@ -17,7 +17,7 @@
     </header>
 
     <div class="px-6 pb-8">
-      <lf-field label-text="Category group name" :required="true" class="mb-6">
+      <lf-field label-text="Category group name" required class="mb-6">
         <lf-input
           v-model="form.name"
           :invalid="$v.name.$invalid && $v.name.$dirty"
@@ -29,7 +29,7 @@
           :error-messages="{ required: 'This field is required' }"
         />
       </lf-field>
-      <lf-field label-text="Type" :required="true">
+      <lf-field label-text="Type" required>
         <div class="flex items-center pt-2">
           <lf-radio v-model="form.type" value="vertical" class="mr-4">
             Industry
@@ -153,21 +153,21 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfCategoryForm from '@/modules/admin/modules/categories/components/form/category-form.vue';
 import { CategoryGroupService } from '@/modules/admin/modules/categories/services/category-group.service';
-import { CategoryGroup, CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
+import type { CategoryGroup, CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { ToastStore } from '@/shared/message/notification';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
-import { Category } from '@/modules/admin/modules/categories/types/Category';
+import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
 const props = defineProps<{
   modelValue: boolean;
   categoryGroup?: CategoryGroup,
 }>();
 
-const categories = ref(props.categoryGroup?.categories || []);
-
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
   (e: 'reload'): void;
 }>();
+
+const categories = ref(props.categoryGroup?.categories || []);
 
 const isDrawerOpen = computed({
   get: () => props.modelValue,

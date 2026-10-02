@@ -193,7 +193,7 @@ import LfContributorAttributeSource
   from '@/modules/contributor/components/details/attributes/contributor-attribute-source.vue';
 import LfContributorAttributeUrl
   from '@/modules/contributor/components/details/attributes/contributor-attribute-url.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 const props = defineProps<{

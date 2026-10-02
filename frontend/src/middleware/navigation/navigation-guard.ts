@@ -13,7 +13,7 @@ import {
   PageEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
-import { RouteLocationNormalized } from 'vue-router';
+import type { RouteLocationNormalized } from 'vue-router';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 
 export default async function ({ to }: { to: RouteLocationNormalized }) {

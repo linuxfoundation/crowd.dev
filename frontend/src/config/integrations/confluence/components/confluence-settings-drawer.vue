@@ -153,7 +153,6 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const emit = defineEmits(['update:modelValue']);
 const props = defineProps({
   integration: {
     type: Object,
@@ -172,7 +171,7 @@ const props = defineProps({
     required: true,
   },
 });
-
+const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 

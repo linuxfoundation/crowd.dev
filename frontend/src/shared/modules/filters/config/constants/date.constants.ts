@@ -1,5 +1,5 @@
-import { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
-import { FilterTimeOptions } from '@/shared/modules/filters/types/FilterTimeOptions';
+import type { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
+import type { FilterTimeOptions } from '@/shared/modules/filters/types/FilterTimeOptions';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 export enum FilterDateOperator {

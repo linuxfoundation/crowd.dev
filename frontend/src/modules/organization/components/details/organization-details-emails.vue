@@ -8,7 +8,7 @@
         <lf-button
           type="secondary"
           size="small"
-          :icon-only="true"
+          icon-only
           class="my-1"
           @click="addEmail = true"
         >
@@ -70,7 +70,7 @@ import { computed, ref } from 'vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
 import LfOrganizationEmailAdd from '@/modules/organization/components/edit/email/organization-email-add.vue';
@@ -94,8 +94,8 @@ const editEmail = ref<OrganizationIdentity | null>(null);
 const emailList = computed(() => emails(props.organization));
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 const unmerge = (identity: any) => {
   if (identity) {
     selectedIdentity.value = identity;

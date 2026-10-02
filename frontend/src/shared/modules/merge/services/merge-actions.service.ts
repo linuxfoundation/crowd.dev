@@ -1,6 +1,6 @@
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import authAxios from '@/shared/axios/auth-axios';
-import { MergeAction } from '@/shared/modules/merge/types/MemberActions';
+import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 import { storeToRefs } from 'pinia';
 
 const getSelectedProjectGroup = () => {

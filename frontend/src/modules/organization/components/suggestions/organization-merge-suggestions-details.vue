@@ -105,7 +105,7 @@
               />
               <lf-organization-lf-member-tag
                 :organization="props.organization"
-                :only-show-icon="true"
+                only-show-icon
               />
             </div>
           </router-link>
@@ -116,7 +116,7 @@
             />
             <lf-organization-lf-member-tag
               :organization="props.organization"
-              :only-show-icon="true"
+              only-show-icon
             />
           </div>
           <div
@@ -297,9 +297,9 @@
         </h6>
         <app-identities-vertical-list-organizations
           :organization="organization"
-          :include-emails="true"
-          :include-domains="true"
-          :include-phone-numbers="true"
+          include-emails
+          include-domains
+          include-phone-numbers
           :order="organizationOrder.suggestions"
         />
       </div>
@@ -381,6 +381,7 @@ onMounted(() => {
   }, 0);
 });
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   more,
 });

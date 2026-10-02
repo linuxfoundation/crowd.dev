@@ -4,7 +4,7 @@
       <div class="px-6 pt-4 pb-10">
         <div class="flex items-center justify-between pb-6">
           <h5>Add {{ modelValue?.type?.replace('-', ' ') }}</h5>
-          <lf-button type="secondary-ghost-light" :icon-only="true" @click="close">
+          <lf-button type="secondary-ghost-light" icon-only @click="close">
             <lf-icon name="xmark" />
           </lf-button>
         </div>
@@ -28,7 +28,7 @@
                   v-if="form.length > 1"
                   class="ml-3"
                   type="secondary-ghost-light"
-                  :icon-only="true"
+                  icon-only
                   @click="form.splice(di, 1)"
                 >
                   <lf-icon name="trash-can" />
@@ -85,9 +85,11 @@ import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';

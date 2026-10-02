@@ -4,13 +4,13 @@
       <div class="px-6 pt-4 pb-10">
         <div class="flex items-center justify-between pb-6">
           <h5>{{ isEdit ? 'Edit' : 'Add' }} work experience</h5>
-          <lf-button type="secondary-ghost-light" :icon-only="true" @click="close">
+          <lf-button type="secondary-ghost-light" icon-only @click="close">
             <lf-icon name="xmark" />
           </lf-button>
         </div>
 
         <div>
-          <lf-field label-text="Organization" :required="true" class="mb-5">
+          <lf-field label-text="Organization" required class="mb-5">
             <lf-organization-select
               v-model="form.organization"
               class="w-full"
@@ -110,13 +110,14 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import {
   computed, onMounted, reactive, ref,
 } from 'vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
-import { MemberOrganization, Organization, OrganizationSource } from '@/modules/organization/types/Organization';
+import type { MemberOrganization, Organization } from '@/modules/organization/types/Organization';
+import { OrganizationSource } from '@/modules/organization/types/Organization';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfOrganizationSelect from '@/modules/organization/components/shared/organization-select.vue';
 

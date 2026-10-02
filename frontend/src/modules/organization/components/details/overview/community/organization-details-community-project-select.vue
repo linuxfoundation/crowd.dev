@@ -51,7 +51,7 @@ import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import { getSegmentName } from '@/utils/segments';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { computed, ref } from 'vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

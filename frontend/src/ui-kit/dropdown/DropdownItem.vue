@@ -15,7 +15,7 @@
 </template>
 
 <script lang="ts" setup>
-import { DropdownItemType } from '@/ui-kit/dropdown/types/DropdownItemType';
+import type { DropdownItemType } from '@/ui-kit/dropdown/types/DropdownItemType';
 
 const props = withDefaults(defineProps<{
   disabled?: boolean

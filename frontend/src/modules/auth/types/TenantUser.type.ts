@@ -1,5 +1,5 @@
-import { Tenant } from '@/modules/auth/types/Tenant.type';
-import { TenantUserSettings } from '@/modules/auth/types/TenantUserSettings.type';
+import type { Tenant } from '@/modules/auth/types/Tenant.type';
+import type { TenantUserSettings } from '@/modules/auth/types/TenantUserSettings.type';
 
 export interface TenantUser {
   createdAt: string;

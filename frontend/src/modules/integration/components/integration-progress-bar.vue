@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import AppIntegrationProgress from '@/modules/integration/components/integration-progress.vue';
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 

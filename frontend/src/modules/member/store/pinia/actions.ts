@@ -1,10 +1,10 @@
 import { MemberService } from '@/modules/member/member-service';
 import { customAttributesService } from '@/shared/modules/filters/services/custom-attributes.service';
-import { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
-import { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
-import { MemberState } from '@/modules/member/store/pinia/state';
-import { Pagination } from '@/shared/types/Pagination';
-import { Member } from '@/modules/member/types/Member';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { MemberState } from '@/modules/member/store/pinia/state';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { Member } from '@/modules/member/types/Member';
 
 const { buildFilterFromAttributes } = customAttributesService();
 

@@ -13,7 +13,7 @@
         class="app-page-spinner h-16 !relative !min-h-5"
       />
       <div v-else>
-        <lf-field class="mb-6" :required="true">
+        <lf-field class="mb-6" required>
           <div class="flex items-center pt-2">
             <lf-radio v-model="form.type" value="LF" class="mr-4">
               <div class="flex items-center">
@@ -30,7 +30,7 @@
         <app-form-item
           label="Name"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.name"
           :error-messages="{
             required: 'Name is required',
@@ -48,7 +48,7 @@
         <app-form-item
           label="Slug"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.slug"
           :error-messages="{
             required: 'Slug is required',
@@ -67,7 +67,7 @@
           v-if="form.type === ProjectType.LF"
           label="Source ID"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.sourceId"
           :error-messages="{
             required: 'Source ID is required',
@@ -81,7 +81,7 @@
           v-if="form.type === ProjectType.LF"
           label="Status"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.status"
           :error-messages="{
             required: 'Status is required',
@@ -147,7 +147,7 @@ import {
   FeatureEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { Project, ProjectRequest } from '@/modules/lf/segments/types/Segments';
+import type { Project, ProjectRequest } from '@/modules/lf/segments/types/Segments';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { segmentService } from '@/modules/lf/segments/segments.service';
@@ -156,22 +156,22 @@ import { ToastStore } from '@/shared/message/notification';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfSvg from '@/shared/svg/svg.vue';
-import { AxiosError } from 'axios';
+import type { AxiosError } from 'axios';
 
 const enum ProjectType {
   LF = 'LF',
   NON_LF = 'nonLF',
 }
 
-const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
-  (e: 'onSuccess'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   id?: string | null;
   parentSlug: string;
   isLFProject?: boolean;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
+  (e: 'onSuccess'): void;
 }>();
 
 const route = useRoute();

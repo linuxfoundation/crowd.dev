@@ -1,6 +1,6 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { Session } from './types/session';
-import { Event } from './types/event';
+import type { Session } from './types/session';
+import type { Event } from './types/event';
 
 export const createSession: (session: Session) => Promise<Session> = async (session: Session) => {
   const response = await authAxios.post(

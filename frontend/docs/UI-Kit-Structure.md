@@ -82,6 +82,9 @@ Here are some examples of components currently in the `ui-kit`:
 **Storybook Integration:**  
 Each component generally includes a `.stories.ts` file to support Storybook documentation.
 
+**Every component ships a story:**  
+A `.stories.ts` file is required for every new ui-kit component, not optional — see the [Storybook Guide](./Storybook-Guide.md) for how to write one.
+
 **Styles:**  
 Component-specific SCSS is stored in files like `component-name.scss` for modular styling.
 

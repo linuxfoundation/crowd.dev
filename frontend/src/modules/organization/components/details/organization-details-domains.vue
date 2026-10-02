@@ -10,7 +10,7 @@
             v-if="hasPermission(LfPermission.organizationEdit)"
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
           >
             <lf-icon name="plus" type="regular" />
           </lf-button>
@@ -62,7 +62,7 @@ import { ref } from 'vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import LfOrganizationDetailsDomainsSection
   from '@/modules/organization/components/details/domains/organization-details-domains-section.vue';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
@@ -85,8 +85,8 @@ const {
 
 const add = ref<Partial<OrganizationIdentity> | null>(null);
 const edit = ref<OrganizationIdentity | null>(null);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 
 const unmerge = (identity: any) => {
   if (identity) {

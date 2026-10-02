@@ -1,6 +1,6 @@
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import { formatDate } from '@/utils/date';
-import { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
+import type { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
 
 const grossAdditionsByMonth: OrganizationEnrichmentConfig = {
   name: 'grossAdditionsByMonth',

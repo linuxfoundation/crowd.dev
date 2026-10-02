@@ -1,4 +1,4 @@
-import { Category } from '@/modules/admin/modules/categories/types/Category';
+import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
 export enum CategoryGroupType {
   HORIZONTAL = 'horizontal',

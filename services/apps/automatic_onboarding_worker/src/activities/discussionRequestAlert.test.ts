@@ -4,6 +4,8 @@ import {
   buildErroredDiscussionAlert,
   buildOnboardedDiscussionAlert,
   buildOnboardedDiscussionReply,
+  buildOnboardedDiscussionTitle,
+  groupGithubDiscussionRequestsBySource,
   isGithubDiscussionRequest,
   isReviewAlertRequest,
 } from './discussionRequestAlert'
@@ -28,20 +30,28 @@ describe('isGithubDiscussionRequest', () => {
 
 describe('buildOnboardedDiscussionReply', () => {
   it('includes the repo name and the derived slug in the project URL', () => {
-    const reply = buildOnboardedDiscussionReply({
-      repoName: 'obmondo/kubeaid-cli',
-      projectSlug: 'KubeAid CLI!!',
-    })
+    const reply = buildOnboardedDiscussionReply([
+      {
+        repoName: 'obmondo/kubeaid-cli',
+        repoUrl: 'https://github.com/obmondo/kubeaid-cli',
+        projectSlug: 'KubeAid CLI!!',
+        sourceUrl: null,
+      },
+    ])
 
     expect(reply).toContain('obmondo/kubeaid-cli')
     expect(reply).toContain('https://insights.linuxfoundation.org/project/kubeaid-cli')
   })
 
   it('normalizes an already slug-like projectSlug unchanged', () => {
-    const reply = buildOnboardedDiscussionReply({
-      repoName: 'agentnameservice/ans',
-      projectSlug: 'agent-name-service',
-    })
+    const reply = buildOnboardedDiscussionReply([
+      {
+        repoName: 'agentnameservice/ans',
+        repoUrl: 'https://github.com/agentnameservice/ans',
+        projectSlug: 'agent-name-service',
+        sourceUrl: null,
+      },
+    ])
 
     expect(reply).toContain('https://insights.linuxfoundation.org/project/agent-name-service')
   })
@@ -49,12 +59,14 @@ describe('buildOnboardedDiscussionReply', () => {
 
 describe('buildOnboardedDiscussionAlert', () => {
   it('links the source discussion when sourceUrl is present', () => {
-    const sections = buildOnboardedDiscussionAlert({
-      repoName: 'obmondo/kubeaid-cli',
-      repoUrl: 'https://github.com/obmondo/kubeaid-cli',
-      projectSlug: 'kubeaid-cli',
-      sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/123',
-    })
+    const sections = buildOnboardedDiscussionAlert([
+      {
+        repoName: 'obmondo/kubeaid-cli',
+        repoUrl: 'https://github.com/obmondo/kubeaid-cli',
+        projectSlug: 'kubeaid-cli',
+        sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/123',
+      },
+    ])
 
     const summary = sections[0].text
     expect(summary).toContain('obmondo/kubeaid-cli')
@@ -68,14 +80,103 @@ describe('buildOnboardedDiscussionAlert', () => {
   })
 
   it('falls back to a not-recorded note when sourceUrl is null', () => {
-    const sections = buildOnboardedDiscussionAlert({
-      repoName: 'obmondo/kubeaid-cli',
-      repoUrl: 'https://github.com/obmondo/kubeaid-cli',
-      projectSlug: 'kubeaid-cli',
-      sourceUrl: null,
-    })
+    const sections = buildOnboardedDiscussionAlert([
+      {
+        repoName: 'obmondo/kubeaid-cli',
+        repoUrl: 'https://github.com/obmondo/kubeaid-cli',
+        projectSlug: 'kubeaid-cli',
+        sourceUrl: null,
+      },
+    ])
 
     expect(sections[0].text).toContain('source discussion not recorded')
+  })
+})
+
+const DISCUSSION_URL = 'https://github.com/linuxfoundation/insights/discussions/2336'
+
+const multiRepoProjects = [
+  {
+    repoName: 'acme/one',
+    repoUrl: 'https://github.com/acme/one',
+    projectSlug: 'one',
+    sourceUrl: DISCUSSION_URL,
+  },
+  {
+    repoName: 'acme/two',
+    repoUrl: 'https://github.com/acme/two',
+    projectSlug: 'two',
+    sourceUrl: DISCUSSION_URL,
+  },
+]
+
+describe('buildOnboardedDiscussionAlert for several repositories', () => {
+  it('lists every repository and the discussion in a single header', () => {
+    const [header] = buildOnboardedDiscussionAlert(multiRepoProjects)
+
+    expect(header.text).toContain('2 repositories onboarded')
+    expect(header.text).toContain('https://github.com/acme/one')
+    expect(header.text).toContain('https://github.com/acme/two')
+    expect(header.text).toContain(DISCUSSION_URL)
+  })
+
+  it('suggests one reply covering every repository', () => {
+    const sections = buildOnboardedDiscussionAlert(multiRepoProjects)
+
+    expect(sections).toHaveLength(2)
+    expect(sections[1].title).toBe('Suggested reply')
+    expect(sections[1].text).toContain('https://insights.linuxfoundation.org/project/one')
+    expect(sections[1].text).toContain('https://insights.linuxfoundation.org/project/two')
+  })
+})
+
+describe('buildOnboardedDiscussionTitle', () => {
+  it('names the repository for a single project', () => {
+    expect(buildOnboardedDiscussionTitle([multiRepoProjects[0]])).toBe(
+      'Onboarded from GitHub discussion — acme/one',
+    )
+  })
+
+  it('counts the repositories for several projects', () => {
+    expect(buildOnboardedDiscussionTitle(multiRepoProjects)).toBe(
+      'Onboarded from GitHub discussion — 2 repositories',
+    )
+  })
+})
+
+describe('groupGithubDiscussionRequestsBySource', () => {
+  const discussion = (id: string, sourceUrl: string | null) => ({
+    id,
+    provenance: 'github-discussion' as const,
+    sourceUrl,
+  })
+
+  it('groups projects that share a discussion', () => {
+    const groups = groupGithubDiscussionRequestsBySource([
+      discussion('1', 'https://github.com/o/r/discussions/1'),
+      discussion('2', 'https://github.com/o/r/discussions/2'),
+      discussion('3', 'https://github.com/o/r/discussions/1'),
+    ])
+
+    expect(groups.map((group) => group.map((project) => project.id))).toEqual([['1', '3'], ['2']])
+  })
+
+  it('keeps projects without a recorded source apart', () => {
+    const groups = groupGithubDiscussionRequestsBySource([
+      discussion('1', null),
+      discussion('2', null),
+    ])
+
+    expect(groups).toHaveLength(2)
+  })
+
+  it('drops projects that did not come from a github discussion', () => {
+    const groups = groupGithubDiscussionRequestsBySource([
+      { id: '1', provenance: 'slack-bot', sourceUrl: 'https://acme.slack.com/archives/C1/p1' },
+      { id: '2', provenance: null, sourceUrl: null },
+    ])
+
+    expect(groups).toEqual([])
   })
 })
 

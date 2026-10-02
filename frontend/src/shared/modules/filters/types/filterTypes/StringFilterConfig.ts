@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
-import { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
-import { FilterStringOperator } from '@/shared/modules/filters/config/constants/string.constants';
+import type { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { FilterStringOperator } from '@/shared/modules/filters/config/constants/string.constants';
 
 export interface StringFilterOptions {
   fixedOperator?: FilterStringOperator;

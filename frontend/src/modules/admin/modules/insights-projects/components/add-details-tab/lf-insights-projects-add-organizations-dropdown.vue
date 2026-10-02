@@ -52,9 +52,9 @@ import {
 
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
 
 const props = defineProps<{
   form: InsightsProjectAddFormModel;

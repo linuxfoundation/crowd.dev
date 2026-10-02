@@ -16,7 +16,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
             class="my-1"
           >
             <lf-icon name="plus" />
@@ -80,7 +80,7 @@
 
 <script setup lang="ts">
 import LfButton from '@/ui-kit/button/Button.vue';
-import {
+import type {
   Contributor,
   ContributorIdentity,
 } from '@/modules/contributor/types/Contributor';
@@ -138,7 +138,7 @@ const identityList = computed(() => {
 });
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
+const isUnmergeDialogOpen = ref<Contributor | null>(null);
 const selectedIdentity = ref<string | null>(null);
 
 const addIdentity = ref<boolean>(false);

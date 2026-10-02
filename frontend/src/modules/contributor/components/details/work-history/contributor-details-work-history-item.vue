@@ -21,7 +21,7 @@
       <div>
         <lf-dropdown v-show="hovered" placement="bottom-end" width="14.5rem">
           <template #trigger>
-            <lf-button type="secondary-ghost" size="small" :icon-only="true">
+            <lf-button type="secondary-ghost" size="small" icon-only>
               <lf-icon name="ellipsis" />
             </lf-button>
           </template>
@@ -117,9 +117,9 @@
 
 <script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfSvg from '@/shared/svg/svg.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';

@@ -104,13 +104,6 @@ import config from '@/config';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import AppLfProjectIntegrationColumn from '../fragments/lf-project-integration-column.vue';
 
-const route = useRoute();
-
-const emit = defineEmits([
-  'onEditProject',
-  'onEditSubProject',
-  'onAddSubProject',
-]);
 const props = defineProps({
   project: {
     type: Object,
@@ -126,6 +119,14 @@ const props = defineProps({
     default: false,
   },
 });
+
+const emit = defineEmits([
+  'onEditProject',
+  'onEditSubProject',
+  'onAddSubProject',
+]);
+
+const route = useRoute();
 
 const { hasPermission, hasAccessToSegmentId } = usePermissions();
 

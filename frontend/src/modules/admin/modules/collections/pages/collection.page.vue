@@ -8,7 +8,7 @@
       <lf-search
         v-model="search"
         class="h-9 flex-grow"
-        :lazy="true"
+        lazy
         placeholder="Search collections..."
       />
       <lf-button
@@ -112,7 +112,7 @@ import LfSearch from '@/ui-kit/search/Search.vue';
 import {
   COLLECTIONS_SERVICE,
 } from '@/modules/admin/modules/collections/services/collections.service';
-import { CollectionModel, CollectionRequest } from '@/modules/admin/modules/collections/models/collection.model';
+import type { CollectionModel, CollectionRequest } from '@/modules/admin/modules/collections/models/collection.model';
 import LfCollectionAdd from '@/modules/admin/modules/collections/components/lf-collection-add.vue';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -123,12 +123,13 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppDeleteConfirmDialog from '@/shared/dialog/delete-confirm-dialog.vue';
 import { cloneDeep } from 'lodash';
-import {
-  QueryFunction, useInfiniteQuery, useMutation, useQueryClient,
+import type {
+  QueryFunction,
 } from '@tanstack/vue-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { useDebounce } from '@vueuse/core';
-import { Pagination } from '@/shared/types/Pagination';
+import type { Pagination } from '@/shared/types/Pagination';
 
 const queryClient = useQueryClient();
 

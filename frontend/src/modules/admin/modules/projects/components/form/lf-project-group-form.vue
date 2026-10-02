@@ -17,7 +17,7 @@
         <app-form-item
           label="Name"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.name"
           :error-messages="{
             required: 'Name is required',
@@ -34,7 +34,7 @@
         <app-form-item
           label="Slug"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.slug"
           :error-messages="{
             required: 'Slug is required',
@@ -47,7 +47,7 @@
         <app-form-item
           label="Source ID"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.sourceId"
           :error-messages="{
             required: 'Source ID is required',
@@ -60,7 +60,7 @@
         <app-form-item
           label="Logo URL"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.url"
           :error-messages="{
             required: 'Logo URL is required',
@@ -73,7 +73,7 @@
         <app-form-item
           label="Status"
           class="mb-6"
-          :required="true"
+          required
           :validation="$v.status"
           :error-messages="{
             required: 'Status is required',
@@ -149,19 +149,19 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { segmentService } from '@/modules/lf/segments/segments.service';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { ProjectGroup } from '@/modules/lf/segments/types/Segments';
-import { AxiosError } from 'axios';
+import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
+import type { AxiosError } from 'axios';
 import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 
 import { ToastStore } from '@/shared/message/notification';
 
-const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
-  (e: 'onProjectGroupEdited'): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   id: string | null;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
+  (e: 'onProjectGroupEdited'): void;
 }>();
 
 const { trackEvent } = useProductTracking();

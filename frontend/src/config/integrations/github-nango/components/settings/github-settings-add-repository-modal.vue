@@ -28,7 +28,7 @@
 
         <lf-search
           v-model="search"
-          :lazy="true"
+          lazy
           class="!h-9"
           :placeholder="
             tab === 'repositories'
@@ -223,7 +223,7 @@ import LfTabs from '@/ui-kit/tabs/Tabs.vue';
 import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import {
+import type {
   GitHubOrganization,
   GitHubRepository,
   GitHubSettingsRepository,

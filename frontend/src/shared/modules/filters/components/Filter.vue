@@ -57,16 +57,16 @@
 import {
   computed, defineProps, onMounted, ref, watch,
 } from 'vue';
-import { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
+import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import LfFilterDropdown from '@/shared/modules/filters/components/FilterDropdown.vue';
 import LfFilterItem from '@/shared/modules/filters/components/FilterItem.vue';
 import LfFilterSearch from '@/shared/modules/filters/components/FilterSearch.vue';
 import { filterQueryService } from '@/shared/modules/filters/services/filter-query.service';
-import { SearchFilterConfig } from '@/shared/modules/filters/types/filterTypes/SearchFilterConfig';
+import type { SearchFilterConfig } from '@/shared/modules/filters/types/filterTypes/SearchFilterConfig';
 import { useRoute, useRouter } from 'vue-router';
 import { filterApiService } from '@/shared/modules/filters/services/filter-api.service';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
-import { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import { useUserStore } from '@/modules/user/store/pinia';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -219,10 +219,6 @@ onMounted(() => {
   alignQueryUrl();
 });
 
-defineExpose({
-  alignFilterList,
-});
-
 const copyToClipboard = async () => {
   const parsedPayload = buildApiFilter(filters.value, { ...props.config, ...props.customConfig }, props.searchConfig, props.savedViewsConfig);
 
@@ -235,6 +231,11 @@ const copyToClipboard = async () => {
 
   ToastStore.success('Filters payload successfully copied to your clipboard');
 };
+
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
+defineExpose({
+  alignFilterList,
+});
 </script>
 
 <script lang="ts">

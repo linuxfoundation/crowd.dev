@@ -1,6 +1,8 @@
-import { IntegrationConfig } from '@/config/integrations';
-import SlackConnect from './components/slack-connect.vue';
-import SlackParams from './components/slack-params.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const SlackConnect = defineAsyncComponent(() => import('./components/slack-connect.vue'));
+const SlackParams = defineAsyncComponent(() => import('./components/slack-params.vue'));
 
 const image = new URL('@/assets/images/integrations/slack.png', import.meta.url).href;
 

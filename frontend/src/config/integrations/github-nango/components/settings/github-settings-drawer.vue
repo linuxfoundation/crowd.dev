@@ -4,7 +4,7 @@
     title="GitHub"
     size="600px"
     pre-title="Integration"
-    :show-footer="true"
+    show-footer
     has-border
     close-on-click-modal="true"
     :close-function="canClose"
@@ -82,8 +82,8 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfGithubSettingsEmpty from '@/config/integrations/github-nango/components/settings/github-settings-empty.vue';
 import LfGithubSettingsAddRepositoryModal from '@/config/integrations/github-nango/components/settings/github-settings-add-repository-modal.vue';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
-import { Integration } from '@/modules/admin/modules/integration/types/Integration';
-import {
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type {
   GitHubOrganization,
   GitHubSettings,
   GitHubSettingsOrganization,

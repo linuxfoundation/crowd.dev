@@ -1,6 +1,8 @@
-import { IntegrationConfig } from '@/config/integrations';
-import HackernewsConnect from './components/hackernews-connect.vue';
-import HackernewsParams from './components/hackernews-params.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const HackernewsConnect = defineAsyncComponent(() => import('./components/hackernews-connect.vue'));
+const HackernewsParams = defineAsyncComponent(() => import('./components/hackernews-params.vue'));
 
 const image = new URL('@/assets/images/integrations/hackernews.svg', import.meta.url).href;
 

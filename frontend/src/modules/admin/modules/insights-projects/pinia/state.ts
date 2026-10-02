@@ -1,4 +1,4 @@
-import { InsightsProjectModel } from '../models/insights-project.model';
+import type { InsightsProjectModel } from '../models/insights-project.model';
 
 export interface InsightsProjectsState {
   insightsProjects: InsightsProjectModel[];

@@ -8,7 +8,6 @@
   >
     <div class="px-6 pb-6">
       <el-form
-        ref="formRef"
         :model="formModel"
         class="attributes-form mt-1 mb-5"
         label-position="top"
@@ -31,7 +30,7 @@
               :create-fn="multiSelectCreateFn"
               :placeholder="multiSelectPlaceholder"
               :input-class="multiSelectClassName"
-              :create-if-not-found="true"
+              create-if-not-found
               :in-memory-filter="false"
             >
               <template
@@ -72,12 +71,14 @@
               clearable
               placeholder="Select option"
             >
+              <!-- eslint-disable vue/prefer-true-attribute-shorthand -- value accepts non-boolean values -->
               <el-option
                 key="true"
                 label="True"
                 :value="true"
                 @mouseleave="onSelectMouseLeave"
               />
+              <!-- eslint-enable vue/prefer-true-attribute-shorthand -->
               <el-option
                 key="false"
                 label="False"
@@ -166,6 +167,15 @@ import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 
+const props = defineProps({
+  modelValue: {
+    type: Boolean,
+    default: false,
+  },
+});
+
+const emits = defineEmits(['reload', 'update:modelValue']);
+
 const CalendarIcon = h(
   'i', // type
   {
@@ -192,15 +202,6 @@ const formSchema = computed(
     }),
   ]),
 );
-
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-});
-
-const emits = defineEmits(['reload', 'update:modelValue']);
 
 const computedVisible = computed({
   get() {

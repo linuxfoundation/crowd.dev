@@ -1,4 +1,4 @@
-import { UserState } from '@/modules/user/store/pinia/state';
+import type { UserState } from '@/modules/user/store/pinia/state';
 
 export default {
   updateDeveloperMode(this: UserState, value: boolean): void {

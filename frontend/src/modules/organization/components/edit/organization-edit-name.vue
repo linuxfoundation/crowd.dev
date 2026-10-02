@@ -1,7 +1,6 @@
 <template>
   <div ref="nameEdit">
     <lf-conteneditable
-      ref="editor"
       v-model="form.name"
       class="edit-name px-1 py-px font-secondary text-h5 rounded-md font-semibold transition mb-1
         border border-transparent w-min
@@ -22,7 +21,7 @@ import { reactive, ref } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 
@@ -33,7 +32,7 @@ const props = defineProps<{
 const { updateOrganization } = useOrganizationStore();
 const { displayName } = useOrganizationHelpers();
 
-const nameEdit = ref(null);
+const nameEdit = ref<HTMLDivElement | null>(null);
 
 const form = reactive({
   name: displayName(props.organization),

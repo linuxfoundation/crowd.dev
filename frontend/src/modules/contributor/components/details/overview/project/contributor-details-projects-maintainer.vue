@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import LfSvg from '@/shared/svg/svg.vue';
-import { ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
+import type { ContributorMaintainerRole } from '@/modules/contributor/types/Contributor';
 import { computed } from 'vue';
 import LfContributorDetailsProjectsMaintainerItem
   from '@/modules/contributor/components/details/overview/project/contributor-details-projects-maintainer-item.vue';

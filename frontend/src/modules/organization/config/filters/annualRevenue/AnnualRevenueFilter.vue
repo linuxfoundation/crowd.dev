@@ -52,7 +52,7 @@
         :error-messages="{
           'valueTo-minValue': `Number should be higher than “From” field`,
         }"
-        :hide-default="true"
+        hide-default
       />
     </div>
   </div>
@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
-import {
+import type {
   NumberFilterConfig,
   NumberFilterOptions,
   NumberFilterValue,

@@ -12,7 +12,7 @@
       </div>
       <lf-button
         type="secondary-ghost-light"
-        :icon-only="true"
+        icon-only
         @click="isModalOpen = false;reset()"
       >
         <lf-icon name="xmark" />
@@ -63,7 +63,7 @@
         </lf-field>
       </article>
       <article v-if="!props.type" class="pb-5">
-        <lf-field label-text="Data type" :required="true">
+        <lf-field label-text="Data type" required>
           <el-select
             v-model="form.type"
             placeholder="Select option"
@@ -85,7 +85,7 @@
       <article class="pb-5">
         <lf-field
           label-text="Description"
-          :required="true"
+          required
           description="Please identity and describe which data attribute is incorrect or missing from this profile."
         >
           <lf-textarea
@@ -120,17 +120,18 @@
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import { computed, reactive, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfTextarea from '@/ui-kit/textarea/Textarea.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import { ReportDataEntity } from '@/shared/modules/report-issue/constants/report-data-entity.enum';
-import { ReportDataConfig, reportDataConfig, reportDataTypeDisplay } from '@/shared/modules/report-issue/config';
+import type { ReportDataConfig } from '@/shared/modules/report-issue/config';
+import { reportDataConfig, reportDataTypeDisplay } from '@/shared/modules/report-issue/config';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
-import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
+import type { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import authAxios from '@/shared/axios/auth-axios';
 
 import { ToastStore } from '@/shared/message/notification';

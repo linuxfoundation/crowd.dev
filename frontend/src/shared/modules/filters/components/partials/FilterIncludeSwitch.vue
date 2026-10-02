@@ -23,11 +23,10 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 
-const emit = defineEmits(['update:modelValue']);
 const props = defineProps<{
   modelValue: boolean
 }>();
-
+const emit = defineEmits(['update:modelValue']);
 const model = computed<boolean>({
   get() {
     return props.modelValue;

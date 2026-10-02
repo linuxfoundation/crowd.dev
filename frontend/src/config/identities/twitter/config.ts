@@ -1,4 +1,4 @@
-import { IdentityConfig } from '@/config/identities';
+import type { IdentityConfig } from '@/config/identities';
 
 const image = new URL('@/assets/images/identities/twitter.png', import.meta.url)
   .href;

@@ -1,5 +1,5 @@
 import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
-import { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
+import type { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
 export const memberDefaultFilterRenderer = ({ teamMember, bot }: DefaultFiltersSettings) => {
   if (teamMember === IncludeEnum.EXCLUDE && bot === IncludeEnum.EXCLUDE) {

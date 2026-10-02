@@ -1,7 +1,7 @@
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import { formatFloatToPercentage } from '@/utils/number';
 import { snakeToSentenceCase } from '@/utils/string';
-import { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
+import type { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment/index';
 
 const employeeChurnRate: OrganizationEnrichmentConfig = {
   name: 'employeeChurnRate',

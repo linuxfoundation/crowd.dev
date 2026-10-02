@@ -9,10 +9,10 @@ import {
 import { storeToRefs } from 'pinia';
 import { useStore } from 'vuex';
 import LfMultiSelectFilter from '@/shared/modules/filters/components/filterTypes/MultiSelectFilter.vue';
-import {
+import type {
   MultiSelectFilterConfig,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
-import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
+import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import { useActivityTypeStore } from '@/modules/activity/store/type';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import useIntegrationsHelpers from '@/config/integrations/integrations.helpers';

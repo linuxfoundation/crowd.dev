@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import { computed, onMounted, ref } from 'vue';
 import { logRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ActivityFailure, ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import { IEnrichableOrganization, OrganizationEnrichmentSource } from '@crowd/types'
 
@@ -46,11 +46,23 @@ export async function enrichOrganization(
 
   // Use LLM to pick the most relevant domain if multiple
   if (enrichmentInput.domains.length > 1) {
-    const mostRelevantDomain = await selectMostRelevantDomainWithLLM(
-      input.id,
-      enrichmentInput.domains,
-    )
-    enrichmentInput.domains = [mostRelevantDomain]
+    try {
+      const mostRelevantDomain = await selectMostRelevantDomainWithLLM(
+        input.id,
+        enrichmentInput.domains,
+      )
+      enrichmentInput.domains = [mostRelevantDomain]
+    } catch (err) {
+      // workflow retries only honor non-retryable failures thrown by the workflow itself
+      if (
+        err instanceof ActivityFailure &&
+        err.cause instanceof ApplicationFailure &&
+        err.cause.nonRetryable
+      ) {
+        throw ApplicationFailure.nonRetryable(err.cause.message, err.cause.type)
+      }
+      throw err
+    }
   }
 
   // Skipping credit check because this workflow uses a trusted internal API.

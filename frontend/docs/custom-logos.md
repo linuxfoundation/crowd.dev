@@ -78,7 +78,7 @@ The following steps provide a possible approach to add custom logos to custom pl
 To test if the new custom logo is properly set, add a custom activity with a custom platform. The following steps will guide you through the testing phase:
 
 1. Run the application locally and all the required services with `./cli clean-start-dev` from the `/scripts` folder
-   1. For the frontend it is advisable to run outside docker since it will compile faster. You can run frontend from the `/frontend` folder with `npm run start:dev:local`. Don't forget to stop the frontend container before this.
+   1. For the frontend it is advisable to run outside docker since it will compile faster. You can run frontend from the `/frontend` folder with `pnpm run start:dev:local`. Don't forget to stop the frontend container before this.
 2. Create a custom activity using the following endpoint and a similar payload:
    1. `tenantId` can be found in the settings page
    2. `token` can be obtained through the `sign-in` endpoint

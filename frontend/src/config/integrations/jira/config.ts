@@ -1,8 +1,12 @@
-import { IntegrationConfig } from '@/config/integrations';
-import LfJiraSettingsDrawer from '@/config/integrations/jira/components/jira-settings-drawer.vue';
-import JiraConnect from './components/jira-connect.vue';
-import JiraParams from './components/jira-params.vue';
-import JiraDropdown from './components/jira-dropdown.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const LfJiraSettingsDrawer = defineAsyncComponent(
+  () => import('@/config/integrations/jira/components/jira-settings-drawer.vue'),
+);
+const JiraConnect = defineAsyncComponent(() => import('./components/jira-connect.vue'));
+const JiraParams = defineAsyncComponent(() => import('./components/jira-params.vue'));
+const JiraDropdown = defineAsyncComponent(() => import('./components/jira-dropdown.vue'));
 
 const image = new URL('@/assets/images/integrations/jira.png', import.meta.url).href;
 

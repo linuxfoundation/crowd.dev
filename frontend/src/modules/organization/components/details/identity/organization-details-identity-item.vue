@@ -49,7 +49,7 @@
     <!-- Dropdown -->
     <lf-dropdown v-show="hovered" placement="bottom-end" width="232px">
       <template #trigger>
-        <lf-button type="secondary-ghost" size="small" :icon-only="true">
+        <lf-button type="secondary-ghost" size="small" icon-only>
           <lf-icon name="ellipsis" type="regular" />
         </lf-button>
       </template>
@@ -107,7 +107,7 @@ import { ToastStore } from '@/shared/message/notification';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { ref } from 'vue';
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import LfVerifiedIdentityBadge from '@/shared/modules/identities/components/verified-identity-badge.vue';
 import { useSharedStore } from '@/shared/pinia/shared.store';

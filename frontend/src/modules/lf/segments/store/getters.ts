@@ -1,4 +1,4 @@
-import { SegmentsState } from './state';
+import type { SegmentsState } from './state';
 
 export default {
   projectGroupOffset: (state: SegmentsState) => {

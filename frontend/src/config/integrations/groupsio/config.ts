@@ -1,8 +1,12 @@
-import { IntegrationConfig } from '@/config/integrations';
-import GroupsioConnect from './components/groupsio-connect.vue';
-import GroupsioParams from './components/groupsio-params.vue';
-import GroupsioDropdown from './components/groupsio-dropdown.vue';
-import LfGroupsioSettingsDrawer from './components/groupsio-settings-drawer.vue';
+import { defineAsyncComponent } from 'vue';
+import type { IntegrationConfig } from '@/config/integrations';
+
+const GroupsioConnect = defineAsyncComponent(() => import('./components/groupsio-connect.vue'));
+const GroupsioParams = defineAsyncComponent(() => import('./components/groupsio-params.vue'));
+const GroupsioDropdown = defineAsyncComponent(() => import('./components/groupsio-dropdown.vue'));
+const LfGroupsioSettingsDrawer = defineAsyncComponent(
+  () => import('./components/groupsio-settings-drawer.vue'),
+);
 
 const image = new URL('@/assets/images/integrations/groupsio.svg', import.meta.url).href;
 

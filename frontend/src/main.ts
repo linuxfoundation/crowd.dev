@@ -7,6 +7,8 @@ import Vue3Sanitize from 'vue-3-sanitize';
 import LogRocketClient from 'logrocket';
 import VueLazyLoad from 'vue3-lazyload';
 import { createPinia } from 'pinia';
+// Keep Element Plus CSS eager so it stays ahead of app styles (integration configs are now lazy)
+import 'element-plus/dist/index.css';
 import { createRouter } from '@/router';
 import { createStore } from '@/store';
 import modules from '@/modules';

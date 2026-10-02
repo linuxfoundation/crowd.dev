@@ -99,17 +99,17 @@ import { TanstackKey } from '@/shared/types/tanstack';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfInsightsProjectDropdown from './lf-insights-projects-dropdown.vue';
-import {
+import type {
   InsightsProjectModel,
   InsightsProjectRequest,
 } from '../models/insights-project.model';
 
-const emit = defineEmits<{(e: 'onEditProject', id: string): void;
-  (e: 'onDeleteProject', id: string): void;
-}>();
-
 defineProps<{
   projects: InsightsProjectModel[];
+}>();
+
+const emit = defineEmits<{(e: 'onEditProject', id: string): void;
+  (e: 'onDeleteProject', id: string): void;
 }>();
 
 const queryClient = useQueryClient();

@@ -1,0 +1,12 @@
+[
+  "modules/activity/activity-module.js > modules/activity/activity-routes.js > modules/layout/components/layout.vue > modules/lf/layout/components/lf-banners.vue > modules/integration/integration-service.js > router/index.js > modules/index.ts",
+  "modules/index.ts > modules/integration/integration-module.js > modules/integration/integration-store.js > modules/integration/helpers/integration-progress-notification.ts > modules/integration/components/integration-progress-wrapper.vue > modules/integration/integration-service.js > router/index.js",
+  "modules/index.ts > modules/integration/integration-module.js > modules/integration/integration-store.js > modules/integration/integration-service.js > router/index.js",
+  "modules/index.ts > modules/integration/integration-module.js > modules/integration/integration-store.js > router/index.js",
+  "modules/index.ts > modules/layout/layout-module.js > modules/layout/layout-store.js > router/index.js",
+  "modules/index.ts > modules/member/member-module.js > modules/member/store/index.js > modules/member/store/actions.js > router/index.js",
+  "modules/index.ts > modules/member/member-module.js > modules/member/store/index.js > modules/member/store/actions.js > shared/store/actions.js > router/index.js",
+  "modules/index.ts > modules/settings/settings-module.js > modules/settings/settings-store.js > router/index.js",
+  "modules/index.ts > modules/tag/tag-module.js > modules/tag/tag-store.js > modules/tag/tag-destroy-store.js > router/index.js",
+  "modules/index.ts > modules/tag/tag-module.js > modules/tag/tag-store.js > modules/tag/tag-form-store.js > router/index.js"
+]

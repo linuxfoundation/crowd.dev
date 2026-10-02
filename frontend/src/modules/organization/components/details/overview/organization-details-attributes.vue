@@ -69,10 +69,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfOrganizationAttributeString
   from '@/modules/organization/components/details/overview/attributes/organization-attribute-string.vue';
-import enrichmentAttributes, { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment';
+import type { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment';
+import enrichmentAttributes from '@/modules/organization/config/enrichment';
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import LfOrganizationAttributeArray
   from '@/modules/organization/components/details/overview/attributes/organization-attribute-array.vue';

@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { PROBE_RETRY_BACKOFF_MS, PROBE_TIMEOUT_MS, probeRetry } from './http'
 import { discoverDocs } from './index'
 import {
   docsPath,
@@ -44,6 +48,10 @@ const htmlAt = (finalUrl: string) => {
   return response
 }
 const notFound = () => new Response('not found', { status: 404 })
+
+beforeAll(() => {
+  probeRetry.backoffMs = 0
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -518,6 +526,34 @@ describe('githubHomepage derived probes', () => {
     expect(await llmsTxtProbe(noSite)).toEqual([])
     expect(await projectWebsite(noSite)).toEqual([])
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'https://insights.linuxfoundation.org/project/katalis/repository/neonephos-katalis_opg-ewbi-operator?timeRange=past365days',
+    'https://landscape.lfenergy.org/',
+    'https://l.aswf.io/',
+    'https://gerrit.o-ran-sc.org/r/admin/repos/sim/ns3-o-ran-e2',
+    'https://huggingface.co/spaces/finosfoundation/Open-Financial-LLM-Leaderboard',
+  ])('rejects the platform page %s as a repo homepage without probing it', async (homepage) => {
+    const fetchMock = routeFetch([
+      ['https://api.github.com/repos/torvalds/linux', () => Response.json({ homepage })],
+    ])
+
+    expect(await githubHomepage(ctx())).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a huggingface.co/docs homepage', async () => {
+    routeFetch([
+      [
+        'https://api.github.com/repos/torvalds/linux',
+        () => Response.json({ homepage: 'https://huggingface.co/docs/transformers' }),
+      ],
+      ['https://huggingface.co', html],
+    ])
+
+    const result = await githubHomepage(ctx({ website: null, websiteShared: false }))
+    expect(result.map((c) => c.method)).toContain('github-homepage')
   })
 
   it('does no derived probing when the homepage is a github url', async () => {
@@ -1006,9 +1042,9 @@ describe('readmeScrape', () => {
     routeFetch([
       [
         'https://api.github.com/repos/torvalds/linux/readme',
-        () => new Response('See the [Documentation](https://docs.example.com) for more.'),
+        () => new Response('See the [Documentation](https://docs.proj.dev) for more.'),
       ],
-      ['https://docs.example.com', html],
+      ['https://docs.proj.dev', html],
     ])
 
     const result = await readmeScrape({
@@ -1022,7 +1058,7 @@ describe('readmeScrape', () => {
     })
     expect(result).toEqual([
       {
-        url: 'https://docs.example.com',
+        url: 'https://docs.proj.dev',
         method: 'readme-scrape',
         confidence: 'medium',
         livenessOk: true,
@@ -1146,25 +1182,26 @@ describe('readmeScrape filtering', () => {
   it('excludes by whole slug: security-model is dropped, issuers and bugzilla are kept', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://a.io/docs/security-model) [Docs](https://b.io/docs/issuers) [Docs](https://c.io/docs/bugzilla)',
+        '[Docs](https://proj.io/docs/security-model) [Docs](https://proj.io/docs/issuers) [Docs](https://proj.io/docs/bugzilla)',
       ),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://b.io/docs/issuers', 'https://c.io/docs/bugzilla'])
+    expect(probed(fetchMock)).toEqual([
+      'https://proj.io/docs/issuers',
+      'https://proj.io/docs/bugzilla',
+    ])
   })
 
   it('keeps a path whose segment merely contains an excluded word', async () => {
     const fetchMock = routeFetch([
-      readmeRoute(
-        '[Docs](https://example.io/docs/debugging) [Docs](https://example.io/docs/security)',
-      ),
-      ['https://example.io', html],
+      readmeRoute('[Docs](https://proj.io/docs/debugging) [Docs](https://proj.io/docs/security)'),
+      ['https://proj.io', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual(['https://example.io/docs/debugging'])
+    expect(probed(fetchMock)).toEqual(['https://proj.io/docs/debugging'])
   })
 
   it('keeps the docs-labelled text when a fragment variant of the link came first', async () => {
@@ -1259,15 +1296,48 @@ describe('readmeScrape filtering', () => {
     expect(probed(fetchMock)).toEqual(['https://urunc.io/'])
   })
 
-  it('keeps foreign links when no own-domain link survives', async () => {
+  it('keeps a project-related foreign link when no own-domain link survives', async () => {
+    const fetchMock = routeFetch([
+      readmeRoute('[Proj docs](https://proj.readthedocs.io/en/latest/)'),
+      ['https://proj.readthedocs.io', html],
+    ])
+
+    const result = await scrape('https://marquezproject.ai')
+    expect(probed(fetchMock)).toEqual(['https://proj.readthedocs.io/en/latest/'])
+    expect(result).toHaveLength(1)
+  })
+
+  it('drops a foreign link that is not related to the project', async () => {
     const fetchMock = routeFetch([
       readmeRoute('[OpenLineage docs](https://openlineage.io/docs/)'),
       ['https://openlineage.io', html],
     ])
 
-    const result = await scrape('https://marquezproject.ai')
-    expect(probed(fetchMock)).toEqual(['https://openlineage.io/docs/'])
-    expect(result).toHaveLength(1)
+    expect(await scrape('https://marquezproject.ai')).toEqual([])
+    expect(probed(fetchMock)).toEqual([])
+  })
+
+  it('does not match a generic owner half against a foreign hyphenated domain (kcl-lang)', async () => {
+    const fetchMock = routeFetch([
+      [
+        'https://api.github.com/repos/kcl-lang/kcl/readme',
+        () =>
+          new Response('[Rust docs](https://doc.rust-lang.org/book/) [Docs](https://kcl.io/docs/)'),
+      ],
+      ['https://doc.rust-lang.org', html],
+      ['https://kcl.io', html],
+    ])
+
+    await readmeScrape({
+      name: 'KCL',
+      slug: 'kcl',
+      website: null,
+      websiteShared: false,
+      repos: [{ url: 'https://github.com/kcl-lang/kcl', starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+    expect(probed(fetchMock)).toEqual(['https://kcl.io/docs/'])
   })
 
   it('drops foreign links once an own-domain link survives', async () => {
@@ -1302,17 +1372,14 @@ describe('readmeScrape filtering', () => {
   it('does not treat a root homepage on the shared website host as an own domain', async () => {
     const fetchMock = routeFetch([
       readmeRoute(
-        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.real-project.dev/start)',
+        '[Docs](https://www.lfedge.org/projects/other/docs/guide/page) [Guide](https://docs.proj.dev/start)',
       ),
       homepageRoute('https://www.lfedge.org'),
       ['https://', html],
     ])
 
     await scrapeSharedWebsite('https://www.lfedge.org/projects/x')
-    expect(probed(fetchMock)).toEqual([
-      'https://www.lfedge.org/projects/other/docs/guide/page',
-      'https://docs.real-project.dev/start',
-    ])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it.each([
@@ -1324,13 +1391,13 @@ describe('readmeScrape filtering', () => {
     ['https://hub.docker.com', 'https://hub.docker.com/r/x/docs/api'],
   ])('does not make the homepage %s an own domain', async (homepage, link) => {
     const fetchMock = routeFetch([
-      readmeRoute(`[Docs](${link}) [Guide](https://docs.real-project.dev/start)`),
+      readmeRoute(`[Docs](${link}) [Guide](https://docs.proj.dev/start)`),
       homepageRoute(homepage),
       ['https://', html],
     ])
 
     await scrape(null)
-    expect(probed(fetchMock)).toEqual([link, 'https://docs.real-project.dev/start'])
+    expect(probed(fetchMock)).toEqual(['https://docs.proj.dev/start'])
   })
 
   it('keeps a root homepage on a host other than the shared website as an own domain', async () => {
@@ -1501,16 +1568,13 @@ describe('readmeScrape foreign links', () => {
 
   it('keeps a foreign link whose text or host says docs', async () => {
     const fetchMock = routeFetch([
-      readme('[OpenLineage docs](https://openlineage.io/x) [Ext](https://docs.docker.com/engine/)'),
-      ['https://openlineage.io', html],
-      ['https://docs.docker.com', html],
+      readme('[Proj docs](https://proj.io/x) [Ext](https://docs.proj.dev/engine/)'),
+      ['https://proj.io', html],
+      ['https://docs.proj.dev', html],
     ])
 
     await scrape()
-    expect(apiFree(fetchMock)).toEqual([
-      'https://openlineage.io/x',
-      'https://docs.docker.com/engine/',
-    ])
+    expect(apiFree(fetchMock)).toEqual(['https://proj.io/x', 'https://docs.proj.dev/engine/'])
   })
 
   it('never proposes google docs documents', async () => {
@@ -1531,6 +1595,144 @@ describe('readmeScrape foreign links', () => {
 
     expect(await scrape()).toEqual([])
     expect(apiFree(fetchMock)).toEqual([])
+  })
+})
+
+interface IReadmeLinkRow {
+  name: string
+  repo: string
+  url: string
+  website?: string
+}
+
+// IN-1305 human verdicts: readme-scrape picks judged wrong (another product's docs) vs docs/site.
+const readmeLinks: { wrong: IReadmeLinkRow[]; right: IReadmeLinkRow[] } = JSON.parse(
+  readFileSync(join(__dirname, '__fixtures__/readme-scrape-links.json'), 'utf-8'),
+)
+
+describe('readmeScrape against IN-1305 verdicts', () => {
+  const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const scrapeRow = async ({ name, repo, url, website }: IReadmeLinkRow) => {
+    const repoPath = repo.toLowerCase()
+    routeFetch([
+      [`https://api.github.com/repos/${repoPath}/readme`, () => new Response(`[Docs](${url})`)],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug: slugOf(name),
+      website: website ?? null,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repoPath}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each(readmeLinks.wrong)('drops another product docs link: $name -> $url', async (row) => {
+    expect(await scrapeRow(row)).toEqual([])
+  })
+
+  it.each(readmeLinks.right)('keeps the project own docs link: $name -> $url', async (row) => {
+    expect((await scrapeRow(row)).length).toBeGreaterThan(0)
+  })
+})
+
+interface IKnownLimitation {
+  name: string
+  slug: string
+  website: string
+  repo: string
+  url: string
+}
+
+// Pins today's wrong picks and dropped right ones; the IN-1427 validator is expected to flip them.
+describe('readmeScrape known limitations', () => {
+  const scrapeProject = async ({ name, slug, website, repo, url }: IKnownLimitation) => {
+    routeFetch([
+      [
+        `https://api.github.com/repos/${repo.toLowerCase()}/readme`,
+        () => new Response(`[Docs](${url})`),
+      ],
+      ['https://api.github.com/repos/', () => Response.json({ homepage: null })],
+      ['http', html],
+    ])
+    return readmeScrape({
+      name,
+      slug,
+      website,
+      websiteShared: false,
+      repos: [{ url: `https://github.com/${repo}`, starCount: null }],
+      githubToken: 'token',
+      serpApiKey: null,
+    })
+  }
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'FINOS (The Fintech Open Source Foundation)',
+      slug: 'finos',
+      website: 'https://www.finos.org/',
+      repo: 'finos/fdc3-dotnet',
+      url: 'https://community.finos.org/docs/governance/Software-Projects/easycla',
+    },
+    {
+      name: 'GraphQL Foundation',
+      slug: 'gql',
+      website: 'https://foundation.graphql.org/',
+      repo: 'graphql/EasyCLA',
+      url: 'https://www.graphql-js.org/',
+    },
+    {
+      name: 'Spring Bot',
+      slug: 'symphony-java-toolkit',
+      website: 'https://springbot.finos.org',
+      repo: 'finos/spring-bot',
+      url: 'https://docs.spring.io/spring-framework/docs/6.0.x/reference/html/web.html',
+    },
+    {
+      name: 'Symphony WDK',
+      slug: 'symphony-wdk',
+      website: 'https://landscape.finos.org',
+      repo: 'finos/symphony-wdk',
+      url: 'https://docs.developers.symphony.com/building-bots-on-symphony/datafeed/real-time-events',
+    },
+    {
+      name: 'Unified Acceleration Foundation',
+      slug: 'oneapi',
+      website: 'https://uxlfoundation.org',
+      repo: 'uxlfoundation/oneAPI-spec',
+      url: 'https://uxlfoundation.github.io/oneTBB',
+    },
+  ])('still picks a wrong link: $name -> $url', async (row) => {
+    expect((await scrapeProject(row)).length).toBeGreaterThan(0)
+  })
+
+  it.each<IKnownLimitation>([
+    {
+      name: 'dstack',
+      slug: 'dstack',
+      website: 'https://dstack.org',
+      repo: 'Dstack-TEE/dstack',
+      url: 'https://docs.phala.com/dstack',
+    },
+    {
+      name: 'Flyte',
+      slug: 'flyte',
+      website: 'https://flyte.org/',
+      repo: 'flyteorg/flyte-sdk-rs',
+      url: 'https://www.union.ai/docs',
+    },
+    {
+      name: 'Open Policy Registry (OPCR)',
+      slug: 'opcr',
+      website: 'https://openpolicyregistry.io',
+      repo: 'opcr-io/artwork',
+      url: 'https://www.openpolicycontainers.com/docs/intro',
+    },
+  ])('still drops the right link: $name -> $url', async (row) => {
+    expect(await scrapeProject(row)).toEqual([])
   })
 })
 
@@ -1610,7 +1812,15 @@ describe('readmeScrape and llms coverage gaps', () => {
       ),
       ['https://', html],
     ])
-    await scrape(null)
+    await readmeScrape({
+      name: 'Box Dropbox',
+      slug: 'box-dropbox',
+      website: null,
+      websiteShared: false,
+      repos,
+      githubToken: 't',
+      serpApiKey: null,
+    })
     expect(probed(m)).toEqual([
       'https://docs.box.com/guide',
       'https://docs.dropbox.com/documentation',
@@ -1989,6 +2199,57 @@ describe('serpStrategy', () => {
   })
 })
 
+describe('serpStrategy stored result', () => {
+  const ctx = {
+    name: 'proj',
+    slug: 'proj',
+    website: null,
+    websiteShared: false,
+    repos: [],
+    githubToken: null,
+    serpApiKey: 'key123',
+    storedSerpUrl: 'https://docs.proj.dev/',
+  }
+  const searchRoute: [string, () => Response] = [
+    'https://serpapi.com/search.json',
+    () =>
+      Response.json({
+        organic_results: [{ link: 'https://proj.readthedocs.io/en/latest/', title: 'proj docs' }],
+      }),
+  ]
+
+  it('reuses a live stored URL without searching', async () => {
+    const fetchMock = routeFetch([['https://docs.proj.dev', html]])
+
+    expect(await serpStrategy(ctx)).toEqual([
+      { url: 'https://docs.proj.dev/', method: 'serp', confidence: 'low', livenessOk: true },
+    ])
+    expect(
+      fetchMock.mock.calls.some(([url]) => new URL(String(url)).hostname === 'serpapi.com'),
+    ).toBe(false)
+  })
+
+  it('replaces a stored URL that returns 404 with a fresh search result', async () => {
+    routeFetch([
+      ['https://docs.proj.dev', notFound],
+      searchRoute,
+      ['https://proj.readthedocs.io/en/latest/', html],
+    ])
+
+    expect((await serpStrategy(ctx)).map((c) => c.url)).toEqual([
+      'https://proj.readthedocs.io/en/latest/',
+    ])
+  })
+
+  it('searches as before when no URL is stored', async () => {
+    routeFetch([searchRoute, ['https://proj.readthedocs.io/en/latest/', html]])
+
+    expect((await serpStrategy({ ...ctx, storedSerpUrl: null })).map((c) => c.url)).toEqual([
+      'https://proj.readthedocs.io/en/latest/',
+    ])
+  })
+})
+
 describe('repoUrl', () => {
   const base = {
     name: 'Marquez',
@@ -2064,5 +2325,136 @@ describe('discoverDocs repo-url last resort', () => {
     expect(fetchMock).toHaveBeenCalled()
     expect(result.docsUrl).toBe('https://docs.solo.dev')
     expect(result.discoveryMethod).toBe('serp')
+  })
+})
+
+describe('discovery time bound', () => {
+  // DISCOVERY_TIMEOUT_MS in activities/discovery.ts is 4 minutes; keep a 40s margin under it.
+  const BUDGET_MS = 200_000
+
+  afterEach(() => {
+    probeRetry.backoffMs = 0
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('finishes a project whose every host hangs well inside the discovery bound', async () => {
+    vi.useFakeTimers()
+    probeRetry.backoffMs = PROBE_RETRY_BACKOFF_MS
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms)
+      return controller.signal
+    })
+
+    const readme = [
+      ...[1, 2, 3, 4, 5, 6].map((i) => `[Docs ${i}](https://docs${i}.proj.dev/guide)`),
+      ...[1, 2, 3, 4, 5, 6].map((i) => `[Documentation ${i}](https://docs${i}.other${i}.io/)`),
+    ].join('\n')
+    const serp = Response.json({
+      organic_results: [
+        'https://docs.proj.dev/a',
+        'https://docs.proj.io/b',
+        'https://docs.proj.org/c',
+        'https://docs.proj.net/d',
+        'https://docs.proj.app/e',
+      ].map((link) => ({ link, title: 'proj documentation' })),
+    })
+    let hung = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.startsWith('https://api.github.com/') && url.endsWith('/readme')) {
+          return Promise.resolve(new Response(readme))
+        }
+        // The repo lookup and the search answer slowly, which stacks their waits on the probes.
+        if (url.startsWith('https://serpapi.com/')) {
+          return new Promise((resolve) => setTimeout(() => resolve(serp.clone()), 10_000))
+        }
+        hung += 1
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('timed out')))
+        })
+      }),
+    )
+
+    const startedAt = Date.now()
+    let elapsedMs = -1
+    const done = discoverDocs({
+      name: 'proj',
+      slug: 'proj',
+      website: 'https://proj.dev',
+      websiteShared: false,
+      repos: [{ url: 'https://github.com/example/proj', starCount: 1 }],
+      githubToken: 'token',
+      serpApiKey: 'key123',
+    }).then((result) => {
+      elapsedMs = Date.now() - startedAt
+      return result
+    })
+    await vi.advanceTimersByTimeAsync(600_000)
+    const result = await done
+
+    expect(result.discoveryMethod).toBe('repo-url')
+    expect(hung).toBeGreaterThan(20)
+    // Measured 126s with the retry backoff; the cut probe of a live winner is not reached here, so budget one more probe.
+    expect(elapsedMs + PROBE_TIMEOUT_MS).toBeLessThanOrEqual(BUDGET_MS)
+  })
+})
+
+describe('probe retry scope', () => {
+  const ctx = {
+    name: 'proj',
+    slug: 'proj',
+    website: 'https://example.com',
+    websiteShared: false,
+    repos: [],
+    githubToken: null,
+    serpApiKey: null,
+  }
+  const flakyThenHtml = () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'))
+      .mockImplementation((url: string) => Promise.resolve(htmlAt(url)))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('docsSubdomain finds a docs site whose first probe times out', async () => {
+    const fetchMock = flakyThenHtml()
+
+    const result = await docsSubdomain(ctx)
+
+    expect(result.map((c) => c.url)).toEqual(['https://docs.example.com'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('docsPath finds a docs path whose first probe returns a 503', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(htmlAt('https://example.com/docs'))
+      .mockImplementation(() => Promise.resolve(notFound()))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await docsPath(ctx)
+
+    expect(result.map((c) => c.url)).toEqual(['https://example.com/docs'])
+  })
+
+  it('docsSubdomain does not retry a 404', async () => {
+    const fetchMock = routeFetch([['https://docs.example.com', notFound]])
+
+    expect(await docsSubdomain(ctx)).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('projectWebsite does not retry a timeout', async () => {
+    const fetchMock = flakyThenHtml()
+
+    expect(await projectWebsite(ctx)).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

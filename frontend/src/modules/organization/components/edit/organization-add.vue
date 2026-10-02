@@ -3,7 +3,7 @@
     <!-- Header -->
     <section class="py-4 pr-4 pl-6 flex justify-between items-center">
       <h5>Add organization</h5>
-      <lf-button type="secondary-ghost-light" :icon-only="true" @click="isModalOpen = false">
+      <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
         <lf-icon name="xmark" />
       </lf-button>
     </section>
@@ -23,7 +23,7 @@
       <div class="px-6 py-5">
         <!-- Organization name -->
         <article class="mb-5">
-          <lf-field label-text="Name" :required="true">
+          <lf-field label-text="Name" required>
             <lf-input
               v-model="form.name"
               class="h-10"
@@ -36,7 +36,7 @@
         </article>
         <!-- Organization name -->
         <article class="mb-5">
-          <lf-field label-text="Website" description="Organization primary domain" :required="true">
+          <lf-field label-text="Website" description="Organization primary domain" required>
             <lf-input
               v-model="form.website"
               class="h-10"
@@ -111,9 +111,11 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import {
+import type {
   Organization,
   OrganizationIdentity,
+} from '@/modules/organization/types/Organization';
+import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';

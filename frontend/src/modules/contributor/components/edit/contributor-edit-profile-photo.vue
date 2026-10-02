@@ -73,7 +73,7 @@ import { ToastStore } from '@/shared/message/notification';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
 const props = defineProps<{
   modelValue: boolean,

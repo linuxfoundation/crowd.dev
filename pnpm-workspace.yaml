@@ -5,6 +5,7 @@ packages:
   - "!services/cronjobs"
   - "services"
   - "backend"
+  - "frontend"
   - ".github/actions/node"
 
 catalog:
@@ -29,6 +30,7 @@ allowBuilds:
   "@datadog/native-iast-taint-tracking": false
   "@datadog/native-metrics": false
   "@datadog/pprof": false
+  "@parcel/watcher": false
   "@swc/core": true
   bcrypt: true
   bufferutil: true
@@ -38,4 +40,6 @@ allowBuilds:
   esbuild: true
   nodemon: false
   protobufjs: false
+  unrs-resolver: false
   utf-8-validate: true
+  vue-demi: true

@@ -13,7 +13,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :icon-only="true"
+            icon-only
             class="my-1"
           >
             <lf-icon name="plus" type="regular" />
@@ -76,7 +76,7 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
-import { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
 import LfOrganizationDetailsIdentityAddDropdown
   from '@/modules/organization/components/details/identity/organization-details-identity-add-dropdown.vue';
@@ -96,8 +96,8 @@ const { identities } = useOrganizationHelpers();
 const identityList = computed(() => identities(props.organization));
 
 const showMore = ref<boolean>(false);
-const isUnmergeDialogOpen = ref(null);
-const selectedIdentity = ref(null);
+const isUnmergeDialogOpen = ref<Organization | null>(null);
+const selectedIdentity = ref<OrganizationIdentity | null>(null);
 
 const addIdentity = ref<boolean>(false);
 const addIdentityTemplate = ref<Partial<OrganizationIdentity> | null>(null);

@@ -88,7 +88,7 @@ import { storeToRefs } from 'pinia';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useDebounce } from '@vueuse/core';
 
-import { Project } from '@/modules/lf/segments/types/Segments';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 import LfxDropdownSelect from '@/ui-kit/lfx/dropdown/dropdown-select.vue';
 import LfxDropdownSelector from '@/ui-kit/lfx/dropdown/dropdown-selector.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
@@ -96,15 +96,14 @@ import LfxDropdownSeparator from '@/ui-kit/lfx/dropdown/dropdown-separator.vue';
 import LfxDropdownSearch from '@/ui-kit/lfx/dropdown/dropdown-search.vue';
 import { useOverviewStore } from '../../store/overview.store';
 
+const props = defineProps<{
+  projects: Project[];
+}>();
 const overviewStore = useOverviewStore();
 const { selectedProject, selectedProjectId } = storeToRefs(overviewStore);
 
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
-
-const props = defineProps<{
-  projects: Project[];
-}>();
 
 const trimDisplay = (name: string) => (name.length > 20 ? `${name.slice(0, 20)}...` : name);
 

@@ -99,9 +99,10 @@ import {
 } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { Pagination } from '@/shared/types/Pagination';
-import { ProjectGroup } from '@/modules/lf/segments/types/Segments';
+import type { QueryFunction } from '@tanstack/vue-query';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import { TanstackKey } from '@/shared/types/tanstack';
 import { segmentService } from '@/modules/lf/segments/segments.service';
 

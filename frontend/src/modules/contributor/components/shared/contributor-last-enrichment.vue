@@ -8,7 +8,7 @@
 
 <script setup lang="ts">
 import { dateHelper } from '@/shared/date-helper/date-helper';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
 const props = defineProps<{
   contributor: Contributor,

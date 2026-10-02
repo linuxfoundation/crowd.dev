@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
-import { IntegrationProgress, IntegrationProgressPart } from '@/modules/integration/types/IntegrationProgress';
+import type { IntegrationProgress, IntegrationProgressPart } from '@/modules/integration/types/IntegrationProgress';
 import { computed } from 'vue';
 import { lfIntegrations } from '@/config/integrations';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

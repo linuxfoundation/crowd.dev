@@ -30,14 +30,14 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 
-const emit = defineEmits<{(e: 'onEditProject', id: string): void;
-  (e: 'onFeaturedProject', id: string): void;
-  (e: 'onRemoveProject', id: string): void;
-}>();
-
 const props = defineProps<{
   id: string;
   starred: boolean;
+}>();
+
+const emit = defineEmits<{(e: 'onEditProject', id: string): void;
+  (e: 'onFeaturedProject', id: string): void;
+  (e: 'onRemoveProject', id: string): void;
 }>();
 
 const editProject = () => {

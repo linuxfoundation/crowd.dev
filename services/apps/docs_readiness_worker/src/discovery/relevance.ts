@@ -18,6 +18,7 @@ const GENERIC_WORDS = new Set([
 
 const MIN_TOKEN_LENGTH = 3
 const MIN_AFFIX_TOKEN_LENGTH = 5
+const MIN_HYPHEN_PART_TOKEN_LENGTH = 4
 
 // Hosts that never carry a project's own documentation, whatever the query returned.
 const NOISE_HOSTS = [
@@ -37,14 +38,20 @@ const NOISE_HOSTS = [
 ]
 
 // One tenant per project, so the host alone says nothing: the tenant and first path segment do.
-const SHARED_HOSTING = [
+export const SHARED_HOSTING = [
   'readthedocs.io',
   'github.io',
   'gitbook.io',
   'netlify.app',
   'vercel.app',
   'pages.dev',
+  'docs.rs',
 ]
+
+// Tool pages that are not a project's docs: exact hosts, hosts led by one of these labels, host + path prefix.
+const PLATFORM_HOSTS = ['insights.linuxfoundation.org', 'l.aswf.io']
+const PLATFORM_HOST_LABELS = ['gerrit', 'landscape']
+const PLATFORM_PATHS = [{ host: 'huggingface.co', pathPrefix: '/spaces/' }]
 
 const words = (value: string): string[] =>
   value
@@ -54,6 +61,26 @@ const words = (value: string): string[] =>
 
 const isOnDomain = (host: string, domain: string): boolean =>
   host === domain || host.endsWith(`.${domain}`)
+
+export function isPlatformPage(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  const path = parsed.pathname.toLowerCase()
+  return (
+    PLATFORM_HOSTS.includes(host) ||
+    PLATFORM_HOST_LABELS.some((label) => host.startsWith(`${label}.`)) ||
+    PLATFORM_PATHS.some(
+      (rule) =>
+        host === rule.host && (path.startsWith(rule.pathPrefix) || `${path}/` === rule.pathPrefix),
+    )
+  )
+}
 
 // Name words minus generic ones ("Electron framework" -> ["electron"]).
 export function nameTokens(name: string): string[] {
@@ -79,11 +106,19 @@ export function projectTokens({ name, slug, repoUrl }: IProjectTokenSource): str
 }
 
 // Short tokens must be the whole label, so "torq" never matches "qtorque".
-const matchesLabel = (label: string, token: string): boolean =>
+// hyphenTokens (README links, name/slug only) may match a 4+ char hyphen part: besu -> besu-eth.
+const matchesLabel = (label: string, token: string, hyphenTokens: string[]): boolean =>
   label === token ||
+  (hyphenTokens.includes(token) &&
+    token.length >= MIN_HYPHEN_PART_TOKEN_LENGTH &&
+    label.split('-').includes(token)) ||
   (token.length >= MIN_AFFIX_TOKEN_LENGTH && (label.startsWith(token) || label.endsWith(token)))
 
-export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
+export function isRelevantSerpResult(
+  url: string,
+  tokens: string[],
+  { hyphenTokens = [] }: { hyphenTokens?: string[] } = {},
+): boolean {
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -101,7 +136,7 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
   if (hosting) {
     const tenant =
       host
-        .slice(0, host.length - hosting.length - 1)
+        .slice(0, -hosting.length - 1)
         .split('.')
         .pop() ?? ''
     const firstSegment = parsed.pathname.split('/').filter(Boolean)[0] ?? ''
@@ -114,5 +149,5 @@ export function isRelevantSerpResult(url: string, tokens: string[]): boolean {
     }
   }
 
-  return tokens.some((token) => labels.some((label) => matchesLabel(label, token)))
+  return tokens.some((token) => labels.some((label) => matchesLabel(label, token, hyphenTokens)))
 }

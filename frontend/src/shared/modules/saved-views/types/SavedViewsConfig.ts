@@ -1,5 +1,5 @@
-import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
-import { Filter } from '@/shared/modules/filters/types/FilterConfig';
+import type { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
+import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 
 export interface SavedView {
   id: string;

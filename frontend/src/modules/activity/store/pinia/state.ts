@@ -1,4 +1,4 @@
-import { Filter } from '@/shared/modules/filters/types/FilterConfig';
+import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 export interface ActivityState {

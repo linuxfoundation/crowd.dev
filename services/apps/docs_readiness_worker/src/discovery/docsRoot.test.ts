@@ -145,6 +145,11 @@ describe('cutAtDocsSegment', () => {
       'https://org.gitbook.io/space',
     ],
     [
+      'docs.rs keeps the crate segment and never cuts to the bare root',
+      'https://docs.rs/sev/latest/sev/',
+      'https://docs.rs/sev',
+    ],
+    [
       'a docs segment on github.io still wins',
       'https://org.github.io/proj/docs/intro',
       'https://org.github.io/proj/docs',
@@ -174,6 +179,7 @@ describe('cutAtDocsSegment', () => {
     ['already the docs root', 'https://example.org/docs'],
     ['already the host root', 'https://docs.example.com/'],
     ['a single project segment on github.io', 'https://org.github.io/proj'],
+    ['a single crate segment on docs.rs', 'https://docs.rs/sev'],
     ['a bare host', 'https://docs.example.com'],
     ['not a url', 'not a url'],
   ])('%s: leaves %s untouched', (_name, url) => {

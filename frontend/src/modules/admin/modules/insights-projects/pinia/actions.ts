@@ -1,5 +1,5 @@
-import { InsightsProjectModel } from '../models/insights-project.model';
-import { InsightsProjectsState } from './state';
+import type { InsightsProjectModel } from '../models/insights-project.model';
+import type { InsightsProjectsState } from './state';
 
 export default {
   setInsightsProjects(

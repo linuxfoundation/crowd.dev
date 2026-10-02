@@ -4,7 +4,7 @@
     v-model="drawerModel"
     size="35%"
     :show-close="false"
-    :destroy-on-close="true"
+    destroy-on-close
     :close-on-click-modal="false"
     :custom-class="
       isEditingAttributes
@@ -172,6 +172,7 @@ const initialModel = computed(() => {
     ...(Object.keys(attributes).length && attributes),
   };
 });
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const memberModel = ref(cloneDeep(initialModel.value));
 
 const hasFormChanged = computed(() => !isEqual(

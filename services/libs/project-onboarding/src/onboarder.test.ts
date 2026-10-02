@@ -1,6 +1,281 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { readErrorBody } from './onboarder'
+import { deriveProjectNameCandidates, readErrorBody, resolveProjectSegment } from './onboarder'
+
+interface IFakeSegment {
+  name: string
+  id: string
+  connectedRepoUrls?: string[]
+}
+
+interface IFakeBackend {
+  segmentsByName: Map<string, string>
+  connectedRepoUrlsBySegment: Map<string, string[]>
+  createdNames: string[]
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body))
+}
+
+function installFakeBackend(existing: IFakeSegment[]): IFakeBackend {
+  const backend: IFakeBackend = {
+    segmentsByName: new Map(existing.map(({ name, id }) => [name.toLowerCase(), id])),
+    connectedRepoUrlsBySegment: new Map(
+      existing.flatMap(({ id, connectedRepoUrls }) =>
+        connectedRepoUrls ? [[id, connectedRepoUrls] as [string, string[]]] : [],
+      ),
+    ),
+    createdNames: [],
+  }
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body)
+
+      if (url.endsWith('/segment/project/query')) {
+        const id = backend.segmentsByName.get(String(body.filter.name).toLowerCase())
+        const subprojects = id ? [{ id, name: body.filter.name }] : []
+        return jsonResponse({ rows: [{ subprojects }], count: subprojects.length })
+      }
+
+      if (url.endsWith('/integration/query')) {
+        const repoUrls = backend.connectedRepoUrlsBySegment.get(body.segments[0])
+        const rows = repoUrls
+          ? [{ settings: { orgs: [{ repos: repoUrls.map((url) => ({ url })) }] } }]
+          : []
+        return jsonResponse({ rows, count: rows.length })
+      }
+
+      backend.createdNames.push(body.name)
+      backend.segmentsByName.set(body.name.toLowerCase(), `created-${body.name}`)
+      return jsonResponse({})
+    }),
+  )
+
+  return backend
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('deriveProjectNameCandidates', () => {
+  it('returns the repo name first and the owner-qualified name second', () => {
+    expect(deriveProjectNameCandidates('ai-dynamo', 'dynamo')).toEqual([
+      'Dynamo',
+      'Ai Dynamo Dynamo',
+    ])
+  })
+})
+
+describe('resolveProjectSegment', () => {
+  const candidates = ['Dynamo', 'Ai Dynamo Dynamo']
+  const repoUrl = 'https://github.com/ai-dynamo/dynamo'
+  const otherRepoUrl = 'https://github.com/DynamoDS/Dynamo'
+
+  it('creates a segment with the repo name when no project uses it', async () => {
+    const backend = installFakeBackend([])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Dynamo'])
+    expect(segmentId).toBe('created-Dynamo')
+  })
+
+  it('reuses an existing segment with the same name when it has no GitHub integration', async () => {
+    const backend = installFakeBackend([{ name: 'Dynamo', id: 'empty-segment' }])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('empty-segment')
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('creates an owner-qualified segment when the repo name is used by a connected project', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'dynamods-segment', connectedRepoUrls: [otherRepoUrl.toLowerCase()] },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Ai Dynamo Dynamo'])
+    expect(segmentId).toBe('created-Ai Dynamo Dynamo')
+  })
+
+  it('reuses the owner-qualified segment on a retry when it has no GitHub integration', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'dynamods-segment', connectedRepoUrls: [otherRepoUrl.toLowerCase()] },
+      { name: 'Ai Dynamo Dynamo', id: 'qualified-segment' },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('qualified-segment')
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('reuses the segment already connected to the requested repo on a retry', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'dynamods-segment', connectedRepoUrls: [otherRepoUrl.toLowerCase()] },
+      { name: 'Ai Dynamo Dynamo', id: 'qualified-segment', connectedRepoUrls: [repoUrl] },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('qualified-segment')
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('does not reuse a segment whose integration has the requested repo plus other repos', async () => {
+    const backend = installFakeBackend([
+      {
+        name: 'Dynamo',
+        id: 'shared-segment',
+        connectedRepoUrls: [repoUrl, otherRepoUrl.toLowerCase()],
+      },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Ai Dynamo Dynamo'])
+    expect(segmentId).toBe('created-Ai Dynamo Dynamo')
+  })
+
+  it('does not reuse a segment whose integration has no mapped repos', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'unmapped-segment', connectedRepoUrls: [] },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      repoUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(backend.createdNames).toEqual(['Ai Dynamo Dynamo'])
+    expect(segmentId).toBe('created-Ai Dynamo Dynamo')
+  })
+
+  it.each([
+    'https://github.com/AI-Dynamo/Dynamo',
+    'https://github.com/ai-dynamo/dynamo/',
+    'https://github.com/ai-dynamo/dynamo.git',
+    'https://www.github.com/ai-dynamo/dynamo',
+    'https://github.com/ai-dynamo/dynamo?tab=readme',
+  ])('treats %s as the requested repo already connected', async (requestedUrl) => {
+    const backend = installFakeBackend([
+      {
+        name: 'Dynamo',
+        id: 'own-segment',
+        connectedRepoUrls: ['https://github.com/ai-dynamo/dynamo'],
+      },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      requestedUrl,
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('own-segment')
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('matches a stored url in a different form than the requested one', async () => {
+    installFakeBackend([
+      {
+        name: 'Dynamo',
+        id: 'own-segment',
+        connectedRepoUrls: ['https://www.github.com/AI-Dynamo/Dynamo.git'],
+      },
+    ])
+
+    const segmentId = await resolveProjectSegment(
+      candidates,
+      'slug',
+      'https://github.com/ai-dynamo/dynamo',
+      'http://api',
+      'token',
+    )
+
+    expect(segmentId).toBe('own-segment')
+  })
+
+  it('throws when every candidate name is used by a connected project', async () => {
+    const backend = installFakeBackend([
+      { name: 'Dynamo', id: 'dynamods-segment', connectedRepoUrls: [otherRepoUrl.toLowerCase()] },
+      {
+        name: 'Ai Dynamo Dynamo',
+        id: 'qualified-segment',
+        connectedRepoUrls: [otherRepoUrl.toLowerCase()],
+      },
+    ])
+
+    await expect(
+      resolveProjectSegment(candidates, 'slug', repoUrl, 'http://api', 'token'),
+    ).rejects.toThrow(
+      'Every candidate project name ("Dynamo", "Ai Dynamo Dynamo") is already used by a project with a GitHub integration',
+    )
+    expect(backend.createdNames).toEqual([])
+  })
+
+  it('throws when the integration query fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/segment/project/query')
+          ? jsonResponse({ rows: [{ subprojects: [{ id: 'segment', name: 'Dynamo' }] }], count: 1 })
+          : new Response('boom', { status: 500 }),
+      ),
+    )
+
+    await expect(
+      resolveProjectSegment(candidates, 'slug', repoUrl, 'http://api', 'token'),
+    ).rejects.toThrow('Integration query returned HTTP 500')
+  })
+})
 
 describe('readErrorBody', () => {
   it('returns the response body text', async () => {

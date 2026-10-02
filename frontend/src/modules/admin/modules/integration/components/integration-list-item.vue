@@ -48,7 +48,7 @@
         <div>
           <div class="text-small flex items-center" :class="status.actionBar.color">
             <div v-if="isInProgress && !integration.isNango">
-              <app-integration-progress-bar :progress="selectedProgress" :hide-bar="true" text-class="!text-secondary-500 text-small" />
+              <app-integration-progress-bar :progress="selectedProgress" hide-bar text-class="!text-secondary-500 text-small" />
             </div>
             <div v-else-if="hasError">
               {{ props.config.name }} integration failed to connect due to an API error.
@@ -145,7 +145,7 @@
 </template>
 
 <script lang="ts" setup>
-import { IntegrationConfig } from '@/config/integrations';
+import type { IntegrationConfig } from '@/config/integrations';
 import { computed, onMounted, ref } from 'vue';
 import { mapGetters } from '@/shared/vuex/vuex.helpers';
 import LfIntegrationStatus from '@/modules/admin/modules/integration/components/integration-status.vue';
@@ -155,7 +155,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import AppIntegrationProgressBar from '@/modules/integration/components/integration-progress-bar.vue';
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import { useRoute } from 'vue-router';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';

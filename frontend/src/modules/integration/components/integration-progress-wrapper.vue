@@ -7,7 +7,7 @@ import {
   onMounted, onUnmounted, ref, watch,
 } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import { useTimeoutPoll } from '@vueuse/core';
 
 const props = withDefaults(defineProps<{

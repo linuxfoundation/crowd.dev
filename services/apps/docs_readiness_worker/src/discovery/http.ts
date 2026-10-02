@@ -154,11 +154,19 @@ export function isGithubWebsite(url: string): boolean {
   return normalizedDomain(url) === 'github.com'
 }
 
-export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResult> {
+const RETRYABLE_4XX = new Set([408, 429])
+
+const PROBE_FAILED: IProbeResult = { ok: false, status: 0, finalUrl: '', contentType: '' }
+
+// One attempt; retry is set for a timeout, network error, 408/429 or 5xx, never for a blocked url.
+async function probeOnce(
+  url: string,
+  timeoutMs: number,
+): Promise<{ result: IProbeResult; retry: boolean }> {
   try {
     const response = await guardedFetch(url, timeoutMs)
     if (!response) {
-      return { ok: false, status: 0, finalUrl: '', contentType: '' }
+      return { result: PROBE_FAILED, retry: false }
     }
 
     const result: IProbeResult = {
@@ -168,10 +176,29 @@ export async function probe(url: string, timeoutMs = 10_000): Promise<IProbeResu
       contentType: response.headers.get('content-type') ?? '',
     }
     await response.body?.cancel()
-    return result
+    return { result, retry: response.status >= 500 || RETRYABLE_4XX.has(response.status) }
   } catch {
-    return { ok: false, status: 0, finalUrl: '', contentType: '' }
+    return { result: PROBE_FAILED, retry: true }
   }
+}
+
+export const PROBE_TIMEOUT_MS = 10_000
+export const PROBE_RETRY_BACKOFF_MS = 2_000
+// Mutable so tests that hit a retry can skip the wait.
+export const probeRetry = { backoffMs: PROBE_RETRY_BACKOFF_MS }
+
+// Only the docs.<domain> and docs-path checks pass retry: a hung host costs two timeouts + backoff.
+export async function probe(
+  url: string,
+  timeoutMs = PROBE_TIMEOUT_MS,
+  retry = false,
+): Promise<IProbeResult> {
+  const first = await probeOnce(url, timeoutMs)
+  if (!retry || !first.retry) {
+    return first.result
+  }
+  await new Promise((resolve) => setTimeout(resolve, probeRetry.backoffMs))
+  return (await probeOnce(url, timeoutMs)).result
 }
 
 // fetch reports punycode hosts, so compare through URL's ascii hostname.
@@ -253,8 +280,8 @@ export function isTrustedRedirect(url: string, finalUrl: string): boolean {
   )
 }
 
-export async function isLiveDocs(url: string): Promise<boolean> {
-  const result = await probe(url)
+export async function isLiveDocs(url: string, retry = false): Promise<boolean> {
+  const result = await probe(url, PROBE_TIMEOUT_MS, retry)
   return (
     result.ok &&
     result.contentType.toLowerCase().includes('text/html') &&

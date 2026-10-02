@@ -1,4 +1,5 @@
-import { ActionType, AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
+import { ActionType } from '@/modules/lf/segments/types/AuditLog';
 import integrationsConnect from './integrations-connect';
 import integrationsReconnect from './integrations-reconnect';
 import membersCreate from './members-create';

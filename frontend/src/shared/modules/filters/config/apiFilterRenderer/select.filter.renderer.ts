@@ -1,4 +1,4 @@
-import { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
+import type { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 
 export const selectApiFilterRenderer = (property: string, { value, include }: SelectFilterValue): any[] => {
   const filter = {

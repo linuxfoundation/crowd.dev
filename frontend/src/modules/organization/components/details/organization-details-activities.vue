@@ -28,12 +28,12 @@
       organizations: [props.organization],
     }"
     entity-type="organization"
-    :show-affiliations="true"
+    show-affiliations
   />
 </template>
 
 <script setup lang="ts">
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import AppActivityTimeline from '@/modules/activity/components/activity-timeline.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
@@ -49,6 +49,7 @@ const loadMore = () => {
   timeline.value.fetchActivities();
 };
 
+// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });

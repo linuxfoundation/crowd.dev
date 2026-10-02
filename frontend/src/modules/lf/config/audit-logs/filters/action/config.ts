@@ -1,6 +1,6 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
-import {
+import type {
   MultiSelectFilterConfig, MultiSelectFilterOptions,
   MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';

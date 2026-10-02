@@ -4,7 +4,7 @@
       <lf-search
         v-model="search"
         class="h-9"
-        :lazy="true"
+        lazy
         placeholder="Search users..."
         @update:model-value="searchUsers()"
       />
@@ -102,8 +102,10 @@ import { onMounted, ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import { UsersService } from '@/modules/admin/modules/users/services/users.service';
-import {
+import type {
   UserModel,
+} from '@/modules/admin/modules/users/models/User.model';
+import {
   UserRole,
 } from '@/modules/admin/modules/users/models/User.model';
 import LfTable from '@/ui-kit/table/Table.vue';

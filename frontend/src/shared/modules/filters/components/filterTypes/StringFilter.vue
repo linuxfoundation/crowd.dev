@@ -22,7 +22,7 @@
 import { computed, onMounted } from 'vue';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
-import {
+import type {
   StringFilterConfig,
   StringFilterOptions,
   StringFilterValue,

@@ -10,6 +10,7 @@ import {
   QueryExecutor,
   createProjectDocOverride,
   deactivateProjectDocOverride,
+  findActiveProjectDocOverride,
   findOrgById,
   queryOrgs,
 } from '@crowd/data-access-layer'
@@ -297,7 +298,7 @@ export class CollectionService extends LoggerBase {
     })
   }
 
-  async createInsightsProjectDocOverride(projectId: string, docsUrl: string) {
+  async createInsightsProjectDocOverride(projectId: string, docsUrl: string | null) {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
     const override = await createProjectDocOverride(qx, {
       projectId,
@@ -355,9 +356,11 @@ export class CollectionService extends LoggerBase {
             })
           : []
       const repositoryGroups = await listRepositoryGroups(qx, { insightsProjectId: id })
+      const docsOverride = await findActiveProjectDocOverride(qx, id)
 
       return {
         ...project,
+        docsOverride,
         collections,
         segment: {
           id: segment?.id,

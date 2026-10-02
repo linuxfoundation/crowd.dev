@@ -79,7 +79,7 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 

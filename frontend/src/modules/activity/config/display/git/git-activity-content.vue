@@ -19,7 +19,7 @@
         v-if="activity.body"
         class="text-sm text-gray-900"
         :activity="activity"
-        :show-more="true"
+        show-more
         :display-thread="false"
       />
     </div>
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { Activity } from '@/shared/modules/activity/types/Activity';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 import AppActivityContent from '@/modules/activity/components/activity-content.vue';
 import { computed } from 'vue';
 import { toSentenceCase } from '@/utils/string';

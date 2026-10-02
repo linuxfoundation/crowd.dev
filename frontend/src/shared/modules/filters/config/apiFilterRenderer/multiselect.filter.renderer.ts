@@ -1,4 +1,4 @@
-import { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
+import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 
 export const multiSelectApiFilterRenderer = (property: string, { value, include }: MultiSelectFilterValue): any[] => {
   const filter = {

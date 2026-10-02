@@ -69,8 +69,8 @@
             <app-integration-progress
               v-if="!progressError"
               :progress="getProgress(props.segmentId, integration.platform)"
-              :show-bar="true"
-              :show-parts="true"
+              show-bar
+              show-parts
             >
               <h6 class="text-xs text-black leading-5 pb-3">
                 Connecting
@@ -102,8 +102,8 @@
 </template>
 
 <script lang="ts" setup>
-import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
-import { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppPlatformSvg from '@/shared/modules/platform/components/platform-svg.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -116,8 +116,8 @@ const props = withDefaults(
   defineProps<{
     segmentId: string;
     integrations: Integrations[];
-    progress: any[];
-    progressError: boolean;
+    progress?: any[];
+    progressError?: boolean;
   }>(),
   {
     progress: () => [],

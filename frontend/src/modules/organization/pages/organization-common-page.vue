@@ -1,7 +1,6 @@
 <template>
   <div class="pt-8">
     <lf-filter
-      ref="organizationFilter"
       v-model="filters"
       :config="organizationCommonFilters"
       :search-config="organizationSearchFilter"
@@ -33,7 +32,7 @@
             :total="totalOrganizations"
             :page-size="Number(pagination.perPage)"
             :current-page="pagination.page || 1"
-            :hide-sorting="true"
+            hide-sorting
             @change-current-page="onPaginationChange({ page: $event })"
             @change-page-size="onPaginationChange({ perPage: $event })"
           />
@@ -51,11 +50,11 @@ import {
   organizationSearchFilter,
 } from '@/modules/organization/config/filters/main';
 import { commonOrganizationSavedViews } from '@/modules/organization/config/saved-views/main';
-import { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import AppOrganizationCommonListTable from '@/modules/organization/components/list/organization-common-list-table.vue';
 import { OrganizationService } from '@/modules/organization/organization-service';
-import { Pagination } from '@/shared/types/Pagination';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Pagination } from '@/shared/types/Pagination';
+import type { Organization } from '@/modules/organization/types/Organization';
 import AppPagination from '@/shared/pagination/pagination.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import pluralize from 'pluralize';

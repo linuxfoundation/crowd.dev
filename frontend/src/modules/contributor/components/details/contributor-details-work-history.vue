@@ -22,7 +22,7 @@
         <lf-button
           type="secondary"
           size="small"
-          :icon-only="true"
+          icon-only
           @click="isEditModalOpen = true; editOrganization = null"
         >
           <lf-icon name="plus" />
@@ -120,15 +120,15 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { computed, ref } from 'vue';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
-import { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfContributorEditWorkHistory
   from '@/modules/contributor/components/edit/work-history/contributor-work-history-edit.vue';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfContributorDetailsWorkHistoryItem
   from '@/modules/contributor/components/details/work-history/contributor-details-work-history-item.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { TimelineGroup } from '@/ui-kit/timeline/types/TimelineTypes';
+import type { TimelineGroup } from '@/ui-kit/timeline/types/TimelineTypes';
 import { groupBy } from 'lodash';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';

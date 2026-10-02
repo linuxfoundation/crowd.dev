@@ -35,14 +35,15 @@ import AppOrganizationFormEmailsItem from '@/modules/organization/components/for
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { Organization, OrganizationIdentityType, OrganizationIdentity } from '../../types/Organization';
-
-const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
+import type { Organization, OrganizationIdentity } from '../../types/Organization';
+import { OrganizationIdentityType } from '../../types/Organization';
 
 const props = defineProps<{
   modelValue: Organization;
 
 }>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
 
 const model = ref<OrganizationIdentity[]>([]);
 

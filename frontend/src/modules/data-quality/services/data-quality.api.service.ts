@@ -1,6 +1,6 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { Contributor } from '@/modules/contributor/types/Contributor';
-import { Organization } from '@/modules/organization/types/Organization';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Organization } from '@/modules/organization/types/Organization';
 
 export class DataQualityApiService {
   static async findMemberIssues(params: any, segments: string[]): Promise<Contributor> {

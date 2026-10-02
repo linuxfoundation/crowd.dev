@@ -1,4 +1,4 @@
-import { TenantSettings } from '@/modules/auth/types/TenantSettings.type';
+import type { TenantSettings } from '@/modules/auth/types/TenantSettings.type';
 
 export interface Tenant {
   communitySize: number | null;

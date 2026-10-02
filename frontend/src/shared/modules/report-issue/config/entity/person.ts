@@ -1,4 +1,4 @@
-import { ReportDataConfig } from '@/shared/modules/report-issue/config';
+import type { ReportDataConfig } from '@/shared/modules/report-issue/config';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 
 const person: ReportDataConfig = {

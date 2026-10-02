@@ -1,4 +1,4 @@
-import { OrganizationMessage } from '../types/OrganizationMessage';
+import type { OrganizationMessage } from '../types/OrganizationMessage';
 import apiErrorMessage from './organization/apiErrorMessage';
 import loadingMessage from './organization/loadingMessage';
 import socketErrorMessage from './organization/socketErrorMessage';

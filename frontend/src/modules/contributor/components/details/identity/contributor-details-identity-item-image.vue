@@ -23,7 +23,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { ContributorIdentity } from '@/modules/contributor/types/Contributor';
 import { lfIdentities } from '@/config/identities';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

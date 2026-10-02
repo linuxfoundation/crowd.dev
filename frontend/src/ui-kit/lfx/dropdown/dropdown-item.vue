@@ -34,7 +34,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { useAttrs, computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { DropdownItemType } from '@/ui-kit/lfx/dropdown/types/dropdown.types';
+import type { DropdownItemType } from '@/ui-kit/lfx/dropdown/types/dropdown.types';
 
 const props = defineProps<{
   value?: string;
@@ -44,10 +44,10 @@ const props = defineProps<{
   type?: DropdownItemType;
 }>();
 
-const attrs = useAttrs();
-
 const emit = defineEmits<{(e: 'click', value: { value?: string; label?: string; [key: string]: any }): void;
 }>();
+
+const attrs = useAttrs();
 
 // Determine if the item is currently selected
 const isSelected = computed(() => props.selected);

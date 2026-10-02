@@ -11,7 +11,7 @@
         <lf-button
           v-if="displayBackButton"
           type="secondary"
-          :icon-only="true"
+          icon-only
           class="mr-4"
           @click="onCancel"
         >
@@ -70,13 +70,21 @@
           </lf-tabs>
           <div class="pt-2.5">
             <div class="tab-content">
-              <lf-insights-project-add-details-tab
-                v-if="activeTab === 'details'"
-                :form="form"
-                :old-form="oldForm"
-                :new-form="newForm"
-                :rules="rules"
-              />
+              <template v-if="activeTab === 'details'">
+                <lf-insights-project-add-details-tab
+                  :form="form"
+                  :old-form="oldForm"
+                  :new-form="newForm"
+                  :rules="rules"
+                />
+                <template v-if="isEditForm && insightsProject">
+                  <hr class="my-5" />
+                  <lf-insights-project-docs-override
+                    :insights-project-id="insightsProject.id"
+                    :docs-override="insightsProject.docsOverride"
+                  />
+                </template>
+              </template>
               <lf-insights-project-add-repository-tab
                 v-else-if="activeTab === 'repositories'"
                 :form="form"
@@ -138,13 +146,14 @@ import { TanstackKey } from '@/shared/types/tanstack';
 import LfInsightsProjectAddRepositoryGroups
   from '@/modules/admin/modules/insights-projects/components/lf-insights-project-add-repository-groups.vue';
 import LfInsightsProjectAddDetailsTab from './lf-insights-project-add-details-tab.vue';
+import LfInsightsProjectDocsOverride from './add-details-tab/lf-insights-project-docs-override.vue';
 import LfInsightsProjectAddRepositoryTab from './lf-insights-project-add-repository-tab.vue';
-import {
+import type {
   InsightsProjectDetailsResponse,
   InsightsProjectModel,
   InsightsProjectRequest,
 } from '../models/insights-project.model';
-import { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
+import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 import LfInsightsProjectAddWidgetsTab from './lf-insights-project-add-widgets-tab.vue';
 import { getDefaultWidgets } from '../widgets';
 import {
@@ -158,15 +167,15 @@ import {
 } from '../insight-project-helper';
 import LfCmSubProjectListDropdown from './lf-cm-sub-project-list-dropdown.vue';
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
-  (e: 'onInsightsProjectCreated', project: InsightsProjectModel): void;
-  (e: 'onInsightsProjectEdited', project: InsightsProjectModel): void;
-}>();
-
 const props = defineProps<{
   modelValue: boolean;
   insightsProjectId?: string;
   displayBackButton?: boolean;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'onInsightsProjectCreated', project: InsightsProjectModel): void;
+  (e: 'onInsightsProjectEdited', project: InsightsProjectModel): void;
 }>();
 
 const activeTab = ref('details');

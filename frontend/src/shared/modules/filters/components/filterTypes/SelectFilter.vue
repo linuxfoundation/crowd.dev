@@ -3,7 +3,6 @@
     <lf-filter-include-switch v-if="!props.hideIncludeSwitch" v-model="form.include" />
     <div v-if="allOptions.length > 7" class="border-b border-gray-100 px-2 py-1">
       <el-input
-        ref="queryInput"
         v-model="search"
         placeholder="Search..."
         class="filter-dropdown-search"
@@ -44,7 +43,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import {
+import type {
   SelectFilterConfig,
   SelectFilterOptions,
   SelectFilterValue,

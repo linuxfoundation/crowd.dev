@@ -1,4 +1,4 @@
-import { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
+import type { ReportDataTypeConfig } from '@/shared/modules/report-issue/config';
 import ProjectAffiliation from './type-project-affiliation.vue';
 
 export const projectAffiliation: ReportDataTypeConfig = {

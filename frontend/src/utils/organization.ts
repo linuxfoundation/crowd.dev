@@ -1,4 +1,5 @@
-import { Organization, OrganizationIdentityType } from '@/modules/organization/types/Organization';
+import type { Organization } from '@/modules/organization/types/Organization';
+import { OrganizationIdentityType } from '@/modules/organization/types/Organization';
 
 export const getOrganizationWebsite = (organization: Organization) => {
   if (!organization) return null;
