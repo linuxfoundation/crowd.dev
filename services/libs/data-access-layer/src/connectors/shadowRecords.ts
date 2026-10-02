@@ -14,10 +14,7 @@ export async function recordShadowRecords(
   }
 
   const byKey = new Map(
-    records.map((r) => [
-      JSON.stringify([r.type, r.sourceId, r.segmentId ?? null, r.integrationId ?? null]),
-      r,
-    ]),
+    records.map((r) => [JSON.stringify([r.type, r.sourceId, r.segmentId, r.integrationId]), r]),
   )
   const deduped = [...byKey.values()]
 
@@ -43,8 +40,8 @@ export async function recordShadowRecords(
       sourceIds: deduped.map((r) => r.sourceId),
       occurredAts: deduped.map((r) => r.occurredAt),
       data: deduped.map((r) => JSON.stringify(r.data, stripNullBytes)),
-      segmentIds: deduped.map((r) => r.segmentId ?? null),
-      integrationIds: deduped.map((r) => r.integrationId ?? null),
+      segmentIds: deduped.map((r) => r.segmentId),
+      integrationIds: deduped.map((r) => r.integrationId),
     },
   )
 }
