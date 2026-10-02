@@ -95,6 +95,46 @@ describe('parseOnboardingRequest', () => {
     })
   })
 
+  it('does not accept a repository that is only a prefix of one in the request', async () => {
+    const text = 'Please onboard https://github.com/acme/toolkit'
+    const llm = llmAnswering(rawAnswer({ repoUrls: ['https://github.com/acme/tool'] }))
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({ ok: true, request: { githubRepoUrls: [] } })
+  })
+
+  it('drops an invented path on a host that appears in the request', async () => {
+    const text = 'Please onboard https://github.com/acme/real and https://gitlab.com/acme/tool'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://gitlab.com/acme/invented'],
+        linkUrls: ['https://github.com/acme/real/wiki/invented'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: { nonGithubRepoUrls: [], linksToFollow: [] },
+    })
+  })
+
+  it('excludes a requested repository emitted as a link in another form', async () => {
+    const text = 'Please onboard https://github.com/acme/one'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://github.com/acme/one'],
+        linkUrls: ['http://github.com/Acme/one.git', 'https://github.com/acme/one/'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({ ok: true, request: { linksToFollow: [] } })
+  })
+
   it('ignores non-web link protocols', async () => {
     const text = 'see ftp://acme.org/list'
     const llm = llmAnswering(rawAnswer({ linkUrls: ['ftp://acme.org/list'] }))

@@ -64,8 +64,33 @@ Respond with ONLY a JSON object, no other text, matching exactly this shape:
 {"repoUrls": string[], "linkUrls": string[], "projectName": string | null, "declaredLf": boolean | null, "asksAboutHierarchy": boolean}`
 }
 
-function appearsInText(text: string, fragment: string): boolean {
-  return text.toLowerCase().includes(fragment.toLowerCase())
+const NEEDLE_PRECEDING_WORD_CHARS = /[a-z0-9_.@-]/
+const NEEDLE_FOLLOWING_WORD_CHARS = /[a-z0-9_-]/
+
+function stripProtocolAndTrailingNoise(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
+}
+
+function containsToken(text: string, needle: string): boolean {
+  const haystack = text.toLowerCase()
+  let index = haystack.indexOf(needle)
+
+  while (index !== -1) {
+    const before = haystack[index - 1] ?? ''
+    const after = haystack[index + needle.length] ?? ''
+    const isBounded =
+      !NEEDLE_PRECEDING_WORD_CHARS.test(before) && !NEEDLE_FOLLOWING_WORD_CHARS.test(after)
+    if (isBounded) {
+      return true
+    }
+    index = haystack.indexOf(needle, index + 1)
+  }
+
+  return false
 }
 
 function uniqueInOrder(values: string[]): string[] {
@@ -85,11 +110,17 @@ function splitRepoUrls(
       continue
     }
 
+    const needle = canonical.isGithub
+      ? `${canonical.owner}/${canonical.repo}`
+      : stripProtocolAndTrailingNoise(canonical.url)
+
+    if (!containsToken(requestText, needle)) {
+      continue
+    }
+
     if (canonical.isGithub) {
-      if (appearsInText(requestText, `${canonical.owner}/${canonical.repo}`)) {
-        github.push(canonical.url)
-      }
-    } else if (appearsInText(requestText, canonical.host)) {
+      github.push(canonical.url)
+    } else {
       nonGithub.push(canonical.url)
     }
   }
@@ -97,24 +128,34 @@ function splitRepoUrls(
   return { githubRepoUrls: uniqueInOrder(github), nonGithubRepoUrls: uniqueInOrder(nonGithub) }
 }
 
+function toLinkToFollow(raw: string, requestText: string, excludedUrls: Set<string>): string[] {
+  let url: URL
+  try {
+    url = new URL(raw.trim())
+  } catch {
+    return []
+  }
+
+  const isWebLink = url.protocol === 'https:' || url.protocol === 'http:'
+  if (
+    !isWebLink ||
+    !containsToken(requestText, stripProtocolAndTrailingNoise(`${url.host}${url.pathname}`))
+  ) {
+    return []
+  }
+
+  const canonicalUrl = canonicalizeRepoUrl(raw)?.url
+  return canonicalUrl && excludedUrls.has(canonicalUrl) ? [] : [url.toString()]
+}
+
 function extractLinksToFollow(
   linkUrls: string[],
   requestText: string,
   excludedUrls: Set<string>,
 ): string[] {
-  const links = linkUrls.flatMap((raw) => {
-    try {
-      const url = new URL(raw.trim())
-      const isWebLink = url.protocol === 'https:' || url.protocol === 'http:'
-      return isWebLink && appearsInText(requestText, url.hostname) ? [url.toString()] : []
-    } catch {
-      return []
-    }
-  })
-
-  return uniqueInOrder(links)
-    .filter((link) => !excludedUrls.has(link))
-    .slice(0, MAX_LINKS_TO_FOLLOW)
+  return uniqueInOrder(
+    linkUrls.flatMap((raw) => toLinkToFollow(raw, requestText, excludedUrls)),
+  ).slice(0, MAX_LINKS_TO_FOLLOW)
 }
 
 function normalizeProjectName(projectName: string | null): string | null {
