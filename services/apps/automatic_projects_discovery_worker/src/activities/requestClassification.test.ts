@@ -62,7 +62,7 @@ describe('classifyDiscussionRows', () => {
 
     const result = await classifyDiscussionRows(rows, REQUEST_TEXT, deps(llmAnswer(), []))
 
-    expect(result).toEqual({ rows, alerts: [] })
+    expect(result).toEqual({ rows, alerts: [], nodes: ['non_lf_create_in_external_group'] })
   })
 
   it('skips the rows and alerts when the project is an LF project not yet in CDP', async () => {
@@ -157,7 +157,7 @@ describe('classifyDiscussions', () => {
 
     const result = await classifyDiscussions(rows, new Map(), classificationDeps)
 
-    expect(result).toEqual({ rows, alerts: [] })
+    expect(result).toEqual({ rows, alerts: [], nodes: [] })
     expect(classificationDeps.queryLlm).not.toHaveBeenCalled()
   })
 
