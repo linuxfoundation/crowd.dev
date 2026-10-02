@@ -4,7 +4,8 @@ DESCRIPTION >
     profiles are excluded by the cleaned source (members_sorted). Rebuilt nightly by
     repo_commit_contributors_copy.pipe. Read in sorting-key order by the packages worker
     git-activity contributors sync (CM-1824), which maps `channel` to a packages-db repo and
-    `username` to an email or GitHub login identity.
+    `username` to an email or GitHub login identity, and only pulls rows whose `lastUpdatedAt`
+    passed its stored watermark.
 
 TAGS "Member contributors", "Repository URLs"
 
@@ -16,6 +17,7 @@ SCHEMA >
     `commitCount` UInt64,
     `firstCommitAt` DateTime64(3),
     `lastCommitAt` DateTime64(3),
+    `lastUpdatedAt` DateTime64(3),
     `computedAt` DateTime
 
 ENGINE ReplacingMergeTree

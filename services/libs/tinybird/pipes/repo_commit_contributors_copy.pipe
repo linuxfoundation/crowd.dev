@@ -4,7 +4,9 @@ DESCRIPTION >
     contributors sync (CM-1824). Authored and co-authored commits are summed into one
     count. The cleaned source already restricts members to `members_sorted`, so bots, team
     members and organization profiles are excluded upstream. Pre-1971 sentinel timestamps
-    are dropped like in repositories_populated_copy.pipe.
+    are dropped like in repositories_populated_copy.pipe. `lastUpdatedAt` is the latest
+    activityRelations.updatedAt per row, which moves on ingestion and member merges; the
+    consumer uses it as an incremental watermark.
 
 TAGS "Member contributors", "Repository URLs"
 
@@ -18,6 +20,7 @@ SQL >
         count() AS commitCount,
         min(timestamp) AS firstCommitAt,
         max(timestamp) AS lastCommitAt,
+        max(updatedAt) AS lastUpdatedAt,
         now() AS computedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
