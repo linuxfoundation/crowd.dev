@@ -23,6 +23,8 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { countNodes } from '@crowd/project-onboarding'
+import { withRequestClassifierDeps } from '@crowd/project-onboarding/src/requestClassifierDeps'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
@@ -37,8 +39,6 @@ import {
   buildRequestClassificationAlert,
   buildRequestClassificationAlertTitle,
 } from './requestClassificationAlert'
-import { withRequestClassificationDeps } from './requestClassificationDeps'
-import { countNodes } from './requestClassificationTrace'
 
 const log = getServiceLogger()
 
@@ -146,7 +146,7 @@ async function classifyAcceptedRows(
     return { rows: accepted, alerts: [], nodes: [] }
   }
 
-  return withRequestClassificationDeps(qx, (deps) =>
+  return withRequestClassifierDeps(qx, (deps) =>
     classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification, dryRun),
   )
 }

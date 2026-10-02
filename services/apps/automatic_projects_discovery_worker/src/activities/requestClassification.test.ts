@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
-import { IPccCandidate } from '@crowd/project-onboarding'
+import { IPccCandidate, IRequestClassificationDeps } from '@crowd/project-onboarding'
 
 import {
   AMBIGUOUS_SKIP_REASON,
-  IRequestClassificationDeps,
   LF_NOT_IN_CDP_SKIP_REASON,
   classifyDiscussionRows,
   classifyDiscussions,

@@ -1,3 +1,5 @@
+export * from './classificationTrace'
+export * from './classifyRequest'
 export * from './onboarder'
 export * from './pccLookup'
 export * from './requestParser'

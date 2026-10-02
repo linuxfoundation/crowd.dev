@@ -1,4 +1,4 @@
-import { ClassificationNode } from '../activities/requestClassificationTrace'
+import { ClassificationNode } from '@crowd/project-onboarding'
 
 export interface IClassificationCase {
   id: string

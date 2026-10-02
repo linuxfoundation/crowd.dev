@@ -3,9 +3,9 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/d
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { withRequestClassifierDeps } from '@crowd/project-onboarding/src/requestClassifierDeps'
 
 import { classifyDiscussionRows } from '../activities/requestClassification'
-import { withRequestClassificationDeps } from '../activities/requestClassificationDeps'
 import { CLASSIFICATION_CASES, IClassificationCase } from './classificationCases'
 
 const log = getServiceLogger()
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   const cases = selectCases(readCaseFilter(argv))
   const qx = pgpQx(await getDbConnection(WRITE_DB_CONFIG()))
 
-  const outcomes = await withRequestClassificationDeps(qx, async (deps) => {
+  const outcomes = await withRequestClassifierDeps(qx, async (deps) => {
     const results: ICaseOutcome[] = []
     for (const testCase of cases) {
       const { nodes } = await classifyDiscussionRows(toRow(testCase), testCase.text, deps, true)
