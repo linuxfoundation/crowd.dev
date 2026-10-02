@@ -18,14 +18,26 @@ import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/t
 import { IPipelineRunFinish } from '@crowd/data-access-layer/src/project-catalog-pipeline-runs/types'
 import {
   IDbProjectCatalogCreate,
+  isGithubDiscussionProvenance,
   isHumanProjectCatalogProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'
+import {
+  IClassifiedRows,
+  IRequestClassificationAlert,
+  classifyDiscussions,
+} from './requestClassification'
+import {
+  buildRequestClassificationAlert,
+  buildRequestClassificationAlertTitle,
+} from './requestClassificationAlert'
+import { withRequestClassificationDeps } from './requestClassificationDeps'
 
 const log = getServiceLogger()
 
@@ -110,6 +122,45 @@ export async function commitSourceCursor(
   log.info({ sourceName, cursor }, 'Source cursor committed.')
 }
 
+async function classifyAcceptedRows(
+  qx: ReturnType<typeof pgpQx>,
+  accepted: IDbProjectCatalogCreate[],
+  requestTextBySourceUrl: Map<string, string>,
+  provenance: IDbProjectCatalogCreate['provenance'],
+): Promise<IClassifiedRows> {
+  if (
+    !isGithubDiscussionProvenance(provenance) ||
+    accepted.length === 0 ||
+    requestTextBySourceUrl.size === 0
+  ) {
+    return { rows: accepted, alerts: [] }
+  }
+
+  return withRequestClassificationDeps(qx, (deps) =>
+    classifyDiscussions(accepted, requestTextBySourceUrl, deps),
+  )
+}
+
+async function sendRequestClassificationAlerts(
+  alerts: IRequestClassificationAlert[],
+): Promise<void> {
+  for (const alert of alerts) {
+    const sent = await sendSlackNotificationAsync(
+      SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
+      SlackPersona.WARNING_PROPAGATOR,
+      buildRequestClassificationAlertTitle(alert),
+      buildRequestClassificationAlert(alert),
+    )
+
+    if (!sent) {
+      log.warn(
+        { sourceUrl: alert.sourceUrl, kind: alert.resolution.kind },
+        'Request classification Slack alert was not sent.',
+      )
+    }
+  }
+}
+
 export interface IProcessDatasetResult {
   totalRows: number
   totalSkipped: number
@@ -165,6 +216,7 @@ export async function processDataset(
   const accepted: IDbProjectCatalogCreate[] = []
   const skippedInCdp: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
+  const requestTextBySourceUrl = new Map<string, string>()
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
   let totalSkipped = 0
@@ -236,6 +288,10 @@ export async function processDataset(
       continue
     }
 
+    if (parsed.sourceUrl && parsed.requestText) {
+      requestTextBySourceUrl.set(parsed.sourceUrl, parsed.requestText)
+    }
+
     chunk.push({
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
@@ -278,10 +334,19 @@ export async function processDataset(
     stream.destroy()
   }
 
-  const toInsert = [...accepted, ...skippedInCdp]
+  const classified = await classifyAcceptedRows(
+    qx,
+    accepted,
+    requestTextBySourceUrl,
+    source.provenance,
+  )
+
+  const toInsert = [...classified.rows, ...skippedInCdp]
   if (toInsert.length > 0) {
     await bulkInsertProjectCatalog(qx, toInsert)
   }
+
+  await sendRequestClassificationAlerts(classified.alerts)
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose
   // rows are already marked consumed — roll the cursor back one page so it's replayed.
@@ -301,6 +366,7 @@ export async function processDataset(
       totalSkippedAlreadyInCdp: skippedInCdp.length,
       totalPromoted,
       totalAccepted: accepted.length,
+      totalClassificationAlerts: classified.alerts.length,
       truncated,
       elapsedSeconds,
     },

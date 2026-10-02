@@ -172,6 +172,7 @@ interface IDiscussionRepoUrlRef {
   repoUrl: string
   discussionNumber: number
   discussionUrl: string
+  requestText: string
 }
 
 async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRepoUrlRef[]> {
@@ -238,6 +239,7 @@ async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRe
             repoUrl,
             discussionNumber: discussion.number,
             discussionUrl: discussion.url,
+            requestText: `${discussion.title}\n\n${discussion.body}`,
           })
         }
       }
@@ -312,12 +314,14 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
     if (!identity) return null
 
     const discussionUrl = rawRow['discussionUrl'] as string | undefined
+    const requestText = rawRow['requestText'] as string | undefined
 
     return {
       projectSlug: identity.projectSlug,
       repoName: identity.repoName,
       repoUrl,
       sourceUrl: discussionUrl,
+      requestText,
     }
   }
 }
