@@ -1,30 +1,15 @@
-import { getErrorMessage } from '@crowd/common'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { getServiceLogger } from '@crowd/logging'
 import {
   CdpIntegrationAction,
-  IOnboardingRequestLookups,
+  ClassificationNode,
+  IRequestClassificationDeps,
   OnboardingResolution,
-  OnboardingRequestLlm,
-  parseOnboardingRequest,
-  resolveOnboardingRequest,
+  buildClassificationLogEntry,
+  classifyOnboardingRequest,
 } from '@crowd/project-onboarding'
 
-import {
-  ClassificationNode,
-  IClassificationTrace,
-  buildClassificationLogEntry,
-  createClassificationTrace,
-  toClassificationNode,
-  traceLookups,
-} from './requestClassificationTrace'
-
 const log = getServiceLogger()
-
-export interface IRequestClassificationDeps {
-  queryLlm: OnboardingRequestLlm
-  lookups: IOnboardingRequestLookups
-}
 
 export interface IRequestClassificationAlert {
   sourceUrl: string
@@ -65,40 +50,13 @@ function toSkipReason(resolution: Exclude<OnboardingResolution, { kind: 'non_lf_
   }
 }
 
-function unresolved(reason: string): OnboardingResolution {
-  return { kind: 'ambiguous', reason, candidates: [] }
-}
-
-async function resolveRequestText(
-  requestText: string,
-  deps: IRequestClassificationDeps,
-  trace: IClassificationTrace,
-): Promise<OnboardingResolution> {
-  try {
-    const parsed = await parseOnboardingRequest(requestText, deps.queryLlm)
-    if (parsed.ok === false) {
-      trace.failure = { stage: 'parse', reason: parsed.reason }
-      return unresolved(`Request could not be parsed: ${parsed.reason}`)
-    }
-
-    trace.parsed = parsed.request
-    return await resolveOnboardingRequest(parsed.request, traceLookups(deps.lookups, trace))
-  } catch (err) {
-    const reason = getErrorMessage(err)
-    trace.failure = { stage: 'resolve', reason }
-    return unresolved(`Classification failed: ${reason}`)
-  }
-}
-
 export async function classifyDiscussionRows(
   rows: IDbProjectCatalogCreate[],
   requestText: string,
   deps: IRequestClassificationDeps,
   dryRun = false,
 ): Promise<IClassifiedRows> {
-  const trace = createClassificationTrace()
-  const resolution = await resolveRequestText(requestText, deps, trace)
-  const node = toClassificationNode(resolution)
+  const { resolution, node, trace } = await classifyOnboardingRequest(requestText, deps)
 
   log.info(
     buildClassificationLogEntry(rows[0].sourceUrl ?? '', resolution, trace),

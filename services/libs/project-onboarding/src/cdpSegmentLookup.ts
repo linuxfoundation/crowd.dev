@@ -1,10 +1,7 @@
 import { fetchIntegrationsForSegment, findSubprojectsBySourceId } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import {
-  CdpSegmentLookupResult,
-  ICdpSegmentMatch,
-  toCdpIntegrationState,
-} from '@crowd/project-onboarding'
+
+import { CdpSegmentLookupResult, ICdpSegmentMatch, toCdpIntegrationState } from './requestResolver'
 
 async function toSegmentMatch(
   qx: QueryExecutor,

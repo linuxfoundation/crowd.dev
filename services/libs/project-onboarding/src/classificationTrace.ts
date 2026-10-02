@@ -1,13 +1,12 @@
+import { IParsedOnboardingRequest } from './requestParser'
 import {
   CdpIntegrationAction,
   CdpSegmentLookupResult,
   IOnboardingRequestLookups,
-  IParsedOnboardingRequest,
   IPccCandidate,
   OnboardingResolution,
   assessPccCandidates,
-} from '@crowd/project-onboarding'
-
+} from './requestResolver'
 export type ClassificationFailureStage = 'parse' | 'resolve'
 
 export interface IClassificationFailure {

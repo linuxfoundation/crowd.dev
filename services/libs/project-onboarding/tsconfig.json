@@ -1,5 +1,24 @@
 {
   "extends": "../../base.tsconfig.json",
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../common" }]
+  "references": [
+    {
+      "path": "../common"
+    },
+    {
+      "path": "../common_services"
+    },
+    {
+      "path": "../data-access-layer"
+    },
+    {
+      "path": "../logging"
+    },
+    {
+      "path": "../snowflake"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

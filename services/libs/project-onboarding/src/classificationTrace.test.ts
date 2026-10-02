@@ -1,21 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  IOnboardingRequestLookups,
-  IParsedOnboardingRequest,
-  IPccCandidate,
-  OnboardingResolution,
-  PCC_MATCH_THRESHOLDS,
-} from '@crowd/project-onboarding'
-
-import {
   ClassificationNode,
   buildClassificationLogEntry,
   countNodes,
   createClassificationTrace,
   toClassificationNode,
   traceLookups,
-} from './requestClassificationTrace'
+} from './classificationTrace'
+import { IParsedOnboardingRequest } from './requestParser'
+import {
+  IOnboardingRequestLookups,
+  IPccCandidate,
+  OnboardingResolution,
+  PCC_MATCH_THRESHOLDS,
+} from './requestResolver'
 
 const pccProject: IPccCandidate = {
   projectId: 'pcc-1',

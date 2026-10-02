@@ -2,12 +2,12 @@ import { getErrorMessage } from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
-import { createPccCandidatesLookup, IPccCandidateRow } from '@crowd/project-onboarding'
 import { SnowflakeClient } from '@crowd/snowflake'
 import { LlmQueryType } from '@crowd/types'
 
 import { createCdpSegmentLookup } from './cdpSegmentLookup'
-import { IRequestClassificationDeps } from './requestClassification'
+import { IRequestClassificationDeps } from './classifyRequest'
+import { IPccCandidateRow, createPccCandidatesLookup } from './pccLookup'
 
 const log = getServiceLogger()
 
@@ -47,7 +47,7 @@ function createSnowflakeClient(): SnowflakeClient | null {
   }
 }
 
-export async function withRequestClassificationDeps<T>(
+export async function withRequestClassifierDeps<T>(
   qx: QueryExecutor,
   run: (deps: IRequestClassificationDeps) => Promise<T>,
 ): Promise<T> {

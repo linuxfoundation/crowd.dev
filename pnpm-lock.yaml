@@ -2804,6 +2804,21 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../common
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../common_services
+      '@crowd/data-access-layer':
+        specifier: workspace:*
+        version: link:../data-access-layer
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@crowd/snowflake':
+        specifier: workspace:*
+        version: link:../snowflake
+      '@crowd/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
