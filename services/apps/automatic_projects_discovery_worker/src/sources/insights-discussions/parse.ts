@@ -76,3 +76,7 @@ export function extractDiscussionRepoUrls(discussion: {
     fromBody: fromBodyUrls.length,
   }
 }
+
+export function buildDiscussionRequestText(discussion: { title: string; body: string }): string {
+  return `${discussion.title}\n\n${stripNonProseSections(discussion.body)}`
+}

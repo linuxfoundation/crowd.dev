@@ -5,7 +5,7 @@ import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
-import { extractDiscussionRepoUrls } from './parse'
+import { buildDiscussionRequestText, extractDiscussionRepoUrls } from './parse'
 
 const log = getServiceLogger()
 
@@ -172,6 +172,7 @@ interface IDiscussionRepoUrlRef {
   repoUrl: string
   discussionNumber: number
   discussionUrl: string
+  requestText: string
 }
 
 async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRepoUrlRef[]> {
@@ -238,6 +239,7 @@ async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRe
             repoUrl,
             discussionNumber: discussion.number,
             discussionUrl: discussion.url,
+            requestText: buildDiscussionRequestText(discussion),
           })
         }
       }
@@ -312,12 +314,14 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
     if (!identity) return null
 
     const discussionUrl = rawRow['discussionUrl'] as string | undefined
+    const requestText = rawRow['requestText'] as string | undefined
 
     return {
       projectSlug: identity.projectSlug,
       repoName: identity.repoName,
       repoUrl,
       sourceUrl: discussionUrl,
+      requestText,
     }
   }
 }
