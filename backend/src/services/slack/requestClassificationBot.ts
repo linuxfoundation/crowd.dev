@@ -17,8 +17,14 @@ const MENTION_PATTERN = /<@[A-Z0-9]+>/g
 const LINK_WITH_LABEL_PATTERN = /<(https?:\/\/[^|>\s]+)\|[^>]*>/g
 const LINK_PATTERN = /<(https?:\/\/[^>\s]+)>/g
 
+const MAX_SECTION_TEXT = 2900
+
 const HELP_TEXT =
   'Tell me about the project you want to onboard: its name, whether it is a Linux Foundation project and the GitHub repositories.'
+
+function truncateSectionText(text: string): string {
+  return text.length > MAX_SECTION_TEXT ? `${text.slice(0, MAX_SECTION_TEXT - 1)}…` : text
+}
 
 export function toRequestText(slackText: string): string {
   return slackText
@@ -43,7 +49,9 @@ export function buildClassificationReply(
   return Message()
     .blocks(
       Section({ text: `*${buildRequestClassificationAlertTitle(alert)}*` }),
-      ...sections.map(({ title, text }) => Section({ text: title ? `*${title}*\n${text}` : text })),
+      ...sections.map(({ title, text }) =>
+        Section({ text: truncateSectionText(title ? `*${title}*\n${text}` : text) }),
+      ),
       Section({ text: `_Step reached: ${classification.node}_` }),
     )
     .buildToObject()
