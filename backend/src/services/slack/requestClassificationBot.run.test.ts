@@ -46,6 +46,14 @@ describe('runRequestClassificationBot', () => {
     expect(log.warn).not.toHaveBeenCalled()
   })
 
+  it('disables the Snowflake platform detection before loading the classifier deps', async () => {
+    delete process.env.SNOWFLAKE_DISABLE_PLATFORM_DETECTION
+
+    await run()
+
+    expect(process.env.SNOWFLAKE_DISABLE_PLATFORM_DETECTION).toBe('true')
+  })
+
   it('warns when Slack does not deliver the reply', async () => {
     vi.mocked(postSlackMessage).mockResolvedValue({ ok: false, error: 'channel_not_found' })
 
