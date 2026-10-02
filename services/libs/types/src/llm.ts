@@ -166,6 +166,14 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
       temperature: 0,
     },
   },
+  [LlmQueryType.ONBOARDING_REQUEST_PARSING]: {
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
+    arguments: {
+      max_tokens: 2000,
+      anthropic_version: 'bedrock-2023-05-31',
+      temperature: 0,
+    },
+  },
 }
 
 export interface LlmIdentity {
