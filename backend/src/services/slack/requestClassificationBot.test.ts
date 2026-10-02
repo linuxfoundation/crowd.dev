@@ -48,4 +48,18 @@ describe('buildClassificationReply', () => {
     expect(text).toContain('[DRY RUN]')
     expect(text).toContain('https://slack.test/thread')
   })
+
+  it('keeps every section under the Slack limit when the request lists many repositories', () => {
+    const repoUrls = Array.from({ length: 300 }, (_, i) => `https://github.com/acme/repo-${i}`)
+    const { blocks } = buildClassificationReply(
+      {
+        ...classification,
+        trace: { ...classification.trace, parsed: { githubRepoUrls: repoUrls } as any },
+      },
+      'https://slack.test/thread',
+    )
+
+    const longest = Math.max(...blocks.map((block: any) => block.text?.text.length ?? 0))
+    expect(longest).toBeLessThanOrEqual(3000)
+  })
 })
