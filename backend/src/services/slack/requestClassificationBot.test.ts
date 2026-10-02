@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@crowd/slack', () => ({ getSlackPermalink: vi.fn(), postSlackMessage: vi.fn() }))
+vi.mock('@crowd/project-onboarding/src/requestClassifierDeps', () => ({
+  withRequestClassifierDeps: vi.fn(),
+}))
+vi.mock('./slackBackground', () => ({ getBgQx: vi.fn() }))
 
 import { IRequestClassification } from '@crowd/project-onboarding'
 
