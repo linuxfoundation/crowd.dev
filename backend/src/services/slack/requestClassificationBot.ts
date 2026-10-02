@@ -18,6 +18,8 @@ const LINK_PATTERN = /<(https?:\/\/[^>\s]+)>/g
 
 const MAX_SECTION_TEXT = 2900
 
+const FAILURE_REASON = 'The request could not be classified automatically.'
+
 const HELP_TEXT =
   'Tell me about the project you want to onboard: its name, whether it is a Linux Foundation project and the GitHub repositories.'
 
@@ -36,7 +38,21 @@ export function toRequestText(slackText: string): string {
     .replace(MENTION_PATTERN, '')
     .replace(LINK_WITH_LABEL_PATTERN, '$1')
     .replace(LINK_PATTERN, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .trim()
+}
+
+export function hideFailureDetails(classification: IRequestClassification): IRequestClassification {
+  if (!classification.trace.failure) {
+    return classification
+  }
+
+  return {
+    ...classification,
+    resolution: { kind: 'ambiguous', reason: FAILURE_REASON, candidates: [] },
+  }
 }
 
 export function buildClassificationReply(
@@ -52,6 +68,7 @@ export function buildClassificationReply(
   const sections = buildRequestClassificationAlert(alert)
 
   return Message()
+    .text(`${buildRequestClassificationAlertTitle(alert)}. Step reached: ${classification.node}`)
     .blocks(
       Section({ text: `*${buildRequestClassificationAlertTitle(alert)}*` }),
       ...sections.map(({ title, text }) =>
@@ -98,10 +115,16 @@ export async function runRequestClassificationBot({
     const requestUrl = (await getSlackPermalink(channelId, messageTs)) ?? ''
 
     log.info(
-      { channelId, threadTs, node: classification.node, kind: classification.resolution.kind },
+      {
+        channelId,
+        threadTs,
+        node: classification.node,
+        kind: classification.resolution.kind,
+        failure: classification.trace.failure,
+      },
       'Onboarding request classified from Slack.',
     )
-    await reply(buildClassificationReply(classification, requestUrl))
+    await reply(buildClassificationReply(hideFailureDetails(classification), requestUrl))
   } catch (err) {
     log.error({ error: getErrorMessage(err), channelId, threadTs }, 'Slack request failed.')
     await reply({ text: ':no_entry: I could not process this request, please try again later.' })

@@ -8,7 +8,11 @@ vi.mock('./slackBackground', () => ({ getBgQx: vi.fn() }))
 
 import { IRequestClassification } from '@crowd/project-onboarding'
 
-import { buildClassificationReply, toRequestText } from './requestClassificationBot'
+import {
+  buildClassificationReply,
+  hideFailureDetails,
+  toRequestText,
+} from './requestClassificationBot'
 
 describe('toRequestText', () => {
   it('removes the bot mention and keeps the rest of the message', () => {
@@ -21,6 +25,12 @@ describe('toRequestText', () => {
         '<@U0BOT> <https://github.com/acme/one> and <https://github.com/acme/two|acme/two>',
       ),
     ).toBe('https://github.com/acme/one and https://github.com/acme/two')
+  })
+
+  it('decodes the HTML entities Slack applies to the message text', () => {
+    expect(toRequestText('<@U0BOT> onboard R&amp;D &lt;internal&gt;')).toBe(
+      'onboard R&D <internal>',
+    )
   })
 
   it('returns an empty string when only the mention is left', () => {
@@ -61,5 +71,33 @@ describe('buildClassificationReply', () => {
 
     const longest = Math.max(...blocks.map((block: any) => block.text?.text.length ?? 0))
     expect(longest).toBeLessThanOrEqual(3000)
+  })
+
+  it('adds a plain text fallback for clients that do not render blocks', () => {
+    const message = buildClassificationReply(classification, 'https://slack.test/thread')
+
+    expect(message.text).toContain('lf_not_in_pcc_flag_human')
+  })
+
+  it('does not expose dependency errors or model output in the reply', () => {
+    const failed: IRequestClassification = {
+      resolution: {
+        kind: 'ambiguous',
+        reason: 'Classification failed: SQL compilation error at line 11',
+        candidates: [],
+      },
+      node: 'ambiguous_human_review',
+      trace: {
+        ...classification.trace,
+        failure: { stage: 'resolve', reason: 'SQL compilation error at line 11' },
+      },
+    }
+
+    const text = JSON.stringify(
+      buildClassificationReply(hideFailureDetails(failed), 'https://slack.test/thread'),
+    )
+
+    expect(text).not.toContain('SQL compilation error')
+    expect(text).toContain('could not be classified automatically')
   })
 })
