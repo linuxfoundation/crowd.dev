@@ -1,7 +1,7 @@
 import { IParsedOnboardingRequest } from './requestParser'
 
-const STRONG_MATCH_SCORE = 0.97
-const WEAK_MATCH_SCORE = 0.85
+export const PCC_MATCH_THRESHOLDS = { strong: 0.97, weak: 0.85 } as const
+
 const GITHUB_V1_PLATFORM = 'github'
 const GITHUB_NANGO_PLATFORM = 'github-nango'
 
@@ -10,6 +10,7 @@ export interface IPccCandidate {
   name: string
   slug: string
   score: number
+  isLeaf: boolean
 }
 
 export type CdpIntegrationState = 'none' | 'github-nango' | 'github-v1'
@@ -27,7 +28,19 @@ export interface IOnboardingRequestLookups {
 
 export type CdpIntegrationAction = 'create_integration' | 'update_integration' | 'human_review'
 
+export type PccMatchLevel = 'exact' | 'strong' | 'weak' | 'none'
+
+export interface IPccMatchAssessment {
+  level: PccMatchLevel
+  best: IPccCandidate | null
+  weakCandidates: IPccCandidate[]
+  tiedCandidates: IPccCandidate[]
+  margin: number | null
+  thresholds: typeof PCC_MATCH_THRESHOLDS
+}
+
 export type OnboardingResolution =
+  | { kind: 'non_github_source'; nonGithubRepoUrls: string[] }
   | { kind: 'non_lf_new_project'; projectName: string }
   | { kind: 'lf_not_in_pcc'; projectName: string }
   | { kind: 'lf_not_in_cdp'; pccProject: IPccCandidate }
@@ -54,26 +67,76 @@ export function toCdpIntegrationState(platforms: string[]): CdpIntegrationState 
 }
 
 function normalizeName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 }
 
 function isExactMatch(projectName: string, candidate: IPccCandidate): boolean {
   const normalized = normalizeName(projectName)
+  if (!normalized) {
+    return false
+  }
+
   return (
     normalized === normalizeName(candidate.name) || normalized === normalizeName(candidate.slug)
   )
 }
 
-function isStrongMatch(projectName: string, candidate: IPccCandidate): boolean {
-  return isExactMatch(projectName, candidate) || candidate.score >= STRONG_MATCH_SCORE
+function rankCandidates(candidates: IPccCandidate[]): IPccCandidate[] {
+  return [...candidates].sort((a, b) => b.score - a.score || Number(b.isLeaf) - Number(a.isLeaf))
 }
 
-function rankCandidates(candidates: IPccCandidate[]): IPccCandidate[] {
-  return [...candidates].sort((a, b) => b.score - a.score)
+function findTiedCandidates(
+  ranked: IPccCandidate[],
+  best: IPccCandidate | undefined,
+): IPccCandidate[] {
+  if (!best) {
+    return []
+  }
+
+  return ranked.filter(
+    (candidate) => candidate.score === best.score && candidate.isLeaf === best.isLeaf,
+  )
+}
+
+function toMatchLevel(projectName: string, best: IPccCandidate | undefined): PccMatchLevel {
+  if (!best) {
+    return 'none'
+  }
+
+  if (isExactMatch(projectName, best)) {
+    return 'exact'
+  }
+
+  if (best.score >= PCC_MATCH_THRESHOLDS.strong) {
+    return 'strong'
+  }
+
+  return best.score >= PCC_MATCH_THRESHOLDS.weak ? 'weak' : 'none'
+}
+
+export function assessPccCandidates(
+  projectName: string,
+  candidates: IPccCandidate[],
+): IPccMatchAssessment {
+  const ranked = rankCandidates(candidates)
+  const [best, runnerUp] = ranked
+
+  return {
+    level: toMatchLevel(projectName, best),
+    best: best ?? null,
+    weakCandidates: ranked.filter((candidate) => candidate.score >= PCC_MATCH_THRESHOLDS.weak),
+    tiedCandidates: findTiedCandidates(ranked, best),
+    margin: best ? best.score - (runnerUp?.score ?? 0) : null,
+    thresholds: PCC_MATCH_THRESHOLDS,
+  }
 }
 
 function hasNoRepositories(request: IParsedOnboardingRequest): boolean {
   return request.githubRepoUrls.length === 0 && request.nonGithubRepoUrls.length === 0
+}
+
+function hasOnlyNonGithubRepositories(request: IParsedOnboardingRequest): boolean {
+  return request.githubRepoUrls.length === 0 && request.nonGithubRepoUrls.length > 0
 }
 
 function ambiguous(reason: string, candidates: IPccCandidate[] = []): OnboardingResolution {
@@ -82,9 +145,23 @@ function ambiguous(reason: string, candidates: IPccCandidate[] = []): Onboarding
 
 async function resolveStrongMatch(
   request: IParsedOnboardingRequest,
+  assessment: IPccMatchAssessment,
   pccProject: IPccCandidate,
   lookups: IOnboardingRequestLookups,
 ): Promise<OnboardingResolution> {
+  if (assessment.tiedCandidates.length > 1) {
+    return ambiguous(
+      'Several PCC projects match the project name equally',
+      assessment.tiedCandidates,
+    )
+  }
+
+  if (!pccProject.isLeaf) {
+    return ambiguous('Project name matches a PCC parent project, not an onboardable one', [
+      pccProject,
+    ])
+  }
+
   if (request.declaredLf === false) {
     return ambiguous('Request says the project is not LF but it matches a PCC project', [
       pccProject,
@@ -108,12 +185,16 @@ export async function resolveOnboardingRequest(
   request: IParsedOnboardingRequest,
   lookups: IOnboardingRequestLookups,
 ): Promise<OnboardingResolution> {
-  if (request.asksAboutHierarchy) {
-    return ambiguous('Requester asks about the project hierarchy')
-  }
-
   if (hasNoRepositories(request) && request.linksToFollow.length === 0) {
     return ambiguous('Request does not contain any repository')
+  }
+
+  if (hasOnlyNonGithubRepositories(request)) {
+    return { kind: 'non_github_source', nonGithubRepoUrls: request.nonGithubRepoUrls }
+  }
+
+  if (request.asksAboutHierarchy) {
+    return ambiguous('Requester asks about the project hierarchy')
   }
 
   const { projectName } = request
@@ -125,16 +206,14 @@ export async function resolveOnboardingRequest(
     return ambiguous('PCC lookup is not configured')
   }
 
-  const candidates = rankCandidates(await lookups.findPccCandidates(projectName))
-  const [best] = candidates
+  const assessment = assessPccCandidates(projectName, await lookups.findPccCandidates(projectName))
 
-  if (best && isStrongMatch(projectName, best)) {
-    return resolveStrongMatch(request, best, lookups)
+  if (assessment.best && (assessment.level === 'exact' || assessment.level === 'strong')) {
+    return resolveStrongMatch(request, assessment, assessment.best, lookups)
   }
 
-  const weakCandidates = candidates.filter((candidate) => candidate.score >= WEAK_MATCH_SCORE)
-  if (weakCandidates.length > 0) {
-    return ambiguous('Project name only loosely matches PCC projects', weakCandidates)
+  if (assessment.level === 'weak') {
+    return ambiguous('Project name only loosely matches PCC projects', assessment.weakCandidates)
   }
 
   if (request.declaredLf) {

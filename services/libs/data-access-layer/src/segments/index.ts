@@ -34,12 +34,7 @@ export async function findProjectGroupByName(
   )
 }
 
-export interface ISubprojectBySourceId {
-  id: string
-  name: string
-  slug: string
-  isLF: boolean
-}
+export type ISubprojectBySourceId = Pick<SegmentDbRow, 'id' | 'name' | 'slug' | 'isLF'>
 
 export async function findSubprojectsBySourceId(
   qx: QueryExecutor,
