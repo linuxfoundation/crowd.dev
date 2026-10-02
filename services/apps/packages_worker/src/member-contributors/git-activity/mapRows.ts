@@ -9,7 +9,6 @@ export interface TinybirdCommitContributorRow {
   memberId: string
   platform: string
   username: string
-  commitCount: number | string
   firstCommitAt: string
   lastCommitAt: string
   lastUpdatedAt: string
@@ -17,7 +16,6 @@ export interface TinybirdCommitContributorRow {
 
 export interface GitActivityContributorRow extends RepoContributorRow {
   cdpMemberId: string
-  commitCount: number
 }
 
 export function parseTinybirdDateTime(value: string): Date {
@@ -42,6 +40,5 @@ export function toGitActivityContributorRow(
     lastSeenAt: parseTinybirdDateTime(row.lastCommitAt),
     endedAt: null,
     cdpMemberId: row.memberId,
-    commitCount: Number(row.commitCount),
   }
 }

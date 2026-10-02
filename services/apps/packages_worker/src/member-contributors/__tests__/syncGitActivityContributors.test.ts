@@ -33,7 +33,6 @@ function tbRow(
     memberId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     platform: 'github',
     username: 'JaneDoe',
-    commitCount: '12',
     firstCommitAt: '2020-01-01 10:00:00.000',
     lastCommitAt: '2026-09-30 12:30:00.000',
     lastUpdatedAt: '2026-10-02 20:00:00.000',
@@ -94,7 +93,7 @@ describe('parseTinybirdDateTime', () => {
 })
 
 describe('toGitActivityContributorRow', () => {
-  it('maps a github login to a lowercase github-login identity with member and count', () => {
+  it('maps a github login to a lowercase github-login identity with its member', () => {
     const row = toGitActivityContributorRow(tbRow(), '42')
     expect(row).toMatchObject({
       repoId: '42',
@@ -105,7 +104,6 @@ describe('toGitActivityContributorRow', () => {
       identityValue: 'janedoe',
       endedAt: null,
       cdpMemberId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-      commitCount: 12,
     })
     expect(row.firstSeenAt.toISOString()).toBe('2020-01-01T10:00:00.000Z')
     expect(row.lastSeenAt.toISOString()).toBe('2026-09-30T12:30:00.000Z')
@@ -122,11 +120,10 @@ describe('toGitActivityContributorRow', () => {
 })
 
 describe('mergeContributorRows', () => {
-  it('sums counts and widens the seen window for rows sharing repo and identity', () => {
-    const a = toGitActivityContributorRow(tbRow({ commitCount: 3 }), '1')
+  it('widens the seen window for rows sharing repo and identity', () => {
+    const a = toGitActivityContributorRow(tbRow(), '1')
     const b = toGitActivityContributorRow(
       tbRow({
-        commitCount: 4,
         firstCommitAt: '2019-01-01 00:00:00.000',
         lastCommitAt: '2026-10-01 00:00:00.000',
       }),
@@ -134,7 +131,6 @@ describe('mergeContributorRows', () => {
     )
     const merged = mergeContributorRows([a, b])
     expect(merged).toHaveLength(1)
-    expect(merged[0].commitCount).toBe(7)
     expect(merged[0].firstSeenAt).toEqual(b.firstSeenAt)
     expect(merged[0].lastSeenAt).toEqual(b.lastSeenAt)
   })

@@ -51,7 +51,6 @@ const CONTRIBUTOR_COLUMNS = [
   'last_seen_at',
   'ended_at',
   'cdp_member_id',
-  'commit_count',
 ]
 
 const UPSERT_CLAUSE = `(repo_id, source, identity_type, identity_value, role) DO UPDATE SET
@@ -60,7 +59,6 @@ const UPSERT_CLAUSE = `(repo_id, source, identity_type, identity_value, role) DO
   last_seen_at  = EXCLUDED.last_seen_at,
   ended_at      = EXCLUDED.ended_at,
   cdp_member_id = EXCLUDED.cdp_member_id,
-  commit_count  = EXCLUDED.commit_count,
   updated_at    = NOW()`
 
 export async function readWatermark(pkgsQx: QueryExecutor): Promise<Date | null> {
@@ -117,7 +115,6 @@ export function mergeContributorRows(
       ...existing,
       firstSeenAt: existing.firstSeenAt < row.firstSeenAt ? existing.firstSeenAt : row.firstSeenAt,
       lastSeenAt: existing.lastSeenAt > row.lastSeenAt ? existing.lastSeenAt : row.lastSeenAt,
-      commitCount: existing.commitCount + row.commitCount,
     })
   }
   return [...byKey.values()]
@@ -135,7 +132,6 @@ function toDbRow(row: GitActivityContributorRow): Record<string, unknown> {
     last_seen_at: row.lastSeenAt,
     ended_at: row.endedAt,
     cdp_member_id: row.cdpMemberId,
-    commit_count: row.commitCount,
   }
 }
 

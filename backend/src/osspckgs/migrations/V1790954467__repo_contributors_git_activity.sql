@@ -1,6 +1,5 @@
 ALTER TABLE repo_contributors
-    ADD COLUMN IF NOT EXISTS cdp_member_id UUID,
-    ADD COLUMN IF NOT EXISTS commit_count INTEGER;
+    ADD COLUMN IF NOT EXISTS cdp_member_id UUID;
 
 CREATE TABLE IF NOT EXISTS repo_contributors_sync_state (
     source      TEXT PRIMARY KEY,

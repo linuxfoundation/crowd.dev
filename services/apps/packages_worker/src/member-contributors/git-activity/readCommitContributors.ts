@@ -42,7 +42,7 @@ export async function readCommitContributorPage(
   limit: number,
 ): Promise<TinybirdCommitContributorRow[]> {
   const query = `%
-    SELECT channel, memberId, platform, username, commitCount,
+    SELECT channel, memberId, platform, username,
            toString(firstCommitAt) AS firstCommitAt,
            toString(lastCommitAt) AS lastCommitAt,
            toString(lastUpdatedAt) AS lastUpdatedAt
