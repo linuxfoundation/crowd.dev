@@ -34,6 +34,25 @@ export async function findProjectGroupByName(
   )
 }
 
+export type ISubprojectBySourceId = Pick<SegmentDbRow, 'id' | 'name' | 'slug' | 'isLF'>
+
+export async function findSubprojectsBySourceId(
+  qx: QueryExecutor,
+  sourceId: string,
+): Promise<ISubprojectBySourceId[]> {
+  return qx.select(
+    `
+      SELECT id, name, slug, "isLF"
+      FROM segments
+      WHERE "sourceId" = $(sourceId)
+        AND type = 'subproject'
+        AND "tenantId" = $(tenantId)
+      LIMIT 2
+    `,
+    { sourceId, tenantId: DEFAULT_TENANT_ID },
+  )
+}
+
 export async function findManyLfSegmentsByNames(
   qx: QueryExecutor,
   names: string[],
