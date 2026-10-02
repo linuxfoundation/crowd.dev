@@ -31,6 +31,16 @@ export function createEmit(deps: EmitterDeps): Emitter {
   let emitted = 0
 
   const emit = async (records: unknown[], overrides?: EmitOverrides): Promise<void> => {
+    if (
+      overrides &&
+      (overrides.segmentId === undefined) !== (overrides.integrationId === undefined)
+    ) {
+      throw new ConnectorError(
+        'connector.code',
+        'segmentId and integrationId overrides must be provided together',
+      )
+    }
+
     const segmentId = overrides?.segmentId ?? deps.segmentId
     const integrationId = overrides?.integrationId ?? deps.unit.integrationId
     const shadowRecords: IShadowRecord[] = []

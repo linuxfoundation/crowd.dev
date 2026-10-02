@@ -126,15 +126,51 @@ describe('createEmit', () => {
       log: LOG,
     })
 
-    await emitter.emit([record('a')], { segmentId: 'segment-1' })
+    await emitter.emit([record('a')], { segmentId: 'segment-1', integrationId: 'integration-1' })
 
     expect(deps.publishResult).toHaveBeenCalledWith(
-      'integration-default',
+      'integration-1',
       expect.objectContaining({
         type: IntegrationResultType.ACTIVITY,
         segmentId: 'segment-1',
       }),
     )
+  })
+
+  it('rejects a partial override (segmentId without integrationId)', async () => {
+    const deps = makeDeps()
+    const emitter = createEmit({
+      publishResult: deps.publishResult,
+      sinkEmitter: deps.sinkEmitter,
+      recordShadow: deps.recordShadow,
+      unit: UNIT,
+      segmentId: 'segment-default',
+      schema: SCHEMA,
+      log: LOG,
+    })
+
+    await expect(emitter.emit([record('a')], { segmentId: 'segment-1' })).rejects.toThrow(
+      'segmentId and integrationId overrides must be provided together',
+    )
+    expect(deps.publishResult).not.toHaveBeenCalled()
+  })
+
+  it('rejects a partial override (integrationId without segmentId)', async () => {
+    const deps = makeDeps()
+    const emitter = createEmit({
+      publishResult: deps.publishResult,
+      sinkEmitter: deps.sinkEmitter,
+      recordShadow: deps.recordShadow,
+      unit: UNIT,
+      segmentId: 'segment-default',
+      schema: SCHEMA,
+      log: LOG,
+    })
+
+    await expect(emitter.emit([record('a')], { integrationId: 'integration-1' })).rejects.toThrow(
+      'segmentId and integrationId overrides must be provided together',
+    )
+    expect(deps.publishResult).not.toHaveBeenCalled()
   })
 
   it('persists the overridden segmentId/integrationId on shadow records', async () => {
