@@ -13,7 +13,12 @@ export async function recordShadowRecords(
     return
   }
 
-  const byKey = new Map(records.map((r) => [JSON.stringify([r.type, r.sourceId]), r]))
+  const byKey = new Map(
+    records.map((r) => [
+      JSON.stringify([r.type, r.sourceId, r.segmentId ?? null, r.integrationId ?? null]),
+      r,
+    ]),
+  )
   const deduped = [...byKey.values()]
 
   await qx.result(
@@ -28,12 +33,10 @@ export async function recordShadowRecords(
        $(segmentIds)::uuid[],
        $(integrationIds)::uuid[]
      ) u
-     ON CONFLICT ("unitId", type, "sourceId")
+     ON CONFLICT ("unitId", type, "sourceId", "segmentId", "integrationId")
      DO UPDATE SET
        data = EXCLUDED.data,
-       "occurredAt" = EXCLUDED."occurredAt",
-       "segmentId" = EXCLUDED."segmentId",
-       "integrationId" = EXCLUDED."integrationId"`,
+       "occurredAt" = EXCLUDED."occurredAt"`,
     {
       unitId,
       types: deduped.map((r) => r.type),

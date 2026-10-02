@@ -39,6 +39,47 @@ async function createSyncUnit(qx: QueryExecutor, integrationId: string): Promise
   return id
 }
 
+describe('recordShadowRecords', () => {
+  test('keeps separate rows for the same type/sourceId emitted to different targets', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+    const otherIntegrationId = await createIntegration(qx)
+    const segmentA = generateUUIDv1()
+    const segmentB = generateUUIDv1()
+
+    await recordShadowRecords(qx, unitId, [
+      {
+        type: 'mention',
+        sourceId: 'shared-source-id',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: { title: 'segment-a' },
+        segmentId: segmentA,
+        integrationId,
+      },
+      {
+        type: 'mention',
+        sourceId: 'shared-source-id',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: { title: 'segment-b' },
+        segmentId: segmentB,
+        integrationId: otherIntegrationId,
+      },
+    ])
+
+    const result = await getShadowRecordsInWindow(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+    )
+
+    expect(result).toHaveLength(2)
+    expect(result.map((r) => r.segmentId).sort()).toEqual([segmentA, segmentB].sort())
+  })
+})
+
 describe('getShadowRecordsInWindow', () => {
   test('returns only records whose occurredAt falls within the window', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
