@@ -8,6 +8,7 @@ import {
 export enum LinkedinActivityType {
   COMMENT = 'comment',
   REACTION = 'reaction',
+  MENTION = 'mention',
 }
 
 export enum LinkedinStreamType {

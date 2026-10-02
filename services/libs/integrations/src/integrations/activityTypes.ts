@@ -329,6 +329,14 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    [GithubActivityType.MENTION]: {
+      display: {
+        default: 'mentioned you on GitHub',
+        short: 'mentioned you',
+        channel: '',
+      },
+      calculateSentiment: true,
+    },
     [GitActivityType.AUTHORED_COMMIT]: {
       display: {
         default: 'authored a commit in {channel}',
@@ -696,6 +704,14 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
           'reacted with <img src="/images/integrations/linkedin-reactions/{attributes.reactionType}.svg"> on a post <a href="{attributes.postUrl}" target="_blank">{attributes.postBody}</a>',
         short: 'reacted',
         channel: '<a href="{attributes.postUrl}" target="_blank">{attributes.postBody}</a>',
+      },
+      calculateSentiment: true,
+    },
+    [LinkedinActivityType.MENTION]: {
+      display: {
+        default: 'mentioned you on LinkedIn',
+        short: 'mentioned you',
+        channel: '',
       },
       calculateSentiment: true,
     },
