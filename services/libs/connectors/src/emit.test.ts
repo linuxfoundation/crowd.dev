@@ -136,4 +136,30 @@ describe('createEmit', () => {
       }),
     )
   })
+
+  it('persists the overridden segmentId/integrationId on shadow records', async () => {
+    const deps = makeDeps()
+    const emitter = createEmit({
+      publishResult: deps.publishResult,
+      sinkEmitter: deps.sinkEmitter,
+      recordShadow: deps.recordShadow,
+      unit: { ...UNIT, emitEnabled: false },
+      segmentId: 'segment-default',
+      schema: SCHEMA,
+      log: LOG,
+    })
+
+    await emitter.emit([record('a')], {
+      segmentId: 'segment-1',
+      integrationId: 'integration-1',
+    })
+
+    expect(deps.recordShadow).toHaveBeenCalledWith([
+      expect.objectContaining({
+        segmentId: 'segment-1',
+        integrationId: 'integration-1',
+      }),
+    ])
+    expect(deps.publishResult).not.toHaveBeenCalled()
+  })
 })

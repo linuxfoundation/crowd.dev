@@ -18,22 +18,30 @@ export async function recordShadowRecords(
 
   await qx.result(
     `INSERT INTO integration.sync_shadow_records
-       ("unitId", type, "sourceId", "occurredAt", data)
+       ("unitId", type, "sourceId", "occurredAt", data, "segmentId", "integrationId")
      SELECT $(unitId)::uuid, u.*
      FROM unnest(
        $(types)::text[],
        $(sourceIds)::text[],
        $(occurredAts)::timestamptz[],
-       $(data)::jsonb[]
+       $(data)::jsonb[],
+       $(segmentIds)::uuid[],
+       $(integrationIds)::uuid[]
      ) u
      ON CONFLICT ("unitId", type, "sourceId")
-     DO UPDATE SET data = EXCLUDED.data, "occurredAt" = EXCLUDED."occurredAt"`,
+     DO UPDATE SET
+       data = EXCLUDED.data,
+       "occurredAt" = EXCLUDED."occurredAt",
+       "segmentId" = EXCLUDED."segmentId",
+       "integrationId" = EXCLUDED."integrationId"`,
     {
       unitId,
       types: deduped.map((r) => r.type),
       sourceIds: deduped.map((r) => r.sourceId),
       occurredAts: deduped.map((r) => r.occurredAt),
       data: deduped.map((r) => JSON.stringify(r.data, stripNullBytes)),
+      segmentIds: deduped.map((r) => r.segmentId ?? null),
+      integrationIds: deduped.map((r) => r.integrationId ?? null),
     },
   )
 }
@@ -45,7 +53,7 @@ export async function getShadowRecordsInWindow(
   windowEnd: Date,
 ): Promise<IShadowRecord[]> {
   return qx.select(
-    `SELECT type, "sourceId", "occurredAt", data
+    `SELECT type, "sourceId", "occurredAt", data, "segmentId", "integrationId"
      FROM integration.sync_shadow_records
      WHERE "unitId" = $(unitId)
        AND "occurredAt" >= $(windowStart)

@@ -63,6 +63,8 @@ export function createEmit(deps: EmitterDeps): Emitter {
           sourceId,
           occurredAt: String(timestamp),
           data: payload,
+          segmentId,
+          integrationId,
         })
         emitted += 1
         continue
