@@ -25,6 +25,7 @@ const log = getServiceChildLogger('syncGitActivityContributors')
 
 const PAGE_SIZE = 5000
 const WATERMARK_MARGIN_MS = 24 * 60 * 60 * 1000
+const MAX_RECONCILE_REMOVAL_SHARE = 0.2
 
 export interface GitActivitySyncOptions {
   full: boolean
@@ -145,6 +146,25 @@ export async function upsertGitActivityContributors(
   )
 }
 
+export async function assertReconcileRemovalIsPlausible(
+  pkgsQx: QueryExecutor,
+  runStartedAt: Date,
+): Promise<void> {
+  const rows: Array<{ total: string; untouched: string }> = await pkgsQx.select(
+    `SELECT count(*) AS total,
+            count(*) FILTER (WHERE updated_at < $(runStartedAt)) AS untouched
+     FROM repo_contributors WHERE source = $(source)`,
+    { source: GIT_ACTIVITY_SOURCE, runStartedAt },
+  )
+  const total = Number(rows[0].total)
+  const untouched = Number(rows[0].untouched)
+  if (total > 0 && untouched / total > MAX_RECONCILE_REMOVAL_SHARE) {
+    throw new Error(
+      `Refusing to reconcile git-activity contributors: snapshot would remove ${untouched} of ${total} existing rows`,
+    )
+  }
+}
+
 export async function removeGitActivityContributorsUntouchedSince(
   pkgsQx: QueryExecutor,
   runStartedAt: Date,
@@ -220,6 +240,7 @@ export async function syncGitActivityContributors(
   }
 
   if (full) {
+    await assertReconcileRemovalIsPlausible(pkgsQx, runStartedAt)
     counts.removed = await removeGitActivityContributorsUntouchedSince(pkgsQx, runStartedAt)
   }
 

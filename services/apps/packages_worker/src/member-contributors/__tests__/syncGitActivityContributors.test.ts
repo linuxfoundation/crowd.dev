@@ -55,12 +55,16 @@ function stubPackagesQx(
   repos: Array<{ id: string; url: string }>,
   storedWatermark: Date | null,
   removed = 0,
+  existing = { total: '0', untouched: '0' },
 ) {
-  const select = vi
-    .fn()
-    .mockResolvedValueOnce([{ nowMs: runStart.getTime() }])
-    .mockResolvedValueOnce(storedWatermark ? [{ watermarkMs: storedWatermark.getTime() }] : [])
-    .mockResolvedValue(repos)
+  const select = vi.fn().mockImplementation(async (sql: string) => {
+    if (sql.includes('"nowMs"')) return [{ nowMs: runStart.getTime() }]
+    if (sql.includes('"watermarkMs"')) {
+      return storedWatermark ? [{ watermarkMs: storedWatermark.getTime() }] : []
+    }
+    if (sql.includes('count(*)')) return [existing]
+    return repos
+  })
   const result = vi
     .fn()
     .mockImplementation((sql: string) => Promise.resolve(sql.startsWith('DELETE') ? removed : 1))
@@ -254,6 +258,27 @@ describe('syncGitActivityContributors', () => {
     expect(counts.removed).toBe(2)
     expect(executeSql.mock.calls[1][1]).toEqual({ limit: 5000 })
     expect(sqlCalls(result, 'DELETE')).toHaveLength(1)
+  })
+
+  it('reconciles when the untouched share stays within the threshold', async () => {
+    stubTinybird([[tbRow()], []])
+    const { result } = stubPackagesQx([repo], watermark, 10, { total: '100', untouched: '10' })
+
+    const counts = await syncGitActivityContributors({ full: true })
+
+    expect(counts.removed).toBe(10)
+    expect(sqlCalls(result, 'DELETE')).toHaveLength(1)
+  })
+
+  it('refuses to reconcile when the snapshot would remove too many existing rows', async () => {
+    stubTinybird([[tbRow()], []])
+    const { result } = stubPackagesQx([repo], watermark, 90, { total: '100', untouched: '90' })
+
+    await expect(syncGitActivityContributors({ full: true })).rejects.toThrow(
+      'would remove 90 of 100 existing rows',
+    )
+    expect(sqlCalls(result, 'DELETE')).toHaveLength(0)
+    expect(sqlCalls(result, 'INSERT INTO repo_contributors_sync_state')).toHaveLength(0)
   })
 
   it('advances the keyset cursor between pages and skips unknown repos', async () => {
