@@ -300,12 +300,24 @@ describe('parseOnboardingRequest', () => {
     expect(result).toEqual({ ok: false, reason: expect.stringContaining('shape') })
   })
 
-  it('truncates very long requests before building the prompt', async () => {
+  it('rejects oversized requests without querying the LLM', async () => {
     const llm = llmAnswering(rawAnswer())
 
-    await parseOnboardingRequest('a'.repeat(50_000), llm)
+    const result = await parseOnboardingRequest('a'.repeat(50_000), llm)
 
-    expect(llm.mock.calls[0][0].length).toBeLessThan(15_000)
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Request text is too long (50000 characters, max 10000)',
+    })
+    expect(llm).not.toHaveBeenCalled()
+  })
+
+  it('accepts a request exactly at the length limit', async () => {
+    const llm = llmAnswering(rawAnswer())
+
+    const result = await parseOnboardingRequest('a'.repeat(10_000), llm)
+
+    expect(result.ok).toBe(true)
   })
 })
 

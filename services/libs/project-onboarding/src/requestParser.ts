@@ -197,9 +197,16 @@ export async function parseOnboardingRequest(
   text: string,
   queryLlm: OnboardingRequestLlm,
 ): Promise<ParseOnboardingRequestResult> {
-  const requestText = text.trim().slice(0, MAX_REQUEST_TEXT_LENGTH)
+  const requestText = text.trim()
   if (!requestText) {
     return { ok: false, reason: 'Request text is empty' }
+  }
+
+  if (requestText.length > MAX_REQUEST_TEXT_LENGTH) {
+    return {
+      ok: false,
+      reason: `Request text is too long (${requestText.length} characters, max ${MAX_REQUEST_TEXT_LENGTH})`,
+    }
   }
 
   let answer: string | null | undefined
