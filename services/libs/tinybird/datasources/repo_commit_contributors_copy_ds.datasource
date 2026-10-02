@@ -1,0 +1,22 @@
+DESCRIPTION >
+    Precomputed all-time commit authorship per (channel, memberId, platform, username) over
+    authored-commit and co-authored-commit activities, excluding bot members. Rebuilt nightly by
+    repo_commit_contributors_copy.pipe. Read in sorting-key order by the packages worker
+    git-activity contributors sync (CM-1824), which maps `channel` to a packages-db repo and
+    `username` to an email or GitHub login identity.
+
+TAGS "Member contributors", "Repository URLs"
+
+SCHEMA >
+    `channel` String,
+    `memberId` String,
+    `platform` LowCardinality(String),
+    `username` String,
+    `commitCount` UInt64,
+    `firstCommitAt` DateTime64(3),
+    `lastCommitAt` DateTime64(3),
+    `computedAt` DateTime
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY channel, memberId, platform, username
+ENGINE_VER computedAt

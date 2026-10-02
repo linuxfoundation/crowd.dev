@@ -1,0 +1,31 @@
+DESCRIPTION >
+    Nightly copy pipe that precomputes all-time commit authorship per
+    (channel, memberId, platform, username) for the packages worker git-activity
+    contributors sync (CM-1824). Authored and co-authored commits are summed into one
+    count; bot members are excluded.
+
+TAGS "Member contributors", "Repository URLs"
+
+NODE repo_commit_contributors_copy_data
+SQL >
+    SELECT
+        channel,
+        memberId,
+        platform,
+        username,
+        count() AS commitCount,
+        min(timestamp) AS firstCommitAt,
+        max(timestamp) AS lastCommitAt,
+        now() AS computedAt
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        type IN ('authored-commit', 'co-authored-commit')
+        AND channel != ''
+        AND username != ''
+        AND memberId NOT IN (SELECT id FROM members_sorted WHERE isBot = 1)
+    GROUP BY channel, memberId, platform, username
+
+TYPE COPY
+TARGET_DATASOURCE repo_commit_contributors_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 3 * * *
