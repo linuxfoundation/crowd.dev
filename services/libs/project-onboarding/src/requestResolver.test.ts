@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { IParsedOnboardingRequest } from './requestParser'
 import {
+  CdpSegmentLookupResult,
   ICdpSegmentMatch,
   IOnboardingRequestLookups,
   IPccCandidate,
@@ -33,7 +34,7 @@ function segment(overrides: Partial<ICdpSegmentMatch> = {}): ICdpSegmentMatch {
 
 function lookups(
   candidates: IPccCandidate[],
-  cdpSegment: ICdpSegmentMatch | null = null,
+  cdpSegment: CdpSegmentLookupResult = null,
 ): IOnboardingRequestLookups {
   return {
     findPccCandidates: vi.fn().mockResolvedValue(candidates),
@@ -292,6 +293,19 @@ describe('resolveOnboardingRequest', () => {
     const result = await resolveOnboardingRequest(request(), lookups([first, second]))
 
     expect(result).toMatchObject({ kind: 'ambiguous', candidates: [first, second] })
+  })
+
+  it('is ambiguous when several CDP segments share the PCC project id', async () => {
+    const pccProject = candidate()
+    const duplicates = [segment({ segmentId: 'seg-1' }), segment({ segmentId: 'seg-2' })]
+
+    const result = await resolveOnboardingRequest(request(), lookups([pccProject], { duplicates }))
+
+    expect(result).toEqual({
+      kind: 'ambiguous',
+      reason: 'Several CDP segments share the PCC project id',
+      candidates: [pccProject],
+    })
   })
 
   it('is ambiguous when the project name is unknown', async () => {

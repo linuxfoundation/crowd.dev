@@ -21,9 +21,15 @@ export interface ICdpSegmentMatch {
   integration: CdpIntegrationState
 }
 
+export interface IDuplicateCdpSegments {
+  duplicates: ICdpSegmentMatch[]
+}
+
+export type CdpSegmentLookupResult = ICdpSegmentMatch | IDuplicateCdpSegments | null
+
 export interface IOnboardingRequestLookups {
   findPccCandidates?: (projectName: string) => Promise<IPccCandidate[]>
-  findCdpSegmentByPccProject: (pccProjectId: string) => Promise<ICdpSegmentMatch | null>
+  findCdpSegmentByPccProject: (pccProjectId: string) => Promise<CdpSegmentLookupResult>
 }
 
 export type CdpIntegrationAction = 'create_integration' | 'update_integration' | 'human_review'
@@ -142,6 +148,10 @@ export function assessPccCandidates(
   }
 }
 
+function hasDuplicateSegments(result: CdpSegmentLookupResult): result is IDuplicateCdpSegments {
+  return result !== null && 'duplicates' in result
+}
+
 function hasNoRepositories(request: IParsedOnboardingRequest): boolean {
   return request.githubRepoUrls.length === 0 && request.nonGithubRepoUrls.length === 0
 }
@@ -182,6 +192,10 @@ async function resolveStrongMatch(
   const segment = await lookups.findCdpSegmentByPccProject(pccProject.projectId)
   if (!segment) {
     return { kind: 'lf_not_in_cdp', pccProject }
+  }
+
+  if (hasDuplicateSegments(segment)) {
+    return ambiguous('Several CDP segments share the PCC project id', [pccProject])
   }
 
   return {
