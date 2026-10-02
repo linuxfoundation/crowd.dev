@@ -17,7 +17,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QueryExecutor } from '../queryExecutor'
-import { buildTimeline, resolveAffiliationsByMemberIds, selectPrimaryWorkExperience } from './index'
+import {
+  buildTimeline,
+  resolveAffiliationsByMemberIds,
+  resolveCurrentAffiliationsByMemberIds,
+  selectPrimaryWorkExperience,
+} from './index'
 import type { IWorkExperienceResolution } from './index'
 
 // Mocks are hoisted before imports — intercept transitive dependencies that
@@ -807,5 +812,229 @@ describe('resolveAffiliationsByMemberIds', () => {
     mockSelect.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('query timeout'))
 
     await expect(resolveAffiliationsByMemberIds(mockQx, ['m1'])).rejects.toThrow('query timeout')
+  })
+})
+
+describe('resolveCurrentAffiliationsByMemberIds', () => {
+  let mockSelect: ReturnType<typeof vi.fn>
+  let mockQx: QueryExecutor
+
+  beforeEach(() => {
+    mockSelect = vi.fn()
+    mockQx = { select: mockSelect } as unknown as QueryExecutor
+  })
+
+  it('returns an empty map without querying when no member ids are given', async () => {
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, [])
+
+    expect(result.size).toBe(0)
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('returns null for a member with no affiliation rows', async () => {
+    mockSelect.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')).toBeNull()
+  })
+
+  it('returns the ongoing work experience', async () => {
+    const row = makeRow({ memberId: 'm1', organizationId: 'org1', dateStart: '2020-01-01' })
+    mockSelect.mockResolvedValueOnce([row]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')?.organizationId).toBe('org1')
+  })
+
+  it('returns null when the only work experience has ended', async () => {
+    const row = makeRow({
+      memberId: 'm1',
+      organizationId: 'org1',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-12-31',
+    })
+    mockSelect.mockResolvedValueOnce([row]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')).toBeNull()
+  })
+
+  it('falls back to the undated org when no dated row exists', async () => {
+    const row = makeRow({ memberId: 'm1', organizationId: 'undated-org' })
+    mockSelect.mockResolvedValueOnce([row]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')?.organizationId).toBe('undated-org')
+  })
+
+  it('prefers the active manual affiliation over an active work experience', async () => {
+    const workExp = makeRow({
+      id: 'we1',
+      memberId: 'm1',
+      organizationId: 'work',
+      dateStart: '2018-01-01',
+    })
+    const manual = makeRow({
+      id: 'ma1',
+      memberId: 'm1',
+      organizationId: 'manual',
+      dateStart: '2020-01-01',
+      segmentId: 'seg-1',
+    })
+    mockSelect.mockResolvedValueOnce([workExp]).mockResolvedValueOnce([manual])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')?.organizationId).toBe('manual')
+  })
+
+  it('ignores an ended row and keeps the still-active one', async () => {
+    const ended = makeRow({
+      id: 'we1',
+      memberId: 'm1',
+      organizationId: 'old',
+      dateStart: '2015-01-01',
+      dateEnd: '2016-12-31',
+    })
+    const active = makeRow({
+      id: 'we2',
+      memberId: 'm1',
+      organizationId: 'new',
+      dateStart: '2021-01-01',
+    })
+    mockSelect.mockResolvedValueOnce([ended, active]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1'])
+
+    expect(result.get('m1')?.organizationId).toBe('new')
+  })
+
+  it('resolves each requested member independently', async () => {
+    const m1 = makeRow({ id: 'r1', memberId: 'm1', organizationId: 'o1', dateStart: '2020-01-01' })
+    const m2 = makeRow({
+      id: 'r2',
+      memberId: 'm2',
+      organizationId: 'o2',
+      dateStart: '2010-01-01',
+      dateEnd: '2011-01-01',
+    })
+    mockSelect.mockResolvedValueOnce([m1, m2]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(mockQx, ['m1', 'm2', 'm3'])
+
+    expect(result.get('m1')?.organizationId).toBe('o1')
+    expect(result.get('m2')).toBeNull()
+    expect(result.get('m3')).toBeNull()
+  })
+
+  it('prefers an undated preferred org over an older undated rival', async () => {
+    const older = makeRow({
+      id: 'r1',
+      memberId: 'm1',
+      organizationId: 'placeholder',
+      createdAt: '2019-01-01T00:00:00.000Z',
+    })
+    const preferred = makeRow({
+      id: 'r2',
+      memberId: 'm1',
+      organizationId: 'preferred',
+      createdAt: '2021-01-01T00:00:00.000Z',
+    })
+    mockSelect.mockResolvedValueOnce([older, preferred]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(
+      mockQx,
+      ['m1'],
+      new Set(['preferred']),
+    )
+
+    expect(result.get('m1')?.organizationId).toBe('preferred')
+  })
+
+  it('prefers the active preferred org over a larger active rival', async () => {
+    const rival = makeRow({
+      id: 'r1',
+      memberId: 'm1',
+      organizationId: 'rival',
+      dateStart: '2015-01-01',
+      memberCount: 1000,
+    })
+    const preferred = makeRow({
+      id: 'r2',
+      memberId: 'm1',
+      organizationId: 'preferred',
+      dateStart: '2022-01-01',
+      memberCount: 1,
+    })
+    mockSelect.mockResolvedValueOnce([rival, preferred]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(
+      mockQx,
+      ['m1'],
+      new Set(['preferred']),
+    )
+
+    expect(result.get('m1')?.organizationId).toBe('preferred')
+  })
+
+  it('does not revive an ended preferred org', async () => {
+    const ended = makeRow({
+      id: 'r1',
+      memberId: 'm1',
+      organizationId: 'preferred',
+      dateStart: '2015-01-01',
+      dateEnd: '2016-01-01',
+    })
+    const active = makeRow({
+      id: 'r2',
+      memberId: 'm1',
+      organizationId: 'other',
+      dateStart: '2020-01-01',
+    })
+    mockSelect.mockResolvedValueOnce([ended, active]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(
+      mockQx,
+      ['m1'],
+      new Set(['preferred']),
+    )
+
+    expect(result.get('m1')?.organizationId).toBe('other')
+  })
+
+  it('does not let an undated preferred org beat a dated current job', async () => {
+    const undatedPreferred = makeRow({ id: 'r1', memberId: 'm1', organizationId: 'preferred' })
+    const currentJob = makeRow({
+      id: 'r2',
+      memberId: 'm1',
+      organizationId: 'employer',
+      dateStart: '2024-01-01',
+    })
+    mockSelect.mockResolvedValueOnce([undatedPreferred, currentJob]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(
+      mockQx,
+      ['m1'],
+      new Set(['preferred']),
+    )
+
+    expect(result.get('m1')?.organizationId).toBe('employer')
+  })
+
+  it('falls back to the regular ranking when no preferred org is present', async () => {
+    const row = makeRow({ memberId: 'm1', organizationId: 'other', dateStart: '2020-01-01' })
+    mockSelect.mockResolvedValueOnce([row]).mockResolvedValueOnce([])
+
+    const result = await resolveCurrentAffiliationsByMemberIds(
+      mockQx,
+      ['m1'],
+      new Set(['preferred']),
+    )
+
+    expect(result.get('m1')?.organizationId).toBe('other')
   })
 })
