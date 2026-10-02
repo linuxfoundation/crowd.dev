@@ -13,27 +13,35 @@ export async function recordShadowRecords(
     return
   }
 
-  const byKey = new Map(records.map((r) => [JSON.stringify([r.type, r.sourceId]), r]))
+  const byKey = new Map(
+    records.map((r) => [JSON.stringify([r.type, r.sourceId, r.segmentId, r.integrationId]), r]),
+  )
   const deduped = [...byKey.values()]
 
   await qx.result(
     `INSERT INTO integration.sync_shadow_records
-       ("unitId", type, "sourceId", "occurredAt", data)
+       ("unitId", type, "sourceId", "occurredAt", data, "segmentId", "integrationId")
      SELECT $(unitId)::uuid, u.*
      FROM unnest(
        $(types)::text[],
        $(sourceIds)::text[],
        $(occurredAts)::timestamptz[],
-       $(data)::jsonb[]
+       $(data)::jsonb[],
+       $(segmentIds)::uuid[],
+       $(integrationIds)::uuid[]
      ) u
-     ON CONFLICT ("unitId", type, "sourceId")
-     DO UPDATE SET data = EXCLUDED.data, "occurredAt" = EXCLUDED."occurredAt"`,
+     ON CONFLICT ("unitId", type, "sourceId", "segmentId", "integrationId")
+     DO UPDATE SET
+       data = EXCLUDED.data,
+       "occurredAt" = EXCLUDED."occurredAt"`,
     {
       unitId,
       types: deduped.map((r) => r.type),
       sourceIds: deduped.map((r) => r.sourceId),
       occurredAts: deduped.map((r) => r.occurredAt),
       data: deduped.map((r) => JSON.stringify(r.data, stripNullBytes)),
+      segmentIds: deduped.map((r) => r.segmentId),
+      integrationIds: deduped.map((r) => r.integrationId),
     },
   )
 }
@@ -45,7 +53,7 @@ export async function getShadowRecordsInWindow(
   windowEnd: Date,
 ): Promise<IShadowRecord[]> {
   return qx.select(
-    `SELECT type, "sourceId", "occurredAt", data
+    `SELECT type, "sourceId", "occurredAt", data, "segmentId", "integrationId"
      FROM integration.sync_shadow_records
      WHERE "unitId" = $(unitId)
        AND "occurredAt" >= $(windowStart)

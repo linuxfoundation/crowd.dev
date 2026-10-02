@@ -2,6 +2,7 @@ import type { ZodType } from 'zod'
 
 import type { Logger } from '@crowd/logging'
 
+import type { EmitOverrides } from './emit'
 import type { ConnectorHttp, ResponseInterpreter } from './http/client'
 import type { BudgetProbe, TokenMinter, TokenPool } from './pool/tokenPool'
 
@@ -26,7 +27,7 @@ export interface Credential {
 export interface SyncContext {
   channel: Channel
   watermark: Record<string, unknown> | null
-  emit: (records: unknown[]) => Promise<void>
+  emit: (records: unknown[], overrides?: EmitOverrides) => Promise<void>
   commitWatermark: (watermark: Record<string, unknown>) => Promise<void>
   hasRunBudget: () => boolean
   http: ConnectorHttp
