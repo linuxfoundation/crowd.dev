@@ -135,6 +135,76 @@ describe('parseOnboardingRequest', () => {
     expect(result).toMatchObject({ ok: true, request: { linksToFollow: [] } })
   })
 
+  it('requires the repository host to match the request', async () => {
+    const text = 'Please onboard https://gitlab.com/acme/tool'
+    const llm = llmAnswering(rawAnswer({ repoUrls: ['https://github.com/acme/tool'] }))
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({ ok: true, request: { githubRepoUrls: [] } })
+  })
+
+  it('accepts scp-style and ssh clone URLs for non-GitHub hosts', async () => {
+    const text = 'clone git@gitlab.com:acme/tool.git or ssh://git@bitbucket.org/acme/other.git'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://gitlab.com/acme/tool', 'https://bitbucket.org/acme/other'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: {
+        nonGithubRepoUrls: ['https://gitlab.com/acme/tool', 'https://bitbucket.org/acme/other'],
+      },
+    })
+  })
+
+  it('does not accept a prefix of a dotted repository name', async () => {
+    const text = 'Please onboard vercel/next.js'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://github.com/vercel/next', 'https://github.com/vercel/next.js'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: { githubRepoUrls: ['https://github.com/vercel/next.js'] },
+    })
+  })
+
+  it('drops a link whose query string was not in the request', async () => {
+    const text = 'Repos are listed at https://acme.org/projects'
+    const llm = llmAnswering(rawAnswer({ linkUrls: ['https://acme.org/projects?target=evil'] }))
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({ ok: true, request: { linksToFollow: [] } })
+  })
+
+  it('keeps a deep link of a repository that is also being onboarded', async () => {
+    const text =
+      'Onboard https://github.com/acme/one, the list is in https://github.com/acme/one/wiki/Repos'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://github.com/acme/one'],
+        linkUrls: ['https://github.com/acme/one/wiki/Repos'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: { linksToFollow: ['https://github.com/acme/one/wiki/Repos'] },
+    })
+  })
+
   it('ignores non-web link protocols', async () => {
     const text = 'see ftp://acme.org/list'
     const llm = llmAnswering(rawAnswer({ linkUrls: ['ftp://acme.org/list'] }))

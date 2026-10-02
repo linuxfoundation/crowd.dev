@@ -64,57 +64,68 @@ Respond with ONLY a JSON object, no other text, matching exactly this shape:
 {"repoUrls": string[], "linkUrls": string[], "projectName": string | null, "declaredLf": boolean | null, "asksAboutHierarchy": boolean}`
 }
 
-const NEEDLE_PRECEDING_WORD_CHARS = /[a-z0-9_.@-]/
-const NEEDLE_FOLLOWING_WORD_CHARS = /[a-z0-9_-]/
+const URL_TOKEN_PATTERN =
+  /(?:[a-z][a-z0-9+.-]*:\/\/|git@)[^\s<>"'`]+|(?<![\w./@:-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"'`]*)?/gi
+const BARE_REPO_PATTERN = /(?<![\w./@:-])[\w.-]+\/[\w.-]+(?![\w/-])/g
+const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?)\]]+$/
 
-function stripProtocolAndTrailingNoise(url: string): string {
-  return url
-    .toLowerCase()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '')
-}
-
-function containsToken(text: string, needle: string): boolean {
-  const haystack = text.toLowerCase()
-  let index = haystack.indexOf(needle)
-
-  while (index !== -1) {
-    const before = haystack[index - 1] ?? ''
-    const after = haystack[index + needle.length] ?? ''
-    const isBounded =
-      !NEEDLE_PRECEDING_WORD_CHARS.test(before) && !NEEDLE_FOLLOWING_WORD_CHARS.test(after)
-    if (isBounded) {
-      return true
-    }
-    index = haystack.indexOf(needle, index + 1)
-  }
-
-  return false
+interface IRequestEvidence {
+  repoUrls: Set<string>
+  comparableLinks: Set<string>
 }
 
 function uniqueInOrder(values: string[]): string[] {
   return [...new Set(values)]
 }
 
+function matchTokens(text: string, pattern: RegExp): string[] {
+  return (text.match(pattern) ?? []).map((token) => token.replace(TRAILING_PUNCTUATION_PATTERN, ''))
+}
+
+function toComparableLink(raw: string): string | null {
+  const trimmed = raw.trim()
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+
+  let url: URL
+  try {
+    url = new URL(withScheme)
+  } catch {
+    return null
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    return null
+  }
+
+  const host = url.host.replace(/^www\./, '')
+  const path = url.pathname.replace(/\/+$/, '').replace(/\.git$/i, '')
+  return `${host}${path}${url.search}${url.hash}`.toLowerCase()
+}
+
+function collectRequestEvidence(requestText: string): IRequestEvidence {
+  const urlTokens = matchTokens(requestText, URL_TOKEN_PATTERN)
+  const bareRepoTokens = matchTokens(requestText, BARE_REPO_PATTERN)
+
+  const canonicalRepoUrls = [
+    ...urlTokens.map((token) => canonicalizeRepoUrl(token)?.url),
+    ...bareRepoTokens.map((token) => canonicalizeRepoUrl(`https://github.com/${token}`)?.url),
+  ].filter((url): url is string => !!url)
+
+  const comparableLinks = urlTokens.map(toComparableLink).filter((link): link is string => !!link)
+
+  return { repoUrls: new Set(canonicalRepoUrls), comparableLinks: new Set(comparableLinks) }
+}
+
 function splitRepoUrls(
   repoUrls: string[],
-  requestText: string,
+  evidence: IRequestEvidence,
 ): Pick<IParsedOnboardingRequest, 'githubRepoUrls' | 'nonGithubRepoUrls'> {
   const github: string[] = []
   const nonGithub: string[] = []
 
   for (const raw of repoUrls) {
     const canonical = canonicalizeRepoUrl(raw)
-    if (!canonical) {
-      continue
-    }
-
-    const needle = canonical.isGithub
-      ? `${canonical.owner}/${canonical.repo}`
-      : stripProtocolAndTrailingNoise(canonical.url)
-
-    if (!containsToken(requestText, needle)) {
+    if (!canonical || !evidence.repoUrls.has(canonical.url)) {
       continue
     }
 
@@ -128,34 +139,29 @@ function splitRepoUrls(
   return { githubRepoUrls: uniqueInOrder(github), nonGithubRepoUrls: uniqueInOrder(nonGithub) }
 }
 
-function toLinkToFollow(raw: string, requestText: string, excludedUrls: Set<string>): string[] {
-  let url: URL
-  try {
-    url = new URL(raw.trim())
-  } catch {
+function toLinkToFollow(
+  raw: string,
+  evidence: IRequestEvidence,
+  requestedRepoLinks: Set<string>,
+): string[] {
+  const comparable = toComparableLink(raw)
+  if (!comparable || !evidence.comparableLinks.has(comparable)) {
     return []
   }
 
-  const isWebLink = url.protocol === 'https:' || url.protocol === 'http:'
-  if (
-    !isWebLink ||
-    !containsToken(requestText, stripProtocolAndTrailingNoise(`${url.host}${url.pathname}`))
-  ) {
-    return []
-  }
-
-  const canonicalUrl = canonicalizeRepoUrl(raw)?.url
-  return canonicalUrl && excludedUrls.has(canonicalUrl) ? [] : [url.toString()]
+  return requestedRepoLinks.has(comparable) ? [] : [raw.trim()]
 }
 
 function extractLinksToFollow(
   linkUrls: string[],
-  requestText: string,
-  excludedUrls: Set<string>,
+  evidence: IRequestEvidence,
+  requestedRepoUrls: string[],
 ): string[] {
-  return uniqueInOrder(
-    linkUrls.flatMap((raw) => toLinkToFollow(raw, requestText, excludedUrls)),
-  ).slice(0, MAX_LINKS_TO_FOLLOW)
+  const requestedRepoLinks = new Set(
+    requestedRepoUrls.map(toComparableLink).filter((link): link is string => !!link),
+  )
+  const links = linkUrls.flatMap((raw) => toLinkToFollow(raw, evidence, requestedRepoLinks))
+  return uniqueInOrder(links).slice(0, MAX_LINKS_TO_FOLLOW)
 }
 
 function normalizeProjectName(projectName: string | null): string | null {
@@ -194,12 +200,12 @@ export async function parseOnboardingRequest(
     return { ok: false, reason: `Unexpected LLM response shape: ${JSON.stringify(parsed)}` }
   }
 
-  const { githubRepoUrls, nonGithubRepoUrls } = splitRepoUrls(parsed.repoUrls, requestText)
-  const linksToFollow = extractLinksToFollow(
-    parsed.linkUrls,
-    requestText,
-    new Set([...githubRepoUrls, ...nonGithubRepoUrls]),
-  )
+  const evidence = collectRequestEvidence(requestText)
+  const { githubRepoUrls, nonGithubRepoUrls } = splitRepoUrls(parsed.repoUrls, evidence)
+  const linksToFollow = extractLinksToFollow(parsed.linkUrls, evidence, [
+    ...githubRepoUrls,
+    ...nonGithubRepoUrls,
+  ])
 
   return {
     ok: true,
