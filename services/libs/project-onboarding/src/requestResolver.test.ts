@@ -263,6 +263,37 @@ describe('resolveOnboardingRequest', () => {
     expect(deps.findCdpSegmentByPccProject).not.toHaveBeenCalled()
   })
 
+  it('prefers a separator-insensitive exact match over a closer scoring name', async () => {
+    const exact = candidate({
+      projectId: 'pcc-exact',
+      name: 'c++-tools',
+      slug: 'cpp-tools',
+      score: 0.95,
+    })
+    const closer = candidate({
+      projectId: 'pcc-closer',
+      name: 'c++ tool',
+      slug: 'c++-tool',
+      score: 0.98,
+    })
+
+    const result = await resolveOnboardingRequest(
+      request({ projectName: 'C++ Tools' }),
+      lookups([closer, exact]),
+    )
+
+    expect(result).toEqual({ kind: 'lf_not_in_cdp', pccProject: exact })
+  })
+
+  it('is ambiguous when several leaf projects match the name exactly with different scores', async () => {
+    const first = candidate({ projectId: 'pcc-1', name: 'Acme', slug: 'acme', score: 1 })
+    const second = candidate({ projectId: 'pcc-2', name: 'ACME', slug: 'acme-two', score: 0.9 })
+
+    const result = await resolveOnboardingRequest(request(), lookups([first, second]))
+
+    expect(result).toMatchObject({ kind: 'ambiguous', candidates: [first, second] })
+  })
+
   it('is ambiguous when the project name is unknown', async () => {
     const result = await resolveOnboardingRequest(
       request({ projectName: null }),

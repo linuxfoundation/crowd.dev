@@ -81,11 +81,17 @@ function isExactMatch(projectName: string, candidate: IPccCandidate): boolean {
   )
 }
 
-function rankCandidates(candidates: IPccCandidate[]): IPccCandidate[] {
-  return [...candidates].sort((a, b) => b.score - a.score || Number(b.isLeaf) - Number(a.isLeaf))
+function rankCandidates(projectName: string, candidates: IPccCandidate[]): IPccCandidate[] {
+  return [...candidates].sort(
+    (a, b) =>
+      Number(isExactMatch(projectName, b)) - Number(isExactMatch(projectName, a)) ||
+      b.score - a.score ||
+      Number(b.isLeaf) - Number(a.isLeaf),
+  )
 }
 
 function findTiedCandidates(
+  projectName: string,
   ranked: IPccCandidate[],
   best: IPccCandidate | undefined,
 ): IPccCandidate[] {
@@ -93,8 +99,13 @@ function findTiedCandidates(
     return []
   }
 
+  const bestIsExact = isExactMatch(projectName, best)
+
   return ranked.filter(
-    (candidate) => candidate.score === best.score && candidate.isLeaf === best.isLeaf,
+    (candidate) =>
+      candidate.isLeaf === best.isLeaf &&
+      isExactMatch(projectName, candidate) === bestIsExact &&
+      (bestIsExact || candidate.score === best.score),
   )
 }
 
@@ -118,14 +129,14 @@ export function assessPccCandidates(
   projectName: string,
   candidates: IPccCandidate[],
 ): IPccMatchAssessment {
-  const ranked = rankCandidates(candidates)
+  const ranked = rankCandidates(projectName, candidates)
   const [best, runnerUp] = ranked
 
   return {
     level: toMatchLevel(projectName, best),
     best: best ?? null,
     weakCandidates: ranked.filter((candidate) => candidate.score >= PCC_MATCH_THRESHOLDS.weak),
-    tiedCandidates: findTiedCandidates(ranked, best),
+    tiedCandidates: findTiedCandidates(projectName, ranked, best),
     margin: best ? best.score - (runnerUp?.score ?? 0) : null,
     thresholds: PCC_MATCH_THRESHOLDS,
   }
