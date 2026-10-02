@@ -30,6 +30,7 @@ export interface IRequestClassificationAlert {
   sourceUrl: string
   repoUrls: string[]
   resolution: OnboardingResolution
+  dryRun: boolean
 }
 
 export interface IClassifiedRows {
@@ -93,6 +94,7 @@ export async function classifyDiscussionRows(
   rows: IDbProjectCatalogCreate[],
   requestText: string,
   deps: IRequestClassificationDeps,
+  dryRun = false,
 ): Promise<IClassifiedRows> {
   const trace = createClassificationTrace()
   const resolution = await resolveRequestText(requestText, deps, trace)
@@ -103,21 +105,22 @@ export async function classifyDiscussionRows(
     'Onboarding request classified.',
   )
 
+  const alert: IRequestClassificationAlert = {
+    sourceUrl: rows[0].sourceUrl ?? '',
+    repoUrls: rows.map((row) => row.repoUrl),
+    resolution,
+    dryRun,
+  }
+
   if (resolution.kind === 'non_lf_new_project') {
-    return { rows, alerts: [], nodes: [node] }
+    return { rows, alerts: dryRun ? [alert] : [], nodes: [node] }
   }
 
   const skipReason = toSkipReason(resolution)
 
   return {
     rows: rows.map((row) => ({ ...row, action: 'skip', skipReason })),
-    alerts: [
-      {
-        sourceUrl: rows[0].sourceUrl ?? '',
-        repoUrls: rows.map((row) => row.repoUrl),
-        resolution,
-      },
-    ],
+    alerts: [alert],
     nodes: [node],
   }
 }
@@ -140,6 +143,7 @@ export async function classifyDiscussions(
   requestTextBySourceUrl: Map<string, string>,
   deps: IRequestClassificationDeps,
   onDiscussionClassified: () => void = () => undefined,
+  dryRun = false,
 ): Promise<IClassifiedRows> {
   const classifiedRows = new Map<IDbProjectCatalogCreate, IDbProjectCatalogCreate>()
   const alerts: IRequestClassificationAlert[] = []
@@ -151,7 +155,7 @@ export async function classifyDiscussions(
       continue
     }
 
-    const classified = await classifyDiscussionRows(discussionRows, requestText, deps)
+    const classified = await classifyDiscussionRows(discussionRows, requestText, deps, dryRun)
     classified.rows.forEach((row, index) => classifiedRows.set(discussionRows[index], row))
     alerts.push(...classified.alerts)
     nodes.push(...classified.nodes)

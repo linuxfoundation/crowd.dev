@@ -127,11 +127,16 @@ function heartbeatClassification(): void {
   Context.current().heartbeat({ stage: 'classification' })
 }
 
+function isRequestClassificationDryRun(): boolean {
+  return process.env['CROWD_ONBOARDING_REQUEST_DRY_RUN'] === 'true'
+}
+
 async function classifyAcceptedRows(
   qx: ReturnType<typeof pgpQx>,
   accepted: IDbProjectCatalogCreate[],
   requestTextBySourceUrl: Map<string, string>,
   provenance: IDbProjectCatalogCreate['provenance'],
+  dryRun: boolean,
 ): Promise<IClassifiedRows> {
   if (
     !isGithubDiscussionProvenance(provenance) ||
@@ -142,7 +147,7 @@ async function classifyAcceptedRows(
   }
 
   return withRequestClassificationDeps(qx, (deps) =>
-    classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification),
+    classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification, dryRun),
   )
 }
 
@@ -341,18 +346,20 @@ export async function processDataset(
     stream.destroy()
   }
 
+  const dryRun = isRequestClassificationDryRun() && isGithubDiscussionProvenance(source.provenance)
   const classified = await classifyAcceptedRows(
     qx,
     accepted,
     requestTextBySourceUrl,
     source.provenance,
+    dryRun,
   )
 
   // Alerts go out before the insert: once rows exist a retry no longer rebuilds them,
   // so a crash in between must duplicate an alert rather than lose it.
   await sendRequestClassificationAlerts(classified.alerts)
 
-  const toInsert = [...classified.rows, ...skippedInCdp]
+  const toInsert = dryRun ? skippedInCdp : [...classified.rows, ...skippedInCdp]
   if (toInsert.length > 0) {
     await bulkInsertProjectCatalog(qx, toInsert)
   }
@@ -377,6 +384,7 @@ export async function processDataset(
       totalAccepted: accepted.length,
       totalClassificationAlerts: classified.alerts.length,
       classificationNodes: countNodes(classified.nodes),
+      dryRun,
       truncated,
       elapsedSeconds,
     },
