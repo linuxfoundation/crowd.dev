@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { createPccCandidatesLookup, IPccCandidateRow } from '@crowd/project-onboarding'
@@ -31,9 +32,16 @@ function createQueryLlm(qx: QueryExecutor): IRequestClassificationDeps['queryLlm
 }
 
 function createSnowflakeClient(): SnowflakeClient | null {
-  return process.env.CROWD_SNOWFLAKE_ACCOUNT
-    ? SnowflakeClient.fromEnv({ parentLog: svc.log })
-    : null
+  if (!process.env.CROWD_SNOWFLAKE_ACCOUNT) {
+    return null
+  }
+
+  try {
+    return SnowflakeClient.fromEnv({ parentLog: svc.log })
+  } catch (err) {
+    svc.log.warn({ error: getErrorMessage(err) }, 'Snowflake client could not be created.')
+    return null
+  }
 }
 
 export async function withRequestClassificationDeps<T>(

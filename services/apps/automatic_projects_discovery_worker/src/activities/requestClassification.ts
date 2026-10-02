@@ -113,6 +113,7 @@ export async function classifyDiscussions(
   rows: IDbProjectCatalogCreate[],
   requestTextBySourceUrl: Map<string, string>,
   deps: IRequestClassificationDeps,
+  onDiscussionClassified: () => void = () => undefined,
 ): Promise<IClassifiedRows> {
   const classifiedRows = new Map<IDbProjectCatalogCreate, IDbProjectCatalogCreate>()
   const alerts: IRequestClassificationAlert[] = []
@@ -126,6 +127,7 @@ export async function classifyDiscussions(
     const classified = await classifyDiscussionRows(discussionRows, requestText, deps)
     classified.rows.forEach((row, index) => classifiedRows.set(discussionRows[index], row))
     alerts.push(...classified.alerts)
+    onDiscussionClassified()
   }
 
   return { rows: rows.map((row) => classifiedRows.get(row) ?? row), alerts }

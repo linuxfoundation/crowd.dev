@@ -138,6 +138,19 @@ describe('classifyDiscussions', () => {
     expect(classificationDeps.queryLlm).toHaveBeenCalledTimes(2)
   })
 
+  it('reports progress after each classified discussion', async () => {
+    const second = row({ sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/2' })
+    const texts = new Map([
+      [SOURCE_URL, REQUEST_TEXT],
+      [second.sourceUrl as string, REQUEST_TEXT],
+    ])
+    const onDiscussionClassified = vi.fn()
+
+    await classifyDiscussions([row(), second], texts, deps(llmAnswer(), []), onDiscussionClassified)
+
+    expect(onDiscussionClassified).toHaveBeenCalledTimes(2)
+  })
+
   it('leaves rows without a request text untouched', async () => {
     const rows = [row({ sourceUrl: null })]
     const classificationDeps = deps(llmAnswer(), [pccCandidate()])

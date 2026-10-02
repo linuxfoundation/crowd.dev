@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractDiscussionRepoUrls, extractRepoUrls, stripNonProseSections } from './parse'
+import {
+  buildDiscussionRequestText,
+  extractDiscussionRepoUrls,
+  extractRepoUrls,
+  stripNonProseSections,
+} from './parse'
 
 describe('extractRepoUrls', () => {
   it('extracts a plain https URL', () => {
@@ -171,5 +176,32 @@ describe('extractDiscussionRepoUrls', () => {
     })
 
     expect(result.repoUrls).toEqual(['https://github.com/reshaprio/reshapr'])
+  })
+})
+
+describe('buildDiscussionRequestText', () => {
+  it('joins the title with the prose of the body', () => {
+    expect(
+      buildDiscussionRequestText({
+        title: 'Onboard Acme',
+        body: 'Repo: https://github.com/acme/one',
+      }),
+    ).toBe('Onboard Acme\n\nRepo: https://github.com/acme/one')
+  })
+
+  it('leaves out code blocks, comments and quotes from the body', () => {
+    const body = [
+      'Real request for Acme',
+      '<!-- project: Hidden -->',
+      '> project: Quoted',
+      '```',
+      'project: Fenced',
+      '```',
+    ].join('\n')
+
+    const text = buildDiscussionRequestText({ title: 'Title', body })
+
+    expect(text).toContain('Real request for Acme')
+    expect(text).not.toMatch(/Hidden|Quoted|Fenced/)
   })
 })

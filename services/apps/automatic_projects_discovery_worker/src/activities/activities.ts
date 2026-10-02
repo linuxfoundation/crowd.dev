@@ -122,6 +122,10 @@ export async function commitSourceCursor(
   log.info({ sourceName, cursor }, 'Source cursor committed.')
 }
 
+function heartbeatClassification(): void {
+  Context.current().heartbeat({ stage: 'classification' })
+}
+
 async function classifyAcceptedRows(
   qx: ReturnType<typeof pgpQx>,
   accepted: IDbProjectCatalogCreate[],
@@ -137,7 +141,7 @@ async function classifyAcceptedRows(
   }
 
   return withRequestClassificationDeps(qx, (deps) =>
-    classifyDiscussions(accepted, requestTextBySourceUrl, deps),
+    classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification),
   )
 }
 
@@ -158,6 +162,8 @@ async function sendRequestClassificationAlerts(
         'Request classification Slack alert was not sent.',
       )
     }
+
+    heartbeatClassification()
   }
 }
 
@@ -341,12 +347,14 @@ export async function processDataset(
     source.provenance,
   )
 
+  // Alerts go out before the insert: once rows exist a retry no longer rebuilds them,
+  // so a crash in between must duplicate an alert rather than lose it.
+  await sendRequestClassificationAlerts(classified.alerts)
+
   const toInsert = [...classified.rows, ...skippedInCdp]
   if (toInsert.length > 0) {
     await bulkInsertProjectCatalog(qx, toInsert)
   }
-
-  await sendRequestClassificationAlerts(classified.alerts)
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose
   // rows are already marked consumed — roll the cursor back one page so it's replayed.

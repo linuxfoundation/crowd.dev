@@ -5,7 +5,7 @@ import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
-import { extractDiscussionRepoUrls } from './parse'
+import { buildDiscussionRequestText, extractDiscussionRepoUrls } from './parse'
 
 const log = getServiceLogger()
 
@@ -239,7 +239,7 @@ async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRe
             repoUrl,
             discussionNumber: discussion.number,
             discussionUrl: discussion.url,
-            requestText: `${discussion.title}\n\n${discussion.body}`,
+            requestText: buildDiscussionRequestText(discussion),
           })
         }
       }
