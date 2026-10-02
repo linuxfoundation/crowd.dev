@@ -38,6 +38,35 @@ export function mountInteractivityRoute(app: Application): void {
   )
 }
 
+export function mountEventsRoute(app: Application): void {
+  if (!getSlackBotConfig().signingSecret) {
+    return
+  }
+
+  const captureRawBody = (req: Request, _res: Response, buf: Buffer) => {
+    req.rawBody = buf
+  }
+
+  const eventsRateLimiter = createRateLimiter({
+    max: 200,
+    windowMs: 60 * 1000,
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleParserError = (err: Error, req: Request, res: Response, _next: NextFunction) => {
+    req.log.error(err, 'Error parsing Slack event payload!')
+    res.sendStatus(200)
+  }
+
+  app.post(
+    '/v1/slack/events',
+    eventsRateLimiter,
+    bodyParser.json({ limit: '5mb', verify: captureRawBody }),
+    handleParserError,
+    require('./events').default,
+  )
+}
+
 export default (app) => {
   if (
     SLACK_CONFIG.onboardingAppId &&

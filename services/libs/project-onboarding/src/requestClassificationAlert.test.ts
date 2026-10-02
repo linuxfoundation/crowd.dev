@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { IRequestClassificationAlert } from './requestClassification'
 import {
+  IRequestClassificationAlert,
   buildRequestClassificationAlert,
   buildRequestClassificationAlertTitle,
 } from './requestClassificationAlert'
