@@ -56,6 +56,35 @@ function deps(
 
 const REQUEST_TEXT = 'Please onboard Acme https://github.com/acme/one'
 
+describe('classifyDiscussionRows in dry run', () => {
+  it('alerts for a new non-LF project and keeps the rows untouched', async () => {
+    const rows = [row()]
+
+    const result = await classifyDiscussionRows(rows, REQUEST_TEXT, deps(llmAnswer(), []), true)
+
+    expect(result.rows).toEqual(rows)
+    expect(result.alerts).toEqual([
+      {
+        sourceUrl: SOURCE_URL,
+        repoUrls: ['https://github.com/acme/one'],
+        resolution: { kind: 'non_lf_new_project', projectName: 'Acme' },
+        dryRun: true,
+      },
+    ])
+  })
+
+  it('flags every alert as a dry run', async () => {
+    const result = await classifyDiscussionRows(
+      [row()],
+      REQUEST_TEXT,
+      deps(llmAnswer(), [pccCandidate()]),
+      true,
+    )
+
+    expect(result.alerts.map((alert) => alert.dryRun)).toEqual([true])
+  })
+})
+
 describe('classifyDiscussionRows', () => {
   it('keeps the rows untouched and sends no alert for a new non-LF project', async () => {
     const rows = [row()]
@@ -82,6 +111,7 @@ describe('classifyDiscussionRows', () => {
         sourceUrl: SOURCE_URL,
         repoUrls: ['https://github.com/acme/one'],
         resolution: { kind: 'lf_not_in_cdp', pccProject },
+        dryRun: false,
       },
     ])
   })

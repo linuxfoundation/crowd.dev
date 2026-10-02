@@ -8,11 +8,15 @@ import {
 
 const pccProject = { projectId: 'pcc-1', name: 'Acme', slug: 'acme', score: 0.98, isLeaf: true }
 
-function alert(resolution: IRequestClassificationAlert['resolution']): IRequestClassificationAlert {
+function alert(
+  resolution: IRequestClassificationAlert['resolution'],
+  dryRun = false,
+): IRequestClassificationAlert {
   return {
     sourceUrl: 'https://github.com/linuxfoundation/insights/discussions/1',
     repoUrls: ['https://github.com/acme/one'],
     resolution,
+    dryRun,
   }
 }
 
@@ -68,5 +72,31 @@ describe('buildRequestClassificationAlertTitle', () => {
     expect(
       buildRequestClassificationAlertTitle(alert({ kind: 'lf_not_in_pcc', projectName: 'Acme' })),
     ).toBe('LF onboarding request: project not found in PCC')
+  })
+
+  it('marks the title as a dry run', () => {
+    expect(
+      buildRequestClassificationAlertTitle(
+        alert({ kind: 'lf_not_in_pcc', projectName: 'Acme' }, true),
+      ),
+    ).toBe('[DRY RUN] LF onboarding request: project not found in PCC')
+  })
+})
+
+describe('dry run alert body', () => {
+  it('states that nothing was written and nothing was onboarded', () => {
+    const sections = buildRequestClassificationAlert(
+      alert({ kind: 'non_lf_new_project', projectName: 'Acme' }, true),
+    )
+
+    expect(sections.map((section) => section.title)).toEqual(['', 'Outcome', 'Dry run'])
+  })
+
+  it('adds no dry run section for a live alert', () => {
+    const sections = buildRequestClassificationAlert(
+      alert({ kind: 'lf_not_in_pcc', projectName: 'Acme' }),
+    )
+
+    expect(sections.map((section) => section.title)).not.toContain('Dry run')
   })
 })

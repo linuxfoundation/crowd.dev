@@ -39,10 +39,52 @@ async function createSyncUnit(qx: QueryExecutor, integrationId: string): Promise
   return id
 }
 
+describe('recordShadowRecords', () => {
+  test('keeps separate rows for the same type/sourceId emitted to different targets', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId)
+    const otherIntegrationId = await createIntegration(qx)
+    const segmentA = generateUUIDv1()
+    const segmentB = generateUUIDv1()
+
+    await recordShadowRecords(qx, unitId, [
+      {
+        type: 'mention',
+        sourceId: 'shared-source-id',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: { title: 'segment-a' },
+        segmentId: segmentA,
+        integrationId,
+      },
+      {
+        type: 'mention',
+        sourceId: 'shared-source-id',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: { title: 'segment-b' },
+        segmentId: segmentB,
+        integrationId: otherIntegrationId,
+      },
+    ])
+
+    const result = await getShadowRecordsInWindow(
+      qx,
+      unitId,
+      new Date('2026-09-05T00:00:00.000Z'),
+      new Date('2026-09-15T00:00:00.000Z'),
+    )
+
+    expect(result).toHaveLength(2)
+    expect(result.map((r) => r.segmentId).sort()).toEqual([segmentA, segmentB].sort())
+  })
+})
+
 describe('getShadowRecordsInWindow', () => {
   test('returns only records whose occurredAt falls within the window', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
       {
@@ -50,18 +92,24 @@ describe('getShadowRecordsInWindow', () => {
         sourceId: 'before-window',
         occurredAt: '2026-09-01T00:00:00.000Z',
         data: { title: 'before' },
+        segmentId,
+        integrationId,
       },
       {
         type: 'issue',
         sourceId: 'in-window',
         occurredAt: '2026-09-10T00:00:00.000Z',
         data: { title: 'in' },
+        segmentId,
+        integrationId,
       },
       {
         type: 'issue',
         sourceId: 'after-window',
         occurredAt: '2026-09-20T00:00:00.000Z',
         data: { title: 'after' },
+        segmentId,
+        integrationId,
       },
     ])
 
@@ -84,6 +132,7 @@ describe('getShadowRecordsInWindow', () => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
     const otherUnitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
       {
@@ -91,6 +140,8 @@ describe('getShadowRecordsInWindow', () => {
         sourceId: 'mine',
         occurredAt: '2026-09-10T00:00:00.000Z',
         data: { title: 'mine' },
+        segmentId,
+        integrationId,
       },
     ])
     await recordShadowRecords(qx, otherUnitId, [
@@ -99,6 +150,8 @@ describe('getShadowRecordsInWindow', () => {
         sourceId: 'not-mine',
         occurredAt: '2026-09-10T00:00:00.000Z',
         data: { title: 'not-mine' },
+        segmentId,
+        integrationId,
       },
     ])
 
@@ -118,10 +171,25 @@ describe('pruneMatchingShadowRecords', () => {
   test('deletes only the records that match the given delete list', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
-      { type: 'issue', sourceId: 'matched', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
-      { type: 'issue', sourceId: 'mismatched', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      {
+        type: 'issue',
+        sourceId: 'matched',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
+      {
+        type: 'issue',
+        sourceId: 'mismatched',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
     ])
 
     const deleted = await pruneMatchingShadowRecords(
@@ -146,10 +214,25 @@ describe('pruneMatchingShadowRecords', () => {
   test('deletes nothing when the delete list is empty', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
-      { type: 'issue', sourceId: 'a', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
-      { type: 'issue', sourceId: 'b', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      {
+        type: 'issue',
+        sourceId: 'a',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
+      {
+        type: 'issue',
+        sourceId: 'b',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
     ])
 
     const deleted = await pruneMatchingShadowRecords(
@@ -175,9 +258,17 @@ describe('pruneMatchingShadowRecords', () => {
   }) => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
-      { type: 'issue', sourceId: 'outside', occurredAt: '2026-09-20T00:00:00.000Z', data: {} },
+      {
+        type: 'issue',
+        sourceId: 'outside',
+        occurredAt: '2026-09-20T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
     ])
 
     const deleted = await pruneMatchingShadowRecords(
@@ -197,9 +288,17 @@ describe('pruneMatchingShadowRecords', () => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
     const otherUnitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, otherUnitId, [
-      { type: 'issue', sourceId: 'other-unit', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      {
+        type: 'issue',
+        sourceId: 'other-unit',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
     ])
 
     const deleted = await pruneMatchingShadowRecords(
@@ -218,9 +317,17 @@ describe('pruneMatchingShadowRecords', () => {
   }) => {
     const integrationId = await createIntegration(qx)
     const unitId = await createSyncUnit(qx, integrationId)
+    const segmentId = generateUUIDv1()
 
     await recordShadowRecords(qx, unitId, [
-      { type: 'issue', sourceId: 'not-examined', occurredAt: '2026-09-10T00:00:00.000Z', data: {} },
+      {
+        type: 'issue',
+        sourceId: 'not-examined',
+        occurredAt: '2026-09-10T00:00:00.000Z',
+        data: {},
+        segmentId,
+        integrationId,
+      },
     ])
 
     const deleted = await pruneMatchingShadowRecords(

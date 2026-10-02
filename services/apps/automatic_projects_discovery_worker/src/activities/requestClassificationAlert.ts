@@ -32,7 +32,7 @@ function resolutionSections(resolution: OnboardingResolution): SlackMessageSecti
     case 'non_github_source':
       return [{ title: 'Repositories', text: resolution.nonGithubRepoUrls.join('\n') }]
     case 'non_lf_new_project':
-      return []
+      return [{ title: 'Outcome', text: 'Would be onboarded as a non-LF project' }]
     case 'lf_not_in_pcc':
       return [{ title: 'Project name', text: resolution.projectName }]
     case 'lf_not_in_cdp':
@@ -57,7 +57,8 @@ function resolutionSections(resolution: OnboardingResolution): SlackMessageSecti
 }
 
 export function buildRequestClassificationAlertTitle(alert: IRequestClassificationAlert): string {
-  return ALERT_TITLES[alert.resolution.kind]
+  const title = ALERT_TITLES[alert.resolution.kind]
+  return alert.dryRun ? `[DRY RUN] ${title}` : title
 }
 
 export function buildRequestClassificationAlert(
@@ -73,5 +74,8 @@ export function buildRequestClassificationAlert(
       text: [`Requested in: ${requestedIn}`, ...alert.repoUrls].join('\n'),
     },
     ...resolutionSections(alert.resolution),
+    ...(alert.dryRun
+      ? [{ title: 'Dry run', text: 'Nothing was onboarded by this classification.' }]
+      : []),
   ]
 }

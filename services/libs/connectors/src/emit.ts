@@ -7,6 +7,11 @@ import { IIntegrationResult, IntegrationResultType } from '@crowd/types'
 
 import { ConnectorError } from './http/errors'
 
+export interface EmitOverrides {
+  segmentId?: string
+  integrationId?: string
+}
+
 export interface EmitterDeps {
   publishResult: (integrationId: string, result: IIntegrationResult) => Promise<string>
   sinkEmitter: DataSinkWorkerEmitter
@@ -18,14 +23,26 @@ export interface EmitterDeps {
 }
 
 export interface Emitter {
-  emit: (records: unknown[]) => Promise<void>
+  emit: (records: unknown[], overrides?: EmitOverrides) => Promise<void>
   emittedCount: () => number
 }
 
 export function createEmit(deps: EmitterDeps): Emitter {
   let emitted = 0
 
-  const emit = async (records: unknown[]): Promise<void> => {
+  const emit = async (records: unknown[], overrides?: EmitOverrides): Promise<void> => {
+    if (
+      overrides &&
+      (overrides.segmentId === undefined) !== (overrides.integrationId === undefined)
+    ) {
+      throw new ConnectorError(
+        'connector.code',
+        'segmentId and integrationId overrides must be provided together',
+      )
+    }
+
+    const segmentId = overrides?.segmentId ?? deps.segmentId
+    const integrationId = overrides?.integrationId ?? deps.unit.integrationId
     const shadowRecords: IShadowRecord[] = []
 
     for (const record of records) {
@@ -56,15 +73,17 @@ export function createEmit(deps: EmitterDeps): Emitter {
           sourceId,
           occurredAt: String(timestamp),
           data: payload,
+          segmentId,
+          integrationId,
         })
         emitted += 1
         continue
       }
 
       try {
-        const resultId = await deps.publishResult(deps.unit.integrationId, {
+        const resultId = await deps.publishResult(integrationId, {
           type: IntegrationResultType.ACTIVITY,
-          segmentId: deps.segmentId,
+          segmentId,
           data: payload,
         })
         await deps.sinkEmitter.triggerResultProcessing(resultId, resultId, false)

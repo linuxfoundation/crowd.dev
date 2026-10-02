@@ -127,11 +127,16 @@ function heartbeatClassification(): void {
   Context.current().heartbeat({ stage: 'classification' })
 }
 
+function isRequestClassificationDryRun(): boolean {
+  return process.env['CROWD_ONBOARDING_REQUEST_DRY_RUN'] === 'true'
+}
+
 async function classifyAcceptedRows(
   qx: ReturnType<typeof pgpQx>,
   accepted: IDbProjectCatalogCreate[],
   requestTextBySourceUrl: Map<string, string>,
   provenance: IDbProjectCatalogCreate['provenance'],
+  dryRun: boolean,
 ): Promise<IClassifiedRows> {
   if (
     !isGithubDiscussionProvenance(provenance) ||
@@ -142,7 +147,7 @@ async function classifyAcceptedRows(
   }
 
   return withRequestClassificationDeps(qx, (deps) =>
-    classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification),
+    classifyDiscussions(accepted, requestTextBySourceUrl, deps, heartbeatClassification, dryRun),
   )
 }
 
@@ -220,6 +225,8 @@ export async function processDataset(
     })
   }
 
+  const dryRun = isRequestClassificationDryRun() && isGithubDiscussionProvenance(source.provenance)
+  const newProjectsLimit = dryRun ? Number.POSITIVE_INFINITY : DISCOVERY_NEW_PROJECTS_LIMIT
   const accepted: IDbProjectCatalogCreate[] = []
   const skippedInCdp: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
@@ -246,7 +253,7 @@ export async function processDataset(
     )
 
     const humanProvenance = source.provenance
-    if (isHumanProjectCatalogProvenance(humanProvenance)) {
+    if (!dryRun && isHumanProjectCatalogProvenance(humanProvenance)) {
       const alreadyCatalogued = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
       if (alreadyCatalogued.length > 0) {
         totalPromoted += await promoteProjectCatalogProvenance(
@@ -277,7 +284,7 @@ export async function processDataset(
         seenRepoUrls.add(candidate.repoUrl)
         continue
       }
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (accepted.length >= newProjectsLimit) {
         truncated = true
         break
       }
@@ -320,7 +327,7 @@ export async function processDataset(
         skippedAlreadyInCdp: skippedInCdp.length,
       })
 
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (accepted.length >= newProjectsLimit) {
         truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
@@ -332,7 +339,7 @@ export async function processDataset(
   }
 
   // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+  if (chunk.length > 0 && accepted.length < newProjectsLimit) {
     await acceptNewRows(chunk)
   }
 
@@ -346,13 +353,14 @@ export async function processDataset(
     accepted,
     requestTextBySourceUrl,
     source.provenance,
+    dryRun,
   )
 
   // Alerts go out before the insert: once rows exist a retry no longer rebuilds them,
   // so a crash in between must duplicate an alert rather than lose it.
   await sendRequestClassificationAlerts(classified.alerts)
 
-  const toInsert = [...classified.rows, ...skippedInCdp]
+  const toInsert = dryRun ? skippedInCdp : [...classified.rows, ...skippedInCdp]
   if (toInsert.length > 0) {
     await bulkInsertProjectCatalog(qx, toInsert)
   }
@@ -377,6 +385,7 @@ export async function processDataset(
       totalAccepted: accepted.length,
       totalClassificationAlerts: classified.alerts.length,
       classificationNodes: countNodes(classified.nodes),
+      dryRun,
       truncated,
       elapsedSeconds,
     },

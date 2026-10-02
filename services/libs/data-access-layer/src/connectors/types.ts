@@ -26,6 +26,8 @@ export interface IShadowRecord {
   sourceId: string
   occurredAt: string
   data: Record<string, unknown>
+  segmentId: string
+  integrationId: string
 }
 
 export type SyncUnitUpsert = Pick<
