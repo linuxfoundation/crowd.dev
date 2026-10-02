@@ -38,6 +38,7 @@ import {
   buildRequestClassificationAlertTitle,
 } from './requestClassificationAlert'
 import { withRequestClassificationDeps } from './requestClassificationDeps'
+import { countNodes } from './requestClassificationTrace'
 
 const log = getServiceLogger()
 
@@ -137,7 +138,7 @@ async function classifyAcceptedRows(
     accepted.length === 0 ||
     requestTextBySourceUrl.size === 0
   ) {
-    return { rows: accepted, alerts: [] }
+    return { rows: accepted, alerts: [], nodes: [] }
   }
 
   return withRequestClassificationDeps(qx, (deps) =>
@@ -156,11 +157,11 @@ async function sendRequestClassificationAlerts(
       buildRequestClassificationAlert(alert),
     )
 
-    if (!sent) {
-      log.warn(
-        { sourceUrl: alert.sourceUrl, kind: alert.resolution.kind },
-        'Request classification Slack alert was not sent.',
-      )
+    const alertLog = { sourceUrl: alert.sourceUrl, kind: alert.resolution.kind }
+    if (sent) {
+      log.info(alertLog, 'Request classification Slack alert sent.')
+    } else {
+      log.warn(alertLog, 'Request classification Slack alert was not sent.')
     }
 
     heartbeatClassification()
@@ -375,6 +376,7 @@ export async function processDataset(
       totalPromoted,
       totalAccepted: accepted.length,
       totalClassificationAlerts: classified.alerts.length,
+      classificationNodes: countNodes(classified.nodes),
       truncated,
       elapsedSeconds,
     },

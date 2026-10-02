@@ -1,5 +1,6 @@
 import { getErrorMessage } from '@crowd/common'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
+import { getServiceLogger } from '@crowd/logging'
 import {
   CdpIntegrationAction,
   IOnboardingRequestLookups,
@@ -8,6 +9,17 @@ import {
   parseOnboardingRequest,
   resolveOnboardingRequest,
 } from '@crowd/project-onboarding'
+
+import {
+  ClassificationNode,
+  IClassificationTrace,
+  buildClassificationLogEntry,
+  createClassificationTrace,
+  toClassificationNode,
+  traceLookups,
+} from './requestClassificationTrace'
+
+const log = getServiceLogger()
 
 export interface IRequestClassificationDeps {
   queryLlm: OnboardingRequestLlm
@@ -23,6 +35,7 @@ export interface IRequestClassificationAlert {
 export interface IClassifiedRows {
   rows: IDbProjectCatalogCreate[]
   alerts: IRequestClassificationAlert[]
+  nodes: ClassificationNode[]
 }
 
 export const NON_GITHUB_SOURCE_SKIP_REASON = 'onboarding request has no GitHub repository'
@@ -58,16 +71,21 @@ function unresolved(reason: string): OnboardingResolution {
 async function resolveRequestText(
   requestText: string,
   deps: IRequestClassificationDeps,
+  trace: IClassificationTrace,
 ): Promise<OnboardingResolution> {
   try {
     const parsed = await parseOnboardingRequest(requestText, deps.queryLlm)
     if (parsed.ok === false) {
+      trace.failure = { stage: 'parse', reason: parsed.reason }
       return unresolved(`Request could not be parsed: ${parsed.reason}`)
     }
 
-    return await resolveOnboardingRequest(parsed.request, deps.lookups)
+    trace.parsed = parsed.request
+    return await resolveOnboardingRequest(parsed.request, traceLookups(deps.lookups, trace))
   } catch (err) {
-    return unresolved(`Classification failed: ${getErrorMessage(err)}`)
+    const reason = getErrorMessage(err)
+    trace.failure = { stage: 'resolve', reason }
+    return unresolved(`Classification failed: ${reason}`)
   }
 }
 
@@ -76,10 +94,17 @@ export async function classifyDiscussionRows(
   requestText: string,
   deps: IRequestClassificationDeps,
 ): Promise<IClassifiedRows> {
-  const resolution = await resolveRequestText(requestText, deps)
+  const trace = createClassificationTrace()
+  const resolution = await resolveRequestText(requestText, deps, trace)
+  const node = toClassificationNode(resolution)
+
+  log.info(
+    buildClassificationLogEntry(rows[0].sourceUrl ?? '', resolution, trace),
+    'Onboarding request classified.',
+  )
 
   if (resolution.kind === 'non_lf_new_project') {
-    return { rows, alerts: [] }
+    return { rows, alerts: [], nodes: [node] }
   }
 
   const skipReason = toSkipReason(resolution)
@@ -93,6 +118,7 @@ export async function classifyDiscussionRows(
         resolution,
       },
     ],
+    nodes: [node],
   }
 }
 
@@ -117,6 +143,7 @@ export async function classifyDiscussions(
 ): Promise<IClassifiedRows> {
   const classifiedRows = new Map<IDbProjectCatalogCreate, IDbProjectCatalogCreate>()
   const alerts: IRequestClassificationAlert[] = []
+  const nodes: ClassificationNode[] = []
 
   for (const [sourceUrl, discussionRows] of groupRowsBySourceUrl(rows)) {
     const requestText = requestTextBySourceUrl.get(sourceUrl)
@@ -127,8 +154,9 @@ export async function classifyDiscussions(
     const classified = await classifyDiscussionRows(discussionRows, requestText, deps)
     classified.rows.forEach((row, index) => classifiedRows.set(discussionRows[index], row))
     alerts.push(...classified.alerts)
+    nodes.push(...classified.nodes)
     onDiscussionClassified()
   }
 
-  return { rows: rows.map((row) => classifiedRows.get(row) ?? row), alerts }
+  return { rows: rows.map((row) => classifiedRows.get(row) ?? row), alerts, nodes }
 }

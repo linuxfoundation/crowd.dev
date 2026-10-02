@@ -33,6 +33,7 @@ function createQueryLlm(qx: QueryExecutor): IRequestClassificationDeps['queryLlm
 
 function createSnowflakeClient(): SnowflakeClient | null {
   if (!process.env.CROWD_SNOWFLAKE_ACCOUNT) {
+    svc.log.warn('Snowflake is not configured, PCC lookups are unavailable.')
     return null
   }
 
