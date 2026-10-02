@@ -226,6 +226,7 @@ export async function processDataset(
   }
 
   const dryRun = isRequestClassificationDryRun() && isGithubDiscussionProvenance(source.provenance)
+  const newProjectsLimit = dryRun ? Number.POSITIVE_INFINITY : DISCOVERY_NEW_PROJECTS_LIMIT
   const accepted: IDbProjectCatalogCreate[] = []
   const skippedInCdp: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
@@ -283,7 +284,7 @@ export async function processDataset(
         seenRepoUrls.add(candidate.repoUrl)
         continue
       }
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (accepted.length >= newProjectsLimit) {
         truncated = true
         break
       }
@@ -326,7 +327,7 @@ export async function processDataset(
         skippedAlreadyInCdp: skippedInCdp.length,
       })
 
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (accepted.length >= newProjectsLimit) {
         truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
@@ -338,7 +339,7 @@ export async function processDataset(
   }
 
   // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+  if (chunk.length > 0 && accepted.length < newProjectsLimit) {
     await acceptNewRows(chunk)
   }
 
