@@ -7,7 +7,6 @@ import {
   buildRequestClassificationAlertTitle,
   classifyOnboardingRequest,
 } from '@crowd/project-onboarding'
-import { withRequestClassifierDeps } from '@crowd/project-onboarding/src/requestClassifierDeps'
 import { getSlackPermalink, postSlackMessage } from '@crowd/slack'
 
 import { IServiceOptions } from '../IServiceOptions'
@@ -24,6 +23,12 @@ const HELP_TEXT =
 
 function truncateSectionText(text: string): string {
   return text.length > MAX_SECTION_TEXT ? `${text.slice(0, MAX_SECTION_TEXT - 1)}…` : text
+}
+
+async function loadRequestClassifierDeps() {
+  // TODO(CM-1841): drop once snowflake-sdk stops building a region-less STS client on import
+  process.env.SNOWFLAKE_DISABLE_PLATFORM_DETECTION ??= 'true'
+  return import('@crowd/project-onboarding/src/requestClassifierDeps')
 }
 
 export function toRequestText(slackText: string): string {
@@ -85,6 +90,7 @@ export async function runRequestClassificationBot({
   }
 
   try {
+    const { withRequestClassifierDeps } = await loadRequestClassifierDeps()
     const qx = await getBgQx()
     const classification = await withRequestClassifierDeps(qx, (deps) =>
       classifyOnboardingRequest(requestText, deps),
