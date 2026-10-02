@@ -1,7 +1,13 @@
-import { IPccCandidate, OnboardingResolution } from '@crowd/project-onboarding'
 import { SlackMessageSection } from '@crowd/slack'
 
-import { IRequestClassificationAlert } from './requestClassification'
+import { IPccCandidate, OnboardingResolution } from './requestResolver'
+
+export interface IRequestClassificationAlert {
+  sourceUrl: string
+  repoUrls: string[]
+  resolution: OnboardingResolution
+  dryRun: boolean
+}
 
 const ALERT_TITLES: Record<OnboardingResolution['kind'], string> = {
   non_github_source: 'Onboarding request without GitHub repositories',

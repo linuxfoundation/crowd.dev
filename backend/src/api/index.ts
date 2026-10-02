@@ -33,7 +33,7 @@ import { tenantMiddleware } from '../middlewares/tenantMiddleware'
 import { createRateLimiter } from './apiRateLimiter'
 import authSocial from './auth/authSocial'
 import { publicRouter } from './public'
-import { mountInteractivityRoute } from './slack'
+import { mountEventsRoute, mountInteractivityRoute } from './slack'
 import WebSockets from './websockets'
 
 const serviceLogger = getServiceLogger()
@@ -112,6 +112,7 @@ setImmediate(async () => {
 
   // Mounted before DB/Redis/OpenSearch middleware to protect Slack's 3s ack window.
   mountInteractivityRoute(app)
+  mountEventsRoute(app)
 
   // Initializes and adds the database middleware.
   app.use(databaseMiddleware)

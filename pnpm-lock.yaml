@@ -2804,6 +2804,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../logging
+      '@crowd/slack':
+        specifier: workspace:*
+        version: link:../slack
       '@crowd/snowflake':
         specifier: workspace:*
         version: link:../snowflake

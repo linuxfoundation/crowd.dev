@@ -3,6 +3,7 @@ import { getServiceLogger } from '@crowd/logging'
 import {
   CdpIntegrationAction,
   ClassificationNode,
+  IRequestClassificationAlert,
   IRequestClassificationDeps,
   OnboardingResolution,
   buildClassificationLogEntry,
@@ -10,13 +11,6 @@ import {
 } from '@crowd/project-onboarding'
 
 const log = getServiceLogger()
-
-export interface IRequestClassificationAlert {
-  sourceUrl: string
-  repoUrls: string[]
-  resolution: OnboardingResolution
-  dryRun: boolean
-}
 
 export interface IClassifiedRows {
   rows: IDbProjectCatalogCreate[]
