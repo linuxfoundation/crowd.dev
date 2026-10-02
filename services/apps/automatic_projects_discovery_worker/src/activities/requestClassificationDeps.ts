@@ -1,13 +1,15 @@
 import { getErrorMessage } from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { getServiceLogger } from '@crowd/logging'
 import { createPccCandidatesLookup, IPccCandidateRow } from '@crowd/project-onboarding'
 import { SnowflakeClient } from '@crowd/snowflake'
 import { LlmQueryType } from '@crowd/types'
 
-import { svc } from '../main'
 import { createCdpSegmentLookup } from './cdpSegmentLookup'
 import { IRequestClassificationDeps } from './requestClassification'
+
+const log = getServiceLogger()
 
 function createQueryLlm(qx: QueryExecutor): IRequestClassificationDeps['queryLlm'] {
   const llmService = new LlmService(
@@ -16,7 +18,7 @@ function createQueryLlm(qx: QueryExecutor): IRequestClassificationDeps['queryLlm
       accessKeyId: process.env['CROWD_AWS_BEDROCK_ACCESS_KEY_ID'],
       secretAccessKey: process.env['CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY'],
     },
-    svc.log,
+    log,
   )
 
   return async (prompt) => {
@@ -33,14 +35,14 @@ function createQueryLlm(qx: QueryExecutor): IRequestClassificationDeps['queryLlm
 
 function createSnowflakeClient(): SnowflakeClient | null {
   if (!process.env.CROWD_SNOWFLAKE_ACCOUNT) {
-    svc.log.warn('Snowflake is not configured, PCC lookups are unavailable.')
+    log.warn('Snowflake is not configured, PCC lookups are unavailable.')
     return null
   }
 
   try {
-    return SnowflakeClient.fromEnv({ parentLog: svc.log })
+    return SnowflakeClient.fromEnv({ parentLog: log })
   } catch (err) {
-    svc.log.warn({ error: getErrorMessage(err) }, 'Snowflake client could not be created.')
+    log.warn({ error: getErrorMessage(err) }, 'Snowflake client could not be created.')
     return null
   }
 }
