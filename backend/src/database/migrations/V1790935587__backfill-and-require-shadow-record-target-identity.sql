@@ -1,5 +1,3 @@
--- Backfill segmentId/integrationId on legacy shadow rows (predating these columns) from their
--- owning sync unit's integration, the same values emit() would have computed at write time.
 UPDATE integration.sync_shadow_records ssr
 SET "integrationId" = su."integrationId",
     "segmentId" = i."segmentId"
@@ -9,9 +7,7 @@ WHERE ssr."unitId" = su.id
   AND (ssr."integrationId" IS NULL OR ssr."segmentId" IS NULL)
   AND i."segmentId" IS NOT NULL;
 
--- Any row that still can't be backfilled (its integration has no segment) is a stale diff-cache
--- entry with no resolvable identity; safe to drop, since diffUnit() only uses this table to
--- re-derive comparisons against the live source each run, never as a system of record.
+-- Safe to drop: this table is a rebuildable diff cache (see diffUnit()), not a system of record.
 DELETE FROM integration.sync_shadow_records
 WHERE "integrationId" IS NULL OR "segmentId" IS NULL;
 
