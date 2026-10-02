@@ -19,7 +19,7 @@ export interface CdpGovernanceRoleRow {
 }
 
 export interface RepoContributorRow {
-  repoId: number
+  repoId: string
   source: string
   role: string
   roleKind: string
@@ -65,7 +65,7 @@ export function classifyIdentity(
 
 export function toRepoContributorRow(
   row: CdpGovernanceRoleRow,
-  repoId: number,
+  repoId: string,
   syncedAt: Date,
 ): RepoContributorRow {
   return {
