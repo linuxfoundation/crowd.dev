@@ -55,8 +55,8 @@ const CONTRIBUTOR_COLUMNS = [
 
 const UPSERT_CLAUSE = `(repo_id, source, identity_type, identity_value, role) DO UPDATE SET
   role_kind     = EXCLUDED.role_kind,
-  first_seen_at = EXCLUDED.first_seen_at,
-  last_seen_at  = EXCLUDED.last_seen_at,
+  first_seen_at = LEAST(repo_contributors.first_seen_at, EXCLUDED.first_seen_at),
+  last_seen_at  = GREATEST(repo_contributors.last_seen_at, EXCLUDED.last_seen_at),
   ended_at      = EXCLUDED.ended_at,
   cdp_member_id = EXCLUDED.cdp_member_id,
   updated_at    = NOW()`

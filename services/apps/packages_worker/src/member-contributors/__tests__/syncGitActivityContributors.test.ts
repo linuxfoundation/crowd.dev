@@ -219,6 +219,19 @@ describe('syncGitActivityContributors', () => {
     expect(watermarkParams.watermark.toISOString()).toBe('2026-10-03T03:45:00.000Z')
   })
 
+  it('widens the stored seen window instead of overwriting it', async () => {
+    stubTinybird([[tbRow()], []])
+    const { result } = stubPackagesQx([repo], watermark)
+
+    await syncGitActivityContributors({ full: false })
+
+    const upsertSql = result.mock.calls
+      .map((c) => String(c[0]))
+      .find((sql) => sql.includes('INSERT INTO "repo_contributors"'))
+    expect(upsertSql).toContain('LEAST(repo_contributors.first_seen_at, EXCLUDED.first_seen_at)')
+    expect(upsertSql).toContain('GREATEST(repo_contributors.last_seen_at, EXCLUDED.last_seen_at)')
+  })
+
   it('runs incrementally from the watermark minus a day and does not delete', async () => {
     const executeSql = stubTinybird([[tbRow()], []])
     const { result } = stubPackagesQx([repo], watermark)
