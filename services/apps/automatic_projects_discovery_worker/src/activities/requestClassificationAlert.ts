@@ -75,7 +75,7 @@ export function buildRequestClassificationAlert(
     },
     ...resolutionSections(alert.resolution),
     ...(alert.dryRun
-      ? [{ title: 'Dry run', text: 'No catalog rows were written and nothing was onboarded.' }]
+      ? [{ title: 'Dry run', text: 'Nothing was onboarded by this classification.' }]
       : []),
   ]
 }

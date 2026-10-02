@@ -225,6 +225,7 @@ export async function processDataset(
     })
   }
 
+  const dryRun = isRequestClassificationDryRun() && isGithubDiscussionProvenance(source.provenance)
   const accepted: IDbProjectCatalogCreate[] = []
   const skippedInCdp: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
@@ -251,7 +252,7 @@ export async function processDataset(
     )
 
     const humanProvenance = source.provenance
-    if (isHumanProjectCatalogProvenance(humanProvenance)) {
+    if (!dryRun && isHumanProjectCatalogProvenance(humanProvenance)) {
       const alreadyCatalogued = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
       if (alreadyCatalogued.length > 0) {
         totalPromoted += await promoteProjectCatalogProvenance(
@@ -346,7 +347,6 @@ export async function processDataset(
     stream.destroy()
   }
 
-  const dryRun = isRequestClassificationDryRun() && isGithubDiscussionProvenance(source.provenance)
   const classified = await classifyAcceptedRows(
     qx,
     accepted,
