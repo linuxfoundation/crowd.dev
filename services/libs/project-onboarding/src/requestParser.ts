@@ -82,7 +82,7 @@ function matchTokens(text: string, pattern: RegExp): string[] {
   return (text.match(pattern) ?? []).map((token) => token.replace(TRAILING_PUNCTUATION_PATTERN, ''))
 }
 
-function toComparableLink(raw: string): string | null {
+function parseWebUrl(raw: string): URL | null {
   const trimmed = raw.trim()
   const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 
@@ -93,7 +93,23 @@ function toComparableLink(raw: string): string | null {
     return null
   }
 
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+  return url.protocol === 'https:' || url.protocol === 'http:' ? url : null
+}
+
+function toStrictLink(raw: string): string | null {
+  const url = parseWebUrl(raw)
+  if (!url) {
+    return null
+  }
+
+  const host = url.host.replace(/^www\./, '')
+  const path = url.pathname.replace(/\/+$/, '')
+  return `${host}${path}${url.search}${url.hash}`
+}
+
+function toRepositoryLink(raw: string): string | null {
+  const url = parseWebUrl(raw)
+  if (!url) {
     return null
   }
 
@@ -113,9 +129,9 @@ function collectRequestEvidence(requestText: string): IRequestEvidence {
 
   const linkTokensByComparable = new Map<string, string>()
   for (const token of urlTokens) {
-    const comparable = toComparableLink(token)
-    if (comparable && !linkTokensByComparable.has(comparable)) {
-      linkTokensByComparable.set(comparable, token)
+    const strictLink = toStrictLink(token)
+    if (strictLink && !linkTokensByComparable.has(strictLink)) {
+      linkTokensByComparable.set(strictLink, token)
     }
   }
 
@@ -150,13 +166,14 @@ function toLinkToFollow(
   evidence: IRequestEvidence,
   requestedRepoLinks: Set<string>,
 ): string[] {
-  const comparable = toComparableLink(raw)
-  const requestToken = comparable ? evidence.linkTokensByComparable.get(comparable) : undefined
-  if (!comparable || !requestToken) {
+  const strictLink = toStrictLink(raw)
+  const requestToken = strictLink ? evidence.linkTokensByComparable.get(strictLink) : undefined
+  if (!requestToken) {
     return []
   }
 
-  return requestedRepoLinks.has(comparable) ? [] : [requestToken]
+  const repositoryLink = toRepositoryLink(requestToken)
+  return repositoryLink && requestedRepoLinks.has(repositoryLink) ? [] : [requestToken]
 }
 
 function extractLinksToFollow(
@@ -165,7 +182,7 @@ function extractLinksToFollow(
   requestedRepoUrls: string[],
 ): string[] {
   const requestedRepoLinks = new Set(
-    requestedRepoUrls.map(toComparableLink).filter((link): link is string => !!link),
+    requestedRepoUrls.map(toRepositoryLink).filter((link): link is string => !!link),
   )
   const links = linkUrls.flatMap((raw) => toLinkToFollow(raw, evidence, requestedRepoLinks))
   return uniqueInOrder(links).slice(0, MAX_LINKS_TO_FOLLOW)
