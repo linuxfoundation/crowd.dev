@@ -12,10 +12,25 @@
       "path": "../../libs/common"
     },
     {
+      "path": "../../libs/common_services"
+    },
+    {
       "path": "../../libs/data-access-layer"
     },
     {
       "path": "../../libs/logging"
+    },
+    {
+      "path": "../../libs/project-onboarding"
+    },
+    {
+      "path": "../../libs/slack"
+    },
+    {
+      "path": "../../libs/snowflake"
+    },
+    {
+      "path": "../../libs/types"
     }
   ]
 }
