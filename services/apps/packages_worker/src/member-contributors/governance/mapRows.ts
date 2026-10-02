@@ -1,3 +1,5 @@
+import { isValidEmail } from '@crowd/common'
+
 import { canonicalRepoUrl } from '../../deps-dev/canonicalRepoUrl'
 import { ContributorIdentityType } from '../types'
 
@@ -54,7 +56,7 @@ export function classifyIdentity(
   value: string,
 ): { identityType: RepoContributorIdentityType; identityValue: string } {
   const trimmed = value.trim()
-  if (type === 'email' || trimmed.includes('@')) {
+  if (isValidEmail(trimmed)) {
     return { identityType: 'email', identityValue: trimmed.toLowerCase() }
   }
   if (platform === 'github') {

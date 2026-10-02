@@ -41,6 +41,13 @@ describe('classifyIdentity', () => {
     })
   })
 
+  it('keeps non-email values containing @ as git author names', () => {
+    expect(classifyIdentity('git', 'username', 'Jane @ Acme')).toEqual({
+      identityType: 'git-author-name',
+      identityValue: 'Jane @ Acme',
+    })
+  })
+
   it('maps git usernames holding an email to lowercased emails', () => {
     expect(classifyIdentity('git', 'username', 'Dev@RedHat.com')).toEqual({
       identityType: 'email',
