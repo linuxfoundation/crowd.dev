@@ -14,6 +14,15 @@ describe('InsightsDiscussionsSource.parseRow', () => {
     expect(result?.sourceUrl).toBe('https://github.com/linuxfoundation/insights/discussions/42')
   })
 
+  it('propagates requestText', () => {
+    const result = source.parseRow({
+      repoUrl: 'https://github.com/foo/bar',
+      requestText: 'Please onboard https://github.com/foo/bar',
+    })
+
+    expect(result?.requestText).toBe('Please onboard https://github.com/foo/bar')
+  })
+
   it('leaves sourceUrl undefined when discussionUrl is missing', () => {
     const result = source.parseRow({
       repoUrl: 'https://github.com/foo/bar',
