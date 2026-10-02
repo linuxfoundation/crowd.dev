@@ -205,6 +205,18 @@ describe('parseOnboardingRequest', () => {
     })
   })
 
+  it('returns the link exactly as written in the request, not the model spelling', async () => {
+    const text = 'The list is at https://www.example.com/Project'
+    const llm = llmAnswering(rawAnswer({ linkUrls: ['https://example.com/project/'] }))
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: { linksToFollow: ['https://www.example.com/Project'] },
+    })
+  })
+
   it('ignores non-web link protocols', async () => {
     const text = 'see ftp://acme.org/list'
     const llm = llmAnswering(rawAnswer({ linkUrls: ['ftp://acme.org/list'] }))

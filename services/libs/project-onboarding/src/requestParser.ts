@@ -71,7 +71,7 @@ const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?)\]]+$/
 
 interface IRequestEvidence {
   repoUrls: Set<string>
-  comparableLinks: Set<string>
+  linkTokensByComparable: Map<string, string>
 }
 
 function uniqueInOrder(values: string[]): string[] {
@@ -111,9 +111,15 @@ function collectRequestEvidence(requestText: string): IRequestEvidence {
     ...bareRepoTokens.map((token) => canonicalizeRepoUrl(`https://github.com/${token}`)?.url),
   ].filter((url): url is string => !!url)
 
-  const comparableLinks = urlTokens.map(toComparableLink).filter((link): link is string => !!link)
+  const linkTokensByComparable = new Map<string, string>()
+  for (const token of urlTokens) {
+    const comparable = toComparableLink(token)
+    if (comparable && !linkTokensByComparable.has(comparable)) {
+      linkTokensByComparable.set(comparable, token)
+    }
+  }
 
-  return { repoUrls: new Set(canonicalRepoUrls), comparableLinks: new Set(comparableLinks) }
+  return { repoUrls: new Set(canonicalRepoUrls), linkTokensByComparable }
 }
 
 function splitRepoUrls(
@@ -145,11 +151,12 @@ function toLinkToFollow(
   requestedRepoLinks: Set<string>,
 ): string[] {
   const comparable = toComparableLink(raw)
-  if (!comparable || !evidence.comparableLinks.has(comparable)) {
+  const requestToken = comparable ? evidence.linkTokensByComparable.get(comparable) : undefined
+  if (!comparable || !requestToken) {
     return []
   }
 
-  return requestedRepoLinks.has(comparable) ? [] : [raw.trim()]
+  return requestedRepoLinks.has(comparable) ? [] : [requestToken]
 }
 
 function extractLinksToFollow(
