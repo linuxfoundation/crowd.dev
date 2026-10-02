@@ -18,3 +18,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS repo_contributors_repo_source_identity_role_uq
 
 CREATE INDEX IF NOT EXISTS repo_contributors_identity_idx
     ON repo_contributors (identity_type, identity_value);
+
+CREATE INDEX IF NOT EXISTS repo_contributors_source_updated_at_idx
+    ON repo_contributors (source, updated_at);

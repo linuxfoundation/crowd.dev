@@ -55,7 +55,7 @@ function stubQx(repos: Array<{ id: string; url: string }>, upsertedPerCall = rep
 function stubPackagesQx(repos: Array<{ id: string; url: string }>, removed: number) {
   const select = vi
     .fn()
-    .mockResolvedValueOnce([{ now: syncedAt }])
+    .mockResolvedValueOnce([{ nowMs: syncedAt.getTime() }])
     .mockResolvedValue(repos)
   const result = vi
     .fn()
@@ -187,7 +187,19 @@ describe('syncGovernanceContributors', () => {
     vi.mocked(getCdpDb).mockResolvedValue({ select: cdpSelect } as unknown as QueryExecutor)
     vi.mocked(getPackagesDb).mockResolvedValue(pkgsQx)
 
-    await expect(syncGovernanceContributors()).rejects.toThrow('no governance-file roles')
+    await expect(syncGovernanceContributors()).rejects.toThrow('Refusing to reconcile')
+    expect(result).not.toHaveBeenCalled()
+  })
+
+  it('refuses to remove anything when no read row matched a known repo', async () => {
+    const cdpSelect = vi.fn().mockResolvedValueOnce([cdpRow()]).mockResolvedValue([])
+    const { qx: pkgsQx, result } = stubPackagesQx([], 0)
+    vi.mocked(getCdpDb).mockResolvedValue({ select: cdpSelect } as unknown as QueryExecutor)
+    vi.mocked(getPackagesDb).mockResolvedValue(pkgsQx)
+
+    await expect(syncGovernanceContributors()).rejects.toThrow(
+      'read 1 governance-file roles, upserted 0',
+    )
     expect(result).not.toHaveBeenCalled()
   })
 })

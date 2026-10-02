@@ -54,8 +54,10 @@ function contributorUpsertClause(runStartedAt: Date): string {
 }
 
 export async function readRunStart(pkgsQx: QueryExecutor): Promise<Date> {
-  const rows: Array<{ now: Date }> = await pkgsQx.select('SELECT NOW() AS now')
-  return rows[0].now
+  const rows: Array<{ nowMs: number }> = await pkgsQx.select(
+    'SELECT FLOOR(EXTRACT(EPOCH FROM NOW()) * 1000) AS "nowMs"',
+  )
+  return new Date(rows[0].nowMs)
 }
 
 export async function readGovernanceRolePage(
@@ -201,9 +203,9 @@ export async function syncGovernanceContributors(): Promise<GovernanceSyncCounts
     heartbeat(counts)
   }
 
-  if (counts.read === 0) {
+  if (counts.read === 0 || counts.upserted === 0) {
     throw new Error(
-      'CDP returned no governance-file roles, refusing to reconcile repo_contributors',
+      `Refusing to reconcile repo_contributors: read ${counts.read} governance-file roles, upserted ${counts.upserted}`,
     )
   }
 
