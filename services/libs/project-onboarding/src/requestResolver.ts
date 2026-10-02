@@ -67,7 +67,7 @@ export function toCdpIntegrationState(platforms: string[]): CdpIntegrationState 
 }
 
 function normalizeName(value: string): string {
-  return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+  return value.toLowerCase().replace(/[^\p{L}\p{N}+#]/gu, '')
 }
 
 function isExactMatch(projectName: string, candidate: IPccCandidate): boolean {
@@ -185,8 +185,12 @@ export async function resolveOnboardingRequest(
   request: IParsedOnboardingRequest,
   lookups: IOnboardingRequestLookups,
 ): Promise<OnboardingResolution> {
-  if (hasNoRepositories(request) && request.linksToFollow.length === 0) {
-    return ambiguous('Request does not contain any repository')
+  if (hasNoRepositories(request)) {
+    return ambiguous(
+      request.linksToFollow.length > 0
+        ? 'Repositories must be read from linked pages, which are not followed yet'
+        : 'Request does not contain any repository',
+    )
   }
 
   if (hasOnlyNonGithubRepositories(request)) {

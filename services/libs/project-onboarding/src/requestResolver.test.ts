@@ -119,6 +119,40 @@ describe('resolveOnboardingRequest', () => {
     expect(result.kind).toBe('ambiguous')
   })
 
+  it('is ambiguous when the repositories can only be found in linked pages', async () => {
+    const deps = lookups([candidate()])
+
+    const result = await resolveOnboardingRequest(
+      request({ githubRepoUrls: [], linksToFollow: ['https://acme.org/projects'] }),
+      deps,
+    )
+
+    expect(result).toEqual({
+      kind: 'ambiguous',
+      reason: 'Repositories must be read from linked pages, which are not followed yet',
+      candidates: [],
+    })
+    expect(deps.findPccCandidates).not.toHaveBeenCalled()
+  })
+
+  it('does not treat names that differ by meaningful symbols as an exact match', async () => {
+    const result = await resolveOnboardingRequest(
+      request({ projectName: 'C++' }),
+      lookups([candidate({ name: 'C', slug: 'c', score: 0.5 })]),
+    )
+
+    expect(result.kind).toBe('non_lf_new_project')
+  })
+
+  it('treats names that differ only by case and separators as an exact match', async () => {
+    const result = await resolveOnboardingRequest(
+      request({ projectName: 'C++ Tools' }),
+      lookups([candidate({ name: 'c++-tools', slug: 'cpp-tools', score: 0.5 })]),
+    )
+
+    expect(result.kind).toBe('lf_not_in_cdp')
+  })
+
   it('does not look up CDP when the PCC match is not strong', async () => {
     const deps = lookups([candidate({ name: 'Acme Labs', slug: 'acme-labs', score: 0.9 })])
 
