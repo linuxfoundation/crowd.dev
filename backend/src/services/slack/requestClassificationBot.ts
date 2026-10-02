@@ -52,17 +52,23 @@ export function buildClassificationReply(
 export async function runRequestClassificationBot({
   text,
   channelId,
+  messageTs,
   threadTs,
   options,
 }: {
   text: string
   channelId: string
+  messageTs: string
   threadTs: string
   options: Pick<IServiceOptions, 'log'>
 }): Promise<void> {
   const { log } = options
-  const reply = (message: SlackMessageDto | { text: string }) =>
-    postSlackMessage({ channel: channelId, thread_ts: threadTs, ...message })
+  const reply = async (message: SlackMessageDto | { text: string }) => {
+    const result = await postSlackMessage({ channel: channelId, thread_ts: threadTs, ...message })
+    if (!result.ok) {
+      log.warn({ channelId, threadTs, error: result.error }, 'Slack bot reply was not delivered.')
+    }
+  }
 
   const requestText = toRequestText(text)
   if (!requestText) {
@@ -75,7 +81,7 @@ export async function runRequestClassificationBot({
     const classification = await withRequestClassifierDeps(qx, (deps) =>
       classifyOnboardingRequest(requestText, deps),
     )
-    const requestUrl = (await getSlackPermalink(channelId, threadTs)) ?? ''
+    const requestUrl = (await getSlackPermalink(channelId, messageTs)) ?? ''
 
     log.info(
       { channelId, threadTs, node: classification.node, kind: classification.resolution.kind },

@@ -7,8 +7,11 @@ vi.mock('@/services/slack/requestClassificationBot', () => ({
 
 import { runRequestClassificationBot } from '@/services/slack/requestClassificationBot'
 
-import events from './events'
+import { createEventsHandler } from './events'
 import { verifySlackSignature } from './verifySignature'
+
+const claimEvent = vi.fn(async () => true)
+const events = createEventsHandler(claimEvent)
 
 function call(body: object, headers: Record<string, string> = {}) {
   const req = {
@@ -22,6 +25,7 @@ function call(body: object, headers: Record<string, string> = {}) {
 
 const mention = {
   type: 'event_callback',
+  event_id: 'Ev1',
   event: { type: 'app_mention', text: '<@U0BOT> hi', channel: 'C1', ts: '100.1' },
 }
 
@@ -29,6 +33,7 @@ describe('slack events', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(verifySlackSignature).mockReturnValue(true)
+    claimEvent.mockResolvedValue(true)
   })
 
   it('answers the url verification challenge', async () => {
@@ -42,7 +47,12 @@ describe('slack events', () => {
 
     expect(res.sendStatus).toHaveBeenCalledWith(200)
     expect(runRequestClassificationBot).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '<@U0BOT> hi', channelId: 'C1', threadTs: '100.1' }),
+      expect.objectContaining({
+        text: '<@U0BOT> hi',
+        channelId: 'C1',
+        messageTs: '100.1',
+        threadTs: '100.1',
+      }),
     )
   })
 
@@ -50,12 +60,35 @@ describe('slack events', () => {
     await call({ ...mention, event: { ...mention.event, thread_ts: '90.0' } })
 
     expect(runRequestClassificationBot).toHaveBeenCalledWith(
-      expect.objectContaining({ threadTs: '90.0' }),
+      expect.objectContaining({ threadTs: '90.0', messageTs: '100.1' }),
     )
   })
 
-  it('ignores Slack retries, bot messages and other event types', async () => {
+  it('processes a Slack retry when the event was not handled yet', async () => {
     await call(mention, { 'x-slack-retry-num': '1' })
+
+    expect(runRequestClassificationBot).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores an event that was already handled', async () => {
+    claimEvent.mockResolvedValue(false)
+
+    await call(mention, { 'x-slack-retry-num': '1' })
+
+    expect(claimEvent).toHaveBeenCalledWith('Ev1')
+    expect(runRequestClassificationBot).not.toHaveBeenCalled()
+  })
+
+  it('handles the event when deduplication is unavailable', async () => {
+    claimEvent.mockRejectedValue(new Error('redis down'))
+
+    const { req } = await call(mention)
+
+    expect(req.log.warn).toHaveBeenCalled()
+    expect(runRequestClassificationBot).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores bot messages and other event types', async () => {
     await call({ ...mention, event: { ...mention.event, bot_id: 'B1' } })
     await call({ ...mention, event: { ...mention.event, type: 'message' } })
 

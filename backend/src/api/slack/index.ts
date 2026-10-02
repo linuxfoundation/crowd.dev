@@ -1,11 +1,13 @@
 import bodyParser from 'body-parser'
 import type { Application, NextFunction, Request, Response } from 'express'
 
+import type { RedisClient } from '@crowd/redis'
 import { getSlackBotConfig } from '@crowd/slack'
 
 import { SLACK_CONFIG } from '../../conf/index'
 import { safeWrap } from '../../middlewares/errorMiddleware'
 import { createRateLimiter } from '../apiRateLimiter'
+import { claimSlackEvent } from './eventDeduplication'
 
 // Mounted ahead of the shared rate limiter and tenant/segment middleware
 // to protect Slack's 3-second acknowledgement window; keeps its own limiter.
@@ -38,7 +40,7 @@ export function mountInteractivityRoute(app: Application): void {
   )
 }
 
-export function mountEventsRoute(app: Application): void {
+export function mountEventsRoute(app: Application, redis: RedisClient): void {
   if (!getSlackBotConfig().signingSecret) {
     return
   }
@@ -63,7 +65,7 @@ export function mountEventsRoute(app: Application): void {
     eventsRateLimiter,
     bodyParser.json({ limit: '5mb', verify: captureRawBody }),
     handleParserError,
-    require('./events').default,
+    require('./events').createEventsHandler((eventId: string) => claimSlackEvent(redis, eventId)),
   )
 }
 
