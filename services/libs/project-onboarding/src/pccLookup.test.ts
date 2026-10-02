@@ -29,16 +29,17 @@ describe('createPccCandidatesLookup', () => {
   })
 
   it('excludes internal projects', () => {
-    expect(PCC_CANDIDATES_QUERY).toContain('NOT IS_INTERNAL_PROJECT')
+    expect(PCC_CANDIDATES_QUERY).toContain('NOT p.IS_INTERNAL_PROJECT')
   })
 
   it('skips rows without a name or slug so null scores cannot outrank real matches', () => {
-    expect(PCC_CANDIDATES_QUERY).toContain('NAME IS NOT NULL')
-    expect(PCC_CANDIDATES_QUERY).toContain('SLUG IS NOT NULL')
+    expect(PCC_CANDIDATES_QUERY).toContain('p.NAME IS NOT NULL')
+    expect(PCC_CANDIDATES_QUERY).toContain('p.SLUG IS NOT NULL')
   })
 
   it('flags leaf projects and orders ties deterministically', () => {
     expect(PCC_CANDIDATES_QUERY).toContain('AS IS_LEAF')
-    expect(PCC_CANDIDATES_QUERY).toContain('ORDER BY SCORE DESC, IS_LEAF DESC, PROJECT_ID')
+    expect(PCC_CANDIDATES_QUERY).not.toContain('NOT IN')
+    expect(PCC_CANDIDATES_QUERY).toContain('ORDER BY SCORE DESC, IS_LEAF DESC, p.PROJECT_ID')
   })
 })

@@ -7,6 +7,7 @@
     "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
+    "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",
     "@crowd/types": "workspace:*"
   },

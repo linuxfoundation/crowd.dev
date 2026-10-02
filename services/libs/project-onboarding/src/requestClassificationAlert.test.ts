@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { IRequestClassificationAlert } from './requestClassification'
 import {
+  IRequestClassificationAlert,
   buildRequestClassificationAlert,
   buildRequestClassificationAlertTitle,
 } from './requestClassificationAlert'
@@ -98,5 +98,29 @@ describe('dry run alert body', () => {
     )
 
     expect(sections.map((section) => section.title)).not.toContain('Dry run')
+  })
+
+  it('escapes Slack control characters in untrusted values', () => {
+    const sections = buildRequestClassificationAlert(
+      alert({
+        kind: 'ambiguous',
+        reason: 'ping <!channel> & <@U1>',
+        candidates: [{ ...pccProject, name: '<!here>' }],
+      }),
+    )
+    const text = JSON.stringify(sections)
+
+    expect(text).toContain('ping &lt;!channel&gt; &amp; &lt;@U1&gt;')
+    expect(text).toContain('&lt;!here&gt;')
+    expect(text).not.toContain('<!channel>')
+    expect(text).not.toContain('<!here>')
+  })
+
+  it('keeps the discussion link intact', () => {
+    const [intro] = buildRequestClassificationAlert(
+      alert({ kind: 'lf_not_in_pcc', projectName: '<!channel>' }),
+    )
+
+    expect(intro.text).toContain('<https://github.com/linuxfoundation/insights/discussions/1|')
   })
 })
