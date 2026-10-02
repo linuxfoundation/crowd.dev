@@ -692,9 +692,6 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../../libs/common
-      '@crowd/common_services':
-        specifier: workspace:*
-        version: link:../../libs/common_services
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
@@ -710,15 +707,9 @@ importers:
       '@crowd/slack':
         specifier: workspace:*
         version: link:../../libs/slack
-      '@crowd/snowflake':
-        specifier: workspace:*
-        version: link:../../libs/snowflake
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
-      '@crowd/types':
-        specifier: workspace:*
-        version: link:../../libs/types
       '@temporalio/activity':
         specifier: 'catalog:'
         version: 1.17.2

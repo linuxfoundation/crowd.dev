@@ -12,9 +12,6 @@
       "path": "../../libs/common"
     },
     {
-      "path": "../../libs/common_services"
-    },
-    {
       "path": "../../libs/data-access-layer"
     },
     {
@@ -25,12 +22,6 @@
     },
     {
       "path": "../../libs/slack"
-    },
-    {
-      "path": "../../libs/snowflake"
-    },
-    {
-      "path": "../../libs/types"
     }
   ]
 }
