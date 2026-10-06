@@ -9,4 +9,7 @@ export const LINKEDIN_GRID: Record<LinkedinActivityType, IActivityScoringGrid> =
   [LinkedinActivityType.REACTION]: {
     score: 1,
   },
+  [LinkedinActivityType.MENTION]: {
+    score: 6,
+  },
 }

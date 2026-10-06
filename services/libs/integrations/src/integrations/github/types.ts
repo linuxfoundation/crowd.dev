@@ -17,6 +17,7 @@ export enum GithubActivityType {
   ISSUE_COMMENT = 'issue-comment',
   DISCUSSION_COMMENT = 'discussion-comment',
   AUTHORED_COMMIT = 'authored-commit',
+  MENTION = 'mention',
 }
 
 export interface GithubPullRequest {

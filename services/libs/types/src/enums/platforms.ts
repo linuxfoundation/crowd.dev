@@ -32,6 +32,7 @@ export enum PlatformType {
   GITLAB = 'gitlab',
   FACEBOOK = 'facebook',
   OTHER = 'other',
+  OCTOLENS = 'octolens',
 }
 
 export type CodePlatform =
@@ -57,6 +58,7 @@ export enum IntegrationType {
   STACKOVERFLOW = 'stackoverflow',
   DISCOURSE = 'discourse',
   GIT = 'git',
+  OCTOLENS = 'octolens',
 }
 
 export const integrationLabel: Record<IntegrationType, string> = {
@@ -73,6 +75,7 @@ export const integrationLabel: Record<IntegrationType, string> = {
   [IntegrationType.STACKOVERFLOW]: 'Stack Overflow',
   [IntegrationType.DISCOURSE]: 'Discourse',
   [IntegrationType.GIT]: 'Git',
+  [IntegrationType.OCTOLENS]: 'Octolens',
 }
 
 // Backup url from username if profile url not present in member.attributes.url
@@ -91,4 +94,5 @@ export const integrationProfileUrl: Record<IntegrationType, (username: string) =
   [IntegrationType.STACKOVERFLOW]: (username) => `https://stackoverflow.com/users/${username}`,
   [IntegrationType.DISCOURSE]: () => null,
   [IntegrationType.GIT]: () => null,
+  [IntegrationType.OCTOLENS]: () => null,
 }
