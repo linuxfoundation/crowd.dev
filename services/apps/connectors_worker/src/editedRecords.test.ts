@@ -143,7 +143,7 @@ describe('dropConfirmedEditedRecords', () => {
     expect(result.unconfirmedCount).toBe(1)
   })
 
-  it('keeps mismatches whose node resolved to null', async () => {
+  it('keeps mismatches whose node resolved to null and counts them unconfirmed', async () => {
     const mismatches = [bodyMismatch('IC_gone')]
     const http = httpWithHandler(async (ids) => ({ data: { nodes: ids.map(() => null) } }))
 
@@ -151,7 +151,7 @@ describe('dropConfirmedEditedRecords', () => {
 
     expect(result.mismatches).toEqual(mismatches)
     expect(result.confirmedEditedCount).toBe(0)
-    expect(result.unconfirmedCount).toBe(0)
+    expect(result.unconfirmedCount).toBe(1)
   })
 
   it('leaves non-candidate mismatches untouched', async () => {

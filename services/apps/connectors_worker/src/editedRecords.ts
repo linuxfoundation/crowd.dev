@@ -61,11 +61,16 @@ function toBatches<T>(items: T[], size: number): T[][] {
   return batches
 }
 
+interface BatchConfirmation {
+  editedIds: Set<string>
+  unresolvedIds: Set<string>
+}
+
 async function fetchEditedNodeIds(
   http: ConnectorHttp,
   ids: string[],
   log: Logger,
-): Promise<Set<string> | null> {
+): Promise<BatchConfirmation | null> {
   try {
     const body = await http.request<GraphqlEnvelope<NodesQueryResult>>(
       {
@@ -80,11 +85,16 @@ async function fetchEditedNodeIds(
     if (!body.data || body.data.nodes.length !== ids.length) {
       return null
     }
-    return new Set(
-      body.data.nodes
-        .filter((node): node is { id: string; lastEditedAt: string } => Boolean(node?.lastEditedAt))
-        .map((node) => node.id),
-    )
+    const editedIds = new Set<string>()
+    const unresolvedIds = new Set<string>()
+    body.data.nodes.forEach((node, i) => {
+      if (node === null) {
+        unresolvedIds.add(ids[i])
+      } else if (node.lastEditedAt) {
+        editedIds.add(node.id)
+      }
+    })
+    return { editedIds, unresolvedIds }
   } catch {
     return null
   }
@@ -113,12 +123,13 @@ export async function dropConfirmedEditedRecords(
       for (const id of batch) uncheckedNodeIds.add(id)
       return
     }
-    const edited = await fetchEditedNodeIds(http, batch, log)
-    if (edited === null) {
+    const confirmation = await fetchEditedNodeIds(http, batch, log)
+    if (confirmation === null) {
       for (const id of batch) uncheckedNodeIds.add(id)
       return
     }
-    for (const id of edited) editedNodeIds.add(id)
+    for (const id of confirmation.editedIds) editedNodeIds.add(id)
+    for (const id of confirmation.unresolvedIds) uncheckedNodeIds.add(id)
   })
 
   const isConfirmedEdited = (m: IShadowDiffMismatch) =>
