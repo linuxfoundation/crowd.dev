@@ -53,7 +53,7 @@ export async function readCommitContributorPage(
           ({{String(afterChannel)}}, {{String(afterMemberId)}}, {{String(afterPlatform)}}, {{String(afterUsername)}})
     {% end %}
     {% if defined(updatedSince) %}
-      AND lastUpdatedAt > parseDateTime64BestEffort({{String(updatedSince)}})
+      AND ${DATASOURCE}.lastUpdatedAt > parseDateTime64BestEffort({{String(updatedSince)}})
     {% end %}
     ORDER BY channel, memberId, platform, username
     LIMIT {{Int32(limit)}}
