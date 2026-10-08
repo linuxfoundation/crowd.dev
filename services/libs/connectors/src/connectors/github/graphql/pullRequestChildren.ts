@@ -35,6 +35,7 @@ export interface ReviewThreadsBatchPage {
     id: string
     number: number
     reviewThreads: {
+      totalCount: number
       pageInfo: {
         endCursor: string | null
         hasNextPage: boolean
@@ -57,6 +58,7 @@ export interface ThreadCommentsBatchPage {
     id: string
     isResolved: boolean
     comments: {
+      totalCount: number
       pageInfo: {
         endCursor: string | null
         hasNextPage: boolean
@@ -146,6 +148,7 @@ export const REVIEW_THREADS_FOR_PRS_QUERY = `
         id
         number
         reviewThreads(first: $first, after: $after) {
+          totalCount
           pageInfo {
             endCursor
             hasNextPage
@@ -169,6 +172,7 @@ export const COMMENTS_FOR_THREADS_QUERY = `
         id
         isResolved
         comments(first: $first, after: $after) {
+          totalCount
           pageInfo {
             endCursor
             hasNextPage
