@@ -274,4 +274,75 @@ describe('diffShadowAgainstNango', () => {
     expect(result).toHaveLength(3)
     expect(result.every((m) => m.severity === 'low')).toBe(true)
   })
+
+  it('ignores parent issue state drift on issue comment attributes', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'issue-comment-1',
+        type: 'issue-comment',
+        data: { body: 'body', attributes: { state: 'closed' } },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'issue-comment-1',
+        type: 'issue-comment',
+        data: { body: 'body', attributes: { state: 'open' } },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('ignores the thread resolution prefix on pull request review thread comment bodies', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { body: '[Thread RESOLVED] looks good' },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { body: '[Thread OPEN] looks good' },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([])
+  })
+
+  it('still reports a body mismatch on pull request review thread comments beyond the prefix', () => {
+    const shadow: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { body: '[Thread RESOLVED] looks good' },
+      },
+    ]
+    const nango: IDiffableRecord[] = [
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        data: { body: '[Thread OPEN] needs work' },
+      },
+    ]
+
+    expect(diffShadowAgainstNango(shadow, nango)).toEqual([
+      {
+        sourceId: 'thread-comment-1',
+        type: 'pull_request-review-thread-comment',
+        kind: 'field_mismatch',
+        severity: 'high',
+        fields: [
+          {
+            field: 'body',
+            shadowValue: 'looks good',
+            nangoValue: 'needs work',
+          },
+        ],
+      },
+    ])
+  })
 })

@@ -36,7 +36,10 @@ const TYPES_WITH_SNAPSHOT_ATTRIBUTES = new Set([
   'pull_request-merged',
   'pull_request-review-thread-comment',
   'pull_request-comment',
+  'issue-comment',
 ])
+const THREAD_RESOLUTION_PREFIX = /^\[Thread (?:RESOLVED|OPEN)\] /
+const TYPES_WITH_THREAD_RESOLUTION_PREFIX = new Set(['pull_request-review-thread-comment'])
 
 export type ShadowDiffSeverity = 'high' | 'low'
 
@@ -94,6 +97,27 @@ function withoutSnapshotAttributeFields(attributes: unknown, type: string): unkn
   )
 }
 
+function withoutThreadResolutionPrefix(body: unknown, type: string): unknown {
+  if (!TYPES_WITH_THREAD_RESOLUTION_PREFIX.has(type) || typeof body !== 'string') {
+    return body
+  }
+  return body.replace(THREAD_RESOLUTION_PREFIX, '')
+}
+
+function comparableFieldValue(
+  data: Record<string, unknown>,
+  field: (typeof PASS_THROUGH_FIELDS)[number],
+  type: string,
+): unknown {
+  if (field === 'attributes') {
+    return withoutSnapshotAttributeFields(data[field], type)
+  }
+  if (field === 'body') {
+    return withoutThreadResolutionPrefix(data[field], type)
+  }
+  return data[field]
+}
+
 function isSnapshotDriftTopLevelField(field: string, type: string): boolean {
   return (
     TYPES_WITH_SNAPSHOT_ATTRIBUTES.has(type) && SNAPSHOT_AT_EXTRACTION_TOP_LEVEL_FIELDS.has(field)
@@ -110,14 +134,8 @@ function comparePassThroughFields(
     if (isSnapshotDriftTopLevelField(field, type)) {
       continue
     }
-    const shadowValue =
-      field === 'attributes'
-        ? withoutSnapshotAttributeFields(shadowData[field], type)
-        : shadowData[field]
-    const nangoValue =
-      field === 'attributes'
-        ? withoutSnapshotAttributeFields(nangoData[field], type)
-        : nangoData[field]
+    const shadowValue = comparableFieldValue(shadowData, field, type)
+    const nangoValue = comparableFieldValue(nangoData, field, type)
     if (!isDeepStrictEqual(shadowValue, nangoValue)) {
       mismatches.push({
         field,
