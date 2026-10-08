@@ -5,6 +5,7 @@ import { prepareBulkInsert } from '@crowd/data-access-layer/src/utils'
 import { TinybirdClient } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { getPackagesTinybirdToken } from '../../config'
 import { getPackagesDb } from '../../db'
 import { canonicalGovernanceRepoUrl } from '../governance/mapRows'
 import { findRepoIdsByUrl, readRunStart } from '../governance/syncGovernanceContributors'
@@ -203,7 +204,7 @@ export async function syncGitActivityContributors(
   options: GitActivitySyncOptions,
 ): Promise<GitActivitySyncCounts> {
   const pkgsQx = await getPackagesDb()
-  const tb = new TinybirdClient()
+  const tb = new TinybirdClient(getPackagesTinybirdToken())
 
   const runStartedAt = await readRunStart(pkgsQx)
   const watermark = await readWatermark(pkgsQx)

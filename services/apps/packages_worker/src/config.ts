@@ -10,6 +10,10 @@ function requireEnvInt(name: string): number {
   return parseInt(requireEnv(name), 10)
 }
 
+export function getPackagesTinybirdToken(): string {
+  return requireEnv('CROWD_PACKAGES_TB_TOKEN')
+}
+
 export function getPackagesDbConfig() {
   return {
     host: requireEnv('CROWD_PACKAGES_DB_WRITE_HOST'),
