@@ -16,7 +16,11 @@ import {
   hasDeletedRecordCandidates,
   isDeletedRecordCandidate,
 } from '../deletedRecords'
-import { dropConfirmedEditedRecords, hasEditedRecordCandidates } from '../editedRecords'
+import {
+  dropConfirmedEditedRecords,
+  hasEditedRecordCandidates,
+  isEditedRecordCandidate,
+} from '../editedRecords'
 import {
   dropConfirmedForcePushedCommits,
   hasForcePushCandidates,
@@ -98,13 +102,14 @@ export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
 function dropUncheckedCandidates(
   syncName: string,
   result: IShadowDiffUnitResult,
-): { result: IShadowDiffUnitResult; droppedCount: number } {
+): { result: IShadowDiffUnitResult; droppedCount: number; keptEditedCount: number } {
   const isCandidate = (m: IShadowDiffMismatch) =>
     isForcePushCandidate(syncName, m) || isDeletedRecordCandidate(syncName, m)
   const mismatches = result.mismatches.filter((m) => !isCandidate(m))
   return {
     result: { ...result, mismatches },
     droppedCount: result.mismatches.length - mismatches.length,
+    keptEditedCount: mismatches.filter((m) => isEditedRecordCandidate(syncName, m)).length,
   }
 }
 
@@ -197,9 +202,10 @@ export async function runShadowDiffForChannel(
             day,
             channelName: channel.channelName,
             syncName: unit.syncName,
-            checkFailedCount: dropped.droppedCount,
+            checkFailedCount: dropped.droppedCount + dropped.keptEditedCount,
+            uncheckedEditedCount: dropped.keptEditedCount,
           },
-          'shadow diff check_failed: github client setup failed, candidates excluded from missing_in_shadow',
+          'shadow diff check_failed: github client setup failed, candidates excluded from missing_in_shadow and edited-record candidates kept as field_mismatch',
         )
         unitDiffs.push({ unit, result: dropped.result })
         continue

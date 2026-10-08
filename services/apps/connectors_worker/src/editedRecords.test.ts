@@ -79,6 +79,17 @@ describe('hasEditedRecordCandidates', () => {
       ]),
     ).toBe(true)
   })
+
+  it('is false for a reviewed event whose body belongs to the review, not the parent PR', () => {
+    expect(
+      hasEditedRecordCandidates('pull-requests', [
+        bodyMismatch(
+          'gen-PRR_PR_kwDOI7xefs8AAAABGaViEg_alice_2026-10-06T15:07:23.000Z',
+          'pull_request-reviewed',
+        ),
+      ]),
+    ).toBe(false)
+  })
 })
 
 describe('dropConfirmedEditedRecords', () => {

@@ -5,7 +5,7 @@ import type { Logger } from '@crowd/logging'
 import { IShadowDiffMismatch } from './shadowDiff'
 
 const COMMIT_SYNC_NAME = 'pull-request-commits'
-const SYNTHETIC_SOURCE_ID_NODE = /^gen-[A-Z]+_([A-Z]+_[A-Za-z0-9-]+)(?:_|$)/
+const PARENT_BODY_SYNTHETIC_SOURCE_ID = /^gen-(?:AE|CE|ME|RRE)_([A-Z]+_[A-Za-z0-9-]+)(?:_|$)/
 const NODES_QUERY_BATCH_SIZE = 100
 const CONFIRM_CONCURRENCY = 3
 const CONFIRM_BUDGET_MS = 60_000
@@ -23,7 +23,7 @@ interface NodesQueryResult {
 }
 
 function editedNodeId(mismatch: IShadowDiffMismatch): string | null {
-  const synthetic = SYNTHETIC_SOURCE_ID_NODE.exec(mismatch.sourceId)
+  const synthetic = PARENT_BODY_SYNTHETIC_SOURCE_ID.exec(mismatch.sourceId)
   if (synthetic) {
     return synthetic[1]
   }
