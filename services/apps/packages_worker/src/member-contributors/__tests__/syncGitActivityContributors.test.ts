@@ -18,6 +18,7 @@ import {
 } from '../git-activity/syncGitActivityContributors'
 
 vi.mock('@temporalio/activity', () => ({ heartbeat: vi.fn() }))
+vi.mock('../../config', () => ({ getPackagesTinybirdToken: () => 'packages-token' }))
 vi.mock('../../db', () => ({ getPackagesDb: vi.fn() }))
 vi.mock('@crowd/database', () => ({ TinybirdClient: vi.fn() }))
 
@@ -254,6 +255,7 @@ describe('syncGitActivityContributors', () => {
 
     const counts = await syncGitActivityContributors({ full: true })
 
+    expect(TinybirdClient).toHaveBeenCalledWith('packages-token')
     expect(counts.full).toBe(true)
     expect(counts.removed).toBe(2)
     expect(executeSql.mock.calls[1][1]).toEqual({ limit: 5000 })
