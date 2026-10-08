@@ -187,6 +187,9 @@ describe('readCommitContributorPage', () => {
 
     const [query, params] = executeSql.mock.calls[0]
     expect(query).toContain('{% if defined(afterChannel) %}')
+    expect(query).toContain(
+      'repo_commit_contributors_copy_ds.lastUpdatedAt > parseDateTime64BestEffort',
+    )
     expect(params).toEqual({
       limit: 10,
       afterChannel: 'c',
