@@ -16,6 +16,7 @@ import {
   hasDeletedRecordCandidates,
   isDeletedRecordCandidate,
 } from '../deletedRecords'
+import { dropConfirmedEditedRecords, hasEditedRecordCandidates } from '../editedRecords'
 import {
   dropConfirmedForcePushedCommits,
   hasForcePushCandidates,
@@ -180,8 +181,9 @@ export async function runShadowDiffForChannel(
 
     const needsForcePushCheck = hasForcePushCandidates(unit.syncName, result.mismatches)
     const needsDeletedRecordCheck = hasDeletedRecordCandidates(unit.syncName, result.mismatches)
+    const needsEditedRecordCheck = hasEditedRecordCandidates(unit.syncName, result.mismatches)
 
-    if (needsForcePushCheck || needsDeletedRecordCheck) {
+    if (needsForcePushCheck || needsDeletedRecordCheck || needsEditedRecordCheck) {
       confirmationHttp ??= createGithubConfirmationHttp(qx, channel.integrationId)
       let http: ConnectorHttp
       try {
@@ -252,6 +254,30 @@ export async function runShadowDiffForChannel(
               checkFailedCount: unconfirmedCount,
             },
             'shadow diff check_failed: deleted-record candidates not confirmed against github, excluded from missing_in_shadow',
+          )
+        }
+        result = { ...result, mismatches }
+      }
+
+      if (hasEditedRecordCandidates(unit.syncName, result.mismatches)) {
+        const { mismatches, confirmedEditedCount, unconfirmedCount } =
+          await dropConfirmedEditedRecords(unit.syncName, result.mismatches, http, svc.log)
+        if (confirmedEditedCount > 0) {
+          svc.log.info(
+            { unitId: unit.id, day, channelName: channel.channelName, confirmedEditedCount },
+            'skipped body mismatches on records edited after capture',
+          )
+        }
+        if (unconfirmedCount > 0) {
+          svc.log.warn(
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              syncName: unit.syncName,
+              checkFailedCount: unconfirmedCount,
+            },
+            'shadow diff check_failed: edited-record candidates not confirmed against github, kept as field_mismatch',
           )
         }
         result = { ...result, mismatches }
