@@ -23,22 +23,19 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
-import { countNodes } from '@crowd/project-onboarding'
+import {
+  IRequestClassificationAlert,
+  buildRequestClassificationAlert,
+  buildRequestClassificationAlertTitle,
+  countNodes,
+} from '@crowd/project-onboarding'
 import { withRequestClassifierDeps } from '@crowd/project-onboarding/src/requestClassifierDeps'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'
-import {
-  IClassifiedRows,
-  IRequestClassificationAlert,
-  classifyDiscussions,
-} from './requestClassification'
-import {
-  buildRequestClassificationAlert,
-  buildRequestClassificationAlertTitle,
-} from './requestClassificationAlert'
+import { IClassifiedRows, classifyDiscussions } from './requestClassification'
 
 const log = getServiceLogger()
 
