@@ -7,7 +7,7 @@
     "@crowd/database": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@dsnp/parquetjs": "^1.7.0",
-    "snowflake-sdk": "^3.1.0"
+    "snowflake-sdk": "^3.3.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
