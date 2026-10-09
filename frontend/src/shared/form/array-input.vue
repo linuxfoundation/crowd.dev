@@ -25,36 +25,33 @@
   </article>
 </template>
 
-<script setup>
-import { computed, defineEmits, defineProps } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
 import { required } from '@vuelidate/validators';
-import useVuelidate from '@vuelidate/core';
+import useVuelidate, { type ValidationArgs } from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: String,
-    required: true,
-  },
-  placeholder: {
-    type: String,
-    default: null,
-  },
-  disabled: {
-    type: Boolean,
-    default: false,
-  },
-  inputClass: {
-    type: String,
-    default: '',
-  },
-  inputLabel: {
-    type: String,
-    default: '',
-  },
+defineOptions({ name: 'AppArrayInput' });
+
+const props = withDefaults(defineProps<{
+  modelValue: string;
+  placeholder?: string | null;
+  disabled?: boolean;
+  inputClass?: string;
+  inputLabel?: string;
+}>(), {
+  placeholder: null,
+  disabled: false,
+  inputClass: '',
+  inputLabel: '',
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void;
+}>();
+
+defineSlots<{
+  after?:() => unknown;
+}>();
 
 const rules = {
   required,
@@ -69,11 +66,5 @@ const model = computed({
   },
 });
 
-const $v = useVuelidate(rules, model);
-</script>
-
-<script>
-export default {
-  name: 'AppArrayInput',
-};
+const $v = useVuelidate<string, ValidationArgs>(rules, model);
 </script>

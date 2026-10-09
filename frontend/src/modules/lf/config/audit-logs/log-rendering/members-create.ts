@@ -1,6 +1,6 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
-const membersCreate: LogRenderingConfig = {
+const membersCreate: LogRenderingConfig<unknown, { displayName?: string }> = {
   label: 'Profile created',
   changes: () => null,
   description: (log) => {

@@ -18,8 +18,18 @@
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      "vuex": ["node_modules/vuex/types/index.d.ts"],
+      "@popperjs/core": ["node_modules/@popperjs/core/index.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.*", ".storybook/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.vue",
+    "vite.config.*",
+    ".storybook/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist", "storybook-static"]
 }

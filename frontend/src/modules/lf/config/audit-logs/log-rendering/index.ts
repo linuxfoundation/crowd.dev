@@ -15,19 +15,27 @@ import organizationsEditProfile from './organizations-edit-profile';
 import organizationsMerge from './organizations-merge';
 import organizationsUnmerge from './organizations-unmerge';
 
-export interface LogRenderingConfig {
+export interface LogChanges {
+  removals: string[];
+  additions: string[];
+  changes: string[];
+}
+
+interface MergeLogEntity {
+  id?: string;
+  displayName?: string;
+}
+
+export interface MergeLogState {
+  primary: MergeLogEntity;
+  secondary?: MergeLogEntity;
+}
+
+export interface LogRenderingConfig<TOld = unknown, TNew = TOld> {
   label: string;
-  description: (log: AuditLog) => string;
-  properties?: (log: AuditLog) => {label: string, value: string;}[];
-  changes?: (log: AuditLog) => Promise<{
-    removals: string[]
-    additions: string[]
-    changes: string[]
-  } | null> | {
-    removals: string[]
-    additions: string[]
-    changes: string[]
-  } | null
+  description(log: AuditLog<TOld, TNew>): string;
+  properties?(log: AuditLog<TOld, TNew>): {label: string, value: string;}[];
+  changes?(log: AuditLog<TOld, TNew>): Promise<LogChanges | null> | LogChanges | null;
 }
 
 export const logRenderingConfig: Record<ActionType, LogRenderingConfig> = {

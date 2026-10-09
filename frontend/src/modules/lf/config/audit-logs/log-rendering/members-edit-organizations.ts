@@ -1,8 +1,15 @@
-import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
+import type { LogChanges, LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { OrganizationService } from '@/modules/organization/organization-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-const formatDateRange = (dateStart, dateEnd) => {
+interface MemberOrganizationStateRow {
+  organizationId: string;
+  title?: string | null;
+  dateStart: string | null;
+  dateEnd: string | null;
+}
+
+const formatDateRange = (dateStart: string | null, dateEnd: string | null) => {
   // eslint-disable-next-line no-nested-ternary
   const dateStartFormat = dateStart
     ? dateHelper(dateStart)
@@ -18,10 +25,10 @@ const formatDateRange = (dateStart, dateEnd) => {
   return `${dateStartFormat} -> ${dateEndFormat}`;
 };
 
-const membersEditOrganizations: LogRenderingConfig = {
+const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]> = {
   label: 'Profile work experience updated',
   changes: async (log) => {
-    const changes = {
+    const changes: LogChanges = {
       removals: [],
       additions: [],
       changes: [],
@@ -41,8 +48,8 @@ const membersEditOrganizations: LogRenderingConfig = {
       ]),
     ];
 
-    const orgs = await OrganizationService.listByIds(orgIds);
-    const orgById = orgs.reduce((obj, org) => ({
+    const orgs: { id: string; displayName: string }[] = await OrganizationService.listByIds(orgIds);
+    const orgById = orgs.reduce<Record<string, string>>((obj, org) => ({
       ...obj,
       [org.id]: org.displayName,
     }), {});
@@ -52,7 +59,7 @@ const membersEditOrganizations: LogRenderingConfig = {
       if (!newStateMap.has(org.organizationId)) {
         changes.removals.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}`);
       } else {
-        const newOrg = newStateMap.get(org.organizationId);
+        const newOrg = newStateMap.get(org.organizationId)!;
         if (
           formatDateRange(org.dateStart, org.dateEnd) !== formatDateRange(newOrg.dateStart, newOrg.dateEnd)
           || (org.title || '') !== (newOrg.title || '')) {
