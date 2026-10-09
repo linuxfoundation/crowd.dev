@@ -1,6 +1,4 @@
-import {
-  ref, computed, type Ref, type ComputedRef,
-} from 'vue';
+import { ref, computed, type Ref, type ComputedRef } from 'vue';
 
 export default function formChangeDetector(form: object): {
   temporaryForm: Ref<string>;

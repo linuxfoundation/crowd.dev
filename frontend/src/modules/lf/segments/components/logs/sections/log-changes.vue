@@ -33,6 +33,7 @@
 <script setup lang="ts">
 import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import { computed, onMounted, ref } from 'vue';
+import type { LogChanges } from '@/modules/lf/config/audit-logs/log-rendering';
 import { logRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
@@ -40,7 +41,7 @@ const props = defineProps<{
   log: AuditLog
 }>();
 
-const changes = ref<Record<string, any[]> | null>({
+const changes = ref<LogChanges | null>({
   removals: [],
   additions: [],
   changes: [],

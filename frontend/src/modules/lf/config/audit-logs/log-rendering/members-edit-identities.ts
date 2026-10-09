@@ -1,7 +1,9 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { lfIdentities } from '@/config/identities';
 
-const membersEditIdentities: LogRenderingConfig = {
+type MemberIdentitiesState = Record<string, string[]>;
+
+const membersEditIdentities: LogRenderingConfig<MemberIdentitiesState> = {
   label: 'Profile identities updated',
   changes: (log) => {
     const removals = [];

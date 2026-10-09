@@ -1,6 +1,6 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
-const organizationsCreate: LogRenderingConfig = {
+const organizationsCreate: LogRenderingConfig<unknown, { displayName?: string }> = {
   label: 'Organization created',
   changes: () => null,
   description: (log) => {
