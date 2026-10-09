@@ -50,39 +50,38 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
-  defineProps,
-  defineEmits,
   ref,
   computed,
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: [String, Number, Array],
-    default: null,
-  },
-  options: {
-    type: Array,
-    default: () => {},
-  },
-  prefix: {
-    type: String,
-    default: null,
-  },
-  popperClass: {
-    type: String,
-    default: null,
-  },
-  popperPlacement: {
-    type: String,
-    default: 'top-start',
-  },
+interface InlineSelectOption {
+  value: string | number;
+  label: string;
+  description?: string;
+}
+
+defineOptions({ name: 'AppInlineSelectInput' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: string | number | unknown[] | null;
+  options?: InlineSelectOption[];
+  prefix?: string | null;
+  popperClass?: string | null;
+  popperPlacement?: string;
+}>(), {
+  modelValue: null,
+  options: () => [],
+  prefix: null,
+  popperClass: null,
+  popperPlacement: 'top-start',
 });
 
-const emit = defineEmits(['update:modelValue', 'change']);
+const emit = defineEmits<{(e: 'update:modelValue', value: string | number | unknown[] | null): void;
+  (e: 'change', value: string | number | unknown[] | null): void;
+}>();
 
 const model = computed({
   get() {
@@ -103,17 +102,11 @@ const modelLabel = computed(() => props.options.find((o) => o.value === model.va
   ?.label);
 
 const dropdownExpanded = ref(false);
-const handleDropdownVisibleChange = (value) => {
+const handleDropdownVisibleChange = (value: boolean) => {
   dropdownExpanded.value = value;
 };
-const handleOptionClick = (option) => {
+const handleOptionClick = (option: InlineSelectOption) => {
   model.value = option.value;
-};
-</script>
-
-<script>
-export default {
-  name: 'AppInlineSelectInput',
 };
 </script>
 
