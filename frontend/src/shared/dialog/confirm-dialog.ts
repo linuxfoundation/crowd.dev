@@ -1,6 +1,32 @@
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox, type MessageBoxData } from 'element-plus';
 import { h } from 'vue';
 import 'element-plus/dist/index.css';
+
+export interface ConfirmDialogOptions {
+  vertical?: boolean;
+  type?: 'warning' | 'danger' | 'info' | 'success' | 'notification' | 'custom' | 'error';
+  title?: string;
+  message?: string;
+  badgeContent?: string;
+  highlightedInfo?: string;
+  showCancelButton?: boolean;
+  showClose?: boolean;
+  customClass?: string;
+  cancelButtonText?: string;
+  cancelButtonClass?: string;
+  confirmButtonText?: string;
+  confirmButtonClass?: string;
+  icon?: string;
+  distinguishCancelAndClose?: boolean;
+  autofocus?: boolean;
+  closeOnClickModal?: boolean;
+  titleClass?: string | null;
+  messageClass?: string | null;
+  verticalCancelButtonClass?: string | null;
+  verticalConfirmButtonClass?: string | null;
+  verticalCustomClass?: string | null;
+  hideCloseButton?: boolean;
+}
 
 export default ({
   vertical = false,
@@ -26,7 +52,7 @@ export default ({
   verticalConfirmButtonClass = null,
   verticalCustomClass = null,
   hideCloseButton = false,
-}) => {
+}: ConfirmDialogOptions): Promise<MessageBoxData> => {
   let iconColorClass = 'text-yellow-600';
   let iconBgColorClass = 'bg-yellow-100';
 
@@ -134,12 +160,12 @@ export default ({
                 class:
                   'c-btn c-btn--tiny c-btn--primary-link w-8 !h-8 hover:!no-underline group',
                 type: 'button',
-                onClick: () => {
+                onClick: (): void => {
                   document
                     .querySelector(
                       '.el-message-box__headerbtn',
                     )
-                    .dispatchEvent(new Event('click'));
+                    ?.dispatchEvent(new Event('click'));
                 },
               },
               [
