@@ -71,67 +71,59 @@
   </teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed, ref, watch, onUnmounted, nextTick,
 } from 'vue';
+import type { DrawerInstance } from 'element-plus';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { number } from 'yup';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: () => false,
-  },
-  preTitle: {
-    type: String,
-    default: () => null,
-  },
-  title: {
-    type: String,
-    required: true,
-  },
-  customClass: {
-    type: String,
-    default: () => '',
-  },
-  direction: {
-    type: String,
-    default: () => 'rtl',
-  },
-  size: {
-    type: [String, Number],
-    default: () => '40%',
-  },
-  showFooter: {
-    type: Boolean,
-    default: () => true,
-  },
-  hasBorder: {
-    type: Boolean,
-    default: () => false,
-  },
-  hasPadding: {
-    type: Boolean,
-    default: () => true,
-  },
-  zIndex: {
-    type: number,
-    default: () => 2004,
-  },
-  closeOnClickModal: {
-    type: Boolean,
-    default: () => false,
-  },
-  closeFunction: {
-    type: Function,
-    default: (done) => {
-      done(false);
-    },
+defineOptions({ name: 'AppDrawer' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+  preTitle?: string | null;
+  title: string;
+  customClass?: string;
+  direction?: string;
+  size?: string | number;
+  showFooter?: boolean;
+  hasBorder?: boolean;
+  hasPadding?: boolean;
+  zIndex?: number;
+  closeOnClickModal?: boolean;
+  closeFunction?:(done: (cancel?: boolean) => void) => void;
+}>(), {
+  modelValue: false,
+  preTitle: null,
+  customClass: '',
+  direction: 'rtl',
+  size: '40%',
+  showFooter: true,
+  hasBorder: false,
+  hasPadding: true,
+  zIndex: 2004,
+  closeOnClickModal: false,
+  closeFunction: (done: (cancel?: boolean) => void) => {
+    done(false);
   },
 });
-const emit = defineEmits(['update:modelValue', 'close']);
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'close'): void;
+}>();
+
+defineSlots<{
+  header?:() => unknown;
+  beforeTitle?:() => unknown;
+  afterTitle?:() => unknown;
+  'header-label'?:() => unknown;
+  belowTitle?:() => unknown;
+  content?:() => unknown;
+  footer?:() => unknown;
+}>();
+
 const model = computed({
   get() {
     return props.modelValue;
@@ -141,11 +133,11 @@ const model = computed({
   },
 });
 
-const drawerRef = ref(null);
+const drawerRef = ref<DrawerInstance | null>(null);
 const hasScroll = ref(false);
-let resizeObserver = null;
-let mutationObserver = null;
-let drawerBodyEl = null;
+let resizeObserver: ResizeObserver | null = null;
+let mutationObserver: MutationObserver | null = null;
+let drawerBodyEl: Element | null = null;
 
 const getDrawerBody = () => {
   const drawers = document.querySelectorAll('.el-drawer');
@@ -206,11 +198,5 @@ onUnmounted(() => {
 const onClose = () => {
   model.value = false;
   emit('close');
-};
-</script>
-
-<script>
-export default {
-  name: 'AppDrawer',
 };
 </script>
