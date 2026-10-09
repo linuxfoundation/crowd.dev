@@ -16,7 +16,7 @@ catalog:
   "@temporalio/worker": ~1.17.2
   "@temporalio/workflow": ~1.17.2
   "@types/node": ^24.13.3
-  axios: ^1.19.0
+  axios: ^1.20.0
   config: ^3.3.12
   pg-promise: ^11.4.3
   tsx: ^4.20.3

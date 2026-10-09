@@ -28,8 +28,8 @@ catalogs:
       specifier: ^24.13.3
       version: 24.13.3
     axios:
-      specifier: ^1.19.0
-      version: 1.19.0
+      specifier: ^1.20.0
+      version: 1.20.0
     config:
       specifier: ^3.3.12
       version: 3.3.12
@@ -200,7 +200,7 @@ importers:
         version: 2.814.0
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
+        version: 1.20.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
       bcrypt:
         specifier: 6.0.0
         version: 6.0.0
@@ -467,8 +467,8 @@ importers:
         specifier: ^9.13.0
         version: 9.13.0(vue@3.3.1)
       axios:
-        specifier: ^1.19.0
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        specifier: ^1.20.0
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       dayjs:
         specifier: ^1.11.13
         version: 1.11.19
@@ -1225,7 +1225,7 @@ importers:
         version: link:../../libs/types
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       config:
         specifier: 'catalog:'
         version: 3.3.12
@@ -1357,7 +1357,7 @@ importers:
         version: 4.3.1
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       lodash:
         specifier: ~4.17.21
         version: 4.17.21
@@ -1418,7 +1418,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       fast-levenshtein:
         specifier: ^3.0.0
         version: 3.0.0
@@ -1571,7 +1571,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       lodash.isequal:
         specifier: ^4.5.0
         version: 4.5.0
@@ -1650,7 +1650,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       fast-xml-parser:
         specifier: ^5.8.0
         version: 5.8.0
@@ -1775,7 +1775,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       lodash.mergewith:
         specifier: ^4.6.2
         version: 4.6.2
@@ -1876,7 +1876,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       csv-parse:
         specifier: ^7.0.2
         version: 7.0.2
@@ -2017,7 +2017,7 @@ importers:
         version: 1.17.2
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       js-yaml:
         specifier: ^4.3.2
         version: 4.3.2
@@ -2495,7 +2495,7 @@ importers:
         version: 22.0.0
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       jsonwebtoken:
         specifier: ^9.0.0
         version: 9.0.3
@@ -2541,7 +2541,7 @@ importers:
         version: link:../types
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       jsonwebtoken:
         specifier: ^9.0.0
         version: 9.0.3
@@ -2642,7 +2642,7 @@ importers:
         version: link:../logging
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       pg-promise:
         specifier: 'catalog:'
         version: 11.6.0
@@ -2676,7 +2676,7 @@ importers:
         version: 5.0.6(encoding@0.1.13)
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       he:
         specifier: ^1.2.0
         version: 1.2.0
@@ -2747,7 +2747,7 @@ importers:
         version: 0.69.22(debug@4.4.3(supports-color@8.1.1))
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -2784,7 +2784,7 @@ importers:
         version: 2.11.0(supports-color@8.1.1)
       axios:
         specifier: 'catalog:'
-        version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       lodash.merge:
         specifier: ^4.6.2
         version: 4.6.2
@@ -2894,7 +2894,7 @@ importers:
         version: 1.8.7(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       snowflake-sdk:
         specifier: ^3.1.0
-        version: 3.2.0(asn1.js@5.4.1)(supports-color@8.1.1)
+        version: 3.2.0(asn1.js@5.4.1)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -7344,6 +7344,9 @@ packages:
 
   axios@1.19.0:
     resolution: {integrity: sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==}
+
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   babel-walk@3.0.0-canary-5:
     resolution: {integrity: sha512-GAwkz0AihzY5bkwIY5QDR+LvsRQgB/B+1foMPvi0FZPMl5fjD7ICiznUiBdLYMH1QYe6vqu4gWYytZOccLouFw==}
@@ -16734,7 +16737,7 @@ snapshots:
       '@slack/types': 2.22.0
       '@types/node': 24.13.3
       '@types/retry': 0.12.0
-      axios: 1.19.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
       eventemitter3: 5.0.1
       form-data: 4.0.6
       is-electron: 2.2.2
@@ -16752,7 +16755,7 @@ snapshots:
       '@slack/types': 2.22.0
       '@types/node': 24.13.3
       '@types/retry': 0.12.0
-      axios: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      axios: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       eventemitter3: 5.0.1
       form-data: 4.0.6
       is-electron: 2.2.2
@@ -18859,6 +18862,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
       - supports-color
+    optional: true
 
   axios@1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
@@ -18870,7 +18874,17 @@ snapshots:
       - debug
       - supports-color
 
-  axios@1.19.0(supports-color@8.1.1):
+  axios@1.20.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0):
+    dependencies:
+      follow-redirects: 1.16.0(debug@4.4.3(supports-color@5.5.0))
+      form-data: 4.0.6
+      https-proxy-agent: 5.0.1(supports-color@5.5.0)
+      proxy-from-env: 2.1.0
+    transitivePeerDependencies:
+      - debug
+      - supports-color
+
+  axios@1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
       form-data: 4.0.6
@@ -22949,7 +22963,7 @@ snapshots:
 
   peopledatalabs@6.1.5(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0):
     dependencies:
-      axios: 1.19.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)
       copy-anything: 3.0.5
     transitivePeerDependencies:
       - debug
@@ -22957,7 +22971,7 @@ snapshots:
 
   peopledatalabs@6.1.5(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
-      axios: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      axios: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       copy-anything: 3.0.5
     transitivePeerDependencies:
       - debug
@@ -24134,7 +24148,7 @@ snapshots:
       - supports-color
     optional: true
 
-  snowflake-sdk@3.2.0(asn1.js@5.4.1)(supports-color@8.1.1):
+  snowflake-sdk@3.2.0(asn1.js@5.4.1)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/client-s3': 3.1112.0
@@ -24150,7 +24164,7 @@ snapshots:
       asn1.js: 5.4.1
       asn1.js-rfc2560: 5.0.1(asn1.js@5.4.1)
       asn1.js-rfc5280: 3.0.0
-      axios: 1.19.0(supports-color@8.1.1)
+      axios: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       big-integer: 1.6.52
       bignumber.js: 9.1.2
       expand-tilde: 2.0.2
