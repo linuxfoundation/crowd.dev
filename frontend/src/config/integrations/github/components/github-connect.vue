@@ -70,10 +70,10 @@ import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfGithubNangoSettingsDrawer from '@/config/integrations/github-nango/components/settings/github-settings-drawer.vue';
 import LfGithubConnectModal from '@/config/integrations/github/components/connect/github-connect-modal.vue';
 import LfGithubConnectFinishingModal from '@/config/integrations/github/components/connect/github-connect-finishing-modal.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { useRoute } from 'vue-router';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
 import { rememberConnectSegment } from '@/config/integrations/connect-segment';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
   integration: Integration<GitHubSettings> | undefined,
@@ -86,7 +86,7 @@ const isV1SettingsDrawerOpen = ref(false);
 const isDropdownVisible = ref(false);
 const isFinishingModalOpen = ref(false);
 
-const { doGithubConnect } = mapActions('integration');
+const { connectGithub } = useIntegrationStore();
 
 const openV1Connect = () => {
   rememberConnectSegment(props.segmentId, props.grandparentId);
@@ -102,7 +102,7 @@ const finalizeGithubConnect = () => {
 
   if (code && !source && state !== 'noconnect') {
     isFinishingModalOpen.value = true;
-    doGithubConnect({
+    connectGithub({
       code,
       installId,
       setupAction,

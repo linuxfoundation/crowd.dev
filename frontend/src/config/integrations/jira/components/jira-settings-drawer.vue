@@ -153,7 +153,6 @@ import {
 } from 'vue';
 import jira from '@/config/integrations/jira/config';
 import formChangeDetector from '@/shared/form/form-change';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import AppArrayInput from '@/shared/form/array-input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { required } from '@vuelidate/validators';
@@ -164,6 +163,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
   integration: Integration<JiraSettings> | undefined,
@@ -195,7 +195,7 @@ const isAPIConnectionValid = ref(false);
 const { hasFormChanged, formSnapshot } = formChangeDetector(form);
 const $v = useVuelidate(rules, form, { $stopPropagation: true });
 
-const { doJiraConnect } = mapActions('integration');
+const { connectJira } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -270,7 +270,7 @@ const canVerify = async () => {
 const connect = async () => {
   loading.value = true;
 
-  doJiraConnect({
+  connectJira({
     id: props.integration?.id,
     url: form.jiraURL,
     username: form.username,

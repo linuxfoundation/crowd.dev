@@ -5,16 +5,31 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import Errors from '@/shared/error/errors';
-import type { Router } from 'vue-router';
+import type { RouteParamsRaw, Router } from 'vue-router';
 import { getRouter } from '@/router/instance';
 import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { lfIntegrations } from '@/config/integrations';
 import type { IntegrationConfig } from '@/config/integrations';
 import { ToastStore } from '@/shared/message/notification';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
+import type {
+  ConfluenceConnectPayload,
+  DiscourseConnectPayload,
+  GerritConnectPayload,
+  GitConnectPayload,
+  GithubConnectPayload,
+  GitlabConnectPayload,
+  GroupsioConnectPayload,
+  JiraConnectPayload,
+} from '@/modules/integration/types/ConnectPayloads';
 
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
+
+const FIRST_ACTIVITIES_MESSAGE =
+  'The first activities will show up in a couple of seconds. <br /> <br /> ' +
+  'This process might take a few minutes to finish, depending on the amount of data.';
 
 export interface IntegrationRecord extends Integration<Record<string, unknown>> {
   platform: string;
@@ -98,7 +113,7 @@ export const useIntegrationStore = defineStore('integration', () => {
     }
   };
 
-  const fetch = async (segments: string[] = []): Promise<void> => {
+  const fetch = async (segments: (string | null | undefined)[] = []): Promise<void> => {
     try {
       loading.value = true;
 
@@ -180,6 +195,220 @@ export const useIntegrationStore = defineStore('integration', () => {
     }
   };
 
+  const pushToIntegration = (params: RouteParamsRaw) =>
+    (getRouter() as Router).push({ name: 'integration', params });
+
+  const connectGithub = async ({
+    code,
+    installId,
+    setupAction,
+  }: GithubConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.githubConnect(
+        code,
+        installId,
+        setupAction,
+      );
+      fetch();
+      pushToIntegration({ id: integration.segmentId });
+      fetch([integration.segmentId]);
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectGitlab = async ({
+    code,
+    state,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: GitlabConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.gitlabConnect(code, state, [
+        targetSegmentId,
+      ]);
+      upsert(integration);
+      fetch();
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+      fetch([integration.segmentId]);
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectGit = async ({
+    remotes,
+    isUpdate,
+    segmentId: targetSegmentId,
+    grandparentId,
+    errorHandler,
+  }: GitConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.gitConnect(remotes, [
+        targetSegmentId,
+      ]);
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `Git integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      pushToIntegration({ id: targetSegmentId, grandparentId });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler(error as IntegrationApiError);
+      } else {
+        Errors.handle(error);
+      }
+    }
+  };
+
+  const connectConfluence = async ({
+    id,
+    settings,
+    isUpdate,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: ConfluenceConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.confluenceConnect(
+        id,
+        settings,
+        targetSegmentId,
+      );
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `Confluence integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      pushToIntegration({ id: targetSegmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectGerrit = async ({
+    orgURL,
+    repoNames,
+    enableAllRepos,
+    enableGit,
+    isUpdate,
+    segmentId: targetSegmentId,
+    grandparentId,
+    errorHandler,
+  }: GerritConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.gerritConnect(
+        {
+          orgURL,
+          repoNames,
+          enableAllRepos,
+          enableGit,
+        },
+        [targetSegmentId],
+      );
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `Gerrit integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      fetch([targetSegmentId]);
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler(error as IntegrationApiError);
+      } else {
+        Errors.handle(error);
+      }
+    }
+  };
+
+  const connectDiscourse = async ({
+    forumHostname,
+    apiKey,
+    webhookSecret,
+    isUpdate,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: DiscourseConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.discourseConnect(
+        forumHostname,
+        apiKey,
+        webhookSecret,
+        [targetSegmentId],
+      );
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `Discourse integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectGroupsio = async ({
+    email,
+    token,
+    tokenExpiry,
+    password,
+    groups,
+    isUpdate,
+    autoImports,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: GroupsioConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.groupsioConnect(
+        email,
+        token,
+        tokenExpiry,
+        password,
+        groups,
+        autoImports,
+        [targetSegmentId],
+      );
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `
+              groups.io integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+      ToastStore.error('Something went wrong. Please try again later.');
+    }
+  };
+
+  const connectJira = async ({
+    id,
+    url,
+    username,
+    personalAccessToken,
+    apiToken,
+    projects,
+    isUpdate,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: JiraConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.jiraConnect(
+        id,
+        url,
+        username,
+        personalAccessToken,
+        apiToken,
+        projects,
+        [targetSegmentId],
+      );
+      upsert(integration);
+      ToastStore.success(FIRST_ACTIVITIES_MESSAGE, {
+        title: `
+              Jira integration ${isUpdate ? 'updated' : 'created'} successfully`,
+      });
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
   return {
     integrations,
     allIds,
@@ -205,5 +434,13 @@ export const useIntegrationStore = defineStore('integration', () => {
     fetch,
     find,
     destroy,
+    connectGithub,
+    connectGitlab,
+    connectGit,
+    connectConfluence,
+    connectGerrit,
+    connectDiscourse,
+    connectGroupsio,
+    connectJira,
   };
 });

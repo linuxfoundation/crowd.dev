@@ -128,7 +128,6 @@ import {
 } from 'vue';
 import gerrit from '@/config/integrations/gerrit/config';
 import formChangeDetector from '@/shared/form/form-change';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import AppArrayInput from '@/shared/form/array-input.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -146,6 +145,7 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import LfGerritSettingsEmpty from '@/config/integrations/gerrit/components/gerrit-settings-empty.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
   integration: Integration<GerritSettings> | undefined;
@@ -175,7 +175,7 @@ const $v = useVuelidate({
   },
 }, form, { $stopPropagation: true });
 
-const { doGerritConnect } = mapActions('integration');
+const { connectGerrit } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -246,7 +246,7 @@ const connect = async () => {
 
   const isUpdate = !!props.integration?.settings;
 
-  doGerritConnect({
+  connectGerrit({
     orgURL: form.orgURL,
     // user: form.user,
     // pass: form.pass,

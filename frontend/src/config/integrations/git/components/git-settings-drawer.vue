@@ -106,7 +106,6 @@ import {
 } from 'vue';
 import git from '@/config/integrations/git/config';
 import AppArrayInput from '@/shared/form/array-input.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -121,6 +120,7 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import { lfIntegrations } from '@/config/integrations';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps({
   integration: {
@@ -169,7 +169,7 @@ const formSnapshot = () => {
 
 const $v = useVuelidate({}, form, { $stopPropagation: true });
 
-const { doGitConnect } = mapActions('integration');
+const { connectGit } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -253,7 +253,7 @@ const connect = async () => {
   const isUpdate = !!props.integration?.settings?.remotes?.length;
 
   // Send all remotes including mirrored ones to preserve them in settings
-  doGitConnect({
+  connectGit({
     remotes: form.remotes,
     isUpdate,
     segmentId: props.segmentId,
