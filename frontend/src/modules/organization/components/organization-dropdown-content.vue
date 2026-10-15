@@ -159,6 +159,7 @@ import { useRoute, useRouter } from 'vue-router';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -198,6 +199,7 @@ const router = useRouter();
 const { trackEvent } = useProductTracking();
 
 const organizationStore = useOrganizationStore();
+const invalidate = useInvalidate();
 
 const { hasPermission } = usePermissions();
 
@@ -264,9 +266,8 @@ const handleCommand = (command: {
         errorMessage: 'Something went wrong',
         actionFn: OrganizationService.destroyAll([command.organization.id]),
       }).then(() => {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       });
     });
 
@@ -309,9 +310,8 @@ const handleCommand = (command: {
         : HubspotApiService.stopSyncOrganization(command.organization.id),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }
@@ -339,9 +339,8 @@ const handleCommand = (command: {
       }),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }
@@ -369,9 +368,8 @@ const handleCommand = (command: {
       }),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }

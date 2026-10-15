@@ -15,6 +15,7 @@ export const useInvalidate = () => {
 
   return {
     members: (filters?: InvalidateFilters) => invalidate(queryKeys.members.all, filters),
+    organizations: (filters?: InvalidateFilters) => invalidate(queryKeys.organizations.all, filters),
     collections: (filters?: InvalidateFilters) => invalidate(queryKeys.collections.all, filters),
     insightsProjects: (filters?: InvalidateFilters) =>
       invalidate(queryKeys.insightsProjects.all, filters),

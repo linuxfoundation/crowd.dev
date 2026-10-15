@@ -459,7 +459,7 @@ import { storeToRefs } from 'pinia';
 import {
   computed,
   onUnmounted,
-  ref, watch,
+  ref, toRefs, watch,
 } from 'vue';
 import { useRouter } from 'vue-router';
 import { organizationSavedViews } from '../../config/saved-views/main';
@@ -479,6 +479,18 @@ const props = defineProps({
   isTableLoading: {
     type: Boolean,
     default: () => false,
+  },
+  organizations: {
+    type: Array,
+    default: () => [],
+  },
+  totalOrganizations: {
+    type: Number,
+    default: () => 0,
+  },
+  savedFilterBody: {
+    type: Object,
+    default: () => ({}),
   },
   pagination: {
     type: Object,
@@ -501,13 +513,8 @@ const hasPermissions = computed(() => [
 ].some((permission) => hasPermission(permission)));
 
 const organizationStore = useOrganizationStore();
-const {
-  organizations,
-  selectedOrganizations,
-  filters,
-  totalOrganizations,
-  savedFilterBody,
-} = storeToRefs(organizationStore);
+const { selectedOrganizations, filters } = storeToRefs(organizationStore);
+const { organizations, totalOrganizations, savedFilterBody } = toRefs(props);
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);

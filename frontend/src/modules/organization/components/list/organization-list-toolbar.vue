@@ -70,6 +70,7 @@ import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import { DEFAULT_ORGANIZATION_FILTERS } from '@/modules/organization/store/constants';
 import useOrganizationMergeMessage from '@/shared/modules/merge/config/useOrganizationMergeMessage';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
@@ -96,7 +97,12 @@ const {
   selectedOrganizations,
   filters,
 } = storeToRefs(organizationStore);
-const { fetchOrganizations } = organizationStore;
+const invalidate = useInvalidate();
+
+const reloadOrganizations = () => {
+  selectedOrganizations.value = [];
+  return invalidate.organizations();
+};
 
 const { hasPermission } = usePermissions();
 
@@ -148,7 +154,7 @@ const handleDoDestroyAllWithConfirm = () => ConfirmDialog({
     const ids = selectedOrganizations.value.map((m) => m.id);
     return OrganizationService.destroyAll(ids);
   })
-  .then(() => fetchOrganizations({ reload: true }));
+  .then(() => reloadOrganizations());
 
 const handleMergeOrganizations = async () => {
   const [firstOrganization, secondOrganization] = selectedOrganizations.value;
@@ -242,9 +248,7 @@ const handleCommand = async (command) => {
         )} updated successfully`,
       );
 
-      fetchOrganizations({
-        reload: true,
-      });
+      reloadOrganizations();
     })
       .catch(() => {
         ToastStore.closeAll();
