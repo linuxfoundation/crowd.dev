@@ -165,8 +165,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import type { Member } from '../types/Member';
 
 // shortcut: undefined HubspotApiService typed; the branch throws. revisit: HubSpot fix or removal (K-11)
@@ -195,7 +194,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void, (e: 'findGithub'): void }>();
 const route = useRoute();
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const { doFind } = mapActions('member');
 
@@ -212,9 +211,7 @@ const isFindingGitHubDisabled = computed(() => (
 // Refresh member data by invalidating TanStack Query cache
 // Note: Backend cache is invalidated by passing invalidateCache parameter to update/delete operations
 const refreshMemberData = async () => {
-  await queryClient.invalidateQueries({
-    queryKey: [TanstackKey.MEMBERS_LIST],
-  });
+  await invalidate.members();
 };
 
 // Helper function to fetch member with all attributes before update

@@ -84,8 +84,7 @@
 import {
   computed, nextTick, ref, watch,
 } from 'vue';
-import { useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import { lfIntegrations } from '@/config/integrations';
@@ -109,7 +108,7 @@ const { doDestroy } = mapActions('integration');
 
 const isSettingsOpen = ref(false);
 const hasOpenedSettings = ref(false);
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const openSettings = async () => {
   hasOpenedSettings.value = true;
@@ -119,7 +118,7 @@ const openSettings = async () => {
 
 watch(isSettingsOpen, (open) => {
   if (!open) {
-    queryClient.invalidateQueries({ queryKey: [TanstackKey.GLOBAL_INTEGRATIONS] });
+    invalidate.globalIntegrations();
   }
 });
 

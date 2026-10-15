@@ -146,9 +146,10 @@ import {
   FeatureEventKey,
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
+import { useMutation, useQuery } from '@tanstack/vue-query';
 import { segmentService } from '@/modules/lf/segments/segments.service';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import type { AxiosError } from 'axios';
 import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
@@ -215,7 +216,7 @@ const {
   data,
 } = useQuery(
   {
-    queryKey: [TanstackKey.ADMIN_PROJECT_GROUPS, props.id],
+    queryKey: queryKeys.projectGroups.detail(props.id),
     queryFn: () => {
       if (!props.id) {
         return Promise.resolve(null);
@@ -265,13 +266,11 @@ const onSubmit = () => {
   }
 };
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = () => {
   submitLoading.value = false;
   model.value = false;
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_PROJECT_GROUPS],
-  });
+  invalidate.projectGroups();
   ToastStore.success(`Project Group ${props.id ? 'updated' : 'created'} successfully`);
 };
 

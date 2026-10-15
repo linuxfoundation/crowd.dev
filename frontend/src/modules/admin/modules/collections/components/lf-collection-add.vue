@@ -228,8 +228,8 @@ import { ToastStore } from '@/shared/message/notification';
 import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useMutation } from '@tanstack/vue-query';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import LfCollectionAddProjectsTab from './lf-collection-add-projects-tab.vue';
 import type {
   CollectionFormModel,
@@ -341,11 +341,9 @@ const onSubmit = () => {
   }
 };
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = () => {
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_COLLECTIONS],
-  });
+  invalidate.collections();
   ToastStore.closeAll();
   ToastStore.success(
     `Collection ${isEditForm.value ? 'updated' : 'created'} successfully`,

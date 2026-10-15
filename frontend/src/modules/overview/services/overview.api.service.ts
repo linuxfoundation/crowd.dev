@@ -1,7 +1,7 @@
 import type { QueryFunction } from '@tanstack/vue-query';
 import { type ComputedRef, computed } from 'vue';
 import { useInfiniteQuery, useQuery } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import authAxios from '@/shared/axios/auth-axios';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
@@ -34,7 +34,7 @@ export interface DashboardMetricsQueryParams {
 
 class OverviewApiService {
   fetchProjectById(params: ComputedRef<string>) {
-    const queryKey = computed(() => [TanstackKey.PROJECT_BY_ID, params.value]);
+    const queryKey = computed(() => queryKeys.overview.projectById(params.value));
     const queryFn = computed<QueryFunction<Project>>(() => this.fetchProjectByIdQueryFn(() => ({
       id: params.value,
     })));
@@ -58,11 +58,7 @@ class OverviewApiService {
   }
 
   fetchGlobalIntegrationStatusCount(params: ComputedRef<GlobalIntegrationStatusCountQueryParams>) {
-    const queryKey = computed(() => [
-      TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT,
-      params.value.platform,
-      params.value.segment,
-    ]);
+    const queryKey = computed(() => queryKeys.overview.integrationStatusCount(params.value));
     const queryFn = computed<QueryFunction<GlobalIntegrationStatusCount[]>>(() => this.fetchGlobalIntegrationStatusCountQueryFn(() => ({
       platform: params.value.platform,
       segment: params.value.segment,
@@ -85,14 +81,7 @@ class OverviewApiService {
   }
 
   fetchGlobalIntegrations(params: ComputedRef<GlobalIntegrationIntegrationsQueryParams>) {
-    const queryKey = computed(() => [
-      TanstackKey.GLOBAL_INTEGRATIONS,
-      params.value.platform,
-      params.value.status,
-      params.value.query,
-      params.value.limit,
-      params.value.segment,
-    ]);
+    const queryKey = computed(() => queryKeys.overview.integrations(params.value));
     const queryFn = computed<QueryFunction<IntegrationStatusResponse>>(() => this.fetchGlobalIntegrationsQueryFn(() => ({
       ...params.value,
     })));
@@ -129,7 +118,7 @@ class OverviewApiService {
   }
 
   fetchDashboardMetrics(params: ComputedRef<DashboardMetricsQueryParams>) {
-    const queryKey = computed(() => [TanstackKey.DASHBOARD_METRICS, params.value.segment]);
+    const queryKey = computed(() => queryKeys.overview.dashboardMetrics(params.value));
     const queryFn = computed<QueryFunction<DashboardMetrics>>(() => this.fetchDashboardMetricsQueryFn(() => ({
       ...params.value,
     })));
@@ -151,7 +140,7 @@ class OverviewApiService {
   }
 
   fetchIntegrationProgressList(params: ComputedRef<IntegrationProgressListQueryParams>) {
-    const queryKey = computed(() => [TanstackKey.INTEGRATION_PROGRESS_LIST, params.value.segments]);
+    const queryKey = computed(() => queryKeys.overview.integrationProgress(params.value));
     const queryFn = computed<QueryFunction<IntegrationProgress[]>>(() => this.fetchIntegrationProgressListQueryFn(() => ({
       segments: params.value.segments,
     })));

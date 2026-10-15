@@ -50,12 +50,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
+import { useMutation } from '@tanstack/vue-query';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import { ToastStore } from '@/shared/message/notification';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import type {
   InsightsProjectDocsOverride,
   InsightsProjectDocsOverrideRequest,
@@ -70,7 +70,7 @@ const props = defineProps<{
   docsOverride?: InsightsProjectDocsOverride | null;
 }>();
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const docsUrl = ref('');
 const currentOverride = ref<InsightsProjectDocsOverride | null>(props.docsOverride ?? null);
 
@@ -89,10 +89,7 @@ const statusText = computed(() => {
     : 'Active override: project has no docs';
 });
 
-const markStale = () => queryClient.invalidateQueries({
-  queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS],
-  refetchType: 'none',
-});
+const markStale = () => invalidate.insightsProjects({ refetchType: 'none' });
 
 const setMutation = useMutation({
   mutationFn: (request: InsightsProjectDocsOverrideRequest) => INSIGHTS_PROJECTS_SERVICE.setDocsOverride(props.insightsProjectId, request),

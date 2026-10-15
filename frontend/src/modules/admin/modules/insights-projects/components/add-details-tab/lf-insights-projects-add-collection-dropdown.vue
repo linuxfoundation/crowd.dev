@@ -41,7 +41,7 @@ import {
 } from '@/modules/admin/modules/collections/services/collections.service';
 
 import { ToastStore } from '@/shared/message/notification';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import type { QueryFunction } from '@tanstack/vue-query';
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { Pagination } from '@/shared/types/Pagination';
@@ -58,10 +58,7 @@ const cForm = reactive(props.form);
 const searchQuery = ref('');
 let scrollContainer: HTMLElement | null = null;
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_COLLECTIONS,
-  searchQuery.value,
-]);
+const queryKey = computed(() => queryKeys.collections.search(searchQuery.value));
 const queryFn = COLLECTIONS_SERVICE.query(() => ({
   filter: searchQuery.value
     ? {
