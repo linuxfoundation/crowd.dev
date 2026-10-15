@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import type { Ref } from 'vue';
-import { keepPreviousData, useQuery } from '@tanstack/vue-query';
+import { useQuery } from '@tanstack/vue-query';
 import { OrganizationService } from '@/modules/organization/organization-service';
 import { queryKeys } from '@/shared/queries/keys';
 import type { EntityListKeyParams } from '@/shared/queries/keys';
@@ -26,9 +26,12 @@ export function useOrganizationsQuery(
   }));
 
   return useQuery({
-    queryKey: computed(() => queryKeys.organizations.list({ projectGroupId: projectGroupId.value, ...body.value })),
+    queryKey: computed(() =>
+      queryKeys.organizations.list({ projectGroupId: projectGroupId.value, ...body.value }),
+    ),
     queryFn: (): Promise<Pagination<Organization>> => OrganizationService.query(body.value),
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === projectGroupId.value ? previousData : undefined,
   });
 }
