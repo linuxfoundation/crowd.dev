@@ -66,7 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
       return Promise.reject();
     }
     if (!isSocketConnected()) {
-      connectSocket(t);
+      connectSocket(t, () => user.value);
     }
     AuthService.setToken(t);
     return AuthApiService.fetchMe()
@@ -152,7 +152,7 @@ export const useAuthStore = defineStore('auth', () => {
           loaded,
           async (isLoaded) => {
             if (!isLoaded) {
-              const { startSession, attachListeners } = useSessionTracking();
+              const { startSession, attachListeners } = useSessionTracking(() => user.value);
 
               loaded.value = true;
 
