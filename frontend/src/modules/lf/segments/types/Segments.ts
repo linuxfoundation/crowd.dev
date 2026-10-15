@@ -70,6 +70,7 @@ export interface ProjectGroupRequest {
   sourceId: string;
   url: string;
   status: string;
+  isLF?: boolean;
 }
 
 export interface CreateProjectRequest extends ProjectRequest {

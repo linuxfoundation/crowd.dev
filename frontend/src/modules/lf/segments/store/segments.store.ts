@@ -191,7 +191,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
   function updateProjectGroupList(id: SegmentId, data: ProjectGroupRequest) {
     projectGroups.value.list = projectGroups.value.list.map((p) => {
       if (p.id === id) {
-        // shortcut: the group becomes `data` alone, as on main (it drops id). revisit: when edit should keep the entry's id
+        // shortcut: replaces the entry with `data` (drops id, as main). revisit: when the list refetches after edit
         return { ...data } as unknown as ProjectGroup;
       }
       return p;
