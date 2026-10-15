@@ -142,7 +142,6 @@
 </template>
 
 <script setup>
-import { useStore } from 'vuex';
 import { storeToRefs } from 'pinia';
 import {
   computed, h, ref, watch,
@@ -187,7 +186,6 @@ const CalendarIcon = h(
 const route = useRoute();
 const { trackEvent } = useProductTracking();
 const memberStore = useMemberStore();
-const store = useStore();
 const { selectedMembers, customAttributes } = storeToRefs(memberStore);
 
 const { fields } = MemberModel;
@@ -414,7 +412,7 @@ const handleSubmit = async () => {
     }),
   };
 
-  await store.dispatch('member/doBulkUpdateMembersAttribute', {
+  await memberStore.bulkUpdateMembersAttribute({
     members: [...selectedMembers.value],
     attributesToSave: data,
   });

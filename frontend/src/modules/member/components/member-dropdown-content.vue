@@ -151,7 +151,6 @@
 </template>
 
 <script setup lang="ts">
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { MemberService } from '@/modules/member/member-service';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -160,6 +159,7 @@ import { useRoute } from 'vue-router';
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import { useMemberStore } from '@/modules/member/store/pinia';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -196,7 +196,7 @@ const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDr
 const route = useRoute();
 const invalidate = useInvalidate();
 
-const { doFind } = mapActions('member');
+const memberStore = useMemberStore();
 
 const { trackEvent } = useProductTracking();
 
@@ -317,10 +317,7 @@ const handleCommand = async (command: {
       if (route.name === 'member') {
         await refreshMemberData();
       } else {
-        doFind({
-          id: command.member.id,
-          segments: [selectedProjectGroup.value?.id],
-        });
+        memberStore.findMember(command.member.id);
       }
     });
 

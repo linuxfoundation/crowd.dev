@@ -2,6 +2,13 @@ import type { AxiosError } from 'axios';
 import { MemberService } from '@/modules/member/member-service';
 import Errors from '@/shared/error/errors';
 import { ToastStore } from '@/shared/message/notification';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import { useContributorStore } from '@/modules/contributor/store/contributor.store';
+import {
+  buildBulkUpdatePayload,
+  type BulkAttributesMember,
+  type BulkAttributesToSave,
+} from '@/modules/member/helpers/bulk-attributes';
 import { customAttributesService } from '@/shared/modules/filters/services/custom-attributes.service';
 import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
@@ -102,5 +109,30 @@ export default {
 
   removeToMergeMember(this: MemberState) {
     this.toMergeMember = null;
+  },
+
+  findMember(id: string): Promise<Contributor | null> {
+    return useContributorStore().getContributor(id)
+      .catch(async (error: unknown) => {
+        Errors.handle(error);
+        const { router } = await import('@/router');
+        router.push({ name: 'member' });
+        return null;
+      });
+  },
+
+  async bulkUpdateMembersAttribute(
+    { members, attributesToSave }: { members: BulkAttributesMember[]; attributesToSave: BulkAttributesToSave },
+  ): Promise<Member[] | undefined> {
+    try {
+      const payload = buildBulkUpdatePayload(members, attributesToSave);
+      const updatedMembers: Member[] = await MemberService.updateBulk(payload);
+      ToastStore.success('Attribute updated successfully');
+      return updatedMembers;
+    } catch (error) {
+      Errors.handle(error);
+      ToastStore.error('There was an error updating attribute');
+      return undefined;
+    }
   },
 };

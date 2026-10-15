@@ -78,9 +78,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { MemberService } from '@/modules/member/member-service';
 
 import { ToastStore } from '@/shared/message/notification';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
-import { storeToRefs } from 'pinia';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import { useMemberStore } from '@/modules/member/store/pinia';
 import useMemberMergeMessage from '@/shared/modules/merge/config/useMemberMergeMessage';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -111,10 +109,7 @@ const { trackEvent } = useProductTracking();
 const route = useRoute();
 const router = useRouter();
 
-const lsSegmentsStore = useLfSegmentsStore();
-const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-
-const { doFind } = mapActions('member');
+const memberStore = useMemberStore();
 
 const originalMemberPrimary = ref(true);
 const sendingMerge = ref(false);
@@ -186,10 +181,7 @@ const mergeSuggestion = () => {
       emit('update:modelValue', null);
 
       if (route.name === 'memberView') {
-        doFind({
-          id: primaryMember.id,
-          segments: [selectedProjectGroup.value?.id],
-        }).then(() => {
+        memberStore.findMember(primaryMember.id).then(() => {
           router.replace({
             params: {
               id: primaryMember.id,
