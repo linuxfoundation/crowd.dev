@@ -1,3 +1,5 @@
+import { PlatformType } from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
 export interface IOctolensKeywordMapping {
@@ -94,4 +96,91 @@ export async function deactivateOctolensKeywordMappingsNotSeen(
     `,
     { integrationId, seenKeywordIds },
   )
+}
+
+// The pg type parsers hand timestamptz back as strings.
+type Timestamped<T, K extends keyof T> = Omit<T, K> & Record<K, string>
+
+export interface IOctolensMappingDiscoveryState {
+  integrationId: string
+  activeMappings: number
+  lastDiscoveredAt: Date | null
+  integrationCreatedAt: Date
+  checkedAt: Date
+}
+
+// A completed discovery run re-stamps every mapping it keeps active, but a run failing partway
+// stamps only some, so the oldest active lastSeenAt is the last completed run.
+export async function listOctolensMappingDiscoveryStates(
+  qx: QueryExecutor,
+): Promise<IOctolensMappingDiscoveryState[]> {
+  const rows: (Omit<
+    IOctolensMappingDiscoveryState,
+    'lastDiscoveredAt' | 'integrationCreatedAt' | 'checkedAt'
+  > & {
+    lastDiscoveredAt: string | null
+    integrationCreatedAt: string
+    checkedAt: string
+  })[] = await qx.select(
+    `
+      SELECT
+        i.id AS "integrationId",
+        count(m.id) FILTER (WHERE m."deactivatedAt" IS NULL)::int AS "activeMappings",
+        COALESCE(
+          min(m."lastSeenAt") FILTER (WHERE m."deactivatedAt" IS NULL),
+          max(m."lastSeenAt")
+        ) AS "lastDiscoveredAt",
+        i."createdAt" AS "integrationCreatedAt",
+        now() AS "checkedAt"
+      FROM public.integrations i
+      LEFT JOIN integration."octolensKeywordMappings" m ON m."integrationId" = i.id
+      WHERE i.platform = $(platform) AND i."deletedAt" IS NULL
+      GROUP BY i.id, i."createdAt"
+      ORDER BY i.id
+    `,
+    { platform: PlatformType.OCTOLENS },
+  )
+  return rows.map((row) => ({
+    ...row,
+    lastDiscoveredAt: row.lastDiscoveredAt ? new Date(row.lastDiscoveredAt) : null,
+    integrationCreatedAt: new Date(row.integrationCreatedAt),
+    checkedAt: new Date(row.checkedAt),
+  }))
+}
+
+export interface IDeactivatedOctolensKeywordMapping {
+  integrationId: string
+  keywordId: number
+  keyword: string
+  segmentId: string
+  segmentName: string
+  segmentSlug: string
+  deactivatedAt: Date
+}
+
+export async function listOctolensKeywordMappingsDeactivatedBetween(
+  qx: QueryExecutor,
+  since: Date,
+  until: Date,
+): Promise<IDeactivatedOctolensKeywordMapping[]> {
+  const rows: Timestamped<IDeactivatedOctolensKeywordMapping, 'deactivatedAt'>[] = await qx.select(
+    `
+      SELECT
+        m."integrationId",
+        m."keywordId",
+        m.keyword,
+        m."segmentId",
+        s.name AS "segmentName",
+        s.slug AS "segmentSlug",
+        m."deactivatedAt"
+      FROM integration."octolensKeywordMappings" m
+      JOIN public.integrations i ON i.id = m."integrationId" AND i."deletedAt" IS NULL
+      JOIN public.segments s ON s.id = m."segmentId"
+      WHERE m."deactivatedAt" > $(since)
+        AND m."deactivatedAt" <= $(until)
+      ORDER BY m."integrationId", m."deactivatedAt", m.keyword
+    `,
+    { since, until },
+  )
+  return rows.map((row) => ({ ...row, deactivatedAt: new Date(row.deactivatedAt) }))
 }

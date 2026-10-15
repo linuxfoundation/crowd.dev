@@ -8,6 +8,8 @@ import {
   deactivateOctolensKeywordMappingsNotSeen,
   findOctolensKeywordMapping,
   listOctolensKeywordMappings,
+  listOctolensKeywordMappingsDeactivatedBetween,
+  listOctolensMappingDiscoveryStates,
   upsertOctolensKeywordMapping,
 } from './index'
 
@@ -261,5 +263,185 @@ describe('octolens keyword mappings', () => {
 
     expect(deactivated).toBe(0)
     expect(await findOctolensKeywordMapping(qx, integrationId, 1)).not.toBeNull()
+  })
+})
+
+async function setMappingTimestamps(
+  qx: QueryExecutor,
+  integrationId: string,
+  keywordId: number,
+  timestamps: { lastSeenAt: string; deactivatedAt?: string },
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE integration."octolensKeywordMappings"
+    SET "lastSeenAt" = $(lastSeenAt), "deactivatedAt" = $(deactivatedAt)
+    WHERE "integrationId" = $(integrationId) AND "keywordId" = $(keywordId)
+    `,
+    {
+      integrationId,
+      keywordId,
+      lastSeenAt: timestamps.lastSeenAt,
+      deactivatedAt: timestamps.deactivatedAt ?? null,
+    },
+  )
+}
+
+describe('octolens mapping discovery health', () => {
+  test('listOctolensMappingDiscoveryStates returns live octolens integrations without mappings', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const deletedIntegrationId = await createIntegration(qx)
+    await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: deletedIntegrationId,
+    })
+    await qx.result(
+      `
+      INSERT INTO public.integrations (id, platform, status, "tenantId", "createdAt", "updatedAt")
+      VALUES ($(id), 'github', 'done', $(tenantId), NOW(), NOW())
+      `,
+      { id: generateUUIDv1(), tenantId: DEFAULT_TENANT_ID },
+    )
+
+    const states = await listOctolensMappingDiscoveryStates(qx)
+
+    expect(states).toHaveLength(1)
+    expect(states[0]).toMatchObject({ integrationId, activeMappings: 0, lastDiscoveredAt: null })
+    expect(states[0].integrationCreatedAt).toBeInstanceOf(Date)
+  })
+
+  test('listOctolensMappingDiscoveryStates counts active mappings and reports the oldest active lastSeenAt after a partial run', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const segmentId = await createSegment(qx)
+    for (const keywordId of [1, 2, 3]) {
+      await upsertOctolensKeywordMapping(qx, {
+        integrationId,
+        segmentId,
+        keywordId,
+        keyword: `k${keywordId}`,
+      })
+    }
+    await setMappingTimestamps(qx, integrationId, 1, { lastSeenAt: '2026-01-01T10:00:00Z' })
+    await setMappingTimestamps(qx, integrationId, 2, { lastSeenAt: '2026-01-01T09:00:00Z' })
+    await setMappingTimestamps(qx, integrationId, 3, {
+      lastSeenAt: '2026-01-01T11:00:00Z',
+      deactivatedAt: '2026-01-01T12:00:00Z',
+    })
+
+    const states = await listOctolensMappingDiscoveryStates(qx)
+
+    expect(states).toHaveLength(1)
+    expect(states[0]).toMatchObject({ integrationId, activeMappings: 2 })
+    expect(states[0].lastDiscoveredAt?.toISOString()).toBe('2026-01-01T09:00:00.000Z')
+    expect(states[0].checkedAt).toBeInstanceOf(Date)
+  })
+
+  test('listOctolensMappingDiscoveryStates falls back to the newest lastSeenAt without active mappings', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const segmentId = await createSegment(qx)
+    for (const keywordId of [1, 2]) {
+      await upsertOctolensKeywordMapping(qx, {
+        integrationId,
+        segmentId,
+        keywordId,
+        keyword: `k${keywordId}`,
+      })
+    }
+    await setMappingTimestamps(qx, integrationId, 1, {
+      lastSeenAt: '2026-01-01T09:00:00Z',
+      deactivatedAt: '2026-01-01T12:00:00Z',
+    })
+    await setMappingTimestamps(qx, integrationId, 2, {
+      lastSeenAt: '2026-01-01T11:00:00Z',
+      deactivatedAt: '2026-01-01T12:00:00Z',
+    })
+
+    const states = await listOctolensMappingDiscoveryStates(qx)
+
+    expect(states).toHaveLength(1)
+    expect(states[0]).toMatchObject({ integrationId, activeMappings: 0 })
+    expect(states[0].lastDiscoveredAt?.toISOString()).toBe('2026-01-01T11:00:00.000Z')
+  })
+
+  test('listOctolensMappingDiscoveryStates skips deleted integrations', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const deletedIntegrationId = await createIntegration(qx)
+    const segmentId = await createSegment(qx)
+    for (const id of [integrationId, deletedIntegrationId]) {
+      await upsertOctolensKeywordMapping(qx, {
+        integrationId: id,
+        segmentId,
+        keywordId: 1,
+        keyword: 'k',
+      })
+    }
+    await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: deletedIntegrationId,
+    })
+
+    const states = await listOctolensMappingDiscoveryStates(qx)
+
+    expect(states.map((s) => s.integrationId)).toEqual([integrationId])
+  })
+
+  test('listOctolensKeywordMappingsDeactivatedBetween excludes since, includes until, joins the segment', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const deletedIntegrationId = await createIntegration(qx)
+    const segmentId = await createSegment(qx)
+    const deactivatedAtByKeywordId: Record<number, string | undefined> = {
+      1: '2026-01-01T10:00:00Z',
+      2: '2026-01-01T10:30:00Z',
+      3: '2026-01-01T11:00:00Z',
+      4: '2026-01-01T11:00:01Z',
+      5: undefined,
+    }
+    for (const [keywordId, deactivatedAt] of Object.entries(deactivatedAtByKeywordId)) {
+      await upsertOctolensKeywordMapping(qx, {
+        integrationId,
+        segmentId,
+        keywordId: Number(keywordId),
+        keyword: `k${keywordId}`,
+      })
+      await setMappingTimestamps(qx, integrationId, Number(keywordId), {
+        lastSeenAt: '2026-01-01T09:00:00Z',
+        deactivatedAt,
+      })
+    }
+    await upsertOctolensKeywordMapping(qx, {
+      integrationId: deletedIntegrationId,
+      segmentId,
+      keywordId: 1,
+      keyword: 'deleted',
+    })
+    await setMappingTimestamps(qx, deletedIntegrationId, 1, {
+      lastSeenAt: '2026-01-01T09:00:00Z',
+      deactivatedAt: '2026-01-01T10:30:00Z',
+    })
+    await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: deletedIntegrationId,
+    })
+
+    const rows = await listOctolensKeywordMappingsDeactivatedBetween(
+      qx,
+      new Date('2026-01-01T10:00:00Z'),
+      new Date('2026-01-01T11:00:00Z'),
+    )
+
+    expect(rows.map((r) => r.keyword)).toEqual(['k2', 'k3'])
+    expect(rows[0]).toMatchObject({
+      integrationId,
+      keywordId: 2,
+      segmentId,
+      segmentName: `segment-${segmentId}`,
+      segmentSlug: `segment-${segmentId}`,
+    })
+    expect(rows[0].deactivatedAt.toISOString()).toBe('2026-01-01T10:30:00.000Z')
   })
 })
