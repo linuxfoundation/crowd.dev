@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import type { Ref } from 'vue';
-import { keepPreviousData, useQuery } from '@tanstack/vue-query';
+import { useQuery } from '@tanstack/vue-query';
 import { MemberService } from '@/modules/member/member-service';
 import { queryKeys } from '@/shared/queries/keys';
 import type { EntityListKeyParams } from '@/shared/queries/keys';
@@ -29,6 +29,6 @@ export function useMembersQuery(
     queryKey: computed(() => queryKeys.members.list({ projectGroupId: projectGroupId.value, ...body.value })),
     queryFn: (): Promise<Pagination<Member>> => MemberService.listMembers(body.value),
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) => (previousQuery?.queryKey[1] === projectGroupId.value ? previousData : undefined),
   });
 }
