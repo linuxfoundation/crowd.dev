@@ -196,7 +196,7 @@ import {
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppFormItem from '@/shared/form/form-item.vue';
 import devto from '@/config/integrations/devto/config';
 import { IntegrationService } from '@/modules/integration/integration-service';
@@ -228,7 +228,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
-const { doDevtoConnect } = mapActions('integration');
+const { connectDevto } = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 
@@ -426,7 +426,7 @@ const save = async () => {
   const relevantOrganizations = organizations.value.filter((o) => !!o.username);
   const relevantUsers = users.value.filter((u) => !!u.username);
 
-  await doDevtoConnect({
+  await connectDevto({
     users: relevantUsers.map((u) => u.username),
     organizations: relevantOrganizations.map((o) => o.username),
     apiKey: form.apiKey,

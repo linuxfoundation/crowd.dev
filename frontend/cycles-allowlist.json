@@ -1,4 +1,4 @@
 [
-  "modules/index.ts > modules/integration/integration-module.js > modules/integration/integration-store.js > router/index.js",
-  "modules/index.ts > modules/integration/integration-module.js > modules/integration/integration-store.js > router/index.js > store/index.js"
+  "modules/index.ts > modules/layout/layout-module.js > modules/layout/layout-store.js > router/index.js",
+  "modules/index.ts > modules/layout/layout-module.js > modules/layout/layout-store.js > router/index.js > store/index.js"
 ]

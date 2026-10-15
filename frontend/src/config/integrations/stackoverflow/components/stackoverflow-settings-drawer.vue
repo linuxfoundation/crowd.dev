@@ -150,10 +150,10 @@ import {
   computed, ref, watch,
 } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
-import { useStore } from 'vuex';
 import Nango from '@nangohq/frontend';
 import isEqual from 'lodash/isEqual';
 import stackoverflow from '@/config/integrations/stackoverflow/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import config from '@/config';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -190,7 +190,7 @@ const MAX_STACK_OVERFLOW_QUESTIONS_FOR_KEYWORDS = 1100;
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref(null);
 
-const store = useStore();
+const { onboardStackOverflow } = useIntegrationStore();
 
 const tags = computed(() => {
   if (props.integration?.settings?.tags?.length > 0) {
@@ -372,25 +372,19 @@ const handleTagValidation = async (index) => {
 
 const callOnboard = useThrottleFn(async () => {
   if (tagsInputUntouched.value) {
-    await store.dispatch(
-      'integration/doStackOverflowOnboard',
-      {
-        tags: [],
-        keywords: modelKeywords.value,
-        segmentId: props.segmentId,
-        grandparentId: props.grandparentId,
-      },
-    );
+    await onboardStackOverflow({
+      tags: [],
+      keywords: modelKeywords.value,
+      segmentId: props.segmentId,
+      grandparentId: props.grandparentId,
+    });
   } else {
-    await store.dispatch(
-      'integration/doStackOverflowOnboard',
-      {
-        tags: model.value.map((i) => i.value),
-        keywords: modelKeywords.value,
-        segmentId: props.segmentId,
-        grandparentId: props.grandparentId,
-      },
-    );
+    await onboardStackOverflow({
+      tags: model.value.map((i) => i.value),
+      keywords: modelKeywords.value,
+      segmentId: props.segmentId,
+      grandparentId: props.grandparentId,
+    });
 
     const isUpdate = !!props.integration?.settings;
 

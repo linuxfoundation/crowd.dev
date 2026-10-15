@@ -11,18 +11,26 @@ import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { lfIntegrations } from '@/config/integrations';
 import type { IntegrationConfig } from '@/config/integrations';
 import { ToastStore } from '@/shared/message/notification';
+import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
 import type {
   ConfluenceConnectPayload,
+  DevtoConnectPayload,
+  DiscordConnectPayload,
   DiscourseConnectPayload,
   GerritConnectPayload,
   GitConnectPayload,
   GithubConnectPayload,
   GitlabConnectPayload,
   GroupsioConnectPayload,
+  HackerNewsConnectPayload,
   JiraConnectPayload,
+  LinkedinConnectPayload,
+  LinkedinOnboardPayload,
+  RedditOnboardPayload,
+  StackOverflowOnboardPayload,
 } from '@/modules/integration/types/ConnectPayloads';
 
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
@@ -409,6 +417,136 @@ export const useIntegrationStore = defineStore('integration', () => {
     }
   };
 
+  const onboardReddit = async ({
+    subreddits,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: RedditOnboardPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.redditOnboard(
+        subreddits,
+        targetSegmentId,
+      );
+      upsert(integration);
+      showIntegrationProgressNotification('reddit', integration.segmentId);
+      pushToIntegration({ id: targetSegmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectLinkedin = async ({
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: LinkedinConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord =
+        await IntegrationService.linkedinConnect(targetSegmentId);
+      upsert(integration);
+      // shortcut: cast assumes settings.organizations exists, as main did. revisit: when LinkedIn settings get a type
+      if (
+        (integration.settings as { organizations: unknown[] } | undefined)?.organizations.length ===
+        1
+      ) {
+        showIntegrationProgressNotification('linkedin', integration.segmentId);
+      }
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const onboardLinkedin = async ({
+    organizationId,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: LinkedinOnboardPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.linkedinOnboard(
+        organizationId,
+        targetSegmentId,
+      );
+      upsert(integration);
+      showIntegrationProgressNotification('linkedin', integration.segmentId);
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectDiscord = async ({ guildId }: DiscordConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.discordConnect(guildId);
+      upsert(integration);
+      showIntegrationProgressNotification('discord', integration.segmentId);
+      pushToIntegration({ id: integration.segmentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectDevto = async ({
+    users,
+    organizations,
+    apiKey,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: DevtoConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.devtoConnect(
+        users,
+        organizations,
+        apiKey,
+        [targetSegmentId],
+      );
+      upsert(integration);
+      showIntegrationProgressNotification('devto', integration.segmentId);
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const connectHackerNews = async ({
+    keywords,
+    urls,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: HackerNewsConnectPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.hackerNewsConnect(
+        keywords,
+        urls,
+        [targetSegmentId],
+      );
+      upsert(integration);
+      showIntegrationProgressNotification('hackernews', integration.segmentId);
+      pushToIntegration({ id: integration.segmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
+  const onboardStackOverflow = async ({
+    tags,
+    keywords,
+    segmentId: targetSegmentId,
+    grandparentId,
+  }: StackOverflowOnboardPayload): Promise<void> => {
+    try {
+      const integration: IntegrationRecord = await IntegrationService.stackOverflowOnboard(
+        targetSegmentId,
+        tags,
+        keywords,
+      );
+      upsert(integration);
+      showIntegrationProgressNotification('stackoverflow', targetSegmentId);
+      pushToIntegration({ id: targetSegmentId, grandparentId });
+    } catch (error) {
+      Errors.handle(error);
+    }
+  };
+
   return {
     integrations,
     allIds,
@@ -442,5 +580,12 @@ export const useIntegrationStore = defineStore('integration', () => {
     connectDiscourse,
     connectGroupsio,
     connectJira,
+    onboardReddit,
+    connectLinkedin,
+    onboardLinkedin,
+    connectDiscord,
+    connectDevto,
+    connectHackerNews,
+    onboardStackOverflow,
   };
 });

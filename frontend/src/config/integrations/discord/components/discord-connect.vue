@@ -19,7 +19,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useRoute } from 'vue-router';
 
@@ -28,7 +28,7 @@ const props = defineProps<{
   grandparentId: string | null;
 }>();
 const route = useRoute();
-const { doDiscordConnect } = mapActions('integration');
+const { connectDiscord } = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 
@@ -46,7 +46,7 @@ const finallizeDiscordConnect = () => {
   const guildId = route.query.guild_id;
 
   if (code && source === 'discord' && guildId) {
-    doDiscordConnect({
+    connectDiscord({
       guildId,
     })
       .then(() => {
