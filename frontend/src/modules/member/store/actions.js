@@ -11,51 +11,6 @@ import { MemberModel } from '../member-model';
 export default {
   ...sharedActions('member', MemberService),
 
-  async doDestroyCustomAttributes({ commit, dispatch }, id) {
-    try {
-      const response = await MemberService.destroyCustomAttribute(id);
-
-      dispatch('doFetchCustomAttributes');
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doUpdateCustomAttributes({ commit, dispatch }, { id, data }) {
-    try {
-      const response = await MemberService.updateCustomAttribute(id, data);
-
-      dispatch('doFetchCustomAttributes');
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doFetchCustomAttributes({ commit }) {
-    try {
-      const response = await MemberService.fetchCustomAttributes();
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doCreateCustomAttributes({ commit, dispatch }, values) {
-    try {
-      const response = await MemberService.createCustomAttributes(values);
-
-      dispatch('doFetchCustomAttributes');
-
-      return response;
-    } catch (error) {
-      if (error.response.status !== 500) {
-        Errors.handle(error);
-      }
-
-      ToastStore.error('Custom Attributes could not be created');
-    }
-    return null;
-  },
-
   async doMerge({ commit }, { memberToKeep, memberToMerge }) {
     try {
       await MemberService.merge(memberToKeep, memberToMerge);

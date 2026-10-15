@@ -177,7 +177,7 @@ import {
   watch,
 } from 'vue';
 import { onSelectMouseLeave } from '@/utils/select';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useMemberStore } from '@/modules/member/store/pinia';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -275,7 +275,7 @@ const customAttributes = computed(() => props.attributes
 const firstHiddenAttributeIndex = computed(() => customAttributes.value.findIndex(
   (attribute) => !attribute.show,
 ));
-const { doUpdateCustomAttributes } = mapActions('member');
+const memberStore = useMemberStore();
 const model = computed(() => props.modelValue);
 
 watch(model, (newModel) => {
@@ -293,7 +293,7 @@ const updateAttribute = (id, data) => {
     cancelButtonText: 'Cancel',
     icon: data.show ? 'fa-eye fa-light' : 'fa-eye-slash fa-light',
   }).then(() => {
-    doUpdateCustomAttributes({ id, data }).then(() => {
+    memberStore.updateCustomAttribute(id, data).then(() => {
       ToastStore.success('Attribute successfully updated');
     });
   });

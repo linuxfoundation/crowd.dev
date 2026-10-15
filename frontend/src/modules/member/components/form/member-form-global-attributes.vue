@@ -125,7 +125,6 @@ import {
   ref,
   watch,
 } from 'vue';
-import { useStore } from 'vuex';
 import isEqual from 'lodash/isEqual';
 import cloneDeep from 'lodash/cloneDeep';
 import attributeTypes from '@/jsons/member-custom-attributes.json';
@@ -150,7 +149,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 const { trackEvent } = useProductTracking();
 
-const store = useStore();
 const memberStore = useMemberStore();
 const { customAttributes } = storeToRefs(memberStore);
 
@@ -209,8 +207,8 @@ async function onSubmit() {
         (deletedField) => deletedField.id,
       );
 
-      store
-        .dispatch('member/doDestroyCustomAttributes', ids)
+      memberStore
+        .destroyCustomAttribute(ids)
         .catch(() => {
           hasErrorOccurred = true;
         });
@@ -231,13 +229,10 @@ async function onSubmit() {
 
     addedFields.forEach(async ({ type, label }) => {
       try {
-        await store.dispatch(
-          'member/doCreateCustomAttributes',
-          {
-            type,
-            label,
-          },
-        );
+        await memberStore.createCustomAttribute({
+          type,
+          label,
+        });
       } catch (e) {
         hasErrorOccurred = true;
       }
@@ -256,15 +251,9 @@ async function onSubmit() {
 
     editedFields.forEach(async ({ id, label }) => {
       try {
-        await store.dispatch(
-          'member/doUpdateCustomAttributes',
-          {
-            id,
-            data: {
-              label,
-            },
-          },
-        );
+        await memberStore.updateCustomAttribute(id, {
+          label,
+        });
       } catch (e) {
         hasErrorOccurred = true;
       }
