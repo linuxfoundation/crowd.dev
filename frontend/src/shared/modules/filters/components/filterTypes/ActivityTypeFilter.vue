@@ -9,7 +9,6 @@ import {
   computed, watch,
 } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useStore } from 'vuex';
 import LfMultiSelectFilter from '@/shared/modules/filters/components/filterTypes/MultiSelectFilter.vue';
 import type {
   MultiSelectFilterConfig,
@@ -22,6 +21,7 @@ import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTy
 import type { ActivityTypeDefinition } from '@/shared/modules/activity/types/ActivityTypes';
 import { useActivityTypeStore } from '@/modules/activity/store/type';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { lfIdentities } from '@/config/identities';
 import useIntegrationsHelpers from '@/config/integrations/integrations.helpers';
 import octolens, { octolensMentionPlatforms } from '@/config/integrations/octolens/config';
@@ -38,7 +38,7 @@ const emit = defineEmits<{(e: 'update:modelValue', value: MultiSelectFilterValue
 const activityTypeStore = useActivityTypeStore();
 const types = computed(() => activityTypeStore.types);
 
-const store = useStore();
+const integrationStore = useIntegrationStore();
 const { getActiveIntegrations } = useIntegrationsHelpers();
 
 const activeIntegrations = computed<string[]>(() => getActiveIntegrations().map((integration) => integration.key));
@@ -102,6 +102,6 @@ watch([types, activeIntegrations], ([typesValue, activeIntegrationsValue]) => {
 });
 
 watch(() => selectedProjectGroup.value?.id, async (projectGroupId) => {
-  await store.dispatch('integration/doFetch', projectGroupId ? [projectGroupId] : []);
+  await integrationStore.fetch(projectGroupId ? [projectGroupId] : []);
 }, { immediate: true });
 </script>

@@ -94,7 +94,7 @@ import usePermissions from '@/shared/modules/permissions/helpers/usePermissions'
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue';
 import { TanstackKey } from '@/shared/types/tanstack';
-import { mapGetters } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useQuery } from '@tanstack/vue-query';
@@ -119,7 +119,7 @@ const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const memberCreate = ref(false);
 
-const { listByPlatform } = mapGetters('integration');
+const { listByPlatform } = storeToRefs(useIntegrationStore());
 
 const { hasPermission } = usePermissions();
 

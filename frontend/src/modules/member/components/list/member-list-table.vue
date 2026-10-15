@@ -406,6 +406,7 @@ import AppMemberMergeDialog from '@/modules/member/components/member-merge-dialo
 import AppMemberOrganizationsVertical from '@/modules/member/components/member-organizations-vertical.vue';
 import { MemberService } from '@/modules/member/member-service';
 import { useMemberStore } from '@/modules/member/store/pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfDefaultFilters from '@/shared/modules/default-filters/components/default-filters.vue';
 import AppIdentitiesHorizontalListMembers from '@/shared/modules/identities/components/identities-horizontal-list-members.vue';
@@ -432,7 +433,6 @@ import {
   onMounted, onUnmounted, ref,
   watch,
 } from 'vue';
-import { useStore } from 'vuex';
 import { memberSavedViews } from '../../config/saved-views/main';
 import AppMemberBadge from '../member-badge.vue';
 import AppMemberDropdownContent from '../member-dropdown-content.vue';
@@ -465,7 +465,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['onAddMember', 'update:pagination']);
 const { trackEvent } = useProductTracking();
-const store = useStore();
+const integrationStore = useIntegrationStore();
 const table = ref(null);
 const scrollbarRef = ref();
 const tableBodyRef = ref();
@@ -674,10 +674,7 @@ const doExport = () => MemberService.export({
 });
 
 onMounted(async () => {
-  await store.dispatch(
-    'integration/doFetch',
-    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
-  );
+  await integrationStore.fetch(selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : []);
 });
 
 // Remove listeners on unmount

@@ -57,10 +57,6 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
 
   socketIoClient.on(SocketEvents.integrationCompleted, (data: string) => {
     console.info('Integration onboarding done', data);
-    // store.dispatch(
-    //   'integration/doFind',
-    //   JSON.parse(data).integrationId,
-    // );
   });
 
   socketIoClient.on(SocketEvents.memberMerge, async (data: string) => {

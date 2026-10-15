@@ -142,7 +142,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfSvg from '@/shared/svg/svg.vue';
 
 interface GithubInstallation {
@@ -160,7 +160,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 const copied = ref(false);
 const installations = ref<GithubInstallation[]>([]);
 const installationId = ref<string>('');
@@ -198,7 +198,7 @@ const connectInstallation = () => {
   IntegrationService.githubConnectInstallation(installationId.value)
     .then(() => {
       isModalOpen.value = false;
-      doFetch();
+      integrationStore.fetch();
     });
 };
 
