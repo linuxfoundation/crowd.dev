@@ -33,13 +33,14 @@ const refetchCustomAttributes = (): Promise<void> => MemberService.fetchCustomAt
 
 export const useMemberStore = defineStore('member', () => {
   const filters = ref<Filter>({ ...allMembers.config });
-  const savedFilterBody = ref<ApiFilter>({});
   const customAttributes = ref<FilterCustomAttribute[]>([]);
   const customAttributesFilter = ref<Record<string, FilterConfig>>({});
-  const members = ref<Member[]>([]);
-  const totalMembers = ref(0);
   const selectedMembers = ref<Member[]>([]);
   const toMergeMember = ref<{ id: string; segmentId: string } | null>(null);
+
+  const members = ref<Member[]>([]);
+  const totalMembers = ref(0);
+  const savedFilterBody = ref<ApiFilter>({});
 
   function fetchMembers({ body = {}, reload = false }: { body?: ApiFilter, reload?: boolean }): Promise<Pagination<Member>> {
     const mappedBody = reload ? { ...savedFilterBody.value, ...body } : body;
@@ -152,13 +153,13 @@ export const useMemberStore = defineStore('member', () => {
 
   return {
     filters,
-    savedFilterBody,
     customAttributes,
     customAttributesFilter,
-    members,
-    totalMembers,
     selectedMembers,
     toMergeMember,
+    members,
+    totalMembers,
+    savedFilterBody,
     fetchMembers,
     getMemberCustomAttributes,
     fetchCustomAttributes,
