@@ -13,6 +13,7 @@ import tseslint from 'typescript-eslint';
 // Values frozen from @vue/eslint-config-airbnb 7.0.0, which has no ESLint 9+ release.
 import airbnb from './.eslint/airbnb-rules.json' with { type: 'json' };
 import legacy from './.eslint/legacy-files.json' with { type: 'json' };
+import staticServiceFiles from './.eslint/static-service-files.json' with { type: 'json' };
 
 const { fixable, ...noDuplicatesMeta } = importX.rules['no-duplicates'].meta;
 
@@ -144,6 +145,19 @@ export default [
         'import/no-extraneous-dependencies': [
           'error',
           { devDependencies: true, optionalDependencies: false },
+        ],
+      },
+    },
+    {
+      files: ['src/**/services/**/*.{js,ts}', 'src/**/*-service.{js,ts}', 'src/**/*.service.{js,ts}'],
+      ignores: staticServiceFiles,
+      rules: {
+        'no-restricted-syntax': [
+          ...airbnb['no-restricted-syntax'],
+          {
+            selector: 'ClassBody > MethodDefinition[static=true]',
+            message: 'Services export named functions or a plain object, not classes with static methods (see README → State and data).',
+          },
         ],
       },
     },
