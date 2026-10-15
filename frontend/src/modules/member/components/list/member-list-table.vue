@@ -431,6 +431,7 @@ import {
   computed,
   defineProps,
   onMounted, onUnmounted, ref,
+  toRefs,
   watch,
 } from 'vue';
 import { memberSavedViews } from '../../config/saved-views/main';
@@ -454,6 +455,18 @@ const props = defineProps({
   isTableLoading: {
     type: Boolean,
     default: () => false,
+  },
+  members: {
+    type: Array,
+    default: () => [],
+  },
+  totalMembers: {
+    type: Number,
+    default: () => 0,
+  },
+  savedFilterBody: {
+    type: Object,
+    default: () => ({}),
   },
   pagination: {
     type: Object,
@@ -483,9 +496,8 @@ const selectedActionMember = ref(null);
 const isFindGithubDrawerOpen = ref(null);
 
 const memberStore = useMemberStore();
-const {
-  members, totalMembers, filters, selectedMembers, savedFilterBody,
-} = storeToRefs(memberStore);
+const { filters, selectedMembers } = storeToRefs(memberStore);
+const { members, totalMembers, savedFilterBody } = toRefs(props);
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
