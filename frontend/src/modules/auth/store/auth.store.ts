@@ -46,12 +46,12 @@ export const useAuthStore = defineStore('auth', () => {
 
         const intercomJwt = auth0User[config.intercom.auth0IntercomClaim];
         const userId = auth0User[config.intercom.auth0UsernameClaim];
-        if (typeof userId === 'string' && userId && typeof intercomJwt === 'string' && intercomJwt) {
+        if (userId && intercomJwt) {
           bootIntercom({
-            user_id: userId,
+            user_id: userId as string,
             name: auth0User.name,
             email: auth0User.email,
-            intercom_user_jwt: intercomJwt,
+            intercom_user_jwt: intercomJwt as string,
           }).catch((error: unknown) => {
             console.error('Intercom: Boot failed', error);
           });
