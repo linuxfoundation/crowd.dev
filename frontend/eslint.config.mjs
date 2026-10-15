@@ -155,8 +155,8 @@ export default [
         'no-restricted-syntax': [
           ...airbnb['no-restricted-syntax'],
           {
-            selector: 'ClassBody > MethodDefinition[static=true]',
-            message: 'Services export named functions or a plain object, not classes with static methods (see README → State and data).',
+            selector: 'ClassBody > :matches(MethodDefinition, PropertyDefinition)[static=true]',
+            message: 'Services export named functions or a plain object, not classes with static members (see README → State and data).',
           },
         ],
       },
