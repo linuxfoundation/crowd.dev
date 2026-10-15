@@ -94,7 +94,7 @@ defineProps({
 });
 
 const activityStore = useActivityStore();
-const { filters, timestamp } = storeToRefs(activityStore);
+const { filters } = storeToRefs(activityStore);
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
 const params = ref(null);
@@ -128,22 +128,19 @@ const emptyState = computed(() => ({
 const isLoadMoreVisible = computed(() => activities.value.length < totalActivities.value);
 
 const onLoadMore = () => {
-  timestamp.value = activities.value.at(-1).timestamp;
   fetchNextPage();
 };
 
 const fetch = ({
   filter, limit = 50, orderBy, body,
 }) => {
-  const lte = timestamp.value;
-  timestamp.value = dateHelper().toISOString();
   params.value = {
     projectGroupId: selectedProjectGroup.value?.id,
     filter,
     body,
     orderBy,
     limit,
-    timestamp: lte,
+    timestamp: dateHelper().toISOString(),
   };
 };
 </script>
