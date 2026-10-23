@@ -79,7 +79,7 @@ export class WorkerQueueReceiver extends PrioritizedQueueReciever {
         await logExecutionTimeV2(
           async () => service.processResults(batch),
           logger,
-          'processResults',
+          'dataSinkService -> processResults',
         )
       },
       async (_, err) => {
@@ -116,7 +116,7 @@ export class WorkerQueueReceiver extends PrioritizedQueueReciever {
         const results = await logExecutionTimeV2(
           async () => service.prepareInMemoryActivityResults(batch),
           logger,
-          'prepareInMemoryActivityResults',
+          'dataSinkService -> prepareInMemoryActivityResults',
         )
 
         for (const result of results) {

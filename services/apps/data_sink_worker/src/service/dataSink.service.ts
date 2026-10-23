@@ -206,7 +206,11 @@ export default class DataSinkService extends LoggerBase {
     results: { segmentId: string; integrationId: string; data: IActivityData; resultId?: string }[],
   ): Promise<{ resultId: string; data: IResultData; created: boolean }[]> {
     const integrationIds = results.map((r) => r.integrationId)
-    const integrations = await this.repo.getIntegrationInfos(integrationIds)
+    const integrations = await logExecutionTimeV2(
+      async () => this.repo.getIntegrationInfos(integrationIds),
+      this.log,
+      'dataSinkService -> prepareInMemoryActivityResults -> repo.getIntegrationInfos',
+    )
 
     const prepared: { resultId: string; data: IResultData; created: boolean }[] = []
 
@@ -267,7 +271,7 @@ export default class DataSinkService extends LoggerBase {
                   resultId === undefined ? result : undefined,
                 ),
               this.log,
-              'dataSinkService -> processActivityInMemoryResult -> markResultError',
+              'dataSinkService -> prepareInMemoryActivityResults -> repo.markResultError',
             )
             continue
           }
@@ -339,7 +343,11 @@ export default class DataSinkService extends LoggerBase {
 
     if (toLoadById.length > 0) {
       this.log.info(`[RESULTS] Loading ${toLoadById.length} results from db!`)
-      const infos = await this.repo.getResultInfos(toLoadById)
+      const infos = await logExecutionTimeV2(
+        async () => this.repo.getResultInfos(toLoadById),
+        this.log,
+        'dataSinkService -> processResults -> repo.getResultInfos',
+      )
       results.push(...infos)
     }
 
@@ -391,19 +399,24 @@ export default class DataSinkService extends LoggerBase {
 
           try {
             this.log.trace(`[RESULTS] Processing ${toProcess.length} activity results...`)
-            lastResults = await service.processActivities(
-              toProcess.map((r) => {
-                return {
-                  resultId: r.id,
-                  integrationId: r.integrationId,
-                  onboarding: r.onboarding === null ? true : r.onboarding,
-                  platform: r.platform,
-                  activity: r.data.data as IActivityData,
-                  segmentId: r.data.segmentId ?? r.segmentId,
-                  skipRepositorySegmentLookup: keepsResultSegment.has(r.id),
-                }
-              }),
-              toProcess.some((r) => r.onboarding === true),
+            lastResults = await logExecutionTimeV2(
+              async () =>
+                service.processActivities(
+                  toProcess.map((r) => {
+                    return {
+                      resultId: r.id,
+                      integrationId: r.integrationId,
+                      onboarding: r.onboarding === null ? true : r.onboarding,
+                      platform: r.platform,
+                      activity: r.data.data as IActivityData,
+                      segmentId: r.data.segmentId ?? r.segmentId,
+                      skipRepositorySegmentLookup: keepsResultSegment.has(r.id),
+                    }
+                  }),
+                  toProcess.some((r) => r.onboarding === true),
+                ),
+              this.log,
+              'dataSinkService -> processResults -> activityService.processActivities',
             )
 
             toProcess = []
@@ -468,7 +481,12 @@ export default class DataSinkService extends LoggerBase {
             )
             const memberData = entry.data.data as IMemberData
 
-            await service.processMemberUpdate(entry.integrationId, entry.platform, memberData)
+            await logExecutionTimeV2(
+              async () =>
+                service.processMemberUpdate(entry.integrationId, entry.platform, memberData),
+              this.log,
+              'dataSinkService -> processResults -> memberService.processMemberUpdate',
+            )
             resultMap.set(entry.id, { success: true })
           } catch (err) {
             resultMap.set(entry.id, { success: false, err })
@@ -497,7 +515,12 @@ export default class DataSinkService extends LoggerBase {
       if (!result.success) {
         const resultInfo = single(results, (r) => r.id === resultId)
 
-        await this.triggerResultError(resultInfo, batchEntry.created, result.err, result.metadata)
+        await logExecutionTimeV2(
+          async () =>
+            this.triggerResultError(resultInfo, batchEntry.created, result.err, result.metadata),
+          this.log,
+          'dataSinkService -> processResults -> triggerResultError',
+        )
 
         errors++
       } else {
@@ -512,7 +535,11 @@ export default class DataSinkService extends LoggerBase {
     if (resultsToDelete.length > 0 && postProcess) {
       this.log.trace(`[RESULTS] Deleting ${resultsToDelete.length} results from db!`)
 
-      await this.repo.deleteResults(resultsToDelete)
+      await logExecutionTimeV2(
+        async () => this.repo.deleteResults(resultsToDelete),
+        this.log,
+        'dataSinkService -> processResults -> repo.deleteResults',
+      )
     }
 
     this.log.trace(
