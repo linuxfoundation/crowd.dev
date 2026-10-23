@@ -154,13 +154,14 @@ export async function getEnrichmentInput(
 export async function getEnrichmentData(
   source: OrganizationEnrichmentSource,
   input: IOrganizationEnrichmentSourceInput,
+  skipEnrichableCheck = false,
 ): Promise<IOrganizationEnrichmentData | null> {
   const service = OrganizationEnrichmentSourceServiceFactory.getEnrichmentSourceService(
     source,
     svc.log,
   )
 
-  if (await service.isEnrichableBySource(input)) {
+  if (skipEnrichableCheck || (await service.isEnrichableBySource(input))) {
     try {
       return await service.getData(input)
     } catch (err) {
