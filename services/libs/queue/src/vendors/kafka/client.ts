@@ -20,21 +20,21 @@ import { configMap } from './config'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
 import { getKafkaMessageCounts } from './utils'
 
-// OCI Streaming rejects any request over 1 MB of keys and values, so bulk sends are split below that
+// OCI Streaming rejects any request over 1 MB of keys and values, so bulk sends are split below that:
+// https://docs.oracle.com/en-us/iaas/Content/Streaming/Concepts/streamingoverview_topic-Limits_on_Streaming_Resources.htm
 const MAX_SEND_REQUEST_BYTES = 900 * 1024
-// upper bound for the framing Kafka adds to each record, so many small messages stay under the limit too
-const RECORD_OVERHEAD_BYTES = 64
+const KAFKA_RECORD_FRAMING_UPPER_BOUND_BYTES = 64
 
-function splitByRequestSize(
-  messages: { value: string; key?: string }[],
-): { value: string; key?: string }[][] {
-  const parts: { value: string; key?: string }[][] = []
-  let current: { value: string; key?: string }[] = []
+type OutgoingRecord = { value: string; key?: string }
+
+function splitByRequestSize(messages: OutgoingRecord[]): OutgoingRecord[][] {
+  const parts: OutgoingRecord[][] = []
+  let current: OutgoingRecord[] = []
   let currentBytes = 0
 
   for (const message of messages) {
     const bytes =
-      RECORD_OVERHEAD_BYTES +
+      KAFKA_RECORD_FRAMING_UPPER_BOUND_BYTES +
       Buffer.byteLength(message.value) +
       (message.key ? Buffer.byteLength(message.key) : 0)
     if (current.length > 0 && currentBytes + bytes > MAX_SEND_REQUEST_BYTES) {
