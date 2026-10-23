@@ -269,7 +269,7 @@ export default class DataSinkService extends LoggerBase {
               this.log,
               'dataSinkService -> processActivityInMemoryResult -> markResultError',
             )
-            return
+            continue
           }
 
           if (!segmentId) {
