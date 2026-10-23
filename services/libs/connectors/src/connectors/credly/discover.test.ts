@@ -31,9 +31,11 @@ describe('discoverCredly', () => {
 })
 
 describe('credlyConnector', () => {
-  it('registers the credly platform with the pool hooks and no sync yet', () => {
+  it('registers the credly platform with the pool hooks and the twice-daily badge poll', () => {
     expect(credlyConnector.platform).toBe('credly')
-    expect(credlyConnector.syncs).toEqual([])
+    expect(
+      credlyConnector.syncs.map(({ name, cadenceMinutes }) => ({ name, cadenceMinutes })),
+    ).toEqual([{ name: 'badgePoll', cadenceMinutes: 720 }])
     expect(credlyConnector.preparePool).toBeTypeOf('function')
     expect(credlyConnector.mintToken).toBeTypeOf('function')
     expect(credlyConnector.emitsOwnSegment).toBeUndefined()

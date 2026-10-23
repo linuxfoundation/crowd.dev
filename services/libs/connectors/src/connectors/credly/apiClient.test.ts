@@ -174,9 +174,23 @@ describe('fetchBadgesPage', () => {
     expect(page.data[0].state_updated_at).toBeNull()
   })
 
+  it('accepts a badge stamped inside the last second of the window', async () => {
+    const http = httpReturning(
+      pageOf([badge({ id: 'badge-2', state_updated_at: '2026-10-21T00:00:00.923Z' })]),
+    )
+
+    const page = await fetchBadgesPage(
+      http,
+      { organizationId: 'org-1', window: WINDOW, page: 1 },
+      log,
+    )
+
+    expect(page.data[0].id).toBe('badge-2')
+  })
+
   it('fails when a returned badge sits outside the window, since credly ignores unknown filters', async () => {
     const http = httpReturning(
-      pageOf([badge(), badge({ id: 'badge-2', state_updated_at: '2026-10-21T00:00:00.001Z' })]),
+      pageOf([badge(), badge({ id: 'badge-2', state_updated_at: '2026-10-21T00:00:01.000Z' })]),
     )
 
     const failure = await fetchBadgesPage(

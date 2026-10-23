@@ -1774,28 +1774,24 @@ export default class ActivityService extends LoggerBase {
     // Deduplicate member sync triggers — a member may appear in many activities in the
     // same batch. Emit once per unique (memberId, segmentId) pair.
     const memberSyncKeys = new Set<string>()
-    const memberSyncPromises: Promise<void>[] = []
+    const membersToSync: { memberId: string; segmentId: string }[] = []
     for (const prepared of preparedForUpsert) {
       for (const memberId of [prepared.payload.memberId, prepared.payload.objectMemberId]) {
         if (!memberId) continue
         const key = `${memberId}:${prepared.payload.segmentId}`
         if (!memberSyncKeys.has(key)) {
           memberSyncKeys.add(key)
-          memberSyncPromises.push(
-            this.searchSyncWorkerEmitter.triggerMemberSync(
-              memberId,
-              onboarding,
-              prepared.payload.segmentId,
-            ),
-          )
+          membersToSync.push({ memberId, segmentId: prepared.payload.segmentId })
         }
       }
     }
-    await logExecutionTimeV2(
-      async () => Promise.all(memberSyncPromises),
-      this.log,
-      'activityService -> processActivities -> Promise.all (searchSyncWorkerEmitter.triggerMemberSync)',
-    )
+    if (membersToSync.length > 0) {
+      await logExecutionTimeV2(
+        async () => this.searchSyncWorkerEmitter.triggerMembersSync(membersToSync, onboarding),
+        this.log,
+        'activityService -> processActivities -> searchSyncWorkerEmitter.triggerMembersSync',
+      )
+    }
 
     for (const prepared of preparedActivities) {
       resultMap.set(prepared.resultId, { success: true })

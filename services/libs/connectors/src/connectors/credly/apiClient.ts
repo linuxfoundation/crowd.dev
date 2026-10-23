@@ -187,9 +187,10 @@ function toWholeSecond(ms: number): string {
   return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z')
 }
 
+// Both bounds are whole seconds and Credly keeps the max second whole, so its last millisecond is inside.
 function assertBadgesInsideWindow(badges: CredlyBadge[], window: StateUpdatedWindow): void {
   const minMs = Date.parse(window.min)
-  const maxMs = Date.parse(window.max)
+  const maxMs = Date.parse(window.max) + 999
   const outside = badges.find((badge) => {
     if (!badge.state_updated_at) return false
     const stateUpdatedAtMs = Date.parse(badge.state_updated_at)
