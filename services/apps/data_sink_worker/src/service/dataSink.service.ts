@@ -260,14 +260,13 @@ export default class DataSinkService extends LoggerBase {
             integration.segmentId !== segmentId &&
             ![PlatformType.GITHUB, PlatformType.GITLAB].includes(platform)
           ) {
-            // save error and stop
             await logExecutionTimeV2(
               async () =>
                 this.repo.markResultError(
                   id,
-                  new Error(
-                    `Segment id from queue message '${segmentId}' does not equal integration '${integration.integrationId}' segment id '${integration.segmentId}'!`,
-                  ),
+                  {
+                    errorMessage: `Segment id from queue message '${segmentId}' does not equal integration '${integration.integrationId}' segment id '${integration.segmentId}'!`,
+                  },
                   resultId === undefined ? result : undefined,
                 ),
               this.log,
