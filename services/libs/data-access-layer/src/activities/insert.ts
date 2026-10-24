@@ -143,11 +143,7 @@ export async function insertActivities(
     }
   })
 
-  const chunks: (typeof bulk)[] = []
-  for (let i = 0; i < bulk.length; i += 10) {
-    chunks.push(bulk.slice(i, i + 10))
-  }
-  await Promise.all(chunks.map((chunk) => emitter.sendMessages(chunk)))
+  await emitter.sendMessages(bulk)
   telemetry.increment('tinybird.insert_activity', activities.length)
 
   return toInsert.map((activity) => activity.id)
@@ -155,7 +151,7 @@ export async function insertActivities(
 
 const ATTRIBUTE_STRING_MAX_LENGTH = 500
 
-// keeps a 10-message Kafka batch far below the 1 MB broker default
+// keeps a single activity record far below the 1 MB OCI Streaming request limit
 const ATTRIBUTES_MAX_BYTES = 16 * 1024
 
 export function serializeAttributes(input: object): {

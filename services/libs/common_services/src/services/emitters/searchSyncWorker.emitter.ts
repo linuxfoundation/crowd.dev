@@ -1,11 +1,8 @@
-import { partition } from '@crowd/common'
 import { Logger } from '@crowd/logging'
 import { CrowdQueue, IQueue } from '@crowd/queue'
 import { SearchSyncWorkerQueueMessageType } from '@crowd/types'
 
 import { QueuePriorityService } from '../priority.service'
-
-const MAX_MESSAGES_PER_QUEUE_SEND = 10
 
 export class SearchSyncWorkerEmitter extends QueuePriorityService {
   public constructor(client: IQueue, parentLog: Logger) {
@@ -54,11 +51,7 @@ export class SearchSyncWorkerEmitter extends QueuePriorityService {
       deduplicationId: `${memberId}:${segmentId}`,
     }))
 
-    await Promise.all(
-      partition(messages, MAX_MESSAGES_PER_QUEUE_SEND).map((chunk) =>
-        this.sendMessages(chunk, { onboarding }),
-      ),
-    )
+    await this.sendMessages(messages, { onboarding })
   }
 
   public async triggerOrganizationMembersSync(organizationId: string, onboarding: boolean) {

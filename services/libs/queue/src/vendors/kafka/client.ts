@@ -20,6 +20,39 @@ import { configMap } from './config'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
 import { getKafkaMessageCounts } from './utils'
 
+// OCI Streaming rejects any request over 1 MB of keys and values, so bulk sends are split below that:
+// https://docs.oracle.com/en-us/iaas/Content/Streaming/Concepts/streamingoverview_topic-Limits_on_Streaming_Resources.htm
+const MAX_SEND_REQUEST_BYTES = 900 * 1024
+const KAFKA_RECORD_FRAMING_UPPER_BOUND_BYTES = 64
+
+type OutgoingRecord = { value: string; key?: string }
+
+function splitByRequestSize(messages: OutgoingRecord[]): OutgoingRecord[][] {
+  const parts: OutgoingRecord[][] = []
+  let current: OutgoingRecord[] = []
+  let currentBytes = 0
+
+  for (const message of messages) {
+    const bytes =
+      KAFKA_RECORD_FRAMING_UPPER_BOUND_BYTES +
+      Buffer.byteLength(message.value) +
+      (message.key ? Buffer.byteLength(message.key) : 0)
+    if (current.length > 0 && currentBytes + bytes > MAX_SEND_REQUEST_BYTES) {
+      parts.push(current)
+      current = []
+      currentBytes = 0
+    }
+    current.push(message)
+    currentBytes += bytes
+  }
+
+  if (current.length > 0) {
+    parts.push(current)
+  }
+
+  return parts
+}
+
 export class KafkaQueueService extends LoggerBase implements IQueue {
   private readonly MAX_RECONNECT_ATTEMPTS = 5
   private readonly RECONNECT_DELAY = 5000
@@ -341,13 +374,15 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
 
     const producer = await this.getProducer()
 
-    const result = await producer.send({
-      topic: channel.name,
-      messages: messages.map((m) => ({
+    const result: IQueueSendBulkResult = []
+    for (const part of splitByRequestSize(
+      messages.map((m) => ({
         value: JSON.stringify(m.payload),
         key: m.groupId ?? undefined,
       })),
-    })
+    )) {
+      result.push(...(await producer.send({ topic: channel.name, messages: part })))
+    }
 
     this.log.debug({ messages, topic: channel.name }, 'Messages sent to Kafka topic!')
 
