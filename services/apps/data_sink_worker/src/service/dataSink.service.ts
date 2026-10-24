@@ -281,6 +281,20 @@ export default class DataSinkService extends LoggerBase {
         }
       }
 
+      if (!integration) {
+        await logExecutionTimeV2(
+          async () =>
+            this.repo.markResultError(
+              id,
+              { errorMessage: `Integration '${integrationId}' was not found!` },
+              resultId === undefined ? result : undefined,
+            ),
+          this.log,
+          'dataSinkService -> prepareInMemoryActivityResults -> repo.markResultError (integration not found)',
+        )
+        continue
+      }
+
       // TODO remove when we have all integrations storing results on their own
       // create result in db first
       if (!resultId) {
