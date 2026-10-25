@@ -63,6 +63,20 @@ import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Integrations send line counts as activity attributes: insertions for commits, additions for pull requests.
+function toLineCount(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10)
+    return isNaN(parsed) ? undefined : parsed
+  }
+
+  return undefined
+}
+
 export default class ActivityService extends LoggerBase {
   private readonly settingsRepo: SettingsRepository
   private readonly memberRepo: MemberRepository
@@ -1657,8 +1671,10 @@ export default class ActivityService extends LoggerBase {
           timestamp: a.payload.timestamp,
           channel: a.payload.channel,
           sentimentScore: a.payload.sentimentScore,
-          gitInsertions: a.payload.gitInsertions,
-          gitDeletions: a.payload.gitDeletions,
+          gitInsertions:
+            a.payload.gitInsertions ??
+            toLineCount(a.payload.attributes?.insertions ?? a.payload.attributes?.additions),
+          gitDeletions: a.payload.gitDeletions ?? toLineCount(a.payload.attributes?.deletions),
           score: a.payload.score,
           pullRequestReviewState: a.payload.attributes?.reviewState as string,
         }
@@ -2023,6 +2039,9 @@ export default class ActivityService extends LoggerBase {
   ): boolean {
     // Must cover every column in createOrUpdateRelations' ON CONFLICT SET list, compared as stored.
     const differs = (a: unknown, b: unknown) => (a ?? null) !== (b ?? null)
+    // The upsert keeps stored line counts when the new data has none.
+    const differsWhenSet = (a: unknown, b: unknown) =>
+      b !== undefined && b !== null && differs(a, b)
     const username = (value: string | null | undefined) =>
       value === undefined || value === null ? null : normalizeMemberIdentityValue(value)
 
@@ -2039,8 +2058,8 @@ export default class ActivityService extends LoggerBase {
       new Date(existing.timestamp).getTime() !== new Date(newData.timestamp).getTime() ||
       differs(existing.channel, newData.channel) ||
       differs(existing.sentimentScore, newData.sentimentScore) ||
-      differs(existing.gitInsertions, newData.gitInsertions) ||
-      differs(existing.gitDeletions, newData.gitDeletions) ||
+      differsWhenSet(existing.gitInsertions, newData.gitInsertions) ||
+      differsWhenSet(existing.gitDeletions, newData.gitDeletions) ||
       differs(existing.score, newData.score) ||
       differs(existing.pullRequestReviewState, newData.pullRequestReviewState)
     )
