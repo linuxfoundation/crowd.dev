@@ -76,41 +76,6 @@ export async function fetchOrganizationsForEnrichment(
   )
 }
 
-export async function fetchOrganizationsForOneTimeEnrichment(
-  qx: QueryExecutor,
-  organizationIds: string[],
-  source: OrganizationEnrichmentSource,
-): Promise<IEnrichableOrganization[]> {
-  return qx.select(
-    `
-      SELECT
-        o.id,
-        o."displayName",
-        JSON_AGG(
-          JSON_BUILD_OBJECT(
-            'platform', oi.platform,
-            'value', oi.value,
-            'type', oi.type,
-            'verified', oi.verified
-          )
-        ) AS identities,
-        MAX(COALESCE(ogac.total_count_estimate, 0)) AS "activityCount"
-      FROM organizations o
-      INNER JOIN "organizationIdentities" oi
-        ON oi."organizationId" = o.id AND oi.verified = true AND oi.type = 'primary-domain'
-      LEFT JOIN "organizationsGlobalActivityCount" ogac ON ogac."organizationId" = o.id
-      WHERE o.id = ANY($(organizationIds)::uuid[])
-        AND o."deletedAt" IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM "organizationEnrichmentCache" oec
-          WHERE oec."organizationId" = o.id AND oec.source = $(source)
-        )
-      GROUP BY o.id
-    `,
-    { organizationIds, source },
-  )
-}
-
 export async function setOrganizationEnrichmentLastTriedAt(
   qx: QueryExecutor,
   organizationId: string,
