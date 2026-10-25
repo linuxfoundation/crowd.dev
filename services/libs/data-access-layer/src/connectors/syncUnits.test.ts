@@ -10,6 +10,7 @@ import {
   countShadowRepos,
   hasSyncUnitsForChannel,
   listShadowDiffUnits,
+  listShadowDiffUnitsPage,
   reassertUnitClaim,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
@@ -136,6 +137,54 @@ describe('listShadowDiffUnits', () => {
     const result = await listShadowDiffUnits(qx)
 
     expect(result).toHaveLength(0)
+  })
+})
+
+describe('listShadowDiffUnitsPage', () => {
+  test('walks eligible channels in pages so a large fleet never comes back in one result', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const channels = ['a/one', 'b/two', 'c/three'].map((repo) => `https://github.com/${repo}`)
+    for (const channelName of channels) {
+      for (const syncName of ['issues', 'forks']) {
+        await createSyncUnit(qx, integrationId, {
+          channelName,
+          syncName,
+          watermark: { phase: 'incremental' },
+        })
+      }
+    }
+    await createSyncUnit(qx, integrationId, {
+      channelName: channels[0],
+      syncName: 'pull-requests',
+      emitEnabled: true,
+      watermark: { phase: 'incremental' },
+    })
+
+    const first = await listShadowDiffUnitsPage(qx, { channelLimit: 2 })
+    expect(first.map((unit) => [unit.channelName, unit.syncName])).toEqual([
+      [channels[0], 'forks'],
+      [channels[0], 'issues'],
+      [channels[1], 'forks'],
+      [channels[1], 'issues'],
+    ])
+
+    const last = first[first.length - 1]
+    const second = await listShadowDiffUnitsPage(qx, {
+      channelLimit: 2,
+      after: { channelName: last.channelName, integrationId: last.integrationId },
+    })
+    expect(second.map((unit) => [unit.channelName, unit.syncName])).toEqual([
+      [channels[2], 'forks'],
+      [channels[2], 'issues'],
+    ])
+
+    const third = await listShadowDiffUnitsPage(qx, {
+      channelLimit: 2,
+      after: { channelName: channels[2], integrationId },
+    })
+    expect(third).toEqual([])
   })
 })
 
