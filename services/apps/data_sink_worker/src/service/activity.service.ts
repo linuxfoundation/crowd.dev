@@ -63,7 +63,6 @@ import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Integrations send line counts as activity attributes: insertions for commits, additions for pull requests.
 function toLineCount(value: unknown): number | undefined {
   if (typeof value === 'number') {
     return value
@@ -75,6 +74,22 @@ function toLineCount(value: unknown): number | undefined {
   }
 
   return undefined
+}
+
+// Integrations send line counts as activity attributes: insertions for commits, additions for pull requests.
+// The GitHub connector sends 0/0 when the counts are unavailable, so 0/0 counts as no line counts.
+function lineCountsFromAttributes(attributes: Record<string, unknown> | undefined): {
+  insertions?: number
+  deletions?: number
+} {
+  const insertions = toLineCount(attributes?.insertions ?? attributes?.additions)
+  const deletions = toLineCount(attributes?.deletions)
+
+  if (!insertions && !deletions) {
+    return {}
+  }
+
+  return { insertions, deletions }
 }
 
 export default class ActivityService extends LoggerBase {
@@ -1654,6 +1669,7 @@ export default class ActivityService extends LoggerBase {
     let skippedCount = 0
     const relationsToUpsert = preparedForUpsert
       .map((a) => {
+        const lineCounts = lineCountsFromAttributes(a.payload.attributes)
         const relationData: IActivityRelationCreateOrUpdateData = {
           activityId: a.payload.id,
           segmentId: a.payload.segmentId,
@@ -1671,10 +1687,8 @@ export default class ActivityService extends LoggerBase {
           timestamp: a.payload.timestamp,
           channel: a.payload.channel,
           sentimentScore: a.payload.sentimentScore,
-          gitInsertions:
-            a.payload.gitInsertions ??
-            toLineCount(a.payload.attributes?.insertions ?? a.payload.attributes?.additions),
-          gitDeletions: a.payload.gitDeletions ?? toLineCount(a.payload.attributes?.deletions),
+          gitInsertions: a.payload.gitInsertions ?? lineCounts.insertions,
+          gitDeletions: a.payload.gitDeletions ?? lineCounts.deletions,
           score: a.payload.score,
           pullRequestReviewState: a.payload.attributes?.reviewState as string,
         }
