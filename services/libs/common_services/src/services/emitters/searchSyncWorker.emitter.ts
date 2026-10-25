@@ -33,6 +33,27 @@ export class SearchSyncWorkerEmitter extends QueuePriorityService {
     )
   }
 
+  public async triggerMembersSync(
+    members: { memberId: string; segmentId?: string }[],
+    onboarding: boolean,
+  ) {
+    if (members.some((m) => !m.memberId)) {
+      throw new Error('memberId is required!')
+    }
+
+    const messages = members.map(({ memberId, segmentId }) => ({
+      payload: {
+        type: SearchSyncWorkerQueueMessageType.SYNC_MEMBER,
+        memberId,
+        segmentId,
+      },
+      groupId: memberId,
+      deduplicationId: `${memberId}:${segmentId}`,
+    }))
+
+    await this.sendMessages(messages, { onboarding })
+  }
+
   public async triggerOrganizationMembersSync(organizationId: string, onboarding: boolean) {
     if (!organizationId) {
       throw new Error('organizationId is required!')

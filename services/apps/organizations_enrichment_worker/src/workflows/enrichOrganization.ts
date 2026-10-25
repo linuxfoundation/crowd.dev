@@ -3,7 +3,7 @@ import { ActivityFailure, ApplicationFailure, proxyActivities } from '@temporali
 import { IEnrichableOrganization, OrganizationEnrichmentSource } from '@crowd/types'
 
 import * as activities from '../activities'
-import { IOrganizationEnrichmentSourceInput } from '../types'
+import { IEnrichOrganizationOptions, IOrganizationEnrichmentSourceInput } from '../types'
 import { sourceHasDifferentDataComparedToCache } from '../utils/common'
 
 const {
@@ -32,6 +32,7 @@ const {
 export async function enrichOrganization(
   input: IEnrichableOrganization,
   source: OrganizationEnrichmentSource,
+  options: IEnrichOrganizationOptions = {},
 ): Promise<void> {
   const organization = await findOrganizationById(input.id)
   if (!organization) return
@@ -69,7 +70,7 @@ export async function enrichOrganization(
   // If external sources are added in the future, credit checks should be implemented here.
 
   // Fetch new enrichment data
-  const data = await getEnrichmentData(source, enrichmentInput)
+  const data = await getEnrichmentData(source, enrichmentInput, options.skipEnrichableCheck)
 
   let changeInEnrichmentSourceData = false
 

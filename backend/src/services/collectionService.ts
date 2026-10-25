@@ -7,7 +7,10 @@ import { getCleanString } from '@crowd/common'
 import {
   GithubIntegrationService,
   chooseProjectDescription,
+  findGithubOrgProfileReadme,
   findGithubRepoReadme,
+  hasOrganizationContent,
+  IOrganizationContent,
 } from '@crowd/common_services'
 import {
   OrganizationField,
@@ -59,6 +62,53 @@ import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import { DEFAULT_WIDGET_VALUES, PlatformType, Widgets } from '@crowd/types'
 
 import { IServiceOptions } from './IServiceOptions'
+
+const MAX_ORGANIZATIONS_WITH_CONTENT = 3
+
+type GithubOrgDetails = Awaited<ReturnType<typeof GithubIntegrationService.findOrgDetails>>
+
+interface IDescribedOrganizations {
+  detailsByName: Map<string, GithubOrgDetails>
+  content: IOrganizationContent[]
+}
+
+async function findDescribedOrganizations(
+  orgs: GithubIntegrationSettings['orgs'],
+): Promise<IDescribedOrganizations> {
+  const described = await Promise.all(
+    orgs.slice(0, MAX_ORGANIZATIONS_WITH_CONTENT).map(async (org) => {
+      try {
+        const [details, profileReadme] = await Promise.all([
+          GithubIntegrationService.findOrgDetails(org.name),
+          findGithubOrgProfileReadme(org.name),
+        ])
+        return { name: org.name, details, profileReadme }
+      } catch {
+        return { name: org.name, details: null, profileReadme: null }
+      }
+    }),
+  )
+
+  return {
+    detailsByName: new Map(described.map((org) => [org.name, org.details])),
+    content: described
+      .map((org) => ({
+        name: org.name,
+        description: org.details?.description ?? null,
+        profileReadme: org.profileReadme,
+      }))
+      .filter(hasOrganizationContent),
+  }
+}
+
+async function findMainOrgDetails(
+  mainOrg: { name: string; topics: string[] },
+  detailsByName: Map<string, GithubOrgDetails>,
+) {
+  const orgDetails =
+    detailsByName.get(mainOrg.name) ?? (await GithubIntegrationService.findOrgDetails(mainOrg.name))
+  return { ...orgDetails, topics: mainOrg.topics }
+}
 
 export class CollectionService extends LoggerBase {
   options: IServiceOptions
@@ -702,11 +752,16 @@ export class CollectionService extends LoggerBase {
           }
         : undefined
 
+      const describedOrganizations = await findDescribedOrganizations(
+        isSingleRepo ? [] : settings.orgs,
+      )
+
       const mainOrg = await GithubIntegrationService.findMainGithubOrganizationWithLLM(
         qx,
         segment.name,
         settings.orgs,
         repoContent,
+        describedOrganizations.content,
       )
 
       if (!mainOrg) {
@@ -715,10 +770,7 @@ export class CollectionService extends LoggerBase {
 
       const details = isSingleRepo
         ? repoDetails
-        : {
-            ...(await GithubIntegrationService.findOrgDetails(mainOrg.name)),
-            topics: mainOrg.topics,
-          }
+        : await findMainOrgDetails(mainOrg, describedOrganizations.detailsByName)
 
       if (!details) {
         return null

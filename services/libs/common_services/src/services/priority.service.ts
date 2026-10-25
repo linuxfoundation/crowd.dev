@@ -42,8 +42,9 @@ export class QueuePriorityService {
       deduplicationId?: string
       id?: string
     }[],
+    priorityLevelContextOverride?: IQueuePriorityCalculationContext,
   ): Promise<void> {
-    const priorityLevel = await this.getPriorityLevel()
+    const priorityLevel = await this.getPriorityLevel(priorityLevelContextOverride)
 
     return this.emitter.sendMessages(
       messages.map((m) => {

@@ -53,3 +53,14 @@ export interface ITriggerOrganizationsEnrichmentInput {
   testRun?: boolean
   perRunLimit?: number
 }
+
+export interface IEnrichOrganizationOptions {
+  skipEnrichableCheck?: boolean
+}
+
+export interface ITriggerOneTimeOrganizationsEnrichmentInput {
+  organizationIds: string[]
+  batchSize?: number
+  concurrency?: number
+  testRun?: boolean
+}

@@ -20,6 +20,7 @@ const identitySchema = z.object({
   value: z.string().min(1),
   type: z.nativeEnum(MemberIdentityType),
   verified: z.literal(true),
+  sourceId: z.string().min(1).optional(),
 })
 
 const memberSchema = z.object({
@@ -115,22 +116,7 @@ function badgeActivity(
 
 function badgeMember(badge: CredlyBadge): CredlyActivity['member'] {
   const email = badge.recipient_email.trim().toLowerCase()
-  const userId = badge.user?.id?.trim()
-  const identities: CredlyActivity['member']['identities'] = []
-  if (userId) {
-    identities.push({
-      platform: PlatformType.CREDLY,
-      value: userId,
-      type: MemberIdentityType.USERNAME,
-      verified: true,
-    })
-  }
-  identities.push({
-    platform: PlatformType.CREDLY,
-    value: email,
-    type: MemberIdentityType.EMAIL,
-    verified: true,
-  })
+  const identities = emailAsUsernameAndEmailIdentities(email, badge.user?.id?.trim() || undefined)
 
   const attributes = withoutNullish({
     url: badge.user?.url ? { [PlatformType.CREDLY]: badge.user.url } : undefined,
@@ -142,6 +128,19 @@ function badgeMember(badge: CredlyBadge): CredlyActivity['member'] {
     identities,
     ...(Object.keys(attributes).length > 0 && { attributes }),
   }
+}
+
+function emailAsUsernameAndEmailIdentities(
+  email: string,
+  sourceId: string | undefined,
+): CredlyActivity['member']['identities'] {
+  return [MemberIdentityType.USERNAME, MemberIdentityType.EMAIL].map((type) => ({
+    platform: PlatformType.CREDLY,
+    value: email,
+    type,
+    verified: true,
+    sourceId,
+  }))
 }
 
 function withoutNullish(obj: Record<string, unknown>): Record<string, unknown> {

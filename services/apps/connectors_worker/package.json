@@ -13,7 +13,9 @@
     "script:diff-shadow-unit-detail": "tsx src/bin/diff-shadow-unit-detail.ts",
     "script:backfill-octolens-mentions": "tsx src/bin/backfill-octolens-mentions.ts",
     "script:switch-sync-pipeline": "tsx src/bin/switch-sync-pipeline.ts",
-    "script:mirror-nango-repos": "tsx src/bin/mirror-nango-repos-to-shadow-sync-units.ts"
+    "script:mirror-nango-repos": "tsx src/bin/mirror-nango-repos-to-shadow-sync-units.ts",
+    "script:probe-credly-api": "tsx src/bin/probe-credly-api.ts",
+    "script:seed-credly-sync-unit": "tsx src/bin/seed-credly-sync-unit.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

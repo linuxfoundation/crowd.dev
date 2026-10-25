@@ -34,7 +34,11 @@ import {
   generateUUIDv4 as uuid,
 } from '@crowd/common'
 import { CommonIntegrationService, getGithubInstallationToken } from '@crowd/common_services'
-import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections'
+import {
+  ICreateInsightsProject,
+  InsightsProjectField,
+  queryInsightsProjectById,
+} from '@crowd/data-access-layer/src/collections'
 import {
   findMailingListsOwnedByOtherIntegration,
   lockMailingListSourceUrls,
@@ -93,7 +97,19 @@ import {
   findProjectIdsGettingFirstRepository,
   startDocsReadinessForProjects,
 } from './docsReadinessOnFirstRepoLink'
+import { mergeGithubInsightsIntoProject } from './githubInsightsMerge'
 import { IServiceOptions } from './IServiceOptions'
+
+const CURATED_INSIGHTS_PROJECT_FIELDS = [
+  InsightsProjectField.IS_LF,
+  InsightsProjectField.NAME,
+  InsightsProjectField.DESCRIPTION,
+  InsightsProjectField.LOGO_URL,
+  InsightsProjectField.WEBSITE,
+  InsightsProjectField.GITHUB,
+  InsightsProjectField.TWITTER,
+  InsightsProjectField.KEYWORDS,
+]
 
 const discordToken = DISCORD_CONFIG.token || DISCORD_CONFIG.token2
 
@@ -307,13 +323,15 @@ export default class IntegrationService {
           ],
         })
 
-        data.description = githubInsights.description
-        data.github = githubInsights.github
-        data.keywords = githubInsights.topics
-        data.logoUrl = githubInsights.logoUrl
-        data.name = githubInsights.name
-        data.twitter = githubInsights.twitter
-        data.website = githubInsights.website
+        const current = await queryInsightsProjectById(
+          SequelizeRepository.getQueryExecutor({ ...this.options, transaction }),
+          insightsProjectId,
+          CURATED_INSIGHTS_PROJECT_FIELDS,
+        )
+        Object.assign(
+          data,
+          mergeGithubInsightsIntoProject(current ?? { isLF: false }, githubInsights),
+        )
       }
     }
 

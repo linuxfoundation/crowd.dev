@@ -67,15 +67,17 @@ describe('issuedBadgeActivity', () => {
         identities: [
           {
             platform: PlatformType.CREDLY,
-            value: '7f1c2d3e-aaaa-4bbb-8ccc-dddd00000002',
+            value: 'maria.rossi@example.org',
             type: MemberIdentityType.USERNAME,
             verified: true,
+            sourceId: '7f1c2d3e-aaaa-4bbb-8ccc-dddd00000002',
           },
           {
             platform: PlatformType.CREDLY,
             value: 'maria.rossi@example.org',
             type: MemberIdentityType.EMAIL,
             verified: true,
+            sourceId: '7f1c2d3e-aaaa-4bbb-8ccc-dddd00000002',
           },
         ],
         attributes: {
@@ -109,25 +111,34 @@ describe('issuedBadgeActivity', () => {
     })
   })
 
-  it('emits only the email identity when the badge has no user', () => {
-    const activity = issuedBadgeActivity({
-      ...BASE_BADGE,
-      user: {},
-      issued_to: null,
-    })
+  it.each([
+    ['empty', {}],
+    ['null', null],
+    ['blank id', { id: '   ' }],
+  ])(
+    'keeps both identities on the email without a sourceId when the user is %s',
+    (_label, user) => {
+      const activity = issuedBadgeActivity({ ...BASE_BADGE, user, issued_to: null })
 
-    expect(activity.member).toEqual({
-      displayName: 'maria.rossi',
-      identities: [
-        {
-          platform: PlatformType.CREDLY,
-          value: 'maria.rossi@example.org',
-          type: MemberIdentityType.EMAIL,
-          verified: true,
-        },
-      ],
-    })
-  })
+      expect(activity.member).toEqual({
+        displayName: 'maria.rossi',
+        identities: [
+          {
+            platform: PlatformType.CREDLY,
+            value: 'maria.rossi@example.org',
+            type: MemberIdentityType.USERNAME,
+            verified: true,
+          },
+          {
+            platform: PlatformType.CREDLY,
+            value: 'maria.rossi@example.org',
+            type: MemberIdentityType.EMAIL,
+            verified: true,
+          },
+        ],
+      })
+    },
+  )
 
   it('falls back to the canonical badge page when badge_url is missing', () => {
     const activity = issuedBadgeActivity({ ...BASE_BADGE, badge_url: null })

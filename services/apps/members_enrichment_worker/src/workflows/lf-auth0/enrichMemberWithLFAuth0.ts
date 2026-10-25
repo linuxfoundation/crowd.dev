@@ -170,7 +170,7 @@ export async function enrichMemberWithLFAuth0(token: string, member: IMember): P
           normalized,
           MemberAttributeName.LOCATION,
           PlatformType.GITHUB,
-          profileData.url,
+          profileData.location,
         )
       }
 

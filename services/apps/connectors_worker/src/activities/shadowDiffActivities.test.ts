@@ -6,7 +6,7 @@ import { svc } from '../main'
 import { listShadowDiffChannels, runShadowDiffForChannel } from './shadowDiffActivities'
 
 const mocks = vi.hoisted(() => ({
-  listShadowDiffUnits: vi.fn(),
+  listShadowDiffUnitsPage: vi.fn(),
   getNangoMappingForRepo: vi.fn(),
   getShadowRecordsInWindow: vi.fn(),
   getUnitIdsWithSummary: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
-  listShadowDiffUnits: mocks.listShadowDiffUnits,
+  listShadowDiffUnitsPage: mocks.listShadowDiffUnitsPage,
   getShadowRecordsInWindow: mocks.getShadowRecordsInWindow,
   getUnitIdsWithSummary: mocks.getUnitIdsWithSummary,
   pruneMatchingShadowRecords: mocks.pruneMatchingShadowRecords,
@@ -67,7 +67,7 @@ describe('listShadowDiffChannels', () => {
   })
 
   it('groups shadow-diff units by channelName', async () => {
-    mocks.listShadowDiffUnits.mockResolvedValue([
+    mocks.listShadowDiffUnitsPage.mockResolvedValue([
       UNIT,
       { ...UNIT, id: 'unit-2', syncName: 'issue-comments' },
       {
@@ -78,8 +78,12 @@ describe('listShadowDiffChannels', () => {
       },
     ])
 
-    const channels = await listShadowDiffChannels()
+    const channels = await listShadowDiffChannels({ limit: 50 })
 
+    expect(mocks.listShadowDiffUnitsPage).toHaveBeenCalledWith(expect.anything(), {
+      channelLimit: 50,
+      after: undefined,
+    })
     expect(channels).toEqual([
       {
         channelName: 'https://github.com/kubernetes/kubernetes',
@@ -102,13 +106,18 @@ describe('listShadowDiffChannels', () => {
   })
 
   it('keeps units with the same channelName but different integrationId as separate channels', async () => {
-    mocks.listShadowDiffUnits.mockResolvedValue([
+    mocks.listShadowDiffUnitsPage.mockResolvedValue([
       UNIT,
       { ...UNIT, id: 'unit-2', integrationId: 'integration-2' },
     ])
 
-    const channels = await listShadowDiffChannels()
+    const after = { channelName: 'https://github.com/a/a', integrationId: 'integration-0' }
+    const channels = await listShadowDiffChannels({ after, limit: 50 })
 
+    expect(mocks.listShadowDiffUnitsPage).toHaveBeenCalledWith(expect.anything(), {
+      channelLimit: 50,
+      after,
+    })
     expect(channels).toEqual([
       {
         channelName: UNIT.channelName,

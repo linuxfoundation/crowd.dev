@@ -364,7 +364,7 @@ export default class MemberService extends LoggerBase {
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
-              'memberService -> create -> validateAttributes',
+              'memberService -> create -> memberAttributeService.validateAttributes',
             )
 
             if (!hasAttributeValue(attributes.country)) {
@@ -378,7 +378,7 @@ export default class MemberService extends LoggerBase {
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(attributes),
               this.log,
-              'memberService -> create -> setAttributesDefaultValues',
+              'memberService -> create -> memberAttributeService.setAttributesDefaultValues',
             )
           }
 
@@ -436,7 +436,7 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               async () => this.memberRepo.destroyMemberAfterError(id, true),
               this.log,
-              'memberService -> create -> destroyMemberAfterError',
+              'memberService -> create -> memberRepo.destroyMemberAfterError',
             )
             throw err
           }
@@ -453,7 +453,7 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(effectiveMemberId, segmentIds),
               this.log,
-              'memberService -> create -> addToSegments (conflict redirect)',
+              'memberService -> create -> memberRepo.addToSegments (conflict redirect)',
             )
           } else {
             effectiveMemberId = id
@@ -461,14 +461,14 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => this.memberRepo.addToSegments(id, segmentIds),
                 this.log,
-                'memberService -> create -> addToSegments',
+                'memberService -> create -> memberRepo.addToSegments',
               )
             } catch (err) {
               this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
               await logExecutionTimeV2(
                 async () => this.memberRepo.destroyMemberAfterError(id, true),
                 this.log,
-                'memberService -> create -> destroyMemberAfterError',
+                'memberService -> create -> memberRepo.destroyMemberAfterError',
               )
               throw err
             }
@@ -511,7 +511,7 @@ export default class MemberService extends LoggerBase {
                 orgIdPromise = logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
                   this.log,
-                  'memberService -> create -> findOrCreateOrg',
+                  'memberService -> create -> orgService.findOrCreate',
                 )
                 if (key) {
                   orgPromiseCache?.set(key, orgIdPromise)
@@ -566,7 +566,7 @@ export default class MemberService extends LoggerBase {
                   const existingMemberOrgs = await logExecutionTimeV2(
                     () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
-                    'memberService -> create -> findMemberOrganizations',
+                    'memberService -> create -> orgService.findMemberOrganizations',
                   )
                   return existingMemberOrgs.length > 0 ? null : org
                 }),
@@ -577,7 +577,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
                 this.log,
-                'memberService -> create -> addToMember',
+                'memberService -> create -> orgService.addToMember',
               )
 
               const addedIds = new Set(orgsToAdd.map((org) => org.id))
@@ -627,7 +627,7 @@ export default class MemberService extends LoggerBase {
             data.attributes = await logExecutionTimeV2(
               () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
-              'memberService -> update -> validateAttributes',
+              'memberService -> update -> memberAttributeService.validateAttributes',
             )
           }
 
@@ -658,7 +658,7 @@ export default class MemberService extends LoggerBase {
             toUpdate.attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(toUpdate.attributes),
               this.log,
-              'memberService -> update -> setAttributesDefaultValues',
+              'memberService -> update -> memberAttributeService.setAttributesDefaultValues',
             )
           }
 
@@ -687,7 +687,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => updateMember(this.pgQx, id, dataToUpdate),
                 this.log,
-                'memberService -> update -> update',
+                'memberService -> update -> updateMember',
               )
             }
 
@@ -695,14 +695,14 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(id, [segmentId]),
               this.log,
-              'memberService -> update -> addToSegment',
+              'memberService -> update -> memberRepo.addToSegments',
             )
           } else {
             this.log.debug({ memberId: id }, 'Nothing to update in a member!')
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(id, [segmentId]),
               this.log,
-              'memberService -> update -> addToSegment',
+              'memberService -> update -> memberRepo.addToSegments',
             )
           }
 
@@ -731,7 +731,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => this.memberRepo.updateIdentities(effectiveMemberId, identitiesToUpdate),
                 this.log,
-                'memberService -> update -> updateIdentities',
+                'memberService -> update -> memberRepo.updateIdentities',
               )
             } catch (err) {
               throw new ApplicationError(
@@ -774,7 +774,7 @@ export default class MemberService extends LoggerBase {
                 orgIdPromise = logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
                   this.log,
-                  'memberService -> update -> findOrCreateOrg',
+                  'memberService -> update -> orgService.findOrCreate',
                 )
                 if (key) {
                   orgPromiseCache?.set(key, orgIdPromise)
@@ -827,7 +827,7 @@ export default class MemberService extends LoggerBase {
                   const existingMemberOrgs = await logExecutionTimeV2(
                     () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
-                    'memberService -> update -> findMemberOrganizations',
+                    'memberService -> update -> orgService.findMemberOrganizations',
                   )
                   return existingMemberOrgs.length > 0 ? null : org
                 }),
@@ -839,7 +839,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => orgService.addToMember([segmentId], effectiveMemberId, orgsToAdd),
                 this.log,
-                'memberService -> update -> addToMember',
+                'memberService -> update -> orgService.addToMember',
               )
 
               const addedIds = new Set(orgsToAdd.map((org) => org.id))
@@ -987,7 +987,7 @@ export default class MemberService extends LoggerBase {
             return identities.get(dbMember.id)
           },
           this.log,
-          'memberService -> update -> getIdentities',
+          'memberService -> processMemberUpdate -> findIdentitiesForMembers',
         )
 
         await this.update(

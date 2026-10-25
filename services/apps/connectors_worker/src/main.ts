@@ -2,6 +2,7 @@ import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
 import { IS_DEV_ENV } from '@crowd/common'
 import { registerConnector } from '@crowd/connectors'
+import { credlyConnector } from '@crowd/connectors/src/connectors/credly'
 import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { octolensConnector } from '@crowd/connectors/src/connectors/octolens'
 import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
@@ -42,6 +43,7 @@ export const svc = new ServiceWorker(config, options)
 
 registerConnector(githubConnector)
 registerConnector(octolensConnector)
+registerConnector(credlyConnector)
 
 // POC only: dummy connector drives the control-plane end-to-end in dev
 if (IS_DEV_ENV) {

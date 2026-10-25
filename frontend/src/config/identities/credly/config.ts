@@ -7,7 +7,7 @@ const credly: IdentityConfig = {
   name: 'Credly',
   image,
   member: {
-    placeholder: 'Credly user ID or email address',
+    placeholder: 'Credly email address',
     url: ({ attributes }) => attributes?.url?.credly,
   },
 };
