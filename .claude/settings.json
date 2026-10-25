@@ -13,6 +13,18 @@
             "command": ".claude/hooks/guard-protected-files.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/review-state.sh\" gate",
+            "timeout": 30,
+            "onFailure": "block",
+            "statusMessage": "Checking local review gate"
+          }
+        ]
       }
     ],
     "PostToolUse": [

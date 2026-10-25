@@ -7,9 +7,9 @@ description: >
   in `.claude/rules/` and `.claude/hooks/guard-protected-files.sh`, and drafts
   inline review comments with suggested fixes. NEVER auto-posts comments or
   submits reviews — always presents a draft in the terminal for user approval
-  before any comment lands on the PR. Use when reviewing PRs, checking PR
-  quality, validating code changes, or when the user says "review", "check this
-  PR", or "audit code".
+  before any comment lands on the PR. Use for someone else's pull request:
+  "review PR #123", "check this PR", "draft comments on #123", "is this PR
+  ready to merge?". For the current branch or "review this", use /review.
 allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill
 ---
 
@@ -69,11 +69,7 @@ If the diff is too large, save it to `/tmp/pr-<N>.diff` and read only changed `.
 
 ### Load all project rules (dynamic — do not hardcode)
 
-Glob `.claude/rules/*.md` and read every rule file. New rules added in the future must be picked up automatically; never maintain a hand-kept list here. At time of writing this includes:
-
-- `commit-workflow.md` — PR title format, branch naming, issue reference, signing
-- `adr-format.md` — ADR template enforcement (scoped to docs/adr/)
-- `skill-guidance.md` — skill routing table
+Glob `.claude/rules/*.md` and read every rule file. New rules added in the future must be picked up automatically; never maintain a hand-kept list here.
 
 ### Load the protected-files hook
 
@@ -81,9 +77,11 @@ Read `.claude/hooks/guard-protected-files.sh`. Parse its `case` statements and `
 
 ---
 
-## Phase 2: Launch Code Enforcer (background)
+## Phase 2: Launch Code Enforcer (background) and the Bug Hunt
 
 Spawn a background **Agent** subagent (`code-standards-enforcer`) with `run_in_background: true`. Proceed to Phase 3 immediately while it runs in parallel.
+
+Then invoke the `review` skill with the PR number (`<N>`) via the Skill tool. It fetches the PR head, runs the parallel bug hunters and verifiers per `REVIEW.md` (not the standards enforcer, which this skill already runs), and returns tagged findings (Important / Nit / Pre-existing) without writing a push-gate marker. Its findings join the enforcer's in Phase 5: Important maps to CRITICAL or SHOULD_FIX by the verifier's scenario, Nit maps to NIT, Pre-existing is mentioned once in the review body and never as an inline comment.
 
 Prompt for the agent:
 
@@ -198,6 +196,7 @@ Before surfacing any finding, drop it if:
 2. **PR metadata validation** — Phase 4 table
 3. **Protected files touched** — list any matching `.claude/hooks/guard-protected-files.sh`, with the hook's warning reason
 4. **Code enforcer findings** — filtered JSON results from Phase 2
+   4b. **Bug hunt findings** — the `/review` findings from Phase 2, already verified; do not re-filter them
 5. **Domain checklists applied** — note which checklists were used
 6. **Extra user instructions** — any additional instructions from the args
 
@@ -229,15 +228,32 @@ Use **AskUserQuestion** with options:
 
 Do NOT proceed until the user explicitly picks an option. Treat silence or ambiguous replies as "don't post".
 
-### Step 3 — Only after approval: invoke `/review`
+### Step 3 — Only after approval: post with `gh`
 
-Once the user approves (with or without edits), apply their edits and use the **Skill** tool to invoke `review` with the PR number and compiled context:
+Once the user approves (with or without edits), apply their edits and submit one review carrying every approved inline comment. Write the payload as a JSON file with the Write tool (so quotes, backslashes and multi-line suggestion blocks are encoded by you as JSON, never pasted raw into a shell string), then post it:
 
-```text
-<PR number> -- <compiled context from Phase 5, with user's edits applied>
+```json
+{
+  "event": "COMMENT",
+  "body": "<approved review body>",
+  "comments": [
+    {
+      "path": "services/apps/foo/src/bar.ts",
+      "line": 42,
+      "side": "RIGHT",
+      "body": "<approved comment>"
+    }
+  ]
+}
 ```
 
-If the user said "don't post", stop here — do not invoke `/review` or any PR-mutating `gh` command.
+```bash
+jq -e . <scratchpad>/review-<N>.json >/dev/null && gh api --method POST repos/{owner}/{repo}/pulls/{N}/reviews --input <scratchpad>/review-<N>.json
+```
+
+Keep `--method POST` first: the project allow list pre-approves `gh api repos*` for the read-only calls above, and this spelling makes the one mutating call go through a permission prompt.
+
+Use `REQUEST_CHANGES` or `APPROVE` as `event` only when the user chose that verdict. If the user said "don't post", stop here — do not run any PR-mutating `gh` command.
 
 ---
 
