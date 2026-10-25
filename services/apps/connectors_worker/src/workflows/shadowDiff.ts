@@ -1,5 +1,7 @@
 import { log, proxyActivities } from '@temporalio/workflow'
 
+import type { IShadowDiffChannelCursor } from '@crowd/data-access-layer/src/connectors'
+
 import type * as activities from '../activities/shadowDiffActivities'
 
 const activity = proxyActivities<typeof activities>({
@@ -44,15 +46,21 @@ async function runChannel(
 }
 
 export async function shadowDiff(targetDay?: string): Promise<void> {
-  const channels = await activity.listShadowDiffChannels()
-
+  let after: IShadowDiffChannelCursor | undefined
+  let channelCount = 0
   let okCount = 0
   let mappingMissingCount = 0
   let errorCount = 0
 
-  for (let i = 0; i < channels.length; i += CHANNEL_CONCURRENCY) {
-    const batch = channels.slice(i, i + CHANNEL_CONCURRENCY)
-    const batchResults = await Promise.all(batch.map((channel) => runChannel(channel, targetDay)))
+  for (;;) {
+    const channels = await activity.listShadowDiffChannels({ after, limit: CHANNEL_CONCURRENCY })
+    if (channels.length === 0) {
+      break
+    }
+
+    const batchResults = await Promise.all(
+      channels.map((channel) => runChannel(channel, targetDay)),
+    )
     for (const result of batchResults) {
       if (result.status === 'ok') {
         okCount++
@@ -62,11 +70,15 @@ export async function shadowDiff(targetDay?: string): Promise<void> {
         errorCount++
       }
     }
+
+    channelCount += channels.length
+    const last = channels[channels.length - 1]
+    after = { channelName: last.channelName, integrationId: last.integrationId }
   }
 
   log.info('shadow diff run complete', {
     targetDay,
-    channelCount: channels.length,
+    channelCount,
     okCount,
     mappingMissingCount,
     errorCount,

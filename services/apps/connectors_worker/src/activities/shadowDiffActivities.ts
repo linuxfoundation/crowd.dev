@@ -2,9 +2,10 @@ import type { ConnectorHttp } from '@crowd/connectors'
 import { createHttpClient, createTokenPool, getCredential, getManifest } from '@crowd/connectors'
 import { parseRepoChannel } from '@crowd/connectors/src/connectors/github/paging'
 import {
+  IShadowDiffChannelCursor,
   IShadowDiffUnit,
   getUnitIdsWithSummary,
-  listShadowDiffUnits,
+  listShadowDiffUnitsPage,
   pruneMatchingShadowRecords,
   upsertSyncDiffSummary,
 } from '@crowd/data-access-layer/src/connectors'
@@ -44,6 +45,11 @@ export interface IShadowDiffChannel {
   units: IShadowDiffUnit[]
 }
 
+export interface IListShadowDiffChannelsInput {
+  after?: IShadowDiffChannelCursor
+  limit: number
+}
+
 export type ShadowDiffChannelStatus = 'ok' | 'mapping_missing' | 'error'
 
 export interface IShadowDiffChannelResult {
@@ -78,8 +84,13 @@ async function createGithubConfirmationHttp(
   })
 }
 
-export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
-  const units = await listShadowDiffUnits(dbStoreQx(svc.postgres.writer))
+export async function listShadowDiffChannels(
+  input: IListShadowDiffChannelsInput,
+): Promise<IShadowDiffChannel[]> {
+  const units = await listShadowDiffUnitsPage(dbStoreQx(svc.postgres.writer), {
+    channelLimit: input.limit,
+    after: input.after,
+  })
 
   const byChannel = new Map<string, IShadowDiffChannel>()
   for (const unit of units) {

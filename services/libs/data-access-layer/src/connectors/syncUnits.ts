@@ -3,6 +3,7 @@ import { truncateErrorMessage } from '../utils'
 import type {
   IClaimedUnit,
   IShadowDiffUnit,
+  IShadowDiffUnitsPage,
   ISyncRunProgress,
   ISyncRunSuccess,
   ISyncUnit,
@@ -375,11 +376,7 @@ export async function hasEmittingSyncUnit(
   return row.exists === true
 }
 
-export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
-  return qx.select(
-    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
-     FROM integration.sync_units su
-     WHERE su."emitEnabled" = false
+const SHADOW_DIFF_UNIT_FILTER = `su."emitEnabled" = false
        AND su.status = 'active'
        AND su.platform = 'github'
        AND su.watermark->>'phase' = 'incremental'
@@ -387,8 +384,44 @@ export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDif
          SELECT 1
          FROM public.integrations i
          WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
-       )
+       )`
+
+export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
+  return qx.select(
+    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
+     FROM integration.sync_units su
+     WHERE ${SHADOW_DIFF_UNIT_FILTER}
      ORDER BY su."channelName", su."syncName"`,
+  )
+}
+
+export async function listShadowDiffUnitsPage(
+  qx: QueryExecutor,
+  page: IShadowDiffUnitsPage,
+): Promise<IShadowDiffUnit[]> {
+  const afterClause = page.after
+    ? `AND (su."channelName", su."integrationId") > ($(afterChannelName), $(afterIntegrationId))`
+    : ''
+
+  return qx.select(
+    `WITH channels AS (
+       SELECT DISTINCT su."integrationId", su."channelName"
+       FROM integration.sync_units su
+       WHERE ${SHADOW_DIFF_UNIT_FILTER}
+         ${afterClause}
+       ORDER BY su."channelName", su."integrationId"
+       LIMIT $(channelLimit)
+     )
+     SELECT su.id, su."integrationId", su."channelName", su."syncName"
+     FROM integration.sync_units su
+     JOIN channels c ON c."integrationId" = su."integrationId" AND c."channelName" = su."channelName"
+     WHERE ${SHADOW_DIFF_UNIT_FILTER}
+     ORDER BY su."channelName", su."integrationId", su."syncName"`,
+    {
+      channelLimit: page.channelLimit,
+      afterChannelName: page.after?.channelName,
+      afterIntegrationId: page.after?.integrationId,
+    },
   )
 }
 

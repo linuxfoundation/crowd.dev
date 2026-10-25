@@ -47,6 +47,13 @@ export type IClaimedUnit = Pick<
 
 export type IShadowDiffUnit = Pick<ISyncUnit, 'id' | 'integrationId' | 'channelName' | 'syncName'>
 
+export type IShadowDiffChannelCursor = Pick<ISyncUnit, 'integrationId' | 'channelName'>
+
+export interface IShadowDiffUnitsPage {
+  channelLimit: number
+  after?: IShadowDiffChannelCursor
+}
+
 export interface ISyncRunProgress {
   watermark: Record<string, unknown>
   emittedCount: number
