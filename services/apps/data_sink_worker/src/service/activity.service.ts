@@ -65,7 +65,7 @@ import { IProcessActivityResult } from './types'
 
 function toLineCount(value: unknown): number | undefined {
   if (typeof value === 'number') {
-    return value
+    return Number.isInteger(value) ? value : undefined
   }
 
   if (typeof value === 'string') {
@@ -76,7 +76,6 @@ function toLineCount(value: unknown): number | undefined {
   return undefined
 }
 
-// Integrations send line counts as activity attributes: insertions for commits, additions for pull requests.
 // The GitHub connector sends 0/0 when the counts are unavailable, so 0/0 counts as no line counts.
 function lineCountsFromAttributes(attributes: Record<string, unknown> | undefined): {
   insertions?: number
