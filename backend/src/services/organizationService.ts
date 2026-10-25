@@ -38,10 +38,16 @@ import {
   OrganizationField,
   addOrgsToSegments,
   deleteFakeOrganizationSuggestion,
+  deleteOrgAttributes,
   findOrgAttributes,
   findOrgById,
+  markOrgAttributeDefault,
+  moveOrgAttributes,
+  recalculateOrgAttributeDefaults,
+  upsertOrgAttributes,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
+import { ORG_DB_ATTRIBUTES } from '@crowd/data-access-layer/src/organizations/attributesConfig'
 import {
   decrementOrganizationMergeSuggestionCounts,
   findManyLfSegmentsByNames,
@@ -51,10 +57,12 @@ import { LoggerBase } from '@crowd/logging'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
   IOrganization,
+  IOrganizationAttributeBackup,
   IOrganizationIdentity,
   IOrganizationUnmergeBackup,
   IOrganizationUnmergePreviewResult,
   ISearchSyncOptions,
+  IUnmergeBackup,
   IUnmergePreviewResult,
   MemberRoleUnmergeStrategy,
   MergeActionState,
@@ -71,12 +79,27 @@ import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import telemetryTrack from '../segment/telemetryTrack'
 import {
   keepPrimary,
-  keepPrimaryAttributes,
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
 import { IServiceOptions } from './IServiceOptions'
 import SearchSyncService from './searchSyncService'
+
+const ATTRIBUTE_FIELDS = [
+  'attributes',
+  ...ORG_DB_ATTRIBUTES.map(({ defaultColumn }) => defaultColumn).filter(Boolean),
+]
+
+// displayName is chosen by whoever merges or unmerges, so it is never re-derived from `name`.
+const withoutNameAttribute = (names: string[]): string[] => names.filter((name) => name !== 'name')
+
+const toAttributeBackup = (attributes: IOrganizationAttributeBackup[]) =>
+  attributes.map(({ name, source, value, default: isDefault }) => ({
+    name,
+    source,
+    value,
+    default: isDefault,
+  }))
 
 export default class OrganizationService extends LoggerBase {
   options: IServiceOptions
@@ -361,12 +384,11 @@ export default class OrganizationService extends LoggerBase {
             this.options.currentUser?.id,
           )
 
-          if (payload.mergeActionId) {
-            const mergeAction = await MergeActionsRepository.findById(
-              payload.mergeActionId,
-              this.options,
-            )
+          const mergeAction = payload.mergeActionId
+            ? await MergeActionsRepository.findById(payload.mergeActionId, this.options)
+            : undefined
 
+          if (mergeAction) {
             if (mergeAction.unmergeBackup.secondary.memberOrganizations.length > 0) {
               for (const role of mergeAction.unmergeBackup.secondary.memberOrganizations) {
                 await addMemberRole(optionsQx(repoOptions), {
@@ -423,6 +445,34 @@ export default class OrganizationService extends LoggerBase {
             false,
             false,
           )
+
+          const backup = mergeAction?.unmergeBackup as IUnmergeBackup<IOrganizationUnmergeBackup>
+          if (backup?.secondary.orgAttributes) {
+            const qx = optionsQx(repoOptions)
+            const secondaryAttributes = backup.secondary.orgAttributes
+            const attributesFromSecondary = lodash.differenceWith(
+              secondaryAttributes,
+              backup.primary.orgAttributes ?? [],
+              (a, b) => a.name === b.name && a.source === b.source && a.value === b.value,
+            )
+
+            await deleteOrgAttributes(qx, organizationId, attributesFromSecondary)
+            await upsertOrgAttributes(qx, secondaryOrganization.id, secondaryAttributes)
+            for (const attribute of secondaryAttributes.filter((a) => a.default)) {
+              await markOrgAttributeDefault(qx, secondaryOrganization.id, attribute)
+            }
+
+            await recalculateOrgAttributeDefaults(
+              qx,
+              organizationId,
+              withoutNameAttribute(attributesFromSecondary.map(({ name }) => name)),
+            )
+            await recalculateOrgAttributeDefaults(
+              qx,
+              secondaryOrganization.id,
+              withoutNameAttribute(secondaryAttributes.map(({ name }) => name)),
+            )
+          }
 
           // add primary and secondary to no merge so they don't get suggested again
           await OrganizationRepository.addNoMerge(
@@ -566,6 +616,7 @@ export default class OrganizationService extends LoggerBase {
                 originalId,
                 this.options,
               ),
+              orgAttributes: toAttributeBackup(await findOrgAttributes(qx, originalId)),
             },
             secondary: {
               ...lodash.pick(toMerge, OrganizationService.ORGANIZATION_MERGE_FIELDS),
@@ -574,6 +625,7 @@ export default class OrganizationService extends LoggerBase {
                 toMergeId,
                 this.options,
               ),
+              orgAttributes: toAttributeBackup(await findOrgAttributes(qx, toMergeId)),
             },
           }
 
@@ -663,8 +715,6 @@ export default class OrganizationService extends LoggerBase {
           // Performs a merge and returns the fields that were changed so we can update
           const toUpdate: any = await OrganizationService.organizationsMerge(original, toMerge)
 
-          captureNewState({ primary: toUpdate })
-
           this.log.info(
             { originalId, toMergeId },
             '[Merge Organizations] - Generating merge object done!',
@@ -685,6 +735,19 @@ export default class OrganizationService extends LoggerBase {
 
           // Update original organization
           await txService.update(originalId, toUpdate, false, false, false, true)
+
+          const movedAttributeNames = await moveOrgAttributes(
+            optionsQx(repoOptions),
+            toMergeId,
+            originalId,
+          )
+          const attributeColumns = await recalculateOrgAttributeDefaults(
+            optionsQx(repoOptions),
+            originalId,
+            withoutNameAttribute(movedAttributeNames),
+          )
+
+          captureNewState({ primary: { ...toUpdate, ...attributeColumns } })
 
           this.log.info(
             { originalId, toMergeId },
@@ -803,41 +866,27 @@ export default class OrganizationService extends LoggerBase {
     }
   }
 
+  // Attributes and the columns derived from them are merged as rows by `moveOrgAttributes`.
   static organizationsMerge(originalObject, toMergeObject) {
-    return mergeObjects(originalObject, toMergeObject, {
-      importHash: keepPrimary,
-      createdAt: keepPrimary,
-      updatedAt: keepPrimary,
-      deletedAt: keepPrimary,
-      tenantId: keepPrimary,
-      createdById: keepPrimary,
-      updatedById: keepPrimary,
-      isTeamOrganization: keepPrimaryIfExists,
-      isAffiliationBlocked: keepPrimary,
-      lastEnrichedAt: keepPrimary,
-      searchSyncedAt: keepPrimary,
-      manuallyCreated: keepPrimary,
-
-      // every known value per source for name, logo, etc., plus which one is the default
-      attributes: (primary, merged) => keepPrimaryAttributes(primary, merged, originalObject),
-
-      // copies of each attribute's default, rewritten from `attributes` on update
-      description: keepPrimaryIfExists,
-      logo: keepPrimaryIfExists,
-      tags: mergeUniqueStringArrayItems,
-      employees: keepPrimaryIfExists,
-      revenueRange: keepPrimaryIfExists,
-      location: keepPrimaryIfExists,
-      country: keepPrimaryIfExists,
-      type: keepPrimaryIfExists,
-      size: keepPrimaryIfExists,
-      headline: keepPrimaryIfExists,
-      industry: keepPrimaryIfExists,
-      founded: keepPrimaryIfExists,
-      displayName: keepPrimary,
-      employeeChurnRate: keepPrimaryIfExists,
-      employeeGrowthRate: keepPrimaryIfExists,
-    })
+    return mergeObjects(
+      lodash.omit(originalObject, ATTRIBUTE_FIELDS),
+      lodash.omit(toMergeObject, ATTRIBUTE_FIELDS),
+      {
+        importHash: keepPrimary,
+        createdAt: keepPrimary,
+        updatedAt: keepPrimary,
+        deletedAt: keepPrimary,
+        tenantId: keepPrimary,
+        createdById: keepPrimary,
+        updatedById: keepPrimary,
+        isTeamOrganization: keepPrimaryIfExists,
+        isAffiliationBlocked: keepPrimary,
+        lastEnrichedAt: keepPrimary,
+        searchSyncedAt: keepPrimary,
+        manuallyCreated: keepPrimary,
+        tags: mergeUniqueStringArrayItems,
+      },
+    )
   }
 
   async addToNoMerge(organizationId: string, noMergeId: string): Promise<void> {
