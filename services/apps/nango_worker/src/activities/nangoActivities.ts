@@ -1,4 +1,6 @@
-import { IS_DEV_ENV, IS_STAGING_ENV, singleOrDefault } from '@crowd/common'
+import { ApplicationFailure } from '@temporalio/activity'
+
+import { singleOrDefault } from '@crowd/common'
 import { generateUUIDv4 as uuid } from '@crowd/common'
 import { GithubIntegrationService } from '@crowd/common_services'
 import {
@@ -26,11 +28,8 @@ import {
   ALL_NANGO_INTEGRATIONS,
   NANGO_INTEGRATION_CONFIG,
   NangoIntegration,
-  createNangoGithubConnection,
   deleteNangoConnection,
   getNangoCloudRecords,
-  getNangoConnectionData,
-  getNangoConnections,
   initNangoCloudClient,
   startNangoSync as startNangoSyncCloud,
 } from '@crowd/nango'
@@ -45,68 +44,7 @@ import {
   IProcessNangoWebhookArguments,
 } from '../types'
 
-async function setLastConnectTs(): Promise<void> {
-  const redisCache = new RedisCache('nangoGh', svc.redis, svc.log)
-  await redisCache.set('lastConnectTs', new Date().toISOString())
-}
-
-async function getLastConnectTs(): Promise<Date | undefined> {
-  const redisCache = new RedisCache('nangoGh', svc.redis, svc.log)
-  const lastConnect = await redisCache.get('lastConnectTs')
-  if (!lastConnect) {
-    return undefined
-  }
-
-  return new Date(lastConnect)
-}
-
 const TOKEN_CONNECTION_IDS_CACHE_KEY = 'tokenConnectionIds'
-const TOKEN_CONNECTION_IDS_TTL = 30 * 24 * 60 * 60 // 30 days
-
-async function getGithubTokenConnectionIds(): Promise<string[]> {
-  const redisCache = new RedisCache('nangoGh', svc.redis, svc.log)
-
-  // Try cache first
-  try {
-    const cached = await redisCache.get(TOKEN_CONNECTION_IDS_CACHE_KEY)
-    if (cached) {
-      const ids = JSON.parse(cached) as string[]
-      if (ids.length > 0) {
-        svc.log.info({ count: ids.length }, 'Using cached github token connection IDs')
-        return ids
-      }
-    }
-  } catch (err) {
-    svc.log.warn({ err }, 'Failed to read token connection IDs from cache, falling back to API')
-  }
-
-  // Cache miss - fetch from Nango
-  const allConnections = await getNangoConnections()
-  const tokenIds = allConnections
-    .filter(
-      (c) =>
-        c.provider_config_key === NangoIntegration.GITHUB &&
-        c.connection_id.toLowerCase().startsWith('github-token-'),
-    )
-    .map((c) => c.connection_id)
-
-  // Store in cache
-  if (tokenIds.length > 0) {
-    try {
-      await redisCache.set(
-        TOKEN_CONNECTION_IDS_CACHE_KEY,
-        JSON.stringify(tokenIds),
-        TOKEN_CONNECTION_IDS_TTL,
-      )
-      svc.log.info({ count: tokenIds.length }, 'Cached github token connection IDs')
-    } catch (err) {
-      svc.log.warn({ err }, 'Failed to cache token connection IDs')
-    }
-  }
-
-  return tokenIds
-}
-
 export async function invalidateGithubTokenConnectionIdsCache(): Promise<void> {
   const redisCache = new RedisCache('nangoGh', svc.redis, svc.log)
   await redisCache.delete(TOKEN_CONNECTION_IDS_CACHE_KEY)
@@ -114,43 +52,8 @@ export async function invalidateGithubTokenConnectionIdsCache(): Promise<void> {
 }
 
 export async function canCreateGithubConnection(): Promise<boolean> {
-  const minutes = Number(process.env.CROWD_MINUTES_BETWEEN_GH_NANGO_CONNECTION || 6)
-
-  svc.log.info(`[GITHUB] Min minutes between connection creation: ${minutes}`)
-
-  if (IS_DEV_ENV || IS_STAGING_ENV) {
-    svc.log.info('[GITHUB] DEV MODE - we can create a connection!')
-    return true
-  }
-
-  const lastConnectDate = await getLastConnectTs()
-
-  if (!lastConnectDate) {
-    svc.log.info('[GITHUB] no last connect date found - we can create a connection!')
-    return true
-  }
-
-  svc.log.info(`[GITHUB] Last connect date: ${lastConnectDate.toISOString()}`)
-
-  const now = new Date()
-  svc.log.info(`[GITHUB] Now: ${now.toISOString()}`)
-
-  // time is milliseconds
-  const diff = now.getTime() - lastConnectDate.getTime()
-
-  // how many minutes from diff
-  const minutesSinceLastConnection = diff / (1000 * 60)
-  svc.log.info(`[GITHUB] Diff: ${diff}, minutes: ${minutesSinceLastConnection}`)
-
-  if (minutesSinceLastConnection >= minutes) {
-    svc.log.info(
-      '[GITHUB] more time has passed since last connection - we can create a connection!',
-    )
-    return true
-  }
-
   svc.log.info(
-    '[GITHUB] not enough time has passed since last connection - we cannot create a connection!',
+    'GitHub Nango connection creation is disabled: new repositories are onboarded by the connectors lifecycle',
   )
   return false
 }
@@ -337,8 +240,6 @@ export async function analyzeGithubIntegration(
       }
 
       // For fullSync orgs, discover new repos from GitHub API
-      // New repos not yet in the repositories table will be added to the sync list
-      // (syncGithubRepo workflow will create the repositories row)
       for (const org of settings.orgs) {
         if (org.fullSync) {
           const results = await GithubIntegrationService.getOrgRepos(org.name)
@@ -380,9 +281,6 @@ export async function analyzeGithubIntegration(
               repo: mappedRepo,
               connectionId,
             })
-
-            // just so that later singleOrDefault doesn't find it
-            delete nangoMapping[connectionId]
           } else {
             const found = singleOrDefault(
               finalRepos,
@@ -395,9 +293,6 @@ export async function analyzeGithubIntegration(
                 repo: mappedRepo,
                 connectionId,
               })
-
-              // just so that later singleOrDefault doesn't find it
-              delete nangoMapping[connectionId]
             } else {
               existingConnectedRepos.push(mappedRepo)
             }
@@ -405,28 +300,8 @@ export async function analyzeGithubIntegration(
         }
       }
 
-      // determine which repos to sync if needed
-      if (connectionIds.length === 0) {
-        // if we don't have any mapping yet we need to sync all repos (create connections)
-        reposToSync.push(...finalRepos)
-      } else {
-        // find all repos that are not in nangoMapping
-        for (const repo of finalRepos) {
-          const found = singleOrDefault(
-            Object.keys(nangoMapping),
-            (connId) =>
-              nangoMapping[connId].owner === repo.owner &&
-              nangoMapping[connId].repoName === repo.repoName,
-          )
-
-          if (!found) {
-            reposToSync.push(repo)
-          }
-        }
-      }
-
       svc.log.info(
-        `For integration ${integrationId} found ${reposToSync.length} repositories to create nango connections for and ${reposToDelete.length} connections to delete!`,
+        `For integration ${integrationId} found ${reposToDelete.length} connections to delete!`,
       )
     } else {
       svc.log.warn(`Integration ${integrationId} is not a Github Nango integration!`)
@@ -447,33 +322,9 @@ export async function createGithubConnection(
   integrationId: string,
   repo: IGithubRepoData,
 ): Promise<string> {
-  svc.log.info({ integrationId }, `Creating nango connection repo ${repo.owner}/${repo.repoName}!`)
-
-  await initNangoCloudClient()
-
-  const tokenConnectionIds = await getGithubTokenConnectionIds()
-
-  if (tokenConnectionIds.length === 0) {
-    throw new Error('No github token connections found!')
-  }
-
-  const connectionData = await getNangoConnectionData(
-    NangoIntegration.GITHUB,
-    tokenConnectionIds[Math.floor(Math.random() * tokenConnectionIds.length)],
+  throw ApplicationFailure.nonRetryable(
+    `GitHub Nango connection creation is disabled, repo ${repo.owner}/${repo.repoName} of integration ${integrationId} is onboarded by the connectors lifecycle`,
   )
-
-  const connectionId = await createNangoGithubConnection(
-    repo.repoName,
-    repo.owner,
-    tokenConnectionIds,
-    connectionData.connection_config.app_id,
-    connectionData.connection_config.installation_id,
-    integrationId,
-  )
-
-  await setLastConnectTs()
-
-  return connectionId
 }
 
 export async function setGithubConnection(

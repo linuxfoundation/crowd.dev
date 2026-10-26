@@ -126,6 +126,9 @@ export function evaluateBackUnitGate(unit: ISyncUnit | null): GateVerdict {
   if (!unit) {
     return { ok: false, outcome: 'refused', reason: 'no sync unit mirrored for this sync' }
   }
+  if (unit.status === 'decommissioned') {
+    return { ok: false, outcome: 'refused', reason: 'unit is decommissioned' }
+  }
   if (!unit.emitEnabled) {
     return {
       ok: false,

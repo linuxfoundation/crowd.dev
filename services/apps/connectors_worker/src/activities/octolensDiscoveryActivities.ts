@@ -63,7 +63,7 @@ export async function runOctolensDiscovery(): Promise<OctolensMappingDiscoveryRe
 
   const channels = await getManifest(PlatformType.OCTOLENS).discover(credential)
   // emitEnabled is insert-only and must be true: false is shadow mode, which writes no activities.
-  const syncUnitsUpserted = await upsertSyncUnits(
+  const syncUnitsInserted = await upsertSyncUnits(
     qx,
     channels.map((channel) => ({
       integrationId: anchor.id,
@@ -75,7 +75,7 @@ export async function runOctolensDiscovery(): Promise<OctolensMappingDiscoveryRe
     })),
   )
   svc.log.info(
-    { anchorIntegrationId: anchor.id, anchorCreated: anchor.created, syncUnitsUpserted },
+    { anchorIntegrationId: anchor.id, anchorCreated: anchor.created, syncUnitsInserted },
     'octolens discovery: ensured the mention poll sync unit (emitEnabled on insert)',
   )
 

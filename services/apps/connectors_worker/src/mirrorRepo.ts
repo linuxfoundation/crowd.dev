@@ -2,9 +2,14 @@ import { getCredential } from '@crowd/connectors'
 import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { mintInstallationToken } from '@crowd/connectors/src/connectors/github/appToken'
 import { resolveRepoChannel } from '@crowd/connectors/src/connectors/github/discover'
-import { hasSyncUnitsForChannel, upsertSyncUnits } from '@crowd/data-access-layer/src/connectors'
+import {
+  alignSyncUnitChannelName,
+  hasSyncUnitsForChannel,
+  upsertSyncUnits,
+} from '@crowd/data-access-layer/src/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import { NangoIntegration, getNangoConnectionData } from '@crowd/nango'
+import { findIntegrationRepositoryUrl } from '@crowd/data-access-layer/src/repositories'
+import { NangoIntegration, getNangoConnectionData, githubChannelName } from '@crowd/nango'
 
 import {
   type IMirrorCandidate,
@@ -56,6 +61,17 @@ async function resolveCandidateChannel(
   return atStage('resolve', () => resolveRepoChannel(token, candidate.owner, candidate.repoName))
 }
 
+async function storedChannelName(
+  qx: QueryExecutor,
+  candidate: IMirrorCandidate,
+  htmlUrl: string,
+): Promise<string> {
+  return (
+    (await findIntegrationRepositoryUrl(qx, candidate.integrationId, htmlUrl)) ??
+    githubChannelName(candidate.owner, candidate.repoName)
+  )
+}
+
 export async function mirrorRepo(
   qx: QueryExecutor,
   candidate: IMirrorCandidate,
@@ -76,7 +92,9 @@ export async function mirrorRepo(
   if (isRenamedChannel(candidate, channel.channelName)) {
     return { outcome: 'skipped', reason: 'repo_renamed' }
   }
+  const channelName = await storedChannelName(qx, candidate, channel.channelName)
   if (await hasSyncUnitsForChannel(qx, candidate.integrationId, channel.channelId)) {
+    await alignSyncUnitChannelName(qx, candidate.integrationId, channel.channelId, channelName)
     return {
       outcome: 'skipped',
       reason: 'already_mirrored',
@@ -91,7 +109,7 @@ export async function mirrorRepo(
       integrationId: candidate.integrationId,
       platform: githubConnector.platform,
       channelId: channel.channelId,
-      channelName: channel.channelName,
+      channelName,
       syncName: name,
       watermark,
     })),

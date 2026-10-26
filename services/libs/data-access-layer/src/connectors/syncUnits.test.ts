@@ -8,10 +8,20 @@ import { recordShadowRecords } from './shadowRecords'
 import {
   claimDueUnits,
   countShadowRepos,
+  countUndrainedDecommissionedSyncUnits,
+  decommissionAllSyncUnits,
+  decommissionSyncUnitsForChannels,
+  deleteDrainedSyncUnits,
+  hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
   listShadowDiffUnits,
   listShadowDiffUnitsPage,
+  listDecommissionedSyncUnitChannels,
+  listSyncUnitChannelsForIntegration,
+  alignSyncUnitChannelName,
+  lockSyncUnitChannel,
   reassertUnitClaim,
+  recordRunFailure,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
   takeOverSyncUnit,
@@ -22,15 +32,20 @@ const test = withQx(base)
 
 async function createIntegration(
   qx: QueryExecutor,
-  overrides: { deletedAt?: string } = {},
+  overrides: { deletedAt?: string; platform?: string } = {},
 ): Promise<string> {
   const id = generateUUIDv1()
   await qx.result(
     `
     INSERT INTO public.integrations (id, platform, status, "tenantId", "createdAt", "updatedAt", "deletedAt")
-    VALUES ($(id), 'github', 'done', $(tenantId), NOW(), NOW(), $(deletedAt)::timestamptz)
+    VALUES ($(id), $(platform), 'done', $(tenantId), NOW(), NOW(), $(deletedAt)::timestamptz)
     `,
-    { id, tenantId: DEFAULT_TENANT_ID, deletedAt: overrides.deletedAt ?? null },
+    {
+      id,
+      tenantId: DEFAULT_TENANT_ID,
+      deletedAt: overrides.deletedAt ?? null,
+      platform: overrides.platform ?? 'github',
+    },
   )
   return id
 }
@@ -45,15 +60,16 @@ async function createSyncUnit(
     emitEnabled?: boolean
     watermark?: Record<string, unknown> | null
     platform?: string
+    lockedAt?: string
   },
 ): Promise<string> {
   const id = generateUUIDv1()
   await qx.result(
     `
     INSERT INTO integration.sync_units
-      (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "emitEnabled", watermark)
+      (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "emitEnabled", watermark, "lockedAt")
     VALUES
-      ($(id), $(integrationId), $(platform), $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb)
+      ($(id), $(integrationId), $(platform), $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb, $(lockedAt)::timestamptz)
     `,
     {
       id,
@@ -64,6 +80,7 @@ async function createSyncUnit(
       status: overrides.status ?? 'active',
       emitEnabled: overrides.emitEnabled ?? false,
       watermark: overrides.watermark === undefined ? null : JSON.stringify(overrides.watermark),
+      lockedAt: overrides.lockedAt ?? null,
     },
   )
   return id
@@ -279,6 +296,18 @@ describe('upsertSyncUnits', () => {
     expect(new Date(unit.nextRunAt).toISOString()).toBe('2030-01-01T00:00:00.000Z')
   })
 
+  test('returns only the rows actually inserted', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const units = [
+      { ...base, integrationId, syncName: 'issues' },
+      { ...base, integrationId, syncName: 'forks' },
+    ]
+
+    expect(await upsertSyncUnits(qx, units)).toBe(2)
+    expect(await upsertSyncUnits(qx, units)).toBe(0)
+    expect(await upsertSyncUnits(qx, [...units, { ...base, integrationId, syncName: 'x' }])).toBe(1)
+  })
+
   test('re-running with a watermark replaces the stored watermark', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
     await upsertSyncUnits(qx, [
@@ -333,6 +362,61 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
     expect(await countShadowRepos(qx)).toBe(2)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/shadow')).toBe(true)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/unknown')).toBe(false)
+  })
+})
+
+describe('hasActiveSyncUnitsForChannelElsewhere', () => {
+  const staleLockBefore = new Date(Date.now() - 65 * 60_000)
+  const freshLock = new Date(Date.now() - 10 * 60_000).toISOString()
+  const staleLock = new Date(Date.now() - 120 * 60_000).toISOString()
+
+  test('sees live or still-running units of another github-nango integration only', async ({
+    qx,
+  }) => {
+    const owner = await createIntegration(qx, { platform: 'github-nango' })
+    const other = await createIntegration(qx, { platform: 'github-nango' })
+    const unitId = await createSyncUnit(qx, owner, { channelName: 'R_1', syncName: 'issues' })
+    const elsewhere = (integrationId: string, channelId: string) =>
+      hasActiveSyncUnitsForChannelElsewhere(qx, integrationId, channelId, staleLockBefore)
+
+    expect(await elsewhere(other, 'R_1')).toBe(true)
+    expect(await elsewhere(owner, 'R_1')).toBe(false)
+
+    await qx.result(
+      `UPDATE integration.sync_units SET status = 'decommissioned' WHERE id = $(unitId)`,
+      { unitId },
+    )
+    expect(await elsewhere(other, 'R_1')).toBe(false)
+
+    await qx.result(
+      `UPDATE integration.sync_units SET "lockedAt" = $(freshLock) WHERE id = $(unitId)`,
+      {
+        unitId,
+        freshLock,
+      },
+    )
+    expect(await elsewhere(other, 'R_1')).toBe(true)
+
+    const deletedOwner = await createIntegration(qx, {
+      platform: 'github-nango',
+      deletedAt: '2026-09-01T00:00:00.000Z',
+    })
+    await createSyncUnit(qx, deletedOwner, { channelName: 'R_2', syncName: 'issues' })
+    expect(await elsewhere(other, 'R_2')).toBe(false)
+
+    await createSyncUnit(qx, deletedOwner, {
+      channelName: 'R_3',
+      syncName: 'issues',
+      lockedAt: freshLock,
+    })
+    expect(await elsewhere(other, 'R_3')).toBe(true)
+
+    await createSyncUnit(qx, deletedOwner, {
+      channelName: 'R_4',
+      syncName: 'issues',
+      lockedAt: staleLock,
+    })
+    expect(await elsewhere(other, 'R_4')).toBe(false)
   })
 })
 
@@ -572,5 +656,195 @@ describe('takeOverSyncUnit', () => {
         { id: sinceWalk },
       ),
     ).toEqual({ n: 0 })
+  })
+})
+
+describe('sync unit lifecycle', () => {
+  test('decommissions units per channel or whole integration, counts fresh locks as undrained, deletes drained units and cascades shadow records and diff summaries', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const active = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/acme/a',
+      syncName: 'issues',
+    })
+    const freshLock = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/acme/a',
+      syncName: 'forks',
+      emitEnabled: true,
+      lockedAt: new Date().toISOString(),
+    })
+    const staleLock = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/Acme/A',
+      syncName: 'discussions',
+      lockedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    })
+    const deadLetter = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/acme/a',
+      syncName: 'pull-requests',
+      status: 'dead_letter',
+    })
+    const switchPaused = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/acme/p',
+      syncName: 'releases',
+      status: 'paused',
+    })
+    const untouched = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/acme/b',
+      syncName: 'issues',
+      emitEnabled: true,
+    })
+    await recordShadowRecords(qx, active, [
+      {
+        type: 'issues-opened',
+        sourceId: 's1',
+        occurredAt: '2026-10-19T09:30:00Z',
+        data: {},
+        segmentId: generateUUIDv1(),
+        integrationId,
+      },
+    ])
+    await qx.result(
+      `INSERT INTO integration.sync_diff_summary ("unitId", day, "integrationId", "channelName")
+       VALUES ($(id), '2026-10-20', $(integrationId), 'https://github.com/acme/a')`,
+      { id: active, integrationId },
+    )
+    const staleLockBefore = new Date(Date.now() - 3_600_000)
+    const channelA = 'https://github.com/acme/a'
+    const stranger = await createIntegration(qx)
+
+    const countChildren = async (table: string): Promise<{ n: number }> =>
+      qx.selectOne(`SELECT count(*)::int AS n FROM integration.${table} WHERE "unitId" = $(id)`, {
+        id: active,
+      })
+    const statusOf = async (id: string): Promise<string> =>
+      (await qx.selectOne(`SELECT status FROM integration.sync_units WHERE id = $(id)`, { id }))
+        .status
+    expect(await countChildren('sync_shadow_records')).toEqual({ n: 1 })
+    expect(await countChildren('sync_diff_summary')).toEqual({ n: 1 })
+
+    expect(await deleteDrainedSyncUnits(qx, integrationId, staleLockBefore)).toBe(0)
+    expect(await decommissionSyncUnitsForChannels(qx, integrationId, [])).toBe(0)
+    expect(await decommissionSyncUnitsForChannels(qx, stranger, [channelA])).toBe(0)
+    expect(await decommissionSyncUnitsForChannels(qx, integrationId, [channelA])).toBe(4)
+    expect(await decommissionSyncUnitsForChannels(qx, integrationId, [channelA])).toBe(0)
+    expect(await statusOf(switchPaused)).toBe('paused')
+    expect(await statusOf(untouched)).toBe('active')
+
+    expect(await countUndrainedDecommissionedSyncUnits(qx, integrationId, staleLockBefore)).toBe(1)
+    expect(await countUndrainedDecommissionedSyncUnits(qx, stranger, staleLockBefore)).toBe(0)
+    expect(await deleteDrainedSyncUnits(qx, stranger, staleLockBefore)).toBe(0)
+    expect(await deleteDrainedSyncUnits(qx, integrationId, staleLockBefore)).toBe(3)
+    expect(await listDecommissionedSyncUnitChannels(qx, integrationId)).toEqual([channelA])
+    expect(await listDecommissionedSyncUnitChannels(qx, stranger)).toEqual([])
+
+    const channels = await listSyncUnitChannelsForIntegration(qx, integrationId)
+    expect(channels.map((c) => ({ ...c, channelName: c.channelName.toLowerCase() }))).toEqual([
+      { channelName: channelA, hasDecommissioned: true, hasEmitting: false },
+      { channelName: 'https://github.com/acme/b', hasDecommissioned: false, hasEmitting: true },
+      { channelName: 'https://github.com/acme/p', hasDecommissioned: false, hasEmitting: false },
+    ])
+    expect(await statusOf(freshLock)).toBe('decommissioned')
+    for (const id of [active, staleLock, deadLetter]) {
+      expect(
+        await qx.selectOne(
+          `SELECT count(*)::int AS n FROM integration.sync_units WHERE id = $(id)`,
+          { id },
+        ),
+      ).toEqual({ n: 0 })
+    }
+    expect(await countChildren('sync_shadow_records')).toEqual({ n: 0 })
+    expect(await countChildren('sync_diff_summary')).toEqual({ n: 0 })
+
+    expect(await decommissionAllSyncUnits(qx, integrationId)).toBe(2)
+    expect(await decommissionAllSyncUnits(qx, stranger)).toBe(0)
+    expect(await statusOf(switchPaused)).toBe('decommissioned')
+    expect(await statusOf(untouched)).toBe('decommissioned')
+
+    await qx.result(
+      `UPDATE integration.sync_units SET "consecutiveFailures" = 4, "lockedAt" = now() WHERE id = $(id)`,
+      { id: untouched },
+    )
+    await recordRunFailure(qx, untouched, 'provider.auth', null, 5, new Date())
+    expect(
+      await qx.selectOne(`SELECT status, "lockedAt" FROM integration.sync_units WHERE id = $(id)`, {
+        id: untouched,
+      }),
+    ).toEqual({ status: 'decommissioned', lockedAt: null })
+  })
+})
+
+describe('lockSyncUnitChannel', () => {
+  test('takes a transaction-scoped advisory lock keyed by the channel', async ({ qx }) => {
+    const advisoryLocks = async (inner: QueryExecutor): Promise<number> =>
+      (
+        await inner.selectOne(
+          `SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()`,
+        )
+      ).n
+    const before = await advisoryLocks(qx)
+    await qx.tx(async (tx) => {
+      await lockSyncUnitChannel(tx, 'R_lock')
+      expect(await advisoryLocks(tx)).toBe(before + 1)
+    })
+  })
+})
+
+describe('alignSyncUnitChannelName', () => {
+  test('rewrites only the units of the channel whose spelling differs', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const other = await createIntegration(qx)
+    const stale = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/org/tag-security',
+      syncName: 'issues',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/org/TAG-security',
+      syncName: 'forks',
+    })
+    const elsewhere = await createSyncUnit(qx, other, {
+      channelName: 'https://github.com/org/tag-security',
+      syncName: 'issues',
+    })
+    const nameOf = async (id: string): Promise<string> =>
+      (
+        await qx.selectOne(`SELECT "channelName" FROM integration.sync_units WHERE id = $(id)`, {
+          id,
+        })
+      ).channelName
+
+    await qx.result(`UPDATE integration.sync_units SET "lockedAt" = now() WHERE id = $(id)`, {
+      id: stale,
+    })
+    await expect(
+      alignSyncUnitChannelName(
+        qx,
+        integrationId,
+        'https://github.com/org/tag-security',
+        'https://github.com/org/TAG-security',
+      ),
+    ).resolves.toBe(0)
+    expect(await nameOf(stale)).toBe('https://github.com/org/tag-security')
+    await qx.result(`UPDATE integration.sync_units SET "lockedAt" = NULL WHERE id = $(id)`, {
+      id: stale,
+    })
+    await expect(
+      alignSyncUnitChannelName(
+        qx,
+        integrationId,
+        'https://github.com/org/tag-security',
+        'https://github.com/org/TAG-security',
+      ),
+    ).resolves.toBe(1)
+    expect(await nameOf(stale)).toBe('https://github.com/org/TAG-security')
+    expect(await nameOf(elsewhere)).toBe('https://github.com/org/tag-security')
+    await expect(
+      alignSyncUnitChannelName(
+        qx,
+        integrationId,
+        'https://github.com/org/tag-security',
+        'https://github.com/org/TAG-security',
+      ),
+    ).resolves.toBe(0)
   })
 })

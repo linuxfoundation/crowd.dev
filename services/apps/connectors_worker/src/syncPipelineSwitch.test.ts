@@ -109,6 +109,19 @@ describe('back gate', () => {
     expect(evaluateBackUnitGate(null)).toMatchObject({ outcome: 'refused' })
     expect(evaluateBackUnitGate(unit())).toMatchObject({ outcome: 'unchanged', unitId: 'u-1' })
     expect(evaluateBackUnitGate(unit({ emitEnabled: true }))).toEqual({ ok: true })
+    expect(evaluateBackUnitGate(unit({ emitEnabled: true, status: 'paused' }))).toEqual({
+      ok: true,
+    })
+    for (const emitEnabled of [true, false]) {
+      expect(evaluateBackUnitGate(unit({ emitEnabled, status: 'decommissioned' }))).toEqual({
+        ok: false,
+        outcome: 'refused',
+        reason: 'unit is decommissioned',
+      })
+    }
+    expect(evaluateBackUnitGate(unit({ emitEnabled: true, status: 'dead_letter' }))).toEqual({
+      ok: true,
+    })
     expect(evaluateForwardUnitGate(unit({ emitEnabled: true }))).toMatchObject({ unitId: 'u-1' })
   })
 })

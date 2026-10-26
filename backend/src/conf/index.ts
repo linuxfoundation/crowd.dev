@@ -93,6 +93,12 @@ export const PACKAGES_TEMPORAL_CONFIG: ITemporalConfig | undefined = config.has(
   ? config.get<ITemporalConfig>('packagesTemporal')
   : undefined
 
+export const CONNECTORS_TEMPORAL_CONFIG: ITemporalConfig | undefined = config.has(
+  'connectorsTemporal.namespace',
+)
+  ? config.get<ITemporalConfig>('connectorsTemporal')
+  : undefined
+
 export const SEGMENT_CONFIG: SegmentConfiguration = config.get<SegmentConfiguration>('segment')
 
 export const COMPREHEND_CONFIG: ComprehendConfiguration =
