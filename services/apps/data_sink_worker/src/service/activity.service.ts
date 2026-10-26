@@ -2005,7 +2005,8 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    // Runs of all members go in timestamp order: members can merge into each other mid-batch.
+    // Runs of all members go in order of their newest activity: members can merge into each other
+    // mid-batch, and a merge carries the merged member's newest data into the survivor.
     const runs = Array.from(groupUpdatesByMember(payloads).values())
       .flatMap(({ dbMember, updates }) =>
         oldestFirstUpdateRuns(updates).map((run) => ({
@@ -2014,7 +2015,11 @@ export default class ActivityService extends LoggerBase {
           repeated: updates.length > 1,
         })),
       )
-      .sort((a, b) => timestampMs(a.run[0].timestamp) - timestampMs(b.run[0].timestamp))
+      .sort(
+        (a, b) =>
+          timestampMs(a.run[a.run.length - 1].timestamp) -
+          timestampMs(b.run[b.run.length - 1].timestamp),
+      )
 
     for (const { dbMember, run, repeated } of runs) {
       if (!repeated) {

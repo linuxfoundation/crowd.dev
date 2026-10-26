@@ -303,17 +303,13 @@ export default class MemberService extends LoggerBase {
           true,
         )
       } catch (err) {
-        // If we've already followed at least one redirect the original member id is stale.
-        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
-        // instead of the already-absorbed original member.
-        if (survivingId !== initialSurvivingId) {
-          throw new ApplicationError(
-            'identity conflict after redirect sync',
-            err instanceof Error ? err : undefined,
-            { survivingId },
-          )
-        }
-        throw err
+        // The updated member was already merged into survivingId, so handleMemberIdentityError
+        // must use survivingId as the merge target instead of the absorbed member.
+        throw new ApplicationError(
+          'identity conflict after redirect sync',
+          err instanceof Error ? err : undefined,
+          { survivingId },
+        )
       }
 
       if (!nextRedirectId) {
