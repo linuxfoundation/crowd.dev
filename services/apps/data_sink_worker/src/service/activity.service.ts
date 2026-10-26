@@ -108,10 +108,21 @@ function isSameActor(payload: IActivityProcessData): boolean {
 // oldest to the newest activity, identities and organizations together, the earliest joinedAt.
 function combineMemberUpdates(
   updates: { member: IMemberData; timestamp: string }[],
+  dbMember: IDbMember,
 ): IMemberUpdateData {
   const sorted = [...updates].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   )
+
+  // mergeData discards incoming attributes that flag a non-bot member as a bot. Applied to the
+  // combined attributes it would drop every activity's attributes, so it's applied per activity.
+  const isBot = (attributes: Record<string, unknown> | undefined) =>
+    !!(attributes?.[MemberAttributeName.IS_BOT] as Record<string, unknown>)?.[PlatformType.GITHUB]
+  const dbMemberIsBot = isBot(dbMember.attributes as Record<string, unknown>)
+
+  const joinedAt = sorted
+    .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
+    .filter((d) => d.getTime() > 0)
 
   const identities = new Map<string, IMemberIdentity>()
   for (const identity of sorted.flatMap((u) => u.member.identities ?? [])) {
@@ -122,15 +133,16 @@ function combineMemberUpdates(
     }
   }
 
-  const attributes = sorted.filter((u) => u.member.attributes).map((u) => u.member.attributes)
+  const attributes = sorted
+    .filter((u) => u.member.attributes && (dbMemberIsBot || !isBot(u.member.attributes)))
+    .map((u) => u.member.attributes)
   const reach = sorted.filter((u) => u.member.reach).map((u) => u.member.reach)
   const organizations = sorted.flatMap((u) => u.member.organizations ?? [])
 
   return {
     attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
-    joinedAt: new Date(
-      Math.min(...sorted.map((u) => new Date(u.member.joinedAt ?? u.timestamp).getTime())),
-    ),
+    joinedAt:
+      joinedAt.length > 0 ? new Date(Math.min(...joinedAt.map((d) => d.getTime()))) : undefined,
     identities: Array.from(identities.values()),
     organizations: organizations.length > 0 ? organizations : undefined,
     reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
@@ -1956,10 +1968,24 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
+    // Identities prefetched before an update are stale once it has added new ones: refresh them
+    // before the same member is updated again here or by the per-activity updates.
+    const updatedMembers = new Set<string>()
+    const refreshIdentities = async (memberIds: string[]) => {
+      const fresh = await findIdentitiesForMembers(this.pgQx, memberIds)
+      for (const memberId of memberIds) {
+        dbMemberIdentities.set(memberId, fresh.get(memberId) ?? [])
+      }
+    }
+
     const updatedMemberIds = new Map<string, string>()
     for (const [key, group] of groups) {
       if (group.updates.length < 2) {
         continue
+      }
+
+      if (updatedMembers.has(group.dbMember.id)) {
+        await refreshIdentities([group.dbMember.id])
       }
 
       try {
@@ -1967,7 +1993,7 @@ export default class ActivityService extends LoggerBase {
           group.dbMember.id,
           group.payload.segmentId,
           group.payload.integrationId,
-          combineMemberUpdates(group.updates),
+          combineMemberUpdates(group.updates, group.dbMember),
           group.dbMember,
           dbMemberIdentities.get(group.dbMember.id),
           group.payload.platform,
@@ -1975,12 +2001,17 @@ export default class ActivityService extends LoggerBase {
           group.updates.map((u) => u.timestamp),
         )
         updatedMemberIds.set(key, redirectId || group.dbMember.id)
+        updatedMembers.add(group.dbMember.id)
       } catch (err) {
         this.log.warn(
           { err, memberId: group.dbMember.id, activities: group.updates.length },
           'Combined member update failed, updating per activity!',
         )
       }
+    }
+
+    if (updatedMembers.size > 0) {
+      await refreshIdentities(Array.from(updatedMembers))
     }
 
     return updatedMemberIds
