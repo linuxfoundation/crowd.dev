@@ -128,7 +128,35 @@ export async function moveOrgAttributes(
   qx: QueryExecutor,
   fromOrganizationId: string,
   toOrganizationId: string,
+  excludedNames: string[],
 ): Promise<string[]> {
+  // Runs before the move so moved rows from the same source see the inherited default.
+  const inherited: { name: string }[] = await qx.select(
+    `
+      UPDATE "orgAttributes" kept
+      SET "default" = true
+      FROM "orgAttributes" duplicate
+      WHERE kept."organizationId" = $(toOrganizationId)
+        AND duplicate."organizationId" = $(fromOrganizationId)
+        AND duplicate."default"
+        AND NOT kept."default"
+        AND kept.name = duplicate.name
+        AND kept.source = duplicate.source
+        AND kept.value = duplicate.value
+        AND kept.name <> ALL($(excludedNames)::text[])
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "orgAttributes" chosen
+          WHERE chosen."organizationId" = $(toOrganizationId)
+            AND chosen.name = kept.name
+            AND chosen.source = kept.source
+            AND chosen."default"
+        )
+      RETURNING kept.name
+    `,
+    { fromOrganizationId, toOrganizationId, excludedNames },
+  )
+
   const moved: { name: string }[] = await qx.select(
     `
       UPDATE "orgAttributes" moved
@@ -144,6 +172,7 @@ export async function moveOrgAttributes(
         ),
         "updatedAt" = NOW()
       WHERE moved."organizationId" = $(fromOrganizationId)
+        AND moved.name <> ALL($(excludedNames)::text[])
         AND NOT EXISTS (
           SELECT 1
           FROM "orgAttributes" existing
@@ -154,10 +183,10 @@ export async function moveOrgAttributes(
         )
       RETURNING moved.name
     `,
-    { fromOrganizationId, toOrganizationId },
+    { fromOrganizationId, toOrganizationId, excludedNames },
   )
 
-  return uniq(moved.map(({ name }) => name))
+  return uniq([...inherited, ...moved].map(({ name }) => name))
 }
 
 export async function deleteOrgAttributes(

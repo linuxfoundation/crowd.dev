@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 export const keepPrimary = (primary: any, secondary: any): any => primary
 
-const hasValue = (value: unknown): boolean => {
+export const hasValue = (value: unknown): boolean => {
   if (Array.isArray(value)) {
     return value.length > 0
   }

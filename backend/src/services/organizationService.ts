@@ -80,6 +80,7 @@ import OrganizationRepository from '../database/repositories/organizationReposit
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import telemetryTrack from '../segment/telemetryTrack'
 import {
+  hasValue,
   keepPrimary,
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
@@ -725,8 +726,26 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Generating merge object!',
           )
 
+          const primaryAttributeNames = new Set(
+            backup.primary.orgAttributes.map(({ name }) => name),
+          )
+          const secondaryAttributeNames = new Set(
+            backup.secondary.orgAttributes.map(({ name }) => name),
+          )
+          const columnOnlyAttributes = ORG_DB_ATTRIBUTES.filter(
+            ({ name, defaultColumn }) =>
+              defaultColumn &&
+              name !== 'name' &&
+              !primaryAttributeNames.has(name) &&
+              (hasValue(original[defaultColumn]) || !secondaryAttributeNames.has(name)),
+          )
+
           // Performs a merge and returns the fields that were changed so we can update
-          const toUpdate: any = await OrganizationService.organizationsMerge(original, toMerge)
+          const toUpdate: any = await OrganizationService.organizationsMerge(
+            original,
+            toMerge,
+            columnOnlyAttributes.map(({ defaultColumn }) => defaultColumn),
+          )
 
           this.log.info(
             { originalId, toMergeId },
@@ -753,17 +772,12 @@ export default class OrganizationService extends LoggerBase {
             optionsQx(repoOptions),
             toMergeId,
             originalId,
+            ['name', ...columnOnlyAttributes.map(({ name }) => name)],
           )
-          const primaryName = backup.primary.orgAttributes.find(
-            (attribute) => attribute.name === 'name' && attribute.default,
-          )
-          if (primaryName) {
-            await markOrgAttributeDefault(optionsQx(repoOptions), originalId, primaryName)
-          }
           const attributeColumns = await recalculateOrgAttributeDefaults(
             optionsQx(repoOptions),
             originalId,
-            withoutNameAttribute(movedAttributeNames),
+            movedAttributeNames,
           )
 
           captureNewState({ primary: { ...toUpdate, ...attributeColumns } })
@@ -885,12 +899,15 @@ export default class OrganizationService extends LoggerBase {
     }
   }
 
-  // Attributes and the columns derived from them are merged as rows by `moveOrgAttributes`.
-  static organizationsMerge(originalObject, toMergeObject) {
+  // Attribute-backed columns are derived after `moveOrgAttributes`; column-only ones merge here.
+  static organizationsMerge(originalObject, toMergeObject, columnOnlyFields: string[] = []) {
+    const derivedFields = lodash.difference(ATTRIBUTE_FIELDS, columnOnlyFields)
+
     return mergeObjects(
-      lodash.omit(originalObject, ATTRIBUTE_FIELDS),
-      lodash.omit(toMergeObject, ATTRIBUTE_FIELDS),
+      lodash.omit(originalObject, derivedFields),
+      lodash.omit(toMergeObject, derivedFields),
       {
+        ...Object.fromEntries(columnOnlyFields.map((field) => [field, keepPrimaryIfExists])),
         importHash: keepPrimary,
         createdAt: keepPrimary,
         updatedAt: keepPrimary,
