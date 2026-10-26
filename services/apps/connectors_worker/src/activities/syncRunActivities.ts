@@ -18,9 +18,11 @@ import {
   recordRunFailure,
   recordRunPartial,
   recordRunSuccess,
+  recordRunTimeout,
   recordShadowRecords,
   rescheduleUnit,
 } from '@crowd/data-access-layer/src/connectors'
+import type { ISyncUnit } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -41,6 +43,19 @@ const UNAVAILABLE_PARK_MS = 300_000
 
 const PARKED_ERROR_CLASSES = ['provider.rate_limit', 'provider.unavailable'] as const
 
+function syncRunLogFields(activityContext: Context, unit: ISyncUnit): Record<string, unknown> {
+  return {
+    workflowId: activityContext.info.workflowExecution.workflowId,
+    runId: activityContext.info.workflowExecution.runId,
+    unitId: unit.id,
+    integrationId: unit.integrationId,
+    platform: unit.platform,
+    syncName: unit.syncName,
+    channelId: unit.channelId,
+    channelName: unit.channelName,
+  }
+}
+
 export async function executeSync(unitId: string): Promise<void> {
   const qx = dbStoreQx(svc.postgres.writer)
 
@@ -54,16 +69,7 @@ export async function executeSync(unitId: string): Promise<void> {
   }
 
   const activityContext = Context.current()
-  const log = getChildLogger('syncRun', svc.log, {
-    workflowId: activityContext.info.workflowExecution.workflowId,
-    runId: activityContext.info.workflowExecution.runId,
-    unitId: unit.id,
-    integrationId: unit.integrationId,
-    platform: unit.platform,
-    syncName: unit.syncName,
-    channelId: unit.channelId,
-    channelName: unit.channelName,
-  })
+  const log = getChildLogger('syncRun', svc.log, syncRunLogFields(activityContext, unit))
 
   const heartbeat = setInterval(() => {
     try {
@@ -267,4 +273,37 @@ export async function executeSync(unitId: string): Promise<void> {
   } finally {
     clearInterval(heartbeat)
   }
+}
+
+export async function recordSyncRunTimeout(
+  unitId: string,
+  timeoutType: string,
+  attemptStartedAt: string,
+): Promise<void> {
+  const qx = dbStoreQx(svc.postgres.writer)
+  const unit = await getUnitById(qx, unitId)
+  if (!unit) {
+    return
+  }
+  const log = getChildLogger('syncRun', svc.log, syncRunLogFields(Context.current(), unit))
+  const errorMessage = `sync run timed out (${timeoutType})`
+  const recorded = await recordRunTimeout(qx, unitId, errorMessage, new Date(attemptStartedAt))
+  if (recorded === 0) {
+    log.info(
+      { event: 'sync_run_timeout_ignored', timeoutType },
+      'sync run timeout ignored, attempt already recorded its outcome',
+    )
+    return
+  }
+  log.error(
+    {
+      event: 'sync_run_summary',
+      outcome: 'failed',
+      errorClass: 'worker.timeout',
+      errorMessage,
+      consecutiveFailures: unit.consecutiveFailures + 1,
+      emitEnabled: unit.emitEnabled,
+    },
+    'sync run summary',
+  )
 }
