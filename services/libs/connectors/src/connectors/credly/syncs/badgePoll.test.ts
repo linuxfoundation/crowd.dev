@@ -8,6 +8,7 @@ import type { Credential, SyncContext } from '../../../types'
 import { fetchBadgesPage } from '../apiClient'
 import type { BadgesPageParams, CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
+import type { CredlyDeps, CredlyTemplateRouting } from '../deps'
 import { MAX_PAGES_PER_RUN, MAX_WINDOW_MS, WINDOW_LAG_MS, runBadgePoll } from './badgePoll'
 
 vi.mock('../apiClient', async (importOriginal) => {
@@ -58,15 +59,24 @@ function page(data: CredlyBadge[], current = 1, totalPages = 1): CredlyPage<Cred
   }
 }
 
-function makeCtx(watermark: Record<string, unknown> | null = null, hasRunBudget = () => true) {
+const NO_ROUTING: CredlyTemplateRouting = { targets: new Map(), staleTemplateIds: [] }
+
+function makeCtx(
+  watermark: Record<string, unknown> | null = null,
+  hasRunBudget = () => true,
+  routing: CredlyTemplateRouting = NO_ROUTING,
+) {
   const emitted: unknown[][] = []
+  const emits: { records: unknown[]; segmentId?: string; integrationId?: string }[] = []
   const watermarks: Record<string, unknown>[] = []
-  const ctx: SyncContext = {
+  const deps: CredlyDeps = { loadTemplateRouting: vi.fn(async () => routing) }
+  const ctx: SyncContext<CredlyDeps> = {
     channel: { channelId: ORGANIZATION_ID, channelName: ORGANIZATION_ID },
     integrationId: 'integration-1',
     watermark,
-    emit: async (records) => {
+    emit: async (records, overrides) => {
       emitted.push(records)
+      emits.push({ records, ...overrides })
     },
     commitWatermark: async (next) => {
       watermarks.push(next)
@@ -75,9 +85,16 @@ function makeCtx(watermark: Record<string, unknown> | null = null, hasRunBudget 
     http: {} as SyncContext['http'],
     log: LOG,
     getCredential: async () => CREDENTIAL,
-    deps: undefined,
+    deps,
   }
-  return { ctx, emitted, watermarks, lastWatermark: () => watermarks[watermarks.length - 1] }
+  return {
+    ctx,
+    emitted,
+    emits,
+    deps,
+    watermarks,
+    lastWatermark: () => watermarks[watermarks.length - 1],
+  }
 }
 
 function requestedParams(): BadgesPageParams[] {
@@ -392,6 +409,62 @@ describe('runBadgePoll', () => {
     expect(requestedParams()).toEqual([
       { organizationId: ORGANIZATION_ID, window: { min: since, max: HORIZON }, page: 1 },
     ])
+  })
+
+  it('routes mapped templates to their project and the rest to the anchor segment', async () => {
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['tpl-cka', { segmentId: 'k8s', integrationId: 'int-k8s' }],
+        ['tpl-ica', { segmentId: 'istio', integrationId: 'int-istio' }],
+      ]),
+      staleTemplateIds: [],
+    }
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({ id: 'cka-1', badge_template: { id: 'tpl-cka', name: 'CKA' } }),
+        badge({ id: 'speaker-1', badge_template: { id: 'tpl-speaker', name: 'Speaker' } }),
+        badge({ id: 'cka-2', badge_template: { id: 'tpl-cka', name: 'CKA' } }),
+        badge({ id: 'ica-1', badge_template: { id: 'tpl-ica', name: 'ICA' } }),
+      ]),
+    )
+    const { ctx, emits, deps } = makeCtx(null, () => true, routing)
+
+    await runBadgePoll(ctx)
+
+    const sourceIds = (records: unknown[]) => [
+      ...new Set(records.map((record) => (record as { sourceId: string }).sourceId)),
+    ]
+    expect(
+      emits.map(({ records, segmentId, integrationId }) => ({
+        ids: sourceIds(records),
+        segmentId,
+        integrationId,
+      })),
+    ).toEqual([
+      { ids: ['cka-1', 'cka-2'], segmentId: 'k8s', integrationId: 'int-k8s' },
+      { ids: ['speaker-1'], segmentId: undefined, integrationId: undefined },
+      { ids: ['ica-1'], segmentId: 'istio', integrationId: 'int-istio' },
+    ])
+    expect(deps.loadTemplateRouting).toHaveBeenCalledTimes(1)
+    expect(LOG.warn).not.toHaveBeenCalled()
+  })
+
+  it('warns once per run about mappings whose integration is gone, and falls back for them', async () => {
+    const routing: CredlyTemplateRouting = { targets: new Map(), staleTemplateIds: ['tpl-old'] }
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ id: 'old-1', badge_template: { id: 'tpl-old', name: 'Old' } })]),
+    )
+    const { ctx, emits } = makeCtx(null, () => true, routing)
+
+    await runBadgePoll(ctx)
+
+    expect(emits).toEqual([
+      { records: expect.any(Array), segmentId: undefined, integrationId: undefined },
+    ])
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateIds: ['tpl-old'] },
+      'credly template mappings point to a deleted or moved integration, their badges fall back to the anchor segment',
+    )
   })
 
   it('ignores a saved window that does not sit after since', async () => {

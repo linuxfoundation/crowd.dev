@@ -3,6 +3,7 @@ import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadgesPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
+import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
 import {
   credlyActivitySchema,
   expiredBadgeActivity,
@@ -101,10 +102,18 @@ function badgeActivities(badge: CredlyBadge, nowMs: number): CredlyActivity[] {
   return activities.map((activity) => credlyActivitySchema.parse(activity))
 }
 
-export async function runBadgePoll(ctx: SyncContext): Promise<SyncOutcome> {
+export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOutcome> {
   const credential = await ctx.getCredential()
   assertCredentialKind(credential, 'credly-oauth-client')
   const { organizationId } = credential.data
+
+  const routing = await ctx.deps.loadTemplateRouting()
+  if (routing.staleTemplateIds.length > 0) {
+    ctx.log.warn(
+      { badgeTemplateIds: routing.staleTemplateIds },
+      'credly template mappings point to a deleted or moved integration, their badges fall back to the anchor segment',
+    )
+  }
 
   const startedAtMs = Date.now()
   const horizonMs = startedAtMs - WINDOW_LAG_MS
@@ -113,26 +122,46 @@ export async function runBadgePoll(ctx: SyncContext): Promise<SyncOutcome> {
     await ctx.commitWatermark(watermark)
   }
 
-  const counters = { pagesFetched: 0, badges: 0, activities: 0, skipped: 0, windows: 0, splits: 0 }
+  const counters = {
+    pagesFetched: 0,
+    badges: 0,
+    routed: 0,
+    activities: 0,
+    skipped: 0,
+    windows: 0,
+    splits: 0,
+  }
 
+  // Emit without overrides lands on the anchor integration's own segment: that is the fallback.
   const emitPage = async (badges: CredlyBadge[]) => {
-    const activities: CredlyActivity[] = []
+    const byTarget = new Map<
+      string,
+      { target: CredlyTemplateTarget | undefined; activities: CredlyActivity[] }
+    >()
     for (const badge of badges) {
+      let activities: CredlyActivity[]
       try {
-        activities.push(...badgeActivities(badge, startedAtMs))
+        activities = badgeActivities(badge, startedAtMs)
       } catch (err) {
         counters.skipped += 1
         ctx.log.warn(
           { badgeId: badge.id, errMsg: (err as Error).message },
           'skipping credly badge: failed to map (malformed provider data)',
         )
+        continue
       }
+      const target = routing.targets.get(badge.badge_template.id)
+      const key = target ? `${target.integrationId}:${target.segmentId}` : ''
+      const group = byTarget.get(key) ?? { target, activities: [] }
+      group.activities.push(...activities)
+      byTarget.set(key, group)
+      counters.activities += activities.length
+      if (target) counters.routed += 1
     }
-    if (activities.length > 0) {
-      await ctx.emit(activities)
+    for (const { target, activities } of byTarget.values()) {
+      await ctx.emit(activities, target)
     }
     counters.badges += badges.length
-    counters.activities += activities.length
   }
 
   while (counters.pagesFetched < MAX_PAGES_PER_RUN && ctx.hasRunBudget()) {
