@@ -93,7 +93,8 @@ const ATTRIBUTE_FIELDS = [
 ]
 
 // displayName is chosen by whoever merges or unmerges, so it is never re-derived from `name`.
-const withoutNameAttribute = (names: string[]): string[] => names.filter((name) => name !== 'name')
+const withoutNameAttribute = <T extends { name: string }>(attributes: T[]): T[] =>
+  attributes.filter(({ name }) => name !== 'name')
 
 const toAttributeBackup = (attributes: IOrganizationAttributeBackup[]) =>
   attributes.map(({ name, source, value, default: isDefault }) => ({
@@ -453,7 +454,7 @@ export default class OrganizationService extends LoggerBase {
             const qx = optionsQx(repoOptions)
             const secondaryAttributes = backup.secondary.orgAttributes
             const attributesFromSecondary = lodash.differenceWith(
-              secondaryAttributes,
+              withoutNameAttribute(secondaryAttributes),
               backup.primary.orgAttributes ?? [],
               (a, b) => a.name === b.name && a.source === b.source && a.value === b.value,
             )
@@ -470,15 +471,11 @@ export default class OrganizationService extends LoggerBase {
               await markOrgAttributeDefault(qx, secondaryOrganization.id, attribute)
             }
 
-            await recalculateOrgAttributeDefaults(
-              qx,
-              organizationId,
-              withoutNameAttribute(removedNames),
-            )
+            await recalculateOrgAttributeDefaults(qx, organizationId, removedNames)
             await recalculateOrgAttributeDefaults(
               qx,
               secondaryOrganization.id,
-              withoutNameAttribute(secondaryAttributes.map(({ name }) => name)),
+              withoutNameAttribute(secondaryAttributes).map(({ name }) => name),
             )
           }
 
