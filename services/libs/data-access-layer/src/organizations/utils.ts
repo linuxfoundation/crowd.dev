@@ -5,6 +5,7 @@ import {
   ORG_DB_ATTRIBUTES,
   ORG_DB_ATTRIBUTE_SOURCE_PRIORITY,
   ORG_DB_FIELDS,
+  OrgAttributeDef,
 } from './attributesConfig'
 import {
   IDbOrgAttribute,
@@ -14,6 +15,25 @@ import {
 } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+export function toDefaultColumnValue(definition: OrgAttributeDef, value: string): unknown {
+  if (definition.type === OrganizationAttributeType.OBJECT) {
+    return JSON.parse(value)
+  }
+
+  if (
+    definition.type === OrganizationAttributeType.DECIMAL ||
+    definition.type === OrganizationAttributeType.INTEGER
+  ) {
+    return Number(value)
+  }
+
+  if (definition.type === OrganizationAttributeType.BOOLEAN) {
+    return value === 'true'
+  }
+
+  return value
+}
 
 export interface IPrepareOrgResult {
   organization: IDbOrganizationInput
@@ -193,18 +213,7 @@ export function prepareOrganizationData(
         existingOrg[attDef.defaultColumn] === null ||
         existingOrg[attDef.defaultColumn] !== defaultAttribute.value)
     ) {
-      if (attDef.type === OrganizationAttributeType.OBJECT) {
-        orgRes[attDef.defaultColumn] = JSON.parse(defaultAttribute.value)
-      } else if (
-        attDef.type === OrganizationAttributeType.DECIMAL ||
-        attDef.type === OrganizationAttributeType.INTEGER
-      ) {
-        orgRes[attDef.defaultColumn] = Number(defaultAttribute.value)
-      } else if (attDef.type === OrganizationAttributeType.BOOLEAN) {
-        orgRes[attDef.defaultColumn] = defaultAttribute.value === 'true'
-      } else {
-        orgRes[attDef.defaultColumn] = defaultAttribute.value
-      }
+      orgRes[attDef.defaultColumn] = toDefaultColumnValue(attDef, defaultAttribute.value)
     }
 
     for (const atts of Array.from(attributesBySource.values())) {
