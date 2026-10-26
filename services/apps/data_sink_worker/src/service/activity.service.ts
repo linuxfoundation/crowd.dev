@@ -125,7 +125,7 @@ interface IMemberUpdateFailure {
   metadata?: Record<string, unknown>
 }
 
-interface IRepeatedMemberResults {
+interface IMemberUpdateResults {
   memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
   failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
   members: Map<string, IDbMember>
@@ -1530,215 +1530,45 @@ export default class ActivityService extends LoggerBase {
       )
     }
 
-    const repeatedMembers = await logExecutionTimeV2(
+    const memberUpdates = await logExecutionTimeV2(
       async () =>
-        this.updateRepeatedMembers(
-          relevantPayloads,
-          memberService,
-          dbMemberIdentities,
-          orgPromiseCache,
-        ),
+        this.updateMembers(relevantPayloads, memberService, dbMemberIdentities, orgPromiseCache),
       this.log,
-      'activityService -> processActivities -> updateRepeatedMembers',
+      'activityService -> processActivities -> updateMembers',
     )
 
-    // Merge redirects X→Y in this batch by platform:username: later payloads reuse Y instead of
-    // calling update() on the absorbed member row.
-    const memberMap = new Map<string, string>()
     for (const payload of relevantPayloads) {
-      const memberId = repeatedMembers.memberIds.member.get(payload)
-      if (memberId && memberId !== payload.dbMember.id) {
-        memberMap.set(`${payload.platform}:${payload.activity.username}`, memberId)
-      }
-
-      const objectMemberId = repeatedMembers.memberIds.objectMember.get(payload)
-      if (objectMemberId && objectMemberId !== payload.dbObjectMember.id) {
-        memberMap.set(
-          `${payload.platform}:${payload.activity.objectMemberUsername}`,
-          objectMemberId,
-        )
-      }
-    }
-
-    for (const payload of relevantPayloads) {
-      const memberKey = `${payload.platform}:${payload.activity.username}`
-      const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
-      // When actor and objectActor are the same person, skip the objectMember update and
-      // copy memberId after Promise.all resolves.
-      const sameActorKey = isSameActor(payload)
-
-      const promises = []
-      // update members and orgs with them
-      const repeatedMemberId = repeatedMembers.memberIds.member.get(payload)
-      const repeatedObjectMemberId = repeatedMembers.memberIds.objectMember.get(payload)
-      const memberFailure = repeatedMembers.failures.member.get(payload)
-      const objectMemberFailure = repeatedMembers.failures.objectMember.get(payload)
-
+      const memberFailure = memberUpdates.failures.member.get(payload)
       if (memberFailure) {
         resultMap.set(payload.resultId, {
           success: false,
           err: new ApplicationError('Error while updating member!', memberFailure.err),
           metadata: memberFailure.metadata,
         })
-      } else if (repeatedMemberId && repeatedMemberId !== payload.dbMember.id) {
-        payload.dbMember = repeatedMembers.members.get(repeatedMemberId)
-        payload.memberId = repeatedMemberId
-      } else if (payload.dbMember) {
-        if (memberMap.has(memberKey)) {
-          payload.memberId = memberMap.get(memberKey)
-          payload.dbMember = undefined
-        } else if (repeatedMemberId) {
-          payload.memberId = repeatedMemberId
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.member.attributes,
-                  joinedAt: payload.activity.member.joinedAt
-                    ? new Date(payload.activity.member.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.member.identities,
-                  organizations: payload.activity.member.organizations,
-                  reach: payload.activity.member.reach,
-                },
-                payload.dbMember,
-                dbMemberIdentities.get(payload.dbMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.memberId = redirectId ?? payload.dbMember.id
-                if (redirectId) {
-                  memberMap.set(memberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'member',
-                  payload.dbMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.memberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbMember.id) {
-                      memberMap.set(memberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating member!', err),
-                  })
-                }
-              }),
-          )
-        }
       }
 
+      const objectMemberFailure = memberUpdates.failures.objectMember.get(payload)
       if (objectMemberFailure) {
         resultMap.set(payload.resultId, {
           success: false,
           err: new ApplicationError('Error while updating object member!', objectMemberFailure.err),
           metadata: objectMemberFailure.metadata,
         })
-      } else if (
-        repeatedObjectMemberId &&
-        !sameActorKey &&
-        repeatedObjectMemberId !== payload.dbObjectMember.id
-      ) {
-        payload.dbObjectMember = repeatedMembers.members.get(repeatedObjectMemberId)
-        payload.objectMemberId = repeatedObjectMemberId
-      } else if (payload.dbObjectMember && !sameActorKey) {
-        if (memberMap.has(objectMemberKey)) {
-          payload.objectMemberId = memberMap.get(objectMemberKey)
-          payload.dbObjectMember = undefined
-        } else if (repeatedObjectMemberId) {
-          payload.objectMemberId = repeatedObjectMemberId
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbObjectMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.objectMember.attributes,
-                  joinedAt: payload.activity.objectMember.joinedAt
-                    ? new Date(payload.activity.objectMember.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.objectMember.identities,
-                  organizations: payload.activity.objectMember.organizations,
-                  reach: payload.activity.objectMember.reach,
-                },
-                payload.dbObjectMember,
-                dbMemberIdentities.get(payload.dbObjectMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
-                if (redirectId) {
-                  memberMap.set(objectMemberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'objectMember',
-                  payload.dbObjectMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.objectMemberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbObjectMember.id) {
-                      memberMap.set(objectMemberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating object member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating object member!', err),
-                  })
-                }
-              }),
-          )
-        }
       }
 
-      if (promises.length > 0) {
-        await logExecutionTimeV2(
-          async () => Promise.all(promises),
-          this.log,
-          'activityService -> processActivities -> Promise.all (memberService.update)',
-        )
+      const memberId = memberUpdates.memberIds.member.get(payload)
+      if (memberId) {
+        payload.memberId = memberId
+        payload.dbMember = memberUpdates.members.get(memberId) ?? payload.dbMember
       }
 
-      if (sameActorKey) {
+      const objectMemberId = memberUpdates.memberIds.objectMember.get(payload)
+      if (objectMemberId) {
+        payload.objectMemberId = objectMemberId
+        payload.dbObjectMember = memberUpdates.members.get(objectMemberId) ?? payload.dbObjectMember
+      }
+
+      if (isSameActor(payload)) {
         payload.objectMemberId = payload.memberId
       }
 
@@ -2042,13 +1872,12 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
-  // Activities handled here skip the per-activity member updates.
-  private async updateRepeatedMembers(
+  private async updateMembers(
     payloads: IActivityProcessData[],
     memberService: MemberService,
     dbMemberIdentities: Map<string, IMemberIdentity[]>,
     orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
-  ): Promise<IRepeatedMemberResults> {
+  ): Promise<IMemberUpdateResults> {
     const staleMemberIds = new Set<string>()
     const freshMembers = new Map<string, IDbMember>()
     const refreshMembers = async (memberIds: string[]) => {
@@ -2110,7 +1939,7 @@ export default class ActivityService extends LoggerBase {
       return redirectId || memberId
     }
 
-    const results: IRepeatedMemberResults = {
+    const results: IMemberUpdateResults = {
       memberIds: { member: new Map(), objectMember: new Map() },
       failures: { member: new Map(), objectMember: new Map() },
       members: freshMembers,
@@ -2153,13 +1982,21 @@ export default class ActivityService extends LoggerBase {
 
     // Runs of all members go in timestamp order: members can merge into each other mid-batch.
     const runs = Array.from(groupUpdatesByMember(payloads).values())
-      .filter(({ updates }) => updates.length > 1)
       .flatMap(({ dbMember, updates }) =>
-        oldestFirstUpdateRuns(updates).map((run) => ({ dbMember, run })),
+        oldestFirstUpdateRuns(updates).map((run) => ({
+          dbMember,
+          run,
+          repeated: updates.length > 1,
+        })),
       )
       .sort((a, b) => timestampMs(a.run[0].timestamp) - timestampMs(b.run[0].timestamp))
 
-    for (const { dbMember, run } of runs) {
+    for (const { dbMember, run, repeated } of runs) {
+      if (!repeated) {
+        await updateSingleActivity(dbMember, run[0])
+        continue
+      }
+
       try {
         setMemberId(run, await updateMember(dbMember, run))
       } catch (runErr) {
@@ -2183,15 +2020,6 @@ export default class ActivityService extends LoggerBase {
 
     if (staleMemberIds.size > 0) {
       await refreshMembers(Array.from(staleMemberIds))
-      for (const payload of payloads) {
-        if (payload.dbMember) {
-          payload.dbMember = freshMembers.get(payload.dbMember.id) ?? payload.dbMember
-        }
-        if (payload.dbObjectMember) {
-          payload.dbObjectMember =
-            freshMembers.get(payload.dbObjectMember.id) ?? payload.dbObjectMember
-        }
-      }
     }
 
     return results
