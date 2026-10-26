@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity'
+import { ApplicationFailure, Context } from '@temporalio/activity'
 
 import {
   ConnectorError,
@@ -32,6 +32,7 @@ import { svc } from '../main'
 import { RUN_BUDGET_MS } from '../runLimits'
 import { resolveRunSegmentId } from '../runSegment'
 import { cadenceRunAt, failureRunAt, shortDeferRunAt } from '../scheduling'
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 
 const DEAD_LETTER_AFTER: Partial<Record<ErrorClass, number>> = {
   'provider.auth': 5,
@@ -269,7 +270,11 @@ export async function executeSync(unitId: string): Promise<void> {
       nextRunAt,
       committedWatermark === unit.watermark ? null : committedWatermark,
     )
-    throw err
+    throw ApplicationFailure.create({
+      type: SYNC_RUN_FAILURE_RECORDED,
+      message: errorMessage,
+      cause: err instanceof Error ? err : undefined,
+    })
   } finally {
     clearInterval(heartbeat)
   }

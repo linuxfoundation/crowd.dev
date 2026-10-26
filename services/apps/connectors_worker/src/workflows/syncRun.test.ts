@@ -1,6 +1,7 @@
 import { ActivityFailure, ApplicationFailure, TimeoutFailure } from '@temporalio/workflow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 import { syncRun } from './syncRun'
 
 const mocks = vi.hoisted(() => ({
@@ -32,14 +33,27 @@ describe('syncRun', () => {
     vi.clearAllMocks()
   })
 
-  it('completes without failing when the sync activity fails', async () => {
+  it('completes without failing when the run already recorded its failure', async () => {
     mocks.executeSync.mockRejectedValue(
       activityFailure(
-        ApplicationFailure.create({ message: 'github graphql response has no data' }),
+        ApplicationFailure.create({
+          message: 'github graphql response has no data',
+          type: SYNC_RUN_FAILURE_RECORDED,
+        }),
       ),
     )
 
     await expect(syncRun('u')).resolves.toBeUndefined()
+    expect(mocks.recordSyncRunTimeout).not.toHaveBeenCalled()
+  })
+
+  it('fails when the sync activity fails without recording the failure', async () => {
+    const failure = activityFailure(
+      ApplicationFailure.create({ message: 'connection terminated unexpectedly' }),
+    )
+    mocks.executeSync.mockRejectedValue(failure)
+
+    await expect(syncRun('u')).rejects.toBe(failure)
     expect(mocks.recordSyncRunTimeout).not.toHaveBeenCalled()
   })
 

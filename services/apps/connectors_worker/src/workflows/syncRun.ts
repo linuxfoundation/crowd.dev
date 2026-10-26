@@ -1,7 +1,13 @@
-import { ActivityFailure, TimeoutFailure, proxyActivities } from '@temporalio/workflow'
+import {
+  ActivityFailure,
+  ApplicationFailure,
+  TimeoutFailure,
+  proxyActivities,
+} from '@temporalio/workflow'
 
 import type * as activities from '../activities/syncRunActivities'
 import { RUN_START_TO_CLOSE_TIMEOUT_MS } from '../runLimits'
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 
 const activity = proxyActivities<typeof activities>({
   startToCloseTimeout: RUN_START_TO_CLOSE_TIMEOUT_MS,
@@ -14,6 +20,10 @@ const timeoutRecorder = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 5 },
 })
 
+function isRecordedRunFailure(cause: Error | undefined): boolean {
+  return cause instanceof ApplicationFailure && cause.type === SYNC_RUN_FAILURE_RECORDED
+}
+
 export async function syncRun(unitId: string): Promise<void> {
   const attemptStartedAt = new Date().toISOString()
   try {
@@ -24,6 +34,10 @@ export async function syncRun(unitId: string): Promise<void> {
     }
     if (err.cause instanceof TimeoutFailure) {
       await timeoutRecorder.recordSyncRunTimeout(unitId, err.cause.timeoutType, attemptStartedAt)
+      return
+    }
+    if (!isRecordedRunFailure(err.cause)) {
+      throw err
     }
   }
 }

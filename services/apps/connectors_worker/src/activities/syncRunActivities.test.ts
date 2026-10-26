@@ -1,3 +1,4 @@
+import { ApplicationFailure } from '@temporalio/activity'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -7,6 +8,7 @@ import {
 } from '@crowd/connectors'
 import type { ConnectorError, SyncContext, SyncOutcome } from '@crowd/connectors'
 
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 import { executeSync, recordSyncRunTimeout } from './syncRunActivities'
 
 const CADENCE_RUN_AT = new Date('2026-10-16T12:05:00.000Z')
@@ -26,7 +28,8 @@ const mocks = vi.hoisted(() => ({
 
 const activityCancellation = vi.hoisted(() => ({ controller: new AbortController() }))
 
-vi.mock('@temporalio/activity', () => ({
+vi.mock('@temporalio/activity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@temporalio/activity')>()),
   Context: {
     current: () => ({
       info: { workflowExecution: { workflowId: 'wf', runId: 'run' } },
@@ -210,7 +213,14 @@ describe('executeSync failure', () => {
   ])('dead-letters after %s failures for %s', async (deadLetterAfter, error) => {
     mocks.run.mockRejectedValue(error)
 
-    await expect(executeSync(UNIT.id)).rejects.toBe(error)
+    const thrown = await executeSync(UNIT.id).catch((e: ApplicationFailure) => e)
+
+    expect(thrown).toBeInstanceOf(ApplicationFailure)
+    expect(thrown).toMatchObject({
+      type: SYNC_RUN_FAILURE_RECORDED,
+      message: error.message,
+      cause: error,
+    })
 
     expect(mocks.recordRunFailure).toHaveBeenCalledWith(
       {},
