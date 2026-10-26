@@ -58,7 +58,7 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
-import { IMemberUpdateData } from './member.data'
+import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
 import MemberService, { mergeIfAllowed } from './member.service'
 import { IProcessActivityResult } from './types'
 
@@ -104,10 +104,13 @@ function isSameActor(payload: IActivityProcessData): boolean {
   )
 }
 
-// Combines the member data of several activities into one update: attributes merged from the
-// oldest to the newest activity, identities and organizations together, the earliest joinedAt.
+interface ITimedMemberUpdate {
+  member: IMemberData
+  timestamp: string
+}
+
 function combineMemberUpdates(
-  updates: { member: IMemberData; timestamp: string }[],
+  updates: ITimedMemberUpdate[],
   dbMember: IDbMember,
 ): IMemberUpdateData {
   const sorted = [...updates].sort(
@@ -124,15 +127,6 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .filter((d) => d.getTime() > 0)
 
-  const identities = new Map<string, IMemberIdentity>()
-  for (const identity of sorted.flatMap((u) => u.member.identities ?? [])) {
-    const key = `${identity.platform}:${identity.type}:${identity.value?.toLowerCase()}`
-    const existing = identities.get(key)
-    if (!existing || (identity.verified && !existing.verified)) {
-      identities.set(key, identity)
-    }
-  }
-
   const attributes = sorted
     .filter((u) => u.member.attributes && (dbMemberIsBot || !isBot(u.member.attributes)))
     .map((u) => u.member.attributes)
@@ -143,10 +137,25 @@ function combineMemberUpdates(
     attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
     joinedAt:
       joinedAt.length > 0 ? new Date(Math.min(...joinedAt.map((d) => d.getTime()))) : undefined,
-    identities: Array.from(identities.values()),
+    identities: sorted.flatMap((u) => u.member.identities ?? []),
     organizations: organizations.length > 0 ? organizations : undefined,
     reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
   }
+}
+
+function emailDomainTimestamps(updates: ITimedMemberUpdate[]): ActivityTimestampsByEmailDomain {
+  const timestamps: ActivityTimestampsByEmailDomain = new Map()
+  for (const { member, timestamp } of updates) {
+    for (const identity of member.identities ?? []) {
+      if (identity.verified && identity.type === MemberIdentityType.EMAIL && identity.value) {
+        const domain = normalizeMemberIdentityValue(identity.value).split('@')[1]
+        if (domain) {
+          timestamps.set(domain, [...(timestamps.get(domain) ?? []), timestamp])
+        }
+      }
+    }
+  }
+  return timestamps
 }
 
 export default class ActivityService extends LoggerBase {
@@ -1440,9 +1449,9 @@ export default class ActivityService extends LoggerBase {
       'activityService -> processActivities -> updateRepeatedMembers',
     )
 
-    // Tracks merge redirects across payloads in this batch. When a member update redirects
-    // X→Y (merge), subsequent payloads for the same platform:username skip the update and
-    // reuse Y — avoids calling update() on an already-absorbed member row.
+    // Tracks merge redirects across payloads in this batch, seeded with the combined updates'.
+    // When a member update redirects X→Y (merge), subsequent payloads for the same platform:username
+    // skip the update and reuse Y — avoids calling update() on an already-absorbed member row.
     const memberMap = new Map<string, string>()
     for (const payload of relevantPayloads) {
       const memberId =
@@ -1467,11 +1476,7 @@ export default class ActivityService extends LoggerBase {
       const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
       // When actor and objectActor are the same person, skip the objectMember update and
       // copy memberId after Promise.all resolves.
-      const sameActorKey = !!(
-        payload.dbMember &&
-        payload.dbObjectMember &&
-        memberKey === objectMemberKey
-      )
+      const sameActorKey = isSameActor(payload)
 
       const promises = []
       // update members and orgs with them
@@ -1933,9 +1938,8 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
-  // A batch often holds several activities of the same member. Each such member is updated once
-  // per segment with the data of all its activities. A group whose combined update fails is left
-  // to the per-activity updates, so their error handling stays the same.
+  // A group whose combined update fails is left out of the result, so the per-activity updates
+  // handle it with their usual error handling.
   private async updateRepeatedMembers(
     payloads: IActivityProcessData[],
     memberService: MemberService,
@@ -1947,7 +1951,7 @@ export default class ActivityService extends LoggerBase {
       {
         payload: IActivityProcessData
         dbMember: IDbMember
-        updates: { member: IMemberData; timestamp: string }[]
+        updates: ITimedMemberUpdate[]
       }
     >()
 
@@ -1979,8 +1983,15 @@ export default class ActivityService extends LoggerBase {
     }
 
     const updatedMemberIds = new Map<string, string>()
+    const redirects = new Map<string, string>()
     for (const [key, group] of groups) {
       if (group.updates.length < 2) {
+        continue
+      }
+
+      const redirectedTo = redirects.get(group.dbMember.id)
+      if (redirectedTo) {
+        updatedMemberIds.set(key, redirectedTo)
         continue
       }
 
@@ -1998,9 +2009,12 @@ export default class ActivityService extends LoggerBase {
           dbMemberIdentities.get(group.dbMember.id),
           group.payload.platform,
           orgPromiseCache,
-          group.updates.map((u) => u.timestamp),
+          emailDomainTimestamps(group.updates),
         )
         updatedMemberIds.set(key, redirectId || group.dbMember.id)
+        if (redirectId && redirectId !== group.dbMember.id) {
+          redirects.set(group.dbMember.id, redirectId)
+        }
       } catch (err) {
         this.log.warn(
           { err, memberId: group.dbMember.id, activities: group.updates.length },

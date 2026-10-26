@@ -60,7 +60,11 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { IMemberCreateData, IMemberUpdateData } from './member.data'
+import {
+  ActivityTimestampsByEmailDomain,
+  IMemberCreateData,
+  IMemberUpdateData,
+} from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
 
@@ -609,7 +613,7 @@ export default class MemberService extends LoggerBase {
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
     orgPromiseCache?: OrgPromiseCache,
-    activityTimestamp?: string | string[],
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
   ): Promise<string | void> {
     return logExecutionTimeV2(
       async () => {
@@ -867,7 +871,7 @@ export default class MemberService extends LoggerBase {
     emails: string[],
     orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
-    activityTimestamp?: string | string[],
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
     isBotMember = false,
   ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
@@ -931,12 +935,13 @@ export default class MemberService extends LoggerBase {
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          const dates = new Set(
-            [activityTimestamp].flat().map((t) => new Date(t).toISOString().split('T')[0]),
+          await this.bufferMemberOrganizationActivityDates(
+            memberId,
+            result.id,
+            typeof activityTimestamp === 'string'
+              ? [activityTimestamp]
+              : (activityTimestamp.get(domain) ?? []),
           )
-          for (const date of dates) {
-            await this.bufferMemberOrganizationActivityDates(memberId, result.id, date)
-          }
         }
       }
     }
@@ -1173,20 +1178,28 @@ export default class MemberService extends LoggerBase {
   private async bufferMemberOrganizationActivityDates(
     memberId: string,
     organizationId: string,
-    activityTimestamp: string,
+    activityTimestamps: string[],
   ): Promise<void> {
-    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+    const dates = Array.from(
+      new Set(activityTimestamps.map((t) => new Date(t).toISOString().split('T')[0])),
+    )
+    if (dates.length === 0) {
+      return
+    }
 
     // Each member gets one flat set: values are "orgId|date"
     const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-    const value = `${organizationId}|${date}`
+    const values = dates.map((date) => `${organizationId}|${date}`)
 
     await this.redisClient
       .multi()
-      .sAdd(datesKey, value)
+      .sAdd(datesKey, values)
       .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
       .exec()
 
-    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
+    this.log.debug(
+      { memberId, organizationId, dates },
+      'Buffered activity dates and queued member.',
+    )
   }
 }
