@@ -73,10 +73,18 @@ export interface IMemberUnmergePreviewResult {
   organizations: IMemberRenderFriendlyRole[]
 }
 
+export interface IOrganizationAttributeBackup {
+  name: string
+  source: string
+  value: string
+  default: boolean
+}
+
 export interface IOrganizationUnmergeBackup extends IOrganization {
   memberOrganizations: IMemberOrganization[]
   activityCount: number
   memberCount: number
+  orgAttributes?: IOrganizationAttributeBackup[]
 }
 
 export interface IOrganizationUnmergePreviewResult extends IOrganization {

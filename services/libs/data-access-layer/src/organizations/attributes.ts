@@ -1,12 +1,20 @@
 import { uniq } from 'lodash'
 
 import { getServiceChildLogger } from '@crowd/logging'
+import { OrganizationAttributeSource } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
-import { IDbOrgAttribute, IDbOrgAttributeInput } from './types'
+import { ORG_DB_ATTRIBUTES, ORG_DB_ATTRIBUTE_SOURCE_PRIORITY } from './attributesConfig'
+import { IDbOrgAttribute, IDbOrgAttributeInput, IDbOrganizationInput } from './types'
+import { toDefaultColumnValue } from './utils'
 
 const log = getServiceChildLogger('organizations/attributes')
+
+const sourceRank = (source: string): number => {
+  const rank = ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.indexOf(source as OrganizationAttributeSource)
+  return rank === -1 ? ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.length : rank
+}
 
 export async function findOrgAttributes(
   qx: QueryExecutor,
@@ -116,6 +124,73 @@ export async function markOrgAttributeDefault(
   }
 }
 
+export async function moveOrgAttributes(
+  qx: QueryExecutor,
+  fromOrganizationId: string,
+  toOrganizationId: string,
+  excludedNames: string[],
+): Promise<string[]> {
+  const moved: { name: string }[] = await qx.select(
+    `
+      UPDATE "orgAttributes" moved
+      SET
+        "organizationId" = $(toOrganizationId),
+        "default" = moved."default" AND NOT EXISTS (
+          SELECT 1
+          FROM "orgAttributes" existing
+          WHERE existing."organizationId" = $(toOrganizationId)
+            AND existing.name = moved.name
+            AND existing.source = moved.source
+            AND existing."default"
+        ),
+        "updatedAt" = NOW()
+      WHERE moved."organizationId" = $(fromOrganizationId)
+        AND moved.name <> ALL($(excludedNames)::text[])
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "orgAttributes" existing
+          WHERE existing."organizationId" = $(toOrganizationId)
+            AND existing.name = moved.name
+            AND existing.source = moved.source
+            AND existing.value = moved.value
+        )
+      RETURNING moved.name
+    `,
+    { fromOrganizationId, toOrganizationId, excludedNames },
+  )
+
+  return uniq(moved.map(({ name }) => name))
+}
+
+export async function deleteOrgAttributes(
+  qx: QueryExecutor,
+  organizationId: string,
+  attributes: IDbOrgAttributeInput[],
+): Promise<string[]> {
+  if (attributes.length === 0) {
+    return []
+  }
+
+  const deleted: { name: string }[] = await qx.select(
+    `
+      DELETE FROM "orgAttributes"
+      WHERE "organizationId" = $(organizationId)
+        AND (name, source, value) IN (
+          SELECT * FROM UNNEST($(names)::text[], $(sources)::text[], $(values)::text[])
+        )
+      RETURNING name
+    `,
+    {
+      organizationId,
+      names: attributes.map(({ name }) => name),
+      sources: attributes.map(({ source }) => source),
+      values: attributes.map(({ value }) => value),
+    },
+  )
+
+  return uniq(deleted.map(({ name }) => name))
+}
+
 export async function deleteOrganizationAttributes(
   qx: QueryExecutor,
   ids: string[],
@@ -131,4 +206,70 @@ export async function deleteOrganizationAttributes(
   `,
     { ids },
   )
+}
+
+export async function recalculateOrgAttributeDefaults(
+  qx: QueryExecutor,
+  organizationId: string,
+  names: string[],
+): Promise<Partial<IDbOrganizationInput>> {
+  if (names.length === 0) {
+    return {}
+  }
+
+  const attributes: IDbOrgAttribute[] = await qx.select(
+    `
+      SELECT id, name, source, value, "default"
+      FROM "orgAttributes"
+      WHERE "organizationId" = $(organizationId)
+        AND name IN ($(names:csv))
+      ORDER BY "createdAt" DESC
+    `,
+    { organizationId, names },
+  )
+
+  attributes.sort(
+    (a, b) => sourceRank(a.source) - sourceRank(b.source) || Number(b.default) - Number(a.default),
+  )
+  const defaults = new Map(names.map((name) => [name, attributes.find((a) => a.name === name)]))
+
+  await qx.result(
+    `
+      UPDATE "orgAttributes"
+      SET "default" = (id = ANY($(defaultIds)::uuid[]))
+      WHERE "organizationId" = $(organizationId)
+        AND name IN ($(names:csv))
+        AND "default" IS DISTINCT FROM (id = ANY($(defaultIds)::uuid[]))
+    `,
+    {
+      organizationId,
+      names,
+      defaultIds: [...defaults.values()].filter(Boolean).map(({ id }) => id),
+    },
+  )
+
+  const columns: Record<string, unknown> = {}
+  for (const definition of ORG_DB_ATTRIBUTES) {
+    if (definition.defaultColumn && defaults.has(definition.name)) {
+      const picked = defaults.get(definition.name)
+      columns[definition.defaultColumn] = picked
+        ? toDefaultColumnValue(definition, picked.value)
+        : null
+    }
+  }
+
+  const columnNames = Object.keys(columns)
+  if (columnNames.length > 0) {
+    await qx.result(
+      `
+        UPDATE organizations
+        SET ${columnNames.map((column) => `"${column}" = $(columns.${column})`).join(', ')},
+          "updatedAt" = NOW()
+        WHERE id = $(organizationId)
+      `,
+      { organizationId, columns },
+    )
+  }
+
+  return columns as Partial<IDbOrganizationInput>
 }
