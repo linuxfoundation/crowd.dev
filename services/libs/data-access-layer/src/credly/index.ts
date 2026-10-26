@@ -72,3 +72,82 @@ export async function findOrCreateCredlyIntegration(
     return { id, created: true, restored: false }
   })
 }
+
+export interface ICredlyTemplateMapping {
+  badgeTemplateId: string
+  badgeTemplateName: string
+  integrationId: string
+  segmentId: string
+}
+
+// lastSeenAt moves on every call so a stale seed shows up; updatedAt only on a real change.
+// The pair must be a live Credly integration on that segment, or routing would never see the row.
+export async function upsertCredlyTemplateMapping(
+  qx: QueryExecutor,
+  data: ICredlyTemplateMapping,
+): Promise<void> {
+  const written = await qx.result(
+    `
+      INSERT INTO integration."credlyTemplateMappings" AS m
+        ("badgeTemplateId", "badgeTemplateName", "integrationId", "segmentId", "lastSeenAt")
+      SELECT $(badgeTemplateId), $(badgeTemplateName), i.id, i."segmentId", now()
+      FROM public.integrations i
+      WHERE i.id = $(integrationId)
+        AND i."segmentId" = $(segmentId)
+        AND i.platform = $(platform)
+        AND i."deletedAt" IS NULL
+      ON CONFLICT ("badgeTemplateId") DO UPDATE
+      SET "badgeTemplateName" = EXCLUDED."badgeTemplateName",
+          "integrationId" = EXCLUDED."integrationId",
+          "segmentId" = EXCLUDED."segmentId",
+          "deactivatedAt" = NULL,
+          "lastSeenAt" = now(),
+          "updatedAt" = CASE
+            WHEN m."integrationId" IS DISTINCT FROM EXCLUDED."integrationId"
+              OR m."segmentId" IS DISTINCT FROM EXCLUDED."segmentId"
+              OR m."badgeTemplateName" IS DISTINCT FROM EXCLUDED."badgeTemplateName"
+              OR m."deactivatedAt" IS NOT NULL
+            THEN now()
+            ELSE m."updatedAt"
+          END
+    `,
+    { ...data, platform: PlatformType.CREDLY },
+  )
+  if (written === 0) {
+    throw new Error(
+      `integration ${data.integrationId} is not a live Credly integration on segment ${data.segmentId}`,
+    )
+  }
+}
+
+export async function listActiveCredlyTemplateMappings(
+  qx: QueryExecutor,
+): Promise<ICredlyTemplateMapping[]> {
+  return qx.select(
+    `
+      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId"
+      FROM integration."credlyTemplateMappings" m
+      JOIN public.integrations i ON i.id = m."integrationId"
+      WHERE m."deactivatedAt" IS NULL
+        AND i.platform = $(platform)
+        AND i."deletedAt" IS NULL
+        AND i."segmentId" = m."segmentId"
+      ORDER BY m."badgeTemplateId"
+    `,
+    { platform: PlatformType.CREDLY },
+  )
+}
+
+export async function deactivateCredlyTemplateMapping(
+  qx: QueryExecutor,
+  badgeTemplateId: string,
+): Promise<number> {
+  return qx.result(
+    `
+      UPDATE integration."credlyTemplateMappings"
+      SET "deactivatedAt" = now(), "updatedAt" = now()
+      WHERE "badgeTemplateId" = $(badgeTemplateId) AND "deactivatedAt" IS NULL
+    `,
+    { badgeTemplateId },
+  )
+}
