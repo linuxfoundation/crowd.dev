@@ -22,6 +22,7 @@ import {
   lockSyncUnitChannel,
   reassertUnitClaim,
   recordRunFailure,
+  recordRunTimeout,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
   takeOverSyncUnit,
@@ -862,5 +863,97 @@ describe('alignSyncUnitChannelName', () => {
         'https://github.com/org/TAG-security',
       ),
     ).resolves.toBe(0)
+  })
+})
+
+describe('recordRunTimeout', () => {
+  async function setRunState(
+    qx: QueryExecutor,
+    id: string,
+    state: { lastRunAt: string; consecutiveFailures: number; nextRunAt: string },
+  ) {
+    await qx.result(
+      `UPDATE integration.sync_units
+       SET "lastRunAt" = $(lastRunAt)::timestamptz,
+           "consecutiveFailures" = $(consecutiveFailures),
+           "nextRunAt" = $(nextRunAt)::timestamptz
+       WHERE id = $(id)`,
+      { id, ...state },
+    )
+  }
+
+  async function readRun(qx: QueryExecutor, id: string) {
+    return qx.selectOne(
+      `SELECT status, "lockedAt", "nextRunAt", "consecutiveFailures", "lastErrorClass",
+              "lastErrorMessage", "lastRunComplete", "lastRunAt"
+       FROM integration.sync_units WHERE id = $(id)`,
+      { id },
+    )
+  }
+
+  const NEXT_RUN_AT = '2026-10-26T12:00:00.000Z'
+  const LOCKED_AT = '2026-10-26T10:00:00.000Z'
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+
+  test('records the timeout as a failure without releasing the claim', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/o/r',
+      syncName: 'issues',
+      lockedAt: LOCKED_AT,
+    })
+    await setRunState(qx, id, {
+      lastRunAt: minutesAgo(60).toISOString(),
+      consecutiveFailures: 2,
+      nextRunAt: NEXT_RUN_AT,
+    })
+
+    expect(await recordRunTimeout(qx, id, 'sync run timed out (HEARTBEAT)', minutesAgo(10))).toBe(1)
+
+    const run = await readRun(qx, id)
+    expect(new Date(run.lockedAt).toISOString()).toBe(LOCKED_AT)
+    expect(new Date(run.nextRunAt).toISOString()).toBe(NEXT_RUN_AT)
+    expect(run).toMatchObject({
+      status: 'active',
+      consecutiveFailures: 3,
+      lastErrorClass: 'worker.timeout',
+      lastErrorMessage: 'sync run timed out (HEARTBEAT)',
+      lastRunComplete: false,
+    })
+  })
+
+  test('leaves a unit whose attempt already recorded its own outcome', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/o/r',
+      syncName: 'issues',
+    })
+    await setRunState(qx, id, {
+      lastRunAt: new Date().toISOString(),
+      consecutiveFailures: 0,
+      nextRunAt: NEXT_RUN_AT,
+    })
+    const before = await readRun(qx, id)
+
+    expect(await recordRunTimeout(qx, id, 'sync run timed out (HEARTBEAT)', minutesAgo(10))).toBe(0)
+
+    expect(await readRun(qx, id)).toEqual(before)
+  })
+
+  test('never dead-letters a unit', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/o/r',
+      syncName: 'issues',
+    })
+    await setRunState(qx, id, {
+      lastRunAt: minutesAgo(60).toISOString(),
+      consecutiveFailures: 50,
+      nextRunAt: NEXT_RUN_AT,
+    })
+
+    await recordRunTimeout(qx, id, 'sync run timed out (START_TO_CLOSE)', minutesAgo(10))
+
+    expect((await readRun(qx, id)).status).toBe('active')
   })
 })

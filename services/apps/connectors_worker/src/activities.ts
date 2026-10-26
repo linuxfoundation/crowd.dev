@@ -43,7 +43,7 @@ import {
   setUnitEmitEnabled,
   takeOverUnit,
 } from './activities/switchSyncPipelineActivities'
-import { executeSync } from './activities/syncRunActivities'
+import { executeSync, recordSyncRunTimeout } from './activities/syncRunActivities'
 
 export {
   activateUnit,
@@ -75,6 +75,7 @@ export {
   planGithubLifecycle,
   quiesceUnit,
   readNangoHandoverPoint,
+  recordSyncRunTimeout,
   resolveSwitchTarget,
   resumeNangoRepoSync,
   runOctolensDiscovery,
