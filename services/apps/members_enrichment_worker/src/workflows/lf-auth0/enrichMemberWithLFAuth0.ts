@@ -6,6 +6,9 @@ import { IMember, MemberAttributeName, MemberIdentityType, PlatformType } from '
 import * as activities from '../../activities'
 import { ILFIDEnrichmentGithubProfile } from '../../sources/lfid/types'
 
+// Mirrors omitUrlValues in @crowd/common, which can't be imported into the workflow bundle.
+const URL_VALUE_PATTERN = /^\s*https?:\/\//i
+
 const {
   getEnrichmentLFAuth0,
   getIdentitiesExistInOtherMembers,
@@ -164,7 +167,7 @@ export async function enrichMemberWithLFAuth0(token: string, member: IMember): P
         )
       }
 
-      if (profileData.location) {
+      if (profileData.location && !URL_VALUE_PATTERN.test(profileData.location)) {
         normalized = addAttributeToNormalizedMemberIfNotAlreadyExisting(
           member,
           normalized,

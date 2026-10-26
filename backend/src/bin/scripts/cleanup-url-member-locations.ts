@@ -1,7 +1,7 @@
 import commandLineArgs from 'command-line-args'
 
 import { DB_CONFIG } from '@/conf'
-import { setAttributesDefaultValues } from '@crowd/common'
+import { omitUrlValues, setAttributesDefaultValues } from '@crowd/common'
 import { QueryExecutor, pgpQx } from '@crowd/data-access-layer'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
@@ -12,7 +12,6 @@ const log = getServiceLogger()
 
 const BATCH_SIZE = 500
 const TEST_RUN_LIMIT = 10
-const URL_PATTERN = /^https?:\/\//i
 
 const options = [
   {
@@ -40,7 +39,7 @@ async function fetchMembersWithUrlLocation(
       SELECT id, attributes -> 'location' AS location
       FROM members
       WHERE "deletedAt" IS NULL
-        AND jsonb_path_exists(attributes -> 'location', '$.* ? (@ like_regex "^https?://" flag "i")')
+        AND jsonb_path_exists(attributes -> 'location', '$.* ? (@ like_regex "^[[:space:]]*https?://" flag "i")')
         ${afterId ? 'AND id > $(afterId)' : ''}
       ORDER BY id
       LIMIT $(limit)
@@ -65,15 +64,14 @@ async function updateLocation(
   )
 }
 
-async function removeUrlValues(
+async function cleanLocation(
   location: Record<string, unknown>,
   priorities: string[],
 ): Promise<IAttributes> {
-  const withoutUrls = Object.fromEntries(
-    Object.entries(location).filter(([, value]) => !URL_PATTERN.test(String(value))),
-  )
-
-  return (await setAttributesDefaultValues({ location: withoutUrls }, priorities)) as IAttributes
+  return (await setAttributesDefaultValues(
+    { location: omitUrlValues(location) },
+    priorities,
+  )) as IAttributes
 }
 
 setImmediate(async () => {
@@ -101,7 +99,7 @@ setImmediate(async () => {
     members = await fetchMembersWithUrlLocation(qx, limit, afterId)
 
     for (const member of members) {
-      const attributes = await removeUrlValues(member.location, priorities)
+      const attributes = await cleanLocation(member.location, priorities)
       await updateLocation(qx, member.id, attributes)
       cleanedCount++
 
