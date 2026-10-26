@@ -1,0 +1,42 @@
+DESCRIPTION >
+    - `cncf_country_activity_timeseries.pipe` serves the activity-over-time chart of the CNCF country report.
+    - For each period, returns the country's active contributors, contributions, and active organizations headquartered in the country.
+    - Parameters:
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `cncf_country_activities`
+    - `granularity`: Required string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
+    - `startDate`: Required DateTime start of the series (e.g., '2024-01-01 00:00:00'); `generate_timeseries` needs it, since this pipe has no project to derive the start from
+    - `endDate`: Optional DateTime end of the series (e.g., '2024-12-31 23:59:59'), defaults to now
+    - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
+    - Response: `startDate`, `endDate`, `contributorCount`, `contributionCount`, `organizationCount`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE cncf_country_activity_timeseries_result
+SQL >
+    %
+    SELECT
+        ds."startDate",
+        ds."endDate",
+        uniqIf(a.memberId, a.memberId != '') AS "contributorCount",
+        countIf(a.memberId != '') AS "contributionCount",
+        uniqIf(a.organizationId, a.organizationInCountry) AS "organizationCount"
+    FROM generate_timeseries ds
+    LEFT JOIN
+        cncf_country_activities a
+        ON CASE
+            WHEN {{ granularity }} = 'daily'
+            THEN toDate(a.timestamp)
+            WHEN {{ granularity }} = 'weekly'
+            THEN toStartOfWeek(a.timestamp)
+            WHEN {{ granularity }} = 'monthly'
+            THEN toStartOfMonth(a.timestamp)
+            WHEN {{ granularity }} = 'quarterly'
+            THEN toStartOfQuarter(a.timestamp)
+            WHEN {{ granularity }} = 'yearly'
+            THEN toStartOfYear(a.timestamp)
+        END
+        = ds."startDate"
+    GROUP BY ds."startDate", ds."endDate"
+    ORDER BY ds."startDate" ASC
