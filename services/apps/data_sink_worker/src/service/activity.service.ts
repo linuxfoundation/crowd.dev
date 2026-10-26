@@ -2029,6 +2029,7 @@ export default class ActivityService extends LoggerBase {
         updatedMemberIds.set(key, redirectId || group.dbMember.id)
         if (redirectId && redirectId !== group.dbMember.id) {
           redirects.set(group.dbMember.id, redirectId)
+          updatedMembers.add(redirectId)
         }
       } catch (err) {
         this.log.warn(
