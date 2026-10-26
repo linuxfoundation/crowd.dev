@@ -208,13 +208,6 @@ export async function deleteOrganizationAttributes(
   )
 }
 
-export function pickDefaultAttribute(attributes: IDbOrgAttribute[]): IDbOrgAttribute | undefined {
-  const [picked] = [...attributes].sort(
-    (a, b) => sourceRank(a.source) - sourceRank(b.source) || Number(b.default) - Number(a.default),
-  )
-  return picked
-}
-
 export async function recalculateOrgAttributeDefaults(
   qx: QueryExecutor,
   organizationId: string,
@@ -235,9 +228,10 @@ export async function recalculateOrgAttributeDefaults(
     { organizationId, names },
   )
 
-  const defaults = new Map(
-    names.map((name) => [name, pickDefaultAttribute(attributes.filter((a) => a.name === name))]),
+  attributes.sort(
+    (a, b) => sourceRank(a.source) - sourceRank(b.source) || Number(b.default) - Number(a.default),
   )
+  const defaults = new Map(names.map((name) => [name, attributes.find((a) => a.name === name)]))
 
   await qx.result(
     `
