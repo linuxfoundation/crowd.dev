@@ -12,6 +12,7 @@ import {
   isValidEmail,
   normalizeMemberIdentities,
   normalizeMemberIdentityValue,
+  omitUrlValues,
   parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
@@ -215,12 +216,22 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
+  // update() drops URL locations after merging; dropping them per activity keeps an older valid one
+  const withoutUrlLocation = (attributes: Record<string, unknown>) => {
+    const location = attributes[MemberAttributeName.LOCATION]
+    if (location === undefined || location === null) {
+      return attributes
+    }
+    const byPlatform = typeof location === 'object' ? location : { [platform]: location }
+    return { ...attributes, [MemberAttributeName.LOCATION]: omitUrlValues(byPlatform) }
+  }
+
   const attributes = updatesOldestFirst
     .filter(
       (u) =>
         u.member.attributes && (dbMemberIsBot || !hasGithubBotFlag(u.member.attributes, platform)),
     )
-    .map((u) => u.member.attributes)
+    .map((u) => withoutUrlLocation(u.member.attributes))
   const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
   const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
 
