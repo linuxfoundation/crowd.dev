@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SyncContext, SyncOutcome } from '@crowd/connectors'
+import {
+  ProviderAccessDeniedError,
+  ProviderAuthError,
+  ProviderContractError,
+} from '@crowd/connectors'
+import type { ConnectorError, SyncContext, SyncOutcome } from '@crowd/connectors'
 
 import { executeSync } from './syncRunActivities'
 
@@ -12,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getUnitById: vi.fn(),
   reassertUnitClaim: vi.fn(),
   recordRunSuccess: vi.fn(),
+  recordRunFailure: vi.fn(),
   rescheduleUnit: vi.fn(),
   emittedCount: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -59,7 +65,7 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   recordRunSuccess: mocks.recordRunSuccess,
   rescheduleUnit: mocks.rescheduleUnit,
   recordRunPartial: vi.fn(),
-  recordRunFailure: vi.fn(),
+  recordRunFailure: mocks.recordRunFailure,
   parkUnit: vi.fn(),
   recordShadowRecords: vi.fn(),
 }))
@@ -191,5 +197,27 @@ describe('executeSync claim', () => {
     await executeSync(UNIT.id)
 
     expect(mocks.getUnitById).not.toHaveBeenCalled()
+  })
+})
+
+describe('executeSync failure', () => {
+  it.each<[number | null, ConnectorError]>([
+    [1, new ProviderAccessDeniedError('github access denied: ip allow list')],
+    [5, new ProviderAuthError('github unauthorized')],
+    [null, new ProviderContractError('github forbidden: Resource not accessible by integration')],
+  ])('dead-letters after %s failures for %s', async (deadLetterAfter, error) => {
+    mocks.run.mockRejectedValue(error)
+
+    await expect(executeSync(UNIT.id)).rejects.toBe(error)
+
+    expect(mocks.recordRunFailure).toHaveBeenCalledWith(
+      {},
+      UNIT.id,
+      error.errorClass,
+      error.message,
+      deadLetterAfter,
+      SHORT_DEFER_RUN_AT,
+      null,
+    )
   })
 })

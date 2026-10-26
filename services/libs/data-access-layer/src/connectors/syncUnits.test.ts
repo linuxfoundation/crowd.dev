@@ -475,6 +475,22 @@ describe('reviveDeadLetteredSyncUnits', () => {
 
     expect(await reviveDeadLetteredSyncUnits(qx, integrationId, 'mentionPoll')).toBe(0)
   })
+
+  test('does not revive a unit stopped because the provider refused access', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const refused = await createSyncUnit(qx, integrationId, {
+      channelName: 'octolens-global',
+      syncName: 'mentionPoll',
+      status: 'dead_letter',
+    })
+    await qx.result(
+      `UPDATE integration.sync_units SET "lastErrorClass" = 'provider.access_denied' WHERE id = $(refused)`,
+      { refused },
+    )
+
+    expect(await reviveDeadLetteredSyncUnits(qx, integrationId, 'mentionPoll')).toBe(0)
+    expect((await readUnit(qx, refused)).status).toBe('dead_letter')
+  })
 })
 
 async function setClaimState(
