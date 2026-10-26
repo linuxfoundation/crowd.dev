@@ -1486,15 +1486,15 @@ export default class ActivityService extends LoggerBase {
         payload.dbObjectMember &&
         repeatedMemberIds.get(memberUpdateKey(payload, payload.dbObjectMember.id))
 
-      if (repeatedMemberId) {
-        if (repeatedMemberId !== payload.dbMember.id) {
-          payload.dbMember = undefined
-        }
+      if (repeatedMemberId && repeatedMemberId !== payload.dbMember.id) {
+        payload.dbMember = undefined
         payload.memberId = repeatedMemberId
       } else if (payload.dbMember) {
         if (memberMap.has(memberKey)) {
           payload.memberId = memberMap.get(memberKey)
           payload.dbMember = undefined
+        } else if (repeatedMemberId) {
+          payload.memberId = repeatedMemberId
         } else {
           promises.push(
             memberService
@@ -1556,15 +1556,19 @@ export default class ActivityService extends LoggerBase {
         }
       }
 
-      if (repeatedObjectMemberId && !sameActorKey) {
-        if (repeatedObjectMemberId !== payload.dbObjectMember.id) {
-          payload.dbObjectMember = undefined
-        }
+      if (
+        repeatedObjectMemberId &&
+        !sameActorKey &&
+        repeatedObjectMemberId !== payload.dbObjectMember.id
+      ) {
+        payload.dbObjectMember = undefined
         payload.objectMemberId = repeatedObjectMemberId
       } else if (payload.dbObjectMember && !sameActorKey) {
         if (memberMap.has(objectMemberKey)) {
           payload.objectMemberId = memberMap.get(objectMemberKey)
           payload.dbObjectMember = undefined
+        } else if (repeatedObjectMemberId) {
+          payload.objectMemberId = repeatedObjectMemberId
         } else {
           promises.push(
             memberService
@@ -2023,6 +2027,14 @@ export default class ActivityService extends LoggerBase {
       } finally {
         // A failed update can still have added identities before it threw.
         updatedMembers.add(group.dbMember.id)
+      }
+    }
+
+    // A group updated before a later group merged its member away must follow that redirect too.
+    for (const [key, memberId] of updatedMemberIds) {
+      const redirectedTo = redirects.get(memberId)
+      if (redirectedTo) {
+        updatedMemberIds.set(key, redirectedTo)
       }
     }
 
