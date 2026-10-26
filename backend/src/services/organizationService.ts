@@ -435,11 +435,6 @@ export default class OrganizationService extends LoggerBase {
           // delete identity related stuff, we already moved these
           delete payload.primary.identities
 
-          captureNewState({
-            primary: payload.primary,
-            secondary: secondaryOrganization,
-          })
-
           // update rest of the primary org fields
           await OrganizationRepository.update(
             organizationId,
@@ -448,6 +443,9 @@ export default class OrganizationService extends LoggerBase {
             false,
             false,
           )
+
+          let primaryColumns = {}
+          let secondaryColumns = {}
 
           const backup = mergeAction?.unmergeBackup as IUnmergeBackup<IOrganizationUnmergeBackup>
           if (backup?.secondary.orgAttributes) {
@@ -471,13 +469,18 @@ export default class OrganizationService extends LoggerBase {
               await markOrgAttributeDefault(qx, secondaryOrganization.id, attribute)
             }
 
-            await recalculateOrgAttributeDefaults(qx, organizationId, removedNames)
-            await recalculateOrgAttributeDefaults(
+            primaryColumns = await recalculateOrgAttributeDefaults(qx, organizationId, removedNames)
+            secondaryColumns = await recalculateOrgAttributeDefaults(
               qx,
               secondaryOrganization.id,
               withoutNameAttribute(secondaryAttributes).map(({ name }) => name),
             )
           }
+
+          captureNewState({
+            primary: { ...payload.primary, ...primaryColumns },
+            secondary: { ...secondaryOrganization, ...secondaryColumns },
+          })
 
           // add primary and secondary to no merge so they don't get suggested again
           await OrganizationRepository.addNoMerge(
