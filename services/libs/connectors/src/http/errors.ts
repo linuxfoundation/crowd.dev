@@ -2,9 +2,11 @@ export type ErrorClass =
   | 'provider.unavailable'
   | 'provider.rate_limit'
   | 'provider.auth'
+  | 'provider.access_denied'
   | 'provider.contract'
   | 'connector.code'
   | 'sink.rejected'
+  | 'worker.timeout'
   | 'unknown'
 
 export interface ConnectorErrorOptions {
@@ -52,6 +54,13 @@ export class ProviderAuthError extends ConnectorError {
   constructor(message = 'provider authentication failed', options?: ConnectorErrorOptions) {
     super('provider.auth', message, options)
     this.name = 'ProviderAuthError'
+  }
+}
+
+export class ProviderAccessDeniedError extends ConnectorError {
+  constructor(message = 'provider refused access', options?: ConnectorErrorOptions) {
+    super('provider.access_denied', message, options)
+    this.name = 'ProviderAccessDeniedError'
   }
 }
 
