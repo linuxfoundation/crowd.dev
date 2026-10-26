@@ -773,8 +773,8 @@ export async function createOrUpdateRelations(
         "timestamp" = EXCLUDED."timestamp",
         "channel" = EXCLUDED."channel",
         "sentimentScore" = EXCLUDED."sentimentScore",
-        "gitInsertions" = EXCLUDED."gitInsertions",
-        "gitDeletions" = EXCLUDED."gitDeletions",
+        "gitInsertions" = COALESCE(EXCLUDED."gitInsertions", "activityRelations"."gitInsertions"),
+        "gitDeletions" = COALESCE(EXCLUDED."gitDeletions", "activityRelations"."gitDeletions"),
         "score" = EXCLUDED."score",
         "isContribution" = EXCLUDED."isContribution",
         "pullRequestReviewState" = EXCLUDED."pullRequestReviewState";
