@@ -248,8 +248,6 @@ export async function recordRunFailure(
   )
 }
 
-// Only provider.auth failures dead-letter a unit, so callers revive it once that
-// credential works again.
 export async function reviveDeadLetteredSyncUnits(
   qx: QueryExecutor,
   integrationId: string,
@@ -266,7 +264,8 @@ export async function reviveDeadLetteredSyncUnits(
          "updatedAt" = now()
      WHERE "integrationId" = $(integrationId)
        AND "syncName" = $(syncName)
-       AND status = 'dead_letter'`,
+       AND status = 'dead_letter'
+       AND "lastErrorClass" = 'provider.auth'`,
     { integrationId, syncName },
   )
 }

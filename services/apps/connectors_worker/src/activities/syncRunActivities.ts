@@ -10,7 +10,7 @@ import {
   getManifest,
   getSync,
 } from '@crowd/connectors'
-import type { ConnectorHttp, Emitter, SyncContext } from '@crowd/connectors'
+import type { ConnectorHttp, Emitter, ErrorClass, SyncContext } from '@crowd/connectors'
 import {
   getUnitById,
   parkUnit,
@@ -31,7 +31,10 @@ import { RUN_BUDGET_MS } from '../runLimits'
 import { resolveRunSegmentId } from '../runSegment'
 import { cadenceRunAt, failureRunAt, shortDeferRunAt } from '../scheduling'
 
-const DEAD_LETTER_AFTER = 5
+const DEAD_LETTER_AFTER: Partial<Record<ErrorClass, number>> = {
+  'provider.auth': 5,
+  'provider.access_denied': 1,
+}
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RATE_LIMIT_FALLBACK_MS = 60_000
 const UNAVAILABLE_PARK_MS = 300_000
@@ -230,8 +233,8 @@ export async function executeSync(unitId: string): Promise<void> {
       )
       return
     }
-    const errorClass = err instanceof ConnectorError ? err.errorClass : 'unknown'
-    const deadLetterAfter = errorClass === 'provider.auth' ? DEAD_LETTER_AFTER : null
+    const errorClass: ErrorClass = err instanceof ConnectorError ? err.errorClass : 'unknown'
+    const deadLetterAfter = DEAD_LETTER_AFTER[errorClass] ?? null
     const consecutiveFailures = unit.consecutiveFailures + 1
     const nextRunAt = failureRunAt(
       consecutiveFailures,
