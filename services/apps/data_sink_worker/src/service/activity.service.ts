@@ -2305,6 +2305,13 @@ export default class ActivityService extends LoggerBase {
     platform: PlatformType,
     dbMember?: IDbMember,
   ): unknown {
+    // validateAttributes stores a plain value as { [platform]: value }
+    const incoming = member.attributes[attName]
+    const incomingValue =
+      incoming && typeof incoming === 'object'
+        ? (incoming as Record<string, unknown>)[platform]
+        : incoming
+
     let result: unknown
     if (dbMember && dbMember.attributes[attName]) {
       // db member already has this attribute
@@ -2319,15 +2326,15 @@ export default class ActivityService extends LoggerBase {
         result = att.system
       } else {
         // if it's not manually set we check if incoming member data has the attribute set for the platform
-        if (member.attributes[attName] && member.attributes[attName][platform]) {
-          result = member.attributes[attName][platform]
+        if (incomingValue) {
+          result = incomingValue
         } else {
           // if none of those work we just use db member attribute default value
           result = att.default
         }
       }
-    } else if (member.attributes[attName] && member.attributes[attName][platform]) {
-      result = member.attributes[attName][platform]
+    } else if (incomingValue) {
+      result = incomingValue
     }
 
     return result
