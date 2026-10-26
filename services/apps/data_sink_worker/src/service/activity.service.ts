@@ -2001,12 +2001,14 @@ export default class ActivityService extends LoggerBase {
           group.updates.map((u) => u.timestamp),
         )
         updatedMemberIds.set(key, redirectId || group.dbMember.id)
-        updatedMembers.add(group.dbMember.id)
       } catch (err) {
         this.log.warn(
           { err, memberId: group.dbMember.id, activities: group.updates.length },
           'Combined member update failed, updating per activity!',
         )
+      } finally {
+        // A failed update can still have added identities before it threw.
+        updatedMembers.add(group.dbMember.id)
       }
     }
 
