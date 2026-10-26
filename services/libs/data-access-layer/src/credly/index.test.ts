@@ -43,9 +43,9 @@ async function readMapping(
   integrationId: string
   segmentId: string
   badgeTemplateName: string
-  deactivatedAt: Date | null
-  updatedAt: Date
-  lastSeenAt: Date
+  deactivatedAt: string | null
+  updatedAt: string
+  lastSeenAt: string
 }> {
   return qx.selectOne(
     `
@@ -55,6 +55,23 @@ async function readMapping(
     `,
     { badgeTemplateId },
   )
+}
+
+const BACKDATED = '2020-01-01T00:00:00Z'
+
+async function backdateMapping(qx: QueryExecutor, badgeTemplateId: string): Promise<void> {
+  await qx.result(
+    `
+    UPDATE integration."credlyTemplateMappings"
+    SET "updatedAt" = $(backdated), "lastSeenAt" = $(backdated)
+    WHERE "badgeTemplateId" = $(badgeTemplateId)
+    `,
+    { badgeTemplateId, backdated: BACKDATED },
+  )
+}
+
+function millis(timestamp: string): number {
+  return new Date(timestamp).getTime()
 }
 
 async function mappedProject(
@@ -114,12 +131,13 @@ describe('credly template mappings', () => {
 
     await upsertCredlyTemplateMapping(qx, mapping)
     const inserted = await readMapping(qx, 'tpl-cka')
+    await backdateMapping(qx, 'tpl-cka')
     await upsertCredlyTemplateMapping(qx, mapping)
     const repeated = await readMapping(qx, 'tpl-cka')
 
     expect(inserted).toMatchObject({ integrationId, segmentId, deactivatedAt: null })
-    expect(repeated.updatedAt).toEqual(inserted.updatedAt)
-    expect(repeated.lastSeenAt.getTime()).toBeGreaterThanOrEqual(inserted.lastSeenAt.getTime())
+    expect(millis(repeated.updatedAt)).toBe(millis(BACKDATED))
+    expect(millis(repeated.lastSeenAt)).toBeGreaterThan(millis(BACKDATED))
   })
 
   test('upsert moves a template to another project and reactivates a deactivated one', async ({
@@ -133,9 +151,9 @@ describe('credly template mappings', () => {
       badgeTemplateName: name,
       ...first,
     })
-    const inserted = await readMapping(qx, 'tpl-ica')
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-ica')).toBe(1)
     expect((await readMapping(qx, 'tpl-ica')).deactivatedAt).not.toBeNull()
+    await backdateMapping(qx, 'tpl-ica')
 
     await upsertCredlyTemplateMapping(qx, {
       badgeTemplateId: 'tpl-ica',
@@ -145,7 +163,7 @@ describe('credly template mappings', () => {
 
     const moved = await readMapping(qx, 'tpl-ica')
     expect(moved).toMatchObject({ ...second, deactivatedAt: null })
-    expect(moved.updatedAt.getTime()).toBeGreaterThan(inserted.updatedAt.getTime())
+    expect(millis(moved.updatedAt)).toBeGreaterThan(millis(BACKDATED))
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-unknown')).toBe(0)
   })
 
