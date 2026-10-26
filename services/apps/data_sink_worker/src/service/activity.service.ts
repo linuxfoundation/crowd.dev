@@ -250,7 +250,9 @@ function emailDomainTimestamps(updates: ITimedMemberUpdate[]): ActivityTimestamp
   for (const { member, timestamp } of updates) {
     for (const identity of member.identities ?? []) {
       if (identity.verified && identity.type === MemberIdentityType.EMAIL && identity.value) {
-        const domain = normalizeMemberIdentityValue(identity.value).split('@')[1]
+        // update() drops invalid emails, so they must not add dates to a domain either
+        const email = normalizeMemberIdentityValue(identity.value)
+        const domain = isValidEmail(email) ? email.split('@')[1] : undefined
         if (domain) {
           const domainTimestamps = timestamps.get(domain) ?? []
           domainTimestamps.push(timestamp)
