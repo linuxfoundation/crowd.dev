@@ -20,7 +20,7 @@
     "lodash.merge": "^4.6.2",
     "lodash.min": "^4.0.1",
     "lodash.pickby": "^4.6.0",
-    "moment": "~2.29.4",
+    "moment": "~2.31.0",
     "pg-promise": "catalog:",
     "pg-query-stream": "^4.7.0",
     "uuid": "^9.0.1",
