@@ -1,7 +1,10 @@
+import { PlatformType } from '@crowd/types'
+
 import type { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
 import type {
   IClaimedUnit,
+  ILifecycleChannel,
   IShadowDiffUnit,
   IShadowDiffUnitsPage,
   ISyncRunProgress,
@@ -19,8 +22,9 @@ export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]
     return 0
   }
 
-  return qx.result(
-    `INSERT INTO integration.sync_units AS su
+  const row = await qx.selectOne(
+    `WITH up AS (
+     INSERT INTO integration.sync_units AS su
        ("integrationId", platform, "channelId", "channelName", "syncName", watermark, "emitEnabled", "nextRunAt")
      SELECT u."integrationId", u.platform, u."channelId", u."channelName", u."syncName", u.watermark,
             COALESCE(u."emitEnabled", false),
@@ -41,7 +45,10 @@ export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]
      ON CONFLICT ("integrationId", "channelId", "syncName")
      DO UPDATE SET "channelName" = EXCLUDED."channelName",
                    watermark = COALESCE(EXCLUDED.watermark, su.watermark),
-                   "updatedAt" = now()`,
+                   "updatedAt" = now()
+     RETURNING (xmax = 0) AS inserted
+     )
+     SELECT count(*) FILTER (WHERE inserted)::int AS inserted FROM up`,
     {
       integrationIds: units.map((u) => u.integrationId),
       platforms: units.map((u) => u.platform),
@@ -55,6 +62,7 @@ export async function upsertSyncUnits(qx: QueryExecutor, units: SyncUnitUpsert[]
       delaySpanSeconds: MAX_INITIAL_DELAY_SECONDS - MIN_INITIAL_DELAY_SECONDS,
     },
   )
+  return row.inserted
 }
 
 export async function claimDueUnits(qx: QueryExecutor, limit: number): Promise<IClaimedUnit[]> {
@@ -223,7 +231,8 @@ export async function recordRunFailure(
          "lastRunAt" = now(),
          "nextRunAt" = $(nextRunAt),
          "lockedAt" = NULL,
-         status = CASE WHEN $(deadLetterAfter)::int IS NOT NULL
+         status = CASE WHEN status = 'active'
+                        AND $(deadLetterAfter)::int IS NOT NULL
                         AND "consecutiveFailures" + 1 >= $(deadLetterAfter)
                        THEN 'dead_letter' ELSE status END,
          "updatedAt" = now()
@@ -454,6 +463,148 @@ export async function hasSyncUnitsForChannel(
          AND "channelId" = $(channelId)
      ) AS exists`,
     { integrationId, channelId },
+  )
+  return row.exists === true
+}
+
+export async function lockSyncUnitChannel(qx: QueryExecutor, channelId: string): Promise<void> {
+  await qx.selectOne(
+    `SELECT pg_advisory_xact_lock(hashtextextended('syncUnitChannel:' || $(channelId), 0))`,
+    { channelId },
+  )
+}
+
+export async function alignSyncUnitChannelName(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+  channelName: string,
+): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET "channelName" = $(channelName)
+     WHERE "integrationId" = $(integrationId)
+       AND "channelId" = $(channelId)
+       AND "channelName" <> $(channelName)
+       AND "lockedAt" IS NULL`,
+    { integrationId, channelId, channelName },
+  )
+}
+
+export async function listSyncUnitChannelsForIntegration(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<ILifecycleChannel[]> {
+  return qx.select(
+    `SELECT min("channelName") AS "channelName",
+            bool_or(status = 'decommissioned') AS "hasDecommissioned",
+            bool_or("emitEnabled" AND status <> 'decommissioned') AS "hasEmitting"
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+     GROUP BY lower("channelName")
+     ORDER BY 1`,
+    { integrationId },
+  )
+}
+
+export async function decommissionSyncUnitsForChannels(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelKeys: string[],
+): Promise<number> {
+  if (channelKeys.length === 0) {
+    return 0
+  }
+
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'decommissioned', "updatedAt" = now()
+     WHERE "integrationId" = $(integrationId)
+       AND status <> 'decommissioned'
+       AND lower("channelName") = ANY($(channelKeys)::text[])`,
+    { integrationId, channelKeys },
+  )
+}
+
+export async function decommissionAllSyncUnits(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'decommissioned', "updatedAt" = now()
+     WHERE "integrationId" = $(integrationId)
+       AND status <> 'decommissioned'`,
+    { integrationId },
+  )
+}
+
+export async function countUndrainedDecommissionedSyncUnits(
+  qx: QueryExecutor,
+  integrationId: string,
+  staleLockBefore: Date,
+): Promise<number> {
+  const row = await qx.selectOne(
+    `SELECT count(*)::int AS count
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND status = 'decommissioned'
+       AND "lockedAt" IS NOT NULL
+       AND "lockedAt" >= $(staleLockBefore)`,
+    { integrationId, staleLockBefore },
+  )
+  return row.count
+}
+
+export async function deleteDrainedSyncUnits(
+  qx: QueryExecutor,
+  integrationId: string,
+  staleLockBefore: Date,
+): Promise<number> {
+  return qx.result(
+    `DELETE FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND status = 'decommissioned'
+       AND ("lockedAt" IS NULL OR "lockedAt" < $(staleLockBefore))`,
+    { integrationId, staleLockBefore },
+  )
+}
+
+export async function listDecommissionedSyncUnitChannels(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<string[]> {
+  const rows = await qx.select(
+    `SELECT DISTINCT lower("channelName") AS "channelKey"
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND status = 'decommissioned'
+     ORDER BY 1`,
+    { integrationId },
+  )
+  return rows.map((row: { channelKey: string }) => row.channelKey)
+}
+
+export async function hasActiveSyncUnitsForChannelElsewhere(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+  staleLockBefore: Date,
+): Promise<boolean> {
+  const row = await qx.selectOne(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM integration.sync_units su
+       JOIN public.integrations i ON i.id = su."integrationId"
+       WHERE su."channelId" = $(channelId)
+         AND su."integrationId" <> $(integrationId)
+         AND i.platform = $(platform)
+         AND (
+           (su.status <> 'decommissioned' AND i."deletedAt" IS NULL)
+           OR su."lockedAt" >= $(staleLockBefore)
+         )
+     ) AS exists`,
+    { integrationId, channelId, platform: PlatformType.GITHUB_NANGO, staleLockBefore },
   )
   return row.exists === true
 }

@@ -7,6 +7,7 @@ import {
   distinctBy,
   singleOrDefault,
 } from '@crowd/common'
+import { listSyncUnitChannelsForIntegration } from '@crowd/data-access-layer/src/connectors'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   INangoIntegrationData,
@@ -82,8 +83,17 @@ const job: IJobDefinition = {
 
         // Check which repos are connected to nango by comparing repositories table vs nango_mapping
         const repoRows = await getReposForGithubIntegration(pgpQx(dbConnection), int.id)
+        const unitChannelKeys = new Set(
+          (await listSyncUnitChannelsForIntegration(pgpQx(dbConnection), int.id))
+            .filter((c) => c.hasEmitting)
+            .map((c) => c.channelName.toLowerCase()),
+        )
         for (const repo of repoRows) {
           totalRepos++
+
+          if (unitChannelKeys.has(repo.url.toLowerCase())) {
+            continue
+          }
 
           let found = false
           for (const mapping of Object.values(nangoMapping)) {

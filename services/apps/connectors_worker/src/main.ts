@@ -8,6 +8,7 @@ import { octolensConnector } from '@crowd/connectors/src/connectors/octolens'
 import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
 
 import { scheduleDispatcher } from './schedules/dispatcher'
+import { scheduleGithubLifecycleSweep } from './schedules/githubLifecycleSweep'
 import { scheduleMirrorSweep } from './schedules/mirrorSweep'
 import { scheduleOctolensDiscovery } from './schedules/octolensDiscovery'
 import { scheduleShadowDiff } from './schedules/shadowDiff'
@@ -57,6 +58,7 @@ setImmediate(async () => {
   await scheduleOctolensDiscovery()
   await scheduleSwitchSyncPipelineSweep()
   await scheduleMirrorSweep()
+  await scheduleGithubLifecycleSweep()
 
   await svc.start()
 })

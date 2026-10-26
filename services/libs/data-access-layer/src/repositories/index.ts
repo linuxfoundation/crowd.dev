@@ -1,5 +1,6 @@
 import { Logger } from '@crowd/logging'
 import { RedisCache, RedisClient } from '@crowd/redis'
+import { PlatformType } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
@@ -199,6 +200,57 @@ export async function getRepositoriesByUrl(
     ${deletedFilter}
     `,
     { repoUrls },
+  )
+}
+
+export async function findIntegrationRepositoryUrl(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+  url: string,
+): Promise<string | null> {
+  const row: { url: string } | null = await qx.selectOneOrNone(
+    `
+    SELECT url
+    FROM public.repositories
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND "deletedAt" IS NULL
+      AND lower(url) = lower($(url))
+    ORDER BY url
+    LIMIT 1
+    `,
+    { sourceIntegrationId, url },
+  )
+  return row?.url ?? null
+}
+
+export async function findRepositoryByUrlInsensitive(
+  qx: QueryExecutor,
+  url: string,
+): Promise<IRepository | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT
+      id,
+      url,
+      "segmentId",
+      "gitIntegrationId",
+      "sourceIntegrationId",
+      "insightsProjectId",
+      archived,
+      "forkedFrom",
+      excluded,
+      "createdAt",
+      "updatedAt",
+      "deletedAt",
+      "lastArchivedCheckAt",
+      licenses
+    FROM public.repositories
+    WHERE lower(url) = lower($(url))
+      AND "deletedAt" IS NULL
+    ORDER BY "createdAt"
+    LIMIT 1
+    `,
+    { url },
   )
 }
 
@@ -449,6 +501,21 @@ export async function softDeleteRepositories(
       AND "deletedAt" IS NULL
     `,
     { urls, sourceIntegrationId },
+  )
+}
+
+export async function softDeleteRepositoriesForIntegration(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE public.repositories
+    SET "deletedAt" = NOW(), "updatedAt" = NOW()
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND "deletedAt" IS NULL
+    `,
+    { sourceIntegrationId },
   )
 }
 
@@ -920,5 +987,26 @@ export async function syncRepositoriesEnabledStatus(
       AND enabled <> (LOWER(url) = ANY($(normalizedUrls)::text[]))
     `,
     { insightsProjectId, normalizedUrls },
+  )
+}
+
+export async function findRepositoryOwnersForSegment(
+  qx: QueryExecutor,
+  segmentId: string,
+): Promise<{ gitIntegrationId: string; insightsProjectId: string } | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT gi.id AS "gitIntegrationId", ip.id AS "insightsProjectId"
+    FROM "insightsProjects" ip
+    JOIN integrations gi
+      ON gi."segmentId" = ip."segmentId"
+     AND gi.platform = $(gitPlatform)
+     AND gi."deletedAt" IS NULL
+    WHERE ip."segmentId" = $(segmentId)
+      AND ip."deletedAt" IS NULL
+    ORDER BY gi."createdAt"
+    LIMIT 1
+    `,
+    { segmentId, gitPlatform: PlatformType.GIT },
   )
 }

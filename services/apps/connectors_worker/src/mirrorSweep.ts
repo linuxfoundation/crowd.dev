@@ -1,7 +1,8 @@
-import axios from 'axios'
-
 import type { IUnmirroredNangoRepo } from '@crowd/data-access-layer/src/integrations'
 import { githubChannelName } from '@crowd/nango'
+
+import { isRenamedRepo } from './githubLifecycle'
+import { githubResolveSkipReason } from './githubSkipReasons'
 
 export {
   MIRROR_CHUNK_SIZE,
@@ -15,6 +16,7 @@ export type MirrorSkipReason =
   | 'token_mint_failed'
   | 'repo_not_found'
   | 'repo_renamed'
+  | 'rate_limited'
   | 'github_error'
   | 'nango_error'
   | 'already_mirrored'
@@ -89,7 +91,7 @@ export function orderMirrorCandidates(
 }
 
 export function isRenamedChannel(candidate: IMirrorCandidate, channelName: string): boolean {
-  return channelName.toLowerCase() !== channelKey(candidate.owner, candidate.repoName)
+  return isRenamedRepo(channelKey(candidate.owner, candidate.repoName), channelName)
 }
 
 export function mirrorSkipReasonFor(stage: MirrorStage, err: unknown): MirrorSkipReason {
@@ -99,8 +101,6 @@ export function mirrorSkipReasonFor(stage: MirrorStage, err: unknown): MirrorSki
     case 'mint':
       return 'token_mint_failed'
     case 'resolve':
-      return axios.isAxiosError(err) && err.response?.status === 404
-        ? 'repo_not_found'
-        : 'github_error'
+      return githubResolveSkipReason(err)
   }
 }
