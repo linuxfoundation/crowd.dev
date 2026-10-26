@@ -128,6 +128,7 @@ interface IMemberUpdateFailure {
 interface IRepeatedMemberResults {
   memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
   failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
+  members: Map<string, IDbMember>
 }
 
 function timestampMs(timestamp: string): number {
@@ -189,15 +190,22 @@ function followRedirects(redirects: Map<string, string>, memberId: string): stri
   return id
 }
 
-function hasGithubBotFlag(attributes: Record<string, unknown> | undefined): boolean {
-  return !!(attributes?.[MemberAttributeName.IS_BOT] as Record<string, unknown>)?.[
-    PlatformType.GITHUB
-  ]
+// validateAttributes turns a plain value into { [platform]: value } before mergeData checks it
+function hasGithubBotFlag(
+  attributes: Record<string, unknown> | undefined,
+  platform?: string,
+): boolean {
+  const isBot = attributes?.[MemberAttributeName.IS_BOT]
+  if (isBot && typeof isBot === 'object') {
+    return !!(isBot as Record<string, unknown>)[PlatformType.GITHUB]
+  }
+  return platform === PlatformType.GITHUB && !!isBot
 }
 
 function combineMemberUpdates(
   updatesOldestFirst: ITimedMemberUpdate[],
   dbMember: IDbMember,
+  platform: PlatformType,
 ): IMemberUpdateData {
   // mergeData discards incoming attributes that flag a non-bot member as a bot. Applied to the
   // combined attributes it would drop every activity's attributes, so it's applied per activity.
@@ -208,7 +216,10 @@ function combineMemberUpdates(
     .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
   const attributes = updatesOldestFirst
-    .filter((u) => u.member.attributes && (dbMemberIsBot || !hasGithubBotFlag(u.member.attributes)))
+    .filter(
+      (u) =>
+        u.member.attributes && (dbMemberIsBot || !hasGithubBotFlag(u.member.attributes, platform)),
+    )
     .map((u) => u.member.attributes)
   const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
   const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
@@ -1570,7 +1581,7 @@ export default class ActivityService extends LoggerBase {
           metadata: memberFailure.metadata,
         })
       } else if (repeatedMemberId && repeatedMemberId !== payload.dbMember.id) {
-        payload.dbMember = undefined
+        payload.dbMember = repeatedMembers.members.get(repeatedMemberId)
         payload.memberId = repeatedMemberId
       } else if (payload.dbMember) {
         if (memberMap.has(memberKey)) {
@@ -1650,7 +1661,7 @@ export default class ActivityService extends LoggerBase {
         !sameActorKey &&
         repeatedObjectMemberId !== payload.dbObjectMember.id
       ) {
-        payload.dbObjectMember = undefined
+        payload.dbObjectMember = repeatedMembers.members.get(repeatedObjectMemberId)
         payload.objectMemberId = repeatedObjectMemberId
       } else if (payload.dbObjectMember && !sameActorKey) {
         if (memberMap.has(objectMemberKey)) {
@@ -2086,7 +2097,7 @@ export default class ActivityService extends LoggerBase {
         memberId,
         payload.segmentId,
         payload.integrationId,
-        combineMemberUpdates(updates, original),
+        combineMemberUpdates(updates, original, payload.platform),
         original,
         dbMemberIdentities.get(memberId),
         payload.platform,
@@ -2102,10 +2113,18 @@ export default class ActivityService extends LoggerBase {
     const results: IRepeatedMemberResults = {
       memberIds: { member: new Map(), objectMember: new Map() },
       failures: { member: new Map(), objectMember: new Map() },
+      members: freshMembers,
     }
     const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
       for (const update of updates) {
         results.memberIds[update.role].set(update.payload, memberId)
+      }
+    }
+
+    const redirectToSurvivor = (dbMember: IDbMember, err: unknown) => {
+      const survivingId = err instanceof ApplicationError ? err.metadata?.survivingId : undefined
+      if (typeof survivingId === 'string') {
+        redirect(followRedirects(redirects, dbMember.id), survivingId)
       }
     }
 
@@ -2115,6 +2134,7 @@ export default class ActivityService extends LoggerBase {
       try {
         setMemberId([update], await updateMember(dbMember, [update]))
       } catch (err) {
+        redirectToSurvivor(dbMember, err)
         const target = currentRow(dbMember) ?? dbMember
         const result = await this.handleMemberIdentityError(
           err,
@@ -2131,22 +2151,25 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    for (const { dbMember, updates } of groupUpdatesByMember(payloads).values()) {
-      if (updates.length < 2) {
-        continue
-      }
+    // Runs of all members go in timestamp order: members can merge into each other mid-batch.
+    const runs = Array.from(groupUpdatesByMember(payloads).values())
+      .filter(({ updates }) => updates.length > 1)
+      .flatMap(({ dbMember, updates }) =>
+        oldestFirstUpdateRuns(updates).map((run) => ({ dbMember, run })),
+      )
+      .sort((a, b) => timestampMs(a.run[0].timestamp) - timestampMs(b.run[0].timestamp))
 
-      for (const run of oldestFirstUpdateRuns(updates)) {
-        try {
-          setMemberId(run, await updateMember(dbMember, run))
-        } catch (runErr) {
-          this.log.warn(
-            { err: runErr, memberId: dbMember.id, activities: run.length },
-            'Member update failed, retrying per activity!',
-          )
-          for (const update of run) {
-            await updateSingleActivity(dbMember, update)
-          }
+    for (const { dbMember, run } of runs) {
+      try {
+        setMemberId(run, await updateMember(dbMember, run))
+      } catch (runErr) {
+        this.log.warn(
+          { err: runErr, memberId: dbMember.id, activities: run.length },
+          'Member update failed, retrying per activity!',
+        )
+        redirectToSurvivor(dbMember, runErr)
+        for (const update of run) {
+          await updateSingleActivity(dbMember, update)
         }
       }
     }
