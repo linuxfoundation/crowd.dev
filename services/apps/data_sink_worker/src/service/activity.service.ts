@@ -489,6 +489,18 @@ export default class ActivityService extends LoggerBase {
         continue
       }
 
+      if (Number.isNaN(new Date(activity.timestamp).getTime())) {
+        this.log.error(
+          { platform, timestamp: activity.timestamp },
+          'Activity has an invalid timestamp.',
+        )
+        results.set(resultId, {
+          success: false,
+          err: new UnrepeatableError('Activity has an invalid timestamp.'),
+        })
+        continue
+      }
+
       let member = activity.member
       if (member?.identities) {
         member.identities = normalizeMemberIdentities(member.identities)
@@ -1985,7 +1997,7 @@ export default class ActivityService extends LoggerBase {
           target,
         )
         if (typeof result === 'string') {
-          redirect(target.id, result)
+          redirect(followRedirects(redirects, target.id), result)
           setMemberId([update], result)
         } else {
           results.failures[update.role].set(update.payload, { err, metadata: result })
