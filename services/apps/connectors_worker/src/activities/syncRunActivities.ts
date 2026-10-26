@@ -26,6 +26,7 @@ import type { ISyncUnit } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getChildLogger } from '@crowd/logging'
 
 import { svc } from '../main'
@@ -293,7 +294,9 @@ export async function recordSyncRunTimeout(
   const log = getChildLogger('syncRun', svc.log, syncRunLogFields(Context.current(), unit))
   const errorMessage = `sync run timed out (${timeoutType})`
   const recorded = await recordRunTimeout(qx, unitId, errorMessage, new Date(attemptStartedAt))
-  if (recorded === 0) {
+  const consecutiveFailures =
+    recorded === 1 ? unit.consecutiveFailures + 1 : await ownRecordedTimeoutFailures(qx, unitId)
+  if (consecutiveFailures === null) {
     log.info(
       { event: 'sync_run_timeout_ignored', timeoutType },
       'sync run timeout ignored, attempt already recorded its outcome',
@@ -306,9 +309,17 @@ export async function recordSyncRunTimeout(
       outcome: 'failed',
       errorClass: 'worker.timeout',
       errorMessage,
-      consecutiveFailures: unit.consecutiveFailures + 1,
+      consecutiveFailures,
       emitEnabled: unit.emitEnabled,
     },
     'sync run summary',
   )
+}
+
+async function ownRecordedTimeoutFailures(
+  qx: QueryExecutor,
+  unitId: string,
+): Promise<number | null> {
+  const current = await getUnitById(qx, unitId)
+  return current?.lastErrorClass === 'worker.timeout' ? current.consecutiveFailures : null
 }

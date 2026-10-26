@@ -272,6 +272,26 @@ describe('recordSyncRunTimeout', () => {
     )
   })
 
+  it('still logs the failed summary when a retried recorder finds its own timeout already written', async () => {
+    mocks.recordRunTimeout.mockResolvedValue(0)
+    mocks.getUnitById
+      .mockResolvedValueOnce(UNIT)
+      .mockResolvedValueOnce({ ...UNIT, consecutiveFailures: 1, lastErrorClass: 'worker.timeout' })
+
+    await recordSyncRunTimeout(UNIT.id, 'HEARTBEAT', ATTEMPT_STARTED_AT)
+
+    expect(mocks.recordRunTimeout).toHaveBeenCalledTimes(1)
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'sync_run_summary',
+        outcome: 'failed',
+        errorClass: 'worker.timeout',
+        consecutiveFailures: 1,
+      }),
+      'sync run summary',
+    )
+  })
+
   it('does nothing when the unit no longer exists', async () => {
     mocks.getUnitById.mockResolvedValue(null)
 
