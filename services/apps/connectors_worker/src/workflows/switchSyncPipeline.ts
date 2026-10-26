@@ -1,8 +1,9 @@
-import { log, proxyActivities, sleep } from '@temporalio/workflow'
+import { log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from '../activities/switchSyncPipelineActivities'
 import type { ISwitchRepoTarget } from '../activities/switchSyncPipelineActivities'
 import type { ISwitchSyncResult, ISwitchSyncTarget, SwitchDirection } from '../syncPipelineSwitch'
+import { pollUntilDrained } from './drain'
 
 const activity = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -19,9 +20,6 @@ const takeOverActivity = proxyActivities<Pick<typeof activities, 'takeOverUnit'>
     backoffCoefficient: 2,
   },
 })
-
-const DRAIN_POLL_INTERVAL = '30 seconds'
-const DRAIN_MAX_POLLS = 120
 
 export function switchSyncPipelineWorkflowId(owner: string, repo: string): string {
   return `connectors-switch-sync-pipeline/${owner.toLowerCase()}/${repo.toLowerCase()}`
@@ -194,13 +192,7 @@ async function healEmittingUnit(
 }
 
 async function drainUnit(unitId: string): Promise<boolean> {
-  for (let poll = 0; poll < DRAIN_MAX_POLLS; poll += 1) {
-    if (!(await activity.isUnitLocked({ unitId }))) {
-      return true
-    }
-    await sleep(DRAIN_POLL_INTERVAL)
-  }
-  return false
+  return pollUntilDrained(async () => !(await activity.isUnitLocked({ unitId })))
 }
 
 async function switchToNango(

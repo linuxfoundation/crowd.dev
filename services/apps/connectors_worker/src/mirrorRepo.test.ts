@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   getNangoConnectionData: vi.fn(),
   hasSyncUnitsForChannel: vi.fn(),
   upsertSyncUnits: vi.fn(),
+  alignSyncUnitChannelName: vi.fn(),
+  findIntegrationRepositoryUrl: vi.fn(),
 }))
 
 vi.mock('@crowd/connectors', () => ({ getCredential: mocks.getCredential }))
@@ -40,9 +42,13 @@ vi.mock('@crowd/nango', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@crowd/nango')>()),
   getNangoConnectionData: mocks.getNangoConnectionData,
 }))
+vi.mock('@crowd/data-access-layer/src/repositories', () => ({
+  findIntegrationRepositoryUrl: mocks.findIntegrationRepositoryUrl,
+}))
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   hasSyncUnitsForChannel: mocks.hasSyncUnitsForChannel,
   upsertSyncUnits: mocks.upsertSyncUnits,
+  alignSyncUnitChannelName: mocks.alignSyncUnitChannelName,
 }))
 
 const qx = {} as QueryExecutor
@@ -62,6 +68,7 @@ describe('mirrorRepo', () => {
       channelName: 'https://github.com/Acme/Widget',
     })
     mocks.hasSyncUnitsForChannel.mockResolvedValue(false)
+    mocks.findIntegrationRepositoryUrl.mockResolvedValue('https://github.com/acme/WIDGET')
     mocks.upsertSyncUnits.mockImplementation(async (_qx, units: unknown[]) => units.length)
   })
 
@@ -81,10 +88,29 @@ describe('mirrorRepo', () => {
       integrationId: 'i-1',
       platform: 'github',
       channelId: 'R_1',
-      channelName: 'https://github.com/Acme/Widget',
+      channelName: 'https://github.com/acme/WIDGET',
       syncName: 'discussions',
       watermark: { phase: 'incremental', since, cursor: null },
     })
+    expect(mocks.findIntegrationRepositoryUrl).toHaveBeenCalledWith(
+      qx,
+      'i-1',
+      'https://github.com/Acme/Widget',
+    )
+
+    mocks.upsertSyncUnits.mockClear()
+    mocks.findIntegrationRepositoryUrl.mockResolvedValue('https://github.com/Acme/Widget')
+    await mirrorRepo(qx, candidate, since)
+    expect(mocks.upsertSyncUnits.mock.calls[0][1][0].channelName).toBe(
+      'https://github.com/Acme/Widget',
+    )
+
+    mocks.upsertSyncUnits.mockClear()
+    mocks.findIntegrationRepositoryUrl.mockResolvedValue(null)
+    await mirrorRepo(qx, candidate, since)
+    expect(mocks.upsertSyncUnits.mock.calls[0][1][0].channelName).toBe(
+      'https://github.com/acme/widget',
+    )
   })
 
   it('skips a repo whose channel resolves to another name', async () => {
@@ -111,6 +137,12 @@ describe('mirrorRepo', () => {
       reason: 'already_mirrored',
       message: 'units exist for https://github.com/Acme/Widget',
     })
+    expect(mocks.alignSyncUnitChannelName).toHaveBeenCalledWith(
+      qx,
+      'i-1',
+      'R_1',
+      'https://github.com/acme/WIDGET',
+    )
 
     mocks.resolveRepoChannel.mockRejectedValue(
       new axios.AxiosError('Not Found', '404', undefined, undefined, { status: 404 } as never),

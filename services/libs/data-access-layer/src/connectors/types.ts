@@ -54,6 +54,12 @@ export interface IShadowDiffUnitsPage {
   after?: IShadowDiffChannelCursor
 }
 
+export interface ILifecycleChannel {
+  channelName: string
+  hasDecommissioned: boolean
+  hasEmitting: boolean
+}
+
 export interface ISyncRunProgress {
   watermark: Record<string, unknown>
   emittedCount: number

@@ -230,6 +230,20 @@ describe('switchSyncPipeline', () => {
     expect(activities.quiesceUnit).not.toHaveBeenCalled()
   })
 
+  it('back: never resumes nango for a unit the gate refuses', async () => {
+    activities.evaluateBackGate.mockResolvedValue(
+      verdict('refused', "unit status is 'decommissioned' (expected active or paused)"),
+    )
+
+    const results = await switchSyncPipeline({ owner: 'o', repo: 'r', direction: 'nango' })
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(results.every(({ outcome }) => outcome === 'refused')).toBe(true)
+    expect(activities.setUnitEmitEnabled).not.toHaveBeenCalled()
+    expect(activities.activateUnit).not.toHaveBeenCalled()
+    expect(activities.resumeNangoRepoSync).not.toHaveBeenCalled()
+  })
+
   it('refuses every sync when the repo has no active github-nango mapping', async () => {
     activities.resolveSwitchTarget.mockResolvedValue({ target: null, syncs: [sync('issues')] })
 

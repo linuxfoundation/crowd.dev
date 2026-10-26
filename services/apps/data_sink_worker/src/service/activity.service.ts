@@ -63,6 +63,34 @@ import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+function toLineCount(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value : undefined
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10)
+    return isNaN(parsed) ? undefined : parsed
+  }
+
+  return undefined
+}
+
+// The GitHub connector sends 0/0 when the counts are unavailable, so 0/0 counts as no line counts.
+function lineCountsFromAttributes(attributes: Record<string, unknown> | undefined): {
+  insertions?: number
+  deletions?: number
+} {
+  const insertions = toLineCount(attributes?.insertions ?? attributes?.additions)
+  const deletions = toLineCount(attributes?.deletions)
+
+  if (!insertions && !deletions) {
+    return {}
+  }
+
+  return { insertions, deletions }
+}
+
 export default class ActivityService extends LoggerBase {
   private readonly settingsRepo: SettingsRepository
   private readonly memberRepo: MemberRepository
@@ -1640,6 +1668,7 @@ export default class ActivityService extends LoggerBase {
     let skippedCount = 0
     const relationsToUpsert = preparedForUpsert
       .map((a) => {
+        const lineCounts = lineCountsFromAttributes(a.payload.attributes)
         const relationData: IActivityRelationCreateOrUpdateData = {
           activityId: a.payload.id,
           segmentId: a.payload.segmentId,
@@ -1657,8 +1686,8 @@ export default class ActivityService extends LoggerBase {
           timestamp: a.payload.timestamp,
           channel: a.payload.channel,
           sentimentScore: a.payload.sentimentScore,
-          gitInsertions: a.payload.gitInsertions,
-          gitDeletions: a.payload.gitDeletions,
+          gitInsertions: a.payload.gitInsertions ?? lineCounts.insertions,
+          gitDeletions: a.payload.gitDeletions ?? lineCounts.deletions,
           score: a.payload.score,
           pullRequestReviewState: a.payload.attributes?.reviewState as string,
         }
@@ -2023,6 +2052,9 @@ export default class ActivityService extends LoggerBase {
   ): boolean {
     // Must cover every column in createOrUpdateRelations' ON CONFLICT SET list, compared as stored.
     const differs = (a: unknown, b: unknown) => (a ?? null) !== (b ?? null)
+    // The upsert keeps stored line counts when the new data has none.
+    const differsWhenSet = (a: unknown, b: unknown) =>
+      b !== undefined && b !== null && differs(a, b)
     const username = (value: string | null | undefined) =>
       value === undefined || value === null ? null : normalizeMemberIdentityValue(value)
 
@@ -2039,8 +2071,8 @@ export default class ActivityService extends LoggerBase {
       new Date(existing.timestamp).getTime() !== new Date(newData.timestamp).getTime() ||
       differs(existing.channel, newData.channel) ||
       differs(existing.sentimentScore, newData.sentimentScore) ||
-      differs(existing.gitInsertions, newData.gitInsertions) ||
-      differs(existing.gitDeletions, newData.gitDeletions) ||
+      differsWhenSet(existing.gitInsertions, newData.gitInsertions) ||
+      differsWhenSet(existing.gitDeletions, newData.gitDeletions) ||
       differs(existing.score, newData.score) ||
       differs(existing.pullRequestReviewState, newData.pullRequestReviewState)
     )

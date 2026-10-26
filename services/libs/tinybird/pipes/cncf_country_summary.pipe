@@ -1,0 +1,35 @@
+DESCRIPTION >
+    - `cncf_country_summary.pipe` serves the key figures of the CNCF country report: contributors, contributions and active organizations of one country.
+    - Splits the country's contributors into three groups: located in the country and contributing through an organization headquartered there, located in the country without one, and located elsewhere but contributing through one.
+    - Parameters (all inherited from `cncf_country_activities`):
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR')
+    - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
+    - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
+    - Response: `contributorCount`, `contributionCount`, `organizationCount` (organizations headquartered in the country), `inCountryAtCountryOrganizationCount`, `inCountryElsewhereCount`, `abroadAtCountryOrganizationCount`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE cncf_country_summary_by_member
+SQL >
+    SELECT
+        memberId,
+        max(memberInCountry) AS inCountry,
+        max(organizationInCountry) AS atCountryOrganization,
+        count() AS contributions,
+        groupUniqArrayIf(organizationId, organizationInCountry) AS countryOrganizations
+    FROM cncf_country_activities
+    GROUP BY memberId
+
+NODE cncf_country_summary_result
+SQL >
+    SELECT
+        count() AS contributorCount,
+        sum(contributions) AS contributionCount,
+        length(groupUniqArrayArray(countryOrganizations)) AS organizationCount,
+        countIf(inCountry AND atCountryOrganization) AS inCountryAtCountryOrganizationCount,
+        countIf(inCountry AND NOT atCountryOrganization) AS inCountryElsewhereCount,
+        countIf(NOT inCountry) AS abroadAtCountryOrganizationCount
+    FROM cncf_country_summary_by_member

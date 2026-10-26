@@ -10,6 +10,7 @@ import GithubInstallationsRepository from '@/database/repositories/githubInstall
 import IntegrationProgressRepository from '@/database/repositories/integrationProgressRepository'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SegmentRepository from '@/database/repositories/segmentRepository'
+import { getConnectorsTemporalClient } from '@/db/connectorsTemporal'
 import { IntegrationProgress, Repos } from '@/serverless/integrations/types/regularTypes'
 import {
   fetchAllGitlabGroups,
@@ -346,6 +347,7 @@ export default class IntegrationService {
     // don't hold the DB connection idle long enough to trigger a connection timeout.
     const gitlabWebhookRemovals: Array<{ token: string; projectIds: number[]; hookIds: number[] }> =
       []
+    const githubNangoIds: string[] = []
 
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
@@ -485,6 +487,10 @@ export default class IntegrationService {
           })
         }
 
+        if (integration.platform === PlatformType.GITHUB_NANGO) {
+          githubNangoIds.push(integration.id)
+        }
+
         if (integration.platform === PlatformType.GIT) {
           await this.validateGitIntegrationDeletion(integration.id, {
             ...this.options,
@@ -543,6 +549,33 @@ export default class IntegrationService {
         removeGitlabWebhooks(token, projectIds, hookIds),
       ),
     )
+
+    await Promise.all(
+      githubNangoIds.map((integrationId) =>
+        this.startGithubSyncUnitReconcile(integrationId).catch((err) =>
+          this.options.log.error(
+            err,
+            'Failed to start sync unit reconcile for deleted github-nango integration',
+            { integrationId },
+          ),
+        ),
+      ),
+    )
+  }
+
+  private async startGithubSyncUnitReconcile(integrationId: string): Promise<void> {
+    const connectorsTemporal = await getConnectorsTemporalClient()
+    await connectorsTemporal.workflow.start('reconcileGithubIntegration', {
+      taskQueue: 'connectors',
+      workflowId: `connectors-reconcile-github-integration/${integrationId}`,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      workflowExecutionTimeout: '4 hours',
+      retry: {
+        maximumAttempts: 1,
+      },
+      args: [{ integrationId }],
+    })
   }
 
   async findById(id) {
@@ -949,6 +982,14 @@ export default class IntegrationService {
         },
         args: [{ integrationId: integration.id }],
       })
+
+      await this.startGithubSyncUnitReconcile(integration.id).catch((err) =>
+        this.options.log.error(
+          err,
+          'Failed to start sync unit reconcile for github-nango integration',
+          { integrationId: integration.id },
+        ),
+      )
 
       return await this.findById(integration.id)
     } catch (err) {

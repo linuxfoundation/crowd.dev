@@ -12,6 +12,15 @@ const RETRYABLE_403_MESSAGES = [
   'although you appear to have the correct authorization credentials',
 ]
 
+export function isSecondaryRateLimitMessage(message: string | undefined): boolean {
+  return message?.toLowerCase().includes('secondary rate limit') ?? false
+}
+
+export function isRetryable403Message(message: string | undefined): boolean {
+  const lower = message?.toLowerCase() ?? ''
+  return RETRYABLE_403_MESSAGES.some((m) => lower.includes(m))
+}
+
 function hasRateLimitHeaders(headers: Record<string, string>): boolean {
   return headers['retry-after'] !== undefined || headers['x-ratelimit-remaining'] === '0'
 }
@@ -31,8 +40,7 @@ export const interpretGithubResponse: ResponseInterpreter = (response) => {
     })
   }
   if (response.status === 403) {
-    const message = body?.message?.toLowerCase() ?? ''
-    if (RETRYABLE_403_MESSAGES.some((m) => message.includes(m))) {
+    if (isRetryable403Message(body?.message)) {
       return new RateLimitError(`github rate limited: ${body?.message}`)
     }
     if (hasRateLimitHeaders(response.headers)) {
