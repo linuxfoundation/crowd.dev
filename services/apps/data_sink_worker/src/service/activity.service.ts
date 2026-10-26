@@ -112,13 +112,37 @@ interface ITimedMemberUpdate {
   timestamp: string
 }
 
+interface IPayloadMemberUpdate extends ITimedMemberUpdate {
+  payload: IActivityProcessData
+  role: 'member' | 'objectMember'
+}
+
+type PrePassMemberIds = Record<IPayloadMemberUpdate['role'], Map<IActivityProcessData, string>>
+
 function timestampMs(timestamp: string): number {
   const ms = new Date(timestamp).getTime()
   return Number.isNaN(ms) ? 0 : ms
 }
 
-function newestTimestampMs(updates: ITimedMemberUpdate[]): number {
-  return Math.max(...updates.map((u) => timestampMs(u.timestamp)))
+// Runs of a member's consecutive updates, oldest first, that share a segment, integration and platform
+function memberUpdateRuns(
+  memberId: string,
+  updates: IPayloadMemberUpdate[],
+): IPayloadMemberUpdate[][] {
+  const runs: IPayloadMemberUpdate[][] = []
+  const sorted = [...updates].sort((a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp))
+  for (const update of sorted) {
+    const run = runs[runs.length - 1]
+    if (
+      run &&
+      memberUpdateKey(run[0].payload, memberId) === memberUpdateKey(update.payload, memberId)
+    ) {
+      run.push(update)
+    } else {
+      runs.push([update])
+    }
+  }
+  return runs
 }
 
 function combineMemberUpdates(
@@ -160,7 +184,8 @@ function emailDomainTimestamps(updates: ITimedMemberUpdate[]): ActivityTimestamp
       if (identity.verified && identity.type === MemberIdentityType.EMAIL && identity.value) {
         const domain = normalizeMemberIdentityValue(identity.value).split('@')[1]
         if (domain) {
-          timestamps.set(domain, [...(timestamps.get(domain) ?? []), timestamp])
+          timestamps.set(domain, timestamps.get(domain) ?? [])
+          timestamps.get(domain).push(timestamp)
         }
       }
     }
@@ -1447,7 +1472,7 @@ export default class ActivityService extends LoggerBase {
       )
     }
 
-    const repeatedMemberIds = await logExecutionTimeV2(
+    const prePassMemberIds = await logExecutionTimeV2(
       async () =>
         this.updateRepeatedMembers(
           relevantPayloads,
@@ -1459,20 +1484,16 @@ export default class ActivityService extends LoggerBase {
       'activityService -> processActivities -> updateRepeatedMembers',
     )
 
-    // Tracks merge redirects across payloads in this batch, seeded with the combined updates'.
-    // When a member update redirects X→Y (merge), subsequent payloads for the same platform:username
-    // skip the update and reuse Y — avoids calling update() on an already-absorbed member row.
+    // Merge redirects X→Y in this batch by platform:username: later payloads reuse Y instead of
+    // calling update() on the absorbed member row.
     const memberMap = new Map<string, string>()
     for (const payload of relevantPayloads) {
-      const memberId =
-        payload.dbMember && repeatedMemberIds.get(memberUpdateKey(payload, payload.dbMember.id))
+      const memberId = prePassMemberIds.member.get(payload)
       if (memberId && memberId !== payload.dbMember.id) {
         memberMap.set(`${payload.platform}:${payload.activity.username}`, memberId)
       }
 
-      const objectMemberId =
-        payload.dbObjectMember &&
-        repeatedMemberIds.get(memberUpdateKey(payload, payload.dbObjectMember.id))
+      const objectMemberId = prePassMemberIds.objectMember.get(payload)
       if (objectMemberId && objectMemberId !== payload.dbObjectMember.id) {
         memberMap.set(
           `${payload.platform}:${payload.activity.objectMemberUsername}`,
@@ -1490,11 +1511,8 @@ export default class ActivityService extends LoggerBase {
 
       const promises = []
       // update members and orgs with them
-      const repeatedMemberId =
-        payload.dbMember && repeatedMemberIds.get(memberUpdateKey(payload, payload.dbMember.id))
-      const repeatedObjectMemberId =
-        payload.dbObjectMember &&
-        repeatedMemberIds.get(memberUpdateKey(payload, payload.dbObjectMember.id))
+      const repeatedMemberId = prePassMemberIds.member.get(payload)
+      const repeatedObjectMemberId = prePassMemberIds.objectMember.get(payload)
 
       if (repeatedMemberId && repeatedMemberId !== payload.dbMember.id) {
         payload.dbMember = undefined
@@ -1952,42 +1970,40 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
-  // A group whose combined update fails is left out of the result, so the per-activity updates
-  // handle it with their usual error handling.
+  // Activities whose member update fails here are left out of the result, so the per-activity
+  // updates handle them with their usual error handling.
   private async updateRepeatedMembers(
     payloads: IActivityProcessData[],
     memberService: MemberService,
     dbMemberIdentities: Map<string, IMemberIdentity[]>,
     orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
-  ): Promise<Map<string, string>> {
-    const groups = new Map<
+  ): Promise<PrePassMemberIds> {
+    const updatesByMember = new Map<
       string,
-      {
-        payload: IActivityProcessData
-        dbMember: IDbMember
-        updates: ITimedMemberUpdate[]
-      }
+      { dbMember: IDbMember; updates: IPayloadMemberUpdate[] }
     >()
-
-    const addUpdate = (payload: IActivityProcessData, dbMember: IDbMember, member: IMemberData) => {
-      const key = memberUpdateKey(payload, dbMember.id)
-      const group = groups.get(key) ?? { payload, dbMember, updates: [] }
-      group.updates.push({ member, timestamp: payload.activity.timestamp })
-      groups.set(key, group)
+    const addUpdate = (
+      payload: IActivityProcessData,
+      role: IPayloadMemberUpdate['role'],
+      dbMember: IDbMember,
+      member: IMemberData,
+    ) => {
+      const entry = updatesByMember.get(dbMember.id) ?? { dbMember, updates: [] }
+      entry.updates.push({ payload, role, member, timestamp: payload.activity.timestamp })
+      updatesByMember.set(dbMember.id, entry)
     }
 
     for (const payload of payloads) {
       if (payload.dbMember) {
-        addUpdate(payload, payload.dbMember, payload.activity.member)
+        addUpdate(payload, 'member', payload.dbMember, payload.activity.member)
       }
 
       if (payload.dbObjectMember && !isSameActor(payload)) {
-        addUpdate(payload, payload.dbObjectMember, payload.activity.objectMember)
+        addUpdate(payload, 'objectMember', payload.dbObjectMember, payload.activity.objectMember)
       }
     }
 
-    // Members and identities prefetched before an update are stale once it has written to them:
-    // refresh them before the same member is updated again here or by the per-activity updates.
+    // A member row and its identities are stale once an update has written to them.
     const updatedMembers = new Set<string>()
     const freshMembers = new Map<string, IDbMember>()
     const refreshMembers = async (memberIds: string[]) => {
@@ -2003,18 +2019,6 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    const groupsPerMember = new Map<string, number>()
-    for (const group of groups.values()) {
-      groupsPerMember.set(group.dbMember.id, (groupsPerMember.get(group.dbMember.id) ?? 0) + 1)
-    }
-
-    // A member's groups run from the oldest to the newest activity, so the newest activity's data
-    // is written last, as with per-activity updates in timestamp order.
-    const repeatedGroups = Array.from(groups.entries())
-      .filter(([, group]) => group.updates.length > 1 || groupsPerMember.get(group.dbMember.id) > 1)
-      .sort(([, a], [, b]) => newestTimestampMs(a.updates) - newestTimestampMs(b.updates))
-
-    const updatedMemberIds = new Map<string, string>()
     const redirects = new Map<string, string>()
     const followRedirects = (memberId: string): string => {
       const seen = new Set<string>()
@@ -2026,49 +2030,76 @@ export default class ActivityService extends LoggerBase {
       return id
     }
 
-    for (const [key, group] of repeatedGroups) {
-      const redirectedTo = followRedirects(group.dbMember.id)
-      if (redirectedTo !== group.dbMember.id) {
-        updatedMemberIds.set(key, redirectedTo)
-        continue
+    const updateMember = async (
+      dbMember: IDbMember,
+      updates: IPayloadMemberUpdate[],
+    ): Promise<string> => {
+      const memberId = followRedirects(dbMember.id)
+      if (updatedMembers.has(memberId)) {
+        await refreshMembers([memberId])
+      }
+      updatedMembers.add(memberId)
+
+      const original = freshMembers.get(memberId) ?? (memberId === dbMember.id ? dbMember : null)
+      if (!original) {
+        throw new Error(`Member ${memberId} not found!`)
       }
 
-      if (updatedMembers.has(group.dbMember.id)) {
-        await refreshMembers([group.dbMember.id])
+      const { payload } = updates[0]
+      const redirectId = await memberService.update(
+        memberId,
+        payload.segmentId,
+        payload.integrationId,
+        combineMemberUpdates(updates, original),
+        original,
+        dbMemberIdentities.get(memberId),
+        payload.platform,
+        orgPromiseCache,
+        emailDomainTimestamps(updates),
+      )
+      if (redirectId && redirectId !== memberId) {
+        redirects.set(memberId, redirectId)
+        updatedMembers.add(redirectId)
       }
+      return redirectId || memberId
+    }
 
-      const dbMember = freshMembers.get(group.dbMember.id) ?? group.dbMember
-      try {
-        const redirectId = await memberService.update(
-          group.dbMember.id,
-          group.payload.segmentId,
-          group.payload.integrationId,
-          combineMemberUpdates(group.updates, dbMember),
-          dbMember,
-          dbMemberIdentities.get(group.dbMember.id),
-          group.payload.platform,
-          orgPromiseCache,
-          emailDomainTimestamps(group.updates),
-        )
-        updatedMemberIds.set(key, redirectId || group.dbMember.id)
-        if (redirectId && redirectId !== group.dbMember.id) {
-          redirects.set(group.dbMember.id, redirectId)
-          updatedMembers.add(redirectId)
-        }
-      } catch (err) {
-        this.log.warn(
-          { err, memberId: group.dbMember.id, activities: group.updates.length },
-          'Combined member update failed, updating per activity!',
-        )
-      } finally {
-        // A failed update can still have added identities before it threw.
-        updatedMembers.add(group.dbMember.id)
+    const memberIds: PrePassMemberIds = { member: new Map(), objectMember: new Map() }
+    const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
+      for (const update of updates) {
+        memberIds[update.role].set(update.payload, memberId)
       }
     }
 
-    // A group updated before a later group merged its member away must follow that redirect too.
-    for (const [key, memberId] of updatedMemberIds) {
-      updatedMemberIds.set(key, followRedirects(memberId))
+    for (const { dbMember, updates } of updatesByMember.values()) {
+      if (updates.length < 2) {
+        continue
+      }
+
+      for (const run of memberUpdateRuns(dbMember.id, updates)) {
+        try {
+          setMemberId(run, await updateMember(dbMember, run))
+        } catch (err) {
+          this.log.warn(
+            { err, memberId: dbMember.id, activities: run.length },
+            'Combined member update failed, updating per activity!',
+          )
+          for (const update of run) {
+            try {
+              setMemberId([update], await updateMember(dbMember, [update]))
+            } catch (err) {
+              this.log.debug({ err, memberId: dbMember.id }, 'Member update failed!')
+            }
+          }
+        }
+      }
+    }
+
+    // Updates that ran before a later one merged their member away must follow that redirect too.
+    for (const ids of Object.values(memberIds)) {
+      for (const [payload, memberId] of ids) {
+        ids.set(payload, followRedirects(memberId))
+      }
     }
 
     if (updatedMembers.size > 0) {
@@ -2084,7 +2115,7 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    return updatedMemberIds
+    return memberIds
   }
 
   private async handleMemberIdentityError(

@@ -10,7 +10,6 @@ export interface IMemberUpdateData {
   reach?: Partial<Record<PlatformType, number>>
 }
 
-// Timestamps of the activities whose verified emails are on each email domain
 export type ActivityTimestampsByEmailDomain = Map<string, string[]>
 
 export interface IMemberCreateData {
