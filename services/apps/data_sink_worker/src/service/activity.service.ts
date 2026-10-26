@@ -58,6 +58,7 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
+import { IMemberUpdateData } from './member.data'
 import MemberService, { mergeIfAllowed } from './member.service'
 import { IProcessActivityResult } from './types'
 
@@ -89,6 +90,51 @@ function lineCountsFromAttributes(attributes: Record<string, unknown> | undefine
   }
 
   return { insertions, deletions }
+}
+
+function memberUpdateKey(payload: IActivityProcessData, memberId: string): string {
+  return `${memberId}:${payload.segmentId}:${payload.integrationId}:${payload.platform}`
+}
+
+function isSameActor(payload: IActivityProcessData): boolean {
+  return (
+    !!payload.dbMember &&
+    !!payload.dbObjectMember &&
+    payload.activity.username === payload.activity.objectMemberUsername
+  )
+}
+
+// Combines the member data of several activities into one update: attributes merged from the
+// oldest to the newest activity, identities and organizations together, the earliest joinedAt.
+function combineMemberUpdates(
+  updates: { member: IMemberData; timestamp: string }[],
+): IMemberUpdateData {
+  const sorted = [...updates].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  )
+
+  const identities = new Map<string, IMemberIdentity>()
+  for (const identity of sorted.flatMap((u) => u.member.identities ?? [])) {
+    const key = `${identity.platform}:${identity.type}:${identity.value?.toLowerCase()}`
+    const existing = identities.get(key)
+    if (!existing || (identity.verified && !existing.verified)) {
+      identities.set(key, identity)
+    }
+  }
+
+  const attributes = sorted.filter((u) => u.member.attributes).map((u) => u.member.attributes)
+  const reach = sorted.filter((u) => u.member.reach).map((u) => u.member.reach)
+  const organizations = sorted.flatMap((u) => u.member.organizations ?? [])
+
+  return {
+    attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
+    joinedAt: new Date(
+      Math.min(...sorted.map((u) => new Date(u.member.joinedAt ?? u.timestamp).getTime())),
+    ),
+    identities: Array.from(identities.values()),
+    organizations: organizations.length > 0 ? organizations : undefined,
+    reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
+  }
 }
 
 export default class ActivityService extends LoggerBase {
@@ -1370,10 +1416,39 @@ export default class ActivityService extends LoggerBase {
       )
     }
 
+    const repeatedMemberIds = await logExecutionTimeV2(
+      async () =>
+        this.updateRepeatedMembers(
+          relevantPayloads,
+          memberService,
+          dbMemberIdentities,
+          orgPromiseCache,
+        ),
+      this.log,
+      'activityService -> processActivities -> updateRepeatedMembers',
+    )
+
     // Tracks merge redirects across payloads in this batch. When a member update redirects
     // X→Y (merge), subsequent payloads for the same platform:username skip the update and
     // reuse Y — avoids calling update() on an already-absorbed member row.
     const memberMap = new Map<string, string>()
+    for (const payload of relevantPayloads) {
+      const memberId =
+        payload.dbMember && repeatedMemberIds.get(memberUpdateKey(payload, payload.dbMember.id))
+      if (memberId && memberId !== payload.dbMember.id) {
+        memberMap.set(`${payload.platform}:${payload.activity.username}`, memberId)
+      }
+
+      const objectMemberId =
+        payload.dbObjectMember &&
+        repeatedMemberIds.get(memberUpdateKey(payload, payload.dbObjectMember.id))
+      if (objectMemberId && objectMemberId !== payload.dbObjectMember.id) {
+        memberMap.set(
+          `${payload.platform}:${payload.activity.objectMemberUsername}`,
+          objectMemberId,
+        )
+      }
+    }
 
     for (const payload of relevantPayloads) {
       const memberKey = `${payload.platform}:${payload.activity.username}`
@@ -1388,7 +1463,18 @@ export default class ActivityService extends LoggerBase {
 
       const promises = []
       // update members and orgs with them
-      if (payload.dbMember) {
+      const repeatedMemberId =
+        payload.dbMember && repeatedMemberIds.get(memberUpdateKey(payload, payload.dbMember.id))
+      const repeatedObjectMemberId =
+        payload.dbObjectMember &&
+        repeatedMemberIds.get(memberUpdateKey(payload, payload.dbObjectMember.id))
+
+      if (repeatedMemberId) {
+        if (repeatedMemberId !== payload.dbMember.id) {
+          payload.dbMember = undefined
+        }
+        payload.memberId = repeatedMemberId
+      } else if (payload.dbMember) {
         if (memberMap.has(memberKey)) {
           payload.memberId = memberMap.get(memberKey)
           payload.dbMember = undefined
@@ -1453,7 +1539,12 @@ export default class ActivityService extends LoggerBase {
         }
       }
 
-      if (payload.dbObjectMember && !sameActorKey) {
+      if (repeatedObjectMemberId && !sameActorKey) {
+        if (repeatedObjectMemberId !== payload.dbObjectMember.id) {
+          payload.dbObjectMember = undefined
+        }
+        payload.objectMemberId = repeatedObjectMemberId
+      } else if (payload.dbObjectMember && !sameActorKey) {
         if (memberMap.has(objectMemberKey)) {
           payload.objectMemberId = memberMap.get(objectMemberKey)
           payload.dbObjectMember = undefined
@@ -1828,6 +1919,71 @@ export default class ActivityService extends LoggerBase {
 
     this.log.trace(`[ACTIVITY] We have ${resultMap.size} results to return!`)
     return resultMap
+  }
+
+  // A batch often holds several activities of the same member. Each such member is updated once
+  // per segment with the data of all its activities. A group whose combined update fails is left
+  // to the per-activity updates, so their error handling stays the same.
+  private async updateRepeatedMembers(
+    payloads: IActivityProcessData[],
+    memberService: MemberService,
+    dbMemberIdentities: Map<string, IMemberIdentity[]>,
+    orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
+  ): Promise<Map<string, string>> {
+    const groups = new Map<
+      string,
+      {
+        payload: IActivityProcessData
+        dbMember: IDbMember
+        updates: { member: IMemberData; timestamp: string }[]
+      }
+    >()
+
+    const addUpdate = (payload: IActivityProcessData, dbMember: IDbMember, member: IMemberData) => {
+      const key = memberUpdateKey(payload, dbMember.id)
+      const group = groups.get(key) ?? { payload, dbMember, updates: [] }
+      group.updates.push({ member, timestamp: payload.activity.timestamp })
+      groups.set(key, group)
+    }
+
+    for (const payload of payloads) {
+      if (payload.dbMember) {
+        addUpdate(payload, payload.dbMember, payload.activity.member)
+      }
+
+      if (payload.dbObjectMember && !isSameActor(payload)) {
+        addUpdate(payload, payload.dbObjectMember, payload.activity.objectMember)
+      }
+    }
+
+    const updatedMemberIds = new Map<string, string>()
+    for (const [key, group] of groups) {
+      if (group.updates.length < 2) {
+        continue
+      }
+
+      try {
+        const redirectId = await memberService.update(
+          group.dbMember.id,
+          group.payload.segmentId,
+          group.payload.integrationId,
+          combineMemberUpdates(group.updates),
+          group.dbMember,
+          dbMemberIdentities.get(group.dbMember.id),
+          group.payload.platform,
+          orgPromiseCache,
+          group.updates.map((u) => u.timestamp),
+        )
+        updatedMemberIds.set(key, redirectId || group.dbMember.id)
+      } catch (err) {
+        this.log.warn(
+          { err, memberId: group.dbMember.id, activities: group.updates.length },
+          'Combined member update failed, updating per activity!',
+        )
+      }
+    }
+
+    return updatedMemberIds
   }
 
   private async handleMemberIdentityError(

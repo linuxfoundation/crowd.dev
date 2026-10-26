@@ -609,7 +609,7 @@ export default class MemberService extends LoggerBase {
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
     orgPromiseCache?: OrgPromiseCache,
-    activityTimestamp?: string,
+    activityTimestamp?: string | string[],
   ): Promise<string | void> {
     return logExecutionTimeV2(
       async () => {
@@ -867,7 +867,7 @@ export default class MemberService extends LoggerBase {
     emails: string[],
     orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
-    activityTimestamp?: string,
+    activityTimestamp?: string | string[],
     isBotMember = false,
   ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
@@ -931,7 +931,12 @@ export default class MemberService extends LoggerBase {
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          await this.bufferMemberOrganizationActivityDates(memberId, result.id, activityTimestamp)
+          const dates = new Set(
+            [activityTimestamp].flat().map((t) => new Date(t).toISOString().split('T')[0]),
+          )
+          for (const date of dates) {
+            await this.bufferMemberOrganizationActivityDates(memberId, result.id, date)
+          }
         }
       }
     }
