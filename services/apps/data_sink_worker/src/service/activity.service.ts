@@ -112,13 +112,20 @@ interface ITimedMemberUpdate {
   timestamp: string
 }
 
+function timestampMs(timestamp: string): number {
+  const ms = new Date(timestamp).getTime()
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function newestTimestampMs(updates: ITimedMemberUpdate[]): number {
+  return Math.max(...updates.map((u) => timestampMs(u.timestamp)))
+}
+
 function combineMemberUpdates(
   updates: ITimedMemberUpdate[],
   dbMember: IDbMember,
 ): IMemberUpdateData {
-  const sorted = [...updates].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-  )
+  const sorted = [...updates].sort((a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp))
 
   // mergeData discards incoming attributes that flag a non-bot member as a bot. Applied to the
   // combined attributes it would drop every activity's attributes, so it's applied per activity.
@@ -1996,15 +2003,32 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
+    const groupsPerMember = new Map<string, number>()
+    for (const group of groups.values()) {
+      groupsPerMember.set(group.dbMember.id, (groupsPerMember.get(group.dbMember.id) ?? 0) + 1)
+    }
+
+    // A member's groups run from the oldest to the newest activity, so the newest activity's data
+    // is written last, as with per-activity updates in timestamp order.
+    const repeatedGroups = Array.from(groups.entries())
+      .filter(([, group]) => group.updates.length > 1 || groupsPerMember.get(group.dbMember.id) > 1)
+      .sort(([, a], [, b]) => newestTimestampMs(a.updates) - newestTimestampMs(b.updates))
+
     const updatedMemberIds = new Map<string, string>()
     const redirects = new Map<string, string>()
-    for (const [key, group] of groups) {
-      if (group.updates.length < 2) {
-        continue
+    const followRedirects = (memberId: string): string => {
+      const seen = new Set<string>()
+      let id = memberId
+      while (redirects.has(id) && !seen.has(id)) {
+        seen.add(id)
+        id = redirects.get(id)
       }
+      return id
+    }
 
-      const redirectedTo = redirects.get(group.dbMember.id)
-      if (redirectedTo) {
+    for (const [key, group] of repeatedGroups) {
+      const redirectedTo = followRedirects(group.dbMember.id)
+      if (redirectedTo !== group.dbMember.id) {
         updatedMemberIds.set(key, redirectedTo)
         continue
       }
@@ -2044,10 +2068,7 @@ export default class ActivityService extends LoggerBase {
 
     // A group updated before a later group merged its member away must follow that redirect too.
     for (const [key, memberId] of updatedMemberIds) {
-      const redirectedTo = redirects.get(memberId)
-      if (redirectedTo) {
-        updatedMemberIds.set(key, redirectedTo)
-      }
+      updatedMemberIds.set(key, followRedirects(memberId))
     }
 
     if (updatedMembers.size > 0) {
