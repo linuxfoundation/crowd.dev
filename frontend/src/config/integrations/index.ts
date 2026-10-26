@@ -18,6 +18,7 @@ import gerrit from './gerrit/config';
 import discourse from './discourse/config';
 import devto from './devto/config';
 import octolens from './octolens/config';
+import credly from './credly/config';
 
 export interface ActionRequiredMessage {
   key: string;
@@ -71,4 +72,5 @@ export const lfIntegrations: (useGitHubNango?: boolean) => Record<string, Integr
   discourse,
   devto,
   octolens,
+  credly,
 });
