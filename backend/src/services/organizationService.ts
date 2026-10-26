@@ -39,11 +39,13 @@ import {
   addOrgsToSegments,
   deleteFakeOrganizationSuggestion,
   deleteOrgAttributes,
+  deleteOrganizationAttributes,
   findOrgAttributes,
   findOrgById,
   markOrgAttributeDefault,
   moveOrgAttributes,
   recalculateOrgAttributeDefaults,
+  restoreOrgAttributeDefaults,
   upsertOrgAttributes,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
@@ -456,7 +458,18 @@ export default class OrganizationService extends LoggerBase {
               (a, b) => a.name === b.name && a.source === b.source && a.value === b.value,
             )
 
+            const affectedNames = attributesFromSecondary.map(({ name }) => name)
+
             await deleteOrgAttributes(qx, organizationId, attributesFromSecondary)
+            await restoreOrgAttributeDefaults(
+              qx,
+              organizationId,
+              (backup.primary.orgAttributes ?? []).filter(({ name }) =>
+                affectedNames.includes(name),
+              ),
+            )
+
+            await deleteOrganizationAttributes(qx, [secondaryOrganization.id])
             await upsertOrgAttributes(qx, secondaryOrganization.id, secondaryAttributes)
             for (const attribute of secondaryAttributes.filter((a) => a.default)) {
               await markOrgAttributeDefault(qx, secondaryOrganization.id, attribute)
@@ -465,7 +478,7 @@ export default class OrganizationService extends LoggerBase {
             await recalculateOrgAttributeDefaults(
               qx,
               organizationId,
-              withoutNameAttribute(attributesFromSecondary.map(({ name }) => name)),
+              withoutNameAttribute(affectedNames),
             )
             await recalculateOrgAttributeDefaults(
               qx,
@@ -741,6 +754,12 @@ export default class OrganizationService extends LoggerBase {
             toMergeId,
             originalId,
           )
+          const primaryName = backup.primary.orgAttributes.find(
+            (attribute) => attribute.name === 'name' && attribute.default,
+          )
+          if (primaryName) {
+            await markOrgAttributeDefault(optionsQx(repoOptions), originalId, primaryName)
+          }
           const attributeColumns = await recalculateOrgAttributeDefaults(
             optionsQx(repoOptions),
             originalId,

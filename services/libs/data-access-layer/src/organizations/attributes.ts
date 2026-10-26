@@ -139,6 +139,8 @@ export async function moveOrgAttributes(
           FROM "orgAttributes" existing
           WHERE existing."organizationId" = $(toOrganizationId)
             AND existing.name = moved.name
+            AND existing.source = moved.source
+            AND existing."default"
         ),
         "updatedAt" = NOW()
       WHERE moved."organizationId" = $(fromOrganizationId)
@@ -180,6 +182,41 @@ export async function deleteOrgAttributes(
       names: attributes.map(({ name }) => name),
       sources: attributes.map(({ source }) => source),
       values: attributes.map(({ value }) => value),
+    },
+  )
+}
+
+export async function restoreOrgAttributeDefaults(
+  qx: QueryExecutor,
+  organizationId: string,
+  attributes: IDbOrgAttributeInput[],
+): Promise<void> {
+  const defaults = attributes.filter((attribute) => attribute.default)
+  if (defaults.length === 0) {
+    return
+  }
+
+  await qx.result(
+    `
+      UPDATE "orgAttributes" restored
+      SET "default" = true
+      WHERE restored."organizationId" = $(organizationId)
+        AND (restored.name, restored.source, restored.value) IN (
+          SELECT * FROM UNNEST($(names)::text[], $(sources)::text[], $(values)::text[])
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "orgAttributes" chosen
+          WHERE chosen."organizationId" = $(organizationId)
+            AND chosen.name = restored.name
+            AND chosen."default"
+        )
+    `,
+    {
+      organizationId,
+      names: defaults.map(({ name }) => name),
+      sources: defaults.map(({ source }) => source),
+      values: defaults.map(({ value }) => value),
     },
   )
 }
