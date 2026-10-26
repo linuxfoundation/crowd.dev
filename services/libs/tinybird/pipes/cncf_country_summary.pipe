@@ -1,7 +1,7 @@
 DESCRIPTION >
-    - `collection_country_summary.pipe` serves the key figures of the CNCF country report: contributors, contributions and active organizations of one country.
+    - `cncf_country_summary.pipe` serves the key figures of the CNCF country report: contributors, contributions and active organizations of one country.
     - Splits the country's contributors into three groups: located in the country and contributing through an organization headquartered there, located in the country without one, and located elsewhere but contributing through one.
-    - Parameters (all inherited from `collection_country_activities`):
+    - Parameters (all inherited from `cncf_country_activities`):
     - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR')
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -12,7 +12,7 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE collection_country_summary_by_member
+NODE cncf_country_summary_by_member
 SQL >
     SELECT
         memberId,
@@ -20,10 +20,10 @@ SQL >
         max(organizationInCountry) AS atCountryOrganization,
         count() AS contributions,
         groupUniqArrayIf(organizationId, organizationInCountry) AS countryOrganizations
-    FROM collection_country_activities
+    FROM cncf_country_activities
     GROUP BY memberId
 
-NODE collection_country_summary_result
+NODE cncf_country_summary_result
 SQL >
     SELECT
         count() AS contributorCount,
@@ -32,4 +32,4 @@ SQL >
         countIf(inCountry AND atCountryOrganization) AS inCountryAtCountryOrganizationCount,
         countIf(inCountry AND NOT atCountryOrganization) AS inCountryElsewhereCount,
         countIf(NOT inCountry) AS abroadAtCountryOrganizationCount
-    FROM collection_country_summary_by_member
+    FROM cncf_country_summary_by_member

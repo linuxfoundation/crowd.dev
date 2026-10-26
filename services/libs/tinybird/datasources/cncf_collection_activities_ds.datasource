@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `cncf_collection_activities_ds` contains activity relations pre-filtered to the CNCF collection (slug `cncf`, `cityHash64('cncf') % 10 = 8`, so all its rows live in bucket 8).
     - Populated daily by `cncf_collection_activities_copy.pipe`, which reads from `activityRelations_collection_deduplicated_cleaned_bucket_8_ds` filtered to `collectionSlug = 'cncf'`.
-    - Exists so the CNCF report pipes (`collection_contributors_geo_distribution*`, `collection_country_*`) don't have to scan/filter the full bucket on every request.
+    - Exists so the CNCF report pipes (`collection_contributors_geo_distribution*`, `cncf_country_*`) don't have to scan/filter the full bucket on every request.
     - Stores only the fields those report pipes need: organizationId, memberId, timestamp, platform, type, segmentId.
     - `segmentId` is the project's segment, used by the country report to break contributions down by project.
 

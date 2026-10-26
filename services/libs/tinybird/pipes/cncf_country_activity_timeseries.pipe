@@ -1,8 +1,8 @@
 DESCRIPTION >
-    - `collection_country_activity_timeseries.pipe` serves the activity-over-time chart of the CNCF country report.
+    - `cncf_country_activity_timeseries.pipe` serves the activity-over-time chart of the CNCF country report.
     - For each period, returns the country's active contributors, contributions, and active organizations headquartered in the country.
     - Parameters:
-    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `collection_country_activities`
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `cncf_country_activities`
     - `granularity`: Required string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
     - `startDate`: Required DateTime start of the series (e.g., '2024-01-01 00:00:00'); `generate_timeseries` needs it, since this pipe has no project to derive the start from
     - `endDate`: Optional DateTime end of the series (e.g., '2024-12-31 23:59:59'), defaults to now
@@ -13,7 +13,7 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE collection_country_activity_timeseries_result
+NODE cncf_country_activity_timeseries_result
 SQL >
     %
     SELECT
@@ -24,7 +24,7 @@ SQL >
         uniqIf(a.organizationId, a.organizationInCountry) AS "organizationCount"
     FROM generate_timeseries ds
     LEFT JOIN
-        collection_country_activities a
+        cncf_country_activities a
         ON CASE
             WHEN {{ granularity }} = 'daily'
             THEN toDate(a.timestamp)

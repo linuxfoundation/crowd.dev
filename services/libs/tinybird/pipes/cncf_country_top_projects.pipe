@@ -1,7 +1,7 @@
 DESCRIPTION >
-    - `collection_country_top_projects.pipe` serves the top projects list of the CNCF country report: CNCF projects ranked by the country's contributors.
+    - `cncf_country_top_projects.pipe` serves the top projects list of the CNCF country report: CNCF projects ranked by the country's contributors.
     - Parameters:
-    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `collection_country_activities`
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `cncf_country_activities`
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
@@ -12,13 +12,13 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE collection_country_top_projects_projects
+NODE cncf_country_top_projects_projects
 SQL >
     SELECT segmentId, name, slug, logoUrl
     FROM insightsProjects FINAL
     WHERE segmentId != '' AND enabled = 1 AND deletedAt IS NULL
 
-NODE collection_country_top_projects_result
+NODE cncf_country_top_projects_result
 SQL >
     %
     SELECT
@@ -27,8 +27,8 @@ SQL >
         p.logoUrl AS logoUrl,
         uniq(a.memberId) AS contributorCount,
         count() AS contributionCount
-    FROM collection_country_activities a
-    INNER JOIN collection_country_top_projects_projects p ON p.segmentId = a.segmentId
+    FROM cncf_country_activities a
+    INNER JOIN cncf_country_top_projects_projects p ON p.segmentId = a.segmentId
     GROUP BY name, slug, logoUrl
     ORDER BY contributorCount DESC, contributionCount DESC
     LIMIT {{ Int32(limit, 10, description="Number of projects returned", required=False) }}

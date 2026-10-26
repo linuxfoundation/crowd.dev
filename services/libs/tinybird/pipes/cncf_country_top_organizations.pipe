@@ -1,9 +1,9 @@
 DESCRIPTION >
-    - `collection_country_top_organizations.pipe` serves the top organizations table of the CNCF country report: organizations ranked by the country's contributors.
+    - `cncf_country_top_organizations.pipe` serves the top organizations table of the CNCF country report: organizations ranked by the country's contributors.
     - Lists every organization the country's contributors contributed through, headquartered in the country or not, and flags the ones that are.
     - Skips organizations blocked from affiliations (`isAffiliationBlocked`), as `leaderboards_organizations.pipe` does, and the "Individual - No Account" placeholder records, which stand for contributors without an employer and are not blocked.
     - Parameters:
-    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `collection_country_activities`
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `cncf_country_activities`
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
@@ -14,14 +14,14 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE collection_country_top_organizations_organizations
+NODE cncf_country_top_organizations_organizations
 SQL >
     SELECT o.id, o.displayName, o.logo, ops.slug
     FROM organizations o FINAL
     LEFT JOIN organizations_populated_slug ops ON o.id = ops.id
     WHERE o.isAffiliationBlocked = 0 AND o.displayName != 'Individual - No Account'
 
-NODE collection_country_top_organizations_result
+NODE cncf_country_top_organizations_result
 SQL >
     %
     SELECT
@@ -33,8 +33,8 @@ SQL >
         uniq(a.memberId) AS contributorCount,
         uniqIf(a.memberId, a.memberInCountry) AS contributorInCountryCount,
         count() AS contributionCount
-    FROM collection_country_activities a
-    INNER JOIN collection_country_top_organizations_organizations o ON o.id = a.organizationId
+    FROM cncf_country_activities a
+    INNER JOIN cncf_country_top_organizations_organizations o ON o.id = a.organizationId
     GROUP BY id, displayName, logo, slug
     ORDER BY contributorCount DESC, contributionCount DESC
     LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}

@@ -1,5 +1,5 @@
 DESCRIPTION >
-    - `collection_country_activities.pipe` returns the CNCF collection contributions that belong to one country, for the country report pipes (`collection_country_*`).
+    - `cncf_country_activities.pipe` returns the CNCF collection contributions that belong to one country, for the country report pipes (`cncf_country_*`).
     - A contribution belongs to the country when its contributor is located there, or when it was made through an organization headquartered there.
     - A contributor is located in a country when the country on their profile, or else their location, names it. An organization is headquartered in a country when its country, or else its location, names it. Names are matched by containment, as in `contributors_geo_distribution.pipe`.
     - Reads from `cncf_collection_activities_ds`, so it covers the CNCF collection only.
@@ -12,7 +12,7 @@ DESCRIPTION >
 
 TAGS "Report"
 
-NODE collection_country_name
+NODE cncf_country_name
 SQL >
     %
     SELECT country
@@ -28,7 +28,7 @@ SQL >
         }}
     LIMIT 1
 
-NODE collection_country_period_activities
+NODE cncf_country_period_activities
 SQL >
     %
     SELECT memberId, organizationId, segmentId, timestamp
@@ -45,38 +45,38 @@ SQL >
             < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
         {% end %}
 
-NODE collection_country_members
+NODE cncf_country_members
 SQL >
     SELECT id
     FROM members_sorted
     WHERE
-        id IN (SELECT memberId FROM collection_country_period_activities)
+        id IN (SELECT memberId FROM cncf_country_period_activities)
         AND position(
             upper(coalesce(nullIf(country, ''), location)),
-            upper((SELECT country FROM collection_country_name))
+            upper((SELECT country FROM cncf_country_name))
         )
         > 0
 
-NODE collection_country_organizations
+NODE cncf_country_organizations
 SQL >
     SELECT id
     FROM organizations FINAL
     WHERE
-        id IN (SELECT organizationId FROM collection_country_period_activities)
+        id IN (SELECT organizationId FROM cncf_country_period_activities)
         AND position(
             upper(coalesce(nullIf(country, ''), location)),
-            upper((SELECT country FROM collection_country_name))
+            upper((SELECT country FROM cncf_country_name))
         )
         > 0
 
-NODE collection_country_activities_result
+NODE cncf_country_activities_result
 SQL >
     SELECT
         memberId,
         organizationId,
         segmentId,
         timestamp,
-        memberId IN (SELECT id FROM collection_country_members) AS memberInCountry,
-        organizationId IN (SELECT id FROM collection_country_organizations) AS organizationInCountry
-    FROM collection_country_period_activities
+        memberId IN (SELECT id FROM cncf_country_members) AS memberInCountry,
+        organizationId IN (SELECT id FROM cncf_country_organizations) AS organizationInCountry
+    FROM cncf_country_period_activities
     WHERE memberInCountry OR organizationInCountry
