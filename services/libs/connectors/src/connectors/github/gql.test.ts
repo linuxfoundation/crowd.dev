@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
-import { ProviderContractError } from '../../http/errors'
+import { ProviderAccessDeniedError, ProviderContractError } from '../../http/errors'
 import { githubGraphql } from './gql'
 
 const log = {
@@ -26,6 +26,11 @@ const notFound = {
   errors: [
     { type: 'NOT_FOUND', message: "Could not resolve to a Repository with the name 'o/r'." },
   ],
+}
+const ipAllowListRefusal = {
+  type: 'FORBIDDEN',
+  message:
+    'Although you appear to have the correct authorization credentials, the `maximhq` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.',
 }
 const resolved = { data: { repository: { issue: { comments: { nodes: [] } } } } }
 
@@ -81,6 +86,30 @@ describe('githubGraphql', () => {
     await expect(githubGraphql(http, 'query', {}, log)).rejects.toBeInstanceOf(
       ProviderContractError,
     )
+    expect(http.request).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws access denied with the provider message when an org policy refuses the request', async () => {
+    const http = httpReturning([{ data: { repository: null }, errors: [ipAllowListRefusal] }])
+
+    const pending = githubGraphql(http, 'query', {}, log)
+
+    await expect(pending).rejects.toBeInstanceOf(ProviderAccessDeniedError)
+    await expect(pending).rejects.toMatchObject({
+      errorClass: 'provider.access_denied',
+      message: expect.stringContaining('the `maximhq` organization has an IP allow list enabled'),
+    })
+    expect(http.request).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns partial data when a fork owned by an allow-listed org is refused', async () => {
+    const partial = {
+      data: { repository: { forks: { nodes: [null, { id: 'f' }] } } },
+      errors: [ipAllowListRefusal],
+    }
+    const http = httpReturning([partial])
+
+    await expect(githubGraphql(http, 'query', {}, log)).resolves.toEqual(partial.data)
     expect(http.request).toHaveBeenCalledTimes(1)
   })
 })
