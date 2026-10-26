@@ -45,7 +45,6 @@ import {
   markOrgAttributeDefault,
   moveOrgAttributes,
   recalculateOrgAttributeDefaults,
-  restoreOrgAttributeDefaults,
   upsertOrgAttributes,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
@@ -459,15 +458,10 @@ export default class OrganizationService extends LoggerBase {
               (a, b) => a.name === b.name && a.source === b.source && a.value === b.value,
             )
 
-            const affectedNames = attributesFromSecondary.map(({ name }) => name)
-
-            await deleteOrgAttributes(qx, organizationId, attributesFromSecondary)
-            await restoreOrgAttributeDefaults(
+            const removedNames = await deleteOrgAttributes(
               qx,
               organizationId,
-              (backup.primary.orgAttributes ?? []).filter(({ name }) =>
-                affectedNames.includes(name),
-              ),
+              attributesFromSecondary,
             )
 
             await deleteOrganizationAttributes(qx, [secondaryOrganization.id])
@@ -479,7 +473,7 @@ export default class OrganizationService extends LoggerBase {
             await recalculateOrgAttributeDefaults(
               qx,
               organizationId,
-              withoutNameAttribute(affectedNames),
+              withoutNameAttribute(removedNames),
             )
             await recalculateOrgAttributeDefaults(
               qx,

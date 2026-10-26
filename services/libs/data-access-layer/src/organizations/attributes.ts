@@ -130,33 +130,6 @@ export async function moveOrgAttributes(
   toOrganizationId: string,
   excludedNames: string[],
 ): Promise<string[]> {
-  // Runs before the move so moved rows from the same source see the inherited default.
-  const inherited: { name: string }[] = await qx.select(
-    `
-      UPDATE "orgAttributes" kept
-      SET "default" = true
-      FROM "orgAttributes" duplicate
-      WHERE kept."organizationId" = $(toOrganizationId)
-        AND duplicate."organizationId" = $(fromOrganizationId)
-        AND duplicate."default"
-        AND NOT kept."default"
-        AND kept.name = duplicate.name
-        AND kept.source = duplicate.source
-        AND kept.value = duplicate.value
-        AND kept.name <> ALL($(excludedNames)::text[])
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "orgAttributes" chosen
-          WHERE chosen."organizationId" = $(toOrganizationId)
-            AND chosen.name = kept.name
-            AND chosen.source = kept.source
-            AND chosen."default"
-        )
-      RETURNING kept.name
-    `,
-    { fromOrganizationId, toOrganizationId, excludedNames },
-  )
-
   const moved: { name: string }[] = await qx.select(
     `
       UPDATE "orgAttributes" moved
@@ -186,25 +159,26 @@ export async function moveOrgAttributes(
     { fromOrganizationId, toOrganizationId, excludedNames },
   )
 
-  return uniq([...inherited, ...moved].map(({ name }) => name))
+  return uniq(moved.map(({ name }) => name))
 }
 
 export async function deleteOrgAttributes(
   qx: QueryExecutor,
   organizationId: string,
   attributes: IDbOrgAttributeInput[],
-): Promise<void> {
+): Promise<string[]> {
   if (attributes.length === 0) {
-    return
+    return []
   }
 
-  await qx.result(
+  const deleted: { name: string }[] = await qx.select(
     `
       DELETE FROM "orgAttributes"
       WHERE "organizationId" = $(organizationId)
         AND (name, source, value) IN (
           SELECT * FROM UNNEST($(names)::text[], $(sources)::text[], $(values)::text[])
         )
+      RETURNING name
     `,
     {
       organizationId,
@@ -213,41 +187,8 @@ export async function deleteOrgAttributes(
       values: attributes.map(({ value }) => value),
     },
   )
-}
 
-export async function restoreOrgAttributeDefaults(
-  qx: QueryExecutor,
-  organizationId: string,
-  attributes: IDbOrgAttributeInput[],
-): Promise<void> {
-  const defaults = attributes.filter((attribute) => attribute.default)
-  if (defaults.length === 0) {
-    return
-  }
-
-  await qx.result(
-    `
-      UPDATE "orgAttributes" restored
-      SET "default" = true
-      WHERE restored."organizationId" = $(organizationId)
-        AND (restored.name, restored.source, restored.value) IN (
-          SELECT * FROM UNNEST($(names)::text[], $(sources)::text[], $(values)::text[])
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "orgAttributes" chosen
-          WHERE chosen."organizationId" = $(organizationId)
-            AND chosen.name = restored.name
-            AND chosen."default"
-        )
-    `,
-    {
-      organizationId,
-      names: defaults.map(({ name }) => name),
-      sources: defaults.map(({ source }) => source),
-      values: defaults.map(({ value }) => value),
-    },
-  )
+  return uniq(deleted.map(({ name }) => name))
 }
 
 export async function deleteOrganizationAttributes(
