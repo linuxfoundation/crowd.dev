@@ -7,6 +7,7 @@ import {
   getCountry,
   hasAttributeValue,
   hasIntersection,
+  omitUrlValues,
   replaceDoubleQuotes,
   sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
@@ -375,6 +376,10 @@ export async function updateMemberUsingSquashedPayload(
       svc.log.debug({ memberId }, 'Updating member attributes!')
 
       attributes = _.merge({}, attributes, squashedPayload.attributes)
+
+      if (attributes.location) {
+        attributes.location = omitUrlValues(attributes.location)
+      }
 
       if (Object.keys(attributes).length > 0) {
         // Infer country from location when no country source is set.
