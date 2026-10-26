@@ -14,6 +14,7 @@ import {
   isSameMemberIdentity,
   normalizeDisplayName,
   normalizeMemberIdentities,
+  omitUrlValues,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -371,6 +372,10 @@ export default class MemberService extends LoggerBase {
               'memberService -> create -> memberAttributeService.validateAttributes',
             )
 
+            if (attributes.location) {
+              attributes.location = omitUrlValues(attributes.location)
+            }
+
             if (!hasAttributeValue(attributes.country)) {
               const location = getAttributeValue(attributes.location)
               const country = getCountry(location)
@@ -633,6 +638,10 @@ export default class MemberService extends LoggerBase {
               this.log,
               'memberService -> update -> memberAttributeService.validateAttributes',
             )
+
+            if (data.attributes.location) {
+              data.attributes.location = omitUrlValues(data.attributes.location)
+            }
           }
 
           data.identities = normalizeMemberIdentities(data.identities, {

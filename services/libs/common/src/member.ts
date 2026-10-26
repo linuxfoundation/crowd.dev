@@ -96,6 +96,16 @@ export function hasAttributeValue(attribute: unknown): boolean {
   )
 }
 
+const URL_VALUE_PATTERN = /^\s*https?:\/\//i
+
+export function omitUrlValues(attribute: unknown): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(attribute ?? {}).filter(
+      ([, value]) => !(typeof value === 'string' && URL_VALUE_PATTERN.test(value)),
+    ),
+  )
+}
+
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
   priorities: string[],

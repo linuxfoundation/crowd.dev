@@ -248,6 +248,26 @@ export async function recordRunFailure(
   )
 }
 
+export async function recordRunTimeout(
+  qx: QueryExecutor,
+  id: string,
+  errorMessage: string,
+  attemptStartedAt: Date,
+): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET "consecutiveFailures" = "consecutiveFailures" + 1,
+         "lastErrorClass" = 'worker.timeout',
+         "lastErrorMessage" = $(errorMessage),
+         "lastRunComplete" = false,
+         "lastRunAt" = now(),
+         "updatedAt" = now()
+     WHERE id = $(id)
+       AND ("lastRunAt" IS NULL OR "lastRunAt" < $(attemptStartedAt))`,
+    { id, errorMessage: truncateErrorMessage(errorMessage), attemptStartedAt },
+  )
+}
+
 export async function reviveDeadLetteredSyncUnits(
   qx: QueryExecutor,
   integrationId: string,

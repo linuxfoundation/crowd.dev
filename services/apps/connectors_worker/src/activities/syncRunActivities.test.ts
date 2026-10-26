@@ -1,3 +1,4 @@
+import { ApplicationFailure } from '@temporalio/activity'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -7,7 +8,8 @@ import {
 } from '@crowd/connectors'
 import type { ConnectorError, SyncContext, SyncOutcome } from '@crowd/connectors'
 
-import { executeSync } from './syncRunActivities'
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
+import { executeSync, recordSyncRunTimeout } from './syncRunActivities'
 
 const CADENCE_RUN_AT = new Date('2026-10-16T12:05:00.000Z')
 const SHORT_DEFER_RUN_AT = new Date('2026-10-16T12:01:00.000Z')
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   reassertUnitClaim: vi.fn(),
   recordRunSuccess: vi.fn(),
   recordRunFailure: vi.fn(),
+  recordRunTimeout: vi.fn(),
   rescheduleUnit: vi.fn(),
   emittedCount: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -25,7 +28,8 @@ const mocks = vi.hoisted(() => ({
 
 const activityCancellation = vi.hoisted(() => ({ controller: new AbortController() }))
 
-vi.mock('@temporalio/activity', () => ({
+vi.mock('@temporalio/activity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@temporalio/activity')>()),
   Context: {
     current: () => ({
       info: { workflowExecution: { workflowId: 'wf', runId: 'run' } },
@@ -66,6 +70,7 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   rescheduleUnit: mocks.rescheduleUnit,
   recordRunPartial: vi.fn(),
   recordRunFailure: mocks.recordRunFailure,
+  recordRunTimeout: mocks.recordRunTimeout,
   parkUnit: vi.fn(),
   recordShadowRecords: vi.fn(),
 }))
@@ -208,7 +213,14 @@ describe('executeSync failure', () => {
   ])('dead-letters after %s failures for %s', async (deadLetterAfter, error) => {
     mocks.run.mockRejectedValue(error)
 
-    await expect(executeSync(UNIT.id)).rejects.toBe(error)
+    const thrown = await executeSync(UNIT.id).catch((e: ApplicationFailure) => e)
+
+    expect(thrown).toBeInstanceOf(ApplicationFailure)
+    expect(thrown).toMatchObject({
+      type: SYNC_RUN_FAILURE_RECORDED,
+      message: error.message,
+      cause: error,
+    })
 
     expect(mocks.recordRunFailure).toHaveBeenCalledWith(
       {},
@@ -219,5 +231,72 @@ describe('executeSync failure', () => {
       SHORT_DEFER_RUN_AT,
       null,
     )
+  })
+})
+
+describe('recordSyncRunTimeout', () => {
+  const ATTEMPT_STARTED_AT = '2026-10-26T03:03:11.000Z'
+
+  it('logs a failed run summary with the timeout class when the timeout is recorded', async () => {
+    mocks.recordRunTimeout.mockResolvedValue(1)
+
+    await recordSyncRunTimeout(UNIT.id, 'HEARTBEAT', ATTEMPT_STARTED_AT)
+
+    expect(mocks.recordRunTimeout).toHaveBeenCalledWith(
+      {},
+      UNIT.id,
+      'sync run timed out (HEARTBEAT)',
+      new Date(ATTEMPT_STARTED_AT),
+    )
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'sync_run_summary',
+        outcome: 'failed',
+        errorClass: 'worker.timeout',
+        errorMessage: 'sync run timed out (HEARTBEAT)',
+        consecutiveFailures: 1,
+      }),
+      'sync run summary',
+    )
+  })
+
+  it('logs that the attempt already finished when nothing was recorded', async () => {
+    mocks.recordRunTimeout.mockResolvedValue(0)
+
+    await recordSyncRunTimeout(UNIT.id, 'HEARTBEAT', ATTEMPT_STARTED_AT)
+
+    expect(mocks.log.error).not.toHaveBeenCalled()
+    expect(mocks.log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'sync_run_timeout_ignored', timeoutType: 'HEARTBEAT' }),
+      expect.any(String),
+    )
+  })
+
+  it('still logs the failed summary when a retried recorder finds its own timeout already written', async () => {
+    mocks.recordRunTimeout.mockResolvedValue(0)
+    mocks.getUnitById
+      .mockResolvedValueOnce(UNIT)
+      .mockResolvedValueOnce({ ...UNIT, consecutiveFailures: 1, lastErrorClass: 'worker.timeout' })
+
+    await recordSyncRunTimeout(UNIT.id, 'HEARTBEAT', ATTEMPT_STARTED_AT)
+
+    expect(mocks.recordRunTimeout).toHaveBeenCalledTimes(1)
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'sync_run_summary',
+        outcome: 'failed',
+        errorClass: 'worker.timeout',
+        consecutiveFailures: 1,
+      }),
+      'sync run summary',
+    )
+  })
+
+  it('does nothing when the unit no longer exists', async () => {
+    mocks.getUnitById.mockResolvedValue(null)
+
+    await recordSyncRunTimeout(UNIT.id, 'HEARTBEAT', ATTEMPT_STARTED_AT)
+
+    expect(mocks.recordRunTimeout).not.toHaveBeenCalled()
   })
 })
