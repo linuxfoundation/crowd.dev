@@ -8,7 +8,7 @@ TAGS "Report"
 
 NODE cncf_collection_activities_copy_result
 SQL >
-    SELECT organizationId, memberId, timestamp, platform, type
+    SELECT organizationId, memberId, timestamp, platform, type, segmentId
     FROM activityRelations_collection_deduplicated_cleaned_bucket_8_ds
     WHERE collectionSlug = 'cncf'
 
