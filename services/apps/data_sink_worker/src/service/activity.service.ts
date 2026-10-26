@@ -115,6 +115,11 @@ interface IPayloadMemberUpdate extends ITimedMemberUpdate {
   role: MemberRole
 }
 
+interface IMemberUpdateGroup {
+  dbMember: IDbMember
+  updates: IPayloadMemberUpdate[]
+}
+
 interface IMemberUpdateFailure {
   err: Error
   metadata?: Record<string, unknown>
@@ -134,13 +139,8 @@ function updateRunKey(payload: IActivityProcessData): string {
   return `${payload.segmentId}:${payload.integrationId}:${payload.platform}`
 }
 
-function groupUpdatesByMember(
-  payloads: IActivityProcessData[],
-): Map<string, { dbMember: IDbMember; updates: IPayloadMemberUpdate[] }> {
-  const updatesByMember = new Map<
-    string,
-    { dbMember: IDbMember; updates: IPayloadMemberUpdate[] }
-  >()
+function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMemberUpdateGroup> {
+  const updatesByMember = new Map<string, IMemberUpdateGroup>()
   const addUpdate = (
     payload: IActivityProcessData,
     role: MemberRole,
@@ -2031,16 +2031,14 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
-  // Members that appear more than once are updated here, a run of their activities at a time,
-  // and their activities skip the per-activity member updates.
+  // Activities handled here skip the per-activity member updates.
   private async updateRepeatedMembers(
     payloads: IActivityProcessData[],
     memberService: MemberService,
     dbMemberIdentities: Map<string, IMemberIdentity[]>,
     orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
   ): Promise<IRepeatedMemberResults> {
-    // A member row and its identities are stale once an update has written to them.
-    const updatedMembers = new Set<string>()
+    const staleMemberIds = new Set<string>()
     const freshMembers = new Map<string, IDbMember>()
     const refreshMembers = async (memberIds: string[]) => {
       const [identities, members] = await Promise.all([
@@ -2059,7 +2057,7 @@ export default class ActivityService extends LoggerBase {
     const redirect = (memberId: string, redirectId: string) => {
       if (redirectId !== memberId) {
         redirects.set(memberId, redirectId)
-        updatedMembers.add(redirectId)
+        staleMemberIds.add(redirectId)
       }
     }
 
@@ -2073,10 +2071,10 @@ export default class ActivityService extends LoggerBase {
       updates: IPayloadMemberUpdate[],
     ): Promise<string> => {
       const memberId = followRedirects(redirects, dbMember.id)
-      if (updatedMembers.has(memberId)) {
+      if (staleMemberIds.has(memberId)) {
         await refreshMembers([memberId])
       }
-      updatedMembers.add(memberId)
+      staleMemberIds.add(memberId)
 
       const original = currentRow(dbMember)
       if (!original) {
@@ -2160,8 +2158,8 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    if (updatedMembers.size > 0) {
-      await refreshMembers(Array.from(updatedMembers))
+    if (staleMemberIds.size > 0) {
+      await refreshMembers(Array.from(staleMemberIds))
       for (const payload of payloads) {
         if (payload.dbMember) {
           payload.dbMember = freshMembers.get(payload.dbMember.id) ?? payload.dbMember
