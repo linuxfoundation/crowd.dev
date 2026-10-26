@@ -138,6 +138,25 @@ export async function listActiveCredlyTemplateMappings(
   )
 }
 
+export async function listStaleCredlyTemplateMappings(
+  qx: QueryExecutor,
+): Promise<ICredlyTemplateMapping[]> {
+  return qx.select(
+    `
+      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId"
+      FROM integration."credlyTemplateMappings" m
+      LEFT JOIN public.integrations i
+        ON i.id = m."integrationId"
+       AND i.platform = $(platform)
+       AND i."deletedAt" IS NULL
+       AND i."segmentId" = m."segmentId"
+      WHERE m."deactivatedAt" IS NULL AND i.id IS NULL
+      ORDER BY m."badgeTemplateId"
+    `,
+    { platform: PlatformType.CREDLY },
+  )
+}
+
 export async function deactivateCredlyTemplateMapping(
   qx: QueryExecutor,
   badgeTemplateId: string,

@@ -8,6 +8,7 @@ import {
   deactivateCredlyTemplateMapping,
   findOrCreateCredlyIntegration,
   listActiveCredlyTemplateMappings,
+  listStaleCredlyTemplateMappings,
   upsertCredlyTemplateMapping,
 } from './index'
 
@@ -183,16 +184,18 @@ describe('credly template mappings', () => {
     ).rejects.toThrow('not a live Credly integration')
   })
 
-  test('listActive skips deactivated mappings and those whose integration is gone', async ({
+  test('active and stale lists split mappings by whether their integration is live on the segment', async ({
     qx,
   }) => {
     const live = await mappedProject(qx)
     const deactivated = await mappedProject(qx)
     const deleted = await mappedProject(qx)
+    const moved = await mappedProject(qx)
     for (const [badgeTemplateId, project] of [
       ['tpl-live', live],
       ['tpl-deactivated', deactivated],
       ['tpl-deleted', deleted],
+      ['tpl-moved', moved],
     ] as const) {
       await upsertCredlyTemplateMapping(qx, {
         badgeTemplateId,
@@ -204,11 +207,20 @@ describe('credly template mappings', () => {
     await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
       id: deleted.integrationId,
     })
+    await qx.result(`UPDATE public.integrations SET "segmentId" = $(segmentId) WHERE id = $(id)`, {
+      id: moved.integrationId,
+      segmentId: await createSegment(qx),
+    })
 
     const active = await listActiveCredlyTemplateMappings(qx)
+    const stale = await listStaleCredlyTemplateMappings(qx)
 
     expect(active.filter((m) => m.badgeTemplateId.startsWith('tpl-'))).toEqual([
       { badgeTemplateId: 'tpl-live', badgeTemplateName: 'tpl-live', ...live },
+    ])
+    expect(stale.filter((m) => m.badgeTemplateId.startsWith('tpl-'))).toEqual([
+      { badgeTemplateId: 'tpl-deleted', badgeTemplateName: 'tpl-deleted', ...deleted },
+      { badgeTemplateId: 'tpl-moved', badgeTemplateName: 'tpl-moved', ...moved },
     ])
   })
 })
