@@ -375,11 +375,12 @@ export async function updateMemberUsingSquashedPayload(
     if (squashedPayload.attributes) {
       svc.log.debug({ memberId }, 'Updating member attributes!')
 
-      attributes = _.merge({}, attributes, squashedPayload.attributes)
-
-      if (attributes.location) {
-        attributes.location = omitUrlValues(attributes.location)
+      const incomingAttributes = { ...squashedPayload.attributes }
+      if (incomingAttributes.location) {
+        incomingAttributes.location = omitUrlValues(incomingAttributes.location)
       }
+
+      attributes = _.merge({}, attributes, incomingAttributes)
 
       if (Object.keys(attributes).length > 0) {
         // Infer country from location when no country source is set.
