@@ -104,6 +104,9 @@ function isSameActor(payload: IActivityProcessData): boolean {
   )
 }
 
+// getEarliestValidDate treats dates this close to the epoch as activities without a timestamp
+const EPOCH_TOLERANCE_MS = 5 * 86_400_000
+
 interface ITimedMemberUpdate {
   member: IMemberData
   timestamp: string
@@ -125,7 +128,7 @@ function combineMemberUpdates(
 
   const joinedAt = sorted
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
-    .filter((d) => d.getTime() > 0)
+    .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
   const attributes = sorted
     .filter((u) => u.member.attributes && (dbMemberIsBot || !isBot(u.member.attributes)))
@@ -1976,13 +1979,20 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    // Identities prefetched before an update are stale once it has added new ones: refresh them
-    // before the same member is updated again here or by the per-activity updates.
+    // Members and identities prefetched before an update are stale once it has written to them:
+    // refresh them before the same member is updated again here or by the per-activity updates.
     const updatedMembers = new Set<string>()
-    const refreshIdentities = async (memberIds: string[]) => {
-      const fresh = await findIdentitiesForMembers(this.pgQx, memberIds)
+    const freshMembers = new Map<string, IDbMember>()
+    const refreshMembers = async (memberIds: string[]) => {
+      const [identities, members] = await Promise.all([
+        findIdentitiesForMembers(this.pgQx, memberIds),
+        this.memberRepo.findByIds(memberIds),
+      ])
       for (const memberId of memberIds) {
-        dbMemberIdentities.set(memberId, fresh.get(memberId) ?? [])
+        dbMemberIdentities.set(memberId, identities.get(memberId) ?? [])
+      }
+      for (const member of members) {
+        freshMembers.set(member.id, member)
       }
     }
 
@@ -2000,16 +2010,17 @@ export default class ActivityService extends LoggerBase {
       }
 
       if (updatedMembers.has(group.dbMember.id)) {
-        await refreshIdentities([group.dbMember.id])
+        await refreshMembers([group.dbMember.id])
       }
 
+      const dbMember = freshMembers.get(group.dbMember.id) ?? group.dbMember
       try {
         const redirectId = await memberService.update(
           group.dbMember.id,
           group.payload.segmentId,
           group.payload.integrationId,
-          combineMemberUpdates(group.updates, group.dbMember),
-          group.dbMember,
+          combineMemberUpdates(group.updates, dbMember),
+          dbMember,
           dbMemberIdentities.get(group.dbMember.id),
           group.payload.platform,
           orgPromiseCache,
@@ -2039,7 +2050,16 @@ export default class ActivityService extends LoggerBase {
     }
 
     if (updatedMembers.size > 0) {
-      await refreshIdentities(Array.from(updatedMembers))
+      await refreshMembers(Array.from(updatedMembers))
+      for (const payload of payloads) {
+        if (payload.dbMember) {
+          payload.dbMember = freshMembers.get(payload.dbMember.id) ?? payload.dbMember
+        }
+        if (payload.dbObjectMember) {
+          payload.dbObjectMember =
+            freshMembers.get(payload.dbObjectMember.id) ?? payload.dbObjectMember
+        }
+      }
     }
 
     return updatedMemberIds
