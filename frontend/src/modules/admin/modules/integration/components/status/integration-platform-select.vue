@@ -23,7 +23,7 @@
       <lf-dropdown-separator />
 
       <lf-dropdown-item
-        v-for="(integration, key) in lfIntegrations()"
+        v-for="(integration, key) in connectableIntegrations"
         :key="key"
         :selected="model === key"
         @click="model = key"
@@ -51,6 +51,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
+
+const adminNotConnectablePlatforms = ['twitter'];
+
+const connectableIntegrations = computed(() => Object.fromEntries(
+  Object.entries(lfIntegrations())
+    .filter(([key, config]) => !config.autoManaged && !adminNotConnectablePlatforms.includes(key)),
+));
 
 const model = computed({
   get() {

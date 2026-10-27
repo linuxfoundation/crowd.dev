@@ -12,6 +12,11 @@ import { getReposBySegmentGroupedByPlatform } from '../segments'
 
 const log = getServiceChildLogger('db.integrations')
 
+const ADMIN_NOT_CONNECTABLE_PLATFORMS: PlatformType[] = [
+  ...AUTO_MANAGED_INTEGRATION_PLATFORMS,
+  PlatformType.TWITTER,
+]
+
 export function normalizeRepoUrl(url: string): string {
   try {
     const parsed = new URL(url)
@@ -188,7 +193,7 @@ export async function fetchGlobalNotConnectedIntegrations(
                                       UNION
                                       SELECT platform FROM public.integrations) known
                                 WHERE platform IS NOT NULL
-                                  AND NOT platform = ANY ($(autoManaged)::text[])),
+                                  AND NOT platform = ANY ($(notConnectable)::text[])),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
@@ -221,7 +226,7 @@ export async function fetchGlobalNotConnectedIntegrations(
       query: `%${query}%`,
       limit,
       offset,
-      autoManaged: AUTO_MANAGED_INTEGRATION_PLATFORMS,
+      notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
     },
   )
 }
@@ -248,7 +253,7 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
                                       UNION
                                       SELECT platform FROM public.integrations) known
                                 WHERE platform IS NOT NULL
-                                  AND NOT platform = ANY ($(autoManaged)::text[])),
+                                  AND NOT platform = ANY ($(notConnectable)::text[])),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
@@ -271,7 +276,7 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
       segmentId,
       isLF: isLF ?? null,
       query: `%${query}%`,
-      autoManaged: AUTO_MANAGED_INTEGRATION_PLATFORMS,
+      notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
     },
   )
 }

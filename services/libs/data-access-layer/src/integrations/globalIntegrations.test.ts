@@ -122,12 +122,16 @@ describe('global not-connected integrations for a selected platform', () => {
     expect(Number(count)).toBe(2)
   })
 
-  test('never lists an auto-managed platform even when selected', async ({ qx }) => {
-    const { groupId } = await createTree(qx)
+  test('never lists platforms that cannot be connected from the admin page', async ({ qx }) => {
+    const { groupId, connectedId } = await createTree(qx)
+    await createIntegration(qx, 'twitter', connectedId)
 
-    const rows = await fetchGlobalNotConnectedIntegrations(qx, 'octolens', '', 1000, 0, groupId)
-
-    expect(rows).toEqual([])
+    for (const platform of ['octolens', 'credly', 'twitter']) {
+      const rows = await fetchGlobalNotConnectedIntegrations(qx, platform, '', 1000, 0, groupId)
+      expect(rows).toEqual([])
+    }
+    const all = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId)
+    expect(all.map((r) => r.platform)).not.toContain('twitter')
   })
 })
 
