@@ -169,14 +169,15 @@ function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMe
 }
 
 function identityKey(identity: IMemberIdentity): string {
-  return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value).toLowerCase()}`
+  return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value)}`.toLowerCase()
 }
 
-// Members that can merge into each other in this batch: a verified identity that one of them owns
-// or sends is sent by another. Their activities have to be applied in strict timestamp order.
+// Members that can merge into each other or into the same member in this batch: a verified identity
+// they send is owned or sent by another. Their activities have to be applied in timestamp order.
 function linkedMembers(
   updatesByMember: Map<string, IMemberUpdateGroup>,
   dbMemberIdentities: Map<string, IMemberIdentity[]>,
+  identityOwners: Map<string, string>,
 ): string[][] {
   const parent = new Map<string, string>()
   const root = (memberId: string): string => {
@@ -213,6 +214,15 @@ function linkedMembers(
     for (const { member } of updates) {
       for (const identity of member.identities ?? []) {
         link(identity, memberId)
+
+        const owner =
+          identity.verified && identity.value && identityOwners.get(identityKey(identity))
+        if (owner && owner !== memberId) {
+          if (!parent.has(owner)) {
+            parent.set(owner, owner)
+          }
+          parent.set(root(owner), root(memberId))
+        }
       }
     }
   }
@@ -2071,7 +2081,20 @@ export default class ActivityService extends LoggerBase {
     // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
     // their activities in timestamp order; members that can't merge don't affect each other.
     const updatesByMember = groupUpdatesByMember(payloads)
-    const runs = linkedMembers(updatesByMember, dbMemberIdentities)
+    const sentIdentities = distinctBy(
+      Array.from(updatesByMember.values())
+        .flatMap(({ updates }) => updates.flatMap((u) => u.member.identities ?? []))
+        .filter((identity) => identity.verified && identity.value),
+      identityKey,
+    )
+    const owners =
+      updatesByMember.size > 1 && sentIdentities.length > 0
+        ? await findMembersByIdentities(this.pgQx, sentIdentities, undefined, true)
+        : new Map<string, string>()
+    const identityOwners = new Map(
+      Array.from(owners, ([key, memberId]) => [key.toLowerCase(), memberId]),
+    )
+    const runs = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners)
       .flatMap((memberIds) =>
         oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates)),
       )
