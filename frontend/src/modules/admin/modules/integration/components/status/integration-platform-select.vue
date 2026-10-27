@@ -45,18 +45,18 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import { lfIntegrations } from '@/config/integrations';
+import { isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 
 const props = defineProps<{
   modelValue?: string,
+  connectableOnly?: boolean,
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 
-const adminNotConnectablePlatforms = ['twitter'];
-
 const connectableIntegrations = computed(() => Object.fromEntries(
   Object.entries(lfIntegrations())
-    .filter(([key, config]) => !config.autoManaged && !adminNotConnectablePlatforms.includes(key)),
+    .filter(([key]) => !props.connectableOnly || isAdminConnectable(key)),
 ));
 
 const model = computed({

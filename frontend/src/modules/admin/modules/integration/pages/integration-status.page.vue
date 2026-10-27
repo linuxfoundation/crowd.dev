@@ -16,7 +16,7 @@
           <span class="text-small whitespace-nowrap">LF projects only</span>
         </lf-switch>
         <lf-admin-integration-foundation-select v-model="foundation" :is-l-f="lfOnly ? true : null" />
-        <lf-admin-integration-platform-select v-model="platform" />
+        <lf-admin-integration-platform-select v-model="platform" :connectable-only="status === 'notConnected'" />
       </div>
     </div>
     <lf-search v-model="query" lazy placeholder="Search sub-projects..." class="!h-9" />
@@ -220,6 +220,7 @@ import LfAdminIntegrationPlatformSelect
 import LfAdminIntegrationFoundationSelect
   from '@/modules/admin/modules/integration/components/status/integration-foundation-select.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
+import { isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 import {
   lfIntegrationStatusesTabs,
 } from '@/modules/admin/modules/integration/config/status';
@@ -332,6 +333,10 @@ onMounted(() => {
 });
 
 watch(() => status.value, () => {
+  if (status.value === 'notConnected' && platform.value && !isAdminConnectable(platform.value)) {
+    platform.value = '';
+    return;
+  }
   offset.value = 0;
   fetchGlobalIntegrations();
 });
