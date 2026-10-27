@@ -125,13 +125,15 @@ describe('global not-connected integrations for a selected platform', () => {
   test('never lists platforms that cannot be connected from the admin page', async ({ qx }) => {
     const { groupId, connectedId } = await createTree(qx)
     await createIntegration(qx, 'twitter', connectedId)
+    await createIntegration(qx, 'mailinglist', connectedId)
 
-    for (const platform of ['octolens', 'credly', 'twitter']) {
+    for (const platform of ['octolens', 'credly', 'twitter', 'mailinglist']) {
       const rows = await fetchGlobalNotConnectedIntegrations(qx, platform, '', 1000, 0, groupId)
       expect(rows).toEqual([])
     }
     const all = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId)
     expect(all.map((r) => r.platform)).not.toContain('twitter')
+    expect(all.map((r) => r.platform)).not.toContain('mailinglist')
   })
 })
 

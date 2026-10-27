@@ -15,6 +15,7 @@ const log = getServiceChildLogger('db.integrations')
 const ADMIN_NOT_CONNECTABLE_PLATFORMS: PlatformType[] = [
   ...AUTO_MANAGED_INTEGRATION_PLATFORMS,
   PlatformType.TWITTER,
+  PlatformType.MAILINGLIST,
 ]
 
 export function normalizeRepoUrl(url: string): string {
