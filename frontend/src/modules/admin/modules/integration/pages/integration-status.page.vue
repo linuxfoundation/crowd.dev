@@ -258,8 +258,9 @@ const { trackEvent } = useProductTracking();
 const integrationConfig = (integrationPlatform: string): IntegrationConfig | undefined => (integrationPlatform === 'github-nango'
   ? lfIntegrations(true).github : lfIntegrations()[integrationPlatform]);
 
-const visibleIntegrations = computed(() => integrations.value
-  .filter((integration) => !!integration.platform && !!integrationConfig(integration.platform)));
+const visibleIntegrations = computed(() => (status.value === 'notConnected'
+  ? integrations.value.filter((integration) => !!integration.platform && !!integrationConfig(integration.platform))
+  : integrations.value));
 
 const hasConnectGuidance = (integration: IntegrationStatus) => {
   const config = integrationConfig(integration.platform);
