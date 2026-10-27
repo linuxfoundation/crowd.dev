@@ -1,6 +1,6 @@
 <template>
   <div class="pt-6 min-h-120">
-    <div class="pb-6 flex justify-between items-center flex-wrap gap-2">
+    <div class="pb-6 flex flex-col items-start gap-4">
       <lf-tabs v-model="status" :fragment="false">
         <lf-tab v-for="(config, key) in lfIntegrationStatusesTabs" :key="key" :name="key">
           <div class="flex items-center gap-1.5">
@@ -11,7 +11,7 @@
           </div>
         </lf-tab>
       </lf-tabs>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center flex-wrap gap-3">
         <lf-switch v-model="lfOnly" size="small">
           <span class="text-small whitespace-nowrap">LF projects only</span>
         </lf-switch>
@@ -43,7 +43,7 @@
                   target="_blank"
                   class="group block"
                 >
-                  <p class="text-medium font-semibold mb-1 group-hover:underline">
+                  <p class="text-medium font-semibold mb-1 text-black group-hover:text-primary-500 group-hover:underline">
                     {{ integration.name }}
                   </p>
                   <p class="text-tiny text-gray-500">
