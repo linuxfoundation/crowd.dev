@@ -4,12 +4,7 @@ import { githubChannelName } from '@crowd/nango'
 import { isRenamedRepo } from './githubLifecycle'
 import { githubResolveSkipReason } from './githubSkipReasons'
 
-export {
-  MIRROR_CHUNK_SIZE,
-  MIRROR_RESOLVE_CONCURRENCY,
-  chunk,
-  mirrorRoom,
-} from './mirrorSweepLimits'
+export { MIRROR_RESOLVE_CONCURRENCY, chunk, mirrorRoom } from './mirrorSweepLimits'
 
 export type MirrorSkipReason =
   | 'no_installation_id'
@@ -42,9 +37,14 @@ export interface IMirrorSweepSummary {
   mirrored: number
   skipped: number
   unitsInserted: number
-  chunksFailed: number
+  failed: boolean
   durationMs: number
 }
+
+export type MirrorBatchResult = Pick<
+  IMirrorSweepSummary,
+  'candidates' | 'attempted' | 'mirrored' | 'skipped' | 'unitsInserted' | 'failed'
+>
 
 export type MirrorRepoResult =
   | { outcome: 'mirrored'; unitsInserted: number }

@@ -1,3 +1,6 @@
+import axios from 'axios'
+
+import { timeout } from '@crowd/common'
 import { getCredential } from '@crowd/connectors'
 import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { mintInstallationToken } from '@crowd/connectors/src/connectors/github/appToken'
@@ -25,6 +28,11 @@ interface IRepoChannel {
   channelName: string
 }
 
+const NANGO_RETRY_DELAYS_MS = [5_000, 15_000, 45_000]
+const NANGO_REQUEST_TIMEOUT_MS = 30_000
+
+class NangoRequestTimeout extends Error {}
+
 class MirrorSkip extends Error {
   constructor(
     readonly reason: MirrorSkipReason,
@@ -45,14 +53,55 @@ async function atStage<T>(stage: MirrorStage, run: () => Promise<T>): Promise<T>
   }
 }
 
+const isTransientNangoError = (err: unknown): boolean =>
+  err instanceof NangoRequestTimeout ||
+  (axios.isAxiosError(err) && (err.response === undefined || err.response.status >= 500))
+
+async function getNangoConnectionWithin(
+  connectionId: string,
+): ReturnType<typeof getNangoConnectionData> {
+  let timer: NodeJS.Timeout | undefined
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new NangoRequestTimeout(`nango request timed out after ${NANGO_REQUEST_TIMEOUT_MS} ms`),
+        ),
+      NANGO_REQUEST_TIMEOUT_MS,
+    )
+  })
+  try {
+    return await Promise.race([
+      getNangoConnectionData(NangoIntegration.GITHUB, connectionId),
+      timedOut,
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function fetchNangoConnection(
+  connectionId: string,
+): ReturnType<typeof getNangoConnectionData> {
+  for (const delayMs of NANGO_RETRY_DELAYS_MS) {
+    try {
+      return await getNangoConnectionWithin(connectionId)
+    } catch (err) {
+      if (!isTransientNangoError(err)) {
+        throw err
+      }
+      await timeout(delayMs)
+    }
+  }
+  return getNangoConnectionWithin(connectionId)
+}
+
 async function resolveCandidateChannel(
   qx: QueryExecutor,
   candidate: IMirrorCandidate,
 ): Promise<IRepoChannel> {
   const credential = await getCredential(qx, candidate.integrationId)
-  const connection = await atStage('nango', () =>
-    getNangoConnectionData(NangoIntegration.GITHUB, candidate.connectionId),
-  )
+  const connection = await atStage('nango', () => fetchNangoConnection(candidate.connectionId))
   const installationId: string | undefined = connection.connection_config?.installation_id
   if (!installationId) {
     throw new MirrorSkip('no_installation_id')

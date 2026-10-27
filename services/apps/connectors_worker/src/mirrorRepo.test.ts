@@ -14,6 +14,12 @@ const mocks = vi.hoisted(() => ({
   upsertSyncUnits: vi.fn(),
   alignSyncUnitChannelName: vi.fn(),
   findIntegrationRepositoryUrl: vi.fn(),
+  timeout: vi.fn(),
+}))
+
+vi.mock('@crowd/common', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@crowd/common')>()),
+  timeout: mocks.timeout,
 }))
 
 vi.mock('@crowd/connectors', () => ({ getCredential: mocks.getCredential }))
@@ -54,6 +60,10 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
 const qx = {} as QueryExecutor
 const candidate = { integrationId: 'i-1', connectionId: 'c-1', owner: 'acme', repoName: 'widget' }
 const since = '2026-10-18T00:00:00.000Z'
+const httpError = (status: number) =>
+  new axios.AxiosError(`status ${status}`, String(status), undefined, undefined, {
+    status,
+  } as never)
 
 describe('mirrorRepo', () => {
   beforeEach(() => {
@@ -153,5 +163,40 @@ describe('mirrorRepo', () => {
       message: 'Not Found',
     })
     expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
+  })
+
+  it('retries nango server errors and hung requests with backoff and skips once they persist', async () => {
+    mocks.getNangoConnectionData
+      .mockRejectedValueOnce(httpError(503))
+      .mockRejectedValueOnce(httpError(504))
+    await expect(mirrorRepo(qx, candidate, since)).resolves.toMatchObject({ outcome: 'mirrored' })
+    expect(mocks.timeout.mock.calls).toEqual([[5_000], [15_000]])
+
+    vi.clearAllMocks()
+    mocks.getNangoConnectionData.mockRejectedValue(httpError(503))
+    await expect(mirrorRepo(qx, candidate, since)).resolves.toEqual({
+      outcome: 'skipped',
+      reason: 'nango_error',
+      message: 'status 503',
+    })
+    expect(mocks.getNangoConnectionData).toHaveBeenCalledTimes(4)
+
+    vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    mocks.getNangoConnectionData
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValueOnce({ connection_config: { installation_id: 'inst-1' } })
+    const hung = mirrorRepo(qx, candidate, since)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await expect(hung).resolves.toMatchObject({ outcome: 'mirrored' })
+    expect(mocks.timeout.mock.calls).toEqual([[5_000]])
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+
+    vi.clearAllMocks()
+    mocks.getNangoConnectionData.mockRejectedValue(httpError(404))
+    await expect(mirrorRepo(qx, candidate, since)).resolves.toMatchObject({ reason: 'nango_error' })
+    expect(mocks.getNangoConnectionData).toHaveBeenCalledTimes(1)
+    expect(mocks.timeout).not.toHaveBeenCalled()
   })
 })
