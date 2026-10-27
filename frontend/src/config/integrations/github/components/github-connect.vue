@@ -26,7 +26,7 @@
           </div>
         </div>
       </lfx-dropdown-item>
-      <lfx-dropdown-item @click="isV1SettingsDrawerOpen = true">
+      <lfx-dropdown-item @click="openV1Connect">
         <div class="flex items-start gap-2">
           <lf-github-version-tag version="v1" />
           <div>
@@ -73,6 +73,7 @@ import LfGithubConnectFinishingModal from '@/config/integrations/github/componen
 import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { useRoute } from 'vue-router';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 
 const props = defineProps<{
   integration: Integration<GitHubSettings> | undefined,
@@ -86,6 +87,11 @@ const isDropdownVisible = ref(false);
 const isFinishingModalOpen = ref(false);
 
 const { doGithubConnect } = mapActions('integration');
+
+const openV1Connect = () => {
+  rememberConnectSegment(props.segmentId, props.grandparentId);
+  isV1SettingsDrawerOpen.value = true;
+};
 
 const finalizeGithubConnect = () => {
   const {

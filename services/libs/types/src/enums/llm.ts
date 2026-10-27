@@ -21,4 +21,5 @@ export enum LlmQueryType {
   FAKE_ORGANIZATION_ANALYSIS = 'fake_organization_analysis',
   PROJECT_EVALUATION = 'project_evaluation',
   ONBOARDING_REQUEST_PARSING = 'onboarding_request_parsing',
+  LOCATION_COUNTRY = 'location_country',
 }

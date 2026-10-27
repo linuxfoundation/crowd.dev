@@ -24,6 +24,18 @@ import SequelizeRepository from './sequelizeRepository'
 
 const { Op } = Sequelize
 
+function parsePlatformsFilter(platforms: string | string[] | null | undefined): string[] | null {
+  if (!platforms) return null
+  const list = (Array.isArray(platforms) ? platforms : [platforms]).filter((p) => !!p)
+  return list.length ? list : null
+}
+
+function parseIsLFFilter(isLF: string | boolean | null | undefined): boolean | null {
+  if (isLF === true || isLF === 'true') return true
+  if (isLF === false || isLF === 'false') return false
+  return null
+}
+
 class IntegrationRepository {
   static async create(data, options: IRepositoryOptions) {
     const currentUser = SequelizeRepository.getCurrentUser(options)
@@ -323,6 +335,8 @@ class IntegrationRepository {
       limit?: number
       offset?: number
       segment?: string | null
+      isLF?: string | boolean | null
+      platforms?: string | string[] | null
     },
     options: IRepositoryOptions,
   ) {
@@ -334,6 +348,8 @@ class IntegrationRepository {
       offset = 0,
       segment = null,
     } = filters
+    const isLF = parseIsLFFilter(filters.isLF)
+    const platforms = parsePlatformsFilter(filters.platforms)
 
     const qx = SequelizeRepository.getQueryExecutor(options)
     const statusArray = Array.isArray(status) ? status : [status]
@@ -342,11 +358,20 @@ class IntegrationRepository {
     // Execute data fetch and count in parallel for better performance
     const [rows, [countObj]] = await Promise.all([
       isNotConnectedQuery
-        ? fetchGlobalNotConnectedIntegrations(qx, platform, query, limit, offset, segment)
-        : fetchGlobalIntegrations(qx, statusArray, platform, query, limit, offset, segment),
+        ? fetchGlobalNotConnectedIntegrations(
+            qx,
+            platform,
+            query,
+            limit,
+            offset,
+            segment,
+            isLF,
+            platforms,
+          )
+        : fetchGlobalIntegrations(qx, statusArray, platform, query, limit, offset, segment, isLF),
       isNotConnectedQuery
-        ? fetchGlobalNotConnectedIntegrationsCount(qx, platform, query, segment)
-        : fetchGlobalIntegrationsCount(qx, statusArray, platform, query, segment),
+        ? fetchGlobalNotConnectedIntegrationsCount(qx, platform, query, segment, isLF, platforms)
+        : fetchGlobalIntegrationsCount(qx, statusArray, platform, query, segment, isLF),
     ])
 
     // Both functions return an array with count objects, so we take the first element
@@ -374,16 +399,20 @@ class IntegrationRepository {
     filters: {
       platform?: string | null
       segment?: string | null
+      isLF?: string | boolean | null
+      platforms?: string | string[] | null
     },
     options: IRepositoryOptions,
   ) {
     const { platform = null, segment = null } = filters
+    const isLF = parseIsLFFilter(filters.isLF)
+    const platforms = parsePlatformsFilter(filters.platforms)
     const qx = SequelizeRepository.getQueryExecutor(options)
 
     // Execute both queries in parallel for better performance
     const [statusCounts, [notConnectedResult]] = await Promise.all([
-      fetchGlobalIntegrationsStatusCount(qx, platform, segment),
-      fetchGlobalNotConnectedIntegrationsCount(qx, platform, '', segment),
+      fetchGlobalIntegrationsStatusCount(qx, platform, segment, isLF),
+      fetchGlobalNotConnectedIntegrationsCount(qx, platform, '', segment, isLF, platforms),
     ])
 
     return [

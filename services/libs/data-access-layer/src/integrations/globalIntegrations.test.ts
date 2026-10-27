@@ -16,6 +16,10 @@ import {
 
 const test = withQx(base)
 
+type GlobalIntegrationRow = { segmentId: string; name: string }
+const segmentIdsOf = (rows: unknown[]) => (rows as GlobalIntegrationRow[]).map((r) => r.segmentId)
+const namesOf = (rows: unknown[]) => (rows as GlobalIntegrationRow[]).map((r) => r.name)
+
 async function createIntegration(
   qx: QueryExecutor,
   platform: string | null,
@@ -58,9 +62,7 @@ describe('global integrations with auto-managed octolens integrations', () => {
     expect(rows).toContainEqual(
       expect.objectContaining({ platform: 'github', segmentId: unconnectedId }),
     )
-    expect(rows).toContainEqual(
-      expect.objectContaining({ platform: null, segmentId: unconnectedId }),
-    )
+    expect(rows.map((r) => r.platform)).not.toContain(null)
     expect(Number(count)).toBe(rows.length)
   })
 
@@ -101,6 +103,212 @@ describe('global integrations with auto-managed octolens integrations', () => {
     expect(listedIds).toContain(subprojectIntegration)
     expect(listedIds).not.toContain(anchor)
     expect(Number(count)).toBe(listed.length)
+  })
+})
+
+describe('global not-connected integrations for a selected platform', () => {
+  test('lists sub-projects for a platform with no integration rows yet', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, 'confluence', '', 1000, 0, groupId)
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      'confluence',
+      '',
+      groupId,
+    )
+
+    expect(segmentIdsOf(rows).sort()).toEqual([connectedId, unconnectedId].sort())
+    expect(Number(count)).toBe(2)
+  })
+
+  test('never lists platforms that cannot be connected from the admin page', async ({ qx }) => {
+    const { groupId, connectedId } = await createTree(qx)
+    await createIntegration(qx, 'twitter', connectedId)
+    await createIntegration(qx, 'mailinglist', connectedId)
+
+    for (const platform of ['octolens', 'credly', 'twitter', 'mailinglist']) {
+      const rows = await fetchGlobalNotConnectedIntegrations(qx, platform, '', 1000, 0, groupId)
+      expect(rows).toEqual([])
+    }
+    const all = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId)
+    expect(all.map((r) => r.platform)).not.toContain('twitter')
+    expect(all.map((r) => r.platform)).not.toContain('mailinglist')
+  })
+})
+
+describe('global not-connected integrations limited to given platforms', () => {
+  test('list and count only include the given platforms', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+    await createIntegration(qx, 'github', connectedId)
+    await createIntegration(qx, 'cvent', connectedId)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'github',
+    ])
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      null,
+      '',
+      groupId,
+      null,
+      ['github'],
+    )
+
+    expect(rows.map((r) => r.platform)).toEqual(['github'])
+    expect(segmentIdsOf(rows)).toEqual([unconnectedId])
+    expect(Number(count)).toBe(1)
+  })
+
+  test('includes given platforms that have no integration rows yet', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'confluence',
+    ])
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      null,
+      '',
+      groupId,
+      null,
+      ['confluence'],
+    )
+
+    expect(segmentIdsOf(rows).sort()).toEqual([connectedId, unconnectedId].sort())
+    expect(Number(count)).toBe(2)
+  })
+})
+
+describe('global not-connected github variants', () => {
+  test('treats github-nango as github', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+    await createIntegration(qx, 'github-nango', connectedId)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'github',
+    ])
+
+    expect(rows.map((r) => r.platform)).toEqual(['github'])
+    expect(segmentIdsOf(rows)).toEqual([unconnectedId])
+  })
+})
+
+describe('global integrations LF filter', () => {
+  async function createTreeWithLF(qx: QueryExecutor, isLF: boolean) {
+    const node = () => ({ name: generateUUIDv1(), slug: generateUUIDv1(), isLF })
+    const [group] = (
+      await createSegments(qx, [
+        { ...node(), projects: [{ ...node(), subprojects: [node(), node()] }] },
+      ])
+    ).projectGroups
+    const [connected, unconnected] = group.projects[0].subprojects
+    await createIntegration(qx, 'github', connected.id)
+    return { groupId: group.row.id, connectedId: connected.id, unconnectedId: unconnected.id }
+  }
+
+  test('not-connected list and count keep only segments matching isLF', async ({ qx }) => {
+    const lf = await createTreeWithLF(qx, true)
+    const nonLf = await createTreeWithLF(qx, false)
+
+    for (const tree of [lf, nonLf]) {
+      const matches = tree === lf
+      const listed = await fetchGlobalNotConnectedIntegrations(
+        qx,
+        'github',
+        '',
+        1000,
+        0,
+        tree.groupId,
+        true,
+      )
+      const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+        qx,
+        'github',
+        '',
+        tree.groupId,
+        true,
+      )
+      expect(segmentIdsOf(listed)).toEqual(matches ? [tree.unconnectedId] : [])
+      expect(Number(count)).toBe(listed.length)
+
+      const unfiltered = await fetchGlobalNotConnectedIntegrations(
+        qx,
+        'github',
+        '',
+        1000,
+        0,
+        tree.groupId,
+        null,
+      )
+      expect(segmentIdsOf(unfiltered)).toEqual([tree.unconnectedId])
+    }
+  })
+
+  test('connected list, count and status count keep only segments matching isLF', async ({
+    qx,
+  }) => {
+    const lf = await createTreeWithLF(qx, true)
+    const nonLf = await createTreeWithLF(qx, false)
+
+    for (const [tree, isLF, expected] of [
+      [lf, true, 1],
+      [lf, false, 0],
+      [nonLf, true, 0],
+      [nonLf, false, 1],
+    ] as const) {
+      const listed = await fetchGlobalIntegrations(
+        qx,
+        ['done'],
+        'github',
+        '',
+        1000,
+        0,
+        tree.groupId,
+        isLF,
+      )
+      const [{ count }] = await fetchGlobalIntegrationsCount(
+        qx,
+        ['done'],
+        'github',
+        '',
+        tree.groupId,
+        isLF,
+      )
+      const statusCounts = await fetchGlobalIntegrationsStatusCount(
+        qx,
+        'github',
+        tree.groupId,
+        isLF,
+      )
+
+      expect(listed).toHaveLength(expected)
+      expect(Number(count)).toBe(expected)
+      expect(Number(statusCounts.find((s) => s.status === 'done')?.count ?? 0)).toBe(expected)
+    }
+  })
+})
+
+describe('global integrations ordering', () => {
+  test('not-connected rows are ordered by project then sub-project name', async ({ qx }) => {
+    const prefix = generateUUIDv1()
+    const named = (name: string) => ({ name: `${prefix}-${name}`, slug: generateUUIDv1() })
+    const [group] = (
+      await createSegments(qx, [
+        {
+          ...named('group'),
+          projects: [
+            { ...named('b-project'), subprojects: [named('b'), named('a')] },
+            { ...named('a-project'), subprojects: [named('z')] },
+          ],
+        },
+      ])
+    ).projectGroups
+    await createIntegration(qx, 'github', null)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, 'github', '', 1000, 0, group.row.id)
+
+    expect(namesOf(rows)).toEqual([`${prefix}-z`, `${prefix}-a`, `${prefix}-b`])
   })
 })
 

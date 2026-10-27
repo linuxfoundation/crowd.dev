@@ -2,13 +2,12 @@ import Layout from '@/modules/layout/components/layout.vue';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import { consumeConnectSegment } from '@/config/integrations/connect-segment';
 
-const IntegrationListPage = () => import(
-  '@/modules/admin/modules/integration/pages/integration-list.page.vue'
-);
-const IntegrationSuccessPage = () => import(
-  '@/modules/integration/pages/integration-success-page.vue'
-);
+const IntegrationListPage = () =>
+  import('@/modules/admin/modules/integration/pages/integration-list.page.vue');
+const IntegrationSuccessPage = () =>
+  import('@/modules/integration/pages/integration-success-page.vue');
 
 export default [
   {
@@ -26,12 +25,13 @@ export default [
         name: 'integrationRedirect',
         path: '/integrations',
         exact: true,
-        meta: {
-        },
+        meta: {},
         beforeEnter: [
           (to, from, next) => {
-            const segmentId = localStorage.getItem('segmentId');
-            const segmentGrandparentId = localStorage.getItem('segmentGrandparentId');
+            const connectSegment = Object.keys(to.query).length ? consumeConnectSegment() : null;
+            const segmentId = connectSegment?.segmentId ?? localStorage.getItem('segmentId');
+            const segmentGrandparentId =
+              connectSegment?.grandparentId ?? localStorage.getItem('segmentGrandparentId');
             const state = to.query.state ?? '';
 
             // Redirect to integrations list page with correct id
@@ -75,9 +75,7 @@ export default [
             parameter: 'id',
           },
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.integrationRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.integrationRead)],
       },
     ],
   },

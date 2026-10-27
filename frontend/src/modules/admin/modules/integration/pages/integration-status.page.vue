@@ -1,6 +1,6 @@
 <template>
   <div class="pt-6 min-h-120">
-    <div class="pb-6 flex justify-between items-center flex-wrap gap-2">
+    <div class="pb-6 flex flex-col items-start gap-4">
       <lf-tabs v-model="status" :fragment="false">
         <lf-tab v-for="(config, key) in lfIntegrationStatusesTabs" :key="key" :name="key">
           <div class="flex items-center gap-1.5">
@@ -11,7 +11,13 @@
           </div>
         </lf-tab>
       </lf-tabs>
-      <lf-admin-integration-platform-select v-model="platform" />
+      <div class="flex items-center flex-wrap gap-3">
+        <lf-switch v-model="lfOnly" size="small">
+          <span class="text-small whitespace-nowrap">LF projects only</span>
+        </lf-switch>
+        <lf-admin-integration-foundation-select v-model="foundation" :is-l-f="lfOnly ? true : null" />
+        <lf-admin-integration-platform-select v-model="platform" :connectable-only="status === 'notConnected'" />
+      </div>
     </div>
     <lf-search v-model="query" lazy placeholder="Search sub-projects..." class="!h-9" />
     <div class="pt-5">
@@ -30,16 +36,20 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="integration of integrations" :key="integration.id">
+            <tr v-for="integration of visibleIntegrations" :key="`${integration.segmentId}-${integration.platform}-${integration.id}`">
               <td class="pl-2">
-                <p class="text-medium font-semibold mb-1">
-                  {{ integration.name }}
-                </p>
-                <p v-if="integration.grandparentName?.length > 0 || integration.parentName?.length > 0" class="text-tiny text-gray-500">
-                  {{ integration.grandparentName }}
-                  <span v-if="integration.grandparentName?.length > 0 && integration.parentName?.length > 0">></span>
-                  {{ integration.parentName }}
-                </p>
+                <router-link
+                  :to="{ name: 'integration', params: { grandparentId: integration.grandparentId, id: integration.segmentId } }"
+                  target="_blank"
+                  class="group block"
+                >
+                  <p class="text-medium font-semibold mb-1 text-black group-hover:text-primary-500 group-hover:underline">
+                    {{ integration.name }}
+                  </p>
+                  <p class="text-tiny text-gray-500">
+                    {{ hierarchyPath(integration) }}
+                  </p>
+                </router-link>
               </td>
               <td>
                 <div class="flex flex-col gap-1 items-start">
@@ -89,6 +99,30 @@
                       <div class="flex items-center gap-1.5">
                         <lf-icon name="circle-exclamation" type="solid" class="text-red-600" :size="16" />
                         <span class="text-tiny text-red-600">Connection failed</span>
+                      </div>
+                    </template>
+                    <template v-else-if="status === 'notConnected' && hasConnectGuidance(integration)">
+                      <div class="max-w-md">
+                        <p class="font-semibold text-gray-600">
+                          Before you connect
+                        </p>
+                        <ul v-if="integrationConfig(integration.platform)?.prerequisites?.length" class="list-disc pl-4">
+                          <li v-for="prerequisite of integrationConfig(integration.platform)?.prerequisites" :key="prerequisite">
+                            {{ prerequisite }}
+                          </li>
+                        </ul>
+                        <p v-else>
+                          {{ integrationConfig(integration.platform)?.description }}
+                        </p>
+                        <a
+                          v-if="integrationConfig(integration.platform)?.link"
+                          :href="integrationConfig(integration.platform)?.link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-primary-500 hover:underline"
+                        >
+                          Setup guide
+                        </a>
                       </div>
                     </template>
                   </div>
@@ -171,7 +205,9 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, watch } from 'vue';
+import {
+  computed, onMounted, ref, watch,
+} from 'vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
@@ -181,6 +217,10 @@ import type { GlobalIntegrationStatusCount } from '@/modules/admin/modules/users
 import { UsersService } from '@/modules/admin/modules/users/services/users.service';
 import LfAdminIntegrationPlatformSelect
   from '@/modules/admin/modules/integration/components/status/integration-platform-select.vue';
+import LfAdminIntegrationFoundationSelect
+  from '@/modules/admin/modules/integration/components/status/integration-foundation-select.vue';
+import LfSwitch from '@/ui-kit/switch/Switch.vue';
+import { adminConnectablePlatforms, isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 import {
   lfIntegrationStatusesTabs,
 } from '@/modules/admin/modules/integration/config/status';
@@ -200,6 +240,8 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 const loading = ref(true);
 
 const platform = ref('');
+const lfOnly = ref(true);
+const foundation = ref('');
 const status = ref(Object.keys(lfIntegrationStatusesTabs)[0]);
 const query = ref<string>('');
 
@@ -217,6 +259,24 @@ const { trackEvent } = useProductTracking();
 const integrationConfig = (integrationPlatform: string): IntegrationConfig | undefined => (integrationPlatform === 'github-nango'
   ? lfIntegrations(true).github : lfIntegrations()[integrationPlatform]);
 
+const visibleIntegrations = computed(() => (status.value === 'notConnected'
+  ? integrations.value.filter((integration) => !!integration.platform && !!integrationConfig(integration.platform))
+  : integrations.value));
+
+const hasConnectGuidance = (integration: IntegrationStatus) => {
+  const config = integrationConfig(integration.platform);
+  return !!(config?.prerequisites?.length || config?.description || config?.link);
+};
+
+const hierarchyPath = (integration: IntegrationStatus) => [integration.grandparentName, integration.parentName, integration.name]
+  .filter((name) => !!name)
+  .join(' › ');
+
+const scopeFilters = () => ({
+  segment: foundation.value || undefined,
+  isLF: lfOnly.value ? true : undefined,
+});
+
 const fetchGlobalIntegrations = () => {
   loading.value = true;
   UsersService.fetchGlobalIntegrations({
@@ -225,6 +285,8 @@ const fetchGlobalIntegrations = () => {
     query: query.value,
     platform: platform.value || undefined,
     status: lfIntegrationStatusesTabs[status.value].statuses,
+    ...scopeFilters(),
+    platforms: status.value === 'notConnected' ? adminConnectablePlatforms() : undefined,
   })
     .then((res) => {
       if (res.offset > 0) {
@@ -242,6 +304,8 @@ const fetchGlobalIntegrations = () => {
 const fetchGlobalIntegrationStatusCount = () => {
   UsersService.fetchGlobalIntegrationStatusCount({
     platform: platform.value || undefined,
+    ...scopeFilters(),
+    platforms: adminConnectablePlatforms(),
   })
     .then((res) => {
       const statusCount = Object.keys(lfIntegrationStatusesTabs).reduce((acc: Record<string, number>, key) => {
@@ -271,11 +335,25 @@ onMounted(() => {
 });
 
 watch(() => status.value, () => {
+  if (status.value === 'notConnected' && platform.value && !isAdminConnectable(platform.value)) {
+    platform.value = '';
+    return;
+  }
   offset.value = 0;
   fetchGlobalIntegrations();
 });
 
-watch(() => platform.value, () => {
+watch(() => lfOnly.value, () => {
+  if (foundation.value) {
+    foundation.value = '';
+    return;
+  }
+  offset.value = 0;
+  fetchGlobalIntegrations();
+  fetchGlobalIntegrationStatusCount();
+});
+
+watch(() => [platform.value, foundation.value], () => {
   offset.value = 0;
   fetchGlobalIntegrations();
   fetchGlobalIntegrationStatusCount();

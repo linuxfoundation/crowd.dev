@@ -12,6 +12,10 @@ const slack: IntegrationConfig = {
   image,
   description: 'Sync messages, threads, and new joiners.',
   link: 'https://docs.linuxfoundation.org/lfx/community-management/integrations/slack',
+  prerequisites: [
+    "Access to the project's Slack workspace with permission to install apps, or approval from a workspace admin.",
+    'After connecting, the LFX Slack bot must be added to every channel you want to track.',
+  ],
   connectComponent: SlackConnect,
   connectedParamsComponent: SlackParams,
   showProgress: false,

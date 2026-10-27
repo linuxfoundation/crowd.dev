@@ -18,6 +18,7 @@ import gerrit from './gerrit/config';
 import discourse from './discourse/config';
 import devto from './devto/config';
 import octolens from './octolens/config';
+import credly from './credly/config';
 
 export interface ActionRequiredMessage {
   key: string;
@@ -29,6 +30,7 @@ export interface IntegrationConfig {
   image: string; // Image URL for the integration
   description: string; // Description of the integration
   link?: string; // Documentation link for the integration
+  prerequisites?: string[];
   connectComponent?: Component; // Component rendered for user to connect integration
   actionComponent?: Component; // Component rendered when integration needs user action
   statusComponent?: Component; // Component rendered to show integration status
@@ -71,4 +73,5 @@ export const lfIntegrations: (useGitHubNango?: boolean) => Record<string, Integr
   discourse,
   devto,
   octolens,
+  credly,
 });
