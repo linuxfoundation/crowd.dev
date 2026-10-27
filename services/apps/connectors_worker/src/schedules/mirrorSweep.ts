@@ -8,7 +8,7 @@ export async function scheduleMirrorSweep(): Promise<void> {
     await svc.temporal.schedule.create({
       scheduleId: 'connectors-mirror-sweep',
       spec: {
-        calendars: [{ hour: 3, minute: 0 }],
+        calendars: [{ hour: 3, minute: 15 }],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
@@ -18,7 +18,7 @@ export async function scheduleMirrorSweep(): Promise<void> {
         type: 'startWorkflow',
         workflowType: mirrorSweep,
         taskQueue: 'connectors',
-        args: [{ batchSize: 500, shadowCap: 5000 }],
+        args: [{ batchSize: 1000, shadowCap: 5000 }],
         workflowExecutionTimeout: '2 hours',
       },
     })

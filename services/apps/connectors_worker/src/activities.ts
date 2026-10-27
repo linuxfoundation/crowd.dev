@@ -24,8 +24,7 @@ import {
 import {
   countShadowRepos,
   logMirrorSweepSummary,
-  mirrorRepos,
-  selectMirrorBatch,
+  mirrorBatch,
 } from './activities/mirrorSweepActivities'
 import { runOctolensDiscovery } from './activities/octolensDiscoveryActivities'
 import { listShadowDiffChannels, runShadowDiffForChannel } from './activities/shadowDiffActivities'
@@ -69,7 +68,7 @@ export {
   logLifecycleSkips,
   logMirrorSweepSummary,
   logUndrainedChannels,
-  mirrorRepos,
+  mirrorBatch,
   onboardGithubRepos,
   pauseNangoRepoSync,
   planGithubLifecycle,
@@ -80,7 +79,6 @@ export {
   resumeNangoRepoSync,
   runOctolensDiscovery,
   runShadowDiffForChannel,
-  selectMirrorBatch,
   setUnitEmitEnabled,
   softDeleteIntegrationRepositories,
   startRun,

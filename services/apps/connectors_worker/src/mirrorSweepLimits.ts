@@ -1,6 +1,5 @@
 import type { IMirrorSweepInput } from './mirrorSweep'
 
-export const MIRROR_CHUNK_SIZE = 100
 export const MIRROR_RESOLVE_CONCURRENCY = 5
 
 export function mirrorRoom(input: IMirrorSweepInput, inShadow: number): number {

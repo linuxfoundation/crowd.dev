@@ -2,13 +2,23 @@ import { ApplicationFailure, log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from '../activities/mirrorSweepActivities'
 import type { IMirrorSweepInput, IMirrorSweepSummary } from '../mirrorSweep'
-import { MIRROR_CHUNK_SIZE, chunk, mirrorRoom } from '../mirrorSweepLimits'
+import { mirrorRoom } from '../mirrorSweepLimits'
 
-const activity = proxyActivities<typeof activities>({
+const activity = proxyActivities<
+  Pick<typeof activities, 'countShadowRepos' | 'logMirrorSweepSummary'>
+>({
   startToCloseTimeout: '10 minutes',
   retry: {
     maximumAttempts: 3,
     backoffCoefficient: 2,
+  },
+})
+
+const longActivity = proxyActivities<Pick<typeof activities, 'mirrorBatch'>>({
+  startToCloseTimeout: '90 minutes',
+  heartbeatTimeout: '5 minutes',
+  retry: {
+    maximumAttempts: 1,
   },
 })
 
@@ -45,27 +55,17 @@ export async function mirrorSweep(input: IMirrorSweepInput): Promise<IMirrorSwee
     mirrored: 0,
     skipped: 0,
     unitsInserted: 0,
-    chunksFailed: 0,
+    failed: false,
     durationMs: 0,
   }
 
   const room = mirrorRoom(input, inShadow)
   if (room > 0) {
-    const { since, candidatesTotal, batch } = await activity.selectMirrorBatch(room)
-    summary.candidates = candidatesTotal
-
-    for (const repos of chunk(batch, MIRROR_CHUNK_SIZE)) {
-      try {
-        const result = await activity.mirrorRepos(repos, since)
-        summary.attempted += repos.length
-        summary.mirrored += result.mirrored
-        summary.skipped += result.skipped
-        summary.unitsInserted += result.unitsInserted
-      } catch (err) {
-        log.error('mirror sweep chunk failed', { err })
-        summary.chunksFailed += 1
-        break
-      }
+    try {
+      Object.assign(summary, await longActivity.mirrorBatch(room))
+    } catch (err) {
+      log.error('mirror sweep batch failed', { err })
+      summary.failed = true
     }
   }
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { IMirrorCandidate } from '../mirrorSweep'
-import { mirrorRepos, selectMirrorBatch } from './mirrorSweepActivities'
+import { mirrorBatch } from './mirrorSweepActivities'
 
 const mocks = vi.hoisted(() => ({
   listUnmirroredNangoRepos: vi.fn(),
@@ -9,9 +9,13 @@ const mocks = vi.hoisted(() => ({
   executeSql: vi.fn(),
   mirrorRepo: vi.fn(),
   initNangoCloudClient: vi.fn(),
+  heartbeat: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock('@temporalio/activity', () => ({
+  Context: { current: () => ({ heartbeat: mocks.heartbeat }) },
+}))
 vi.mock('../main', () => ({
   svc: {
     postgres: { writer: {} },
@@ -60,31 +64,16 @@ describe('mirror sweep activities', () => {
   })
   afterEach(() => vi.useRealTimers())
 
-  it('selects the most active candidates up to the limit and lets tinybird errors fail the batch', async () => {
-    mocks.listUnmirroredNangoRepos.mockResolvedValue([repo('c'), repo('a'), repo('b')])
+  it('mirrors the most active candidates up to the limit, five at a time, logging every skip', async () => {
+    mocks.listUnmirroredNangoRepos.mockResolvedValue(
+      ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'].map(repo),
+    )
     mocks.executeSql.mockResolvedValue({
       data: [
-        { channelKey: 'https://github.com/acme/b', activities: 50 },
-        { channelKey: 'https://github.com/acme/a', activities: 10 },
+        { channelKey: 'https://github.com/acme/r8', activities: 50 },
+        { channelKey: 'https://github.com/acme/r2', activities: 10 },
       ],
     })
-
-    await expect(selectMirrorBatch(2)).resolves.toEqual({
-      since: '2026-10-18T00:00:00.000Z',
-      candidatesTotal: 3,
-      batch: [candidate('b'), candidate('a')],
-    })
-
-    vi.clearAllMocks()
-    mocks.listUnmirroredNangoRepos.mockResolvedValue([repo('a')])
-    mocks.executeSql.mockRejectedValue(new Error('tinybird down'))
-
-    await expect(selectMirrorBatch(2)).rejects.toThrow('tinybird down')
-    expect(mocks.listUnmirroredNangoRepos).toHaveBeenCalledTimes(1)
-    expect(mocks.countShadowRepos).not.toHaveBeenCalled()
-  })
-
-  it('mirrors the batch at most five repos at a time and logs every skip', async () => {
     let inFlight = 0
     let peak = 0
     mocks.mirrorRepo.mockImplementation(async (_qx: unknown, c: IMirrorCandidate) => {
@@ -96,17 +85,29 @@ describe('mirror sweep activities', () => {
         ? { outcome: 'skipped', reason: 'repo_not_found', message: '404' }
         : { outcome: 'mirrored', unitsInserted: 8 }
     })
-    const batch = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7'].map(candidate)
 
-    await expect(mirrorRepos(batch, '2026-10-18T00:00:00.000Z')).resolves.toEqual({
+    await expect(mirrorBatch(7)).resolves.toEqual({
+      candidates: 8,
+      attempted: 7,
       mirrored: 5,
       skipped: 2,
       unitsInserted: 40,
+      failed: false,
     })
 
     expect(peak).toBe(5)
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(2)
     expect(mocks.initNangoCloudClient).toHaveBeenCalledTimes(1)
-    expect(mocks.mirrorRepo).toHaveBeenCalledWith('qx', batch[0], '2026-10-18T00:00:00.000Z')
+    expect(mocks.mirrorRepo.mock.calls.map(([, c]) => c.repoName)).toEqual([
+      'r8',
+      'r2',
+      'r1',
+      'r3',
+      'r4',
+      'r5',
+      'r6',
+    ])
+    expect(mocks.mirrorRepo).toHaveBeenCalledWith('qx', candidate('r8'), '2026-10-18T00:00:00.000Z')
     expect(mocks.log.warn).toHaveBeenCalledTimes(2)
     expect(mocks.log.warn).toHaveBeenCalledWith(
       {
@@ -119,5 +120,32 @@ describe('mirror sweep activities', () => {
       },
       'repo skipped by mirror sweep',
     )
+  })
+
+  it('stops at the first error with the progress so far and lets selection errors fail the activity', async () => {
+    mocks.listUnmirroredNangoRepos.mockResolvedValue(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(repo))
+    mocks.executeSql.mockResolvedValue({ data: [] })
+    mocks.mirrorRepo.mockImplementation(async (_qx: unknown, c: IMirrorCandidate) => {
+      if (c.repoName === 'r6') {
+        throw new Error('connection terminated')
+      }
+      return { outcome: 'mirrored', unitsInserted: 8 }
+    })
+
+    await expect(mirrorBatch(10)).resolves.toEqual({
+      candidates: 6,
+      attempted: 5,
+      mirrored: 5,
+      skipped: 0,
+      unitsInserted: 40,
+      failed: true,
+    })
+    expect(mocks.log.error).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks()
+    mocks.executeSql.mockRejectedValue(new Error('tinybird down'))
+
+    await expect(mirrorBatch(2)).rejects.toThrow('tinybird down')
+    expect(mocks.mirrorRepo).not.toHaveBeenCalled()
   })
 })
