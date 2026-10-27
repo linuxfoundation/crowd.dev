@@ -26,6 +26,8 @@ import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
+import { ToastStore } from '@/shared/message/notification';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 
 const props = defineProps<{
   segmentId: string | null;
@@ -49,6 +51,7 @@ const connectUrl = computed<string>(() => {
 });
 
 const connect = () => {
+  rememberConnectSegment(props.segmentId, props.grandparentId);
   window.open(connectUrl.value, '_self');
 };
 
@@ -58,6 +61,11 @@ const slackLogo = new URL(
 ).href;
 
 const finallizeSlackConnect = () => {
+  if (route.query['slack-error']) {
+    ToastStore.error('Slack connection failed. Please try again.');
+    router.replace({ query: {} });
+    return;
+  }
   const slackSuccess = route.query['slack-success'];
   if (slackSuccess) {
     ConfirmDialog({

@@ -23,6 +23,7 @@ import { ToastStore } from '@/shared/message/notification';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 
 const props = defineProps<{
   segmentId: string | null;
@@ -54,6 +55,7 @@ const connect = () => {
     ? `&hashtags[]=${hashtags.value[hashtags.value.length - 1]}`
     : '';
 
+  rememberConnectSegment(props.segmentId, props.grandparentId);
   window.open(`${connectUrl.value}${encodedHashtags}`, '_self');
 };
 
