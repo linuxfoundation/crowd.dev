@@ -55,6 +55,15 @@ function parseCountryToken(token: string): string | undefined {
   return toDisplayName(alpha2)
 }
 
+export function normalizeLocation(location: string): string {
+  return normalizeWhitespace(location.normalize('NFKC')).toLowerCase()
+}
+
+export function getCountryName(alpha2: string): string | undefined {
+  const code = alpha2.toUpperCase()
+  return countries.isValid(code) ? toDisplayName(code) : undefined
+}
+
 /**
  * Resolves a country name from a location string.
  */

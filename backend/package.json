@@ -35,6 +35,7 @@
     "script:backfill-email-domain-member-organization-dates": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/backfill-email-domain-member-organization-dates.ts",
     "script:backfill-crustdata-member-locations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/backfill-crustdata-member-locations.ts",
     "script:cleanup-url-member-locations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/cleanup-url-member-locations.ts",
+    "script:infer-country-from-location": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/infer-country-from-location.ts",
     "script:onboard-default-tenant": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/onboard-default-tenant.ts",
     "script:create-api-key": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-api-key.ts",
     "script:onboard-default-tenant:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run script:onboard-default-tenant",
