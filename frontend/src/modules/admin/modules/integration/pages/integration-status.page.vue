@@ -11,7 +11,13 @@
           </div>
         </lf-tab>
       </lf-tabs>
-      <lf-admin-integration-platform-select v-model="platform" />
+      <div class="flex items-center gap-3">
+        <lf-switch v-model="lfOnly" size="small">
+          <span class="text-small whitespace-nowrap">LF projects only</span>
+        </lf-switch>
+        <lf-admin-integration-foundation-select v-model="foundation" :is-l-f="lfOnly ? true : null" />
+        <lf-admin-integration-platform-select v-model="platform" />
+      </div>
     </div>
     <lf-search v-model="query" lazy placeholder="Search sub-projects..." class="!h-9" />
     <div class="pt-5">
@@ -35,10 +41,8 @@
                 <p class="text-medium font-semibold mb-1">
                   {{ integration.name }}
                 </p>
-                <p v-if="integration.grandparentName?.length > 0 || integration.parentName?.length > 0" class="text-tiny text-gray-500">
-                  {{ integration.grandparentName }}
-                  <span v-if="integration.grandparentName?.length > 0 && integration.parentName?.length > 0">></span>
-                  {{ integration.parentName }}
+                <p class="text-tiny text-gray-500">
+                  {{ hierarchyPath(integration) }}
                 </p>
               </td>
               <td>
@@ -89,6 +93,30 @@
                       <div class="flex items-center gap-1.5">
                         <lf-icon name="circle-exclamation" type="solid" class="text-red-600" :size="16" />
                         <span class="text-tiny text-red-600">Connection failed</span>
+                      </div>
+                    </template>
+                    <template v-else-if="status === 'notConnected'">
+                      <div class="max-w-md">
+                        <p class="font-semibold text-gray-600">
+                          Before you connect
+                        </p>
+                        <ul v-if="integrationConfig(integration.platform)?.prerequisites?.length" class="list-disc pl-4">
+                          <li v-for="prerequisite of integrationConfig(integration.platform)?.prerequisites" :key="prerequisite">
+                            {{ prerequisite }}
+                          </li>
+                        </ul>
+                        <p v-else>
+                          {{ integrationConfig(integration.platform)?.description }}
+                        </p>
+                        <a
+                          v-if="integrationConfig(integration.platform)?.link"
+                          :href="integrationConfig(integration.platform)?.link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-primary-500 hover:underline"
+                        >
+                          Setup guide
+                        </a>
                       </div>
                     </template>
                   </div>
@@ -181,6 +209,9 @@ import type { GlobalIntegrationStatusCount } from '@/modules/admin/modules/users
 import { UsersService } from '@/modules/admin/modules/users/services/users.service';
 import LfAdminIntegrationPlatformSelect
   from '@/modules/admin/modules/integration/components/status/integration-platform-select.vue';
+import LfAdminIntegrationFoundationSelect
+  from '@/modules/admin/modules/integration/components/status/integration-foundation-select.vue';
+import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import {
   lfIntegrationStatusesTabs,
 } from '@/modules/admin/modules/integration/config/status';
@@ -200,6 +231,8 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 const loading = ref(true);
 
 const platform = ref('');
+const lfOnly = ref(true);
+const foundation = ref('');
 const status = ref(Object.keys(lfIntegrationStatusesTabs)[0]);
 const query = ref<string>('');
 
@@ -217,6 +250,15 @@ const { trackEvent } = useProductTracking();
 const integrationConfig = (integrationPlatform: string): IntegrationConfig | undefined => (integrationPlatform === 'github-nango'
   ? lfIntegrations(true).github : lfIntegrations()[integrationPlatform]);
 
+const hierarchyPath = (integration: IntegrationStatus) => [integration.grandparentName, integration.parentName, integration.name]
+  .filter((name) => !!name)
+  .join(' › ');
+
+const scopeFilters = () => ({
+  segment: foundation.value || undefined,
+  isLF: lfOnly.value ? true : undefined,
+});
+
 const fetchGlobalIntegrations = () => {
   loading.value = true;
   UsersService.fetchGlobalIntegrations({
@@ -225,6 +267,7 @@ const fetchGlobalIntegrations = () => {
     query: query.value,
     platform: platform.value || undefined,
     status: lfIntegrationStatusesTabs[status.value].statuses,
+    ...scopeFilters(),
   })
     .then((res) => {
       if (res.offset > 0) {
@@ -242,6 +285,7 @@ const fetchGlobalIntegrations = () => {
 const fetchGlobalIntegrationStatusCount = () => {
   UsersService.fetchGlobalIntegrationStatusCount({
     platform: platform.value || undefined,
+    ...scopeFilters(),
   })
     .then((res) => {
       const statusCount = Object.keys(lfIntegrationStatusesTabs).reduce((acc: Record<string, number>, key) => {
@@ -275,7 +319,17 @@ watch(() => status.value, () => {
   fetchGlobalIntegrations();
 });
 
-watch(() => platform.value, () => {
+watch(() => lfOnly.value, () => {
+  if (foundation.value) {
+    foundation.value = '';
+    return;
+  }
+  offset.value = 0;
+  fetchGlobalIntegrations();
+  fetchGlobalIntegrationStatusCount();
+});
+
+watch(() => [platform.value, foundation.value], () => {
   offset.value = 0;
   fetchGlobalIntegrations();
   fetchGlobalIntegrationStatusCount();

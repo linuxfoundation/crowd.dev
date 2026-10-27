@@ -85,6 +85,7 @@ export async function fetchGlobalIntegrations(
   limit: number,
   offset: number,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<IIntegration[]> {
   return qx.select(
     `
@@ -104,13 +105,16 @@ export async function fetchGlobalIntegrations(
           AND i."deletedAt" IS NULL
           AND ($(platform) IS NULL OR i."platform" = $(platform))
           AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+          AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
           AND s.name ILIKE $(query)
+        ORDER BY s."grandparentName", s."parentName", s.name, i.platform, i.id
         LIMIT $(limit) OFFSET $(offset)
       `,
     {
       status,
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
       limit,
       offset,
@@ -133,6 +137,7 @@ export async function fetchGlobalIntegrationsCount(
   platform: string | null,
   query: string,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<{ count: number }[]> {
   return qx.select(
     `
@@ -143,12 +148,14 @@ export async function fetchGlobalIntegrationsCount(
           AND i."deletedAt" IS NULL
           AND ($(platform) IS NULL OR i."platform" = $(platform))
           AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+          AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
           AND s.name ILIKE $(query)
       `,
     {
       status,
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
     },
   )
@@ -172,6 +179,7 @@ export async function fetchGlobalNotConnectedIntegrations(
   limit: number,
   offset: number,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<IIntegration[]> {
   return qx.select(
     `
@@ -198,12 +206,15 @@ export async function fetchGlobalNotConnectedIntegrations(
         AND s."grandparentId" IS NOT NULL
         AND ($(platform) IS NULL OR up."platform" = $(platform))
         AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+        AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
         AND s.name ILIKE $(query)
+      ORDER BY s."grandparentName", s."parentName", s.name, up.platform, s.id
       LIMIT $(limit) OFFSET $(offset)
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
       limit,
       offset,
@@ -225,6 +236,7 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
   platform: string | null,
   query: string,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<{ count: number }[]> {
   return qx.select(
     `
@@ -245,11 +257,13 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
         AND s."grandparentId" IS NOT NULL
         AND ($(platform) IS NULL OR up."platform" = $(platform))
         AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+        AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
         AND s.name ILIKE $(query)
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
       autoManaged: AUTO_MANAGED_INTEGRATION_PLATFORMS,
     },
@@ -267,6 +281,7 @@ export async function fetchGlobalIntegrationsStatusCount(
   qx: QueryExecutor,
   platform: string | null,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<{ status: string; count: number }[]> {
   return qx.select(
     `
@@ -277,12 +292,15 @@ export async function fetchGlobalIntegrationsStatusCount(
           AND ($(platform) IS NULL OR i."platform" = $(platform))
           AND ($(segmentId) IS NULL OR i."segmentId" = $(segmentId) OR
                EXISTS (SELECT 1 FROM segments s WHERE s.id = i."segmentId" AND (s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))))
+          AND ($(isLF)::boolean IS NULL OR
+               EXISTS (SELECT 1 FROM segments s WHERE s.id = i."segmentId" AND s."isLF" = $(isLF)))
           AND NOT (COALESCE(i.platform = ANY ($(autoManaged)::text[]), false) AND i."segmentId" IS NULL)
         GROUP BY i.status
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
       autoManaged: AUTO_MANAGED_INTEGRATION_PLATFORMS,
     },
   )
