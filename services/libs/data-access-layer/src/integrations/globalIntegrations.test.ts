@@ -159,6 +159,25 @@ describe('global not-connected integrations limited to given platforms', () => {
     expect(segmentIdsOf(rows)).toEqual([unconnectedId])
     expect(Number(count)).toBe(1)
   })
+
+  test('includes given platforms that have no integration rows yet', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'confluence',
+    ])
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      null,
+      '',
+      groupId,
+      null,
+      ['confluence'],
+    )
+
+    expect(segmentIdsOf(rows).sort()).toEqual([connectedId, unconnectedId].sort())
+    expect(Number(count)).toBe(2)
+  })
 })
 
 describe('global not-connected github variants', () => {

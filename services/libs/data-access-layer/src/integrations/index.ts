@@ -193,6 +193,8 @@ export async function fetchGlobalNotConnectedIntegrations(
       WITH unique_platforms AS (SELECT DISTINCT platform
                                 FROM (SELECT $(platform)::text AS platform
                                       UNION
+                                      SELECT unnest(COALESCE($(platforms)::text[], '{}'::text[]))
+                                      UNION
                                       SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
                                       FROM public.integrations) known
                                 WHERE platform IS NOT NULL
@@ -257,6 +259,8 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
     `
       WITH unique_platforms AS (SELECT DISTINCT platform
                                 FROM (SELECT $(platform)::text AS platform
+                                      UNION
+                                      SELECT unnest(COALESCE($(platforms)::text[], '{}'::text[]))
                                       UNION
                                       SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
                                       FROM public.integrations) known
