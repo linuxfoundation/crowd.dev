@@ -20,8 +20,8 @@
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
-    "js-yaml": "^4.3.2",
-    "moment": "~2.29.4",
+    "js-yaml": "^5.4.1",
+    "moment": "~2.31.0",
     "tsx": "catalog:"
   },
   "devDependencies": {
