@@ -23,7 +23,7 @@
       <lf-dropdown-separator />
 
       <lf-dropdown-item
-        v-for="(integration, key) in lfIntegrations()"
+        v-for="(integration, key) in connectableIntegrations"
         :key="key"
         :selected="model === key"
         @click="model = key"
@@ -45,12 +45,19 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import { lfIntegrations } from '@/config/integrations';
+import { isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 
 const props = defineProps<{
   modelValue?: string,
+  connectableOnly?: boolean,
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
+
+const connectableIntegrations = computed(() => Object.fromEntries(
+  Object.entries(lfIntegrations())
+    .filter(([key]) => !props.connectableOnly || isAdminConnectable(key)),
+));
 
 const model = computed({
   get() {

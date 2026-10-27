@@ -105,6 +105,7 @@
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router';
+import { consumeConnectSegment } from '@/config/integrations/connect-segment';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { computed, onMounted, ref } from 'vue';
@@ -170,6 +171,7 @@ const platformsByStatus = computed(() => {
 });
 
 onMounted(() => {
+  consumeConnectSegment();
   localStorage.setItem('segmentId', id as string);
   localStorage.setItem('segmentGrandparentId', grandparentId as string);
 

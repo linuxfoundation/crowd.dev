@@ -13,6 +13,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 import config from '@/config';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -34,10 +35,7 @@ const { trackEvent } = useProductTracking();
 const connectUrl = computed(() => config.discordInstallationUrl);
 
 const connect = () => {
-  if (props.grandparentId && props.segmentId) {
-    localStorage.setItem('segmentId', props.segmentId);
-    localStorage.setItem('segmentGrandparentId', props.grandparentId);
-  }
+  rememberConnectSegment(props.segmentId, props.grandparentId);
   window.open(connectUrl.value, '_self');
 };
 
