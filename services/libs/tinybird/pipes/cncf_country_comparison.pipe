@@ -1,0 +1,168 @@
+DESCRIPTION >
+    - `cncf_country_comparison.pipe` serves the "in context" widget of the CNCF country report: one country compared with a region (e.g. Europe) and the world.
+    - Contributors and contributions are placed by the contributor's profile country, else location; organizations by their country, else location. Names are matched by containment, as in `contributors_geo_distribution.pipe`, and only records with a known location count, so every count is "with a known location".
+    - Skips organizations blocked from affiliations and the "Individual - No Account" placeholder records, as `cncf_country_top_organizations.pipe` does.
+    - Reads from `cncf_collection_activities_ds`, so it covers the CNCF collection only.
+    - **When `granularity` is NOT provided, returns one row of totals** for the period.
+    - **When `granularity` is provided, returns one row per period**, built on `generate_timeseries`.
+    - Parameters:
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR'), resolved to a country name through `country_mapping`
+    - `regionCodes`: Required array of ISO 3166-1 alpha-2 codes making up the region (e.g., ['FR', 'DE', 'GB'])
+    - `startDate`: DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00'); required with `granularity`
+    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
+    - `granularity`: Optional string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
+    - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans inherited from `activityTypes_filtered` (defaults: code contributions only)
+    - Response: optional `startDate`, `endDate`, then `{country,region,world}{Contributor,Contribution,Organization}Count`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE cncf_country_comparison_names
+SQL >
+    %
+    SELECT
+        (
+            SELECT upper(country)
+            FROM country_mapping
+            WHERE
+                country_code
+                = {{
+                    String(
+                        countryCode,
+                        description="ISO 3166-1 alpha-2 country code (e.g. 'FR')",
+                        required=True,
+                    )
+                }}
+            LIMIT 1
+        ) AS countryName,
+        (
+            SELECT groupArray(upper(country))
+            FROM country_mapping
+            WHERE
+                country_code
+                IN {{
+                    Array(
+                        regionCodes,
+                        'String',
+                        description="ISO 3166-1 alpha-2 codes of the region's countries",
+                        required=True,
+                    )
+                }}
+        ) AS regionNames
+
+NODE cncf_country_comparison_period_activities
+SQL >
+    %
+    SELECT memberId, organizationId, timestamp
+    FROM cncf_collection_activities_ds
+    WHERE
+        memberId != ''
+        AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+        {% if defined(startDate) %}
+            AND timestamp
+            > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND timestamp
+            < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
+        {% end %}
+
+NODE cncf_country_comparison_members
+SQL >
+    SELECT
+        id,
+        position(place, (SELECT countryName FROM cncf_country_comparison_names)) > 0 AS inCountry,
+        arrayExists(
+            x -> position(place, x) > 0, (SELECT regionNames FROM cncf_country_comparison_names)
+        ) AS inRegion
+    FROM
+        (
+            SELECT id, upper(coalesce(nullIf(country, ''), location)) AS place
+            FROM members_sorted
+            WHERE id IN (SELECT memberId FROM cncf_country_comparison_period_activities)
+        )
+    WHERE place != ''
+
+NODE cncf_country_comparison_organizations
+SQL >
+    SELECT
+        id,
+        position(place, (SELECT countryName FROM cncf_country_comparison_names)) > 0 AS inCountry,
+        arrayExists(
+            x -> position(place, x) > 0, (SELECT regionNames FROM cncf_country_comparison_names)
+        ) AS inRegion
+    FROM
+        (
+            SELECT id, upper(coalesce(nullIf(country, ''), location)) AS place
+            FROM organizations FINAL
+            WHERE
+                id IN (SELECT organizationId FROM cncf_country_comparison_period_activities)
+                AND isAffiliationBlocked = 0
+                AND displayName != 'Individual - No Account'
+        )
+    WHERE place != ''
+
+NODE cncf_country_comparison_located
+SQL >
+    SELECT
+        a.timestamp AS timestamp,
+        a.memberId AS memberId,
+        a.organizationId AS organizationId,
+        m.id != '' AS memberLocated,
+        m.inCountry AS memberInCountry,
+        m.inRegion AS memberInRegion,
+        o.id != '' AS organizationLocated,
+        o.inCountry AS organizationInCountry,
+        o.inRegion AS organizationInRegion
+    FROM cncf_country_comparison_period_activities a
+    LEFT JOIN cncf_country_comparison_members m ON m.id = a.memberId
+    LEFT JOIN cncf_country_comparison_organizations o ON o.id = a.organizationId
+
+NODE cncf_country_comparison_result
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            ds."startDate",
+            ds."endDate",
+            uniqIf(l.memberId, l.memberInCountry) AS countryContributorCount,
+            uniqIf(l.memberId, l.memberInRegion) AS regionContributorCount,
+            uniqIf(l.memberId, l.memberLocated) AS worldContributorCount,
+            countIf(l.memberInCountry) AS countryContributionCount,
+            countIf(l.memberInRegion) AS regionContributionCount,
+            countIf(l.memberLocated) AS worldContributionCount,
+            uniqIf(l.organizationId, l.organizationInCountry) AS countryOrganizationCount,
+            uniqIf(l.organizationId, l.organizationInRegion) AS regionOrganizationCount,
+            uniqIf(l.organizationId, l.organizationLocated) AS worldOrganizationCount
+        FROM generate_timeseries ds
+        LEFT JOIN
+            cncf_country_comparison_located l
+            ON CASE
+                WHEN {{ granularity }} = 'daily'
+                THEN toDate(l.timestamp)
+                WHEN {{ granularity }} = 'weekly'
+                THEN toStartOfWeek(l.timestamp)
+                WHEN {{ granularity }} = 'monthly'
+                THEN toStartOfMonth(l.timestamp)
+                WHEN {{ granularity }} = 'quarterly'
+                THEN toStartOfQuarter(l.timestamp)
+                WHEN {{ granularity }} = 'yearly'
+                THEN toStartOfYear(l.timestamp)
+            END
+            = ds."startDate"
+        GROUP BY ds."startDate", ds."endDate"
+        ORDER BY ds."startDate" ASC
+    {% else %}
+        SELECT
+            uniqIf(memberId, memberInCountry) AS countryContributorCount,
+            uniqIf(memberId, memberInRegion) AS regionContributorCount,
+            uniqIf(memberId, memberLocated) AS worldContributorCount,
+            countIf(memberInCountry) AS countryContributionCount,
+            countIf(memberInRegion) AS regionContributionCount,
+            countIf(memberLocated) AS worldContributionCount,
+            uniqIf(organizationId, organizationInCountry) AS countryOrganizationCount,
+            uniqIf(organizationId, organizationInRegion) AS regionOrganizationCount,
+            uniqIf(organizationId, organizationLocated) AS worldOrganizationCount
+        FROM cncf_country_comparison_located
+    {% end %}
