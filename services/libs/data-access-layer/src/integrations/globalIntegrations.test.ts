@@ -62,9 +62,7 @@ describe('global integrations with auto-managed octolens integrations', () => {
     expect(rows).toContainEqual(
       expect.objectContaining({ platform: 'github', segmentId: unconnectedId }),
     )
-    expect(rows).toContainEqual(
-      expect.objectContaining({ platform: null, segmentId: unconnectedId }),
-    )
+    expect(rows.map((r) => r.platform)).not.toContain(null)
     expect(Number(count)).toBe(rows.length)
   })
 
@@ -105,6 +103,31 @@ describe('global integrations with auto-managed octolens integrations', () => {
     expect(listedIds).toContain(subprojectIntegration)
     expect(listedIds).not.toContain(anchor)
     expect(Number(count)).toBe(listed.length)
+  })
+})
+
+describe('global not-connected integrations for a selected platform', () => {
+  test('lists sub-projects for a platform with no integration rows yet', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, 'confluence', '', 1000, 0, groupId)
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      'confluence',
+      '',
+      groupId,
+    )
+
+    expect(segmentIdsOf(rows).sort()).toEqual([connectedId, unconnectedId].sort())
+    expect(Number(count)).toBe(2)
+  })
+
+  test('never lists an auto-managed platform even when selected', async ({ qx }) => {
+    const { groupId } = await createTree(qx)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, 'octolens', '', 1000, 0, groupId)
+
+    expect(rows).toEqual([])
   })
 })
 

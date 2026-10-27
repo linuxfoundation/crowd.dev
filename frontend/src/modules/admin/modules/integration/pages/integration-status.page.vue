@@ -36,7 +36,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="integration of integrations" :key="integration.id">
+            <tr v-for="integration of visibleIntegrations" :key="`${integration.segmentId}-${integration.platform}-${integration.id}`">
               <td class="pl-2">
                 <p class="text-medium font-semibold mb-1">
                   {{ integration.name }}
@@ -95,7 +95,7 @@
                         <span class="text-tiny text-red-600">Connection failed</span>
                       </div>
                     </template>
-                    <template v-else-if="status === 'notConnected'">
+                    <template v-else-if="status === 'notConnected' && hasConnectGuidance(integration)">
                       <div class="max-w-md">
                         <p class="font-semibold text-gray-600">
                           Before you connect
@@ -199,7 +199,9 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, watch } from 'vue';
+import {
+  computed, onMounted, ref, watch,
+} from 'vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
@@ -249,6 +251,14 @@ const { trackEvent } = useProductTracking();
 
 const integrationConfig = (integrationPlatform: string): IntegrationConfig | undefined => (integrationPlatform === 'github-nango'
   ? lfIntegrations(true).github : lfIntegrations()[integrationPlatform]);
+
+const visibleIntegrations = computed(() => integrations.value
+  .filter((integration) => !!integration.platform && !!integrationConfig(integration.platform)));
+
+const hasConnectGuidance = (integration: IntegrationStatus) => {
+  const config = integrationConfig(integration.platform);
+  return !!(config?.prerequisites?.length || config?.description || config?.link);
+};
 
 const hierarchyPath = (integration: IntegrationStatus) => [integration.grandparentName, integration.parentName, integration.name]
   .filter((name) => !!name)

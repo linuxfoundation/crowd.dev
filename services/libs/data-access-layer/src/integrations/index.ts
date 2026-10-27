@@ -184,8 +184,11 @@ export async function fetchGlobalNotConnectedIntegrations(
   return qx.select(
     `
       WITH unique_platforms AS (SELECT DISTINCT platform
-                                FROM public.integrations
-                                WHERE NOT COALESCE(platform = ANY ($(autoManaged)::text[]), false)),
+                                FROM (SELECT $(platform)::text AS platform
+                                      UNION
+                                      SELECT platform FROM public.integrations) known
+                                WHERE platform IS NOT NULL
+                                  AND NOT platform = ANY ($(autoManaged)::text[])),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
@@ -241,8 +244,11 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
   return qx.select(
     `
       WITH unique_platforms AS (SELECT DISTINCT platform
-                                FROM public.integrations
-                                WHERE NOT COALESCE(platform = ANY ($(autoManaged)::text[]), false)),
+                                FROM (SELECT $(platform)::text AS platform
+                                      UNION
+                                      SELECT platform FROM public.integrations) known
+                                WHERE platform IS NOT NULL
+                                  AND NOT platform = ANY ($(autoManaged)::text[])),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
