@@ -165,7 +165,7 @@ describe('mirrorRepo', () => {
     expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
   })
 
-  it('retries nango server errors with backoff and skips once they persist', async () => {
+  it('retries nango server errors and hung requests with backoff and skips once they persist', async () => {
     mocks.getNangoConnectionData
       .mockRejectedValueOnce(httpError(503))
       .mockRejectedValueOnce(httpError(504))
@@ -180,6 +180,18 @@ describe('mirrorRepo', () => {
       message: 'status 503',
     })
     expect(mocks.getNangoConnectionData).toHaveBeenCalledTimes(4)
+
+    vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    mocks.getNangoConnectionData
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValueOnce({ connection_config: { installation_id: 'inst-1' } })
+    const hung = mirrorRepo(qx, candidate, since)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await expect(hung).resolves.toMatchObject({ outcome: 'mirrored' })
+    expect(mocks.timeout.mock.calls).toEqual([[5_000]])
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
 
     vi.clearAllMocks()
     mocks.getNangoConnectionData.mockRejectedValue(httpError(404))

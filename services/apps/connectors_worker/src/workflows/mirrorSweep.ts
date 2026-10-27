@@ -1,7 +1,13 @@
-import { ApplicationFailure, log, proxyActivities } from '@temporalio/workflow'
+import {
+  ActivityFailure,
+  ApplicationFailure,
+  TimeoutFailure,
+  log,
+  proxyActivities,
+} from '@temporalio/workflow'
 
 import type * as activities from '../activities/mirrorSweepActivities'
-import type { IMirrorSweepInput, IMirrorSweepSummary } from '../mirrorSweep'
+import type { IMirrorSweepInput, IMirrorSweepSummary, MirrorBatchResult } from '../mirrorSweep'
 import { mirrorRoom } from '../mirrorSweepLimits'
 
 const activity = proxyActivities<
@@ -42,6 +48,13 @@ function assertValidInput(input: IMirrorSweepInput): void {
   }
 }
 
+function lastReportedProgress(err: unknown): Partial<MirrorBatchResult> {
+  if (err instanceof ActivityFailure && err.cause instanceof TimeoutFailure) {
+    return (err.cause.lastHeartbeatDetails as Partial<MirrorBatchResult> | undefined) ?? {}
+  }
+  return {}
+}
+
 export async function mirrorSweep(input: IMirrorSweepInput): Promise<IMirrorSweepSummary> {
   assertValidInput(input)
   const startedAt = Date.now()
@@ -65,7 +78,7 @@ export async function mirrorSweep(input: IMirrorSweepInput): Promise<IMirrorSwee
       Object.assign(summary, await longActivity.mirrorBatch(room))
     } catch (err) {
       log.error('mirror sweep batch failed', { err })
-      summary.failed = true
+      Object.assign(summary, lastReportedProgress(err), { failed: true })
     }
   }
 

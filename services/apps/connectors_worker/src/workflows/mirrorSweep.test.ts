@@ -1,3 +1,4 @@
+import { ActivityFailure, TimeoutFailure } from '@temporalio/workflow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mirrorSweep } from './mirrorSweep'
@@ -9,15 +10,25 @@ const mocks = vi.hoisted(() => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-vi.mock('@temporalio/workflow', () => ({
+vi.mock('@temporalio/workflow', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@temporalio/workflow')>()),
   proxyActivities: () => ({
     countShadowRepos: mocks.countShadowRepos,
     mirrorBatch: mocks.mirrorBatch,
     logMirrorSweepSummary: mocks.logMirrorSweepSummary,
   }),
   log: mocks.log,
-  ApplicationFailure: { nonRetryable: (message: string) => new Error(message) },
 }))
+
+const timedOut = (lastHeartbeatDetails: unknown) =>
+  new ActivityFailure(
+    'activity failed',
+    'mirrorBatch',
+    '1',
+    'MAXIMUM_ATTEMPTS_REACHED',
+    undefined,
+    new TimeoutFailure('heartbeat timeout', lastHeartbeatDetails, 'HEARTBEAT'),
+  )
 
 describe('mirrorSweep', () => {
   beforeEach(() => {
@@ -53,13 +64,27 @@ describe('mirrorSweep', () => {
 
     vi.clearAllMocks()
     mocks.countShadowRepos.mockResolvedValue(0)
-    mocks.mirrorBatch.mockRejectedValue(new Error('heartbeat timeout'))
+    mocks.mirrorBatch.mockRejectedValue(
+      timedOut({ candidates: 900, attempted: 600, mirrored: 590, unitsInserted: 4720 }),
+    )
 
-    const crashed = await mirrorSweep({ batchSize: 1000, shadowCap: 5000 })
+    const timedOutRun = await mirrorSweep({ batchSize: 1000, shadowCap: 5000 })
 
     expect(mocks.mirrorBatch).toHaveBeenCalledWith(1000)
-    expect(crashed).toMatchObject({ attempted: 0, mirrored: 0, failed: true })
-    expect(mocks.logMirrorSweepSummary).toHaveBeenCalledWith(crashed)
+    expect(timedOutRun).toMatchObject({
+      candidates: 900,
+      attempted: 600,
+      mirrored: 590,
+      unitsInserted: 4720,
+      failed: true,
+    })
+    expect(mocks.logMirrorSweepSummary).toHaveBeenCalledWith(timedOutRun)
+
+    mocks.mirrorBatch.mockRejectedValue(new Error('worker lost'))
+    await expect(mirrorSweep({ batchSize: 1000, shadowCap: 5000 })).resolves.toMatchObject({
+      attempted: 0,
+      failed: true,
+    })
   })
 
   it('does not mirror anything when the shadow pool is full, but still logs the summary', async () => {

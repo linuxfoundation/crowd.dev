@@ -29,6 +29,9 @@ interface IRepoChannel {
 }
 
 const NANGO_RETRY_DELAYS_MS = [5_000, 15_000, 45_000]
+const NANGO_REQUEST_TIMEOUT_MS = 30_000
+
+class NangoRequestTimeout extends Error {}
 
 class MirrorSkip extends Error {
   constructor(
@@ -51,14 +54,38 @@ async function atStage<T>(stage: MirrorStage, run: () => Promise<T>): Promise<T>
 }
 
 const isTransientNangoError = (err: unknown): boolean =>
-  axios.isAxiosError(err) && (err.response === undefined || err.response.status >= 500)
+  err instanceof NangoRequestTimeout ||
+  (axios.isAxiosError(err) && (err.response === undefined || err.response.status >= 500))
+
+async function getNangoConnectionWithin(
+  connectionId: string,
+): ReturnType<typeof getNangoConnectionData> {
+  let timer: NodeJS.Timeout | undefined
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new NangoRequestTimeout(`nango request timed out after ${NANGO_REQUEST_TIMEOUT_MS} ms`),
+        ),
+      NANGO_REQUEST_TIMEOUT_MS,
+    )
+  })
+  try {
+    return await Promise.race([
+      getNangoConnectionData(NangoIntegration.GITHUB, connectionId),
+      timedOut,
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 async function fetchNangoConnection(
   connectionId: string,
 ): ReturnType<typeof getNangoConnectionData> {
   for (const delayMs of NANGO_RETRY_DELAYS_MS) {
     try {
-      return await getNangoConnectionData(NangoIntegration.GITHUB, connectionId)
+      return await getNangoConnectionWithin(connectionId)
     } catch (err) {
       if (!isTransientNangoError(err)) {
         throw err
@@ -66,7 +93,7 @@ async function fetchNangoConnection(
       await timeout(delayMs)
     }
   }
-  return getNangoConnectionData(NangoIntegration.GITHUB, connectionId)
+  return getNangoConnectionWithin(connectionId)
 }
 
 async function resolveCandidateChannel(

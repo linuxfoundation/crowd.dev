@@ -10,11 +10,17 @@ const mocks = vi.hoisted(() => ({
   mirrorRepo: vi.fn(),
   initNangoCloudClient: vi.fn(),
   heartbeat: vi.fn(),
+  cancellation: new AbortController(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock('@temporalio/activity', () => ({
-  Context: { current: () => ({ heartbeat: mocks.heartbeat }) },
+  Context: {
+    current: () => ({
+      heartbeat: mocks.heartbeat,
+      cancellationSignal: mocks.cancellation.signal,
+    }),
+  },
 }))
 vi.mock('../main', () => ({
   svc: {
@@ -60,7 +66,11 @@ const candidate = (repoName: string): IMirrorCandidate => ({
 describe('mirror sweep activities', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers({ now: new Date('2026-10-20T10:00:00Z'), toFake: ['Date'] })
+    mocks.cancellation = new AbortController()
+    vi.useFakeTimers({
+      now: new Date('2026-10-20T10:00:00Z'),
+      toFake: ['Date', 'setInterval', 'clearInterval'],
+    })
   })
   afterEach(() => vi.useRealTimers())
 
@@ -79,6 +89,9 @@ describe('mirror sweep activities', () => {
     mocks.mirrorRepo.mockImplementation(async (_qx: unknown, c: IMirrorCandidate) => {
       inFlight++
       peak = Math.max(peak, inFlight)
+      if (c.repoName === 'r3') {
+        vi.advanceTimersByTime(30_000)
+      }
       await Promise.resolve()
       inFlight--
       return ['r2', 'r5'].includes(c.repoName)
@@ -96,7 +109,8 @@ describe('mirror sweep activities', () => {
     })
 
     expect(peak).toBe(5)
-    expect(mocks.heartbeat).toHaveBeenCalledTimes(2)
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
     expect(mocks.initNangoCloudClient).toHaveBeenCalledTimes(1)
     expect(mocks.mirrorRepo.mock.calls.map(([, c]) => c.repoName)).toEqual([
       'r8',
@@ -122,7 +136,7 @@ describe('mirror sweep activities', () => {
     )
   })
 
-  it('stops at the first error with the progress so far and lets selection errors fail the activity', async () => {
+  it('stops at the first error or cancellation with the progress so far and lets selection errors fail the activity', async () => {
     mocks.listUnmirroredNangoRepos.mockResolvedValue(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(repo))
     mocks.executeSql.mockResolvedValue({ data: [] })
     mocks.mirrorRepo.mockImplementation(async (_qx: unknown, c: IMirrorCandidate) => {
@@ -146,6 +160,12 @@ describe('mirror sweep activities', () => {
     mocks.executeSql.mockRejectedValue(new Error('tinybird down'))
 
     await expect(mirrorBatch(2)).rejects.toThrow('tinybird down')
+    expect(mocks.mirrorRepo).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+
+    mocks.executeSql.mockResolvedValue({ data: [] })
+    mocks.cancellation.abort()
+    await expect(mirrorBatch(2)).resolves.toMatchObject({ attempted: 0, failed: true })
     expect(mocks.mirrorRepo).not.toHaveBeenCalled()
   })
 })
