@@ -220,7 +220,7 @@ import LfAdminIntegrationPlatformSelect
 import LfAdminIntegrationFoundationSelect
   from '@/modules/admin/modules/integration/components/status/integration-foundation-select.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
-import { isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
+import { adminConnectablePlatforms, isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 import {
   lfIntegrationStatusesTabs,
 } from '@/modules/admin/modules/integration/config/status';
@@ -286,6 +286,7 @@ const fetchGlobalIntegrations = () => {
     platform: platform.value || undefined,
     status: lfIntegrationStatusesTabs[status.value].statuses,
     ...scopeFilters(),
+    platforms: status.value === 'notConnected' ? adminConnectablePlatforms() : undefined,
   })
     .then((res) => {
       if (res.offset > 0) {
@@ -304,6 +305,7 @@ const fetchGlobalIntegrationStatusCount = () => {
   UsersService.fetchGlobalIntegrationStatusCount({
     platform: platform.value || undefined,
     ...scopeFilters(),
+    platforms: adminConnectablePlatforms(),
   })
     .then((res) => {
       const statusCount = Object.keys(lfIntegrationStatusesTabs).reduce((acc: Record<string, number>, key) => {

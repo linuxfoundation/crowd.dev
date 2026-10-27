@@ -186,6 +186,7 @@ export async function fetchGlobalNotConnectedIntegrations(
   offset: number,
   segmentId?: string | null,
   isLF?: boolean | null,
+  platforms?: string[] | null,
 ): Promise<IIntegration[]> {
   return qx.select(
     `
@@ -194,7 +195,8 @@ export async function fetchGlobalNotConnectedIntegrations(
                                       UNION
                                       SELECT platform FROM public.integrations) known
                                 WHERE platform IS NOT NULL
-                                  AND NOT platform = ANY ($(notConnectable)::text[])),
+                                  AND NOT platform = ANY ($(notConnectable)::text[])
+                                  AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
@@ -228,6 +230,7 @@ export async function fetchGlobalNotConnectedIntegrations(
       limit,
       offset,
       notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
+      platforms: platforms?.length ? platforms : null,
     },
   )
 }
@@ -246,6 +249,7 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
   query: string,
   segmentId?: string | null,
   isLF?: boolean | null,
+  platforms?: string[] | null,
 ): Promise<{ count: number }[]> {
   return qx.select(
     `
@@ -254,7 +258,8 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
                                       UNION
                                       SELECT platform FROM public.integrations) known
                                 WHERE platform IS NOT NULL
-                                  AND NOT platform = ANY ($(notConnectable)::text[])),
+                                  AND NOT platform = ANY ($(notConnectable)::text[])
+                                  AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
            connected_platforms AS (SELECT i.platform, s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
@@ -278,6 +283,7 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
       isLF: isLF ?? null,
       query: `%${query}%`,
       notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
+      platforms: platforms?.length ? platforms : null,
     },
   )
 }

@@ -137,6 +137,30 @@ describe('global not-connected integrations for a selected platform', () => {
   })
 })
 
+describe('global not-connected integrations limited to given platforms', () => {
+  test('list and count only include the given platforms', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+    await createIntegration(qx, 'github', connectedId)
+    await createIntegration(qx, 'cvent', connectedId)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'github',
+    ])
+    const [{ count }] = await fetchGlobalNotConnectedIntegrationsCount(
+      qx,
+      null,
+      '',
+      groupId,
+      null,
+      ['github'],
+    )
+
+    expect(rows.map((r) => r.platform)).toEqual(['github'])
+    expect(segmentIdsOf(rows)).toEqual([unconnectedId])
+    expect(Number(count)).toBe(1)
+  })
+})
+
 describe('global integrations LF filter', () => {
   async function createTreeWithLF(qx: QueryExecutor, isLF: boolean) {
     const node = () => ({ name: generateUUIDv1(), slug: generateUUIDv1(), isLF })

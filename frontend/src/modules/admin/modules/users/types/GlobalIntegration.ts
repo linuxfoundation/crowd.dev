@@ -6,12 +6,14 @@ export interface GlobalIntegrationsQuery {
   status: string[];
   segment?: string;
   isLF?: boolean;
+  platforms?: string[];
 }
 
 export interface GlobalIntegrationStatusCountQuery {
   platform?: string;
   segment?: string;
   isLF?: boolean;
+  platforms?: string[];
 }
 
 export interface GlobalIntegrationStatusCount {
