@@ -114,6 +114,7 @@ interface ITimedMemberUpdate {
 interface IPayloadMemberUpdate extends ITimedMemberUpdate {
   payload: IActivityProcessData
   role: MemberRole
+  dbMember: IDbMember
 }
 
 interface IMemberUpdateGroup {
@@ -150,7 +151,7 @@ function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMe
     member: IMemberData,
   ) => {
     const entry = updatesByMember.get(dbMember.id) ?? { dbMember, updates: [] }
-    entry.updates.push({ payload, role, member, timestamp: payload.activity.timestamp })
+    entry.updates.push({ payload, role, dbMember, member, timestamp: payload.activity.timestamp })
     updatesByMember.set(dbMember.id, entry)
   }
 
@@ -167,12 +168,74 @@ function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMe
   return updatesByMember
 }
 
+function identityKey(identity: IMemberIdentity): string {
+  return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value).toLowerCase()}`
+}
+
+// Members that can merge into each other in this batch: a verified identity that one of them owns
+// or sends is sent by another. Their activities have to be applied in strict timestamp order.
+function linkedMembers(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  dbMemberIdentities: Map<string, IMemberIdentity[]>,
+): string[][] {
+  const parent = new Map<string, string>()
+  const root = (memberId: string): string => {
+    let id = memberId
+    while (parent.get(id) !== id) {
+      id = parent.get(id)
+    }
+    return id
+  }
+
+  const memberByIdentity = new Map<string, string>()
+  const link = (identity: IMemberIdentity, memberId: string) => {
+    if (!identity.verified || !identity.value) {
+      return
+    }
+    const key = identityKey(identity)
+    const other = memberByIdentity.get(key)
+    if (other === undefined) {
+      memberByIdentity.set(key, memberId)
+    } else {
+      parent.set(root(other), root(memberId))
+    }
+  }
+
+  for (const memberId of updatesByMember.keys()) {
+    parent.set(memberId, memberId)
+  }
+  for (const memberId of updatesByMember.keys()) {
+    for (const identity of dbMemberIdentities.get(memberId) ?? []) {
+      link(identity, memberId)
+    }
+  }
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const { member } of updates) {
+      for (const identity of member.identities ?? []) {
+        link(identity, memberId)
+      }
+    }
+  }
+
+  const groups = new Map<string, string[]>()
+  for (const memberId of updatesByMember.keys()) {
+    const group = groups.get(root(memberId)) ?? []
+    group.push(memberId)
+    groups.set(root(memberId), group)
+  }
+  return Array.from(groups.values())
+}
+
 function oldestFirstUpdateRuns(updates: IPayloadMemberUpdate[]): IPayloadMemberUpdate[][] {
   const runs: IPayloadMemberUpdate[][] = []
   const sorted = [...updates].sort((a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp))
   for (const update of sorted) {
     const run = runs[runs.length - 1]
-    if (run && updateRunKey(run[0].payload) === updateRunKey(update.payload)) {
+    if (
+      run &&
+      run[0].dbMember.id === update.dbMember.id &&
+      updateRunKey(run[0].payload) === updateRunKey(update.payload)
+    ) {
       run.push(update)
     } else {
       runs.push([update])
@@ -2005,16 +2068,18 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    // Runs of all members go in order of their newest activity: members can merge into each other
-    // mid-batch, and a merge carries the merged member's newest data into the survivor.
-    const runs = Array.from(groupUpdatesByMember(payloads).values())
-      .flatMap(({ dbMember, updates }) =>
-        oldestFirstUpdateRuns(updates).map((run) => ({
-          dbMember,
-          run,
-          repeated: updates.length > 1,
-        })),
+    // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
+    // their activities in timestamp order; members that can't merge don't affect each other.
+    const updatesByMember = groupUpdatesByMember(payloads)
+    const runs = linkedMembers(updatesByMember, dbMemberIdentities)
+      .flatMap((memberIds) =>
+        oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates)),
       )
+      .map((run) => ({
+        dbMember: run[0].dbMember,
+        run,
+        repeated: updatesByMember.get(run[0].dbMember.id).updates.length > 1,
+      }))
       .sort(
         (a, b) =>
           timestampMs(a.run[a.run.length - 1].timestamp) -
