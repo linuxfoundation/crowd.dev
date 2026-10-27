@@ -161,6 +161,20 @@ describe('global not-connected integrations limited to given platforms', () => {
   })
 })
 
+describe('global not-connected github variants', () => {
+  test('treats github-nango as github', async ({ qx }) => {
+    const { groupId, connectedId, unconnectedId } = await createTree(qx)
+    await createIntegration(qx, 'github-nango', connectedId)
+
+    const rows = await fetchGlobalNotConnectedIntegrations(qx, null, '', 1000, 0, groupId, null, [
+      'github',
+    ])
+
+    expect(rows.map((r) => r.platform)).toEqual(['github'])
+    expect(segmentIdsOf(rows)).toEqual([unconnectedId])
+  })
+})
+
 describe('global integrations LF filter', () => {
   async function createTreeWithLF(qx: QueryExecutor, isLF: boolean) {
     const node = () => ({ name: generateUUIDv1(), slug: generateUUIDv1(), isLF })

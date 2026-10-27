@@ -193,11 +193,13 @@ export async function fetchGlobalNotConnectedIntegrations(
       WITH unique_platforms AS (SELECT DISTINCT platform
                                 FROM (SELECT $(platform)::text AS platform
                                       UNION
-                                      SELECT platform FROM public.integrations) known
+                                      SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
+                                      FROM public.integrations) known
                                 WHERE platform IS NOT NULL
                                   AND NOT platform = ANY ($(notConnectable)::text[])
                                   AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
-           connected_platforms AS (SELECT i.platform, s.id as "segmentId"
+           connected_platforms AS (SELECT CASE WHEN i.platform = 'github-nango' THEN 'github' ELSE i.platform END AS platform,
+                                          s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
                                    WHERE i."deletedAt" IS NULL)
@@ -256,11 +258,13 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
       WITH unique_platforms AS (SELECT DISTINCT platform
                                 FROM (SELECT $(platform)::text AS platform
                                       UNION
-                                      SELECT platform FROM public.integrations) known
+                                      SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
+                                      FROM public.integrations) known
                                 WHERE platform IS NOT NULL
                                   AND NOT platform = ANY ($(notConnectable)::text[])
                                   AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
-           connected_platforms AS (SELECT i.platform, s.id as "segmentId"
+           connected_platforms AS (SELECT CASE WHEN i.platform = 'github-nango' THEN 'github' ELSE i.platform END AS platform,
+                                          s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
                                    WHERE i."deletedAt" IS NULL)
