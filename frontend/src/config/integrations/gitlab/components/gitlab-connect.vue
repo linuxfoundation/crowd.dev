@@ -13,6 +13,7 @@
 
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 import {
   defineProps, computed, onMounted, ref,
 } from 'vue';
@@ -40,10 +41,7 @@ const connectUrl = computed(() => `${config.backendUrl}/gitlab/connect?crowdToke
 
 const connect = async () => {
   try {
-    if (props.grandparentId && props.segmentId) {
-      localStorage.setItem('segmentId', props.segmentId);
-      localStorage.setItem('segmentGrandparentId', props.grandparentId);
-    }
+    rememberConnectSegment(props.segmentId, props.grandparentId);
     const result = await ConfirmDialog({
       type: 'notification',
       title: 'Are you the admin of your GitLab organization?',
