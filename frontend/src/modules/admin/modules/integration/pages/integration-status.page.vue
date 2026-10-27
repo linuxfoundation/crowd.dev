@@ -38,12 +38,18 @@
           <tbody>
             <tr v-for="integration of visibleIntegrations" :key="`${integration.segmentId}-${integration.platform}-${integration.id}`">
               <td class="pl-2">
-                <p class="text-medium font-semibold mb-1">
-                  {{ integration.name }}
-                </p>
-                <p class="text-tiny text-gray-500">
-                  {{ hierarchyPath(integration) }}
-                </p>
+                <router-link
+                  :to="{ name: 'integration', params: { grandparentId: integration.grandparentId, id: integration.segmentId } }"
+                  target="_blank"
+                  class="group block"
+                >
+                  <p class="text-medium font-semibold mb-1 group-hover:underline">
+                    {{ integration.name }}
+                  </p>
+                  <p class="text-tiny text-gray-500">
+                    {{ hierarchyPath(integration) }}
+                  </p>
+                </router-link>
               </td>
               <td>
                 <div class="flex flex-col gap-1 items-start">
