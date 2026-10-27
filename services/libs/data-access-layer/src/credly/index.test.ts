@@ -195,6 +195,30 @@ describe('credly template mappings', () => {
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-unknown')).toBe(0)
   })
 
+  test('evidence with the same content in another key order leaves the decision unchanged', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    const base = mapped('tpl-evidence', project)
+    await upsertCredlyTemplateDecision(qx, {
+      ...base,
+      evidence: { sku: 'CKA', catalogue: { group: 'k8s', variants: ['CKA-CN', 'CKA-JP'] } },
+    })
+
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...base,
+        evidence: { catalogue: { variants: ['CKA-CN', 'CKA-JP'], group: 'k8s' }, sku: 'CKA' },
+      }),
+    ).toBe('unchanged')
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...base,
+        evidence: { sku: 'CKA', catalogue: { group: 'k8s', variants: ['CKA-JP', 'CKA-CN'] } },
+      }),
+    ).toBe('updated')
+  })
+
   test('the same decision reactivates a deactivated template', async ({ qx }) => {
     const project = await mappedProject(qx)
     await upsertCredlyTemplateDecision(qx, mapped('tpl-back', project))

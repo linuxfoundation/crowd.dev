@@ -175,11 +175,23 @@ function targetChanged(stored: IStoredDecision, next: IStoredDecision): boolean 
   )
 }
 
+// JSONB does not keep key order, so the stored evidence is compared with its keys sorted.
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 function decisionChanged(stored: IStoredDecision, next: IStoredDecision): boolean {
   return (
     stored.deactivatedAt !== null ||
     DECISION_FIELDS.some((field) => stored[field] !== next[field]) ||
-    JSON.stringify(stored.evidence) !== JSON.stringify(next.evidence)
+    canonicalJson(stored.evidence) !== canonicalJson(next.evidence)
   )
 }
 
@@ -252,6 +264,7 @@ export async function upsertCredlyTemplateDecision(
                "lockedAt", "deactivatedAt"
         FROM integration."credlyTemplateMappings"
         WHERE "badgeTemplateId" = $(badgeTemplateId)
+        FOR UPDATE
       `,
       { badgeTemplateId: decision.badgeTemplateId },
     )
