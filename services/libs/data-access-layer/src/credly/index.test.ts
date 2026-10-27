@@ -8,8 +8,10 @@ import {
   deactivateCredlyTemplateMapping,
   findOrCreateCredlyIntegration,
   listActiveCredlyTemplateMappings,
+  listHeldCredlyTemplateMappings,
   listStaleCredlyTemplateMappings,
-  upsertCredlyTemplateMapping,
+  lockCredlyTemplateMapping,
+  upsertCredlyTemplateDecision,
 } from './index'
 
 const test = withQx(base)
@@ -41,16 +43,27 @@ async function readMapping(
   qx: QueryExecutor,
   badgeTemplateId: string,
 ): Promise<{
-  integrationId: string
-  segmentId: string
+  integrationId: string | null
+  segmentId: string | null
   badgeTemplateName: string
+  status: string
+  holdReason: string | null
+  projectSlug: string | null
+  badgeCount: number | null
+  rule: string | null
+  evidence: Record<string, unknown> | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  lockedAt: string | null
   deactivatedAt: string | null
   updatedAt: string
   lastSeenAt: string
 }> {
   return qx.selectOne(
     `
-    SELECT "integrationId", "segmentId", "badgeTemplateName", "deactivatedAt", "updatedAt", "lastSeenAt"
+    SELECT "integrationId", "segmentId", "badgeTemplateName", status, "holdReason", "projectSlug",
+           "badgeCount", rule, evidence, "reviewedBy", "reviewedAt", "lockedAt", "deactivatedAt",
+           "updatedAt", "lastSeenAt"
     FROM integration."credlyTemplateMappings"
     WHERE "badgeTemplateId" = $(badgeTemplateId)
     `,
@@ -121,46 +134,60 @@ describe('findOrCreateCredlyIntegration', () => {
 })
 
 describe('credly template mappings', () => {
-  test('upsert inserts a mapping and a repeat only moves lastSeenAt', async ({ qx }) => {
-    const { segmentId, integrationId } = await mappedProject(qx)
-    const mapping = {
-      badgeTemplateId: 'tpl-cka',
+  const mapped = (badgeTemplateId: string, project: { segmentId: string; integrationId: string }) =>
+    ({
+      badgeTemplateId,
+      badgeTemplateName: badgeTemplateId,
+      status: 'mapped',
+      rule: 'exact_sku',
+      ruleVersion: 1,
+      ...project,
+    }) as const
+
+  test('a mapped decision is inserted once and a repeat only moves lastSeenAt and badgeCount', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    const decision = {
+      ...mapped('tpl-cka', project),
       badgeTemplateName: 'CKA: Certified Kubernetes Administrator',
-      integrationId,
-      segmentId,
+      matchedSku: 'CKA',
+      evidence: { sku: 'CKA' },
     }
 
-    await upsertCredlyTemplateMapping(qx, mapping)
+    expect(await upsertCredlyTemplateDecision(qx, { ...decision, badgeCount: 10 })).toBe('inserted')
     const inserted = await readMapping(qx, 'tpl-cka')
     await backdateMapping(qx, 'tpl-cka')
-    await upsertCredlyTemplateMapping(qx, mapping)
+    expect(await upsertCredlyTemplateDecision(qx, { ...decision, badgeCount: 12 })).toBe(
+      'unchanged',
+    )
     const repeated = await readMapping(qx, 'tpl-cka')
 
-    expect(inserted).toMatchObject({ integrationId, segmentId, deactivatedAt: null })
+    expect(inserted).toMatchObject({
+      ...project,
+      status: 'mapped',
+      rule: 'exact_sku',
+      badgeCount: 10,
+      evidence: { sku: 'CKA' },
+      lockedAt: null,
+      deactivatedAt: null,
+    })
+    expect(repeated.badgeCount).toBe(12)
     expect(millis(repeated.updatedAt)).toBe(millis(BACKDATED))
     expect(millis(repeated.lastSeenAt)).toBeGreaterThan(millis(BACKDATED))
   })
 
-  test('upsert moves a template to another project and reactivates a deactivated one', async ({
+  test('a decision moves a template to another project and reactivates a deactivated one', async ({
     qx,
   }) => {
     const first = await mappedProject(qx)
     const second = await mappedProject(qx)
-    const name = 'ICA: Istio Certified Associate'
-    await upsertCredlyTemplateMapping(qx, {
-      badgeTemplateId: 'tpl-ica',
-      badgeTemplateName: name,
-      ...first,
-    })
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-ica', first))
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-ica')).toBe(1)
     expect((await readMapping(qx, 'tpl-ica')).deactivatedAt).not.toBeNull()
     await backdateMapping(qx, 'tpl-ica')
 
-    await upsertCredlyTemplateMapping(qx, {
-      badgeTemplateId: 'tpl-ica',
-      badgeTemplateName: name,
-      ...second,
-    })
+    expect(await upsertCredlyTemplateDecision(qx, mapped('tpl-ica', second))).toBe('updated')
 
     const moved = await readMapping(qx, 'tpl-ica')
     expect(moved).toMatchObject({ ...second, deactivatedAt: null })
@@ -168,23 +195,192 @@ describe('credly template mappings', () => {
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-unknown')).toBe(0)
   })
 
-  test('upsert refuses a pair that is not a live Credly integration on that segment', async ({
+  test('evidence with the same content in another key order leaves the decision unchanged', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    const base = mapped('tpl-evidence', project)
+    await upsertCredlyTemplateDecision(qx, {
+      ...base,
+      evidence: { sku: 'CKA', catalogue: { group: 'k8s', variants: ['CKA-CN', 'CKA-JP'] } },
+    })
+
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...base,
+        evidence: { catalogue: { variants: ['CKA-CN', 'CKA-JP'], group: 'k8s' }, sku: 'CKA' },
+      }),
+    ).toBe('unchanged')
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...base,
+        evidence: { sku: 'CKA', catalogue: { group: 'k8s', variants: ['CKA-JP', 'CKA-CN'] } },
+      }),
+    ).toBe('updated')
+  })
+
+  test('the same decision reactivates a deactivated template', async ({ qx }) => {
+    const project = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-back', project))
+    await deactivateCredlyTemplateMapping(qx, 'tpl-back')
+
+    expect(await upsertCredlyTemplateDecision(qx, mapped('tpl-back', project))).toBe('updated')
+
+    expect((await readMapping(qx, 'tpl-back')).deactivatedAt).toBeNull()
+  })
+
+  test('a decision with an inconsistent status is refused before touching the table', async ({
+    qx,
+  }) => {
+    await expect(
+      upsertCredlyTemplateDecision(qx, {
+        badgeTemplateId: 'tpl-bad',
+        badgeTemplateName: 'tpl-bad',
+        status: 'mapped',
+      }),
+    ).rejects.toThrow('needs a segment and an integration')
+    await expect(
+      upsertCredlyTemplateDecision(qx, {
+        badgeTemplateId: 'tpl-bad',
+        badgeTemplateName: 'tpl-bad',
+        status: 'held',
+      }),
+    ).rejects.toThrow('needs a hold reason')
+  })
+
+  test('a mapped decision refuses a pair that is not a live Credly integration on that segment', async ({
     qx,
   }) => {
     const { integrationId } = await mappedProject(qx)
     const otherSegmentId = await createSegment(qx)
 
     await expect(
-      upsertCredlyTemplateMapping(qx, {
-        badgeTemplateId: 'tpl-mismatch',
-        badgeTemplateName: 'tpl-mismatch',
-        integrationId,
-        segmentId: otherSegmentId,
-      }),
+      upsertCredlyTemplateDecision(
+        qx,
+        mapped('tpl-mismatch', { integrationId, segmentId: otherSegmentId }),
+      ),
     ).rejects.toThrow('not a live Credly integration')
   })
 
-  test('active and stale lists split mappings by whether their integration is live on the segment', async ({
+  test('a held template keeps its reason and project slug without any integration', async ({
+    qx,
+  }) => {
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        badgeTemplateId: 'tpl-held',
+        badgeTemplateName: 'LFS114: free5GC',
+        badgeCount: 2000,
+        status: 'held',
+        holdReason: 'no_segment',
+        projectSlug: 'free5gc',
+        rule: 'hold',
+        ruleVersion: 1,
+      }),
+    ).toBe('inserted')
+
+    expect(await readMapping(qx, 'tpl-held')).toMatchObject({
+      status: 'held',
+      holdReason: 'no_segment',
+      projectSlug: 'free5gc',
+      integrationId: null,
+      segmentId: null,
+    })
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-held')).toBe(false)
+  })
+
+  test('a reviewer override moves a held template to a project and records who decided', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, {
+      badgeTemplateId: 'tpl-lfc131',
+      badgeTemplateName: 'LFC131: Green Software for Practitioners',
+      status: 'held',
+      holdReason: 'no_project',
+    })
+
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...mapped('tpl-lfc131', project),
+        rule: 'override',
+        reviewedBy: 'joana',
+      }),
+    ).toBe('updated')
+
+    const released = await readMapping(qx, 'tpl-lfc131')
+    expect(released).toMatchObject({
+      ...project,
+      status: 'mapped',
+      holdReason: null,
+      rule: 'override',
+    })
+    expect(released.reviewedBy).toBe('joana')
+    expect(released.reviewedAt).not.toBeNull()
+
+    await upsertCredlyTemplateDecision(qx, { ...mapped('tpl-lfc131', project), rule: 'title' })
+
+    const automatic = await readMapping(qx, 'tpl-lfc131')
+    expect(automatic.rule).toBe('title')
+    expect(automatic.reviewedBy).toBeNull()
+    expect(automatic.reviewedAt).toBeNull()
+  })
+
+  test('a locked template is not moved by a new decision and reports it', async ({ qx }) => {
+    const first = await mappedProject(qx)
+    const second = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-locked', first))
+
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked')).toBe(true)
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked')).toBe(false)
+    expect(await upsertCredlyTemplateDecision(qx, mapped('tpl-locked', second))).toBe('locked')
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...mapped('tpl-locked', first),
+        badgeTemplateName: 'renamed',
+      }),
+    ).toBe('updated')
+
+    const kept = await readMapping(qx, 'tpl-locked')
+    expect(kept).toMatchObject({ ...first, status: 'mapped', badgeTemplateName: 'renamed' })
+    expect(kept.lockedAt).not.toBeNull()
+  })
+
+  test('the held queue is ordered by badge count and leaves mapped and excluded templates out', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-q-mapped', project))
+    await upsertCredlyTemplateDecision(qx, {
+      badgeTemplateId: 'tpl-q-excluded',
+      badgeTemplateName: 'LFF101: ELearning Badge Test',
+      status: 'excluded',
+    })
+    for (const [badgeTemplateId, badgeCount, holdReason] of [
+      ['tpl-q-small', 5, 'no_match'],
+      ['tpl-q-big', 87000, 'no_project'],
+      ['tpl-q-unknown', null, 'ambiguous'],
+    ] as const) {
+      await upsertCredlyTemplateDecision(qx, {
+        badgeTemplateId,
+        badgeTemplateName: badgeTemplateId,
+        badgeCount,
+        status: 'held',
+        holdReason,
+      })
+    }
+
+    const held = await listHeldCredlyTemplateMappings(qx)
+
+    expect(
+      held.filter((m) => m.badgeTemplateId.startsWith('tpl-q-')).map((m) => m.badgeTemplateId),
+    ).toEqual(['tpl-q-big', 'tpl-q-small', 'tpl-q-unknown'])
+    expect(held.find((m) => m.badgeTemplateId === 'tpl-q-big')).toMatchObject({
+      holdReason: 'no_project',
+      badgeCount: 87000,
+    })
+  })
+
+  test('active and stale lists split mapped templates by whether their integration is live on the segment', async ({
     qx,
   }) => {
     const live = await mappedProject(qx)
@@ -197,12 +393,14 @@ describe('credly template mappings', () => {
       ['tpl-deleted', deleted],
       ['tpl-moved', moved],
     ] as const) {
-      await upsertCredlyTemplateMapping(qx, {
-        badgeTemplateId,
-        badgeTemplateName: badgeTemplateId,
-        ...project,
-      })
+      await upsertCredlyTemplateDecision(qx, mapped(badgeTemplateId, project))
     }
+    await upsertCredlyTemplateDecision(qx, {
+      badgeTemplateId: 'tpl-held-out',
+      badgeTemplateName: 'tpl-held-out',
+      status: 'held',
+      holdReason: 'no_match',
+    })
     await deactivateCredlyTemplateMapping(qx, 'tpl-deactivated')
     await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
       id: deleted.integrationId,

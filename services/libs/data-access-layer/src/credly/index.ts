@@ -80,44 +80,266 @@ export interface ICredlyTemplateMapping {
   segmentId: string
 }
 
-// lastSeenAt moves on every call so a stale seed shows up; updatedAt only on a real change.
-// The pair must be a live Credly integration on that segment, or routing would never see the row.
-export async function upsertCredlyTemplateMapping(
-  qx: QueryExecutor,
-  data: ICredlyTemplateMapping,
-): Promise<void> {
-  const written = await qx.result(
-    `
-      INSERT INTO integration."credlyTemplateMappings" AS m
-        ("badgeTemplateId", "badgeTemplateName", "integrationId", "segmentId", "lastSeenAt")
-      SELECT $(badgeTemplateId), $(badgeTemplateName), i.id, i."segmentId", now()
-      FROM public.integrations i
-      WHERE i.id = $(integrationId)
-        AND i."segmentId" = $(segmentId)
-        AND i.platform = $(platform)
-        AND i."deletedAt" IS NULL
-      ON CONFLICT ("badgeTemplateId") DO UPDATE
-      SET "badgeTemplateName" = EXCLUDED."badgeTemplateName",
-          "integrationId" = EXCLUDED."integrationId",
-          "segmentId" = EXCLUDED."segmentId",
-          "deactivatedAt" = NULL,
-          "lastSeenAt" = now(),
-          "updatedAt" = CASE
-            WHEN m."integrationId" IS DISTINCT FROM EXCLUDED."integrationId"
-              OR m."segmentId" IS DISTINCT FROM EXCLUDED."segmentId"
-              OR m."badgeTemplateName" IS DISTINCT FROM EXCLUDED."badgeTemplateName"
-              OR m."deactivatedAt" IS NOT NULL
-            THEN now()
-            ELSE m."updatedAt"
-          END
-    `,
-    { ...data, platform: PlatformType.CREDLY },
-  )
-  if (written === 0) {
+export type CredlyMappingStatus = 'mapped' | 'held' | 'excluded'
+export type CredlyHoldReason = 'no_segment' | 'no_project' | 'ambiguous' | 'no_match' | 'test'
+
+export interface ICredlyTemplateDecision {
+  badgeTemplateId: string
+  badgeTemplateName: string
+  badgeCount?: number | null
+  status: CredlyMappingStatus
+  holdReason?: CredlyHoldReason | null
+  projectSlug?: string | null
+  segmentId?: string | null
+  integrationId?: string | null
+  rule?: string | null
+  ruleVersion?: number | null
+  matchedSku?: string | null
+  evidence?: Record<string, unknown> | null
+  reviewedBy?: string | null
+}
+
+export type CredlyDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | 'locked'
+
+export interface ICredlyHeldTemplate {
+  badgeTemplateId: string
+  badgeTemplateName: string
+  badgeCount: number | null
+  holdReason: CredlyHoldReason
+  projectSlug: string | null
+  rule: string | null
+  lastSeenAt: Date
+}
+
+interface IStoredDecision {
+  badgeTemplateName: string
+  status: CredlyMappingStatus
+  holdReason: CredlyHoldReason | null
+  projectSlug: string | null
+  segmentId: string | null
+  integrationId: string | null
+  rule: string | null
+  ruleVersion: number | null
+  matchedSku: string | null
+  evidence: Record<string, unknown> | null
+  reviewedBy: string | null
+  lockedAt: Date | null
+  deactivatedAt: Date | null
+}
+
+const DECISION_FIELDS = [
+  'badgeTemplateName',
+  'status',
+  'holdReason',
+  'projectSlug',
+  'segmentId',
+  'integrationId',
+  'rule',
+  'ruleVersion',
+  'matchedSku',
+  'reviewedBy',
+] as const
+
+function normalizedDecision(decision: ICredlyTemplateDecision): IStoredDecision {
+  const mapped = decision.status === 'mapped'
+  if (mapped && !(decision.segmentId && decision.integrationId)) {
     throw new Error(
-      `integration ${data.integrationId} is not a live Credly integration on segment ${data.segmentId}`,
+      `mapped template ${decision.badgeTemplateId} needs a segment and an integration`,
     )
   }
+  if (decision.status === 'held' && !decision.holdReason) {
+    throw new Error(`held template ${decision.badgeTemplateId} needs a hold reason`)
+  }
+  return {
+    badgeTemplateName: decision.badgeTemplateName,
+    status: decision.status,
+    holdReason: decision.status === 'held' ? decision.holdReason : null,
+    projectSlug: decision.projectSlug ?? null,
+    segmentId: mapped ? decision.segmentId : null,
+    integrationId: mapped ? decision.integrationId : null,
+    rule: decision.rule ?? null,
+    ruleVersion: decision.ruleVersion ?? null,
+    matchedSku: decision.matchedSku ?? null,
+    evidence: decision.evidence ?? null,
+    reviewedBy: decision.reviewedBy ?? null,
+    lockedAt: null,
+    deactivatedAt: null,
+  }
+}
+
+function targetChanged(stored: IStoredDecision, next: IStoredDecision): boolean {
+  return (
+    stored.status !== next.status ||
+    stored.segmentId !== next.segmentId ||
+    stored.integrationId !== next.integrationId
+  )
+}
+
+// JSONB does not keep key order, so the stored evidence is compared with its keys sorted.
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+function decisionChanged(stored: IStoredDecision, next: IStoredDecision): boolean {
+  return (
+    stored.deactivatedAt !== null ||
+    DECISION_FIELDS.some((field) => stored[field] !== next[field]) ||
+    canonicalJson(stored.evidence) !== canonicalJson(next.evidence)
+  )
+}
+
+async function assertLiveCredlyIntegration(
+  qx: QueryExecutor,
+  integrationId: string | null,
+  segmentId: string | null,
+): Promise<void> {
+  const row = integrationId
+    ? await qx.selectOneOrNone(
+        `
+          SELECT 1
+          FROM public.integrations i
+          WHERE i.id = $(integrationId)
+            AND i."segmentId" = $(segmentId)
+            AND i.platform = $(platform)
+            AND i."deletedAt" IS NULL
+        `,
+        { integrationId, segmentId, platform: PlatformType.CREDLY },
+      )
+    : null
+  if (!row) {
+    throw new Error(
+      `integration ${integrationId} is not a live Credly integration on segment ${segmentId}`,
+    )
+  }
+}
+
+async function touchDecision(
+  qx: QueryExecutor,
+  badgeTemplateId: string,
+  badgeCount: number | null,
+): Promise<void> {
+  await qx.result(
+    `
+      UPDATE integration."credlyTemplateMappings"
+      SET "lastSeenAt" = now(), "badgeCount" = COALESCE($(badgeCount), "badgeCount")
+      WHERE "badgeTemplateId" = $(badgeTemplateId)
+    `,
+    { badgeTemplateId, badgeCount },
+  )
+}
+
+// A locked template has emitted badges on its segment: the resolver may not move it, it only
+// reports the difference. Everything else is rewritten when the decision changed.
+export async function upsertCredlyTemplateDecision(
+  qx: QueryExecutor,
+  decision: ICredlyTemplateDecision,
+): Promise<CredlyDecisionOutcome> {
+  const next = normalizedDecision(decision)
+  const values = {
+    ...next,
+    badgeTemplateId: decision.badgeTemplateId,
+    badgeCount: decision.badgeCount ?? null,
+    evidence: next.evidence ? JSON.stringify(next.evidence) : null,
+  }
+
+  return qx.tx(async (tx) => {
+    await tx.select(
+      `SELECT pg_advisory_xact_lock(hashtextextended('credlyTemplateMapping:' || $(badgeTemplateId), 0))`,
+      { badgeTemplateId: decision.badgeTemplateId },
+    )
+    if (next.status === 'mapped') {
+      await assertLiveCredlyIntegration(tx, next.integrationId, next.segmentId)
+    }
+    const stored: IStoredDecision | null = await tx.selectOneOrNone(
+      `
+        SELECT "badgeTemplateName", status, "holdReason", "projectSlug", "segmentId",
+               "integrationId", rule, "ruleVersion", "matchedSku", evidence, "reviewedBy",
+               "lockedAt", "deactivatedAt"
+        FROM integration."credlyTemplateMappings"
+        WHERE "badgeTemplateId" = $(badgeTemplateId)
+        FOR UPDATE
+      `,
+      { badgeTemplateId: decision.badgeTemplateId },
+    )
+
+    if (!stored) {
+      await tx.result(
+        `
+          INSERT INTO integration."credlyTemplateMappings"
+            ("badgeTemplateId", "badgeTemplateName", "badgeCount", status, "holdReason",
+             "projectSlug", "segmentId", "integrationId", rule, "ruleVersion", "matchedSku",
+             evidence, "reviewedBy", "reviewedAt", "lastSeenAt")
+          VALUES
+            ($(badgeTemplateId), $(badgeTemplateName), $(badgeCount), $(status), $(holdReason),
+             $(projectSlug), $(segmentId), $(integrationId), $(rule), $(ruleVersion), $(matchedSku),
+             $(evidence)::jsonb, $(reviewedBy),
+             CASE WHEN $(reviewedBy) IS NULL THEN NULL ELSE now() END, now())
+        `,
+        values,
+      )
+      return 'inserted'
+    }
+
+    if (stored.lockedAt !== null && targetChanged(stored, next)) {
+      await touchDecision(tx, decision.badgeTemplateId, values.badgeCount)
+      return 'locked'
+    }
+
+    if (!decisionChanged(stored, next)) {
+      await touchDecision(tx, decision.badgeTemplateId, values.badgeCount)
+      return 'unchanged'
+    }
+
+    await tx.result(
+      `
+        UPDATE integration."credlyTemplateMappings"
+        SET "badgeTemplateName" = $(badgeTemplateName),
+            "badgeCount" = COALESCE($(badgeCount), "badgeCount"),
+            status = $(status),
+            "holdReason" = $(holdReason),
+            "projectSlug" = $(projectSlug),
+            "segmentId" = $(segmentId),
+            "integrationId" = $(integrationId),
+            rule = $(rule),
+            "ruleVersion" = $(ruleVersion),
+            "matchedSku" = $(matchedSku),
+            evidence = $(evidence)::jsonb,
+            "reviewedBy" = $(reviewedBy),
+            "reviewedAt" = CASE WHEN $(reviewedBy) IS NULL THEN NULL ELSE now() END,
+            "deactivatedAt" = NULL,
+            "lastSeenAt" = now(),
+            "updatedAt" = now()
+        WHERE "badgeTemplateId" = $(badgeTemplateId)
+      `,
+      values,
+    )
+    return 'updated'
+  })
+}
+
+export async function lockCredlyTemplateMapping(
+  qx: QueryExecutor,
+  badgeTemplateId: string,
+): Promise<boolean> {
+  const locked = await qx.result(
+    `
+      UPDATE integration."credlyTemplateMappings"
+      SET "lockedAt" = now()
+      WHERE "badgeTemplateId" = $(badgeTemplateId)
+        AND status = 'mapped'
+        AND "deactivatedAt" IS NULL
+        AND "lockedAt" IS NULL
+    `,
+    { badgeTemplateId },
+  )
+  return locked > 0
 }
 
 export async function listActiveCredlyTemplateMappings(
@@ -128,7 +350,8 @@ export async function listActiveCredlyTemplateMappings(
       SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId"
       FROM integration."credlyTemplateMappings" m
       JOIN public.integrations i ON i.id = m."integrationId"
-      WHERE m."deactivatedAt" IS NULL
+      WHERE m.status = 'mapped'
+        AND m."deactivatedAt" IS NULL
         AND i.platform = $(platform)
         AND i."deletedAt" IS NULL
         AND i."segmentId" = m."segmentId"
@@ -150,10 +373,24 @@ export async function listStaleCredlyTemplateMappings(
        AND i.platform = $(platform)
        AND i."deletedAt" IS NULL
        AND i."segmentId" = m."segmentId"
-      WHERE m."deactivatedAt" IS NULL AND i.id IS NULL
+      WHERE m.status = 'mapped' AND m."deactivatedAt" IS NULL AND i.id IS NULL
       ORDER BY m."badgeTemplateId"
     `,
     { platform: PlatformType.CREDLY },
+  )
+}
+
+export async function listHeldCredlyTemplateMappings(
+  qx: QueryExecutor,
+): Promise<ICredlyHeldTemplate[]> {
+  return qx.select(
+    `
+      SELECT "badgeTemplateId", "badgeTemplateName", "badgeCount", "holdReason", "projectSlug",
+             rule, "lastSeenAt"
+      FROM integration."credlyTemplateMappings"
+      WHERE status = 'held' AND "deactivatedAt" IS NULL
+      ORDER BY "badgeCount" DESC NULLS LAST, "badgeTemplateName"
+    `,
   )
 }
 
