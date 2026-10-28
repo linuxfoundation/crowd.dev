@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS integration."credlyBadges" (
     "replacementBadgeId" TEXT NULL,
     "replacesBadgeId"    TEXT NULL,
     "segmentId"          UUID NOT NULL REFERENCES public.segments(id),
-    "integrationId"      UUID NOT NULL REFERENCES public.integrations(id),
+    "integrationId"      UUID NOT NULL REFERENCES public.integrations(id) ON DELETE CASCADE,
     "recipientEmail"     TEXT NOT NULL,
     "issuedTo"           TEXT NULL,
     "expiredEmittedAt"   TIMESTAMPTZ NULL,
