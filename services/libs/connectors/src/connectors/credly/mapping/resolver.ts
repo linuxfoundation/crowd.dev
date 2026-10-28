@@ -20,6 +20,7 @@ export interface TemplateToResolve {
   id: string
   name: string
   badgeCount?: number | null
+  url?: string | null
 }
 
 export interface ResolvedTemplate extends Required<

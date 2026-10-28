@@ -76,6 +76,7 @@ export async function loadCredlyTemplates(
         id: template.id,
         name: template.name,
         badgeCount: typeof count === 'number' && Number.isFinite(count) ? count : null,
+        url: template.url ?? null,
       })
     }
     if (result.data.length === 0 || page >= result.metadata.total_pages) break

@@ -221,8 +221,8 @@ describe('loadCredlyTemplates', () => {
 
     expect(listing.complete).toBe(true)
     expect(listing.templates).toEqual([
-      { id: 'a', name: 'A', badgeCount: 3 },
-      { id: 'b', name: 'B', badgeCount: null },
+      { id: 'a', name: 'A', badgeCount: 3, url: null },
+      { id: 'b', name: 'B', badgeCount: null, url: null },
     ])
   })
 
