@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     log,
   })
 
-  const snowflake = SnowflakeClient.fromEnv({ maxConnections: 3 })
+  const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 3 })
   try {
     const [listing, catalogue, segmentIdBySlug, stored] = await Promise.all([
       loadCredlyTemplates(http, credential.data.organizationId, log),

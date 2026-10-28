@@ -10,6 +10,7 @@ import type {
   ICredlyStoredTemplateMapping,
 } from '@crowd/data-access-layer/src/credly'
 import {
+  credlyDecisionChanged,
   deactivateCredlyTemplateMapping,
   findOrCreateCredlyIntegration,
   upsertCredlyTemplateDecision,
@@ -61,10 +62,10 @@ export async function loadCredlyTemplates(
   log: Logger,
 ): Promise<CredlyTemplateListing> {
   const templates: TemplateToResolve[] = []
-  let expected = 0
+  const totals = new Set<number>()
   for (let page = 1; ; page += 1) {
     const result = await fetchBadgeTemplatesPage(http, { organizationId, page }, log)
-    if (page === 1) expected = result.metadata.total_count
+    totals.add(result.metadata.total_count)
     for (const template of result.data) {
       const count = template.badges_count
       templates.push({
@@ -75,7 +76,11 @@ export async function loadCredlyTemplates(
     }
     if (result.data.length === 0 || page >= result.metadata.total_pages) break
   }
-  return { templates, complete: templates.length === expected }
+  const ids = new Set(templates.map((template) => template.id))
+  const [expected] = totals
+  const complete =
+    totals.size === 1 && ids.size === templates.length && templates.length === expected
+  return { templates, complete }
 }
 
 // A slug shared by subprojects under different parents cannot be a target: it stays unmapped.
@@ -112,17 +117,6 @@ export interface ResolvePlan {
   counts: Record<PlanEntryKind, number>
 }
 
-const COMPARED_FIELDS = [
-  'badgeTemplateName',
-  'status',
-  'holdReason',
-  'projectSlug',
-  'segmentId',
-  'rule',
-  'ruleVersion',
-  'matchedSku',
-] as const
-
 function targetLabel(row: {
   status: string
   holdReason?: string | null
@@ -141,11 +135,10 @@ function targetChanged(stored: ICredlyStoredTemplateMapping, next: ResolvedTempl
   return stored.status !== next.status || stored.segmentId !== next.segmentId
 }
 
+// The integration is assigned on apply: the plan keeps the stored one so it does not count as a change.
 function decisionChanged(stored: ICredlyStoredTemplateMapping, next: ResolvedTemplate): boolean {
-  return (
-    stored.deactivatedAt !== null ||
-    COMPARED_FIELDS.some((field) => (stored[field] ?? null) !== (next[field] ?? null))
-  )
+  const integrationId = targetChanged(stored, next) ? null : stored.integrationId
+  return credlyDecisionChanged(stored, { ...next, integrationId })
 }
 
 export function buildPlan(

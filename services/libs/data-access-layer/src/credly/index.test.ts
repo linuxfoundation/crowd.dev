@@ -214,6 +214,15 @@ describe('credly template mappings', () => {
     )
   })
 
+  test('a locked template cannot be deactivated', async ({ qx }) => {
+    const project = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-lock-keep', project))
+    await lockCredlyTemplateMapping(qx, 'tpl-lock-keep')
+
+    expect(await deactivateCredlyTemplateMapping(qx, 'tpl-lock-keep')).toBe(0)
+    expect((await readMapping(qx, 'tpl-lock-keep')).deactivatedAt).toBeNull()
+  })
+
   test('the full list returns every row with its lock and deactivation state', async ({ qx }) => {
     const project = await mappedProject(qx)
     await upsertCredlyTemplateDecision(qx, mapped('tpl-all-a', project))

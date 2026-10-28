@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { fetchBadgeTemplatesPage } from '@crowd/connectors/src/connectors/credly/apiClient'
 import type { ResolvedTemplate } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
 import type { ICredlyStoredTemplateMapping } from '@crowd/data-access-layer/src/credly'
 
-import { buildPlan, loadCatalogue, loadSubprojectSegments } from './credlyTemplateResolve'
+import {
+  buildPlan,
+  loadCatalogue,
+  loadCredlyTemplates,
+  loadSubprojectSegments,
+} from './credlyTemplateResolve'
 
 function decision(id: string, overrides: Partial<ResolvedTemplate> = {}): ResolvedTemplate {
   return {
@@ -38,6 +44,8 @@ function stored(
     rule: 'exact_sku',
     ruleVersion: 1,
     matchedSku: 'CKA',
+    evidence: {},
+    reviewedBy: null,
     lockedAt: null,
     deactivatedAt: null,
     ...overrides,
@@ -59,7 +67,12 @@ describe('buildPlan', () => {
         stored('same'),
         stored('moved'),
         stored('locked-move', { lockedAt: new Date() }),
-        stored('released', { status: 'held', holdReason: 'no_project', segmentId: null }),
+        stored('released', {
+          status: 'held',
+          holdReason: 'no_project',
+          segmentId: null,
+          integrationId: null,
+        }),
         stored('back', { deactivatedAt: new Date() }),
         stored('gone'),
         stored('gone-already', { deactivatedAt: new Date() }),
@@ -92,12 +105,24 @@ describe('buildPlan', () => {
     })
   })
 
-  it('reports a rule or version change as changed even when the target stays', () => {
+  it('reports a rule, version, evidence or reviewer change as changed even when the target stays', () => {
     const plan = buildPlan(
-      [decision('v2', { ruleVersion: 2 }), decision('rule', { rule: 'title', matchedSku: null })],
-      [stored('v2'), stored('rule')],
+      [
+        decision('v2', { ruleVersion: 2 }),
+        decision('rule', { rule: 'title', matchedSku: null }),
+        decision('evidence', { evidence: { votes: [{ projectSlug: 'k8s', enrollments: 2 }] } }),
+        decision('reviewer', { reviewedBy: 'joana' }),
+        decision('same', { evidence: { b: 1, a: 2 } }),
+      ],
+      [
+        stored('v2'),
+        stored('rule'),
+        stored('evidence', { evidence: { votes: [{ projectSlug: 'k8s', enrollments: 1 }] } }),
+        stored('reviewer'),
+        stored('same', { evidence: { a: 2, b: 1 } }),
+      ],
     )
-    expect(plan.counts).toMatchObject({ changed: 2, unchanged: 0 })
+    expect(plan.counts).toMatchObject({ changed: 4, unchanged: 1 })
   })
 
   it('keeps a held template unchanged when only the hold reason text differs in evidence', () => {
@@ -115,6 +140,7 @@ describe('buildPlan', () => {
           status: 'held',
           holdReason: 'no_match',
           segmentId: null,
+          integrationId: null,
           projectSlug: null,
         }),
       ],
@@ -167,5 +193,44 @@ describe('loadSubprojectSegments', () => {
 
     expect([...segments]).toEqual([['k8s', 'seg-1']])
     expect(warnings).toHaveLength(1)
+  })
+})
+
+vi.mock('@crowd/connectors/src/connectors/credly/apiClient', () => ({
+  fetchBadgeTemplatesPage: vi.fn(),
+}))
+
+describe('loadCredlyTemplates', () => {
+  const log = {} as Parameters<typeof loadCredlyTemplates>[2]
+  const http = {} as Parameters<typeof loadCredlyTemplates>[0]
+  const page = (
+    data: { id: string; name: string; badges_count?: unknown }[],
+    total_count: number,
+  ) =>
+    ({
+      data,
+      metadata: { count: data.length, current_page: 1, total_count, total_pages: 2 },
+    }) as never
+
+  it('reads every page and reports the listing complete when totals and ids line up', async () => {
+    vi.mocked(fetchBadgeTemplatesPage)
+      .mockResolvedValueOnce(page([{ id: 'a', name: 'A', badges_count: 3 }], 2))
+      .mockResolvedValueOnce(page([{ id: 'b', name: 'B', badges_count: null }], 2))
+
+    const listing = await loadCredlyTemplates(http, 'org', log)
+
+    expect(listing.complete).toBe(true)
+    expect(listing.templates).toEqual([
+      { id: 'a', name: 'A', badgeCount: 3 },
+      { id: 'b', name: 'B', badgeCount: null },
+    ])
+  })
+
+  it('reports an incomplete listing when a template shows up twice across pages', async () => {
+    vi.mocked(fetchBadgeTemplatesPage)
+      .mockResolvedValueOnce(page([{ id: 'a', name: 'A' }], 2))
+      .mockResolvedValueOnce(page([{ id: 'a', name: 'A' }], 2))
+
+    expect((await loadCredlyTemplates(http, 'org', log)).complete).toBe(false)
   })
 })
