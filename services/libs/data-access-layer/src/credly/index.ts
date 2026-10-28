@@ -140,9 +140,8 @@ const DECISION_FIELDS = [
   'reviewedBy',
 ] as const
 
-function normalizedDecision(decision: ICredlyTemplateDecision): IStoredDecision {
-  const mapped = decision.status === 'mapped'
-  if (mapped && !(decision.segmentId && decision.integrationId)) {
+function assertConsistent(decision: ICredlyTemplateDecision): void {
+  if (decision.status === 'mapped' && !(decision.segmentId && decision.integrationId)) {
     throw new Error(
       `mapped template ${decision.badgeTemplateId} needs a segment and an integration`,
     )
@@ -150,13 +149,17 @@ function normalizedDecision(decision: ICredlyTemplateDecision): IStoredDecision 
   if (decision.status === 'held' && !decision.holdReason) {
     throw new Error(`held template ${decision.badgeTemplateId} needs a hold reason`)
   }
+}
+
+function normalizedDecision(decision: ICredlyTemplateDecision): IStoredDecision {
+  const mapped = decision.status === 'mapped'
   return {
     badgeTemplateName: decision.badgeTemplateName,
     status: decision.status,
     holdReason: decision.status === 'held' ? decision.holdReason : null,
     projectSlug: decision.projectSlug ?? null,
-    segmentId: mapped ? decision.segmentId : null,
-    integrationId: mapped ? decision.integrationId : null,
+    segmentId: mapped ? (decision.segmentId ?? null) : null,
+    integrationId: mapped ? (decision.integrationId ?? null) : null,
     rule: decision.rule ?? null,
     ruleVersion: decision.ruleVersion ?? null,
     matchedSku: decision.matchedSku ?? null,
@@ -179,9 +182,9 @@ function targetChanged(stored: IStoredDecision, next: IStoredDecision): boolean 
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a.localeCompare(b),
-    )
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
   }
   return JSON.stringify(value) ?? 'null'
@@ -193,6 +196,14 @@ function decisionChanged(stored: IStoredDecision, next: IStoredDecision): boolea
     DECISION_FIELDS.some((field) => stored[field] !== next[field]) ||
     canonicalJson(stored.evidence) !== canonicalJson(next.evidence)
   )
+}
+
+// The same comparison the upsert makes, so a dry run predicts its outcome.
+export function credlyDecisionChanged(
+  stored: ICredlyStoredTemplateMapping,
+  next: ICredlyTemplateDecision,
+): boolean {
+  return decisionChanged(stored, normalizedDecision(next))
 }
 
 async function assertLiveCredlyIntegration(
@@ -241,6 +252,7 @@ export async function upsertCredlyTemplateDecision(
   qx: QueryExecutor,
   decision: ICredlyTemplateDecision,
 ): Promise<CredlyDecisionOutcome> {
+  assertConsistent(decision)
   const next = normalizedDecision(decision)
   const values = {
     ...next,
@@ -380,6 +392,38 @@ export async function listStaleCredlyTemplateMappings(
   )
 }
 
+export type ICredlyStoredTemplateMapping = Required<
+  Pick<
+    ICredlyTemplateDecision,
+    | 'badgeTemplateId'
+    | 'badgeTemplateName'
+    | 'status'
+    | 'holdReason'
+    | 'projectSlug'
+    | 'segmentId'
+    | 'integrationId'
+    | 'rule'
+    | 'ruleVersion'
+    | 'matchedSku'
+    | 'evidence'
+    | 'reviewedBy'
+  >
+> & { lockedAt: Date | null; deactivatedAt: Date | null }
+
+export async function listCredlyTemplateMappings(
+  qx: QueryExecutor,
+): Promise<ICredlyStoredTemplateMapping[]> {
+  return qx.select(
+    `
+      SELECT "badgeTemplateId", "badgeTemplateName", status, "holdReason", "projectSlug",
+             "segmentId", "integrationId", rule, "ruleVersion", "matchedSku", evidence,
+             "reviewedBy", "lockedAt", "deactivatedAt"
+      FROM integration."credlyTemplateMappings"
+      ORDER BY "badgeTemplateId"
+    `,
+  )
+}
+
 export async function listHeldCredlyTemplateMappings(
   qx: QueryExecutor,
 ): Promise<ICredlyHeldTemplate[]> {
@@ -402,7 +446,9 @@ export async function deactivateCredlyTemplateMapping(
     `
       UPDATE integration."credlyTemplateMappings"
       SET "deactivatedAt" = now(), "updatedAt" = now()
-      WHERE "badgeTemplateId" = $(badgeTemplateId) AND "deactivatedAt" IS NULL
+      WHERE "badgeTemplateId" = $(badgeTemplateId)
+        AND "deactivatedAt" IS NULL
+        AND "lockedAt" IS NULL
     `,
     { badgeTemplateId },
   )
