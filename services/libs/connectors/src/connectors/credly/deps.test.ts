@@ -124,7 +124,7 @@ describe('createCredlyDeps', () => {
     expect(await deps.listDueExpiries(now, 10)).toEqual([])
     expect(await deps.markExpiriesEmitted(['a', 'b'])).toBe(2)
 
-    expect(listDueCredlyExpiries).toHaveBeenCalledWith(qx, now, 10)
+    expect(listDueCredlyExpiries).toHaveBeenCalledWith(qx, now, 10, undefined)
     expect(markCredlyExpiriesEmitted).toHaveBeenCalledWith(qx, ['a', 'b'])
   })
 })

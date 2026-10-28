@@ -1,3 +1,5 @@
+import { PlatformType } from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
 export type CredlyBadgeState = 'pending' | 'accepted' | 'rejected' | 'revoked' | 'replaced'
@@ -25,10 +27,27 @@ export interface ICredlyBadgeRow extends ICredlyBadgeInput {
   lastSeenAt: string
 }
 
-const ROW_COLUMNS = `
-  "badgeId", "badgeTemplateId", "badgeTemplateName", "badgeTemplateUrl", state, "stateUpdatedAt",
-  "issuedAt", "expiresAt", "replacementBadgeId", "replacesBadgeId", "segmentId", "integrationId",
-  "recipientEmail", "issuedTo", "expiredEmittedAt", "firstSeenAt", "lastSeenAt"`
+const ROW_COLUMN_NAMES = [
+  'badgeId',
+  'badgeTemplateId',
+  'badgeTemplateName',
+  'badgeTemplateUrl',
+  'state',
+  'stateUpdatedAt',
+  'issuedAt',
+  'expiresAt',
+  'replacementBadgeId',
+  'replacesBadgeId',
+  'segmentId',
+  'integrationId',
+  'recipientEmail',
+  'issuedTo',
+  'expiredEmittedAt',
+  'firstSeenAt',
+  'lastSeenAt',
+] as const
+
+const rowColumns = (alias = '') => ROW_COLUMN_NAMES.map((c) => `${alias}"${c}"`).join(', ')
 
 export async function findCredlyBadges(
   qx: QueryExecutor,
@@ -36,7 +55,7 @@ export async function findCredlyBadges(
 ): Promise<ICredlyBadgeRow[]> {
   if (badgeIds.length === 0) return []
   return qx.select(
-    `SELECT ${ROW_COLUMNS} FROM integration."credlyBadges" WHERE "badgeId" = ANY($(badgeIds)::text[])`,
+    `SELECT ${rowColumns()} FROM integration."credlyBadges" WHERE "badgeId" = ANY($(badgeIds)::text[])`,
     { badgeIds },
   )
 }
@@ -112,20 +131,41 @@ export async function upsertCredlyBadges(
   )
 }
 
+export interface ICredlyExpiryCursor {
+  expiresAt: string
+  badgeId: string
+}
+
+// Only badges whose integration is still live on their segment are due: the others are neither
+// emitted nor marked. The cursor lets a caller walk past rows it could not emit.
 export async function listDueCredlyExpiries(
   qx: QueryExecutor,
   now: Date,
   limit: number,
+  after?: ICredlyExpiryCursor,
 ): Promise<ICredlyBadgeRow[]> {
   return qx.select(
     `
-      SELECT ${ROW_COLUMNS}
-      FROM integration."credlyBadges"
-      WHERE state = 'accepted' AND "expiredEmittedAt" IS NULL AND "expiresAt" <= $(now)
-      ORDER BY "expiresAt", "badgeId"
+      SELECT ${rowColumns('b.')}
+      FROM integration."credlyBadges" b
+      JOIN public.integrations i
+        ON i.id = b."integrationId"
+       AND i."segmentId" = b."segmentId"
+       AND i.platform = $(platform)
+       AND i."deletedAt" IS NULL
+      WHERE b.state = 'accepted' AND b."expiredEmittedAt" IS NULL AND b."expiresAt" <= $(now)
+        AND ($(afterExpiresAt)::timestamptz IS NULL
+             OR (b."expiresAt", b."badgeId") > ($(afterExpiresAt)::timestamptz, $(afterBadgeId)::text))
+      ORDER BY b."expiresAt", b."badgeId"
       LIMIT $(limit)
     `,
-    { now, limit },
+    {
+      now,
+      limit,
+      platform: PlatformType.CREDLY,
+      afterExpiresAt: after?.expiresAt ?? null,
+      afterBadgeId: after?.badgeId ?? null,
+    },
   )
 }
 

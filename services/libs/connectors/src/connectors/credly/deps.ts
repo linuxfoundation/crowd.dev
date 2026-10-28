@@ -3,7 +3,11 @@ import {
   listStaleCredlyTemplateMappings,
   lockCredlyTemplateMapping,
 } from '@crowd/data-access-layer/src/credly'
-import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
+import type {
+  ICredlyBadgeInput,
+  ICredlyBadgeRow,
+  ICredlyExpiryCursor,
+} from '@crowd/data-access-layer/src/credly/badges'
 import {
   findCredlyBadges,
   listDueCredlyExpiries,
@@ -29,7 +33,7 @@ export interface CredlyDeps {
   lockTemplate(badgeTemplateId: string, target: CredlyTemplateTarget): Promise<boolean>
   findBadges(badgeIds: string[]): Promise<ICredlyBadgeRow[]>
   saveBadges(badges: ICredlyBadgeInput[]): Promise<void>
-  listDueExpiries(now: Date, limit: number): Promise<ICredlyBadgeRow[]>
+  listDueExpiries(now: Date, limit: number, after?: ICredlyExpiryCursor): Promise<ICredlyBadgeRow[]>
   markExpiriesEmitted(badgeIds: string[]): Promise<number>
 }
 
@@ -61,8 +65,8 @@ export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
     saveBadges(badges) {
       return upsertCredlyBadges(qx, badges)
     },
-    listDueExpiries(now, limit) {
-      return listDueCredlyExpiries(qx, now, limit)
+    listDueExpiries(now, limit, after) {
+      return listDueCredlyExpiries(qx, now, limit, after)
     },
     markExpiriesEmitted(badgeIds) {
       return markCredlyExpiriesEmitted(qx, badgeIds)

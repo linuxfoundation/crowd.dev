@@ -1,3 +1,5 @@
+import type { ICredlyExpiryCursor } from '@crowd/data-access-layer/src/credly/badges'
+
 import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import type { CredlyDeps } from '../deps'
@@ -17,7 +19,7 @@ interface ExpiryGroup {
 export async function runExpirySync(ctx: SyncContext<CredlyDeps>): Promise<SyncOutcome> {
   assertCredentialKind(await ctx.getCredential(), 'credly-oauth-client')
   const counters = { batches: 0, due: 0, emitted: 0, skipped: 0, marked: 0 }
-  const seen = new Set<string>()
+  let cursor: ICredlyExpiryCursor | undefined
   let drained = true
 
   while (true) {
@@ -25,12 +27,12 @@ export async function runExpirySync(ctx: SyncContext<CredlyDeps>): Promise<SyncO
       drained = false
       break
     }
-    const batch = await ctx.deps.listDueExpiries(new Date(), EXPIRY_BATCH_SIZE)
-    const due = batch.filter((row) => !seen.has(row.badgeId))
+    const due = await ctx.deps.listDueExpiries(new Date(), EXPIRY_BATCH_SIZE, cursor)
     if (due.length === 0) break
     counters.batches += 1
     counters.due += due.length
-    for (const row of due) seen.add(row.badgeId)
+    const last = due[due.length - 1]
+    cursor = { expiresAt: last.expiresAt as string, badgeId: last.badgeId }
 
     const groups = new Map<string, ExpiryGroup>()
     for (const row of due) {
@@ -60,7 +62,7 @@ export async function runExpirySync(ctx: SyncContext<CredlyDeps>): Promise<SyncO
       counters.emitted += activities.length
       if (ctx.emitEnabled) counters.marked += await ctx.deps.markExpiriesEmitted(badgeIds)
     }
-    if (!ctx.emitEnabled || batch.length < EXPIRY_BATCH_SIZE) break
+    if (!ctx.emitEnabled || due.length < EXPIRY_BATCH_SIZE) break
   }
 
   ctx.log.info({ event: 'credly_expiry_sync_run', ...counters, drained }, 'credly expiry sync run')

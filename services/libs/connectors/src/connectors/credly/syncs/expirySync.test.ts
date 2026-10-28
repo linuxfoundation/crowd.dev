@@ -167,17 +167,20 @@ describe('runExpirySync', () => {
     )
   })
 
-  it('keeps draining when a full batch repeats rows already handled in this run', async () => {
-    const full = Array.from({ length: EXPIRY_BATCH_SIZE }, (_, i) => dueRow(`full-${i}`))
-    const second = [
-      ...full.slice(0, 10),
-      ...full.slice(10).map((row) => dueRow(`${row.badgeId}-b`)),
-    ]
-    const { ctx, deps } = makeCtx([full, second, []])
+  it('walks the queue with a cursor so rows it could not mark do not block the rest', async () => {
+    const full = Array.from({ length: EXPIRY_BATCH_SIZE }, (_, i) =>
+      dueRow(`full-${String(i).padStart(3, '0')}`, { expiresAt: '2025-01-01 00:00:00+00' }),
+    )
+    const { ctx, deps } = makeCtx([full, [dueRow('after')], []])
+    vi.mocked(deps.markExpiriesEmitted).mockResolvedValue(0)
 
     await runExpirySync(ctx)
 
-    expect(deps.listDueExpiries).toHaveBeenCalledTimes(3)
+    expect(deps.listDueExpiries).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.listDueExpiries).mock.calls[1][2]).toEqual({
+      expiresAt: '2025-01-01 00:00:00+00',
+      badgeId: 'full-499',
+    })
   })
 
   it('skips a row it cannot map and still marks the rest', async () => {
@@ -201,14 +204,5 @@ describe('runExpirySync', () => {
     expect(emits).toHaveLength(1)
     expect(marked).toEqual([])
     expect(deps.listDueExpiries).toHaveBeenCalledTimes(1)
-  })
-
-  it('never emits the same badge twice in one run even if the mark did not stick', async () => {
-    const { ctx, emits, deps } = makeCtx([[dueRow('b-1')], [dueRow('b-1')], []])
-    vi.mocked(deps.markExpiriesEmitted).mockResolvedValue(0)
-
-    await runExpirySync(ctx)
-
-    expect(emits).toHaveLength(1)
   })
 })

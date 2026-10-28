@@ -142,10 +142,40 @@ describe('credly badges', () => {
 
     const due = await listDueCredlyExpiries(qx, now, 10)
     expect(due.map((row) => row.badgeId)).toEqual(['e-earlier', 'e-due'])
+    expect(
+      (
+        await listDueCredlyExpiries(qx, now, 10, {
+          expiresAt: due[0].expiresAt,
+          badgeId: 'e-earlier',
+        })
+      ).map((row) => row.badgeId),
+    ).toEqual(['e-due'])
 
     expect(await markCredlyExpiriesEmitted(qx, ['e-earlier', 'e-due'])).toBe(2)
     expect(await markCredlyExpiriesEmitted(qx, ['e-earlier'])).toBe(0)
     expect(await listDueCredlyExpiries(qx, now, 10)).toEqual([])
+  })
+
+  test('a badge whose integration is gone or moved is never due', async ({ qx }) => {
+    const gone = await project(qx)
+    const moved = await project(qx)
+    const live = await project(qx)
+    await upsertCredlyBadges(qx, [
+      badge('e-gone', gone, { expiresAt: '2026-10-01T00:00:00.000Z' }),
+      badge('e-moved', moved, { expiresAt: '2026-10-01T00:00:00.000Z' }),
+      badge('e-live', live, { expiresAt: '2026-10-01T00:00:00.000Z' }),
+    ])
+    await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: gone.integrationId,
+    })
+    await qx.result(`UPDATE public.integrations SET "segmentId" = $(segmentId) WHERE id = $(id)`, {
+      id: moved.integrationId,
+      segmentId: (await project(qx)).segmentId,
+    })
+
+    const due = await listDueCredlyExpiries(qx, new Date('2026-10-28T00:00:00.000Z'), 10)
+
+    expect(due.map((row) => row.badgeId)).toEqual(['e-live'])
   })
 
   test('a later extension of the expiry date does not re-emit an expired badge', async ({ qx }) => {
