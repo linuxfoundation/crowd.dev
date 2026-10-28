@@ -544,6 +544,26 @@ describe('runBadgePoll', () => {
     expect(saved[0]).toMatchObject({ recipientEmail: 'maria.rossi@example.org', state: 'revoked' })
   })
 
+  it('skips a badge whose stored dates do not parse and keeps the rest of the page', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({ id: 'bad-expiry', expires_at: 'not a date' }),
+        badge({ id: 'bad-pending', state: 'pending', state_updated_at: null, issued_at: '' }),
+        badge({ id: 'good' }),
+      ]),
+    )
+    const { ctx, emitted, saved } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(saved.map((row) => row.badgeId)).toEqual(['good'])
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ skipped: 2, routed: 1 }),
+      expect.any(String),
+    )
+  })
+
   it('emits a badge listed twice on one page only once, with its last version', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(
       page([badge({ state: 'pending', state_updated_at: null }), badge()]),

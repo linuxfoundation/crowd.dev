@@ -6,7 +6,12 @@ import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadgesPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
-import { credlyActivitySchema, issuedBadgeActivity, stateBadgeActivity } from '../mapper'
+import {
+  credlyActivitySchema,
+  issuedBadgeActivity,
+  stateBadgeActivity,
+  toIsoTimestamp,
+} from '../mapper'
 import type { CredlyActivity } from '../mapper'
 
 const MINUTE_MS = 60_000
@@ -108,9 +113,9 @@ function badgeRow(badge: CredlyBadge, target: CredlyTemplateTarget): ICredlyBadg
     badgeTemplateName: badge.badge_template.name,
     badgeTemplateUrl: badge.badge_template.url ?? null,
     state: badge.state,
-    stateUpdatedAt: badge.state_updated_at ?? null,
-    issuedAt: badge.issued_at,
-    expiresAt: badge.expires_at ?? null,
+    stateUpdatedAt: badge.state_updated_at ? toIsoTimestamp(badge.state_updated_at) : null,
+    issuedAt: toIsoTimestamp(badge.issued_at),
+    expiresAt: badge.expires_at ? toIsoTimestamp(badge.expires_at) : null,
     replacementBadgeId: badge.replacement_badge_id ?? null,
     replacesBadgeId: badge.replaces_badge_id ?? null,
     segmentId: target.segmentId,
@@ -209,7 +214,9 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       const target = stored ? storedTarget(stored) : routing.targets.get(badge.badge_template.id)!
       const seen = stored ? withFirstSight(badge, stored) : badge
       let activities: CredlyActivity[]
+      let row: ICredlyBadgeInput
       try {
+        row = badgeRow(seen, target)
         if (!stored || stored.state === 'pending') {
           activities = seen.state === 'pending' ? [] : newBadgeActivities(seen)
         } else {
@@ -238,7 +245,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       }
       group.activities.push(...activities)
       group.templateIds.add(badge.badge_template.id)
-      group.rows.push(badgeRow(seen, target))
+      group.rows.push(row)
       groups.set(key, group)
       counters.activities += activities.length
     }
