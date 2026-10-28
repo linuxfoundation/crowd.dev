@@ -8,6 +8,7 @@ import {
   deactivateCredlyTemplateMapping,
   findOrCreateCredlyIntegration,
   listActiveCredlyTemplateMappings,
+  listCredlyTemplateMappings,
   listHeldCredlyTemplateMappings,
   listStaleCredlyTemplateMappings,
   lockCredlyTemplateMapping,
@@ -193,6 +194,48 @@ describe('credly template mappings', () => {
     expect(moved).toMatchObject({ ...second, deactivatedAt: null })
     expect(millis(moved.updatedAt)).toBeGreaterThan(millis(BACKDATED))
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-unknown')).toBe(0)
+  })
+
+  test('evidence keys left undefined compare like keys the database never stored', async ({
+    qx,
+  }) => {
+    const project = await mappedProject(qx)
+    const base = mapped('tpl-undef', project)
+    await upsertCredlyTemplateDecision(qx, { ...base, evidence: { sku: 'CKA', group: undefined } })
+
+    expect(
+      await upsertCredlyTemplateDecision(qx, {
+        ...base,
+        evidence: { sku: 'CKA', group: undefined },
+      }),
+    ).toBe('unchanged')
+    expect(await upsertCredlyTemplateDecision(qx, { ...base, evidence: { sku: 'CKA' } })).toBe(
+      'unchanged',
+    )
+  })
+
+  test('the full list returns every row with its lock and deactivation state', async ({ qx }) => {
+    const project = await mappedProject(qx)
+    await upsertCredlyTemplateDecision(qx, mapped('tpl-all-a', project))
+    await upsertCredlyTemplateDecision(qx, {
+      badgeTemplateId: 'tpl-all-b',
+      badgeTemplateName: 'tpl-all-b',
+      status: 'held',
+      holdReason: 'no_match',
+    })
+    await lockCredlyTemplateMapping(qx, 'tpl-all-a')
+    await deactivateCredlyTemplateMapping(qx, 'tpl-all-b')
+
+    const rows = (await listCredlyTemplateMappings(qx)).filter((m) =>
+      m.badgeTemplateId.startsWith('tpl-all-'),
+    )
+
+    expect(
+      rows.map((m) => [m.badgeTemplateId, m.status, m.lockedAt !== null, m.deactivatedAt !== null]),
+    ).toEqual([
+      ['tpl-all-a', 'mapped', true, false],
+      ['tpl-all-b', 'held', false, true],
+    ])
   })
 
   test('evidence with the same content in another key order leaves the decision unchanged', async ({

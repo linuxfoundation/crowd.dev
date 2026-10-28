@@ -179,9 +179,9 @@ function targetChanged(stored: IStoredDecision, next: IStoredDecision): boolean 
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a.localeCompare(b),
-    )
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
   }
   return JSON.stringify(value) ?? 'null'
@@ -377,6 +377,36 @@ export async function listStaleCredlyTemplateMappings(
       ORDER BY m."badgeTemplateId"
     `,
     { platform: PlatformType.CREDLY },
+  )
+}
+
+export type ICredlyStoredTemplateMapping = Required<
+  Pick<
+    ICredlyTemplateDecision,
+    | 'badgeTemplateId'
+    | 'badgeTemplateName'
+    | 'status'
+    | 'holdReason'
+    | 'projectSlug'
+    | 'segmentId'
+    | 'integrationId'
+    | 'rule'
+    | 'ruleVersion'
+    | 'matchedSku'
+  >
+> & { lockedAt: Date | null; deactivatedAt: Date | null }
+
+export async function listCredlyTemplateMappings(
+  qx: QueryExecutor,
+): Promise<ICredlyStoredTemplateMapping[]> {
+  return qx.select(
+    `
+      SELECT "badgeTemplateId", "badgeTemplateName", status, "holdReason", "projectSlug",
+             "segmentId", "integrationId", rule, "ruleVersion", "matchedSku", "lockedAt",
+             "deactivatedAt"
+      FROM integration."credlyTemplateMappings"
+      ORDER BY "badgeTemplateId"
+    `,
   )
 }
 
