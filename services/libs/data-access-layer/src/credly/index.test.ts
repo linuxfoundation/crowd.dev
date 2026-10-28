@@ -217,7 +217,7 @@ describe('credly template mappings', () => {
   test('a locked template cannot be deactivated', async ({ qx }) => {
     const project = await mappedProject(qx)
     await upsertCredlyTemplateDecision(qx, mapped('tpl-lock-keep', project))
-    await lockCredlyTemplateMapping(qx, 'tpl-lock-keep')
+    await lockCredlyTemplateMapping(qx, 'tpl-lock-keep', project)
 
     expect(await deactivateCredlyTemplateMapping(qx, 'tpl-lock-keep')).toBe(0)
     expect((await readMapping(qx, 'tpl-lock-keep')).deactivatedAt).toBeNull()
@@ -232,7 +232,7 @@ describe('credly template mappings', () => {
       status: 'held',
       holdReason: 'no_match',
     })
-    await lockCredlyTemplateMapping(qx, 'tpl-all-a')
+    await lockCredlyTemplateMapping(qx, 'tpl-all-a', project)
     await deactivateCredlyTemplateMapping(qx, 'tpl-all-b')
 
     const rows = (await listCredlyTemplateMappings(qx)).filter((m) =>
@@ -337,7 +337,12 @@ describe('credly template mappings', () => {
       integrationId: null,
       segmentId: null,
     })
-    expect(await lockCredlyTemplateMapping(qx, 'tpl-held')).toBe(false)
+    expect(
+      await lockCredlyTemplateMapping(qx, 'tpl-held', {
+        segmentId: 'none',
+        integrationId: 'none',
+      }),
+    ).toBe(false)
   })
 
   test('a reviewer override moves a held template to a project and records who decided', async ({
@@ -382,8 +387,9 @@ describe('credly template mappings', () => {
     const second = await mappedProject(qx)
     await upsertCredlyTemplateDecision(qx, mapped('tpl-locked', first))
 
-    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked')).toBe(true)
-    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked')).toBe(false)
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked', second)).toBe(false)
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked', first)).toBe(true)
+    expect(await lockCredlyTemplateMapping(qx, 'tpl-locked', first)).toBe(false)
     expect(await upsertCredlyTemplateDecision(qx, mapped('tpl-locked', second))).toBe('locked')
     expect(
       await upsertCredlyTemplateDecision(qx, {
@@ -466,11 +472,16 @@ describe('credly template mappings', () => {
     const stale = await listStaleCredlyTemplateMappings(qx)
 
     expect(active.filter((m) => m.badgeTemplateId.startsWith('tpl-'))).toEqual([
-      { badgeTemplateId: 'tpl-live', badgeTemplateName: 'tpl-live', ...live },
+      { badgeTemplateId: 'tpl-live', badgeTemplateName: 'tpl-live', ...live, lockedAt: null },
     ])
     expect(stale.filter((m) => m.badgeTemplateId.startsWith('tpl-'))).toEqual([
-      { badgeTemplateId: 'tpl-deleted', badgeTemplateName: 'tpl-deleted', ...deleted },
-      { badgeTemplateId: 'tpl-moved', badgeTemplateName: 'tpl-moved', ...moved },
+      {
+        badgeTemplateId: 'tpl-deleted',
+        badgeTemplateName: 'tpl-deleted',
+        ...deleted,
+        lockedAt: null,
+      },
+      { badgeTemplateId: 'tpl-moved', badgeTemplateName: 'tpl-moved', ...moved, lockedAt: null },
     ])
   })
 })

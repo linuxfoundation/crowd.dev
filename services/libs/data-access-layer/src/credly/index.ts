@@ -78,6 +78,7 @@ export interface ICredlyTemplateMapping {
   badgeTemplateName: string
   integrationId: string
   segmentId: string
+  lockedAt: Date | null
 }
 
 export type CredlyMappingStatus = 'mapped' | 'held' | 'excluded'
@@ -336,9 +337,12 @@ export async function upsertCredlyTemplateDecision(
   })
 }
 
+// Locks only the target the badges were emitted to: a mapping moved mid-run must not be frozen
+// on a segment that holds none of them.
 export async function lockCredlyTemplateMapping(
   qx: QueryExecutor,
   badgeTemplateId: string,
+  target: { segmentId: string; integrationId: string },
 ): Promise<boolean> {
   const locked = await qx.result(
     `
@@ -346,10 +350,12 @@ export async function lockCredlyTemplateMapping(
       SET "lockedAt" = now()
       WHERE "badgeTemplateId" = $(badgeTemplateId)
         AND status = 'mapped'
+        AND "segmentId" = $(segmentId)
+        AND "integrationId" = $(integrationId)
         AND "deactivatedAt" IS NULL
         AND "lockedAt" IS NULL
     `,
-    { badgeTemplateId },
+    { badgeTemplateId, ...target },
   )
   return locked > 0
 }
@@ -359,7 +365,8 @@ export async function listActiveCredlyTemplateMappings(
 ): Promise<ICredlyTemplateMapping[]> {
   return qx.select(
     `
-      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId"
+      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId",
+             m."lockedAt"
       FROM integration."credlyTemplateMappings" m
       JOIN public.integrations i ON i.id = m."integrationId"
       WHERE m.status = 'mapped'
@@ -378,7 +385,8 @@ export async function listStaleCredlyTemplateMappings(
 ): Promise<ICredlyTemplateMapping[]> {
   return qx.select(
     `
-      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId"
+      SELECT m."badgeTemplateId", m."badgeTemplateName", m."integrationId", m."segmentId",
+             m."lockedAt"
       FROM integration."credlyTemplateMappings" m
       LEFT JOIN public.integrations i
         ON i.id = m."integrationId"
