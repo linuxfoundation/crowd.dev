@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ICredlyHeldTemplate } from '@crowd/data-access-layer/src/credly'
+import type {
+  ICredlyHeldTemplate,
+  ICredlyStoredTemplateMapping,
+} from '@crowd/data-access-layer/src/credly'
 
-import { HELD_QUEUE_TOP, buildHeldQueueReport } from './credlyHeldQueueReport'
+import { HELD_QUEUE_TOP, activeHeld, buildHeldQueueReport } from './credlyHeldQueueReport'
 import type { PlanEntry, ResolvePlan } from './credlyTemplateResolve'
 
 function held(id: string, overrides: Partial<ICredlyHeldTemplate> = {}): ICredlyHeldTemplate {
@@ -14,6 +17,29 @@ function held(id: string, overrides: Partial<ICredlyHeldTemplate> = {}): ICredly
     projectSlug: null,
     rule: 'hold',
     lastSeenAt: '2026-10-28 12:00:00+00',
+    ...overrides,
+  }
+}
+
+function stored(
+  id: string,
+  overrides: Partial<ICredlyStoredTemplateMapping> = {},
+): ICredlyStoredTemplateMapping {
+  return {
+    badgeTemplateId: id,
+    badgeTemplateName: id,
+    status: 'held',
+    holdReason: 'no_match',
+    projectSlug: null,
+    segmentId: null,
+    integrationId: null,
+    rule: 'hold',
+    ruleVersion: 1,
+    matchedSku: null,
+    evidence: null,
+    reviewedBy: null,
+    lockedAt: null,
+    deactivatedAt: null,
     ...overrides,
   }
 }
@@ -32,6 +58,18 @@ function plan(entries: Partial<PlanEntry>[]): ResolvePlan {
   }
 }
 
+describe('activeHeld', () => {
+  it('keeps only live held rows', () => {
+    expect(
+      activeHeld([
+        stored('held'),
+        stored('mapped', { status: 'mapped', holdReason: null }),
+        stored('gone', { deactivatedAt: new Date() }),
+      ]).map((row) => row.badgeTemplateId),
+    ).toEqual(['held'])
+  })
+})
+
 describe('buildHeldQueueReport', () => {
   it('summarises the stored queue, lists what entered and left it, and the top by badges', () => {
     const queue = [
@@ -47,67 +85,37 @@ describe('buildHeldQueueReport', () => {
         projectSlug: 'free5gc',
       }),
       held('speaker', { badgeTemplateName: 'KubeCon <Speaker>', badgeCount: 300 }),
+      held('back', { badgeTemplateName: 'Back again', badgeCount: 50 }),
     ]
     const report = buildHeldQueueReport(
+      [
+        stored('lfc131'),
+        stored('free5gc'),
+        stored('cka', { badgeTemplateName: 'CKA' }),
+        stored('gone', { badgeTemplateName: 'Gone' }),
+      ],
       queue,
       plan([
-        {
-          kind: 'new',
-          badgeTemplateId: 'speaker',
-          badgeTemplateName: 'KubeCon <Speaker>',
-          after: 'held:no_match',
-        },
-        {
-          kind: 'changed',
-          badgeTemplateId: 'cka',
-          badgeTemplateName: 'CKA',
-          before: 'held:no_segment',
-          after: 'mapped:k8s',
-        },
-        {
-          kind: 'missing',
-          badgeTemplateId: 'gone',
-          badgeTemplateName: 'Gone',
-          before: 'held:no_match',
-          after: null,
-        },
-        {
-          kind: 'unchanged',
-          badgeTemplateId: 'lfc131',
-          before: 'held:no_project',
-          after: 'held:no_project',
-        },
-        {
-          kind: 'changed',
-          badgeTemplateId: 'free5gc',
-          before: 'held:no_project',
-          after: 'held:no_segment',
-        },
-        {
-          kind: 'locked',
-          badgeTemplateId: 'locked',
-          badgeTemplateName: 'Locked',
-          before: 'mapped:k8s',
-          after: 'held:no_match',
-        },
+        { badgeTemplateId: 'cka', kind: 'changed', before: 'held:no_segment', after: 'mapped:k8s' },
+        { badgeTemplateId: 'gone', kind: 'missing', before: 'held:no_match', after: null },
       ]),
       new Map([['lfc131', 'https://www.credly.com/org/the-linux-foundation/badge/lfc131']]),
     )
 
     expect(report.changed).toBe(true)
-    expect(report.title).toBe('Credly held templates: 1 new, 2 released')
+    expect(report.title).toBe('Credly held templates: 2 new, 2 released')
     expect(report.sections.map((section) => section.title)).toEqual([
       'Held queue',
-      'Newly held (1)',
+      'Newly held (2)',
       'Released (2)',
-      'Top 3 by badges',
+      'Top 4 by badges',
       'To resolve one',
     ])
     expect(report.sections[0].text).toBe(
-      '3 templates, 89,373 badges not ingested.\n`no_project` 1 · `no_segment` 1 · `no_match` 1',
+      '4 templates, 89,423 badges not ingested.\n`no_match` 2 · `no_project` 1 · `no_segment` 1',
     )
     expect(report.sections[1].text).toBe(
-      '• KubeCon &lt;Speaker&gt; — 300 badges, `no_match`, id `speaker`',
+      '• KubeCon &lt;Speaker&gt; — 300 badges, `no_match`, id `speaker`\n• Back again — 50 badges, `no_match`, id `back`',
     )
     expect(report.sections[2].text).toBe('• CKA → mapped:k8s\n• Gone → gone from Credly')
     expect(report.sections[3].text.split('\n')[0]).toBe(
@@ -116,17 +124,30 @@ describe('buildHeldQueueReport', () => {
     expect(report.sections[3].text.split('\n')[1]).toContain('`no_segment`, free5gc, id `free5gc`')
   })
 
-  it('reports no change when nothing entered or left the queue', () => {
+  it('counts a reactivated template as newly held, by membership and not by label', () => {
     const report = buildHeldQueueReport(
-      [held('a', { badgeCount: 5 })],
+      activeHeld([stored('back', { deactivatedAt: new Date() })]),
+      [held('back')],
       plan([
         {
-          kind: 'unchanged',
-          badgeTemplateId: 'a',
+          badgeTemplateId: 'back',
+          kind: 'changed',
           before: 'held:no_match',
           after: 'held:no_match',
         },
       ]),
+      new Map(),
+    )
+
+    expect(report.changed).toBe(true)
+    expect(report.title).toBe('Credly held templates: 1 new, 0 released')
+  })
+
+  it('reports no change when nothing entered or left the queue', () => {
+    const report = buildHeldQueueReport(
+      [stored('a')],
+      [held('a', { badgeCount: 5 })],
+      plan([{ badgeTemplateId: 'a', before: 'held:no_match', after: 'held:no_match' }]),
       new Map(),
     )
 
@@ -140,7 +161,7 @@ describe('buildHeldQueueReport', () => {
   })
 
   it('keeps an empty queue to one line', () => {
-    const report = buildHeldQueueReport([], plan([]), new Map())
+    const report = buildHeldQueueReport([], [], plan([]), new Map())
 
     expect(report.sections).toEqual([
       { title: 'Held queue', text: '0 templates, 0 badges not ingested.' },
@@ -152,17 +173,7 @@ describe('buildHeldQueueReport', () => {
     const queue = Array.from({ length: HELD_QUEUE_TOP + 5 }, (_, i) =>
       held(`t-${i}`, { badgeCount: i }),
     )
-    const report = buildHeldQueueReport(
-      queue,
-      plan(
-        queue.map((row) => ({
-          kind: 'new' as const,
-          badgeTemplateId: row.badgeTemplateId,
-          after: 'held:no_match',
-        })),
-      ),
-      new Map(),
-    )
+    const report = buildHeldQueueReport([], queue, plan([]), new Map())
 
     const newly = report.sections[1].text.split('\n')
     expect(report.sections[1].title).toBe(`Newly held (${HELD_QUEUE_TOP + 5})`)

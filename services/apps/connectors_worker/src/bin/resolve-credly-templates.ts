@@ -18,7 +18,7 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { SnowflakeClient } from '@crowd/snowflake'
 
-import { buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
+import { activeHeld, buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
 import {
   applyDecisions,
   buildPlan,
@@ -167,6 +167,7 @@ async function main(): Promise<void> {
 
     if (notify) {
       const report = buildHeldQueueReport(
+        activeHeld(stored),
         heldQueue,
         plan,
         new Map(templates.map((template) => [template.id, template.url ?? null])),
@@ -192,7 +193,7 @@ async function main(): Promise<void> {
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => process.exit(process.exitCode ?? 0))
   .catch((err) => {
     log.error({ err }, 'credly resolve failed')
     process.exit(1)

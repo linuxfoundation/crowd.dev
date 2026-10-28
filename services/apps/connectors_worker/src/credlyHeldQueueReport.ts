@@ -1,5 +1,8 @@
 import { groupBy } from '@crowd/common'
-import type { ICredlyHeldTemplate } from '@crowd/data-access-layer/src/credly'
+import type {
+  ICredlyHeldTemplate,
+  ICredlyStoredTemplateMapping,
+} from '@crowd/data-access-layer/src/credly'
 import {
   SlackChannel,
   SlackPersona,
@@ -8,7 +11,7 @@ import {
 } from '@crowd/slack'
 import type { SlackMessageSection } from '@crowd/slack'
 
-import type { PlanEntry, ResolvePlan } from './credlyTemplateResolve'
+import type { ResolvePlan } from './credlyTemplateResolve'
 
 export const HELD_QUEUE_TOP = 10
 
@@ -18,7 +21,9 @@ export interface HeldQueueReport {
   sections: SlackMessageSection[]
 }
 
-const isHeldLabel = (label: string | null) => !!label?.startsWith('held:')
+export function activeHeld(stored: ICredlyStoredTemplateMapping[]): ICredlyStoredTemplateMapping[] {
+  return stored.filter((row) => row.status === 'held' && row.deactivatedAt === null)
+}
 
 function formatHeld(row: ICredlyHeldTemplate, urls: Map<string, string | null>): string {
   const name = escapeSlackText(row.badgeTemplateName)
@@ -38,24 +43,20 @@ function byBadges(rows: ICredlyHeldTemplate[]): ICredlyHeldTemplate[] {
   return [...rows].sort((a, b) => (b.badgeCount ?? 0) - (a.badgeCount ?? 0))
 }
 
+// Membership is compared between the active held rows before the apply and the stored queue
+// after it: labels cannot tell a reactivated row from one that was held all along.
 export function buildHeldQueueReport(
+  heldBefore: ICredlyStoredTemplateMapping[],
   heldQueue: ICredlyHeldTemplate[],
   plan: ResolvePlan,
   templateUrls: Map<string, string | null>,
 ): HeldQueueReport {
-  const heldById = new Map(heldQueue.map((row) => [row.badgeTemplateId, row]))
-  const entered = (entry: PlanEntry) =>
-    (entry.kind === 'new' || entry.kind === 'changed') &&
-    heldById.has(entry.badgeTemplateId) &&
-    !isHeldLabel(entry.before)
-  const left = (entry: PlanEntry) =>
-    (entry.kind === 'changed' || entry.kind === 'missing') &&
-    isHeldLabel(entry.before) &&
-    !heldById.has(entry.badgeTemplateId)
-  const newlyHeld = byBadges(
-    plan.entries.filter(entered).map((entry) => heldById.get(entry.badgeTemplateId)!),
-  )
-  const released = plan.entries.filter(left)
+  const beforeIds = new Set(heldBefore.map((row) => row.badgeTemplateId))
+  const afterById = new Map(heldQueue.map((row) => [row.badgeTemplateId, row]))
+  const afterLabel = new Map(plan.entries.map((entry) => [entry.badgeTemplateId, entry.after]))
+
+  const newlyHeld = byBadges(heldQueue.filter((row) => !beforeIds.has(row.badgeTemplateId)))
+  const released = heldBefore.filter((row) => !afterById.has(row.badgeTemplateId))
   const held = byBadges(heldQueue)
   const badges = held.reduce((sum, row) => sum + (row.badgeCount ?? 0), 0)
   const byReason = [...(groupBy(held, (row) => row.holdReason) as Map<string, unknown[]>)]
@@ -86,12 +87,10 @@ export function buildHeldQueueReport(
     sections.push({
       title: `Released (${released.length})`,
       text: capped(
-        released
-          .slice(0, HELD_QUEUE_TOP)
-          .map(
-            (entry) =>
-              `• ${escapeSlackText(entry.badgeTemplateName)} → ${escapeSlackText(entry.after ?? 'gone from Credly')}`,
-          ),
+        released.slice(0, HELD_QUEUE_TOP).map((row) => {
+          const after = afterLabel.get(row.badgeTemplateId) ?? 'gone from Credly'
+          return `• ${escapeSlackText(row.badgeTemplateName)} → ${escapeSlackText(after)}`
+        }),
         released.length,
       ),
     })
