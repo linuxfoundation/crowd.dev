@@ -27,7 +27,7 @@ function targetFilter(target: ValidationTarget): string {
       return `su.status <> 'decommissioned' AND su.id = ANY($(unitIds)::uuid[])`
     case 'channel':
       return `su.status = 'active' AND lower(su."channelName") = lower($(channelName))
-        ${target.integrationId ? `AND su."integrationId" = $(integrationId)` : ''}`
+        ${target.integrationId !== undefined ? `AND su."integrationId" = $(integrationId)` : ''}`
     case 'integration':
       return `su.status = 'active' AND su."integrationId" = $(integrationId)`
     case 'platform':
@@ -94,13 +94,16 @@ export async function upsertValidationResult(
 
 export async function setUnitsValidation(
   qx: QueryExecutor,
-  unitIds: string[],
+  requestedUnitIds: string[],
   enabled: boolean,
-  counterKeys: string[] | null,
+  requestedCounterKeys: string[] | null,
 ): Promise<number> {
-  if (unitIds.length === 0) {
+  if (requestedUnitIds.length === 0) {
     return 0
   }
+
+  const unitIds = [...new Set(requestedUnitIds)].sort()
+  const counterKeys = requestedCounterKeys ? [...new Set(requestedCounterKeys)] : null
 
   if (!enabled) {
     return qx.result(
@@ -113,7 +116,7 @@ export async function setUnitsValidation(
     await tx.result(
       `INSERT INTO integration.sync_unit_validations ("unitId")
        SELECT unnest($(unitIds)::uuid[])
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT ("unitId") DO UPDATE SET "unitId" = EXCLUDED."unitId"`,
       { unitIds },
     )
     await tx.result(

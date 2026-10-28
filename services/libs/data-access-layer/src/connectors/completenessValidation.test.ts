@@ -161,6 +161,13 @@ describe('listValidationUnitsPage', () => {
 
     expect(all.map((unit) => unit.id).sort()).toEqual([unitId, otherUnitId].sort())
     expect(scoped.map((unit) => unit.id)).toEqual([unitId])
+    await expect(
+      listValidationUnitsPage(
+        qx,
+        { kind: 'channel', channelName: requested, integrationId: '' },
+        { limit: 10 },
+      ),
+    ).rejects.toThrow()
   })
 
   test('units includes a paused unit and excludes a decommissioned one', async ({ qx }) => {
@@ -191,7 +198,11 @@ describe('setUnitsValidation', () => {
     const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
     const listEnabled = () => listValidationUnitsPage(qx, { kind: 'enabled' }, { limit: 10 })
 
-    const enabledCount = await setUnitsValidation(qx, [unitId], true, ['prs', 'issues'])
+    const enabledCount = await setUnitsValidation(qx, [unitId, unitId], true, [
+      'prs',
+      'issues',
+      'prs',
+    ])
     expect(enabledCount).toBe(1)
     expect((await listEnabled())[0]).toMatchObject({
       id: unitId,
