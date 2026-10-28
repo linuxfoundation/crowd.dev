@@ -51,9 +51,42 @@ if [[ "$FILE_PATH" == services/libs/common/* ]]; then
 fi
 
 # ── Database Migrations ────────────────────────────────────────────
-if [[ "$FILE_PATH" == backend/src/database/migrations/* ]]; then
-  warn "Flyway migration — append-only. Never modify an existing migration that has been applied."
-fi
+case "$FILE_PATH" in
+  backend/src/database/migrations/*|backend/src/osspckgs/migrations/*|backend/src/product/migrations/*)
+    warn "Flyway migration — append-only. Never modify an existing migration that has been applied." ;;
+esac
+
+# ── Auth ───────────────────────────────────────────────────────────
+case "$FILE_PATH" in
+  backend/src/api/auth/*|backend/src/services/auth/*)
+    warn "Authentication — changes affect who can sign in and what they can reach." ;;
+  backend/src/middlewares/authMiddleware.ts|backend/src/middlewares/passportStrategyMiddleware.ts)
+    warn "Auth middleware — changes affect authentication on every backend route." ;;
+  backend/src/api/public/middlewares/oauth2Middleware.ts|backend/src/api/public/middlewares/staticApiKeyMiddleware.ts|backend/src/api/public/middlewares/requireScopes.ts)
+    warn "Public API auth — changes affect token, API key and scope checks for external callers." ;;
+  frontend/src/middleware/auth/*|frontend/src/modules/auth/*)
+    warn "Frontend auth — changes affect sign-in and route protection in the app." ;;
+esac
+
+# ── Data Deletion ──────────────────────────────────────────────────
+case "$FILE_PATH" in
+  services/apps/data_sink_worker/src/bin/erase-*)
+    warn "Member erasure — permanently deletes a member's personal data for GDPR requests. Deletions cannot be undone." ;;
+  services/apps/script_executor_worker/src/activities/cleanup/*|services/apps/script_executor_worker/src/workflows/cleanup/*|services/apps/script_executor_worker/src/bin/cleanup-*)
+    warn "Cleanup workflow — deletes data in bulk. Check the filters and run it against staging first." ;;
+  backend/src/bin/jobs/cleanUp.ts|backend/src/bin/scripts/*cleanup*)
+    warn "Cleanup job — deletes data in bulk. Check the filters and run it against staging first." ;;
+  services/libs/common_services/src/services/member/unmerge.ts|backend/src/api/member/memberUnmerge.ts|backend/src/api/organization/organizationUnmerge.ts)
+    warn "Unmerge — reverses a merge, moving identities, organizations and affiliations onto a new record." ;;
+esac
+
+# ── Production Config ──────────────────────────────────────────────
+case "$FILE_PATH" in
+  */config/production.json|backend/config/custom-environment-variables.json)
+    warn "Production config — changes apply to production on the next deploy." ;;
+  .github/workflows/*production*)
+    warn "Production deploy workflow — changes affect how code reaches production." ;;
+esac
 
 # ── Dev CLI & Scaffold ─────────────────────────────────────────────
 case "$FILE_PATH" in
