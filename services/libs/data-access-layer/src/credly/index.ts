@@ -109,7 +109,7 @@ export interface ICredlyHeldTemplate {
   holdReason: CredlyHoldReason
   projectSlug: string | null
   rule: string | null
-  lastSeenAt: Date
+  lastSeenAt: string
 }
 
 interface IStoredDecision {
