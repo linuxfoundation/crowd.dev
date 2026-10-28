@@ -49,7 +49,7 @@ Background on the data model is in [`member-identity.md`](member-identity.md).
 | `organizations_enrichment_worker` | Temporal | Enriches organizations from external sources                                                                                 |
 | `merge_suggestions_worker`        | Temporal | Generates member and organization merge suggestions, including LLM-checked ones                                              |
 | `entity_merging_worker`           | Temporal | Finishes member and organization merges and unmerges once the records are combined: moves dependent data and deletes orphans |
-| `profiles_worker`                 | Temporal | Recomputes member and organization profiles and per-segment aggregates                                                       |
+| `profiles_worker`                 | Temporal | Recomputes member and organization profiles and per-segment aggregates, and fills missing countries from location every hour |
 | `script_executor_worker`          | Temporal | One-off and recurring data fixes, such as merging identities that differ only in capitalization                              |
 
 ## Projects

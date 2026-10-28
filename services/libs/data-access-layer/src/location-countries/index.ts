@@ -1,11 +1,10 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
+import { ILocationCountry } from './types'
 
-export interface ILocationCountry {
-  location: string
-  status: 'resolved' | 'ambiguous' | 'unknown'
-  countryCode: string | null
-}
+export * from './members'
+export * from './organizations'
+export * from './types'
 
 export async function findLocationCountries(
   qx: QueryExecutor,

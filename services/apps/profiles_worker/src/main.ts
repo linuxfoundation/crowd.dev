@@ -3,6 +3,10 @@ import { Options, ServiceWorker } from '@crowd/archetype-worker'
 import { IS_DEV_ENV } from '@crowd/common'
 
 import {
+  scheduleInferMemberCountries,
+  scheduleInferOrganizationCountries,
+} from './schedules/inferCountries'
+import {
   scheduleCalculateLeafSegmentAggregates,
   scheduleRefreshMemberDisplayAggregates,
   scheduleRefreshOrganizationDisplayAggregates,
@@ -50,6 +54,9 @@ setImmediate(async () => {
     await scheduleRefreshMemberDisplayAggregates() // Every 10 minutes - rolls up to project/project-group
     await scheduleRefreshOrganizationDisplayAggregates() // Every 10 minutes - rolls up to project/project-group
   }
+
+  await scheduleInferMemberCountries()
+  await scheduleInferOrganizationCountries()
 
   await svc.start()
 })

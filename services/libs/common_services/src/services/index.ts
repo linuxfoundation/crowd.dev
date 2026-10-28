@@ -1,5 +1,6 @@
 export * from './priority.service'
 export * from './llm.service'
+export * from './country-inference'
 export * from './common.member.service'
 export * from './member/unmerge'
 export * from './member/cache'

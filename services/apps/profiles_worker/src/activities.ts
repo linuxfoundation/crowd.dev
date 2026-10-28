@@ -5,6 +5,12 @@ import {
 } from './activities/calculateLeafSegmentAggregates'
 import { getLLMResult } from './activities/common'
 import {
+  getCountryScanWindow,
+  inferMemberCountriesBatch,
+  inferOrganizationCountriesBatch,
+  saveCountryScanSyncedAt,
+} from './activities/countryInference'
+import {
   createMemberBotSuggestion,
   createMemberNoBot,
   getMemberForBotAnalysis,
@@ -60,4 +66,8 @@ export {
   // Leaf segment aggregate calculation (scheduled every 5 minutes)
   calculateAllMemberLeafAggregates,
   calculateAllOrganizationLeafAggregates,
+  getCountryScanWindow,
+  saveCountryScanSyncedAt,
+  inferMemberCountriesBatch,
+  inferOrganizationCountriesBatch,
 }
