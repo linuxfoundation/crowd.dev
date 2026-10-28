@@ -5,6 +5,8 @@ export type CredlyBadgeState = 'pending' | 'accepted' | 'rejected' | 'revoked' |
 export interface ICredlyBadgeInput {
   badgeId: string
   badgeTemplateId: string
+  badgeTemplateName: string
+  badgeTemplateUrl: string | null
   state: CredlyBadgeState
   stateUpdatedAt: string | null
   issuedAt: string
@@ -24,9 +26,20 @@ export interface ICredlyBadgeRow extends ICredlyBadgeInput {
 }
 
 const ROW_COLUMNS = `
-  "badgeId", "badgeTemplateId", state, "stateUpdatedAt", "issuedAt", "expiresAt",
-  "replacementBadgeId", "replacesBadgeId", "segmentId", "integrationId", "recipientEmail",
-  "issuedTo", "expiredEmittedAt", "firstSeenAt", "lastSeenAt"`
+  "badgeId", "badgeTemplateId", "badgeTemplateName", "badgeTemplateUrl", state, "stateUpdatedAt",
+  "issuedAt", "expiresAt", "replacementBadgeId", "replacesBadgeId", "segmentId", "integrationId",
+  "recipientEmail", "issuedTo", "expiredEmittedAt", "firstSeenAt", "lastSeenAt"`
+
+export async function findCredlyBadges(
+  qx: QueryExecutor,
+  badgeIds: string[],
+): Promise<ICredlyBadgeRow[]> {
+  if (badgeIds.length === 0) return []
+  return qx.select(
+    `SELECT ${ROW_COLUMNS} FROM integration."credlyBadges" WHERE "badgeId" = ANY($(badgeIds)::text[])`,
+    { badgeIds },
+  )
+}
 
 // Segment and earner email stay those of the first sight for the badge's whole life: every later
 // activity must land on the same member and segment as its issued-badge.
@@ -40,12 +53,14 @@ export async function upsertCredlyBadges(
   await qx.result(
     `
       INSERT INTO integration."credlyBadges" AS b
-        ("badgeId", "badgeTemplateId", state, "stateUpdatedAt", "issuedAt", "expiresAt",
-         "replacementBadgeId", "replacesBadgeId", "segmentId", "integrationId", "recipientEmail",
-         "issuedTo")
+        ("badgeId", "badgeTemplateId", "badgeTemplateName", "badgeTemplateUrl", state,
+         "stateUpdatedAt", "issuedAt", "expiresAt", "replacementBadgeId", "replacesBadgeId",
+         "segmentId", "integrationId", "recipientEmail", "issuedTo")
       SELECT * FROM unnest(
         $(badgeIds)::text[],
         $(badgeTemplateIds)::text[],
+        $(badgeTemplateNames)::text[],
+        $(badgeTemplateUrls)::text[],
         $(states)::text[],
         $(stateUpdatedAts)::timestamptz[],
         $(issuedAts)::timestamptz[],
@@ -58,6 +73,8 @@ export async function upsertCredlyBadges(
         $(issuedTos)::text[]
       )
       ON CONFLICT ("badgeId") DO UPDATE SET
+        "badgeTemplateName" = EXCLUDED."badgeTemplateName",
+        "badgeTemplateUrl" = EXCLUDED."badgeTemplateUrl",
         state = EXCLUDED.state,
         "stateUpdatedAt" = EXCLUDED."stateUpdatedAt",
         "expiresAt" = EXCLUDED."expiresAt",
@@ -79,6 +96,8 @@ export async function upsertCredlyBadges(
     {
       badgeIds: rows.map((r) => r.badgeId),
       badgeTemplateIds: rows.map((r) => r.badgeTemplateId),
+      badgeTemplateNames: rows.map((r) => r.badgeTemplateName),
+      badgeTemplateUrls: rows.map((r) => r.badgeTemplateUrl),
       states: rows.map((r) => r.state),
       stateUpdatedAts: rows.map((r) => r.stateUpdatedAt),
       issuedAts: rows.map((r) => r.issuedAt),

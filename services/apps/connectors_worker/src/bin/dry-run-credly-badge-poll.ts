@@ -121,6 +121,8 @@ async function main(): Promise<void> {
   const deps: CredlyDeps = {
     loadTemplateRouting: async () => options.routing,
     lockTemplate: async () => true,
+    findBadges: async () => [],
+    saveBadges: async () => undefined,
   }
 
   const outcome = await runBadgePoll({
