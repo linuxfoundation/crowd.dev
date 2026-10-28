@@ -1,6 +1,7 @@
 import {
   listActiveCredlyTemplateMappings,
   listStaleCredlyTemplateMappings,
+  lockCredlyTemplateMapping,
 } from '@crowd/data-access-layer/src/credly'
 
 import type { DepsFactoryInput } from '../../types'
@@ -8,6 +9,7 @@ import type { DepsFactoryInput } from '../../types'
 export interface CredlyTemplateTarget {
   segmentId: string
   integrationId: string
+  locked: boolean
 }
 
 export interface CredlyTemplateRouting {
@@ -17,6 +19,7 @@ export interface CredlyTemplateRouting {
 
 export interface CredlyDeps {
   loadTemplateRouting(): Promise<CredlyTemplateRouting>
+  lockTemplate(badgeTemplateId: string, target: CredlyTemplateTarget): Promise<boolean>
 }
 
 export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
@@ -31,12 +34,15 @@ export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
         targets: new Map(
           active.map((m) => [
             m.badgeTemplateId,
-            { segmentId: m.segmentId, integrationId: m.integrationId },
+            { segmentId: m.segmentId, integrationId: m.integrationId, locked: m.lockedAt !== null },
           ]),
         ),
         staleTemplateIds: stale.map((m) => m.badgeTemplateId),
       }))
       return routing
+    },
+    lockTemplate(badgeTemplateId, target) {
+      return lockCredlyTemplateMapping(qx, badgeTemplateId, target)
     },
   }
 }

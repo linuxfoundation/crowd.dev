@@ -111,7 +111,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   if (routing.staleTemplateIds.length > 0) {
     ctx.log.warn(
       { badgeTemplateIds: routing.staleTemplateIds },
-      'credly template mappings point to a deleted or moved integration, their badges fall back to the anchor segment',
+      'credly template mappings point to a deleted or moved integration, their badges are held',
     )
   }
 
@@ -126,19 +126,42 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     pagesFetched: 0,
     badges: 0,
     routed: 0,
+    held: 0,
     activities: 0,
     skipped: 0,
+    locked: 0,
     windows: 0,
     splits: 0,
   }
+  const lockedThisRun = new Set<string>()
 
-  // Emit without overrides lands on the anchor integration's own segment: that is the fallback.
+  // A template is locked before its first real emission: the segment is part of the activity
+  // dedup key, so once badges may exist there the mapping must not move. A shadow run emits nothing.
+  const lockBeforeEmit = async (templateIds: Set<string>, target: CredlyTemplateTarget) => {
+    if (!ctx.emitEnabled) return
+    for (const templateId of templateIds) {
+      if (lockedThisRun.has(templateId) || routing.targets.get(templateId)?.locked) continue
+      lockedThisRun.add(templateId)
+      try {
+        if (await ctx.deps.lockTemplate(templateId, target)) counters.locked += 1
+        else ctx.log.warn({ badgeTemplateId: templateId }, 'credly template moved during the run')
+      } catch (err) {
+        ctx.log.warn({ badgeTemplateId: templateId, err }, 'credly template lock failed')
+      }
+    }
+  }
+
   const emitPage = async (badges: CredlyBadge[]) => {
     const byTarget = new Map<
       string,
-      { target: CredlyTemplateTarget | undefined; activities: CredlyActivity[] }
+      { target: CredlyTemplateTarget; templateIds: Set<string>; activities: CredlyActivity[] }
     >()
     for (const badge of badges) {
+      const target = routing.targets.get(badge.badge_template.id)
+      if (!target) {
+        counters.held += 1
+        continue
+      }
       let activities: CredlyActivity[]
       try {
         activities = badgeActivities(badge, startedAtMs)
@@ -150,15 +173,16 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         )
         continue
       }
-      const target = routing.targets.get(badge.badge_template.id)
-      const key = target ? `${target.integrationId}:${target.segmentId}` : ''
-      const group = byTarget.get(key) ?? { target, activities: [] }
+      const key = `${target.integrationId}:${target.segmentId}`
+      const group = byTarget.get(key) ?? { target, templateIds: new Set<string>(), activities: [] }
       group.activities.push(...activities)
+      group.templateIds.add(badge.badge_template.id)
       byTarget.set(key, group)
       counters.activities += activities.length
-      if (target) counters.routed += 1
+      counters.routed += 1
     }
-    for (const { target, activities } of byTarget.values()) {
+    for (const { target, templateIds, activities } of byTarget.values()) {
+      await lockBeforeEmit(templateIds, target)
       await ctx.emit(activities, target)
     }
     counters.badges += badges.length

@@ -38,6 +38,6 @@ describe('credlyConnector', () => {
     ).toEqual([{ name: 'badgePoll', cadenceMinutes: 720 }])
     expect(credlyConnector.preparePool).toBeTypeOf('function')
     expect(credlyConnector.mintToken).toBeTypeOf('function')
-    expect(credlyConnector.emitsOwnSegment).toBeUndefined()
+    expect(credlyConnector.emitsOwnSegment).toBe(true)
   })
 })

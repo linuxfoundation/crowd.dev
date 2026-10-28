@@ -20,4 +20,5 @@ export const credlyConnector: Manifest<CredlyDeps> = {
   preparePool: prepareCredlyPool,
   mintToken: createCredlyTokenMinter,
   createDeps: createCredlyDeps,
+  emitsOwnSegment: true,
 }
