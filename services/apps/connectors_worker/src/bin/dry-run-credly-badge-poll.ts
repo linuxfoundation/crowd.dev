@@ -124,6 +124,7 @@ async function main(): Promise<void> {
     channel: { channelId: organizationId, channelName: 'credly-org' },
     integrationId: 'dry-run',
     watermark: options.since ? { since: new Date(options.since).toISOString() } : null,
+    emitEnabled: false,
     emit: async (records, overrides) => {
       const keep = Math.max(0, options.maxActivities - activitiesEmitted)
       activitiesEmitted += records.length

@@ -81,6 +81,7 @@ function makeCtx(
     commitWatermark: async (next) => {
       watermarks.push(next)
     },
+    emitEnabled: true,
     hasRunBudget,
     http: {} as SyncContext['http'],
     log: LOG,

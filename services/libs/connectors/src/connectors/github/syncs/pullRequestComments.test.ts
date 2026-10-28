@@ -148,6 +148,7 @@ function makeHarness(opts: HarnessOptions = {}) {
     commitWatermark: async (watermark) => {
       committed.push(watermark)
     },
+    emitEnabled: true,
     hasRunBudget: () => true,
     http,
     log: {

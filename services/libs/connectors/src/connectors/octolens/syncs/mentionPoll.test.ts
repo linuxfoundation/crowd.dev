@@ -87,6 +87,7 @@ function makeCtx(
     commitWatermark: async (watermark) => {
       watermarks.push(watermark)
     },
+    emitEnabled: true,
     hasRunBudget: () => true,
     http: {} as OctolensSyncContext['http'],
     log: LOG,

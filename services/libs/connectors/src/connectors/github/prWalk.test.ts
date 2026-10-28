@@ -79,6 +79,7 @@ function makeHarness(
     commitWatermark: async (w) => {
       commits.push(w)
     },
+    emitEnabled: true,
     hasRunBudget: () => pagesServed < (opts.budgetPages ?? Number.MAX_SAFE_INTEGER),
     http,
     log: { info: () => {}, warn: () => {}, error: () => {} } as unknown as Logger,
