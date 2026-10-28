@@ -29,18 +29,22 @@ export async function loadCatalogue(source: CatalogueSource): Promise<Catalogue>
       `SELECT sku AS "sku", title AS "title", course_group_id AS "courseGroupId",
               COALESCE(is_test_or_archived, FALSE) AS "isTestOrArchived"
        FROM bronze_census_ti.courses
-       WHERE sku IS NOT NULL AND TRIM(sku) <> ''`,
+       WHERE sku IS NOT NULL AND TRIM(sku) <> ''
+       ORDER BY sku`,
     ),
     source.run<Catalogue['courseGroups'][number]>(
-      `SELECT course_group_id AS "courseGroupId", title AS "title", project_slug AS "projectSlug"
+      `SELECT course_group_id AS "courseGroupId", course_group_title AS "title",
+              project_slug AS "projectSlug"
        FROM silver_dim._ti_course_groups_to_projects
-       WHERE project_slug IS NOT NULL AND TRIM(project_slug) <> ''`,
+       WHERE project_slug IS NOT NULL AND TRIM(project_slug) <> ''
+       ORDER BY course_group_id, project_slug`,
     ),
     source.run<Catalogue['enrollments'][number]>(
       `SELECT course_code AS "courseCode", project_slug AS "projectSlug", COUNT(*) AS "enrollments"
        FROM silver_fact.enrollments
        WHERE course_code IS NOT NULL AND project_slug IS NOT NULL
-       GROUP BY 1, 2`,
+       GROUP BY 1, 2
+       ORDER BY 1, 2`,
     ),
   ])
   return {
