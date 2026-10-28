@@ -29,7 +29,6 @@ interface SyncUnitFixture {
   integrationId: string
   channelName?: string
   status?: string
-  validationEnabled?: boolean
 }
 
 async function createSyncUnit(qx: QueryExecutor, fixture: SyncUnitFixture): Promise<string> {
@@ -38,9 +37,9 @@ async function createSyncUnit(qx: QueryExecutor, fixture: SyncUnitFixture): Prom
   await qx.result(
     `
     INSERT INTO integration.sync_units
-      (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "validationEnabled")
+      (id, "integrationId", platform, "channelId", "channelName", "syncName", status)
     VALUES
-      ($(id), $(integrationId), 'github', $(channelId), $(channelName), 'issues', $(status), $(validationEnabled))
+      ($(id), $(integrationId), 'github', $(channelId), $(channelName), 'issues', $(status))
     `,
     {
       id,
@@ -48,7 +47,6 @@ async function createSyncUnit(qx: QueryExecutor, fixture: SyncUnitFixture): Prom
       integrationId: fixture.integrationId,
       channelName: fixture.channelName ?? channelId,
       status: fixture.status ?? 'active',
-      validationEnabled: fixture.validationEnabled ?? false,
     },
   )
   return id
@@ -56,7 +54,7 @@ async function createSyncUnit(qx: QueryExecutor, fixture: SyncUnitFixture): Prom
 
 async function getResults(qx: QueryExecutor, unitId: string) {
   return qx.select(
-    `SELECT "activityTypes", "windowStart"::text AS "windowStart", "windowEnd"::text AS "windowEnd",
+    `SELECT "windowStart"::text AS "windowStart", "windowEnd"::text AS "windowEnd",
             "sourceCount"::int AS "sourceCount", "tinybirdCount"::int AS "tinybirdCount", gap::int AS gap
      FROM integration.sync_validation_results
      WHERE "unitId" = $(unitId)
@@ -69,7 +67,6 @@ function baseResult(overrides: Partial<IValidationResultUpsert>): IValidationRes
   return {
     unitId: '',
     counterKey: 'issues',
-    activityTypes: ['issues-opened'],
     window: { kind: 'range', from: '2026-10-01T00:00:00Z', to: '2026-10-02T00:00:00Z' },
     sourceCount: 10,
     tinybirdCount: 10,
@@ -84,24 +81,11 @@ describe('upsertValidationResult', () => {
     const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
 
     await upsertValidationResult(qx, baseResult({ unitId, sourceCount: 5, tinybirdCount: 5 }))
-    await upsertValidationResult(
-      qx,
-      baseResult({
-        unitId,
-        activityTypes: ['issues-opened', 'issues-closed'],
-        sourceCount: 10,
-        tinybirdCount: 12,
-      }),
-    )
+    await upsertValidationResult(qx, baseResult({ unitId, sourceCount: 10, tinybirdCount: 12 }))
 
     const rows = await getResults(qx, unitId)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({
-      activityTypes: ['issues-opened', 'issues-closed'],
-      sourceCount: 10,
-      tinybirdCount: 12,
-      gap: -2,
-    })
+    expect(rows[0]).toMatchObject({ sourceCount: 10, tinybirdCount: 12, gap: -2 })
   })
 
   test('all-time stores infinite bounds and stays separate from a range row', async ({ qx }) => {
@@ -115,20 +99,31 @@ describe('upsertValidationResult', () => {
     expect(rows[0]).toMatchObject({ windowStart: '-infinity', windowEnd: 'infinity' })
     expect(rows[1].windowStart).not.toBe('-infinity')
   })
+
+  test('rejects an empty window', async ({ qx }) => {
+    const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
+    const instant = '2026-10-01T00:00:00Z'
+
+    await expect(
+      upsertValidationResult(
+        qx,
+        baseResult({ unitId, window: { kind: 'range', from: instant, to: instant } }),
+      ),
+    ).rejects.toThrow()
+  })
 })
 
 describe('listValidationUnitsPage', () => {
-  test('enabled returns only enabled active units ordered by id, honoring afterId and limit', async ({
+  test('enabled pages by id and excludes paused, non-enabled and soft-deleted-integration units', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
-    const enabled = await Promise.all(
-      [1, 2, 3].map(() => createSyncUnit(qx, { integrationId, validationEnabled: true })),
-    )
+    const enabled = await Promise.all([1, 2, 3].map(() => createSyncUnit(qx, { integrationId })))
+    const paused = await createSyncUnit(qx, { integrationId, status: 'paused' })
     await createSyncUnit(qx, { integrationId })
-    await createSyncUnit(qx, { integrationId, validationEnabled: true, status: 'paused' })
     const deletedIntegrationId = await createIntegration(qx)
-    await createSyncUnit(qx, { integrationId: deletedIntegrationId, validationEnabled: true })
+    const orphaned = await createSyncUnit(qx, { integrationId: deletedIntegrationId })
+    await setUnitsValidation(qx, [...enabled, paused, orphaned], true, null)
     await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
       id: deletedIntegrationId,
     })
@@ -145,20 +140,27 @@ describe('listValidationUnitsPage', () => {
     expect(secondPage.map((unit) => unit.id)).toEqual(sorted.slice(2))
   })
 
-  test('channel matches case-insensitively', async ({ qx }) => {
+  test('channel matches case-insensitively and can be scoped to an integration', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
-    const unitId = await createSyncUnit(qx, {
-      integrationId,
-      channelName: 'https://github.com/foo/bar',
-    })
+    const otherIntegrationId = await createIntegration(qx)
+    const channelName = 'https://github.com/foo/bar'
+    const unitId = await createSyncUnit(qx, { integrationId, channelName })
+    const otherUnitId = await createSyncUnit(qx, { integrationId: otherIntegrationId, channelName })
+    const requested = 'https://github.com/Foo/Bar'
 
-    const units = await listValidationUnitsPage(
+    const all = await listValidationUnitsPage(
       qx,
-      { kind: 'channel', channelName: 'https://github.com/Foo/Bar' },
+      { kind: 'channel', channelName: requested },
+      { limit: 10 },
+    )
+    const scoped = await listValidationUnitsPage(
+      qx,
+      { kind: 'channel', channelName: requested, integrationId },
       { limit: 10 },
     )
 
-    expect(units.map((unit) => unit.id)).toEqual([unitId])
+    expect(all.map((unit) => unit.id).sort()).toEqual([unitId, otherUnitId].sort())
+    expect(scoped.map((unit) => unit.id)).toEqual([unitId])
   })
 
   test('units includes a paused unit and excludes a decommissioned one', async ({ qx }) => {
@@ -183,25 +185,27 @@ describe('listValidationUnitsPage', () => {
 })
 
 describe('setUnitsValidation', () => {
-  test('sets both columns and leaves nextRunAt unchanged', async ({ qx }) => {
+  test('enables with overrides, clears them on null, and keeps results on disable', async ({
+    qx,
+  }) => {
     const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
-    const before = await qx.selectOne(
-      `SELECT "nextRunAt"::text AS "nextRunAt" FROM integration.sync_units WHERE id = $(unitId)`,
-      { unitId },
-    )
+    const listEnabled = () => listValidationUnitsPage(qx, { kind: 'enabled' }, { limit: 10 })
 
-    const updated = await setUnitsValidation(qx, [unitId], true, ['issues'])
-
-    const after = await qx.selectOne(
-      `SELECT "nextRunAt"::text AS "nextRunAt", "validationEnabled", "validationCounterKeys"
-       FROM integration.sync_units WHERE id = $(unitId)`,
-      { unitId },
-    )
-    expect(updated).toBe(1)
-    expect(after).toMatchObject({
-      nextRunAt: before.nextRunAt,
-      validationEnabled: true,
-      validationCounterKeys: ['issues'],
+    const enabledCount = await setUnitsValidation(qx, [unitId], true, ['prs', 'issues'])
+    expect(enabledCount).toBe(1)
+    expect((await listEnabled())[0]).toMatchObject({
+      id: unitId,
+      validationCounterKeys: ['issues', 'prs'],
     })
+
+    await setUnitsValidation(qx, [unitId], true, null)
+    expect((await listEnabled())[0]).toMatchObject({ id: unitId, validationCounterKeys: null })
+
+    await upsertValidationResult(qx, baseResult({ unitId }))
+    const disabledCount = await setUnitsValidation(qx, [unitId], false, null)
+
+    expect(disabledCount).toBe(1)
+    expect(await listEnabled()).toEqual([])
+    expect(await getResults(qx, unitId)).toHaveLength(1)
   })
 })

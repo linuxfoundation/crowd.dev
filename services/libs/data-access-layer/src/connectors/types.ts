@@ -73,7 +73,7 @@ export type CountWindow = { kind: 'range'; from: string; to: string } | { kind: 
 
 export type ValidationTarget =
   | { kind: 'units'; unitIds: string[] }
-  | { kind: 'channel'; channelName: string }
+  | { kind: 'channel'; channelName: string; integrationId?: string }
   | { kind: 'integration'; integrationId: string }
   | { kind: 'platform'; platform: string }
   | { kind: 'enabled' }
