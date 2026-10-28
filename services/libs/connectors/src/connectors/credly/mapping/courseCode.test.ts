@@ -10,8 +10,19 @@ describe('extractCourseCode', () => {
     ['TSCB - Technical Services Certification B', 'TSCB', 'TSCB'],
     ['Cloud Cost Monitoring for FinOps with OpenCost (LFS248)', 'LFS248', 'LFS248'],
     ['  LFC131: Green Software for Practitioners  ', 'LFC131', 'LFC131'],
+    ['Certified Kubernetes Administrator Beta Exam (CKA-BETA)', 'CKA-BETA', 'CKA'],
   ])('reads the code out of %j', (name, code, base) => {
-    expect(extractCourseCode(name)).toEqual({ code, base })
+    expect(extractCourseCode(name)).toMatchObject({ code, base })
+  })
+
+  it('returns the name without the code, for the title rule', () => {
+    expect(extractCourseCode('LFS158: Introduction to Kubernetes')?.title).toBe(
+      'Introduction to Kubernetes',
+    )
+    expect(extractCourseCode('TSCB - Technical Services Certification B')?.title).toBe(
+      'Technical Services Certification B',
+    )
+    expect(extractCourseCode('Cloud Cost Monitoring (LFS248)')?.title).toBe('Cloud Cost Monitoring')
   })
 
   it.each([

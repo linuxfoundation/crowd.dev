@@ -35,6 +35,7 @@ export interface CatalogueIndex {
   coursesByBase: Map<string, CatalogueCourse[]>
   projectByGroup: Map<string, string>
   enrollmentsByCode: Map<string, CatalogueEnrollment[]>
+  enrollmentsByBase: Map<string, CatalogueEnrollment[]>
   projectsByTitle: Map<string, TitleMatch[]>
 }
 
@@ -57,6 +58,7 @@ export function indexCatalogue(catalogue: Catalogue): CatalogueIndex {
     coursesByBase: new Map(),
     projectByGroup: new Map(),
     enrollmentsByCode: new Map(),
+    enrollmentsByBase: new Map(),
     projectsByTitle: new Map(),
   }
   for (const group of catalogue.courseGroups) {
@@ -82,6 +84,7 @@ export function indexCatalogue(catalogue: Catalogue): CatalogueIndex {
   }
   for (const enrollment of catalogue.enrollments) {
     push(index.enrollmentsByCode, normalizeSku(enrollment.courseCode), enrollment)
+    push(index.enrollmentsByBase, skuBase(enrollment.courseCode), enrollment)
   }
   return index
 }

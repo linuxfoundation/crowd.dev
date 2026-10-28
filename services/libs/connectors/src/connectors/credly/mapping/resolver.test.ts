@@ -196,6 +196,72 @@ describe('resolveTemplates', () => {
     expect(resolveOne('LFC131: Test-Driven Green Software').holdReason).not.toBe('test')
   })
 
+  it('matches the title once an unknown leading code is stripped', () => {
+    expect(resolveOne('LFS999: Introduction to Kubernetes')).toMatchObject({
+      status: 'mapped',
+      projectSlug: 'k8s',
+      rule: 'title',
+    })
+  })
+
+  it('reads a hyphenated trailing code so the exact SKU wins over the title', () => {
+    expect(resolveOne('Certified Kubernetes Administrator Beta Exam (CKA-BETA)')).toMatchObject({
+      status: 'mapped',
+      projectSlug: 'cncf',
+      rule: 'exact_sku',
+      matchedSku: 'CKA-BETA',
+    })
+  })
+
+  it('lets the enrollment vote decide when one exact SKU sits in two course groups', () => {
+    const catalogue = {
+      ...catalogueFixture,
+      courses: [
+        ...catalogueFixture.courses,
+        { sku: 'DUP1', title: 'Dup One', courseGroupId: 'g-k8s', isTestOrArchived: false },
+        { sku: 'DUP1', title: 'Dup One', courseGroupId: 'g-cncf', isTestOrArchived: false },
+      ],
+      courseGroups: [
+        ...catalogueFixture.courseGroups,
+        { courseGroupId: 'g-k8s', title: 'Dup One', projectSlug: 'k8s' },
+        { courseGroupId: 'g-cncf', title: 'Dup One', projectSlug: 'cncf' },
+      ],
+      enrollments: [
+        ...catalogueFixture.enrollments,
+        { courseCode: 'DUP1', projectSlug: 'k8s', enrollments: 10 },
+      ],
+    }
+    const [decision] = resolveTemplates({
+      templates: [{ id: 'dup', name: 'DUP1: Dup One' }],
+      catalogue,
+      segmentIdBySlug: SEGMENTS,
+      overrides: [],
+    })
+    expect(decision).toMatchObject({ status: 'mapped', projectSlug: 'k8s', rule: 'sku_vote' })
+  })
+
+  it('holds a base SKU when an enrollment-only variant points elsewhere', () => {
+    const catalogue = {
+      ...catalogueFixture,
+      courses: [
+        ...catalogueFixture.courses,
+        { sku: 'ZZZ1', title: 'Zed', courseGroupId: null, isTestOrArchived: false },
+      ],
+      enrollments: [
+        ...catalogueFixture.enrollments,
+        { courseCode: 'ZZZ1-X', projectSlug: 'cncf', enrollments: 5 },
+        { courseCode: 'ZZZ1-Y', projectSlug: 'k8s', enrollments: 7 },
+      ],
+    }
+    const [decision] = resolveTemplates({
+      templates: [{ id: 'zed', name: 'ZZZ1: Zed' }],
+      catalogue,
+      segmentIdBySlug: SEGMENTS,
+      overrides: [],
+    })
+    expect(decision).toMatchObject({ status: 'held', holdReason: 'ambiguous' })
+  })
+
   it('resolves the segment slug case-insensitively', () => {
     expect(resolveOne('CKA: Certified Kubernetes Administrator').segmentId).toBe('seg-k8s')
   })

@@ -69,17 +69,12 @@ function groupProjects(index: CatalogueIndex, courses: CatalogueCourse[]): strin
   )
 }
 
-function exactSku(index: CatalogueIndex, code: string): ProjectMatch | Hold | null {
+function exactSku(index: CatalogueIndex, code: string): ProjectMatch | null {
   const courses = index.coursesBySku.get(code)
   if (!courses) return null
   const projects = groupProjects(index, liveFirst(courses))
-  if (projects.length === 1) {
-    return { projectSlug: projects[0], rule: 'exact_sku', matchedSku: code, evidence: { code } }
-  }
-  if (projects.length > 1) {
-    return { holdReason: 'ambiguous', evidence: { code, projects } }
-  }
-  return null
+  if (projects.length !== 1) return null
+  return { projectSlug: projects[0], rule: 'exact_sku', matchedSku: code, evidence: { code } }
 }
 
 function skuVote(index: CatalogueIndex, code: string): ProjectMatch | Hold | null {
@@ -109,9 +104,7 @@ function baseSku(index: CatalogueIndex, code: string): ProjectMatch | Hold | nul
   if (!variants) return null
   const projects = uniqueProjects([
     ...groupProjects(index, variants),
-    ...variants.flatMap((course) =>
-      (index.enrollmentsByCode.get(normalizeSku(course.sku)) ?? []).map((e) => e.projectSlug),
-    ),
+    ...(index.enrollmentsByBase.get(base) ?? []).map((e) => e.projectSlug),
   ])
   if (projects.length === 1) {
     return {
@@ -160,7 +153,7 @@ function decide(index: CatalogueIndex, template: TemplateToResolve): ProjectMatc
     exactSku(index, sku) ??
     skuVote(index, sku) ??
     baseSku(index, sku) ??
-    titleMatch(index, template.name)
+    titleMatch(index, code.title)
   if (outcome) return outcome
   const known = index.coursesBySku.has(sku) || index.coursesByBase.has(code.base)
   return { holdReason: known ? 'no_project' : 'no_match', evidence: { code: sku } }
