@@ -1,6 +1,7 @@
 import type { Manifest } from '../../types'
 import { createGithubTokenMinter, prepareGithubPool } from './appToken'
 import { probeGithubBudget } from './budget'
+import { githubCounters } from './counters'
 import { discoverRepos } from './discover'
 import { interpretGithubResponse } from './interpret'
 import { discussionsSync } from './syncs/discussions'
@@ -24,6 +25,8 @@ export const githubConnector: Manifest = {
     pullRequestReviewCommentsSync,
     pullRequestCommitsSync,
   ],
+  counters: githubCounters,
+  isBackfillComplete: (watermark) => watermark?.phase === 'incremental',
   discover: discoverRepos,
   preparePool: prepareGithubPool,
   mintToken: createGithubTokenMinter,
