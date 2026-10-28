@@ -123,6 +123,8 @@ async function main(): Promise<void> {
     lockTemplate: async () => true,
     findBadges: async () => [],
     saveBadges: async () => undefined,
+    listDueExpiries: async () => [],
+    markExpiriesEmitted: async () => 0,
   }
 
   const outcome = await runBadgePoll({
