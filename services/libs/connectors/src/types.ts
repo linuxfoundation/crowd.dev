@@ -45,6 +45,8 @@ export interface SyncContext<TDeps = undefined> {
   channel: Channel
   integrationId: string
   watermark: Record<string, unknown> | null
+  // False while the unit runs in shadow mode: emit writes shadow records, nothing reaches the sink.
+  emitEnabled?: boolean
   emit: (records: unknown[], overrides?: EmitOverrides) => Promise<void>
   commitWatermark: (watermark: Record<string, unknown>) => Promise<void>
   hasRunBudget: () => boolean

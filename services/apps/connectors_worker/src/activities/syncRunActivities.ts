@@ -160,6 +160,7 @@ export async function executeSync(unitId: string): Promise<void> {
       channel: { channelId: unit.channelId, channelName: unit.channelName },
       integrationId: unit.integrationId,
       watermark: unit.watermark,
+      emitEnabled: unit.emitEnabled,
       emit: emitter.emit,
       commitWatermark: async (watermark) => {
         committedWatermark = watermark
