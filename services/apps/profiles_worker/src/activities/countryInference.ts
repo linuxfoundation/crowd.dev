@@ -17,9 +17,9 @@ import {
 import { svc } from '../main'
 
 const BATCH_SIZE = 500
-// A transaction can commit after its rows' updatedAt, so the scan stops short of now
-// to avoid passing rows that aren't visible yet.
-const COMMIT_LAG_MS = 5 * 60 * 1000
+// Data sink keeps an org's updatedAt for up to 30 minutes (updateOrganization throttle) and
+// rows commit after their updatedAt, so the scan stops this far behind now to not skip them.
+const SCAN_LAG_MS = 35 * 60 * 1000
 
 function createLlmService(qx: QueryExecutor): LlmService {
   return new LlmService(
@@ -46,7 +46,7 @@ export async function getCountryScanWindow(
 ): Promise<{ since: string; until: string }> {
   const qx = pgpQx(svc.postgres.reader.connection())
   const lastSynced = await getSystemSettingValue(qx, key)
-  const until = new Date(Date.now() - COMMIT_LAG_MS).toISOString()
+  const until = new Date(Date.now() - SCAN_LAG_MS).toISOString()
 
   return { since: lastSynced?.timestamp ?? until, until }
 }

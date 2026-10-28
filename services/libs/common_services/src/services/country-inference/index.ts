@@ -15,13 +15,10 @@ import {
   findMemberCountryHints,
   insertLocationCountries,
 } from '@crowd/data-access-layer'
-import { getServiceLogger } from '@crowd/logging'
 import { LlmQueryType, OrganizationAttributeSource } from '@crowd/types'
 
 import { LlmService } from '../llm.service'
 import { buildHintsPrompt, buildLocationsPrompt } from './prompts'
-
-const log = getServiceLogger()
 
 const LOCATIONS_PER_PROMPT = 100
 const MEMBERS_PER_PROMPT = 50
@@ -29,17 +26,12 @@ const PARSER_SOURCE = OrganizationAttributeSource.SYSTEM
 const LLM_SOURCE = OrganizationAttributeSource.LLM
 
 async function askLlm<T>(llm: LlmService, prompt: string): Promise<T[]> {
-  try {
-    const { answer } = await llm.queryLlm(LlmQueryType.LOCATION_COUNTRY, prompt)
-    const answers = parseLlmJson<T[]>(answer)
-    if (!Array.isArray(answers)) {
-      throw new Error('LLM answer is not a JSON array!')
-    }
-    return answers
-  } catch (err) {
-    log.error({ err }, 'LLM call failed!')
-    return []
+  const { answer } = await llm.queryLlm(LlmQueryType.LOCATION_COUNTRY, prompt)
+  const answers = parseLlmJson<T[]>(answer)
+  if (!Array.isArray(answers)) {
+    throw new Error('LLM answer is not a JSON array!')
   }
+  return answers
 }
 
 async function askLlmForLocations(
