@@ -4,11 +4,12 @@ import type { ICountryScanCursor } from '@crowd/data-access-layer'
 
 import * as activities from '../../activities'
 
-const { getCountryScanWindow, saveCountryScanSyncedAt, inferMemberCountriesBatch } =
-  proxyActivities<typeof activities>({
-    startToCloseTimeout: '10 minutes',
-    retry: { maximumAttempts: 3 },
-  })
+const { getCountryScanWindow, saveCountryScanSyncedAt, processMemberCountries } = proxyActivities<
+  typeof activities
+>({
+  startToCloseTimeout: '10 minutes',
+  retry: { maximumAttempts: 3 },
+})
 
 const LAST_SYNCED_AT_KEY = 'memberCountryInferenceLastSyncedAt'
 
@@ -17,7 +18,7 @@ export async function inferMemberCountries(): Promise<void> {
 
   let after: ICountryScanCursor | null = null
   do {
-    after = await inferMemberCountriesBatch({ since, until, after })
+    after = await processMemberCountries({ since, until, after })
   } while (after)
 
   await saveCountryScanSyncedAt(LAST_SYNCED_AT_KEY, until)

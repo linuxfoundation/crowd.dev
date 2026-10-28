@@ -6,8 +6,8 @@ import {
 import { getLLMResult } from './activities/common'
 import {
   getCountryScanWindow,
-  inferMemberCountriesBatch,
-  inferOrganizationCountriesBatch,
+  processMemberCountries,
+  processOrganizationCountries,
   saveCountryScanSyncedAt,
 } from './activities/countryInference'
 import {
@@ -68,6 +68,6 @@ export {
   calculateAllOrganizationLeafAggregates,
   getCountryScanWindow,
   saveCountryScanSyncedAt,
-  inferMemberCountriesBatch,
-  inferOrganizationCountriesBatch,
+  processMemberCountries,
+  processOrganizationCountries,
 }

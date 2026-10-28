@@ -59,7 +59,7 @@ export async function saveCountryScanSyncedAt(
   await setSystemSettingValue(qx, key, { timestamp })
 }
 
-export async function inferMemberCountriesBatch(
+export async function processMemberCountries(
   window: ICountryScanWindow,
 ): Promise<ICountryScanCursor | null> {
   const qx = pgpQx(svc.postgres.writer.connection())
@@ -71,7 +71,7 @@ export async function inferMemberCountriesBatch(
   return nextCursor(members)
 }
 
-export async function inferOrganizationCountriesBatch(
+export async function processOrganizationCountries(
   window: ICountryScanWindow,
 ): Promise<ICountryScanCursor | null> {
   const qx = pgpQx(svc.postgres.writer.connection())
