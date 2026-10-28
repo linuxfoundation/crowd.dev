@@ -5,7 +5,12 @@ import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
 import type { ICredlyBadgeInput } from './badges'
-import { listDueCredlyExpiries, markCredlyExpiriesEmitted, upsertCredlyBadges } from './badges'
+import {
+  findCredlyBadges,
+  listDueCredlyExpiries,
+  markCredlyExpiriesEmitted,
+  upsertCredlyBadges,
+} from './badges'
 import { findOrCreateCredlyIntegration } from './index'
 
 const test = withQx(base)
@@ -31,6 +36,8 @@ function badge(
   return {
     badgeId,
     badgeTemplateId: 'tpl-cka',
+    badgeTemplateName: 'CKA: Certified Kubernetes Administrator',
+    badgeTemplateUrl: 'https://www.credly.com/org/the-linux-foundation/badge/cka',
     state: 'accepted',
     stateUpdatedAt: '2026-10-20T10:00:00.000Z',
     issuedAt: '2026-10-20T00:00:00.000Z',
@@ -99,11 +106,14 @@ describe('credly badges', () => {
     expect(stored.state).toBe('replaced')
     expect(stored.segmentId).toBe(first.segmentId)
     expect(millis(stored.updatedAt)).toBeGreaterThan(millis(BACKDATED))
-    expect(
-      await qx.selectOne(
-        `SELECT "replacementBadgeId", "integrationId" FROM integration."credlyBadges" WHERE "badgeId" = 'b-2'`,
-      ),
-    ).toEqual({ replacementBadgeId: 'b-3', integrationId: first.integrationId })
+    const [row] = await findCredlyBadges(qx, ['b-2', 'b-unknown'])
+    expect(row).toMatchObject({
+      badgeId: 'b-2',
+      replacementBadgeId: 'b-3',
+      integrationId: first.integrationId,
+      badgeTemplateName: 'CKA: Certified Kubernetes Administrator',
+    })
+    expect(await findCredlyBadges(qx, [])).toEqual([])
   })
 
   test('a page with the same badge twice keeps the last version', async ({ qx }) => {

@@ -5,6 +5,7 @@ import {
   listStaleCredlyTemplateMappings,
   lockCredlyTemplateMapping,
 } from '@crowd/data-access-layer/src/credly'
+import { findCredlyBadges, upsertCredlyBadges } from '@crowd/data-access-layer/src/credly/badges'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { createCredlyDeps } from './deps'
@@ -13,6 +14,10 @@ vi.mock('@crowd/data-access-layer/src/credly', () => ({
   listActiveCredlyTemplateMappings: vi.fn(),
   listStaleCredlyTemplateMappings: vi.fn(),
   lockCredlyTemplateMapping: vi.fn(),
+}))
+vi.mock('@crowd/data-access-layer/src/credly/badges', () => ({
+  findCredlyBadges: vi.fn(),
+  upsertCredlyBadges: vi.fn(),
 }))
 
 const mockedActive = vi.mocked(listActiveCredlyTemplateMappings)
@@ -90,5 +95,16 @@ describe('createCredlyDeps', () => {
 
     expect(await deps.lockTemplate('tpl-cka', target)).toBe(true)
     expect(lockCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'tpl-cka', target)
+  })
+
+  it('reads and writes the badge state through the table', async () => {
+    vi.mocked(findCredlyBadges).mockResolvedValueOnce([])
+    const deps = createCredlyDeps({ qx, integrationId: 'anchor' })
+
+    expect(await deps.findBadges(['b-1'])).toEqual([])
+    await deps.saveBadges([])
+
+    expect(findCredlyBadges).toHaveBeenCalledWith(qx, ['b-1'])
+    expect(upsertCredlyBadges).toHaveBeenCalledWith(qx, [])
   })
 })

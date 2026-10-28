@@ -1,15 +1,12 @@
+import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
+
 import { ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadgesPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
-import {
-  credlyActivitySchema,
-  expiredBadgeActivity,
-  issuedBadgeActivity,
-  stateBadgeActivity,
-} from '../mapper'
+import { credlyActivitySchema, issuedBadgeActivity, stateBadgeActivity } from '../mapper'
 import type { CredlyActivity } from '../mapper'
 
 const MINUTE_MS = 60_000
@@ -92,14 +89,43 @@ function isCredlyServerError(err: unknown): boolean {
   return err instanceof ProviderUnavailableError && (err.options?.status ?? 0) >= 500
 }
 
-function badgeActivities(badge: CredlyBadge, nowMs: number): CredlyActivity[] {
+function newBadgeActivities(badge: CredlyBadge): CredlyActivity[] {
   const activities = [issuedBadgeActivity(badge)]
   const state = stateBadgeActivity(badge)
   if (state) activities.push(state)
-  // TODO(linuxfoundation/lfx-cdp-insights-ops#873): expiries after the last state change need the state table.
-  const expired = expiredBadgeActivity(badge)
-  if (expired && Date.parse(expired.timestamp) <= nowMs) activities.push(expired)
   return activities.map((activity) => credlyActivitySchema.parse(activity))
+}
+
+function stateChangeActivities(badge: CredlyBadge): CredlyActivity[] {
+  const state = stateBadgeActivity(badge)
+  return state ? [credlyActivitySchema.parse(state)] : []
+}
+
+function badgeRow(badge: CredlyBadge, target: CredlyTemplateTarget): ICredlyBadgeInput {
+  return {
+    badgeId: badge.id,
+    badgeTemplateId: badge.badge_template.id,
+    badgeTemplateName: badge.badge_template.name,
+    badgeTemplateUrl: badge.badge_template.url ?? null,
+    state: badge.state,
+    stateUpdatedAt: badge.state_updated_at ?? null,
+    issuedAt: badge.issued_at,
+    expiresAt: badge.expires_at ?? null,
+    replacementBadgeId: badge.replacement_badge_id ?? null,
+    replacesBadgeId: badge.replaces_badge_id ?? null,
+    segmentId: target.segmentId,
+    integrationId: target.integrationId,
+    recipientEmail: badge.recipient_email.trim().toLowerCase(),
+    issuedTo: badge.issued_to ?? null,
+  }
+}
+
+function storedTarget(row: ICredlyBadgeRow): CredlyTemplateTarget {
+  return { segmentId: row.segmentId, integrationId: row.integrationId, locked: true }
+}
+
+function withFirstSight(badge: CredlyBadge, stored: ICredlyBadgeRow): CredlyBadge {
+  return { ...badge, recipient_email: stored.recipientEmail, issued_to: stored.issuedTo }
 }
 
 export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOutcome> {
@@ -127,6 +153,9 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     badges: 0,
     routed: 0,
     held: 0,
+    stateChanges: 0,
+    unchanged: 0,
+    pendingStored: 0,
     activities: 0,
     skipped: 0,
     locked: 0,
@@ -151,20 +180,41 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     }
   }
 
+  // The table is read and written only when the emit is real: a shadow run must not make badges
+  // look already emitted. A known badge keeps the member and segment of its first sight.
   const emitPage = async (badges: CredlyBadge[]) => {
-    const byTarget = new Map<
-      string,
-      { target: CredlyTemplateTarget; templateIds: Set<string>; activities: CredlyActivity[] }
-    >()
-    for (const badge of badges) {
-      const target = routing.targets.get(badge.badge_template.id)
-      if (!target) {
-        counters.held += 1
-        continue
+    const lastByBadgeId = new Map(badges.map((badge) => [badge.id, badge]))
+    const routed = [...lastByBadgeId.values()].filter((badge) =>
+      routing.targets.has(badge.badge_template.id),
+    )
+    counters.held += lastByBadgeId.size - routed.length
+    const known = new Map<string, ICredlyBadgeRow>()
+    if (ctx.emitEnabled && routed.length > 0) {
+      for (const row of await ctx.deps.findBadges(routed.map((badge) => badge.id))) {
+        known.set(row.badgeId, row)
       }
+    }
+
+    const groups = new Map<
+      string,
+      {
+        target: CredlyTemplateTarget
+        templateIds: Set<string>
+        activities: CredlyActivity[]
+        rows: ICredlyBadgeInput[]
+      }
+    >()
+    for (const badge of routed) {
+      const stored = known.get(badge.id)
+      const target = stored ? storedTarget(stored) : routing.targets.get(badge.badge_template.id)!
+      const seen = stored ? withFirstSight(badge, stored) : badge
       let activities: CredlyActivity[]
       try {
-        activities = badgeActivities(badge, startedAtMs)
+        if (!stored || stored.state === 'pending') {
+          activities = seen.state === 'pending' ? [] : newBadgeActivities(seen)
+        } else {
+          activities = stored.state === seen.state ? [] : stateChangeActivities(seen)
+        }
       } catch (err) {
         counters.skipped += 1
         ctx.log.warn(
@@ -173,17 +223,29 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         )
         continue
       }
+      if (stored) {
+        if (activities.length > 0) counters.stateChanges += 1
+        else counters.unchanged += 1
+      } else if (activities.length > 0) counters.routed += 1
+      else counters.pendingStored += 1
+
       const key = `${target.integrationId}:${target.segmentId}`
-      const group = byTarget.get(key) ?? { target, templateIds: new Set<string>(), activities: [] }
+      const group = groups.get(key) ?? {
+        target,
+        templateIds: new Set<string>(),
+        activities: [],
+        rows: [],
+      }
       group.activities.push(...activities)
       group.templateIds.add(badge.badge_template.id)
-      byTarget.set(key, group)
+      group.rows.push(badgeRow(seen, target))
+      groups.set(key, group)
       counters.activities += activities.length
-      counters.routed += 1
     }
-    for (const { target, templateIds, activities } of byTarget.values()) {
+    for (const { target, templateIds, activities, rows } of groups.values()) {
       await lockBeforeEmit(templateIds, target)
-      await ctx.emit(activities, target)
+      if (activities.length > 0) await ctx.emit(activities, target)
+      if (ctx.emitEnabled) await ctx.deps.saveBadges(rows)
     }
     counters.badges += badges.length
   }
