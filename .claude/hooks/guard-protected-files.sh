@@ -56,7 +56,6 @@ case "$FILE_PATH" in
     warn "Flyway migration — append-only. Never modify an existing migration that has been applied." ;;
 esac
 
-# ── Auth ───────────────────────────────────────────────────────────
 case "$FILE_PATH" in
   backend/src/api/auth/*|backend/src/services/auth/*)
     warn "Authentication — changes affect who can sign in and what they can reach." ;;
@@ -68,7 +67,6 @@ case "$FILE_PATH" in
     warn "Frontend auth — changes affect sign-in and route protection in the app." ;;
 esac
 
-# ── Data Deletion ──────────────────────────────────────────────────
 case "$FILE_PATH" in
   services/apps/data_sink_worker/src/bin/erase-*)
     warn "Member erasure — permanently deletes a member's personal data for GDPR requests. Deletions cannot be undone." ;;
@@ -80,7 +78,6 @@ case "$FILE_PATH" in
     warn "Unmerge — reverses a merge, moving identities, organizations and affiliations onto a new record." ;;
 esac
 
-# ── Production Config ──────────────────────────────────────────────
 case "$FILE_PATH" in
   */config/production.json|backend/config/custom-environment-variables.json)
     warn "Production config — changes apply to production on the next deploy." ;;

@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Linux Foundation and each contributor to CDP.
 # SPDX-License-Identifier: MIT
-#
-# PostToolUse hook: flags knowledge notes that describe the file just edited.
-#
-# Every note in docs/knowledge/ lists the code it is grounded in under
-# `sources:` in its frontmatter. A source ending in / covers everything below
-# it. When an edited file matches a source, the hook reminds Claude to check
-# that note and fix it in the same pull request. It never blocks the edit.
 
 set -euo pipefail
 
@@ -24,15 +17,21 @@ FILE_PATH="${FILE_PATH#"$REPO_ROOT"/}"
 KNOWLEDGE_DIR="$REPO_ROOT/docs/knowledge"
 [ -d "$KNOWLEDGE_DIR" ] || exit 0
 
-# Editing a note is the fix, not a reason to flag it.
 [[ "$FILE_PATH" == docs/knowledge/* ]] && exit 0
 
-# Print the block-list items under `sources:` in the note's frontmatter.
 note_sources() {
   awk '
     NR == 1 && $0 == "---" { in_fm = 1; next }
     in_fm && $0 == "---" { exit }
     in_fm && /^sources:[[:space:]]*$/ { in_src = 1; next }
+    in_fm && /^sources:[[:space:]]*\[/ {
+      list = $0
+      sub(/^sources:[[:space:]]*\[/, "", list)
+      sub(/\][[:space:]]*$/, "", list)
+      n = split(list, items, ",")
+      for (i = 1; i <= n; i++) { gsub(/^[[:space:]"\x27]+|[[:space:]"\x27]+$/, "", items[i]); if (items[i] != "") print items[i] }
+      next
+    }
     in_fm && in_src && /^[[:space:]]+-[[:space:]]+/ { sub(/^[[:space:]]+-[[:space:]]+/, ""); print; next }
     in_fm && in_src { in_src = 0 }
   ' "$1"
