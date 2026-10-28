@@ -68,3 +68,19 @@ export interface ISyncRunProgress {
 export interface ISyncRunSuccess extends ISyncRunProgress {
   complete: boolean
 }
+
+export type CountWindow = { kind: 'range'; from: string; to: string } | { kind: 'all-time' }
+
+export type ValidationTarget =
+  | { kind: 'units'; unitIds: string[] }
+  | { kind: 'channel'; channelName: string }
+  | { kind: 'integration'; integrationId: string }
+  | { kind: 'platform'; platform: string }
+  | { kind: 'enabled' }
+
+export interface IValidationUnit extends Pick<
+  ISyncUnit,
+  'id' | 'integrationId' | 'platform' | 'channelId' | 'channelName' | 'syncName'
+> {
+  validationCounterKeys: string[] | null
+}
