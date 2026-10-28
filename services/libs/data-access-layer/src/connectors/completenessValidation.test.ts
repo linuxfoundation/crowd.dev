@@ -127,6 +127,11 @@ describe('listValidationUnitsPage', () => {
     )
     await createSyncUnit(qx, { integrationId })
     await createSyncUnit(qx, { integrationId, validationEnabled: true, status: 'paused' })
+    const deletedIntegrationId = await createIntegration(qx)
+    await createSyncUnit(qx, { integrationId: deletedIntegrationId, validationEnabled: true })
+    await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
+      id: deletedIntegrationId,
+    })
     const sorted = [...enabled].sort()
 
     const firstPage = await listValidationUnitsPage(qx, { kind: 'enabled' }, { limit: 2 })

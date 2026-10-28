@@ -39,6 +39,11 @@ export async function listValidationUnitsPage(
             "validationCounterKeys"
      FROM integration.sync_units
      WHERE ${targetFilter(target)}
+       AND EXISTS (
+         SELECT 1
+         FROM public.integrations i
+         WHERE i.id = sync_units."integrationId" AND i."deletedAt" IS NULL
+       )
        AND ($(afterId)::uuid IS NULL OR id > $(afterId)::uuid)
      ORDER BY id
      LIMIT $(limit)`,
