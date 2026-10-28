@@ -143,7 +143,6 @@ function makeHarness(opts: HarnessOptions) {
       emitted.push(...(records as GithubActivity[]))
     },
     commitWatermark: async () => {},
-    emitEnabled: true,
     hasRunBudget: () => true,
     http,
     log: {
