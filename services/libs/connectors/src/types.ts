@@ -107,7 +107,6 @@ interface ManifestBase<TDeps> {
   platform: string
   syncs: SyncDefinition<TDeps>[]
   counters?: SourceCounter<TDeps>[]
-  isBackfillComplete?: (watermark: Record<string, unknown> | null) => boolean
   discover: (credential: Credential) => Promise<Channel[]>
   preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
   mintToken?: (credential: Credential) => TokenMinter

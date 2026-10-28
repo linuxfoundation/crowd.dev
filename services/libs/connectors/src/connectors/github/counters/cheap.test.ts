@@ -4,7 +4,6 @@ import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../../http/client'
 import type { CountContext, SourceCounter } from '../../../types'
-import { githubConnector } from '../index'
 import { githubCheapCounters } from './cheap'
 
 vi.mock('@crowd/integrations', () => ({
@@ -29,7 +28,6 @@ const range = {
 
 interface CapturedRequest {
   data?: { query: string; variables: Record<string, unknown> }
-  params?: { q: string; per_page: number }
 }
 
 function fakeContext(responses: unknown[]) {
@@ -56,7 +54,7 @@ function counter(key: string): SourceCounter {
 
 describe('github cheap counters', () => {
   it('counts a range through inclusive search qualifiers', async () => {
-    const { ctx, requests } = fakeContext([{ total_count: 7 }])
+    const { ctx, requests } = fakeContext([{ data: { search: { issueCount: 7 } } }])
     const window = '2026-10-17T00:00:00Z..2026-10-23T23:59:59Z'
 
     for (const [key, qualifiers] of [
@@ -66,9 +64,8 @@ describe('github cheap counters', () => {
       ['issues-closed', `is:issue is:closed closed:${window}`],
     ]) {
       expect(await counter(key).count(ctx, range)).toBe(7)
-      expect(requests[requests.length - 1].params).toEqual({
+      expect(requests[requests.length - 1].data?.variables).toEqual({
         q: `repo:foo/bar ${qualifiers}`,
-        per_page: 1,
       })
     }
   })
@@ -119,12 +116,5 @@ describe('github cheap counters', () => {
 
     expect(await counter('fork').count(ctx, range)).toBe(2)
     expect(requests).toHaveLength(2)
-  })
-
-  it('reports backfill complete only in the incremental phase', () => {
-    const isComplete = githubConnector.isBackfillComplete
-    expect(isComplete?.({ phase: 'incremental' })).toBe(true)
-    expect(isComplete?.({ phase: 'backfill' })).toBe(false)
-    expect(isComplete?.(null)).toBe(false)
   })
 })

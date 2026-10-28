@@ -12,6 +12,7 @@ import {
 } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { findSegmentsForRepos } from '@crowd/data-access-layer/src/repositories'
 import { TinybirdClient } from '@crowd/database'
 import { getChildLogger } from '@crowd/logging'
 
@@ -89,7 +90,11 @@ export async function validateUnit(input: {
   try {
     const qx = dbStoreQx(svc.postgres.writer)
     const integration = await fetchIntegrationById(qx, unit.integrationId)
-    const segmentId = resolveRunSegmentId(unit.integrationId, integration, manifest)
+    const [repoSegment] = await findSegmentsForRepos(qx, svc.redis, log, [
+      { integrationId: unit.integrationId, url: unit.channelName },
+    ])
+    const segmentId =
+      repoSegment?.segmentId ?? resolveRunSegmentId(unit.integrationId, integration, manifest)
     const http = await createPlatformHttp(qx, unit.platform, unit.integrationId, log)
     const tinybird = new TinybirdClient()
     const deps = manifest.createDeps?.({ qx, integrationId: unit.integrationId })

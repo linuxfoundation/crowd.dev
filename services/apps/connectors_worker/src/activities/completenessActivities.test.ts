@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listValidationUnitsPage: vi.fn(),
   fetchIntegrationById: vi.fn(),
   countTinybirdActivities: vi.fn(),
+  findSegmentsForRepos: vi.fn(),
   createPlatformHttp: vi.fn(),
   getManifest: vi.fn(),
   selectCounters: vi.fn(),
@@ -32,6 +33,9 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
 vi.mock('@crowd/data-access-layer/src/integrations', () => ({
   fetchIntegrationById: mocks.fetchIntegrationById,
 }))
+vi.mock('@crowd/data-access-layer/src/repositories', () => ({
+  findSegmentsForRepos: mocks.findSegmentsForRepos,
+}))
 vi.mock('../platformHttp', () => ({ createPlatformHttp: mocks.createPlatformHttp }))
 vi.mock('../tinybirdActivityCount', () => ({
   countTinybirdActivities: mocks.countTinybirdActivities,
@@ -54,6 +58,7 @@ describe('validateUnit', () => {
     mocks.getManifest.mockReturnValue({})
     mocks.fetchIntegrationById.mockResolvedValue({ segmentId: 'seg' })
     mocks.countTinybirdActivities.mockResolvedValue(7)
+    mocks.findSegmentsForRepos.mockResolvedValue([{ segmentId: 'repo-seg' }])
   })
 
   it('stores source and tinybird counts for every selected counter', async () => {
@@ -72,7 +77,11 @@ describe('validateUnit', () => {
     })
     expect(mocks.countTinybirdActivities).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ segmentId: 'seg', channel: 'acme/repo', activityTypes: ['t2'] }),
+      expect.objectContaining({
+        segmentId: 'repo-seg',
+        channel: 'acme/repo',
+        activityTypes: ['t2'],
+      }),
     )
   })
 

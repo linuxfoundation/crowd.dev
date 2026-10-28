@@ -26,7 +26,6 @@ export const githubConnector: Manifest = {
     pullRequestCommitsSync,
   ],
   counters: githubCounters,
-  isBackfillComplete: (watermark) => watermark?.phase === 'incremental',
   discover: discoverRepos,
   preparePool: prepareGithubPool,
   mintToken: createGithubTokenMinter,

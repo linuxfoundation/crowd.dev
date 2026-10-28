@@ -6,17 +6,15 @@ import { parseRepoChannel } from '../paging'
 
 type RangeWindow = { kind: 'range'; from: string; to: string }
 
-interface SearchResponse {
-  total_count: number
-}
-
 interface TotalCountResponse {
   repository: Record<string, { totalCount: number }>
 }
 
-interface DiscussionSearchResponse {
-  search: { discussionCount: number }
-}
+type SearchType = 'ISSUE' | 'DISCUSSION'
+
+type SearchCountField = 'issueCount' | 'discussionCount'
+
+type SearchResponse = { search: Record<SearchCountField, number> }
 
 interface ForkCreatedAtPage {
   repository: {
@@ -47,14 +45,6 @@ const FORK_CREATED_AT_QUERY = `
   }
 `
 
-const DISCUSSION_SEARCH_QUERY = `
-  query ($q: String!) {
-    search(type: DISCUSSION, query: $q) {
-      discussionCount
-    }
-  }
-`
-
 function toSearchSeconds(epochMs: number): string {
   return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
@@ -68,16 +58,19 @@ function repoSlug(ctx: CountContext): string {
   return `${owner}/${repo}`
 }
 
-async function searchTotal(ctx: CountContext, qualifiers: string): Promise<number> {
-  const body = await ctx.http.request<SearchResponse>(
-    {
-      method: 'get',
-      url: 'https://api.github.com/search/issues',
-      params: { q: `repo:${repoSlug(ctx)} ${qualifiers}`, per_page: 1 },
-    },
+async function searchTotal(
+  ctx: CountContext,
+  type: SearchType,
+  qualifiers: string,
+): Promise<number> {
+  const field: SearchCountField = type === 'ISSUE' ? 'issueCount' : 'discussionCount'
+  const data = await githubGraphql<SearchResponse>(
+    ctx.http,
+    `query ($q: String!) { search(type: ${type}, query: $q) { ${field} } }`,
+    { q: `repo:${repoSlug(ctx)} ${qualifiers}` },
     ctx.log,
   )
-  return body.total_count
+  return data.search[field]
 }
 
 async function repositoryTotal(
@@ -135,7 +128,7 @@ export const githubCheapCounters: SourceCounter[] = [
     cost: CHEAP,
     count: (ctx, window) =>
       window.kind === 'range'
-        ? searchTotal(ctx, `is:pr created:${searchRange(window)}`)
+        ? searchTotal(ctx, 'ISSUE', `is:pr created:${searchRange(window)}`)
         : repositoryTotal(ctx, 'pullRequests', 'pullRequests'),
   },
   {
@@ -145,7 +138,7 @@ export const githubCheapCounters: SourceCounter[] = [
     cost: CHEAP,
     count: (ctx, window) =>
       window.kind === 'range'
-        ? searchTotal(ctx, `is:pr is:merged merged:${searchRange(window)}`)
+        ? searchTotal(ctx, 'ISSUE', `is:pr is:merged merged:${searchRange(window)}`)
         : repositoryTotal(ctx, 'merged', 'pullRequests(states: MERGED)'),
   },
   {
@@ -155,7 +148,7 @@ export const githubCheapCounters: SourceCounter[] = [
     cost: CHEAP,
     count: (ctx, window) =>
       window.kind === 'range'
-        ? searchTotal(ctx, `is:issue created:${searchRange(window)}`)
+        ? searchTotal(ctx, 'ISSUE', `is:issue created:${searchRange(window)}`)
         : repositoryTotal(ctx, 'issues', 'issues'),
   },
   {
@@ -165,7 +158,7 @@ export const githubCheapCounters: SourceCounter[] = [
     cost: CHEAP,
     count: (ctx, window) =>
       window.kind === 'range'
-        ? searchTotal(ctx, `is:issue is:closed closed:${searchRange(window)}`)
+        ? searchTotal(ctx, 'ISSUE', `is:issue is:closed closed:${searchRange(window)}`)
         : repositoryTotal(ctx, 'closed', 'issues(states: CLOSED)'),
   },
   {
@@ -173,18 +166,10 @@ export const githubCheapCounters: SourceCounter[] = [
     syncName: 'discussions',
     activityTypes: [GithubActivityType.DISCUSSION_STARTED],
     cost: CHEAP,
-    count: async (ctx, window) => {
-      if (window.kind === 'all-time') {
-        return repositoryTotal(ctx, 'discussions', 'discussions')
-      }
-      const data = await githubGraphql<DiscussionSearchResponse>(
-        ctx.http,
-        DISCUSSION_SEARCH_QUERY,
-        { q: `repo:${repoSlug(ctx)} created:${searchRange(window)}` },
-        ctx.log,
-      )
-      return data.search.discussionCount
-    },
+    count: (ctx, window) =>
+      window.kind === 'range'
+        ? searchTotal(ctx, 'DISCUSSION', `created:${searchRange(window)}`)
+        : repositoryTotal(ctx, 'discussions', 'discussions'),
   },
   {
     key: GithubActivityType.FORK,
