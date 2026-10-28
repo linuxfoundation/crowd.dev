@@ -230,10 +230,10 @@ function buildHintsPrompt(members: (ICandidate & IMemberHints)[]): string {
 
   return `Each input is a person's free-text profile location that could mean more than one country, with hints: the countries of the organizations they work at now and the domains of their verified emails.
 
-Pick the country the person most likely lives in, choosing only between the countries the location could mean. Generic email domains like gmail.com or .io say nothing. If the hints don't settle it, answer null. Never infer a country from a person's name.
+First list the countries the location itself could mean. Then use the hints to pick one of them. A hint only chooses between those countries: if it points to a country the location can't mean, ignore it. Generic email domains like gmail.com or .io say nothing. If the hints don't settle it, answer null. Never infer a country from a person's name.
 
 Reply with only a JSON array with one object per input:
-{"i": <index>, "c": "<ISO 3166-1 alpha-2 code>" or null}
+{"i": <index>, "o": [<ISO 3166-1 alpha-2 codes the location could mean>], "c": "<one of o>" or null}
 
 Inputs as [index, input] pairs:
 ${JSON.stringify(inputs)}`
@@ -242,7 +242,11 @@ ${JSON.stringify(inputs)}`
 async function askLlm<T>(llm: LlmService, prompt: string): Promise<T[]> {
   try {
     const { answer } = await llm.queryLlm(LlmQueryType.LOCATION_COUNTRY, prompt)
-    return parseLlmJson<T[]>(answer)
+    const answers = parseLlmJson<T[]>(answer)
+    if (!Array.isArray(answers)) {
+      throw new Error('LLM answer is not a JSON array!')
+    }
+    return answers
   } catch (err) {
     log.error({ err }, 'LLM call failed!')
     return []
@@ -277,10 +281,13 @@ async function askLlmWithHints(
   llm: LlmService,
   members: (ICandidate & IMemberHints)[],
 ): Promise<ICountryUpdate[]> {
-  const answers = await askLlm<{ i: number; c: string | null }>(llm, buildHintsPrompt(members))
+  const answers = await askLlm<{ i: number; o: string[]; c: string | null }>(
+    llm,
+    buildHintsPrompt(members),
+  )
 
   return answers
-    .filter(({ i, c }) => members[i] && c && getCountryName(c))
+    .filter(({ i, o, c }) => members[i] && c && o?.includes(c) && getCountryName(c))
     .map(({ i, c }) => ({ id: members[i].id, source: LLM_SOURCE, country: getCountryName(c) }))
 }
 
