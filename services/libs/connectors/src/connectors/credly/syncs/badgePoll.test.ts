@@ -107,6 +107,8 @@ function makeCtx(
     saveBadges: vi.fn(async (rows: ICredlyBadgeInput[]) => {
       saved.push(...rows)
     }),
+    listDueExpiries: vi.fn(async () => []),
+    markExpiriesEmitted: vi.fn(async () => 0),
   }
   const ctx: SyncContext<CredlyDeps> = {
     channel: { channelId: ORGANIZATION_ID, channelName: ORGANIZATION_ID },

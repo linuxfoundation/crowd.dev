@@ -35,7 +35,10 @@ describe('credlyConnector', () => {
     expect(credlyConnector.platform).toBe('credly')
     expect(
       credlyConnector.syncs.map(({ name, cadenceMinutes }) => ({ name, cadenceMinutes })),
-    ).toEqual([{ name: 'badgePoll', cadenceMinutes: 720 }])
+    ).toEqual([
+      { name: 'badgePoll', cadenceMinutes: 720 },
+      { name: 'expirySync', cadenceMinutes: 1440 },
+    ])
     expect(credlyConnector.preparePool).toBeTypeOf('function')
     expect(credlyConnector.mintToken).toBeTypeOf('function')
     expect(credlyConnector.emitsOwnSegment).toBe(true)

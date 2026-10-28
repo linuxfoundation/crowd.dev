@@ -5,7 +5,12 @@ import {
   listStaleCredlyTemplateMappings,
   lockCredlyTemplateMapping,
 } from '@crowd/data-access-layer/src/credly'
-import { findCredlyBadges, upsertCredlyBadges } from '@crowd/data-access-layer/src/credly/badges'
+import {
+  findCredlyBadges,
+  listDueCredlyExpiries,
+  markCredlyExpiriesEmitted,
+  upsertCredlyBadges,
+} from '@crowd/data-access-layer/src/credly/badges'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { createCredlyDeps } from './deps'
@@ -18,6 +23,8 @@ vi.mock('@crowd/data-access-layer/src/credly', () => ({
 vi.mock('@crowd/data-access-layer/src/credly/badges', () => ({
   findCredlyBadges: vi.fn(),
   upsertCredlyBadges: vi.fn(),
+  listDueCredlyExpiries: vi.fn(),
+  markCredlyExpiriesEmitted: vi.fn(),
 }))
 
 const mockedActive = vi.mocked(listActiveCredlyTemplateMappings)
@@ -106,5 +113,18 @@ describe('createCredlyDeps', () => {
 
     expect(findCredlyBadges).toHaveBeenCalledWith(qx, ['b-1'])
     expect(upsertCredlyBadges).toHaveBeenCalledWith(qx, [])
+  })
+
+  it('reads and marks due expiries through the table', async () => {
+    vi.mocked(listDueCredlyExpiries).mockResolvedValueOnce([])
+    vi.mocked(markCredlyExpiriesEmitted).mockResolvedValueOnce(2)
+    const deps = createCredlyDeps({ qx, integrationId: 'anchor' })
+    const now = new Date('2026-10-28T12:00:00.000Z')
+
+    expect(await deps.listDueExpiries(now, 10)).toEqual([])
+    expect(await deps.markExpiriesEmitted(['a', 'b'])).toBe(2)
+
+    expect(listDueCredlyExpiries).toHaveBeenCalledWith(qx, now, 10, undefined)
+    expect(markCredlyExpiriesEmitted).toHaveBeenCalledWith(qx, ['a', 'b'])
   })
 })
