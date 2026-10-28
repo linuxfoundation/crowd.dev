@@ -289,14 +289,23 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
+  // validateAttributes turns a plain value into { [platform]: value }. Doing that per activity
+  // keeps a newer plain value from replacing an older object value with other sources in it.
+  const asPlatformValues = (attributes: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(attributes).map(([name, value]) => [
+        name,
+        typeof value === 'object' ? value : { [platform]: value },
+      ]),
+    )
+
   // update() drops URL locations after merging; dropping them per activity keeps an older valid one
   const withoutUrlLocation = (attributes: Record<string, unknown>) => {
     const location = attributes[MemberAttributeName.LOCATION]
     if (location === undefined || location === null) {
       return attributes
     }
-    const byPlatform = typeof location === 'object' ? location : { [platform]: location }
-    return { ...attributes, [MemberAttributeName.LOCATION]: omitUrlValues(byPlatform) }
+    return { ...attributes, [MemberAttributeName.LOCATION]: omitUrlValues(location) }
   }
 
   const attributes = updatesOldestFirst
@@ -304,7 +313,7 @@ function combineMemberUpdates(
       (u) =>
         u.member.attributes && (dbMemberIsBot || !hasGithubBotFlag(u.member.attributes, platform)),
     )
-    .map((u) => withoutUrlLocation(u.member.attributes))
+    .map((u) => withoutUrlLocation(asPlatformValues(u.member.attributes)))
   const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
   const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
 
