@@ -461,7 +461,7 @@ describe('runBadgePoll', () => {
     expect(LOG.warn).not.toHaveBeenCalled()
   })
 
-  it('locks each emitted template once per run, after its first emit', async () => {
+  it('locks each emitted template once per run, before its first emit', async () => {
     const routing: CredlyTemplateRouting = {
       targets: new Map([
         ['tpl-cka', { segmentId: 'k8s', integrationId: 'int-k8s', locked: false }],
@@ -493,8 +493,36 @@ describe('runBadgePoll', () => {
       integrationId: 'int-k8s',
       locked: false,
     })
-    expect(order).toEqual(['emit', 'lock', 'emit'])
+    expect(order).toEqual(['lock', 'emit', 'emit'])
   })
+
+  it.each([
+    ['locked first', ['tpl-locked', 'tpl-new']],
+    ['locked last', ['tpl-new', 'tpl-locked']],
+  ])(
+    'locks only the unlocked template of a group sharing one target, %s',
+    async (_, templateOrder) => {
+      const target = { segmentId: 'k8s', integrationId: 'int-k8s' }
+      const routing: CredlyTemplateRouting = {
+        targets: new Map([
+          ['tpl-locked', { ...target, locked: true }],
+          ['tpl-new', { ...target, locked: false }],
+        ]),
+        staleTemplateIds: [],
+      }
+      mockedFetchBadgesPage.mockResolvedValueOnce(
+        page(templateOrder.map((id) => badge({ id: `b-${id}`, badge_template: { id, name: id } }))),
+      )
+      const { ctx, emits, deps } = makeCtx(null, () => true, routing)
+
+      await runBadgePoll(ctx)
+
+      expect(emits).toHaveLength(1)
+      expect(deps.lockTemplate).toHaveBeenCalledTimes(1)
+      expect(deps.lockTemplate).toHaveBeenCalledWith('tpl-new', expect.objectContaining(target))
+      expect(LOG.warn).not.toHaveBeenCalled()
+    },
+  )
 
   it('keeps the run going when the lock fails or finds the template moved', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(

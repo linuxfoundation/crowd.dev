@@ -135,12 +135,12 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   }
   const lockedThisRun = new Set<string>()
 
-  // A template is locked right after its first real emission: the segment is part of the activity
-  // dedup key, so the mapping must not move once badges exist there. A shadow run emits nothing.
-  const lockEmitted = async (templateIds: Set<string>, target: CredlyTemplateTarget) => {
-    if (!ctx.emitEnabled || target.locked) return
+  // A template is locked before its first real emission: the segment is part of the activity
+  // dedup key, so once badges may exist there the mapping must not move. A shadow run emits nothing.
+  const lockBeforeEmit = async (templateIds: Set<string>, target: CredlyTemplateTarget) => {
+    if (!ctx.emitEnabled) return
     for (const templateId of templateIds) {
-      if (lockedThisRun.has(templateId)) continue
+      if (lockedThisRun.has(templateId) || routing.targets.get(templateId)?.locked) continue
       lockedThisRun.add(templateId)
       try {
         if (await ctx.deps.lockTemplate(templateId, target)) counters.locked += 1
@@ -182,8 +182,8 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       counters.routed += 1
     }
     for (const { target, templateIds, activities } of byTarget.values()) {
+      await lockBeforeEmit(templateIds, target)
       await ctx.emit(activities, target)
-      await lockEmitted(templateIds, target)
     }
     counters.badges += badges.length
   }

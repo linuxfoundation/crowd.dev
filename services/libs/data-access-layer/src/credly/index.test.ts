@@ -339,8 +339,8 @@ describe('credly template mappings', () => {
     })
     expect(
       await lockCredlyTemplateMapping(qx, 'tpl-held', {
-        segmentId: 'none',
-        integrationId: 'none',
+        segmentId: generateUUIDv1(),
+        integrationId: generateUUIDv1(),
       }),
     ).toBe(false)
   })
