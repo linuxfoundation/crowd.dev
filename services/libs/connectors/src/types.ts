@@ -1,5 +1,6 @@
 import type { ZodType } from 'zod'
 
+import type { CountWindow } from '@crowd/data-access-layer/src/connectors/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import type { Logger } from '@crowd/logging'
 
@@ -82,9 +83,31 @@ export interface DepsFactoryInput {
 
 export type DepsFactory<TDeps> = (input: DepsFactoryInput) => TDeps
 
+export type CountCost = 'cheap' | 'expensive'
+
+export interface CountContext<TDeps = undefined> {
+  channel: Channel
+  integrationId: string
+  http: ConnectorHttp
+  log: Logger
+  progress: unknown
+  saveProgress: (progress: unknown) => void
+  deps: TDeps
+}
+
+export interface SourceCounter<TDeps = undefined> {
+  key: string
+  syncName: string
+  activityTypes: string[]
+  cost: Record<CountWindow['kind'], CountCost | null>
+  count: (ctx: CountContext<TDeps>, window: CountWindow) => Promise<number>
+}
+
 interface ManifestBase<TDeps> {
   platform: string
   syncs: SyncDefinition<TDeps>[]
+  counters?: SourceCounter<TDeps>[]
+  isBackfillComplete?: (watermark: Record<string, unknown> | null) => boolean
   discover: (credential: Credential) => Promise<Channel[]>
   preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
   mintToken?: (credential: Credential) => TokenMinter
