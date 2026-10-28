@@ -22,8 +22,8 @@ const SEGMENT_FRAGMENT = `
   AND segmentId = {{String(segmentId)}}`
 
 const RANGE_FRAGMENT = `
-  AND timestamp >= parseDateTime64BestEffort({{String(from)}})
-  AND timestamp < parseDateTime64BestEffort({{String(to)}})`
+  AND timestamp >= parseDateTime64BestEffort({{String(windowFrom)}})
+  AND timestamp < parseDateTime64BestEffort({{String(windowTo)}})`
 
 const FORMAT_FRAGMENT = `
 FORMAT JSON
@@ -46,8 +46,8 @@ export async function countTinybirdActivities(
     params.segmentId = segmentId
   }
   if (window.kind === 'range') {
-    params.from = formatTinybirdDate(new Date(window.from))
-    params.to = formatTinybirdDate(new Date(window.to))
+    params.windowFrom = formatTinybirdDate(new Date(window.from))
+    params.windowTo = formatTinybirdDate(new Date(window.to))
   }
 
   const result = await tb.executeSql<{ data: { activities: string | number }[] }>(sql, params)

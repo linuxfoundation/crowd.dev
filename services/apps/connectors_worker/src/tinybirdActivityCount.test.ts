@@ -32,8 +32,9 @@ describe('countTinybirdActivities', () => {
     const [query, params] = executeSql.mock.calls[0]
     expect(query).toContain('uniqExact(activityId)')
     expect(query).toContain('timestamp <')
-    expect(params.from).toBe('2026-10-01 00:00:00.000')
-    expect(params.to).toBe('2026-10-02 00:00:00.000')
+    expect(query).not.toMatch(/\{\{String\((from|to)\)\}\}/)
+    expect(params.windowFrom).toBe('2026-10-01 00:00:00.000')
+    expect(params.windowTo).toBe('2026-10-02 00:00:00.000')
     expect(params.segmentId).toBe('seg-1')
     expect(params.types).toEqual(['issues-opened', 'pull_request-opened'])
   })
@@ -47,8 +48,8 @@ describe('countTinybirdActivities', () => {
     expect(count).toBe(7)
     expect(query).not.toContain('timestamp')
     expect(query).not.toContain('segmentId')
-    expect(params).not.toHaveProperty('from')
-    expect(params).not.toHaveProperty('to')
+    expect(params).not.toHaveProperty('windowFrom')
+    expect(params).not.toHaveProperty('windowTo')
     expect(params).not.toHaveProperty('segmentId')
   })
 
