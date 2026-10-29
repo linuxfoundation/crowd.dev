@@ -1,6 +1,7 @@
 import type { CountWindow } from '@crowd/data-access-layer/src/connectors'
 import { GithubActivityType } from '@crowd/integrations'
 
+import type { ConnectorHttp } from '../../../http/client'
 import { ProviderContractError } from '../../../http/errors'
 import type { CountContext, SourceCounter } from '../../../types'
 import { githubGraphql } from '../gql'
@@ -116,13 +117,30 @@ async function countPrTimeline(
   }
 }
 
+const sharedWalks = new WeakMap<
+  ConnectorHttp,
+  Map<string, Promise<Record<PrTimelineKey, number>>>
+>()
+
+function sharedPrTimeline(
+  ctx: CountContext,
+  window: CountWindow,
+): Promise<Record<PrTimelineKey, number>> {
+  const walks = sharedWalks.get(ctx.http) ?? new Map()
+  sharedWalks.set(ctx.http, walks)
+  const walkKey = `${ctx.channel.channelName}|${JSON.stringify(window)}`
+  const walk = walks.get(walkKey) ?? countPrTimeline(ctx, window)
+  walks.set(walkKey, walk)
+  return walk
+}
+
 function prTimelineCounter(key: PrTimelineKey): SourceCounter {
   return {
     key,
     syncName: 'pull-requests',
     activityTypes: [key],
     cost: { range: 'cheap', 'all-time': 'expensive' },
-    count: async (ctx, window) => (await countPrTimeline(ctx, window))[key],
+    count: async (ctx, window) => (await sharedPrTimeline(ctx, window))[key],
   }
 }
 

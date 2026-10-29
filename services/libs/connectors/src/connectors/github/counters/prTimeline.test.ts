@@ -87,6 +87,7 @@ describe('github pr timeline counters', () => {
     ])
 
     expect(await counter('pull_request-assigned').count(ctx, { kind: 'all-time' })).toBe(5)
+    expect(await counter('pull_request-closed').count(ctx, { kind: 'all-time' })).toBe(0)
     expect(requests).toHaveLength(2)
     expect(requests[0].data?.query).toContain('itemTypes: [ASSIGNED_EVENT]')
 
