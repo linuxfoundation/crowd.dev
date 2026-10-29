@@ -58,7 +58,7 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
-import MemberService, { mergeIfAllowed } from './member.service'
+import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1179,9 +1179,7 @@ export default class ActivityService extends LoggerBase {
       member?.joinedAt ? new Date(member.joinedAt) : new Date(timestamp)
     const keepEarliestJoinedAt = (key: string, joinedAt: Date) => {
       const value = membersToCreateMap.get(key)
-      if (joinedAt.getTime() < value.joinedAt.getTime()) {
-        value.joinedAt = joinedAt
-      }
+      value.joinedAt = getEarliestMemberJoinedAt(value.joinedAt, joinedAt)
     }
 
     // find members to create
