@@ -96,6 +96,9 @@ export function getEarliestMemberJoinedAt(current: Date, incoming: Date): Date {
   const isPlaceholder = (date: Date) =>
     Number.isNaN(date.getTime()) || date.getTime() < JOINED_AT_PLACEHOLDER_UNTIL
 
+  if (Number.isNaN(incoming.getTime())) {
+    return current
+  }
   if (isPlaceholder(current)) {
     return incoming
   }
