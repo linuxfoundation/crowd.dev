@@ -61,6 +61,7 @@ import {
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
 import MemberService, { mergeIfAllowed } from './member.service'
+import { isEmptyAttributeValue } from './memberAttribute.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -289,13 +290,24 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
-  // validateAttributes drops null values and turns a plain value into { [platform]: value }. Doing
-  // that per activity keeps a newer null or plain value from replacing an older value.
+  // validateAttributes drops empty values, as a whole and per platform, and turns a plain value
+  // into { [platform]: value }. Doing that per activity keeps a newer empty or plain value from
+  // replacing an older value.
   const asPlatformValues = (attributes: Record<string, unknown>) =>
     Object.fromEntries(
       Object.entries(attributes)
-        .filter(([, value]) => value !== null && value !== undefined)
-        .map(([name, value]) => [name, typeof value === 'object' ? value : { [platform]: value }]),
+        .filter(([, value]) => !isEmptyAttributeValue(value))
+        .map(([name, value]): [string, unknown] => {
+          if (typeof value !== 'object') {
+            return [name, { [platform]: value }]
+          }
+          if (Array.isArray(value)) {
+            return [name, value]
+          }
+          const byPlatform = Object.entries(value).filter(([, v]) => !isEmptyAttributeValue(v))
+          return [name, byPlatform.length > 0 ? Object.fromEntries(byPlatform) : undefined]
+        })
+        .filter(([, value]) => value !== undefined),
     )
 
   // update() drops URL locations after merging; dropping them per activity keeps an older valid one
