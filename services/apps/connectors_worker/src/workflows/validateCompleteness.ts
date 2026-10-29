@@ -7,6 +7,7 @@ import { describeChannelError } from './shadowDiff'
 
 const { listValidationUnits } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3, backoffCoefficient: 2 },
 })
 
 const { validateUnit } = proxyActivities<typeof activities>({
