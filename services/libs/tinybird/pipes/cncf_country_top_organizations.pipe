@@ -44,4 +44,7 @@ SQL >
     FROM organizations o FINAL
     INNER JOIN cncf_country_top_organizations_ranked r ON r.id = o.id
     LEFT JOIN organizations_populated_slug ops ON ops.id = r.id
+    -- Re-checks the live flag: organizationListed is copied daily, a block applies on the next
+    -- request.
+    WHERE o.isAffiliationBlocked = 0
     ORDER BY contributorCount DESC, contributionCount DESC, id
