@@ -9,7 +9,6 @@ import { Logger, LoggerBase } from '@crowd/logging'
 import { RedisClient } from '@crowd/redis'
 import { MemberAttributeType, PlatformType } from '@crowd/types'
 
-// null, undefined and blank strings carry no value; false and 0 do
 export function isEmptyAttributeValue(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
 }
