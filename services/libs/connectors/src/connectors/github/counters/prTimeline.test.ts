@@ -80,31 +80,38 @@ function pr(bounds: string[], counts: Record<string, number>, updatedAt?: string
 }
 
 describe('github pr timeline counters', () => {
-  it('sums all-time filteredCount across pages for the counter key', async () => {
+  it('sums all-time filteredCount across pages and fails on a null pull request node', async () => {
     const { ctx, requests } = fakeContext([
-      page([pr(['all'], { assigned_event_all: 2 }), null], true),
+      page([pr(['all'], { assigned_event_all: 2 })], true),
       page([pr(['all'], { assigned_event_all: 3 })], false),
     ])
 
     expect(await counter('pull_request-assigned').count(ctx, { kind: 'all-time' })).toBe(5)
     expect(requests).toHaveLength(2)
     expect(requests[0].data?.query).toContain('itemTypes: [ASSIGNED_EVENT]')
+
+    const nulled = fakeContext([page([pr(['all'], { assigned_event_all: 2 }), null], false)])
+    await expect(
+      counter('pull_request-assigned').count(nulled.ctx, { kind: 'all-time' }),
+    ).rejects.toThrow('null pull request node')
   })
 
-  it('counts a range as since-from minus since-to and stops at the first older PR', async () => {
+  it('counts a range as since-from minus since-to, keeps lagged PRs, and stops below the lag floor', async () => {
     const { ctx, requests } = fakeContext([
       page(
         [
           pr(['from', 'to'], { closed_event_from: 5, closed_event_to: 1 }, '2026-10-25T00:00:00Z'),
           pr(['from', 'to'], { closed_event_from: 2 }, '2026-10-18T00:00:00Z'),
           pr(['from', 'to'], { closed_event_from: 9 }, '2026-10-16T00:00:00Z'),
+          pr(['from', 'to'], { closed_event_from: 3 }, '2026-10-20T00:00:00Z'),
         ],
         true,
       ),
+      page([pr(['from', 'to'], { closed_event_from: 7 }, '2026-10-10T00:00:00Z')], true),
     ])
 
-    expect(await counter('pull_request-closed').count(ctx, range)).toBe(6)
-    expect(requests).toHaveLength(1)
+    expect(await counter('pull_request-closed').count(ctx, range)).toBe(9)
+    expect(requests).toHaveLength(2)
     expect(requests[0].data?.variables).toMatchObject({ from: range.from, to: range.to })
   })
 

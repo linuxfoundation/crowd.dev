@@ -1,9 +1,11 @@
 import type { CountWindow } from '@crowd/data-access-layer/src/connectors'
 import { GithubActivityType } from '@crowd/integrations'
 
+import { ProviderContractError } from '../../../http/errors'
 import type { CountContext, SourceCounter } from '../../../types'
 import { githubGraphql } from '../gql'
 import { parseRepoChannel } from '../paging'
+import { LISTING_LAG_MS } from '../prWalk'
 
 type PrTimelineKey =
   | GithubActivityType.PULL_REQUEST_CLOSED
@@ -85,13 +87,18 @@ async function countPrTimeline(
       ctx.log,
     )
     const { nodes, pageInfo } = data.repository.pullRequests
+    let pageBelowFloor = window.kind === 'range' && nodes.length > 0
     for (const node of nodes) {
       if (node === null) {
-        continue
+        throw new ProviderContractError('github returned a null pull request node')
       }
       if (window.kind === 'range') {
-        if (Date.parse(node.updatedAt as string) < Date.parse(window.from)) {
-          return totals
+        const updatedAt = Date.parse(node.updatedAt as string)
+        if (updatedAt >= Date.parse(window.from) - LISTING_LAG_MS) {
+          pageBelowFloor = false
+        }
+        if (updatedAt < Date.parse(window.from)) {
+          continue
         }
         for (const key of KEYS) {
           totals[key] += filteredCount(node, key, 'from') - filteredCount(node, key, 'to')
@@ -102,7 +109,7 @@ async function countPrTimeline(
         }
       }
     }
-    if (!pageInfo.hasNextPage) {
+    if (pageBelowFloor || !pageInfo.hasNextPage) {
       return totals
     }
     cursor = pageInfo.endCursor
