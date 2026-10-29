@@ -1172,8 +1172,18 @@ export default class ActivityService extends LoggerBase {
         platform: PlatformType
         username: string
         timestamp: string
+        joinedAt: Date
+        creatorResultId: string
       }
     >()
+    const joinedAtOf = (member: IMemberData | undefined, timestamp: string) =>
+      member?.joinedAt ? new Date(member.joinedAt) : new Date(timestamp)
+    const keepEarliestJoinedAt = (key: string, joinedAt: Date) => {
+      const value = membersToCreateMap.get(key)
+      if (joinedAt.getTime() < value.joinedAt.getTime()) {
+        value.joinedAt = joinedAt
+      }
+    }
 
     // find members to create
     for (const payload of payloadsWithoutDbMembers) {
@@ -1191,13 +1201,16 @@ export default class ActivityService extends LoggerBase {
           platform: payload.platform,
           username: payload.activity.username,
           timestamp: payload.activity.timestamp,
+          joinedAt: joinedAtOf(payload.activity.member, payload.activity.timestamp),
           segmentIds,
           resultIds,
+          creatorResultId: payload.resultId,
         })
       } else {
         const value = membersToCreateMap.get(key)
         value.segmentIds.add(payload.segmentId)
         value.resultIds.add(payload.resultId)
+        keepEarliestJoinedAt(key, joinedAtOf(payload.activity.member, payload.activity.timestamp))
       }
     }
 
@@ -1212,23 +1225,31 @@ export default class ActivityService extends LoggerBase {
         resultIds.add(payload.resultId)
 
         membersToCreateMap.set(key, {
-          member: payload.activity.member,
+          member: payload.activity.objectMember,
           integrationId: payload.integrationId,
           platform: payload.platform,
           username: payload.activity.objectMemberUsername,
           timestamp: payload.activity.timestamp,
+          joinedAt: joinedAtOf(payload.activity.objectMember, payload.activity.timestamp),
           segmentIds,
           resultIds,
+          creatorResultId: payload.resultId,
         })
       } else {
         const value = membersToCreateMap.get(key)
         value.segmentIds.add(payload.segmentId)
         value.resultIds.add(payload.resultId)
+        keepEarliestJoinedAt(
+          key,
+          joinedAtOf(payload.activity.objectMember, payload.activity.timestamp),
+        )
       }
     }
 
     // clear the promises array - should be all completed by now
     promises = []
+    const creatorResultIdsByMemberId = new Map<string, Set<string>>()
+    let createdMemberHasOtherPayloads = false
     for (const value of membersToCreateMap.values()) {
       promises.push(
         memberService
@@ -1238,9 +1259,7 @@ export default class ActivityService extends LoggerBase {
             {
               displayName: value.member.displayName || value.username,
               attributes: value.member.attributes,
-              joinedAt: value.member.joinedAt
-                ? new Date(value.member.joinedAt)
-                : new Date(value.timestamp),
+              joinedAt: value.joinedAt,
               identities: value.member.identities,
               organizations: value.member.organizations,
               reach: value.member.reach,
@@ -1250,6 +1269,12 @@ export default class ActivityService extends LoggerBase {
             value.timestamp,
           )
           .then((memberId) => {
+            const creatorResultIds = creatorResultIdsByMemberId.get(memberId) ?? new Set<string>()
+            creatorResultIdsByMemberId.set(memberId, creatorResultIds.add(value.creatorResultId))
+            if (value.resultIds.size > 1) {
+              createdMemberHasOtherPayloads = true
+            }
+
             // map ids for members
             for (const payload of relevantPayloads.filter(
               (p) =>
@@ -1349,6 +1374,35 @@ export default class ActivityService extends LoggerBase {
       this.log,
       'activityService -> processActivities -> Promise.all (memberService.create)',
     )
+
+    // create() already applied its creating payload; the batch's other payloads of a new member must
+    // go through update() below like an existing member's, or their member data and dates are lost
+    if (createdMemberHasOtherPayloads) {
+      const createdDbMembers = new Map(
+        (await this.memberRepo.findByIds(Array.from(creatorResultIdsByMemberId.keys()))).map(
+          (m) => [m.id, m],
+        ),
+      )
+      const createdByAnotherPayload = (payload: IActivityProcessData, memberId?: string) =>
+        memberId && !creatorResultIdsByMemberId.get(memberId)?.has(payload.resultId)
+          ? createdDbMembers.get(memberId)
+          : undefined
+
+      for (const payload of relevantPayloads) {
+        if (!payload.dbMember) {
+          payload.dbMember = createdByAnotherPayload(payload, payload.memberId)
+          if (payload.dbMember) {
+            payload.dbMemberSource = 'created'
+          }
+        }
+        if (payload.activity.objectMember && !payload.dbObjectMember) {
+          payload.dbObjectMember = createdByAnotherPayload(payload, payload.objectMemberId)
+          if (payload.dbObjectMember) {
+            payload.dbObjectMemberSource = 'created'
+          }
+        }
+      }
+    }
 
     const memberIds = new Set<string>()
     for (const payload of relevantPayloads) {
@@ -2208,8 +2262,8 @@ interface IActivityProcessData {
   dbMember?: IDbMember
   dbObjectMember?: IDbMember
   dbActivityRelation?: IDbActivityRelation
-  dbMemberSource?: 'activity' | 'username' | 'email'
-  dbObjectMemberSource?: 'activity' | 'username' | 'email'
+  dbMemberSource?: 'activity' | 'username' | 'email' | 'created'
+  dbObjectMemberSource?: 'activity' | 'username' | 'email' | 'created'
 
   organizationId?: string
   memberId?: string
