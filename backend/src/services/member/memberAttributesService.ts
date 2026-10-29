@@ -4,7 +4,13 @@ import * as lodash from 'lodash'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { captureApiChange, memberEditProfileAction } from '@crowd/audit-logs'
-import { Error404, getAttributeValue, getCountry, hasAttributeValue } from '@crowd/common'
+import {
+  Error404,
+  getAttributeValue,
+  getCountry,
+  hasAttributeValue,
+  normalizeCountryAttribute,
+} from '@crowd/common'
 import {
   deleteMemberBotSuggestion,
   deleteMemberNoBot,
@@ -64,6 +70,10 @@ export default class MemberAttributesService extends LoggerBase {
           const existingManuallyChangedFields = await getMemberManuallyChangedFields(qx, memberId)
 
           const updatedManuallyChangedFields = [...existingManuallyChangedFields]
+
+          if (data.country) {
+            data.country = normalizeCountryAttribute(data.country)
+          }
 
           for (const key of Object.keys(data)) {
             if (

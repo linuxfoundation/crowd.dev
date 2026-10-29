@@ -35,6 +35,17 @@ function toDisplayName(alpha2: string): string | undefined {
   return official || undefined
 }
 
+const ALPHA2_BY_DISPLAY_NAME = new Map(
+  [...COUNTRY_DISPLAY_NAME_BY_ALPHA2].map(([alpha2, name]) => [name.toLowerCase(), alpha2]),
+)
+
+function toAlpha2(token: string): string | undefined {
+  const aliased = COUNTRY_NAME_INPUT_ALIASES.get(token) || token
+
+  // Name/alias lookup only — getAlpha2Code does not treat CA/IN/DE as countries.
+  return ALPHA2_BY_DISPLAY_NAME.get(aliased.toLowerCase()) ?? countries.getAlpha2Code(aliased, 'en')
+}
+
 function parseCountryToken(token: string): string | undefined {
   if (!token || JUNK_LOCATION_TOKENS.has(token) || AMBIGUOUS_LOCATION_TOKENS.has(token)) {
     return undefined
@@ -44,15 +55,8 @@ function parseCountryToken(token: string): string | undefined {
     return 'United States'
   }
 
-  const aliased = COUNTRY_NAME_INPUT_ALIASES.get(token) || token
-
-  // Name/alias lookup only — getAlpha2Code does not treat CA/IN/DE as countries.
-  const alpha2 = countries.getAlpha2Code(aliased, 'en')
-  if (!alpha2) {
-    return undefined
-  }
-
-  return toDisplayName(alpha2)
+  const alpha2 = toAlpha2(token)
+  return alpha2 ? toDisplayName(alpha2) : undefined
 }
 
 export function normalizeLocation(location: string): string {
@@ -94,4 +98,25 @@ export function getCountry(location: string | null | undefined): string | undefi
   }
 
   return undefined
+}
+
+export function normalizeCountryName(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  // Match the whole value first: getCountry reads the last comma segment,
+  // which misses official names like "Korea, Republic of".
+  const alpha2 = toAlpha2(normalizeLocation(value))
+  return alpha2 ? toDisplayName(alpha2) : getCountry(value)
+}
+
+export function normalizeCountryAttribute(
+  attribute: Record<string, unknown>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(attribute)
+      .map(([source, value]) => [source, normalizeCountryName(value)])
+      .filter(([, country]) => country),
+  )
 }

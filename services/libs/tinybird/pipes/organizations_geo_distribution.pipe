@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `organizations_geo_distribution.pipe` serves the organization geographic distribution widget showing organization counts by country.
-    - Prefers country when set, otherwise falls back to location for country mapping.
-    - Handles unknown/unmappable locations by grouping them under "Unknown" with ❓ flag and 'XX' country code.
+    - Maps each organization's country to the `country_mapping` lookup table by exact name, so each organization counts in one country.
+    - Organizations with no country, or a country not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
     - Calculates both absolute organization counts and percentage distribution for visualization.
     - Primary use case: displaying geographic diversity of organizations in project insights.
     - Parameters:
@@ -18,21 +18,16 @@ DESCRIPTION >
 
 NODE country_mapping_array
 SQL >
-    SELECT groupArray((country, flag, country_code)) AS country_data FROM country_mapping
+    SELECT groupArray(country) AS names, groupArray((country, flag, country_code)) AS country_data
+    FROM country_mapping
 
 NODE parsed_country
 SQL >
-    SELECT
-        o.id,
-        o.location,
-        o.country,
-        arrayFilter(
-            x -> position(upper(coalesce(nullIf(o.country, ''), o.location)), upper(x .1)) > 0,
-            (SELECT country_data FROM country_mapping_array)
-        ) AS matched_countries,
-        arrayJoin(
-            if(empty(matched_countries), [('Unknown', '❓', 'XX')], matched_countries)
-        ) AS country_data
+    WITH
+        (SELECT names FROM country_mapping_array) AS mapping_names,
+        (SELECT country_data FROM country_mapping_array) AS mapping,
+        indexOf(mapping_names, o.country) AS idx
+    SELECT o.id, if(idx = 0, ('Unknown', '❓', 'XX'), mapping[idx]) AS country_data
     FROM organizations AS o final
     WHERE o.id IN (SELECT "organizationId" FROM activities_filtered)
 

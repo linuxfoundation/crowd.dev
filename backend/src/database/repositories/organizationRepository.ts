@@ -13,7 +13,14 @@ import {
   organizationEditIdentitiesAction,
   organizationUpdateAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, RawQueryParser, firstIdentityValue } from '@crowd/common'
+import {
+  Error400,
+  Error404,
+  Error409,
+  RawQueryParser,
+  firstIdentityValue,
+  normalizeCountryName,
+} from '@crowd/common'
 import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
@@ -278,8 +285,14 @@ class OrganizationRepository {
         continue // eslint-disable-line no-continue
       }
 
-      for (const value of (attribute as any).custom) {
-        const isDefault = value === (attribute as any).default
+      let { custom: values, default: defaultValue } = attribute as any
+      if (name === 'country') {
+        values = values.map(normalizeCountryName).filter(Boolean)
+        defaultValue = normalizeCountryName(defaultValue)
+      }
+
+      for (const value of values) {
+        const isDefault = value === defaultValue
 
         orgAttributes.push({
           type: attributeDefinition.type,

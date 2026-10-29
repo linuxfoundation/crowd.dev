@@ -249,7 +249,7 @@ export async function findMemberManualAffiliation(
           OR ("dateStart" <= $(timestamp) AND "dateEnd" IS NULL)
           OR ("dateStart" IS NULL AND "dateEnd" IS NULL)
         )
-      ORDER BY "dateStart" DESC NULLS LAST, id
+      ORDER BY "dateStart" DESC NULLS LAST, "organizationId", id
       LIMIT 1
     `,
     {
@@ -301,7 +301,7 @@ export async function findMemberWorkExperience(
         AND mo."deletedAt" IS NULL
         AND coalesce(ovr."allowAffiliation", true) = true
         ${activeAtTimestampClause}
-      ORDER BY mo."dateStart" DESC, mo.id
+      ORDER BY mo."dateStart" DESC, mo."organizationId", mo.id
     `,
     {
       memberId,
@@ -367,7 +367,7 @@ export async function findMostRecentUnknownDatedOrganizations(
         AND mo."createdAt" <= $(timestamp)
         AND mo."deletedAt" IS NULL
         AND coalesce(ovr."allowAffiliation", true) = true
-      ORDER BY mo."createdAt" DESC, mo.id
+      ORDER BY mo."createdAt" DESC, mo."organizationId"
     `,
     {
       memberId,
@@ -394,7 +394,7 @@ export async function findAllUnkownDatedOrganizations(
         AND mo."dateEnd" IS NULL
         AND mo."deletedAt" IS NULL
         AND coalesce(ovr."allowAffiliation", true) = true
-      ORDER BY mo."createdAt", mo.id
+      ORDER BY mo."createdAt", mo."organizationId"
     `,
     {
       memberId,
