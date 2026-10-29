@@ -7,6 +7,7 @@ import { shadowDiff } from './workflows/shadowDiff'
 import { switchSyncPipeline } from './workflows/switchSyncPipeline'
 import { switchSyncPipelineSweep } from './workflows/switchSyncPipelineSweep'
 import { syncRun } from './workflows/syncRun'
+import { validateCompleteness } from './workflows/validateCompleteness'
 
 export {
   dispatcher,
@@ -18,4 +19,5 @@ export {
   switchSyncPipeline,
   switchSyncPipelineSweep,
   syncRun,
+  validateCompleteness,
 }

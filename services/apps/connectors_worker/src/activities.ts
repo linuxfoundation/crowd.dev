@@ -1,3 +1,4 @@
+import { listValidationUnits, validateUnit } from './activities/completenessActivities'
 import {
   admitByBudget,
   claimDue,
@@ -63,6 +64,7 @@ export {
   listShadowDiffChannels,
   listSwitchSweepRepos,
   listUndeletedChannels,
+  listValidationUnits,
   logDispatchSummary,
   logGithubLifecycleSummary,
   logLifecycleSkips,
@@ -84,4 +86,5 @@ export {
   startRun,
   takeOverUnit,
   touchHeartbeat,
+  validateUnit,
 }
