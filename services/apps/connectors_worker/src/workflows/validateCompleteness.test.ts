@@ -17,7 +17,7 @@ vi.mock('@temporalio/workflow', () => ({
 }))
 
 const input = {
-  target: { kind: 'enabled' as const },
+  target: { kind: 'platform' as const, platform: 'github' },
   window: { kind: 'all-time' as const },
   counterKeys: null,
 }

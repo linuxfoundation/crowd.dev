@@ -1,5 +1,5 @@
 import type { QueryExecutor } from '../queryExecutor'
-import type { CountWindow, IValidationUnit, ValidationTarget } from './types'
+import type { CountWindow, IValidationChannel, IValidationUnit, ValidationTarget } from './types'
 
 export interface IValidationResultUpsert {
   unitId: string
@@ -13,6 +13,12 @@ const INTEGRATION_NOT_DELETED = `EXISTS (
   SELECT 1
   FROM public.integrations i
   WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
+)`
+
+const NOT_DISABLED = `NOT EXISTS (
+  SELECT 1
+  FROM integration.sync_unit_validations v
+  WHERE v."unitId" = su.id AND NOT v.enabled
 )`
 
 const COUNTER_KEYS_PROJECTION = `(
@@ -32,36 +38,55 @@ function targetFilter(target: ValidationTarget): string {
       return `su.status = 'active' AND su."integrationId" = $(integrationId)`
     case 'platform':
       return `su.status = 'active' AND su.platform = $(platform)`
-    case 'enabled':
-      return `su.status = 'active'`
   }
 }
 
 export async function listValidationUnitsPage(
   qx: QueryExecutor,
   target: ValidationTarget,
-  page: { afterId?: string; limit: number },
+  page: { afterId?: string; limit: number; includeDisabled?: boolean },
 ): Promise<IValidationUnit[]> {
   if (target.kind === 'units' && target.unitIds.length === 0) {
     return []
   }
 
-  const source =
-    target.kind === 'enabled'
-      ? `integration.sync_unit_validations v JOIN integration.sync_units su ON su.id = v."unitId"`
-      : `integration.sync_units su`
-  const idColumn = target.kind === 'enabled' ? 'v."unitId"' : 'su.id'
+  const disabledFilter =
+    target.kind === 'units' || page.includeDisabled ? '' : `AND ${NOT_DISABLED}`
 
   return qx.select(
     `SELECT su.id, su."integrationId", su.platform, su."channelId", su."channelName", su."syncName",
             ${COUNTER_KEYS_PROJECTION}
-     FROM ${source}
+     FROM integration.sync_units su
      WHERE ${targetFilter(target)}
+       ${disabledFilter}
        AND ${INTEGRATION_NOT_DELETED}
-       AND ($(afterId)::uuid IS NULL OR ${idColumn} > $(afterId)::uuid)
-     ORDER BY ${idColumn}
+       AND ($(afterId)::uuid IS NULL OR su.id > $(afterId)::uuid)
+     ORDER BY su.id
      LIMIT $(limit)`,
     { ...target, afterId: page.afterId ?? null, limit: page.limit },
+  )
+}
+
+export async function listValidationChannelsPage(
+  qx: QueryExecutor,
+  page: { after?: Pick<IValidationChannel, 'integrationId' | 'channelId'>; limit: number },
+): Promise<IValidationChannel[]> {
+  return qx.select(
+    `SELECT su."integrationId", su."channelId", min(su."channelName") AS "channelName"
+     FROM integration.sync_units su
+     WHERE su.status = 'active'
+       AND ${NOT_DISABLED}
+       AND ${INTEGRATION_NOT_DELETED}
+       AND ($(afterIntegrationId)::uuid IS NULL
+            OR (su."integrationId", su."channelId") > ($(afterIntegrationId)::uuid, $(afterChannelId)::text))
+     GROUP BY su."integrationId", su."channelId"
+     ORDER BY su."integrationId", su."channelId"
+     LIMIT $(limit)`,
+    {
+      afterIntegrationId: page.after?.integrationId ?? null,
+      afterChannelId: page.after?.channelId ?? null,
+      limit: page.limit,
+    },
   )
 }
 
@@ -105,25 +130,18 @@ export async function setUnitsValidation(
   const unitIds = [...new Set(requestedUnitIds)].sort()
   const counterKeys = requestedCounterKeys ? [...new Set(requestedCounterKeys)] : null
 
-  if (!enabled) {
-    return qx.result(
-      `DELETE FROM integration.sync_unit_validations WHERE "unitId" = ANY($(unitIds)::uuid[])`,
-      { unitIds },
-    )
-  }
-
   return qx.tx(async (tx) => {
     await tx.result(
-      `INSERT INTO integration.sync_unit_validations ("unitId")
-       SELECT unnest($(unitIds)::uuid[])
-       ON CONFLICT ("unitId") DO UPDATE SET "unitId" = EXCLUDED."unitId"`,
-      { unitIds },
+      `INSERT INTO integration.sync_unit_validations ("unitId", enabled)
+       SELECT unnest($(unitIds)::uuid[]), $(enabled)
+       ON CONFLICT ("unitId") DO UPDATE SET enabled = EXCLUDED.enabled`,
+      { unitIds, enabled },
     )
     await tx.result(
       `DELETE FROM integration.sync_unit_validation_counters WHERE "unitId" = ANY($(unitIds)::uuid[])`,
       { unitIds },
     )
-    if (counterKeys && counterKeys.length > 0) {
+    if (enabled && counterKeys && counterKeys.length > 0) {
       await tx.result(
         `INSERT INTO integration.sync_unit_validation_counters ("unitId", "counterKey")
          SELECT u, k FROM unnest($(unitIds)::uuid[]) u CROSS JOIN unnest($(counterKeys)::text[]) k`,

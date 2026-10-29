@@ -76,7 +76,12 @@ export type ValidationTarget =
   | { kind: 'channel'; channelName: string; integrationId?: string }
   | { kind: 'integration'; integrationId: string }
   | { kind: 'platform'; platform: string }
-  | { kind: 'enabled' }
+
+export interface IValidationChannel {
+  integrationId: string
+  channelId: string
+  channelName: string
+}
 
 export interface IValidationUnit extends Pick<
   ISyncUnit,
