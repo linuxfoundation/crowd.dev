@@ -14,27 +14,37 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE cncf_country_top_organizations_organizations
-SQL >
-    SELECT o.id, o.displayName, o.logo, ops.slug
-    FROM organizations o FINAL
-    LEFT JOIN organizations_populated_slug ops ON o.id = ops.id
-    WHERE o.isAffiliationBlocked = 0 AND o.displayName != 'Individual - No Account'
-
-NODE cncf_country_top_organizations_result
+NODE cncf_country_top_organizations_ranked
 SQL >
     %
     SELECT
-        o.id AS id,
+        organizationId AS id,
+        max(organizationInCountry) AS headquarteredInCountry,
+        uniq(memberId) AS contributorCount,
+        uniqIf(memberId, memberInCountry) AS contributorInCountryCount,
+        count() AS contributionCount
+    FROM cncf_country_activities
+    WHERE organizationListed = 1
+    GROUP BY id
+    ORDER BY contributorCount DESC, contributionCount DESC, id
+    LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}
+
+NODE cncf_country_top_organizations_result
+SQL >
+    -- The ranking is the right side of the join so it is evaluated once, as the small hash table.
+    SELECT
+        r.id AS id,
         o.displayName AS displayName,
         o.logo AS logo,
-        o.slug AS slug,
-        max(a.organizationInCountry) AS headquarteredInCountry,
-        uniq(a.memberId) AS contributorCount,
-        uniqIf(a.memberId, a.memberInCountry) AS contributorInCountryCount,
-        count() AS contributionCount
-    FROM cncf_country_activities a
-    INNER JOIN cncf_country_top_organizations_organizations o ON o.id = a.organizationId
-    GROUP BY id, displayName, logo, slug
-    ORDER BY contributorCount DESC, contributionCount DESC
-    LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}
+        ops.slug AS slug,
+        r.headquarteredInCountry AS headquarteredInCountry,
+        r.contributorCount AS contributorCount,
+        r.contributorInCountryCount AS contributorInCountryCount,
+        r.contributionCount AS contributionCount
+    FROM organizations o FINAL
+    INNER JOIN cncf_country_top_organizations_ranked r ON r.id = o.id
+    LEFT JOIN organizations_populated_slug ops ON ops.id = r.id
+    -- Re-checks the live flag: organizationListed is copied daily, a block applies on the next
+    -- request.
+    WHERE o.isAffiliationBlocked = 0
+    ORDER BY contributorCount DESC, contributionCount DESC, id

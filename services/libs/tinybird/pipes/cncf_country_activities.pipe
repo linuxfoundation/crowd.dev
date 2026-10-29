@@ -2,13 +2,13 @@ DESCRIPTION >
     - `cncf_country_activities.pipe` returns the CNCF collection contributions that belong to one country, for the country report pipes (`cncf_country_*`).
     - A contribution belongs to the country when its contributor is located there, or when it was made through an organization headquartered there.
     - A contributor is located in a country when the country on their profile, or else their location, names it. An organization is headquartered in a country when its country, or else its location, names it. Names are matched by containment, as in `contributors_geo_distribution.pipe`.
-    - Reads from `cncf_collection_activities_ds`, so it covers the CNCF collection only.
+    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the places it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
     - Parameters:
     - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR'), resolved to a country name through `country_mapping`
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans inherited from `activityTypes_filtered` (defaults: code contributions only)
-    - Response: `memberId`, `organizationId`, `segmentId`, `timestamp`, `memberInCountry`, `organizationInCountry`
+    - Response: `memberId`, `organizationId`, `segmentId`, `timestamp`, `organizationListed`, `memberInCountry`, `organizationInCountry`
 
 TAGS "Report"
 
@@ -28,10 +28,19 @@ SQL >
         }}
     LIMIT 1
 
-NODE cncf_country_period_activities
+NODE cncf_country_activities_result
 SQL >
     %
-    SELECT memberId, organizationId, segmentId, timestamp
+    SELECT
+        memberId,
+        organizationId,
+        segmentId,
+        timestamp,
+        organizationListed,
+        position(memberPlace, nullIf(upper((SELECT country FROM cncf_country_name)), ''))
+        > 0 AS memberInCountry,
+        position(organizationPlace, nullIf(upper((SELECT country FROM cncf_country_name)), ''))
+        > 0 AS organizationInCountry
     FROM cncf_collection_activities_ds
     WHERE
         memberId != ''
@@ -44,39 +53,4 @@ SQL >
             AND timestamp
             < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
         {% end %}
-
-NODE cncf_country_members
-SQL >
-    SELECT id
-    FROM members_sorted
-    WHERE
-        id IN (SELECT memberId FROM cncf_country_period_activities)
-        AND position(
-            upper(coalesce(nullIf(country, ''), location)),
-            upper((SELECT country FROM cncf_country_name))
-        )
-        > 0
-
-NODE cncf_country_organizations
-SQL >
-    SELECT id
-    FROM organizations FINAL
-    WHERE
-        id IN (SELECT organizationId FROM cncf_country_period_activities)
-        AND position(
-            upper(coalesce(nullIf(country, ''), location)),
-            upper((SELECT country FROM cncf_country_name))
-        )
-        > 0
-
-NODE cncf_country_activities_result
-SQL >
-    SELECT
-        memberId,
-        organizationId,
-        segmentId,
-        timestamp,
-        memberId IN (SELECT id FROM cncf_country_members) AS memberInCountry,
-        organizationId IN (SELECT id FROM cncf_country_organizations) AS organizationInCountry
-    FROM cncf_country_period_activities
-    WHERE memberInCountry OR organizationInCountry
+        AND (memberInCountry OR organizationInCountry)
