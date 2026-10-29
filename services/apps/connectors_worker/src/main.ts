@@ -13,6 +13,7 @@ import { scheduleMirrorSweep } from './schedules/mirrorSweep'
 import { scheduleOctolensDiscovery } from './schedules/octolensDiscovery'
 import { scheduleShadowDiff } from './schedules/shadowDiff'
 import { scheduleSwitchSyncPipelineSweep } from './schedules/switchSyncPipelineSweep'
+import { scheduleWeeklyCompletenessValidation } from './schedules/weeklyCompletenessValidation'
 
 const config: Config = {
   envvars: [],
@@ -55,6 +56,7 @@ setImmediate(async () => {
 
   await scheduleDispatcher()
   await scheduleShadowDiff()
+  await scheduleWeeklyCompletenessValidation()
   await scheduleOctolensDiscovery()
   await scheduleSwitchSyncPipelineSweep()
   await scheduleMirrorSweep()

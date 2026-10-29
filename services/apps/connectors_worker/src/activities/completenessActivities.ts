@@ -3,10 +3,12 @@ import { Context } from '@temporalio/activity'
 import { getManifest, selectCounters } from '@crowd/connectors'
 import type {
   CountWindow,
+  IValidationChannel,
   IValidationUnit,
   ValidationTarget,
 } from '@crowd/data-access-layer/src/connectors'
 import {
+  listValidationChannelsPage,
   listValidationUnitsPage,
   upsertValidationResult,
 } from '@crowd/data-access-layer/src/connectors'
@@ -49,6 +51,16 @@ export async function listValidationUnits(input: {
 }): Promise<IValidationUnit[]> {
   return listValidationUnitsPage(dbStoreQx(svc.postgres.writer), input.target, {
     afterId: input.afterId,
+    limit: input.limit,
+  })
+}
+
+export async function listValidationChannels(input: {
+  after?: { integrationId: string; channelId: string }
+  limit: number
+}): Promise<IValidationChannel[]> {
+  return listValidationChannelsPage(dbStoreQx(svc.postgres.writer), {
+    after: input.after,
     limit: input.limit,
   })
 }

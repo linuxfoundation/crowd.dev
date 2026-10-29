@@ -8,6 +8,7 @@ import { switchSyncPipeline } from './workflows/switchSyncPipeline'
 import { switchSyncPipelineSweep } from './workflows/switchSyncPipelineSweep'
 import { syncRun } from './workflows/syncRun'
 import { validateCompleteness } from './workflows/validateCompleteness'
+import { weeklyCompletenessValidation } from './workflows/weeklyCompletenessValidation'
 
 export {
   dispatcher,
@@ -20,4 +21,5 @@ export {
   switchSyncPipelineSweep,
   syncRun,
   validateCompleteness,
+  weeklyCompletenessValidation,
 }
