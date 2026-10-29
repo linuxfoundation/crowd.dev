@@ -1173,7 +1173,6 @@ export default class ActivityService extends LoggerBase {
         username: string
         timestamp: string
         joinedAt: Date
-        creatorResultId: string
       }
     >()
     const joinedAtOf = (member: IMemberData | undefined, timestamp: string) =>
@@ -1204,7 +1203,6 @@ export default class ActivityService extends LoggerBase {
           joinedAt: joinedAtOf(payload.activity.member, payload.activity.timestamp),
           segmentIds,
           resultIds,
-          creatorResultId: payload.resultId,
         })
       } else {
         const value = membersToCreateMap.get(key)
@@ -1233,7 +1231,6 @@ export default class ActivityService extends LoggerBase {
           joinedAt: joinedAtOf(payload.activity.objectMember, payload.activity.timestamp),
           segmentIds,
           resultIds,
-          creatorResultId: payload.resultId,
         })
       } else {
         const value = membersToCreateMap.get(key)
@@ -1248,8 +1245,7 @@ export default class ActivityService extends LoggerBase {
 
     // clear the promises array - should be all completed by now
     promises = []
-    const creatorResultIdsByMemberId = new Map<string, Set<string>>()
-    let createdMemberHasOtherPayloads = false
+    const createdMemberIds = new Set<string>()
     for (const value of membersToCreateMap.values()) {
       promises.push(
         memberService
@@ -1269,11 +1265,7 @@ export default class ActivityService extends LoggerBase {
             value.timestamp,
           )
           .then((memberId) => {
-            const creatorResultIds = creatorResultIdsByMemberId.get(memberId) ?? new Set<string>()
-            creatorResultIdsByMemberId.set(memberId, creatorResultIds.add(value.creatorResultId))
-            if (value.resultIds.size > 1) {
-              createdMemberHasOtherPayloads = true
-            }
+            createdMemberIds.add(memberId)
 
             // map ids for members
             for (const payload of relevantPayloads.filter(
@@ -1375,31 +1367,25 @@ export default class ActivityService extends LoggerBase {
       'activityService -> processActivities -> Promise.all (memberService.create)',
     )
 
-    // create() already applied its creating payload; the batch's other payloads of a new member must
-    // go through update() below like an existing member's, or their member data and dates are lost
-    if (createdMemberHasOtherPayloads) {
+    // create() can return an existing member without applying its payload (identity owned by another
+    // member), so every payload of a created or resolved member also goes through update() below
+    if (createdMemberIds.size > 0) {
       const createdDbMembers = new Map(
-        (await this.memberRepo.findByIds(Array.from(creatorResultIdsByMemberId.keys()))).map(
-          (m) => [m.id, m],
-        ),
+        (await this.memberRepo.findByIds(Array.from(createdMemberIds))).map((m) => [m.id, m]),
       )
-      const createdByAnotherPayload = (payload: IActivityProcessData, memberId?: string) =>
-        memberId && !creatorResultIdsByMemberId.get(memberId)?.has(payload.resultId)
-          ? createdDbMembers.get(memberId)
-          : undefined
 
       for (const payload of relevantPayloads) {
-        if (!payload.dbMember) {
-          payload.dbMember = createdByAnotherPayload(payload, payload.memberId)
-          if (payload.dbMember) {
-            payload.dbMemberSource = 'created'
-          }
+        if (!payload.dbMember && createdDbMembers.has(payload.memberId)) {
+          payload.dbMember = createdDbMembers.get(payload.memberId)
+          payload.dbMemberSource = 'created'
         }
-        if (payload.activity.objectMember && !payload.dbObjectMember) {
-          payload.dbObjectMember = createdByAnotherPayload(payload, payload.objectMemberId)
-          if (payload.dbObjectMember) {
-            payload.dbObjectMemberSource = 'created'
-          }
+        if (
+          payload.activity.objectMember &&
+          !payload.dbObjectMember &&
+          createdDbMembers.has(payload.objectMemberId)
+        ) {
+          payload.dbObjectMember = createdDbMembers.get(payload.objectMemberId)
+          payload.dbObjectMemberSource = 'created'
         }
       }
     }
