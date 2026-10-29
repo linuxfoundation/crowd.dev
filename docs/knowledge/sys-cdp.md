@@ -43,14 +43,14 @@ How source data gets in. [`data-flow.md`](data-flow.md) shows how these connect.
 
 Background on the data model is in [`member-identity.md`](member-identity.md).
 
-| Service                           | Kind     | Role                                                                                                                         |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `members_enrichment_worker`       | Temporal | Enriches members from external sources under `src/sources/`: Clearbit, Crustdata, LFID, ProgAI and SERP                      |
-| `organizations_enrichment_worker` | Temporal | Enriches organizations from external sources                                                                                 |
-| `merge_suggestions_worker`        | Temporal | Generates member and organization merge suggestions, including LLM-checked ones                                              |
-| `entity_merging_worker`           | Temporal | Finishes member and organization merges and unmerges once the records are combined: moves dependent data and deletes orphans |
-| `profiles_worker`                 | Temporal | Recomputes member and organization profiles and per-segment aggregates                                                       |
-| `script_executor_worker`          | Temporal | One-off and recurring data fixes, such as merging identities that differ only in capitalization                              |
+| Service                           | Kind     | Role                                                                                                                                                                                                                                  |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `members_enrichment_worker`       | Temporal | Enriches members from external sources under `src/sources/`: Clearbit, Crustdata, LFID, ProgAI and SERP                                                                                                                               |
+| `organizations_enrichment_worker` | Temporal | Enriches organizations from external sources                                                                                                                                                                                          |
+| `merge_suggestions_worker`        | Temporal | Generates member and organization merge suggestions, including LLM-checked ones                                                                                                                                                       |
+| `entity_merging_worker`           | Temporal | Finishes member and organization merges and unmerges once the records are combined: moves dependent data and deletes orphans                                                                                                          |
+| `profiles_worker`                 | Temporal | Keeps member and organization profiles current: refreshes affiliations and syncs them to search, computes per-segment aggregates, checks likely bots and fake organizations with an LLM, and fills in missing countries from location |
+| `script_executor_worker`          | Temporal | One-off and recurring data fixes, such as merging identities that differ only in capitalization                                                                                                                                       |
 
 ## Projects
 
