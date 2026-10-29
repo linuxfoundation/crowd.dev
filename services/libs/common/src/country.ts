@@ -12,10 +12,17 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+const TRAILING_PUNCTUATION = new Set(['.', '!', '?'])
+
 function normalizeToken(value: string): string {
-  return normalizeWhitespace(value)
-    .replace(/[.!?]+$/, '')
-    .toLowerCase()
+  const token = normalizeWhitespace(value)
+
+  let end = token.length
+  while (end > 0 && TRAILING_PUNCTUATION.has(token[end - 1])) {
+    end--
+  }
+
+  return token.slice(0, end).toLowerCase()
 }
 
 function toDisplayName(alpha2: string): string | undefined {
