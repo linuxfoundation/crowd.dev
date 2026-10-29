@@ -13,10 +13,12 @@
     "script:diff-shadow-unit-detail": "tsx src/bin/diff-shadow-unit-detail.ts",
     "script:backfill-octolens-mentions": "tsx src/bin/backfill-octolens-mentions.ts",
     "script:switch-sync-pipeline": "tsx src/bin/switch-sync-pipeline.ts",
+    "script:validate-completeness": "tsx src/bin/validate-completeness.ts",
     "script:mirror-nango-repos": "tsx src/bin/mirror-nango-repos-to-shadow-sync-units.ts",
     "script:probe-credly-api": "tsx src/bin/probe-credly-api.ts",
     "script:seed-credly-sync-unit": "tsx src/bin/seed-credly-sync-unit.ts",
-    "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts"
+    "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
+    "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
@@ -29,6 +31,7 @@
     "@crowd/nango": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",
+    "@crowd/snowflake": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
     "@temporalio/activity": "~1.17.2",

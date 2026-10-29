@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
 import { CredlyActivityType } from '@crowd/integrations/src/integrations/credly/types'
 import type { Logger } from '@crowd/logging'
 
@@ -59,17 +60,56 @@ function page(data: CredlyBadge[], current = 1, totalPages = 1): CredlyPage<Cred
   }
 }
 
-const NO_ROUTING: CredlyTemplateRouting = { targets: new Map(), staleTemplateIds: [] }
+const DEFAULT_TARGET = { segmentId: 'seg-default', integrationId: 'int-default', locked: false }
+const DEFAULT_ROUTING: CredlyTemplateRouting = {
+  targets: new Map([['template-1', DEFAULT_TARGET]]),
+  staleTemplateIds: [],
+}
+
+function storedBadge(overrides: Partial<ICredlyBadgeRow> = {}): ICredlyBadgeRow {
+  return {
+    badgeId: 'badge-1',
+    badgeTemplateId: 'template-1',
+    badgeTemplateName: 'CKA: Certified Kubernetes Administrator',
+    badgeTemplateUrl: null,
+    state: 'accepted',
+    stateUpdatedAt: '2026-10-22T10:00:00.000Z',
+    issuedAt: '2026-10-22T00:00:00.000Z',
+    expiresAt: null,
+    replacementBadgeId: null,
+    replacesBadgeId: null,
+    segmentId: 'seg-stored',
+    integrationId: 'int-stored',
+    recipientEmail: 'maria.rossi@example.org',
+    issuedTo: 'Maria Rossi',
+    expiredEmittedAt: null,
+    firstSeenAt: '2026-10-22T12:00:00.000Z',
+    lastSeenAt: '2026-10-22T12:00:00.000Z',
+    ...overrides,
+  }
+}
 
 function makeCtx(
   watermark: Record<string, unknown> | null = null,
   hasRunBudget = () => true,
-  routing: CredlyTemplateRouting = NO_ROUTING,
+  routing: CredlyTemplateRouting = DEFAULT_ROUTING,
+  emitEnabled = true,
+  stored: ICredlyBadgeRow[] = [],
 ) {
   const emitted: unknown[][] = []
   const emits: { records: unknown[]; segmentId?: string; integrationId?: string }[] = []
   const watermarks: Record<string, unknown>[] = []
-  const deps: CredlyDeps = { loadTemplateRouting: vi.fn(async () => routing) }
+  const saved: ICredlyBadgeInput[] = []
+  const deps: CredlyDeps = {
+    loadTemplateRouting: vi.fn(async () => routing),
+    lockTemplate: vi.fn(async () => true),
+    findBadges: vi.fn(async (ids: string[]) => stored.filter((row) => ids.includes(row.badgeId))),
+    saveBadges: vi.fn(async (rows: ICredlyBadgeInput[]) => {
+      saved.push(...rows)
+    }),
+    listDueExpiries: vi.fn(async () => []),
+    markExpiriesEmitted: vi.fn(async () => 0),
+  }
   const ctx: SyncContext<CredlyDeps> = {
     channel: { channelId: ORGANIZATION_ID, channelName: ORGANIZATION_ID },
     integrationId: 'integration-1',
@@ -81,6 +121,7 @@ function makeCtx(
     commitWatermark: async (next) => {
       watermarks.push(next)
     },
+    emitEnabled,
     hasRunBudget,
     http: {} as SyncContext['http'],
     log: LOG,
@@ -92,6 +133,7 @@ function makeCtx(
     emitted,
     emits,
     deps,
+    saved,
     watermarks,
     lastWatermark: () => watermarks[watermarks.length - 1],
   }
@@ -337,29 +379,223 @@ describe('runBadgePoll', () => {
     })
   })
 
-  it('emits expired-badge only for accepted badges whose expiry has already passed', async () => {
+  it('stores a new badge with the routing target and leaves expiries to the expiry sync', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(
       page([
         badge({ id: 'expired', expires_at: '2026-10-01T00:00:00.000Z' }),
-        badge({ id: 'live', expires_at: '2028-10-01T00:00:00.000Z' }),
         badge({ id: 'pending', state: 'pending', state_updated_at: null }),
         badge({ id: 'revoked', state: 'revoked', expires_at: '2026-10-01T00:00:00.000Z' }),
       ]),
     )
-    const { ctx, emitted } = makeCtx()
+    const { ctx, emitted, saved, deps } = makeCtx()
 
     await runBadgePoll(ctx)
 
     expect(types(emitted[0])).toEqual([
       CredlyActivityType.ISSUED_BADGE,
       CredlyActivityType.ACCEPTED_BADGE,
-      CredlyActivityType.EXPIRED_BADGE,
-      CredlyActivityType.ISSUED_BADGE,
-      CredlyActivityType.ACCEPTED_BADGE,
-      CredlyActivityType.ISSUED_BADGE,
       CredlyActivityType.ISSUED_BADGE,
       CredlyActivityType.REVOKED_BADGE,
     ])
+    expect(deps.findBadges).toHaveBeenCalledWith(['expired', 'pending', 'revoked'])
+    expect(saved.map((row) => [row.badgeId, row.state, row.segmentId, row.expiresAt])).toEqual([
+      ['expired', 'accepted', 'seg-default', '2026-10-01T00:00:00.000Z'],
+      ['pending', 'pending', 'seg-default', null],
+      ['revoked', 'revoked', 'seg-default', '2026-10-01T00:00:00.000Z'],
+    ])
+    expect(saved[0]).toMatchObject({
+      badgeTemplateName: 'CKA: Certified Kubernetes Administrator',
+      recipientEmail: 'maria.rossi@example.org',
+      issuedTo: 'Maria Rossi',
+    })
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ routed: 2, pendingStored: 1, stateChanges: 0, unchanged: 0 }),
+      expect.any(String),
+    )
+  })
+
+  it('emits nothing for a known badge whose state did not change, but marks it seen', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ state_updated_at: '2026-10-27T10:00:00.000Z' })]),
+    )
+    const { ctx, emits, saved, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge(),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(emits).toEqual([])
+    expect(deps.lockTemplate).toHaveBeenCalledWith('template-1', {
+      segmentId: 'seg-stored',
+      integrationId: 'int-stored',
+      locked: true,
+    })
+    expect(saved.map((row) => [row.badgeId, row.segmentId, row.stateUpdatedAt])).toEqual([
+      ['badge-1', 'seg-stored', '2026-10-27T10:00:00.000Z'],
+    ])
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ unchanged: 1, routed: 0 }),
+      expect.any(String),
+    )
+  })
+
+  it('emits only the state activity on the stored segment when a known badge changes state', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({
+          state: 'replaced',
+          state_updated_at: '2026-10-27T10:00:00.000Z',
+          replacement_badge_id: 'badge-2',
+        }),
+        badge({ id: 'badge-2', replaces_badge_id: 'badge-1' }),
+      ]),
+    )
+    const { ctx, emits, saved, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge(),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(
+      emits.map(({ records, segmentId, integrationId }) => ({
+        types: types(records),
+        segmentId,
+        integrationId,
+      })),
+    ).toEqual([
+      {
+        types: [CredlyActivityType.REPLACED_BADGE],
+        segmentId: 'seg-stored',
+        integrationId: 'int-stored',
+      },
+      {
+        types: [CredlyActivityType.ISSUED_BADGE, CredlyActivityType.ACCEPTED_BADGE],
+        segmentId: 'seg-default',
+        integrationId: 'int-default',
+      },
+    ])
+    expect(deps.lockTemplate).toHaveBeenCalledTimes(1)
+    expect(deps.lockTemplate).toHaveBeenCalledWith('template-1', {
+      segmentId: 'seg-stored',
+      integrationId: 'int-stored',
+      locked: true,
+    })
+    expect(
+      saved.map((row) => [row.badgeId, row.state, row.segmentId, row.replacementBadgeId]),
+    ).toEqual([
+      ['badge-1', 'replaced', 'seg-stored', 'badge-2'],
+      ['badge-2', 'accepted', 'seg-default', null],
+    ])
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ stateChanges: 1, routed: 1 }),
+      expect.any(String),
+    )
+  })
+
+  it('emits issued and accepted for a stored pending badge once it is accepted', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([badge()]))
+    const { ctx, emitted, emits } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge({ state: 'pending', stateUpdatedAt: null }),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(types(emitted[0])).toEqual([
+      CredlyActivityType.ISSUED_BADGE,
+      CredlyActivityType.ACCEPTED_BADGE,
+    ])
+    expect(emits[0]).toMatchObject({ segmentId: 'seg-stored', integrationId: 'int-stored' })
+  })
+
+  it('locks the template of a new pending badge even though nothing is emitted yet', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ state: 'pending', state_updated_at: null })]),
+    )
+    const { ctx, emits, saved, deps } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emits).toEqual([])
+    expect(deps.lockTemplate).toHaveBeenCalledWith('template-1', DEFAULT_TARGET)
+    expect(saved.map((row) => [row.badgeId, row.state])).toEqual([['badge-1', 'pending']])
+  })
+
+  it('builds a state activity with the member of the first sight, not the live one', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({
+          state: 'revoked',
+          state_updated_at: '2026-10-27T10:00:00.000Z',
+          recipient_email: 'new.address@example.org',
+          issued_to: 'M. Rossi',
+        }),
+      ]),
+    )
+    const { ctx, emitted, saved } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge({ recipientEmail: 'maria.rossi@example.org', issuedTo: 'Maria Rossi' }),
+    ])
+
+    await runBadgePoll(ctx)
+
+    const [activity] = emitted[0] as { member: { identities: { value: string }[] } }[]
+    expect(activity.member.identities.map((identity) => identity.value)).toEqual([
+      'maria.rossi@example.org',
+      'maria.rossi@example.org',
+    ])
+    expect(saved[0]).toMatchObject({ recipientEmail: 'maria.rossi@example.org', state: 'revoked' })
+  })
+
+  it('skips a badge whose stored dates do not parse and keeps the rest of the page', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({ id: 'bad-expiry', expires_at: 'not a date' }),
+        badge({ id: 'bad-pending', state: 'pending', state_updated_at: null, issued_at: '' }),
+        badge({ id: 'good' }),
+      ]),
+    )
+    const { ctx, emitted, saved } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(saved.map((row) => row.badgeId)).toEqual(['good'])
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ skipped: 2, routed: 1 }),
+      expect.any(String),
+    )
+  })
+
+  it('emits a badge listed twice on one page only once, with its last version', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ state: 'pending', state_updated_at: null }), badge()]),
+    )
+    const { ctx, emitted, saved } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emitted).toHaveLength(1)
+    expect(types(emitted[0])).toEqual([
+      CredlyActivityType.ISSUED_BADGE,
+      CredlyActivityType.ACCEPTED_BADGE,
+    ])
+    expect(saved.map((row) => [row.badgeId, row.state])).toEqual([['badge-1', 'accepted']])
+  })
+
+  it('neither reads nor writes the state table during a shadow run', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([badge()]))
+    const { ctx, emitted, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, false, [
+      storedBadge(),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(types(emitted[0])).toEqual([
+      CredlyActivityType.ISSUED_BADGE,
+      CredlyActivityType.ACCEPTED_BADGE,
+    ])
+    expect(deps.findBadges).not.toHaveBeenCalled()
+    expect(deps.saveBadges).not.toHaveBeenCalled()
   })
 
   it('skips a badge the mapper cannot process and keeps the rest of the page', async () => {
@@ -411,11 +647,11 @@ describe('runBadgePoll', () => {
     ])
   })
 
-  it('routes mapped templates to their project and the rest to the anchor segment', async () => {
+  it('routes mapped templates to their project and holds the rest', async () => {
     const routing: CredlyTemplateRouting = {
       targets: new Map([
-        ['tpl-cka', { segmentId: 'k8s', integrationId: 'int-k8s' }],
-        ['tpl-ica', { segmentId: 'istio', integrationId: 'int-istio' }],
+        ['tpl-cka', { segmentId: 'k8s', integrationId: 'int-k8s', locked: false }],
+        ['tpl-ica', { segmentId: 'istio', integrationId: 'int-istio', locked: true }],
       ]),
       staleTemplateIds: [],
     }
@@ -442,28 +678,141 @@ describe('runBadgePoll', () => {
       })),
     ).toEqual([
       { ids: ['cka-1', 'cka-2'], segmentId: 'k8s', integrationId: 'int-k8s' },
-      { ids: ['speaker-1'], segmentId: undefined, integrationId: undefined },
       { ids: ['ica-1'], segmentId: 'istio', integrationId: 'int-istio' },
     ])
     expect(deps.loadTemplateRouting).toHaveBeenCalledTimes(1)
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'credly_badge_poll_run', routed: 3, held: 1, locked: 1 }),
+      expect.any(String),
+    )
     expect(LOG.warn).not.toHaveBeenCalled()
   })
 
-  it('warns once per run about mappings whose integration is gone, and falls back for them', async () => {
+  it('locks each emitted template once per run, before its first emit', async () => {
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['tpl-cka', { segmentId: 'k8s', integrationId: 'int-k8s', locked: false }],
+      ]),
+      staleTemplateIds: [],
+    }
+    mockedFetchBadgesPage
+      .mockResolvedValueOnce(
+        page([badge({ id: 'cka-1', badge_template: { id: 'tpl-cka', name: 'CKA' } })], 1, 2),
+      )
+      .mockResolvedValueOnce(
+        page([badge({ id: 'cka-2', badge_template: { id: 'tpl-cka', name: 'CKA' } })], 2, 2),
+      )
+    const { ctx, deps } = makeCtx(null, () => true, routing)
+    const order: string[] = []
+    ctx.emit = async () => {
+      order.push('emit')
+    }
+    vi.mocked(deps.lockTemplate).mockImplementation(async () => {
+      order.push('lock')
+      return true
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(deps.lockTemplate).toHaveBeenCalledTimes(1)
+    expect(deps.lockTemplate).toHaveBeenCalledWith('tpl-cka', {
+      segmentId: 'k8s',
+      integrationId: 'int-k8s',
+      locked: false,
+    })
+    expect(order).toEqual(['lock', 'emit', 'emit'])
+  })
+
+  it.each([
+    ['locked first', ['tpl-locked', 'tpl-new']],
+    ['locked last', ['tpl-new', 'tpl-locked']],
+  ])(
+    'locks only the unlocked template of a group sharing one target, %s',
+    async (_, templateOrder) => {
+      const target = { segmentId: 'k8s', integrationId: 'int-k8s' }
+      const routing: CredlyTemplateRouting = {
+        targets: new Map([
+          ['tpl-locked', { ...target, locked: true }],
+          ['tpl-new', { ...target, locked: false }],
+        ]),
+        staleTemplateIds: [],
+      }
+      mockedFetchBadgesPage.mockResolvedValueOnce(
+        page(templateOrder.map((id) => badge({ id: `b-${id}`, badge_template: { id, name: id } }))),
+      )
+      const { ctx, emits, deps } = makeCtx(null, () => true, routing)
+
+      await runBadgePoll(ctx)
+
+      expect(emits).toHaveLength(1)
+      expect(deps.lockTemplate).toHaveBeenCalledTimes(1)
+      expect(deps.lockTemplate).toHaveBeenCalledWith('tpl-new', expect.objectContaining(target))
+      expect(LOG.warn).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps the run going when the lock fails or finds the template moved', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([
+        badge({ id: 'a', badge_template: { id: 'template-1', name: 'CKA' } }),
+        badge({ id: 'b', badge_template: { id: 'tpl-moved', name: 'Moved' } }),
+      ]),
+    )
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['template-1', DEFAULT_TARGET],
+        ['tpl-moved', { segmentId: 'k8s', integrationId: 'int-k8s', locked: false }],
+      ]),
+      staleTemplateIds: [],
+    }
+    const { ctx, emits, deps } = makeCtx(null, () => true, routing)
+    vi.mocked(deps.lockTemplate).mockImplementation(async (templateId) => {
+      if (templateId === 'template-1') throw new Error('connection reset')
+      return false
+    })
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(emits).toHaveLength(2)
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateId: 'template-1', err: expect.any(Error) },
+      'credly template lock failed',
+    )
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateId: 'tpl-moved' },
+      'credly template moved during the run',
+    )
+  })
+
+  it('never locks a template during a shadow run', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([badge()]))
+    const { ctx, emits, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, false)
+
+    await runBadgePoll(ctx)
+
+    expect(emits).toHaveLength(1)
+    expect(deps.lockTemplate).not.toHaveBeenCalled()
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'credly_badge_poll_run', locked: 0 }),
+      expect.any(String),
+    )
+  })
+
+  it('warns once per run about mappings whose integration is gone, and holds their badges', async () => {
     const routing: CredlyTemplateRouting = { targets: new Map(), staleTemplateIds: ['tpl-old'] }
     mockedFetchBadgesPage.mockResolvedValueOnce(
       page([badge({ id: 'old-1', badge_template: { id: 'tpl-old', name: 'Old' } })]),
     )
-    const { ctx, emits } = makeCtx(null, () => true, routing)
+    const { ctx, emits, deps } = makeCtx(null, () => true, routing)
 
     await runBadgePoll(ctx)
 
-    expect(emits).toEqual([
-      { records: expect.any(Array), segmentId: undefined, integrationId: undefined },
-    ])
+    expect(emits).toEqual([])
+    expect(deps.lockTemplate).not.toHaveBeenCalled()
     expect(LOG.warn).toHaveBeenCalledWith(
       { badgeTemplateIds: ['tpl-old'] },
-      'credly template mappings point to a deleted or moved integration, their badges fall back to the anchor segment',
+      'credly template mappings point to a deleted or moved integration, their badges are held',
     )
   })
 

@@ -30,6 +30,9 @@
       "path": "../../libs/redis"
     },
     {
+      "path": "../../libs/snowflake"
+    },
+    {
       "path": "../../libs/temporal"
     }
   ]

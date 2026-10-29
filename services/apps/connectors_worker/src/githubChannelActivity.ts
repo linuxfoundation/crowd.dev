@@ -17,7 +17,7 @@ FORMAT JSON
 
 type ChannelActivityRow = { channelKey: string; activities: number }
 
-function formatTinybirdDate(date: Date): string {
+export function formatTinybirdDate(date: Date): string {
   return date.toISOString().replace('T', ' ').replace('Z', '')
 }
 

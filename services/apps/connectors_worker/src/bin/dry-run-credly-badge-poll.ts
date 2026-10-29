@@ -60,7 +60,7 @@ function positiveInt(raw: string | undefined, fallback: number): number {
 function parseRoute(raw: string): [string, CredlyTemplateTarget] {
   const match = /^([^=]+)=([^:]+):(.+)$/.exec(raw)
   if (!match) usage()
-  return [match[1], { segmentId: match[2], integrationId: match[3] }]
+  return [match[1], { segmentId: match[2], integrationId: match[3], locked: false }]
 }
 
 function parseArgs(rawArgv: string[]): DryRunOptions {
@@ -118,12 +118,20 @@ async function main(): Promise<void> {
   const watermarks: Record<string, unknown>[] = []
   const emits: { overrides: EmitOverrides | null; count: number; records: unknown[] }[] = []
   let activitiesEmitted = 0
-  const deps: CredlyDeps = { loadTemplateRouting: async () => options.routing }
+  const deps: CredlyDeps = {
+    loadTemplateRouting: async () => options.routing,
+    lockTemplate: async () => true,
+    findBadges: async () => [],
+    saveBadges: async () => undefined,
+    listDueExpiries: async () => [],
+    markExpiriesEmitted: async () => 0,
+  }
 
   const outcome = await runBadgePoll({
     channel: { channelId: organizationId, channelName: 'credly-org' },
     integrationId: 'dry-run',
     watermark: options.since ? { since: new Date(options.since).toISOString() } : null,
+    emitEnabled: false,
     emit: async (records, overrides) => {
       const keep = Math.max(0, options.maxActivities - activitiesEmitted)
       activitiesEmitted += records.length

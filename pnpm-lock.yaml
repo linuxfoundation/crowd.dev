@@ -857,6 +857,9 @@ importers:
       '@crowd/slack':
         specifier: workspace:*
         version: link:../../libs/slack
+      '@crowd/snowflake':
+        specifier: workspace:*
+        version: link:../../libs/snowflake
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal

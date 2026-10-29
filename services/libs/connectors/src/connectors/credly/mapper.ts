@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { getEmailLocalPart } from '@crowd/common'
+import type { ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
 import { CREDLY_GRID, CredlyActivityType } from '@crowd/integrations/src/integrations/credly/types'
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
@@ -62,6 +63,32 @@ export function expiredBadgeActivity(badge: CredlyBadge): CredlyActivity | null 
   return badgeActivity(badge, CredlyActivityType.EXPIRED_BADGE, badge.expires_at)
 }
 
+export function expiredBadgeActivityFromRow(row: ICredlyBadgeRow): CredlyActivity {
+  if (!row.expiresAt) throw new Error(`credly badge ${row.badgeId} has no expiry date`)
+  const type = CredlyActivityType.EXPIRED_BADGE
+  return {
+    type,
+    platform: PlatformType.CREDLY,
+    timestamp: toIsoTimestamp(row.expiresAt),
+    sourceId: row.badgeId,
+    score: CREDLY_GRID[type].score,
+    title: row.badgeTemplateName,
+    url: badgeUrl({ id: row.badgeId, badge_url: null }),
+    channel: row.badgeTemplateId,
+    attributes: withoutNullish({
+      badgeTemplateId: row.badgeTemplateId,
+      badgeTemplateName: row.badgeTemplateName,
+      badgeTemplateUrl: row.badgeTemplateUrl,
+      state: row.state,
+      issuedAt: toIsoTimestamp(row.issuedAt),
+      expiresAt: toIsoTimestamp(row.expiresAt),
+      replacementBadgeId: row.replacementBadgeId,
+      replacesBadgeId: row.replacesBadgeId,
+    }),
+    member: memberFromEarner(row.recipientEmail, row.issuedTo, undefined),
+  }
+}
+
 export function badgeUrl(badge: Pick<CredlyBadge, 'id' | 'badge_url'>): string {
   return badge.badge_url || `${CREDLY_BADGE_URL_PREFIX}${badge.id}`
 }
@@ -115,18 +142,29 @@ function badgeActivity(
 }
 
 function badgeMember(badge: CredlyBadge): CredlyActivity['member'] {
-  const email = badge.recipient_email.trim().toLowerCase()
-  const identities = emailAsUsernameAndEmailIdentities(email, badge.user?.id?.trim() || undefined)
-
   const attributes = withoutNullish({
     url: badge.user?.url ? { [PlatformType.CREDLY]: badge.user.url } : undefined,
     avatarUrl: badge.user?.photo_url ? { [PlatformType.CREDLY]: badge.user.photo_url } : undefined,
   })
-
   return {
-    displayName: badge.issued_to?.trim() || getEmailLocalPart(email),
-    identities,
+    ...memberFromEarner(
+      badge.recipient_email,
+      badge.issued_to,
+      badge.user?.id?.trim() || undefined,
+    ),
     ...(Object.keys(attributes).length > 0 && { attributes }),
+  }
+}
+
+function memberFromEarner(
+  recipientEmail: string,
+  issuedTo: string | null | undefined,
+  userId: string | undefined,
+): CredlyActivity['member'] {
+  const email = recipientEmail.trim().toLowerCase()
+  return {
+    displayName: issuedTo?.trim() || getEmailLocalPart(email),
+    identities: emailAsUsernameAndEmailIdentities(email, userId),
   }
 }
 
