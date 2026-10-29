@@ -205,15 +205,29 @@ describe('listValidationUnitsPage', () => {
     expect(units.map((unit) => unit.id)).toEqual([unitId])
   })
 
-  test('channel and platform exclude a disabled unit', async ({ qx }) => {
+  test('channel and channelId exclude a disabled unit and channelId ignores renames', async ({
+    qx,
+  }) => {
     const integrationId = await createIntegration(qx)
     const channelName = `https://github.com/${generateUUIDv1()}`
-    const unitId = await createSyncUnit(qx, { integrationId, channelName })
+    const channelId = generateUUIDv1()
+    const unitId = await createSyncUnit(qx, { integrationId, channelId, channelName })
+    const renamedUnitId = await createSyncUnit(qx, {
+      integrationId,
+      channelId,
+      channelName: 'renamed',
+      syncName: 'pulls',
+    })
     await setUnitsValidation(qx, [unitId], false, null)
 
     const byChannel = await listValidationUnitsPage(
       qx,
       { kind: 'channel', channelName },
+      { limit: 10 },
+    )
+    const byChannelId = await listValidationUnitsPage(
+      qx,
+      { kind: 'channelId', integrationId, channelId },
       { limit: 10 },
     )
     const byChannelIncluded = await listValidationUnitsPage(
@@ -223,6 +237,7 @@ describe('listValidationUnitsPage', () => {
     )
 
     expect(byChannel).toEqual([])
+    expect(byChannelId.map((unit) => unit.id)).toEqual([renamedUnitId])
     expect(byChannelIncluded.map((unit) => unit.id)).toEqual([unitId])
   })
 

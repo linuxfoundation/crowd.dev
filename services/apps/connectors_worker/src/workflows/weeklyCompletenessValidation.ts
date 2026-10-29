@@ -41,9 +41,9 @@ async function runChannel(
       args: [
         {
           target: {
-            kind: 'channel',
-            channelName: channel.channelName,
+            kind: 'channelId',
             integrationId: channel.integrationId,
+            channelId: channel.channelId,
           },
           window,
           counterKeys: null,

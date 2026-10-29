@@ -97,11 +97,11 @@ async function updateCounterKeys(
     if (unitKeys.length === 0) {
       continue
     }
-    const keys = nextCounterKeys(
-      unit.validationCounterKeys ?? defaultCounterKeys(unit),
-      unitKeys,
-      command,
-    )
+    const currentKeys =
+      command === 'enable' && !unit.validationEnabled
+        ? []
+        : (unit.validationCounterKeys ?? defaultCounterKeys(unit))
+    const keys = nextCounterKeys(currentKeys, unitKeys, command)
     const ids = idsByKeys.get(JSON.stringify(keys)) ?? []
     ids.push(unit.id)
     idsByKeys.set(JSON.stringify(keys), ids)

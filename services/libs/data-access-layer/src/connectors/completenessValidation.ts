@@ -34,6 +34,8 @@ function targetFilter(target: ValidationTarget): string {
     case 'channel':
       return `su.status = 'active' AND lower(su."channelName") = lower($(channelName))
         ${target.integrationId !== undefined ? `AND su."integrationId" = $(integrationId)` : ''}`
+    case 'channelId':
+      return `su.status = 'active' AND su."integrationId" = $(integrationId) AND su."channelId" = $(channelId)`
     case 'integration':
       return `su.status = 'active' AND su."integrationId" = $(integrationId)`
     case 'platform':

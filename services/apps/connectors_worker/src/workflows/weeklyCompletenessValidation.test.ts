@@ -36,7 +36,7 @@ describe('weeklyCompletenessValidation', () => {
       return channels.slice(start, start + limit)
     })
     mocks.executeChild.mockImplementation(async (_workflow, options) => {
-      if (options.args[0].target.channelName === 'repo-3') throw new Error('boom')
+      if (options.args[0].target.channelId === 'c03') throw new Error('boom')
       return { unitCount: 1, resultCount: 2, failureCount: 1, noCounterUnitCount: 0 }
     })
 
@@ -53,7 +53,7 @@ describe('weeklyCompletenessValidation', () => {
       workflowExecutionTimeout: '2 hours',
       args: [
         {
-          target: { kind: 'channel', channelName: 'repo-0', integrationId: 'i' },
+          target: { kind: 'channelId', integrationId: 'i', channelId: 'c00' },
           window: {
             kind: 'range',
             from: '2026-10-24T00:00:00.000Z',
