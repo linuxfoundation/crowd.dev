@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-import { assertKnownCounterKeys, getManifest, registerConnector } from '@crowd/connectors'
+import {
+  assertKnownCounterKeys,
+  getManifest,
+  registerConnector,
+  selectCounters,
+} from '@crowd/connectors'
 import { credlyConnector } from '@crowd/connectors/src/connectors/credly'
 import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { octolensConnector } from '@crowd/connectors/src/connectors/octolens'
@@ -17,6 +22,7 @@ import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 import type { IValidationInput } from '../activities/completenessActivities'
 import {
   IValidateCompletenessArgs,
+  nextCounterKeys,
   parseValidateCompletenessArgs,
 } from './validateCompletenessArgs'
 
@@ -34,7 +40,7 @@ function usage(reason: string): never {
       'Usage:\n' +
       '  validate-completeness run <target> [--from <iso> --to <iso> | --all-time] [--counters k1,k2]\n' +
       '  validate-completeness enable <target> [--counters k1,k2]\n' +
-      '  validate-completeness disable <target>\n' +
+      '  validate-completeness disable <target> [--counters k1,k2]\n' +
       '  <target> = --unit-id <id>[,<id>] | --repo <owner/repo|url> | --integration-id <id>',
   )
   process.exit(1)
@@ -49,6 +55,7 @@ async function listTargetUnits(
     const page = await listValidationUnitsPage(qx, target, {
       afterId: units[units.length - 1]?.id,
       limit: UNITS_PAGE_SIZE,
+      includeDisabled: true,
     })
     if (page.length === 0) {
       return units
@@ -61,6 +68,54 @@ function assertCounterKeys(units: IValidationUnit[], counterKeys: string[]): voi
   for (const platform of new Set(units.map((unit) => unit.platform))) {
     assertKnownCounterKeys(getManifest(platform), counterKeys)
   }
+}
+
+function defaultCounterKeys(unit: IValidationUnit): string[] {
+  return selectCounters(getManifest(unit.platform), unit.syncName, 'range', null).map(
+    (counter) => counter.key,
+  )
+}
+
+function syncCounterKeys(unit: IValidationUnit): string[] {
+  return (getManifest(unit.platform).counters ?? [])
+    .filter((counter) => counter.syncName === unit.syncName)
+    .map((counter) => counter.key)
+}
+
+async function updateCounterKeys(
+  qx: QueryExecutor,
+  units: IValidationUnit[],
+  counterKeys: string[],
+  command: 'enable' | 'disable',
+): Promise<number> {
+  const idsByKeys = new Map<string, string[]>()
+  for (const unit of units) {
+    if (command === 'disable' && !unit.validationEnabled) {
+      continue
+    }
+    const unitKeys = syncCounterKeys(unit).filter((key) => counterKeys.includes(key))
+    if (unitKeys.length === 0) {
+      continue
+    }
+    const currentKeys =
+      command === 'enable' && !unit.validationEnabled
+        ? []
+        : (unit.validationCounterKeys ?? defaultCounterKeys(unit))
+    const keys = nextCounterKeys(currentKeys, unitKeys, command)
+    const ids = idsByKeys.get(JSON.stringify(keys)) ?? []
+    ids.push(unit.id)
+    idsByKeys.set(JSON.stringify(keys), ids)
+  }
+
+  let updated = 0
+  for (const [serialized, ids] of idsByKeys) {
+    const keys: string[] = JSON.parse(serialized)
+    updated +=
+      keys.length === 0
+        ? await setUnitsValidation(qx, ids, false, null)
+        : await setUnitsValidation(qx, ids, true, keys)
+  }
+  return updated
 }
 
 async function runValidation(input: IValidationInput): Promise<boolean> {
@@ -104,15 +159,17 @@ setImmediate(async () => {
     }
 
     const units = await listTargetUnits(qx, target)
-    if (command === 'enable' && counterKeys) {
+    if (counterKeys) {
       assertCounterKeys(units, counterKeys)
     }
-    const updated = await setUnitsValidation(
-      qx,
-      units.map((unit) => unit.id),
-      command === 'enable',
-      counterKeys,
-    )
+    const updated = counterKeys
+      ? await updateCounterKeys(qx, units, counterKeys, command)
+      : await setUnitsValidation(
+          qx,
+          units.map((unit) => unit.id),
+          command === 'enable',
+          null,
+        )
     log.info({ command, resolved: units.length, updated }, 'validation flag updated')
     process.exit(0)
   } catch (err) {

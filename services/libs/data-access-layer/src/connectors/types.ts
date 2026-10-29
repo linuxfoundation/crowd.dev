@@ -74,13 +74,20 @@ export type CountWindow = { kind: 'range'; from: string; to: string } | { kind: 
 export type ValidationTarget =
   | { kind: 'units'; unitIds: string[] }
   | { kind: 'channel'; channelName: string; integrationId?: string }
+  | { kind: 'channelId'; integrationId: string; channelId: string }
   | { kind: 'integration'; integrationId: string }
   | { kind: 'platform'; platform: string }
-  | { kind: 'enabled' }
+
+export interface IValidationChannel {
+  integrationId: string
+  channelId: string
+  channelName: string
+}
 
 export interface IValidationUnit extends Pick<
   ISyncUnit,
   'id' | 'integrationId' | 'platform' | 'channelId' | 'channelName' | 'syncName'
 > {
   validationCounterKeys: string[] | null
+  validationEnabled: boolean
 }
