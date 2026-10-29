@@ -46,10 +46,7 @@ export function prepareOrganizationData(
   existingOrg?: IDbOrganization,
   existingAttributes?: IDbOrgAttribute[],
 ): IPrepareOrgResult {
-  const incoming =
-    typeof rawIncoming.country === 'string'
-      ? { ...rawIncoming, country: normalizeCountryName(rawIncoming.country) }
-      : rawIncoming
+  const incoming = { ...rawIncoming, country: normalizeCountryName(rawIncoming.country) }
 
   // validate source
   if (!ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.includes(source as OrganizationAttributeSource)) {

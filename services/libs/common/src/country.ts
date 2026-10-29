@@ -12,17 +12,10 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
-const TRAILING_PUNCTUATION = new Set(['.', '!', '?'])
-
 function normalizeToken(value: string): string {
-  const token = normalizeWhitespace(value)
-
-  let end = token.length
-  while (end > 0 && TRAILING_PUNCTUATION.has(token[end - 1])) {
-    end--
-  }
-
-  return token.slice(0, end).toLowerCase()
+  return normalizeWhitespace(value)
+    .replace(/[.!?]+$/, '')
+    .toLowerCase()
 }
 
 function toDisplayName(alpha2: string): string | undefined {
@@ -107,15 +100,14 @@ export function getCountry(location: string | null | undefined): string | undefi
   return undefined
 }
 
-/**
- * Resolves any spelling of a country (e.g. "Korea, Republic of") to its standard name.
- */
 export function normalizeCountryName(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined
   }
 
-  const alpha2 = toAlpha2(normalizeToken(value))
+  // Match the whole value first: getCountry reads the last comma segment,
+  // which misses official names like "Korea, Republic of".
+  const alpha2 = toAlpha2(normalizeLocation(value))
   return alpha2 ? toDisplayName(alpha2) : getCountry(value)
 }
 

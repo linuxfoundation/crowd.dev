@@ -285,13 +285,11 @@ class OrganizationRepository {
         continue // eslint-disable-line no-continue
       }
 
-      const isCountry = name === 'country'
-      const values = isCountry
-        ? (attribute as any).custom.map(normalizeCountryName).filter(Boolean)
-        : (attribute as any).custom
-      const defaultValue = isCountry
-        ? normalizeCountryName((attribute as any).default)
-        : (attribute as any).default
+      let { custom: values, default: defaultValue } = attribute as any
+      if (name === 'country') {
+        values = values.map(normalizeCountryName).filter(Boolean)
+        defaultValue = normalizeCountryName(defaultValue)
+      }
 
       for (const value of values) {
         const isDefault = value === defaultValue
