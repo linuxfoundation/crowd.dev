@@ -56,7 +56,9 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   LEFT JOIN org_accounts org
     ON er.account_id = org.account_id
   WHERE er.email IS NOT NULL
-    AND ${LFID_COALESCE} IS NOT NULL`
+    AND ${LFID_COALESCE} IS NOT NULL
+    -- Gatewaze (Luma) registrations share this table but aren't Cvent; Luma gets its own source
+    AND COALESCE(er.registration_source, '') <> 'gatewaze'`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {
