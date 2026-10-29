@@ -128,7 +128,8 @@ export async function insertBackfillCheck(
   await qx.result(
     `INSERT INTO integration.completeness_backfill_checks ("integrationId", "channelId")
      VALUES ($(integrationId), $(channelId))
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT ("integrationId", "channelId")
+     DO UPDATE SET "readyAt" = NULL, "createdAt" = now()`,
     { integrationId, channelId },
   )
 }

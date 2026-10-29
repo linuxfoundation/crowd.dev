@@ -308,7 +308,7 @@ describe('backfill checks', () => {
     )
   }
 
-  test('becomes ready only when every active unit finished its run, is listed after the delay and is deleted', async ({
+  test('becomes ready only when every active unit finished its run, is listed after the delay, restarts on re-onboarding and is deleted', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
@@ -351,8 +351,17 @@ describe('backfill checks', () => {
     )
     expect(await isListed(3600)).toBe(true)
 
+    await insertBackfillCheck(qx, integrationId, channelId)
+    expect((await readyAt()).readyAt).toBeNull()
+
     await deleteBackfillCheck(qx, integrationId, channelId)
-    expect(await isListed(3600)).toBe(false)
+    expect(
+      await qx.selectOneOrNone(
+        `SELECT 1 FROM integration.completeness_backfill_checks
+         WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+        { integrationId, channelId },
+      ),
+    ).toBeNull()
   })
 })
 
