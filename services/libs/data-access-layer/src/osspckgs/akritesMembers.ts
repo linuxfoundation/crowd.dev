@@ -25,10 +25,7 @@ export const AKRITES_MEMBERS: AkritesMember[] = [
   },
   {
     name: 'Cisco',
-    cdpOrganizationIds: [
-      '8a96bca0-3642-11ee-9261-0dbe04a00eff',
-      '16fd1447-79f5-4256-af05-f8cb02825b75',
-    ],
+    cdpOrganizationIds: ['8a96bca0-3642-11ee-9261-0dbe04a00eff'],
     aliases: ['cisco', 'cisco systems'],
   },
   {
@@ -100,10 +97,7 @@ export const AKRITES_MEMBERS: AkritesMember[] = [
   },
   {
     name: 'Red Hat',
-    cdpOrganizationIds: [
-      'd7bf07d9-780b-4279-bfbc-d83f85950353',
-      '11fced09-711d-47fb-a8fd-f21f65828594',
-    ],
+    cdpOrganizationIds: ['d7bf07d9-780b-4279-bfbc-d83f85950353'],
     aliases: ['red hat', 'redhat'],
   },
   {
