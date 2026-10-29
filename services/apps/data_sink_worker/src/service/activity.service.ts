@@ -289,14 +289,13 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
 
-  // validateAttributes turns a plain value into { [platform]: value }. Doing that per activity
-  // keeps a newer plain value from replacing an older object value with other sources in it.
+  // validateAttributes drops null values and turns a plain value into { [platform]: value }. Doing
+  // that per activity keeps a newer null or plain value from replacing an older value.
   const asPlatformValues = (attributes: Record<string, unknown>) =>
     Object.fromEntries(
-      Object.entries(attributes).map(([name, value]) => [
-        name,
-        typeof value === 'object' ? value : { [platform]: value },
-      ]),
+      Object.entries(attributes)
+        .filter(([, value]) => value !== null && value !== undefined)
+        .map(([name, value]) => [name, typeof value === 'object' ? value : { [platform]: value }]),
     )
 
   // update() drops URL locations after merging; dropping them per activity keeps an older valid one
