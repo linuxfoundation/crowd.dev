@@ -109,7 +109,6 @@ export function getCountry(location: string | null | undefined): string | undefi
 
 /**
  * Resolves any spelling of a country (e.g. "Korea, Republic of") to its standard name.
- * Returns undefined when the value is not a country.
  */
 export function normalizeCountryName(value: unknown): string | undefined {
   if (typeof value !== 'string') {
