@@ -44,6 +44,11 @@ export default class MemberAttributeService extends LoggerBase {
         delete attributes[attributeName]
         continue
       }
+      // must precede the typeof check: typeof null === 'object'
+      if (attributes[attributeName] === null || attributes[attributeName] === undefined) {
+        delete attributes[attributeName]
+        continue
+      }
       // Convert primitive to platform-specific format: { [platform]: value }
       if (typeof attributes[attributeName] !== 'object') {
         const value = attributes[attributeName]
