@@ -9,6 +9,11 @@ import { Logger, LoggerBase } from '@crowd/logging'
 import { RedisClient } from '@crowd/redis'
 import { MemberAttributeType, PlatformType } from '@crowd/types'
 
+// null, undefined and blank strings carry no value; false and 0 do
+export function isEmptyAttributeValue(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+}
+
 export default class MemberAttributeService extends LoggerBase {
   constructor(
     private readonly redis: RedisClient,
@@ -45,7 +50,7 @@ export default class MemberAttributeService extends LoggerBase {
         continue
       }
       // must precede the typeof check: typeof null === 'object'
-      if (attributes[attributeName] === null || attributes[attributeName] === undefined) {
+      if (isEmptyAttributeValue(attributes[attributeName])) {
         delete attributes[attributeName]
         continue
       }
@@ -55,6 +60,19 @@ export default class MemberAttributeService extends LoggerBase {
 
         attributes[attributeName] = {
           [platform]: value,
+        }
+      }
+
+      // an empty value per platform is no value either, so it never replaces a stored one
+      if (!Array.isArray(attributes[attributeName])) {
+        for (const platformKey of Object.keys(attributes[attributeName])) {
+          if (isEmptyAttributeValue(attributes[attributeName][platformKey])) {
+            delete attributes[attributeName][platformKey]
+          }
+        }
+        if (Object.keys(attributes[attributeName]).length === 0) {
+          delete attributes[attributeName]
+          continue
         }
       }
 
