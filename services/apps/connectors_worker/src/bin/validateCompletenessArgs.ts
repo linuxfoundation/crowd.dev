@@ -104,8 +104,15 @@ export function parseValidateCompletenessArgs(rawArgv: string[]): IValidateCompl
   if (argv.length > 0) {
     throw new Error(`unexpected arguments: ${argv.join(' ')}`)
   }
-  if (command === 'disable' && counters !== undefined) {
-    throw new Error('disable does not take --counters')
-  }
   return { command, target, window, counterKeys: counters ? splitList(counters) : null }
+}
+
+export function nextCounterKeys(
+  base: string[],
+  keys: string[],
+  command: 'enable' | 'disable',
+): string[] {
+  return command === 'enable'
+    ? [...new Set([...base, ...keys])]
+    : base.filter((key) => !keys.includes(key))
 }

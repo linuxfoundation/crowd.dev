@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseValidateCompletenessArgs } from './validateCompletenessArgs'
+import { nextCounterKeys, parseValidateCompletenessArgs } from './validateCompletenessArgs'
 
 describe('parseValidateCompletenessArgs', () => {
   it('maps --repo and a range window', () => {
@@ -79,5 +79,29 @@ describe('parseValidateCompletenessArgs', () => {
       window: undefined,
       counterKeys: ['fork'],
     })
+  })
+})
+
+describe('disable --counters', () => {
+  it('parses counter keys for disable', () => {
+    expect(
+      parseValidateCompletenessArgs(['disable', '--repo', 'foo/bar', '--counters', 'fork']),
+    ).toMatchObject({ command: 'disable', counterKeys: ['fork'] })
+  })
+})
+
+describe('nextCounterKeys', () => {
+  it('removes keys on disable', () => {
+    expect(nextCounterKeys(['fork', 'issues-opened'], ['fork'], 'disable')).toEqual([
+      'issues-opened',
+    ])
+  })
+
+  it('unions keys on enable keeping order and deduping', () => {
+    expect(nextCounterKeys(['fork', 'issues-opened'], ['stars', 'fork'], 'enable')).toEqual([
+      'fork',
+      'issues-opened',
+      'stars',
+    ])
   })
 })
