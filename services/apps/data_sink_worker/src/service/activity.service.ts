@@ -61,7 +61,7 @@ import {
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
 import MemberService, { mergeIfAllowed } from './member.service'
-import { isEmptyAttributeValue } from './memberAttribute.service'
+import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -234,6 +234,34 @@ function linkedMembers(
     groups.set(root(memberId), group)
   }
   return Array.from(groups.values())
+}
+
+// Members that send a verified identity owned by another member, or sent by another member of
+// the batch, can be merged by their update.
+function membersThatCanMerge(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  identityOwners: Map<string, string>,
+): Set<string> {
+  const sendersByIdentity = new Map<string, Set<string>>()
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const identity of updates.flatMap((u) => u.member.identities ?? [])) {
+      if (identity.verified && identity.value) {
+        const key = identityKey(identity)
+        sendersByIdentity.set(key, (sendersByIdentity.get(key) ?? new Set<string>()).add(memberId))
+      }
+    }
+  }
+
+  const memberIds = new Set<string>()
+  for (const [key, senders] of sendersByIdentity) {
+    const owner = identityOwners.get(key)
+    for (const memberId of senders) {
+      if (senders.size > 1 || (owner && owner !== memberId)) {
+        memberIds.add(memberId)
+      }
+    }
+  }
+  return memberIds
 }
 
 function oldestFirstUpdateRuns(updates: IPayloadMemberUpdate[]): IPayloadMemberUpdate[][] {
@@ -2106,42 +2134,86 @@ export default class ActivityService extends LoggerBase {
       identityKey,
     )
     const owners =
-      updatesByMember.size > 1 && sentIdentities.length > 0
+      sentIdentities.length > 0
         ? await findMembersByIdentities(this.pgQx, sentIdentities, undefined, true)
         : new Map<string, string>()
     const identityOwners = new Map(
       Array.from(owners, ([key, memberId]) => [key.toLowerCase(), memberId]),
     )
+
+    // A combined update that merges its member halfway can't be undone before its activities are
+    // retried, so a member that can merge in this batch gets its activities applied one by one.
+    const mergeableMemberIds = membersThatCanMerge(updatesByMember, identityOwners)
+
     const runs = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners)
       .flatMap((memberIds) =>
         oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates)),
       )
-      .map((run) => ({
-        dbMember: run[0].dbMember,
-        run,
-        repeated: updatesByMember.get(run[0].dbMember.id).updates.length > 1,
-      }))
+      .map((run) => {
+        const memberId = run[0].dbMember.id
+        return {
+          dbMember: run[0].dbMember,
+          run,
+          combine:
+            updatesByMember.get(memberId).updates.length > 1 && !mergeableMemberIds.has(memberId),
+        }
+      })
       .sort(
         (a, b) =>
           timestampMs(a.run[a.run.length - 1].timestamp) -
           timestampMs(b.run[b.run.length - 1].timestamp),
       )
 
-    for (const { dbMember, run, repeated } of runs) {
-      if (!repeated) {
-        await updateSingleActivity(dbMember, run[0])
+    const memberAttributeService = new MemberAttributeService(
+      this.redisClient,
+      this.pgStore,
+      this.log,
+    )
+    const hasValidAttributes = async ({ member, payload }: IPayloadMemberUpdate) => {
+      if (!member.attributes) {
+        return true
+      }
+      try {
+        await memberAttributeService.validateAttributes(
+          payload.platform,
+          structuredClone(member.attributes),
+        )
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    for (const { dbMember, run, combine } of runs) {
+      if (!combine) {
+        for (const update of run) {
+          await updateSingleActivity(dbMember, update)
+        }
+        continue
+      }
+
+      // an activity that fails validation fails alone, as it does without combining
+      const combinable: IPayloadMemberUpdate[] = []
+      for (const update of run) {
+        if (await hasValidAttributes(update)) {
+          combinable.push(update)
+        } else {
+          await updateSingleActivity(dbMember, update)
+        }
+      }
+      if (combinable.length === 0) {
         continue
       }
 
       try {
-        setMemberId(run, await updateMember(dbMember, run))
+        setMemberId(combinable, await updateMember(dbMember, combinable))
       } catch (runErr) {
         this.log.warn(
-          { err: runErr, memberId: dbMember.id, activities: run.length },
+          { err: runErr, memberId: dbMember.id, activities: combinable.length },
           'Member update failed, retrying per activity!',
         )
         redirectToSurvivor(dbMember, runErr)
-        for (const update of run) {
+        for (const update of combinable) {
           await updateSingleActivity(dbMember, update)
         }
       }
@@ -2152,10 +2224,6 @@ export default class ActivityService extends LoggerBase {
       for (const [payload, memberId] of memberIds) {
         memberIds.set(payload, followRedirects(redirects, memberId))
       }
-    }
-
-    if (staleMemberIds.size > 0) {
-      await refreshMembers(Array.from(staleMemberIds))
     }
 
     return results
