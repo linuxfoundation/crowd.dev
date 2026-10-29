@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `contributors_geo_distribution.pipe` serves the contributor geographic distribution widget showing contributor counts by country.
-    - Maps contributor locations to countries using fuzzy matching with the `country_mapping` lookup table.
-    - Handles unknown/unmappable locations by grouping them under "Unknown" with ❓ flag and 'XX' country code.
+    - Maps each contributor's country to the `country_mapping` lookup table by exact name, so each contributor counts in one country.
+    - Contributors with no country, or a country not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
     - Calculates both absolute contributor counts and percentage distribution for visualization.
     - Primary use case: displaying geographic diversity of contributors in project analytics and community insights.
     - Parameters:
@@ -18,21 +18,16 @@ DESCRIPTION >
 
 NODE country_mapping_array
 SQL >
-    SELECT groupArray((country, flag, country_code)) AS country_data FROM country_mapping
+    SELECT groupArray(country) AS names, groupArray((country, flag, country_code)) AS country_data
+    FROM country_mapping
 
 NODE parsed_country
 SQL >
-    SELECT
-        m.id,
-        m.location,
-        m.country,
-        arrayFilter(
-            x -> position(upper(coalesce(nullIf(m.country, ''), m.location)), upper(x .1)) > 0,
-            (SELECT country_data FROM country_mapping_array)
-        ) AS matched_countries,
-        arrayJoin(
-            if(empty(matched_countries), [('Unknown', '❓', 'XX')], matched_countries)
-        ) AS country_data
+    WITH
+        (SELECT names FROM country_mapping_array) AS mapping_names,
+        (SELECT country_data FROM country_mapping_array) AS mapping,
+        indexOf(mapping_names, m.country) AS idx
+    SELECT m.id, if(idx = 0, ('Unknown', '❓', 'XX'), mapping[idx]) AS country_data
     FROM members_sorted AS m
     WHERE m.id IN (SELECT "memberId" FROM activities_filtered)
 

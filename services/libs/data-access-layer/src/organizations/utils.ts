@@ -1,4 +1,4 @@
-import { getCountry, groupBy } from '@crowd/common'
+import { getCountry, groupBy, normalizeCountryName } from '@crowd/common'
 import { OrganizationAttributeSource, OrganizationAttributeType } from '@crowd/types'
 
 import {
@@ -41,11 +41,16 @@ export interface IPrepareOrgResult {
 }
 
 export function prepareOrganizationData(
-  incoming: any,
+  rawIncoming: any,
   source: string,
   existingOrg?: IDbOrganization,
   existingAttributes?: IDbOrgAttribute[],
 ): IPrepareOrgResult {
+  const incoming =
+    typeof rawIncoming.country === 'string'
+      ? { ...rawIncoming, country: normalizeCountryName(rawIncoming.country) }
+      : rawIncoming
+
   // validate source
   if (!ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.includes(source as OrganizationAttributeSource)) {
     throw new Error(

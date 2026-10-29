@@ -13,6 +13,7 @@ import {
   getCountry,
   hasAttributeValue,
   isDomainExcluded,
+  normalizeCountryAttribute,
   normalizeDisplayName,
 } from '@crowd/common'
 import {
@@ -44,6 +45,7 @@ import {
   IMemberUnmergePreviewResult,
   IOrganization,
   IUnmergePreviewResult,
+  MemberAttributeName,
   MemberAttributeType,
   MemberIdentityType,
   MergeActionType,
@@ -192,6 +194,10 @@ export default class MemberService extends LoggerBase {
       .attributeSettings.priorities
 
     for (const attributeName of Object.keys(attributes)) {
+      if (attributeName === MemberAttributeName.COUNTRY) {
+        attributes[attributeName] = normalizeCountryAttribute(attributes[attributeName])
+      }
+
       const highestPriorityPlatform = MemberService.getHighestPriorityPlatformForAttributes(
         Object.keys(attributes[attributeName]),
         priorityArray,
@@ -818,6 +824,10 @@ export default class MemberService extends LoggerBase {
       }
 
       if (data.attributes) {
+        if (data.attributes.country) {
+          data.attributes.country = normalizeCountryAttribute(data.attributes.country)
+        }
+
         if (!hasAttributeValue(data.attributes.country)) {
           const location = getAttributeValue(data.attributes.location)
           const country = getCountry(location)
