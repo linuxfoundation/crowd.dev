@@ -26,11 +26,12 @@ SQL >
     FROM cncf_country_activities
     WHERE organizationListed = 1
     GROUP BY id
-    ORDER BY contributorCount DESC, contributionCount DESC
+    ORDER BY contributorCount DESC, contributionCount DESC, id
     LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}
 
 NODE cncf_country_top_organizations_result
 SQL >
+    -- The ranking is the right side of the join so it is evaluated once, as the small hash table.
     SELECT
         r.id AS id,
         o.displayName AS displayName,
@@ -40,13 +41,7 @@ SQL >
         r.contributorCount AS contributorCount,
         r.contributorInCountryCount AS contributorInCountryCount,
         r.contributionCount AS contributionCount
-    FROM cncf_country_top_organizations_ranked r
-    LEFT JOIN
-        (
-            SELECT id, displayName, logo
-            FROM organizations FINAL
-            WHERE id IN (SELECT id FROM cncf_country_top_organizations_ranked)
-        ) o
-        ON o.id = r.id
+    FROM organizations o FINAL
+    INNER JOIN cncf_country_top_organizations_ranked r ON r.id = o.id
     LEFT JOIN organizations_populated_slug ops ON ops.id = r.id
-    ORDER BY contributorCount DESC, contributionCount DESC
+    ORDER BY contributorCount DESC, contributionCount DESC, id
