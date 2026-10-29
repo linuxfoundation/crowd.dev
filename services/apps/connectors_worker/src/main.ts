@@ -7,6 +7,7 @@ import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { octolensConnector } from '@crowd/connectors/src/connectors/octolens'
 import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
 
+import { scheduleCompletenessBackfillSweep } from './schedules/completenessBackfillSweep'
 import { scheduleDispatcher } from './schedules/dispatcher'
 import { scheduleGithubLifecycleSweep } from './schedules/githubLifecycleSweep'
 import { scheduleMirrorSweep } from './schedules/mirrorSweep'
@@ -57,6 +58,7 @@ setImmediate(async () => {
   await scheduleDispatcher()
   await scheduleShadowDiff()
   await scheduleWeeklyCompletenessValidation()
+  await scheduleCompletenessBackfillSweep()
   await scheduleOctolensDiscovery()
   await scheduleSwitchSyncPipelineSweep()
   await scheduleMirrorSweep()

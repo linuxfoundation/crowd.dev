@@ -120,6 +120,71 @@ export async function upsertValidationResult(
   )
 }
 
+export async function insertBackfillCheck(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+): Promise<void> {
+  await qx.result(
+    `INSERT INTO integration.completeness_backfill_checks ("integrationId", "channelId")
+     VALUES ($(integrationId), $(channelId))
+     ON CONFLICT DO NOTHING`,
+    { integrationId, channelId },
+  )
+}
+
+export async function markReadyBackfillChecks(qx: QueryExecutor): Promise<number> {
+  const rows = await qx.select(
+    `UPDATE integration.completeness_backfill_checks c
+     SET "readyAt" = now()
+     WHERE c."readyAt" IS NULL
+       AND EXISTS (
+         SELECT 1
+         FROM integration.sync_units su
+         WHERE su."integrationId" = c."integrationId"
+           AND su."channelId" = c."channelId"
+           AND su.status = 'active'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM integration.sync_units su
+         WHERE su."integrationId" = c."integrationId"
+           AND su."channelId" = c."channelId"
+           AND su.status = 'active'
+           AND su."lastRunComplete" IS NOT TRUE
+       )
+     RETURNING c."integrationId"`,
+  )
+  return rows.length
+}
+
+export async function listDueBackfillChecks(
+  qx: QueryExecutor,
+  delaySeconds: number,
+  limit: number,
+): Promise<{ integrationId: string; channelId: string }[]> {
+  return qx.select(
+    `SELECT "integrationId", "channelId"
+     FROM integration.completeness_backfill_checks
+     WHERE "readyAt" <= now() - make_interval(secs => $(delaySeconds))
+     ORDER BY "readyAt"
+     LIMIT $(limit)`,
+    { delaySeconds, limit },
+  )
+}
+
+export async function deleteBackfillCheck(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+): Promise<void> {
+  await qx.result(
+    `DELETE FROM integration.completeness_backfill_checks
+     WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+    { integrationId, channelId },
+  )
+}
+
 export async function setUnitsValidation(
   qx: QueryExecutor,
   requestedUnitIds: string[],

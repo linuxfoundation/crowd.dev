@@ -6,8 +6,12 @@ import { withQx } from '@crowd/test-kit/db'
 
 import {
   IValidationResultUpsert,
+  deleteBackfillCheck,
+  insertBackfillCheck,
+  listDueBackfillChecks,
   listValidationChannelsPage,
   listValidationUnitsPage,
+  markReadyBackfillChecks,
   setUnitsValidation,
   upsertValidationResult,
 } from './completenessValidation'
@@ -293,6 +297,62 @@ describe('listValidationChannelsPage', () => {
     const rows = await listValidationChannelsPage(qx, { limit: 1000 })
 
     expect(rows.filter((row) => row.integrationId === integrationId)).toEqual([])
+  })
+})
+
+describe('backfill checks', () => {
+  async function setLastRunComplete(qx: QueryExecutor, unitId: string, complete: boolean) {
+    await qx.result(
+      `UPDATE integration.sync_units SET "lastRunComplete" = $(complete) WHERE id = $(unitId)`,
+      { unitId, complete },
+    )
+  }
+
+  test('becomes ready only when every active unit finished its run, is listed after the delay and is deleted', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const channelId = generateUUIDv1()
+    const first = await createSyncUnit(qx, { integrationId, channelId, syncName: 'issues' })
+    const second = await createSyncUnit(qx, { integrationId, channelId, syncName: 'forks' })
+    await createSyncUnit(qx, {
+      integrationId,
+      channelId,
+      syncName: 'discussions',
+      status: 'decommissioned',
+    })
+    await insertBackfillCheck(qx, integrationId, channelId)
+    await insertBackfillCheck(qx, integrationId, channelId)
+    const readyAt = () =>
+      qx.selectOne(
+        `SELECT "readyAt" FROM integration.completeness_backfill_checks
+         WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+        { integrationId, channelId },
+      )
+
+    await setLastRunComplete(qx, first, true)
+    await markReadyBackfillChecks(qx)
+    expect((await readyAt()).readyAt).toBeNull()
+
+    await setLastRunComplete(qx, second, true)
+    await markReadyBackfillChecks(qx)
+    expect((await readyAt()).readyAt).not.toBeNull()
+
+    const isListed = async (delaySeconds: number) =>
+      (await listDueBackfillChecks(qx, delaySeconds, 1000)).some(
+        (check) => check.integrationId === integrationId && check.channelId === channelId,
+      )
+    expect(await isListed(3600)).toBe(false)
+    await qx.result(
+      `UPDATE integration.completeness_backfill_checks
+       SET "readyAt" = now() - interval '4 hours'
+       WHERE "integrationId" = $(integrationId)`,
+      { integrationId },
+    )
+    expect(await isListed(3600)).toBe(true)
+
+    await deleteBackfillCheck(qx, integrationId, channelId)
+    expect(await isListed(3600)).toBe(false)
   })
 })
 
