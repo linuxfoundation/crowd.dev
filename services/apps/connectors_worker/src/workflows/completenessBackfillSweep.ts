@@ -16,9 +16,18 @@ interface IBackfillCheck {
   channelId: string
 }
 
-async function validateBackfill({ integrationId, channelId }: IBackfillCheck): Promise<boolean> {
+async function validateBackfill(check: IBackfillCheck): Promise<boolean> {
+  const failed = await runBackfillValidation(check)
+  await completeBackfillCheck(check)
+  return failed
+}
+
+async function runBackfillValidation({
+  integrationId,
+  channelId,
+}: IBackfillCheck): Promise<boolean> {
   try {
-    await executeChild(validateCompleteness, {
+    const result = await executeChild(validateCompleteness, {
       workflowId: `validate-completeness-backfill-${integrationId}-${channelId}`,
       workflowExecutionTimeout: '2 hours',
       args: [
@@ -29,7 +38,7 @@ async function validateBackfill({ integrationId, channelId }: IBackfillCheck): P
         },
       ],
     })
-    return false
+    return result.failureCount > 0
   } catch (err) {
     log.error('post-backfill completeness validation failed for repo', {
       integrationId,
@@ -48,10 +57,6 @@ export async function completenessBackfillSweep(): Promise<void> {
     const batch = checks.slice(i, i + BACKFILL_VALIDATION_BATCH_SIZE)
     const outcomes = await Promise.all(batch.map(validateBackfill))
     failedCount += outcomes.filter(Boolean).length
-  }
-
-  for (const check of checks) {
-    await completeBackfillCheck(check)
   }
 
   log.info('completeness_backfill_sweep_summary', { dueCount: checks.length, failedCount })

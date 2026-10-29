@@ -28,7 +28,7 @@ import { countTinybirdActivities } from '../tinybirdActivityCount'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 const BACKFILL_VALIDATION_DELAY_SECONDS = 3 * 60 * 60
-const BACKFILL_CHECKS_PER_SWEEP = 100
+const BACKFILL_CHECKS_PER_SWEEP = 10
 
 export interface IValidationInput {
   target: ValidationTarget
