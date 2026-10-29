@@ -90,6 +90,9 @@ async function updateCounterKeys(
 ): Promise<number> {
   const idsByKeys = new Map<string, string[]>()
   for (const unit of units) {
+    if (command === 'disable' && !unit.validationEnabled) {
+      continue
+    }
     const unitKeys = syncCounterKeys(unit).filter((key) => counterKeys.includes(key))
     if (unitKeys.length === 0) {
       continue

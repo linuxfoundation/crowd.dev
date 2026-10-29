@@ -55,7 +55,8 @@ export async function listValidationUnitsPage(
 
   return qx.select(
     `SELECT su.id, su."integrationId", su.platform, su."channelId", su."channelName", su."syncName",
-            ${COUNTER_KEYS_PROJECTION}
+            ${COUNTER_KEYS_PROJECTION},
+            COALESCE((SELECT v.enabled FROM integration.sync_unit_validations v WHERE v."unitId" = su.id), true) AS "validationEnabled"
      FROM integration.sync_units su
      WHERE ${targetFilter(target)}
        ${disabledFilter}

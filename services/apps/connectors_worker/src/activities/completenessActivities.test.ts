@@ -49,6 +49,7 @@ const unit = {
   channelName: 'acme/repo',
   syncName: 'issues',
   validationCounterKeys: null,
+  validationEnabled: true,
 }
 const window = { kind: 'all-time' as const }
 

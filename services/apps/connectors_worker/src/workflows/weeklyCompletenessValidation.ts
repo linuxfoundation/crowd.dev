@@ -1,4 +1,4 @@
-import { executeChild, log, proxyActivities } from '@temporalio/workflow'
+import { continueAsNew, executeChild, log, proxyActivities } from '@temporalio/workflow'
 
 import type { CountWindow, IValidationChannel } from '@crowd/data-access-layer/src/connectors'
 
@@ -9,10 +9,20 @@ import { validateCompleteness } from './validateCompleteness'
 
 const { listValidationChannels } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
-  retry: { maximumAttempts: 3, backoffCoefficient: 2 },
+  retry: { initialInterval: '10 seconds', backoffCoefficient: 2, maximumAttempts: 6 },
 })
 
 const WEEKLY_VALIDATION_PAGE_SIZE = 10
+const PAGES_PER_RUN = 50
+
+export interface IWeeklyValidationState {
+  window: Extract<CountWindow, { kind: 'range' }>
+  after?: { integrationId: string; channelId: string }
+  repoCount: number
+  failedRepoCount: number
+  resultCount: number
+  failureCount: number
+}
 
 interface IChildOutcome {
   failed: boolean
@@ -51,15 +61,15 @@ async function runChannel(
   }
 }
 
-export async function weeklyCompletenessValidation(): Promise<void> {
-  const window = previousValidationWeek(new Date())
-  let after: { integrationId: string; channelId: string } | undefined
-  let repoCount = 0
-  let failedRepoCount = 0
-  let resultCount = 0
-  let failureCount = 0
+export async function weeklyCompletenessValidation(state?: IWeeklyValidationState): Promise<void> {
+  const window = state?.window ?? previousValidationWeek(new Date())
+  let after = state?.after
+  let repoCount = state?.repoCount ?? 0
+  let failedRepoCount = state?.failedRepoCount ?? 0
+  let resultCount = state?.resultCount ?? 0
+  let failureCount = state?.failureCount ?? 0
 
-  for (;;) {
+  for (let page = 1; ; page++) {
     const channels = await listValidationChannels({ after, limit: WEEKLY_VALIDATION_PAGE_SIZE })
     if (channels.length === 0) {
       break
@@ -77,6 +87,17 @@ export async function weeklyCompletenessValidation(): Promise<void> {
     repoCount += channels.length
     const last = channels[channels.length - 1]
     after = { integrationId: last.integrationId, channelId: last.channelId }
+
+    if (page === PAGES_PER_RUN && channels.length === WEEKLY_VALIDATION_PAGE_SIZE) {
+      await continueAsNew<typeof weeklyCompletenessValidation>({
+        window,
+        after,
+        repoCount,
+        failedRepoCount,
+        resultCount,
+        failureCount,
+      })
+    }
   }
 
   log.info('weekly_completeness_validation_summary', {

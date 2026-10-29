@@ -88,4 +88,5 @@ export interface IValidationUnit extends Pick<
   'id' | 'integrationId' | 'platform' | 'channelId' | 'channelName' | 'syncName'
 > {
   validationCounterKeys: string[] | null
+  validationEnabled: boolean
 }

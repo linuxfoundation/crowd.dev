@@ -140,6 +140,7 @@ describe('listValidationUnitsPage', () => {
     expect(secondPage.map((unit) => unit.id)).toEqual(sorted.slice(2))
     expect(withDisabled.map((unit) => unit.id).sort()).toEqual([...active, disabled].sort())
     expect(withDisabled.map((unit) => unit.id)).not.toContain(paused)
+    expect(withDisabled.find((unit) => unit.id === disabled)?.validationEnabled).toBe(false)
 
     await qx.result(`UPDATE public.integrations SET "deletedAt" = NOW() WHERE id = $(id)`, {
       id: integrationId,

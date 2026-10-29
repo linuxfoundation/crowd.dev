@@ -10,7 +10,7 @@ const action = {
   workflowType: weeklyCompletenessValidation,
   taskQueue: 'connectors',
   args: [],
-  workflowExecutionTimeout: '24 hours',
+  workflowExecutionTimeout: '6 days',
 } as const
 
 export async function scheduleWeeklyCompletenessValidation(): Promise<void> {
