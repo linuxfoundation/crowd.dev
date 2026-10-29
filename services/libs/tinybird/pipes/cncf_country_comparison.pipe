@@ -2,7 +2,7 @@ DESCRIPTION >
     - `cncf_country_comparison.pipe` serves the "in context" widget of the CNCF country report: one country compared with a region (e.g. Europe) and the world.
     - Contributors and contributions are placed by the contributor's profile country, else location; organizations by their country, else location. Names are matched by containment, as in `contributors_geo_distribution.pipe`, and only records with a known location count, so every count is "with a known location".
     - Skips organizations blocked from affiliations and the "Individual - No Account" placeholder records, as `cncf_country_top_organizations.pipe` does.
-    - Reads from `cncf_collection_activities_ds`, so it covers the CNCF collection only.
+    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the places it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
     - **When `granularity` is NOT provided, returns one row of totals** for the period.
     - **When `granularity` is provided, returns one row per period**, built on `generate_timeseries`.
     - Parameters:
@@ -51,10 +51,29 @@ SQL >
                 }}
         ) AS regionNames
 
-NODE cncf_country_comparison_period_activities
+NODE cncf_country_comparison_located
 SQL >
     %
-    SELECT memberId, organizationId, timestamp
+    SELECT
+        timestamp,
+        memberId,
+        organizationId,
+        memberPlace != '' AS memberLocated,
+        position(memberPlace, nullIf((SELECT countryName FROM cncf_country_comparison_names), ''))
+        > 0 AS memberInCountry,
+        multiSearchAny(
+            memberPlace, (SELECT regionNames FROM cncf_country_comparison_names)
+        ) AS memberInRegion,
+        organizationListed = 1 AND organizationPlace != '' AS organizationLocated,
+        organizationListed = 1
+        AND position(
+            organizationPlace, nullIf((SELECT countryName FROM cncf_country_comparison_names), '')
+        )
+        > 0 AS organizationInCountry,
+        organizationListed = 1
+        AND multiSearchAny(
+            organizationPlace, (SELECT regionNames FROM cncf_country_comparison_names)
+        ) AS organizationInRegion
     FROM cncf_collection_activities_ds
     WHERE
         memberId != ''
@@ -67,57 +86,6 @@ SQL >
             AND timestamp
             < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
         {% end %}
-
-NODE cncf_country_comparison_members
-SQL >
-    SELECT
-        id,
-        position(place, (SELECT countryName FROM cncf_country_comparison_names)) > 0 AS inCountry,
-        arrayExists(
-            x -> position(place, x) > 0, (SELECT regionNames FROM cncf_country_comparison_names)
-        ) AS inRegion
-    FROM
-        (
-            SELECT id, upper(coalesce(nullIf(country, ''), location)) AS place
-            FROM members_sorted
-            WHERE id IN (SELECT memberId FROM cncf_country_comparison_period_activities)
-        )
-    WHERE place != ''
-
-NODE cncf_country_comparison_organizations
-SQL >
-    SELECT
-        id,
-        position(place, (SELECT countryName FROM cncf_country_comparison_names)) > 0 AS inCountry,
-        arrayExists(
-            x -> position(place, x) > 0, (SELECT regionNames FROM cncf_country_comparison_names)
-        ) AS inRegion
-    FROM
-        (
-            SELECT id, upper(coalesce(nullIf(country, ''), location)) AS place
-            FROM organizations FINAL
-            WHERE
-                id IN (SELECT organizationId FROM cncf_country_comparison_period_activities)
-                AND isAffiliationBlocked = 0
-                AND displayName != 'Individual - No Account'
-        )
-    WHERE place != ''
-
-NODE cncf_country_comparison_located
-SQL >
-    SELECT
-        a.timestamp AS timestamp,
-        a.memberId AS memberId,
-        a.organizationId AS organizationId,
-        m.id != '' AS memberLocated,
-        m.inCountry AS memberInCountry,
-        m.inRegion AS memberInRegion,
-        o.id != '' AS organizationLocated,
-        o.inCountry AS organizationInCountry,
-        o.inRegion AS organizationInRegion
-    FROM cncf_country_comparison_period_activities a
-    LEFT JOIN cncf_country_comparison_members m ON m.id = a.memberId
-    LEFT JOIN cncf_country_comparison_organizations o ON o.id = a.organizationId
 
 NODE cncf_country_comparison_result
 SQL >

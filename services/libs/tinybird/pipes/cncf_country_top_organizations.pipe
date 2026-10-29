@@ -14,27 +14,39 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE cncf_country_top_organizations_organizations
-SQL >
-    SELECT o.id, o.displayName, o.logo, ops.slug
-    FROM organizations o FINAL
-    LEFT JOIN organizations_populated_slug ops ON o.id = ops.id
-    WHERE o.isAffiliationBlocked = 0 AND o.displayName != 'Individual - No Account'
-
-NODE cncf_country_top_organizations_result
+NODE cncf_country_top_organizations_ranked
 SQL >
     %
     SELECT
-        o.id AS id,
-        o.displayName AS displayName,
-        o.logo AS logo,
-        o.slug AS slug,
-        max(a.organizationInCountry) AS headquarteredInCountry,
-        uniq(a.memberId) AS contributorCount,
-        uniqIf(a.memberId, a.memberInCountry) AS contributorInCountryCount,
+        organizationId AS id,
+        max(organizationInCountry) AS headquarteredInCountry,
+        uniq(memberId) AS contributorCount,
+        uniqIf(memberId, memberInCountry) AS contributorInCountryCount,
         count() AS contributionCount
-    FROM cncf_country_activities a
-    INNER JOIN cncf_country_top_organizations_organizations o ON o.id = a.organizationId
-    GROUP BY id, displayName, logo, slug
+    FROM cncf_country_activities
+    WHERE organizationListed = 1
+    GROUP BY id
     ORDER BY contributorCount DESC, contributionCount DESC
     LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}
+
+NODE cncf_country_top_organizations_result
+SQL >
+    SELECT
+        r.id AS id,
+        o.displayName AS displayName,
+        o.logo AS logo,
+        ops.slug AS slug,
+        r.headquarteredInCountry AS headquarteredInCountry,
+        r.contributorCount AS contributorCount,
+        r.contributorInCountryCount AS contributorInCountryCount,
+        r.contributionCount AS contributionCount
+    FROM cncf_country_top_organizations_ranked r
+    LEFT JOIN
+        (
+            SELECT id, displayName, logo
+            FROM organizations FINAL
+            WHERE id IN (SELECT id FROM cncf_country_top_organizations_ranked)
+        ) o
+        ON o.id = r.id
+    LEFT JOIN organizations_populated_slug ops ON ops.id = r.id
+    ORDER BY contributorCount DESC, contributionCount DESC
