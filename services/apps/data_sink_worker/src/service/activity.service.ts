@@ -131,7 +131,6 @@ interface IMemberUpdateFailure {
 interface IMemberUpdateResults {
   memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
   failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
-  members: Map<string, IDbMember>
 }
 
 function timestampMs(timestamp: string): number {
@@ -1674,16 +1673,16 @@ export default class ActivityService extends LoggerBase {
         })
       }
 
+      // dbMember stays the row from before the batch: an activity's isBot and isTeamMember fall
+      // back to it, so a later activity in the batch can't change an earlier activity's flags
       const memberId = memberUpdates.memberIds.member.get(payload)
       if (memberId) {
         payload.memberId = memberId
-        payload.dbMember = memberUpdates.members.get(memberId) ?? payload.dbMember
       }
 
       const objectMemberId = memberUpdates.memberIds.objectMember.get(payload)
       if (objectMemberId) {
         payload.objectMemberId = objectMemberId
-        payload.dbObjectMember = memberUpdates.members.get(objectMemberId) ?? payload.dbObjectMember
       }
 
       if (isSameActor(payload)) {
@@ -2060,7 +2059,6 @@ export default class ActivityService extends LoggerBase {
     const results: IMemberUpdateResults = {
       memberIds: { member: new Map(), objectMember: new Map() },
       failures: { member: new Map(), objectMember: new Map() },
-      members: freshMembers,
     }
     const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
       for (const update of updates) {
