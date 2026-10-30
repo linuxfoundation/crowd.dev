@@ -1,10 +1,10 @@
+import type { CountWindow } from '@crowd/data-access-layer/src/connectors'
 import { GithubActivityType } from '@crowd/integrations'
 
 import type { CountContext, SourceCounter } from '../../../types'
+import { type CountRange, boundedRange } from '../../../validation'
 import { githubGraphql } from '../gql'
 import { parseRepoChannel } from '../paging'
-
-type RangeWindow = { kind: 'range'; from: string; to: string }
 
 interface TotalCountResponse {
   repository: Record<string, { totalCount: number }>
@@ -49,8 +49,17 @@ function toSearchSeconds(epochMs: number): string {
   return new Date(epochMs).toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-function searchRange(window: RangeWindow): string {
+function searchRange(window: CountRange): string {
   return `${toSearchSeconds(Date.parse(window.from))}..${toSearchSeconds(Date.parse(window.to) - 1000)}`
+}
+
+function countByWindow(
+  window: CountWindow,
+  countRange: (range: CountRange) => Promise<number>,
+  countTotal: () => Promise<number>,
+): Promise<number> {
+  const range = boundedRange(window)
+  return range === null ? countTotal() : countRange(range)
 }
 
 function repoSlug(ctx: CountContext): string {
@@ -90,7 +99,7 @@ async function repositoryTotal(
   return data.repository[field].totalCount
 }
 
-async function countForksInRange(ctx: CountContext, window: RangeWindow): Promise<number> {
+async function countForksInRange(ctx: CountContext, window: CountRange): Promise<number> {
   const { owner, repo } = parseRepoChannel(ctx.channel.channelName)
   const from = Date.parse(window.from)
   const to = Date.parse(window.to)
@@ -127,9 +136,11 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.PULL_REQUEST_OPENED],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? searchTotal(ctx, 'ISSUE', `is:pr created:${searchRange(window)}`)
-        : repositoryTotal(ctx, 'pullRequests', 'pullRequests'),
+      countByWindow(
+        window,
+        (range) => searchTotal(ctx, 'ISSUE', `is:pr created:${searchRange(range)}`),
+        () => repositoryTotal(ctx, 'pullRequests', 'pullRequests'),
+      ),
   },
   {
     key: GithubActivityType.PULL_REQUEST_MERGED,
@@ -137,9 +148,11 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.PULL_REQUEST_MERGED],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? searchTotal(ctx, 'ISSUE', `is:pr is:merged merged:${searchRange(window)}`)
-        : repositoryTotal(ctx, 'merged', 'pullRequests(states: MERGED)'),
+      countByWindow(
+        window,
+        (range) => searchTotal(ctx, 'ISSUE', `is:pr is:merged merged:${searchRange(range)}`),
+        () => repositoryTotal(ctx, 'merged', 'pullRequests(states: MERGED)'),
+      ),
   },
   {
     key: GithubActivityType.ISSUE_OPENED,
@@ -147,9 +160,11 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.ISSUE_OPENED],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? searchTotal(ctx, 'ISSUE', `is:issue created:${searchRange(window)}`)
-        : repositoryTotal(ctx, 'issues', 'issues'),
+      countByWindow(
+        window,
+        (range) => searchTotal(ctx, 'ISSUE', `is:issue created:${searchRange(range)}`),
+        () => repositoryTotal(ctx, 'issues', 'issues'),
+      ),
   },
   {
     key: GithubActivityType.ISSUE_CLOSED,
@@ -157,9 +172,11 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.ISSUE_CLOSED],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? searchTotal(ctx, 'ISSUE', `is:issue is:closed closed:${searchRange(window)}`)
-        : repositoryTotal(ctx, 'closed', 'issues(states: CLOSED)'),
+      countByWindow(
+        window,
+        (range) => searchTotal(ctx, 'ISSUE', `is:issue is:closed closed:${searchRange(range)}`),
+        () => repositoryTotal(ctx, 'closed', 'issues(states: CLOSED)'),
+      ),
   },
   {
     key: GithubActivityType.DISCUSSION_STARTED,
@@ -167,9 +184,11 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.DISCUSSION_STARTED],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? searchTotal(ctx, 'DISCUSSION', `created:${searchRange(window)}`)
-        : repositoryTotal(ctx, 'discussions', 'discussions'),
+      countByWindow(
+        window,
+        (range) => searchTotal(ctx, 'DISCUSSION', `created:${searchRange(range)}`),
+        () => repositoryTotal(ctx, 'discussions', 'discussions'),
+      ),
   },
   {
     key: GithubActivityType.FORK,
@@ -177,8 +196,10 @@ export const githubCheapCounters: SourceCounter[] = [
     activityTypes: [GithubActivityType.FORK],
     cost: CHEAP,
     count: (ctx, window) =>
-      window.kind === 'range'
-        ? countForksInRange(ctx, window)
-        : repositoryTotal(ctx, 'forks', 'forks'),
+      countByWindow(
+        window,
+        (range) => countForksInRange(ctx, range),
+        () => repositoryTotal(ctx, 'forks', 'forks'),
+      ),
   },
 ]

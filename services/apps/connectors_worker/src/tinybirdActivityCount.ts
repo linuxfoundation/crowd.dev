@@ -1,3 +1,4 @@
+import { boundedRange } from '@crowd/connectors'
 import type { CountWindow } from '@crowd/data-access-layer/src/connectors/types'
 import type { TinybirdClient } from '@crowd/database'
 
@@ -34,20 +35,21 @@ export async function countTinybirdActivities(
   query: TinybirdActivityCountQuery,
 ): Promise<number> {
   const { segmentId, platform, channel, activityTypes, window } = query
+  const range = boundedRange(window)
 
   const sql =
     SELECT_FRAGMENT +
     (segmentId === null ? '' : SEGMENT_FRAGMENT) +
-    (window.kind === 'range' ? RANGE_FRAGMENT : '') +
+    (range === null ? '' : RANGE_FRAGMENT) +
     FORMAT_FRAGMENT
 
   const params: Record<string, unknown> = { platform, channel, types: activityTypes }
   if (segmentId !== null) {
     params.segmentId = segmentId
   }
-  if (window.kind === 'range') {
-    params.windowFrom = formatTinybirdDate(new Date(window.from))
-    params.windowTo = formatTinybirdDate(new Date(window.to))
+  if (range !== null) {
+    params.windowFrom = formatTinybirdDate(new Date(range.from))
+    params.windowTo = formatTinybirdDate(new Date(range.to))
   }
 
   const result = await tb.executeSql<{ data: { activities: string | number }[] }>(sql, params)

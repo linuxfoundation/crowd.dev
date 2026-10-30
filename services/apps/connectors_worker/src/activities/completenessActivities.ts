@@ -8,8 +8,11 @@ import type {
   ValidationTarget,
 } from '@crowd/data-access-layer/src/connectors'
 import {
+  deleteBackfillCheck,
+  listDueBackfillChecks,
   listValidationChannelsPage,
   listValidationUnitsPage,
+  markReadyBackfillChecks,
   upsertValidationResult,
 } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
@@ -24,6 +27,8 @@ import { resolveRunSegmentId } from '../runSegment'
 import { countTinybirdActivities } from '../tinybirdActivityCount'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
+const BACKFILL_VALIDATION_DELAY_SECONDS = 3 * 60 * 60
+const BACKFILL_CHECKS_PER_SWEEP = 10
 
 export interface IValidationInput {
   target: ValidationTarget
@@ -63,6 +68,21 @@ export async function listValidationChannels(input: {
     after: input.after,
     limit: input.limit,
   })
+}
+
+export async function dueBackfillChecks(): Promise<
+  { integrationId: string; channelId: string; onboardedAt: string }[]
+> {
+  const qx = dbStoreQx(svc.postgres.writer)
+  await markReadyBackfillChecks(qx)
+  return listDueBackfillChecks(qx, BACKFILL_VALIDATION_DELAY_SECONDS, BACKFILL_CHECKS_PER_SWEEP)
+}
+
+export async function completeBackfillCheck(input: {
+  integrationId: string
+  channelId: string
+}): Promise<void> {
+  await deleteBackfillCheck(dbStoreQx(svc.postgres.writer), input.integrationId, input.channelId)
 }
 
 export async function validateUnit(input: {

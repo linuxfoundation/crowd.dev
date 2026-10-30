@@ -95,7 +95,7 @@ export async function listValidationChannelsPage(
 
 function windowBounds(window: CountWindow): { windowStart: string; windowEnd: string } {
   return window.kind === 'all-time'
-    ? { windowStart: '-infinity', windowEnd: 'infinity' }
+    ? { windowStart: '-infinity', windowEnd: window.to ?? 'infinity' }
     : { windowStart: window.from, windowEnd: window.to }
 }
 
@@ -117,6 +117,74 @@ export async function upsertValidationResult(
                    "tinybirdCount" = EXCLUDED."tinybirdCount",
                    "checkedAt" = now()`,
     { ...fields, ...windowBounds(window) },
+  )
+}
+
+export async function insertBackfillCheck(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+): Promise<void> {
+  await qx.result(
+    `INSERT INTO integration.completeness_backfill_checks ("integrationId", "channelId")
+     VALUES ($(integrationId), $(channelId))
+     ON CONFLICT ("integrationId", "channelId")
+     DO UPDATE SET "readyAt" = NULL, "createdAt" = now()`,
+    { integrationId, channelId },
+  )
+}
+
+export async function markReadyBackfillChecks(qx: QueryExecutor): Promise<number> {
+  const rows = await qx.select(
+    `UPDATE integration.completeness_backfill_checks c
+     SET "readyAt" = now()
+     WHERE c."readyAt" IS NULL
+       AND EXISTS (
+         SELECT 1
+         FROM integration.sync_units su
+         WHERE su."integrationId" = c."integrationId"
+           AND su."channelId" = c."channelId"
+           AND su.status = 'active'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM integration.sync_units su
+         WHERE su."integrationId" = c."integrationId"
+           AND su."channelId" = c."channelId"
+           AND su.status = 'active'
+           AND su."lastRunComplete" IS NOT TRUE
+       )
+     RETURNING c."integrationId"`,
+  )
+  return rows.length
+}
+
+export async function listDueBackfillChecks(
+  qx: QueryExecutor,
+  delaySeconds: number,
+  limit: number,
+): Promise<{ integrationId: string; channelId: string; onboardedAt: string }[]> {
+  return qx.select(
+    `SELECT "integrationId", "channelId",
+            to_char(date_trunc('second', "createdAt") AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "onboardedAt"
+     FROM integration.completeness_backfill_checks
+     WHERE "readyAt" <= now() - make_interval(secs => $(delaySeconds))
+     ORDER BY "readyAt"
+     LIMIT $(limit)`,
+    { delaySeconds, limit },
+  )
+}
+
+export async function deleteBackfillCheck(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+): Promise<void> {
+  await qx.result(
+    `DELETE FROM integration.completeness_backfill_checks
+     WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+    { integrationId, channelId },
   )
 }
 

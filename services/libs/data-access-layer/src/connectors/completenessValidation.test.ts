@@ -6,8 +6,12 @@ import { withQx } from '@crowd/test-kit/db'
 
 import {
   IValidationResultUpsert,
+  deleteBackfillCheck,
+  insertBackfillCheck,
+  listDueBackfillChecks,
   listValidationChannelsPage,
   listValidationUnitsPage,
+  markReadyBackfillChecks,
   setUnitsValidation,
   upsertValidationResult,
 } from './completenessValidation'
@@ -92,16 +96,26 @@ describe('upsertValidationResult', () => {
     expect(rows[0]).toMatchObject({ sourceCount: 10, tinybirdCount: 12, gap: -2 })
   })
 
-  test('all-time stores infinite bounds and stays separate from a range row', async ({ qx }) => {
+  test('all-time stores infinite bounds, or its end when bounded, and stays separate from a range row', async ({
+    qx,
+  }) => {
     const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
+    const to = '2026-10-29T09:05:00.000Z'
 
     await upsertValidationResult(qx, baseResult({ unitId, window: { kind: 'all-time' } }))
+    await upsertValidationResult(qx, baseResult({ unitId, window: { kind: 'all-time', to } }))
     await upsertValidationResult(qx, baseResult({ unitId }))
 
     const rows = await getResults(qx, unitId)
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatchObject({ windowStart: '-infinity', windowEnd: 'infinity' })
-    expect(rows[1].windowStart).not.toBe('-infinity')
+    expect(rows).toHaveLength(3)
+    expect(rows.filter((row) => row.windowStart === '-infinity')).toHaveLength(2)
+    expect(
+      await qx.selectOneOrNone(
+        `SELECT 1 FROM integration.sync_validation_results
+         WHERE "unitId" = $(unitId) AND "windowStart" = '-infinity' AND "windowEnd" = $(to)::timestamptz`,
+        { unitId, to },
+      ),
+    ).not.toBeNull()
   })
 
   test('rejects an empty window', async ({ qx }) => {
@@ -293,6 +307,82 @@ describe('listValidationChannelsPage', () => {
     const rows = await listValidationChannelsPage(qx, { limit: 1000 })
 
     expect(rows.filter((row) => row.integrationId === integrationId)).toEqual([])
+  })
+})
+
+describe('backfill checks', () => {
+  async function setLastRunComplete(qx: QueryExecutor, unitId: string, complete: boolean) {
+    await qx.result(
+      `UPDATE integration.sync_units SET "lastRunComplete" = $(complete) WHERE id = $(unitId)`,
+      { unitId, complete },
+    )
+  }
+
+  test('becomes ready only when every active unit finished its run, is listed after the delay, restarts on re-onboarding and is deleted', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const channelId = generateUUIDv1()
+    const first = await createSyncUnit(qx, { integrationId, channelId, syncName: 'issues' })
+    const second = await createSyncUnit(qx, { integrationId, channelId, syncName: 'forks' })
+    await createSyncUnit(qx, {
+      integrationId,
+      channelId,
+      syncName: 'discussions',
+      status: 'decommissioned',
+    })
+    await insertBackfillCheck(qx, integrationId, channelId)
+    await insertBackfillCheck(qx, integrationId, channelId)
+    const readyAt = () =>
+      qx.selectOne(
+        `SELECT "readyAt" FROM integration.completeness_backfill_checks
+         WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+        { integrationId, channelId },
+      )
+
+    await setLastRunComplete(qx, first, true)
+    await markReadyBackfillChecks(qx)
+    expect((await readyAt()).readyAt).toBeNull()
+
+    await setLastRunComplete(qx, second, true)
+    await markReadyBackfillChecks(qx)
+    expect((await readyAt()).readyAt).not.toBeNull()
+
+    const isListed = async (delaySeconds: number) =>
+      (await listDueBackfillChecks(qx, delaySeconds, 1000)).some(
+        (check) => check.integrationId === integrationId && check.channelId === channelId,
+      )
+    expect(await isListed(3600)).toBe(false)
+    await qx.result(
+      `UPDATE integration.completeness_backfill_checks
+       SET "readyAt" = now() - interval '4 hours'
+       WHERE "integrationId" = $(integrationId)`,
+      { integrationId },
+    )
+    expect(await isListed(3600)).toBe(true)
+    const listed = (await listDueBackfillChecks(qx, 3600, 1000)).find(
+      (check) => check.integrationId === integrationId && check.channelId === channelId,
+    )
+    const { matches } = await qx.selectOne(
+      `SELECT date_trunc('second', "createdAt") = $(onboardedAt)::timestamptz AS matches
+       FROM integration.completeness_backfill_checks
+       WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+      { integrationId, channelId, onboardedAt: listed?.onboardedAt },
+    )
+    expect(listed?.onboardedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
+    expect(matches).toBe(true)
+
+    await insertBackfillCheck(qx, integrationId, channelId)
+    expect((await readyAt()).readyAt).toBeNull()
+
+    await deleteBackfillCheck(qx, integrationId, channelId)
+    expect(
+      await qx.selectOneOrNone(
+        `SELECT 1 FROM integration.completeness_backfill_checks
+         WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+        { integrationId, channelId },
+      ),
+    ).toBeNull()
   })
 })
 

@@ -6,6 +6,7 @@ import {
   alignSyncUnitChannelName,
   hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
+  insertBackfillCheck,
   lockSyncUnitChannel,
   upsertSyncUnits,
 } from '@crowd/data-access-layer/src/connectors'
@@ -104,6 +105,7 @@ export async function onboardGithubRepo(
         message: `inserted ${unitsInserted} of ${githubConnector.syncs.length}`,
       }
     }
+    await insertBackfillCheck(txQx, integrationId, channel.channelId)
     return { outcome: 'created', unitsInserted }
   })
 }

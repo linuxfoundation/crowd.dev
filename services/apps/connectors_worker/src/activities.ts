@@ -1,4 +1,6 @@
 import {
+  completeBackfillCheck,
+  dueBackfillChecks,
   listValidationChannels,
   listValidationUnits,
   validateUnit,
@@ -53,6 +55,7 @@ export {
   activateUnit,
   admitByBudget,
   claimDue,
+  completeBackfillCheck,
   countShadowRepos,
   countUndrainedUnits,
   decommissionAllUnits,
@@ -60,6 +63,7 @@ export {
   deferUnit,
   deleteDrainedUnits,
   discoverFullSyncRepos,
+  dueBackfillChecks,
   evaluateBackGate,
   evaluateForwardGate,
   executeSync,

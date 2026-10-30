@@ -1,3 +1,4 @@
+import { completenessBackfillSweep } from './workflows/completenessBackfillSweep'
 import { dispatcher } from './workflows/dispatcher'
 import { githubLifecycleSweep } from './workflows/githubLifecycleSweep'
 import { mirrorSweep } from './workflows/mirrorSweep'
@@ -11,6 +12,7 @@ import { validateCompleteness } from './workflows/validateCompleteness'
 import { weeklyCompletenessValidation } from './workflows/weeklyCompletenessValidation'
 
 export {
+  completenessBackfillSweep,
   dispatcher,
   githubLifecycleSweep,
   mirrorSweep,

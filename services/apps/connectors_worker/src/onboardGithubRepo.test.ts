@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   lockSyncUnitChannel: vi.fn(),
   alignSyncUnitChannelName: vi.fn(),
   upsertSyncUnits: vi.fn(),
+  insertBackfillCheck: vi.fn(),
 }))
 
 vi.mock('@crowd/connectors/src/connectors/github', () => ({
@@ -39,6 +40,7 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   lockSyncUnitChannel: mocks.lockSyncUnitChannel,
   alignSyncUnitChannelName: mocks.alignSyncUnitChannelName,
   upsertSyncUnits: mocks.upsertSyncUnits,
+  insertBackfillCheck: mocks.insertBackfillCheck,
 }))
 
 const txQx = { name: 'tx' } as unknown as QueryExecutor
@@ -72,6 +74,8 @@ describe('onboardGithubRepo', () => {
     const staleLockBefore: Date = mocks.hasActiveSyncUnitsForChannelElsewhere.mock.calls[0][3]
     expect(Date.now() - staleLockBefore.getTime()).toBeGreaterThanOrEqual(LIFECYCLE_STALE_LOCK_MS)
     expect(mocks.hasSyncUnitsForChannel).toHaveBeenCalledWith(txQx, 'i-1', 'R_1')
+    expect(mocks.insertBackfillCheck).toHaveBeenCalledTimes(1)
+    expect(mocks.insertBackfillCheck).toHaveBeenCalledWith(txQx, 'i-1', 'R_1')
     expect(mocks.upsertSyncUnits.mock.calls[0][0]).toBe(txQx)
     const callOrder = [
       mocks.lockSyncUnitChannel,
@@ -208,5 +212,6 @@ describe('onboardGithubRepo', () => {
       message: 'boom',
     })
     expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
+    expect(mocks.insertBackfillCheck).not.toHaveBeenCalled()
   })
 })
