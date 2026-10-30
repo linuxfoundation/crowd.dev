@@ -2220,6 +2220,28 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
+    const updateCombined = async (dbMember: IDbMember, updates: IPayloadMemberUpdate[]) => {
+      if (updates.length <= 1) {
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+        return
+      }
+
+      try {
+        setMemberId(updates, await updateMember(dbMember, updates))
+      } catch (runErr) {
+        this.log.warn(
+          { err: runErr, memberId: dbMember.id, activities: updates.length },
+          'Member update failed, retrying per activity!',
+        )
+        redirectToSurvivor(dbMember, runErr)
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+      }
+    }
+
     for (const { dbMember, run, combine } of runs) {
       if (!combine) {
         for (const update of run) {
@@ -2228,31 +2250,19 @@ export default class ActivityService extends LoggerBase {
         continue
       }
 
-      // an activity that fails validation fails alone, as it does without combining
-      const combinable: IPayloadMemberUpdate[] = []
+      // An activity that fails validation is updated alone, in its place in timestamp order, so it
+      // fails on its own as without combining and a wrong verdict can't reorder the updates.
+      let combinable: IPayloadMemberUpdate[] = []
       for (const update of run) {
         if (await hasValidAttributes(update)) {
           combinable.push(update)
         } else {
+          await updateCombined(dbMember, combinable)
+          combinable = []
           await updateSingleActivity(dbMember, update)
         }
       }
-      if (combinable.length === 0) {
-        continue
-      }
-
-      try {
-        setMemberId(combinable, await updateMember(dbMember, combinable))
-      } catch (runErr) {
-        this.log.warn(
-          { err: runErr, memberId: dbMember.id, activities: combinable.length },
-          'Member update failed, retrying per activity!',
-        )
-        redirectToSurvivor(dbMember, runErr)
-        for (const update of combinable) {
-          await updateSingleActivity(dbMember, update)
-        }
-      }
+      await updateCombined(dbMember, combinable)
     }
 
     // Updates that ran before a later one merged their member away must follow that redirect too.
