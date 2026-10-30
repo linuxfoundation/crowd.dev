@@ -293,16 +293,14 @@ function followRedirects(redirects: Map<string, string>, memberId: string): stri
   return id
 }
 
-// validateAttributes turns a plain value into { [platform]: value } before mergeData checks it
-function hasGithubBotFlag(
-  attributes: Record<string, unknown> | undefined,
-  platform?: string,
-): boolean {
+// Takes attributes in validateAttributes' { [platform]: value } form, as mergeData checks them
+function hasGithubBotFlag(attributes: Record<string, unknown> | undefined): boolean {
   const isBot = attributes?.[MemberAttributeName.IS_BOT]
-  if (isBot && typeof isBot === 'object') {
-    return !!(isBot as Record<string, unknown>)[PlatformType.GITHUB]
-  }
-  return platform === PlatformType.GITHUB && !!isBot
+  return (
+    !!isBot &&
+    typeof isBot === 'object' &&
+    !!(isBot as Record<string, unknown>)[PlatformType.GITHUB]
+  )
 }
 
 function combineMemberUpdates(
@@ -349,11 +347,10 @@ function combineMemberUpdates(
   }
 
   const attributes = updatesOldestFirst
-    .filter(
-      (u) =>
-        u.member.attributes && !(dropBotFlagged && hasGithubBotFlag(u.member.attributes, platform)),
-    )
-    .map((u) => withoutUrlLocation(asPlatformValues(u.member.attributes)))
+    .filter((u) => u.member.attributes)
+    .map((u) => asPlatformValues(u.member.attributes))
+    .filter((attributes) => !(dropBotFlagged && hasGithubBotFlag(attributes)))
+    .map(withoutUrlLocation)
   const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
   const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
 
@@ -2582,12 +2579,13 @@ export default class ActivityService extends LoggerBase {
     platform: PlatformType,
     dbMember?: IDbMember,
   ): unknown {
-    // validateAttributes stores a plain value as { [platform]: value }
+    // validateAttributes stores a plain value as { [platform]: value } and drops empty values
     const incoming = member.attributes[attName]
-    const incomingValue =
+    const platformValue =
       incoming && typeof incoming === 'object'
         ? (incoming as Record<string, unknown>)[platform]
         : incoming
+    const incomingValue = isEmptyAttributeValue(platformValue) ? undefined : platformValue
 
     let result: unknown
     if (dbMember && dbMember.attributes[attName]) {
