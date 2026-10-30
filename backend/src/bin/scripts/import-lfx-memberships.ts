@@ -15,13 +15,21 @@ import moment from 'moment'
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getCountryName } from '@crowd/common'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { LfxMembership, insertLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
+  deleteOrgAttributes,
+  findOrgAttributes,
   findOrgIdByUniqueDisplayName,
   findOrgIdsByVerifiedDomains,
+  recalculateOrgAttributeDefaults,
+  upsertOrgAttributes,
 } from '@crowd/data-access-layer/src/organizations'
 import { findProjectGroupByName } from '@crowd/data-access-layer/src/segments'
+import { getServiceLogger } from '@crowd/logging'
+import { SnowflakeClient } from '@crowd/snowflake'
+import { OrganizationAttributeSource } from '@crowd/types'
 
 const options = [
   {
@@ -97,6 +105,58 @@ async function findOrgId(qx: QueryExecutor, orgIdByAccountDomain: Map<string, st
   return findOrgIdByUniqueDisplayName(qx, name)
 }
 
+interface ISalesforceCountryRow {
+  ASSET_ID: string | null
+  ACCOUNT_ID: string
+  BILLING_COUNTRY_CODE: string
+}
+
+async function fetchSalesforceCountryCodes(): Promise<Map<string, string>> {
+  const snowflake = SnowflakeClient.fromEnv({ parentLog: getServiceLogger() })
+
+  try {
+    const rows = await snowflake.run<ISalesforceCountryRow>(`
+      SELECT DISTINCT asset_id, account_id, billing_country_code
+      FROM analytics.silver_dim.memberships
+      WHERE billing_country_code IS NOT NULL
+    `)
+
+    const countryCodeBySalesforceId = new Map<string, string>()
+    for (const row of rows) {
+      countryCodeBySalesforceId.set(row.ACCOUNT_ID, row.BILLING_COUNTRY_CODE)
+      if (row.ASSET_ID) {
+        countryCodeBySalesforceId.set(row.ASSET_ID, row.BILLING_COUNTRY_CODE)
+      }
+    }
+
+    return countryCodeBySalesforceId
+  } finally {
+    await snowflake.destroy()
+  }
+}
+
+async function setSalesforceCountry(qx: QueryExecutor, organizationId: string, country: string) {
+  await qx.tx(async (tx) => {
+    const staleCountries = (await findOrgAttributes(tx, organizationId)).filter(
+      (attribute) =>
+        attribute.name === 'country' &&
+        attribute.source === OrganizationAttributeSource.SALESFORCE &&
+        attribute.value !== country,
+    )
+
+    await deleteOrgAttributes(tx, organizationId, staleCountries)
+    await upsertOrgAttributes(tx, organizationId, [
+      {
+        name: 'country',
+        source: OrganizationAttributeSource.SALESFORCE,
+        default: false,
+        value: country,
+      },
+    ])
+    await recalculateOrgAttributeDefaults(tx, organizationId, ['country'])
+  })
+}
+
 if (parameters.help || !parameters.file || !parameters.tenantId) {
   console.log(usage)
 } else {
@@ -104,7 +164,7 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
     const prodDb = await databaseInit()
     const repoOptions = { database: prodDb } as IRepositoryOptions
 
-    const fileData = fs.readFileSync(path.resolve(parameters.file), 'latin1')
+    const fileData = fs.readFileSync(path.resolve(parameters.file), 'utf8')
 
     const records = parse(fileData, {
       columns: true,
@@ -116,6 +176,13 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
     }
 
     console.log('New records:', records.length)
+
+    const countryCodeBySalesforceId = await fetchSalesforceCountryCodes()
+    console.log('Salesforce country codes:', countryCodeBySalesforceId.size)
+
+    const countryCodesByOrgId = new Map<string, Set<string>>()
+    const recordsWithoutOrg = []
+    let recordsWithoutCountry = 0
 
     await SequelizeRepository.withTx(repoOptions, async (transaction) => {
       const qx = SequelizeRepository.getQueryExecutor({ ...repoOptions, transaction })
@@ -165,8 +232,49 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
           i,
           orgName,
         )
+
+        const countryCode = countryCodeBySalesforceId.get(record['Full ID'])
+        if (!countryCode) {
+          recordsWithoutCountry++
+        }
+
+        if (!orgId) {
+          recordsWithoutOrg.push(record)
+        } else if (countryCode) {
+          countryCodesByOrgId.set(
+            orgId,
+            (countryCodesByOrgId.get(orgId) ?? new Set()).add(countryCode),
+          )
+        }
       }
     })
+
+    console.log('Records without a Salesforce country:', recordsWithoutCountry)
+
+    const qx = SequelizeRepository.getQueryExecutor(repoOptions)
+    let orgsWithCountry = 0
+
+    for (const [organizationId, countryCodes] of countryCodesByOrgId) {
+      const country = countryCodes.size === 1 ? getCountryName([...countryCodes][0]) : undefined
+      if (!country) {
+        console.log(
+          'Skipped organization with conflicting or invalid Salesforce countries:',
+          organizationId,
+          [...countryCodes].join(', '),
+        )
+        continue
+      }
+
+      await setSalesforceCountry(qx, organizationId, country)
+      orgsWithCountry++
+    }
+
+    console.log('Organizations with a Salesforce country:', orgsWithCountry)
+
+    console.log('Records without organization:', recordsWithoutOrg.length)
+    for (const record of recordsWithoutOrg) {
+      console.log(`${record['Account Name']}\t${record['Full ID']}`)
+    }
 
     process.exit(0)
   })
