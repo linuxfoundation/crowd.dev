@@ -1,17 +1,25 @@
 import { assertCredentialKind, getCredential } from '@crowd/connectors'
 import { credlyConnector } from '@crowd/connectors/src/connectors/credly'
 import { mintCredlyAccessToken } from '@crowd/connectors/src/connectors/credly/oauth'
-import { findSyncUnitByChannelName, upsertSyncUnits } from '@crowd/data-access-layer/src/connectors'
+import {
+  findSyncUnitByChannelName,
+  mergeSyncUnitWatermark,
+  upsertSyncUnits,
+} from '@crowd/data-access-layer/src/connectors'
+import type { ISyncUnit } from '@crowd/data-access-layer/src/connectors/types'
 import { findOrCreateCredlyIntegration } from '@crowd/data-access-layer/src/credly'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { findSegmentById } from '@crowd/data-access-layer/src/segments'
 import { getServiceLogger } from '@crowd/logging'
 
 const log = getServiceLogger()
 
 function usage(): never {
-  log.error('Usage: seed-credly-sync-unit --segment-id <uuid> [--since <iso timestamp>]')
+  log.error(
+    'Usage: seed-credly-sync-unit --segment-id <uuid> [--since <iso timestamp>] [--backfill-until <iso timestamp> --backfill-floor <iso timestamp>]',
+  )
   process.exit(1)
 }
 
@@ -25,19 +33,63 @@ function takeFlag(argv: string[], flag: string): string | undefined {
   return value
 }
 
-function parseArgs(rawArgv: string[]): { segmentId: string; since?: string } {
+interface Backfill {
+  floor: string
+  top: string
+}
+
+function parseBackfill(until: string | undefined, floor: string | undefined): Backfill | undefined {
+  if (!until && !floor) return undefined
+  const untilMs = Date.parse(until ?? '')
+  const floorMs = Date.parse(floor ?? '')
+  if (!Number.isFinite(untilMs) || !Number.isFinite(floorMs) || floorMs >= untilMs) usage()
+  return { floor: new Date(floorMs).toISOString(), top: new Date(untilMs).toISOString() }
+}
+
+function parseArgs(rawArgv: string[]): { segmentId: string; since?: string; backfill?: Backfill } {
   const argv = rawArgv.filter((arg) => arg !== '--')
   const segmentId = takeFlag(argv, '--segment-id')
   const since = takeFlag(argv, '--since')
+  const backfill = parseBackfill(
+    takeFlag(argv, '--backfill-until'),
+    takeFlag(argv, '--backfill-floor'),
+  )
   if (!segmentId || argv.length > 0 || (since && !Number.isFinite(Date.parse(since)))) {
     usage()
   }
-  return { segmentId, since }
+  return { segmentId, since, backfill }
+}
+
+function isoOrNull(value: unknown): string | null {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
+}
+
+// The top must meet what is already covered: the floor of the last backfill, or the live cursor
+// before any; the badges between the two would otherwise never be listed.
+async function armBackfill(qx: QueryExecutor, unit: ISyncUnit, backfill: Backfill): Promise<void> {
+  const covered = isoOrNull(unit.watermark?.historyFrom) ?? isoOrNull(unit.watermark?.since)
+  if (!covered) {
+    throw new Error(
+      `badge poll unit ${unit.id} has no live cursor yet: let it run once or seed it with --since`,
+    )
+  }
+  if (Date.parse(backfill.top) < Date.parse(covered)) {
+    throw new Error(
+      `--backfill-until ${backfill.top} leaves a gap below ${covered}, the earliest point unit ${unit.id} covers`,
+    )
+  }
+  const armed = await mergeSyncUnitWatermark(qx, unit.id, { backfill })
+  if (armed === 0) {
+    throw new Error(
+      `badge poll unit ${unit.id} could not be armed: it is running or a backfill is already pending`,
+    )
+  }
+  log.info({ unitId: unit.id, ...backfill }, 'credly backfill armed')
 }
 
 setImmediate(async () => {
   try {
-    const { segmentId, since } = parseArgs(process.argv.slice(2))
+    const { segmentId, since, backfill } = parseArgs(process.argv.slice(2))
 
     const db = await getDbConnection(WRITE_DB_CONFIG())
     const qx = pgpQx(db)
@@ -68,6 +120,7 @@ setImmediate(async () => {
       })),
     )
 
+    const existingUnits: ISyncUnit[] = []
     for (const unit of units) {
       const existing = await findSyncUnitByChannelName(
         qx,
@@ -81,13 +134,21 @@ setImmediate(async () => {
           `sync unit ${existing.id} (${unit.syncName}) already exists and owns its watermark: re-run without --since`,
         )
       }
+      if (existing) existingUnits.push(existing)
     }
 
     // emitEnabled stays false (shadow mode) until the shadow run is reviewed; it is insert-only.
     const unitsUpserted = await upsertSyncUnits(qx, units)
+    if (backfill) {
+      const badgePollUnits = existingUnits.filter((unit) => unit.syncName === 'badgePoll')
+      if (badgePollUnits.length === 0) {
+        throw new Error('seed the badge poll unit first, then arm the backfill on a second run')
+      }
+      for (const unit of badgePollUnits) await armBackfill(qx, unit, backfill)
+    }
 
     log.info(
-      { integrationId: integration.id, segmentId, syncNames, since, unitsUpserted },
+      { integrationId: integration.id, segmentId, syncNames, since, backfill, unitsUpserted },
       'seeding complete',
     )
     process.exit(0)
