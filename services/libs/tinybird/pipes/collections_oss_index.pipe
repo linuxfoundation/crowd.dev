@@ -172,7 +172,9 @@ SQL >
     LEFT JOIN collections_oss_index_top_projects p USING (collectionId)
     LEFT JOIN collections_oss_index_projects_count pc USING (collectionId)
     JOIN collections_oss_index_collections_deduplicated cd ON cd.id = a.collectionId
-    {% if defined(pageSize) %}
-        LIMIT {{ Int8(pageSize, 10, description="Limit no of results", required=False) }}
+    ORDER BY {{ column(orderBy, 'totalContributors') }} DESC, a.collectionId ASC
+    {% if defined(limit) %} LIMIT {{ Int32(limit, 10) }} OFFSET {{ Int32(offset, 0) }}
+    {% elif defined(pageSize) %}
+        LIMIT {{ Int32(pageSize, 10, description="Limit no of results", required=False) }}
         OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
     {% end %}
