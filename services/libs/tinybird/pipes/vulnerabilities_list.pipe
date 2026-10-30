@@ -48,7 +48,9 @@ SQL >
             ) == 'ASC' %} ASC
             {% else %} DESC
             {% end %},
-            v.vulnerabilityId ASC
-        LIMIT {{ Int32(pageSize, 10) }}
-        OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+            v.vulnerabilityId ASC,
+            v.packageName ASC
+        {% if defined(limit) %} LIMIT {{ Int32(limit, 10) }} OFFSET {{ Int32(offset, 0) }}
+        {% else %} LIMIT {{ Int32(pageSize, 10) }} OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+        {% end %}
     {% end %}

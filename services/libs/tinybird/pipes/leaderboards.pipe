@@ -1,6 +1,7 @@
 DESCRIPTION >
     Main leaderboard query endpoint that retrieves leaderboard data from the consolidated datasource.
     Supports filtering by project slug, leaderboard type, and search term. Includes pagination support.
+    Pages by `page` and `pageSize`, or by row `limit` and `offset` when `limit` is given.
     Automatically filters to the latest snapshotId per leaderboardType for fresh data.
 
 NODE leaderboards_list
@@ -75,6 +76,7 @@ SQL >
             }}
         {% end %}
     ORDER BY l.rank ASC
-    {% if not defined(maxRank) %}
+    {% if defined(limit) %} LIMIT {{ Int32(limit, 20) }} OFFSET {{ Int32(offset, 0) }}
+    {% elif not defined(maxRank) %}
         LIMIT {{ Int32(pageSize, 20) }} OFFSET {{ Int32(page, 0) * Int32(pageSize, 20) }}
     {% end %}
