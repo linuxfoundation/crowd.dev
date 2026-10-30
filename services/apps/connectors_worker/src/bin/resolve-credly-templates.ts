@@ -18,6 +18,7 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { SnowflakeClient } from '@crowd/snowflake'
 
+import { activeHeld, buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
 import {
   applyDecisions,
   buildPlan,
@@ -30,7 +31,9 @@ const log = getServiceLogger()
 const HELD_QUEUE_PRINTED = 20
 
 function usage(): never {
-  log.error('Usage: resolve-credly-templates --integration-id <uuid> [--apply] [--out <file>]')
+  log.error(
+    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>]',
+  )
   process.exit(1)
 }
 
@@ -50,19 +53,29 @@ function takeSwitch(argv: string[], flag: string): boolean {
   return true
 }
 
-function parseArgs(rawArgv: string[]): { integrationId: string; apply: boolean; outFile: string } {
+interface Args {
+  integrationId: string
+  apply: boolean
+  notify: 'changes' | 'digest' | null
+  outFile: string
+}
+
+function parseArgs(rawArgv: string[]): Args {
   const argv = rawArgv.filter((arg) => arg !== '--')
   const integrationId = takeFlag(argv, '--integration-id')
   const apply = takeSwitch(argv, '--apply')
+  const digest = takeSwitch(argv, '--digest')
+  const notify = digest ? 'digest' : takeSwitch(argv, '--notify') ? 'changes' : null
+  if (notify && !apply) usage()
   const outFile =
     takeFlag(argv, '--out') ??
     join(tmpdir(), `credly-resolve-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
   if (!integrationId || argv.length > 0) usage()
-  return { integrationId, apply, outFile }
+  return { integrationId, apply, notify, outFile }
 }
 
 async function main(): Promise<void> {
-  const { integrationId, apply, outFile } = parseArgs(process.argv.slice(2))
+  const { integrationId, apply, notify, outFile } = parseArgs(process.argv.slice(2))
   const db = await getDbConnection(WRITE_DB_CONFIG())
   const qx = pgpQx(db)
 
@@ -151,13 +164,36 @@ async function main(): Promise<void> {
       },
       'credly resolve applied',
     )
+
+    if (notify) {
+      const report = buildHeldQueueReport(
+        activeHeld(stored),
+        heldQueue,
+        plan,
+        new Map(templates.map((template) => [template.id, template.url ?? null])),
+      )
+      if (notify === 'digest' || report.changed) {
+        const posted = await postHeldQueueReport(report)
+        if (!posted) {
+          process.exitCode = 1
+          log.error({ title: report.title }, 'credly held queue report was not posted to slack')
+        } else {
+          log.info(
+            { title: report.title, changed: report.changed },
+            'credly held queue report posted',
+          )
+        }
+      } else {
+        log.info({ title: report.title }, 'credly held queue unchanged, nothing posted')
+      }
+    }
   } finally {
     await snowflake.destroy()
   }
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => process.exit(process.exitCode ?? 0))
   .catch((err) => {
     log.error({ err }, 'credly resolve failed')
     process.exit(1)
