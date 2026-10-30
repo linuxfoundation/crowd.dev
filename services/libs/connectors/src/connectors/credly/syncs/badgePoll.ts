@@ -4,6 +4,7 @@ import { ConnectorError, ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadge, fetchBadgesPage } from '../apiClient'
+import type { CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
 import {
@@ -31,14 +32,57 @@ const FIRST_RUN_LOOKBACK_MS = DAY_MS
 // window ever lists it: it is reached only through the replaced badge's link, chain by chain.
 export const MAX_REPLACEMENT_HOPS = 5
 
-export type CredlyBadgePollWatermark = {
+type Window = {
   since: string
+  until: string
+  page: number
+}
+
+// Walked from `top` down to `floor` once the live cursor is caught up; a window always starts at
+// max(floor, top - MAX_WINDOW_MS), so `top` alone says where the next one goes.
+export type CredlyBackfillCursor = {
+  floor: string
+  top: string
+  since: string | null
   until: string | null
   page: number
 }
 
+export type CredlyBadgePollWatermark = {
+  since: string
+  until: string | null
+  page: number
+  backfill?: CredlyBackfillCursor
+}
+
 function parsableIso(value: unknown): string | null {
   return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
+}
+
+function savedPage(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : 1
+}
+
+function readBackfill(raw: unknown): CredlyBackfillCursor | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const cursor = raw as Record<string, unknown>
+  const floor = parsableIso(cursor.floor)
+  const top = parsableIso(cursor.top)
+  if (!floor || !top || wholeSecond(top) <= wholeSecond(floor)) return undefined
+  const since = parsableIso(cursor.since)
+  const until = parsableIso(cursor.until)
+  const open =
+    since !== null &&
+    until !== null &&
+    wholeSecond(until) > wholeSecond(since) &&
+    wholeSecond(until) <= wholeSecond(top)
+  return {
+    floor,
+    top,
+    since: open ? since : null,
+    until: open ? until : null,
+    page: open ? savedPage(cursor.page) : 1,
+  }
 }
 
 function readWatermark(
@@ -49,12 +93,16 @@ function readWatermark(
     parsableIso(raw?.since) ?? new Date(startedAtMs - FIRST_RUN_LOOKBACK_MS).toISOString()
   const until = parsableIso(raw?.until)
   const resumable = until !== null && wholeSecond(until) > wholeSecond(since)
-  const page = raw?.page
-  const savedPage = typeof page === 'number' && Number.isInteger(page) && page >= 1 ? page : 1
-  return { since, until: resumable ? until : null, page: resumable ? savedPage : 1 }
+  const backfill = readBackfill(raw?.backfill)
+  return {
+    since,
+    until: resumable ? until : null,
+    page: resumable ? savedPage(raw?.page) : 1,
+    ...(backfill && { backfill }),
+  }
 }
 
-function openWindow(since: string, horizonMs: number): CredlyBadgePollWatermark | null {
+function openWindow(since: string, horizonMs: number): Window | null {
   const sinceMs = Date.parse(since)
   if (horizonMs - sinceMs < 1000) return null
   return {
@@ -64,32 +112,53 @@ function openWindow(since: string, horizonMs: number): CredlyBadgePollWatermark 
   }
 }
 
+function backfillWindowStart(cursor: CredlyBackfillCursor): string {
+  return new Date(
+    Math.max(Date.parse(cursor.floor), Date.parse(cursor.top) - MAX_WINDOW_MS),
+  ).toISOString()
+}
+
+function openBackfillWindow(cursor: CredlyBackfillCursor): CredlyBackfillCursor {
+  return { ...cursor, since: backfillWindowStart(cursor), until: cursor.top, page: 1 }
+}
+
+function afterBackfillDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor | undefined {
+  if (wholeSecond(cursor.until) < wholeSecond(cursor.top)) {
+    return { ...cursor, since: cursor.until, until: cursor.top, page: 1 }
+  }
+  const top = backfillWindowStart(cursor)
+  if (wholeSecond(top) <= wholeSecond(cursor.floor)) return undefined
+  return { ...cursor, top, since: null, until: null, page: 1 }
+}
+
+function withBackfill(
+  watermark: CredlyBadgePollWatermark,
+  backfill: CredlyBackfillCursor | undefined,
+): CredlyBadgePollWatermark {
+  const { backfill: _dropped, ...forward } = watermark
+  return backfill ? { ...forward, backfill } : forward
+}
+
 // Numbered pages over a mutable sort key skip a badge whenever an earlier one leaves the window
 // mid-walk, so the lower bound follows the last badge seen and the page number only breaks ties.
-function nextPage(
-  watermark: CredlyBadgePollWatermark,
-  badges: CredlyBadge[],
-): CredlyBadgePollWatermark {
+function nextPage(window: Window, badges: CredlyBadge[]): Window {
   const lastSeenSecond = wholeSecond(badges[badges.length - 1]?.state_updated_at ?? '')
-  if (
-    lastSeenSecond > wholeSecond(watermark.since) &&
-    lastSeenSecond < wholeSecond(watermark.until)
-  ) {
-    return { ...watermark, since: new Date(lastSeenSecond * 1000).toISOString(), page: 1 }
+  if (lastSeenSecond > wholeSecond(window.since) && lastSeenSecond < wholeSecond(window.until)) {
+    return { ...window, since: new Date(lastSeenSecond * 1000).toISOString(), page: 1 }
   }
-  return { ...watermark, page: watermark.page + 1 }
+  return { ...window, page: window.page + 1 }
 }
 
 function wholeSecond(iso: string): number {
   return Math.floor(Date.parse(iso) / 1000)
 }
 
-function halveWindow(watermark: CredlyBadgePollWatermark): CredlyBadgePollWatermark | null {
-  const sinceMs = Date.parse(watermark.since)
-  const untilMs = Date.parse(watermark.until)
+function halveWindow(window: Window): Window | null {
+  const sinceMs = Date.parse(window.since)
+  const untilMs = Date.parse(window.until)
   const halfMs = Math.floor((untilMs - sinceMs) / 2)
   if (halfMs < MIN_WINDOW_MS) return null
-  return { since: watermark.since, until: new Date(sinceMs + halfMs).toISOString(), page: 1 }
+  return { since: window.since, until: new Date(sinceMs + halfMs).toISOString(), page: 1 }
 }
 
 // A timeout or an unreachable host is also provider.unavailable, but halving does not help there.
@@ -159,6 +228,9 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   if (!ctx.watermark) {
     await ctx.commitWatermark(watermark)
   }
+  if (ctx.watermark?.backfill && !watermark.backfill) {
+    ctx.log.warn({ backfill: ctx.watermark.backfill }, 'credly backfill cursor unreadable, dropped')
+  }
 
   const counters = {
     pagesFetched: 0,
@@ -175,6 +247,8 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     splits: 0,
     replacements: 0,
     replacementsMissing: 0,
+    backfillPages: 0,
+    backfillWindows: 0,
   }
   const lockedThisRun = new Set<string>()
 
@@ -320,49 +394,94 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     return all
   }
 
+  const fetchOrHalve = async (
+    window: Window,
+  ): Promise<{ page: CredlyPage<CredlyBadge> } | { halved: Window }> => {
+    try {
+      const page = await fetchBadgesPage(
+        ctx.http,
+        { organizationId, window: { min: window.since, max: window.until }, page: window.page },
+        ctx.log,
+      )
+      counters.pagesFetched += 1
+      return { page }
+    } catch (err) {
+      const halved = isCredlyServerError(err) ? halveWindow(window) : null
+      if (!halved) throw err
+      counters.splits += 1
+      ctx.log.warn(
+        { since: window.since, until: window.until, halvedUntil: halved.until },
+        'credly badge window failed, retrying its first half',
+      )
+      return { halved }
+    }
+  }
+
+  const drainedPage = (window: Window, page: CredlyPage<CredlyBadge>) =>
+    window.page >= page.metadata.total_pages
+
   while (counters.pagesFetched < MAX_PAGES_PER_RUN && ctx.hasRunBudget()) {
     if (!watermark.until) {
       const next = openWindow(watermark.since, horizonMs)
       if (!next) break
-      watermark = next
+      watermark = { ...watermark, ...next }
       await ctx.commitWatermark(watermark)
     }
+    const window: Window = { since: watermark.since, until: watermark.until, page: watermark.page }
 
-    let page
-    try {
-      page = await fetchBadgesPage(
-        ctx.http,
-        {
-          organizationId,
-          window: { min: watermark.since, max: watermark.until },
-          page: watermark.page,
-        },
-        ctx.log,
-      )
-    } catch (err) {
-      const halved = isCredlyServerError(err) ? halveWindow(watermark) : null
-      if (!halved) throw err
-      counters.splits += 1
-      ctx.log.warn(
-        { since: watermark.since, until: watermark.until, halvedUntil: halved.until },
-        'credly badge window failed, retrying its first half',
-      )
-      watermark = halved
+    const result = await fetchOrHalve(window)
+    if ('halved' in result) {
+      watermark = { ...watermark, ...result.halved }
       await ctx.commitWatermark(watermark)
       continue
     }
-    counters.pagesFetched += 1
 
-    const badges = await withReplacements(page.data)
+    const badges = await withReplacements(result.page.data)
     if (!badges) break
     await emitPage(badges)
 
-    const drained = watermark.page >= page.metadata.total_pages
-    if (drained) {
+    if (drainedPage(window, result.page)) {
       counters.windows += 1
-      watermark = { since: watermark.until, until: null, page: 1 }
+      watermark = { ...watermark, since: window.until, until: null, page: 1 }
     } else {
-      watermark = nextPage(watermark, page.data)
+      watermark = { ...watermark, ...nextPage(window, result.page.data) }
+    }
+    await ctx.commitWatermark(watermark)
+  }
+
+  while (
+    watermark.backfill &&
+    !watermark.until &&
+    counters.pagesFetched < MAX_PAGES_PER_RUN &&
+    ctx.hasRunBudget()
+  ) {
+    let cursor = watermark.backfill
+    if (!cursor.since || !cursor.until) {
+      cursor = openBackfillWindow(cursor)
+      watermark = withBackfill(watermark, cursor)
+      await ctx.commitWatermark(watermark)
+    }
+    const window: Window = { since: cursor.since, until: cursor.until, page: cursor.page }
+
+    const result = await fetchOrHalve(window)
+    if ('halved' in result) {
+      watermark = withBackfill(watermark, { ...cursor, ...result.halved })
+      await ctx.commitWatermark(watermark)
+      continue
+    }
+    counters.backfillPages += 1
+
+    const badges = await withReplacements(result.page.data)
+    if (!badges) break
+    await emitPage(badges)
+
+    if (drainedPage(window, result.page)) {
+      counters.backfillWindows += 1
+      const next = afterBackfillDrain(cursor)
+      if (!next) ctx.log.info({ floor: cursor.floor }, 'credly backfill reached its floor')
+      watermark = withBackfill(watermark, next)
+    } else {
+      watermark = withBackfill(watermark, { ...cursor, ...nextPage(window, result.page.data) })
     }
     await ctx.commitWatermark(watermark)
   }
@@ -372,5 +491,5 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     { event: 'credly_badge_poll_run', ...counters, ...watermark, caughtUp },
     'credly badge poll run',
   )
-  return caughtUp ? { complete: true } : { complete: false }
+  return { complete: caughtUp && !watermark.backfill }
 }

@@ -20,6 +20,7 @@ import {
   listSyncUnitChannelsForIntegration,
   alignSyncUnitChannelName,
   lockSyncUnitChannel,
+  mergeSyncUnitWatermark,
   reassertUnitClaim,
   recordRunFailure,
   recordRunTimeout,
@@ -85,6 +86,13 @@ async function createSyncUnit(
     },
   )
   return id
+}
+
+async function readUnitById(
+  qx: QueryExecutor,
+  id: string,
+): Promise<{ watermark: Record<string, unknown> | null }> {
+  return qx.selectOne(`SELECT watermark FROM integration.sync_units WHERE id = $(id)`, { id })
 }
 
 describe('listShadowDiffUnits', () => {
@@ -322,6 +330,52 @@ describe('upsertSyncUnits', () => {
     expect((await readUnit(qx, integrationId, 'issues')).watermark).toEqual({
       phase: 'incremental',
     })
+  })
+})
+
+describe('mergeSyncUnitWatermark', () => {
+  test('adds the patch next to the existing keys', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'org',
+      syncName: 'badgePoll',
+      watermark: { since: '2026-10-27T00:00:00.000Z' },
+    })
+
+    expect(await mergeSyncUnitWatermark(qx, id, { backfill: { floor: '2019-03-01' } })).toBe(1)
+    expect((await readUnitById(qx, id)).watermark).toEqual({
+      since: '2026-10-27T00:00:00.000Z',
+      backfill: { floor: '2019-03-01' },
+    })
+  })
+
+  test('starts from an empty watermark', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'org',
+      syncName: 'badgePoll',
+    })
+
+    expect(await mergeSyncUnitWatermark(qx, id, { backfill: { floor: '2019-03-01' } })).toBe(1)
+    expect((await readUnitById(qx, id)).watermark).toEqual({ backfill: { floor: '2019-03-01' } })
+  })
+
+  test('skips a unit that already has the key or is running', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    const armed = await createSyncUnit(qx, integrationId, {
+      channelName: 'armed',
+      syncName: 'badgePoll',
+      watermark: { backfill: { floor: '2020-01-01' } },
+    })
+    const running = await createSyncUnit(qx, integrationId, {
+      channelName: 'running',
+      syncName: 'badgePoll',
+      lockedAt: new Date().toISOString(),
+    })
+
+    expect(await mergeSyncUnitWatermark(qx, armed, { backfill: { floor: '2019-03-01' } })).toBe(0)
+    expect(await mergeSyncUnitWatermark(qx, running, { backfill: { floor: '2019-03-01' } })).toBe(0)
+    expect((await readUnitById(qx, armed)).watermark).toEqual({ backfill: { floor: '2020-01-01' } })
   })
 })
 

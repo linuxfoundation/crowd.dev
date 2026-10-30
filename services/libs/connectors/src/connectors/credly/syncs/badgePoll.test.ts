@@ -1089,3 +1089,161 @@ describe('runBadgePoll replacements', () => {
     expect(emitted[0]).toHaveLength(4)
   })
 })
+
+describe('runBadgePoll backfill', () => {
+  const FLOOR = '2026-10-10T00:00:00.000Z'
+  const TOP = '2026-10-20T00:00:00.000Z'
+  const MID = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    mockedFetchBadgesPage.mockReset()
+    mockedFetchBadge.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('walks one window back from the top once the live cursor is caught up, and stays incomplete', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([badge({ id: 'old-1' })]))
+    let budgetChecks = 0
+    const { ctx, emitted, lastWatermark } = makeCtx(
+      { since: HORIZON, backfill: { floor: FLOOR, top: TOP } },
+      () => budgetChecks++ < 2,
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(requestedParams()).toEqual([
+      { organizationId: ORGANIZATION_ID, window: { min: MID, max: TOP }, page: 1 },
+    ])
+    expect(emitted).toHaveLength(1)
+    expect(lastWatermark()).toEqual({
+      since: HORIZON,
+      until: null,
+      page: 1,
+      backfill: { floor: FLOOR, top: MID, since: null, until: null, page: 1 },
+    })
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'credly_badge_poll_run',
+        backfillPages: 1,
+        backfillWindows: 1,
+      }),
+      expect.any(String),
+    )
+  })
+
+  it('clips the last window at the floor, then drops the cursor and completes', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP },
+    })
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: MID, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
+    expect(LOG.info).toHaveBeenCalledWith({ floor: FLOOR }, 'credly backfill reached its floor')
+  })
+
+  it('serves the live window first and keeps the backfill cursor through it', async () => {
+    const since = '2026-10-23T00:00:00.000Z'
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const { ctx, watermarks } = makeCtx({ since, backfill: { floor: FLOOR, top: TOP } })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: since, max: HORIZON },
+      { min: MID, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(watermarks[0]).toEqual({
+      since,
+      until: HORIZON,
+      page: 1,
+      backfill: { floor: FLOOR, top: TOP, since: null, until: null, page: 1 },
+    })
+  })
+
+  it('resumes a cut backfill window from its saved page', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([], 3, 3))
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: MID, until: TOP, page: 3 },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams()[0]).toEqual({
+      organizationId: ORGANIZATION_ID,
+      window: { min: MID, max: TOP },
+      page: 3,
+    })
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
+  })
+
+  it('halves a failing backfill window and walks its upper half before moving down', async () => {
+    const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
+    mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
+    const { ctx } = makeCtx({ since: HORIZON, backfill: { floor: FLOOR, top: TOP } })
+
+    await runBadgePoll(ctx)
+
+    const half = new Date(Date.parse(MID) + MAX_WINDOW_MS / 2).toISOString()
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: MID, max: TOP },
+      { min: MID, max: half },
+      { min: half, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+  })
+
+  it('pauses at the page cap with the backfill position saved', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(
+      page([badge({ id: 'b', state_updated_at: MID })], 1, 1000),
+    )
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP },
+    })
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(mockedFetchBadgesPage).toHaveBeenCalledTimes(MAX_PAGES_PER_RUN)
+    expect(lastWatermark()).toEqual({
+      since: HORIZON,
+      until: null,
+      page: 1,
+      backfill: { floor: FLOOR, top: TOP, since: MID, until: TOP, page: MAX_PAGES_PER_RUN + 1 },
+    })
+  })
+
+  it('ignores a backfill cursor it cannot read', async () => {
+    const { ctx, watermarks } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: 'not a date' },
+    })
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(watermarks).toEqual([])
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { backfill: { floor: FLOOR, top: 'not a date' } },
+      'credly backfill cursor unreadable, dropped',
+    )
+  })
+})

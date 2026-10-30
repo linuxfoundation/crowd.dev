@@ -356,6 +356,24 @@ export async function takeOverSyncUnit(
   })
 }
 
+// Keys already in the watermark are left alone and a running unit is skipped: the run holds the
+// watermark it read at start and would commit over the patch.
+export async function mergeSyncUnitWatermark(
+  qx: QueryExecutor,
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET watermark = COALESCE(watermark, '{}'::jsonb) || $(patch)::jsonb,
+         "updatedAt" = now()
+     WHERE id = $(id)
+       AND "lockedAt" IS NULL
+       AND NOT (COALESCE(watermark, '{}'::jsonb) ?| $(keys)::text[])`,
+    { id, patch: JSON.stringify(patch), keys: Object.keys(patch) },
+  )
+}
+
 export async function pauseSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
   return qx.result(
     `UPDATE integration.sync_units
