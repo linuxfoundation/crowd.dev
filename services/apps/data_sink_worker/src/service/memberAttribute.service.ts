@@ -4,6 +4,7 @@ import {
   getMemberAttributeSettings,
   getPlatformPriorityArray,
 } from '@crowd/data-access-layer/src/members/attributeSettings'
+import { IDbMemberAttributeSetting } from '@crowd/data-access-layer/src/members/types'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { RedisClient } from '@crowd/redis'
@@ -32,8 +33,10 @@ export default class MemberAttributeService extends LoggerBase {
   public async validateAttributes(
     platform: PlatformType,
     attributes: Record<string, unknown>,
+    attributeSettings?: IDbMemberAttributeSetting[],
   ): Promise<Record<string, unknown>> {
-    const settings = await getMemberAttributeSettings(dbStoreQx(this.store), this.redis)
+    const settings =
+      attributeSettings ?? (await getMemberAttributeSettings(dbStoreQx(this.store), this.redis))
     const memberAttributeSettings = settings.reduce((acc, attribute) => {
       acc[attribute.name] = attribute
       return acc

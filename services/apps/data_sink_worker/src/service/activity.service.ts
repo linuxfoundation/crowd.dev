@@ -32,6 +32,8 @@ import {
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
+import { getMemberAttributeSettings } from '@crowd/data-access-layer/src/members/attributeSettings'
+import { IDbMemberAttributeSetting } from '@crowd/data-access-layer/src/members/types'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -2205,14 +2207,20 @@ export default class ActivityService extends LoggerBase {
       this.pgStore,
       this.log,
     )
+    // read once per batch, outside the try: a failed read must fail the batch, not mark activities
+    // as invalid
+    let attributeSettings: Promise<IDbMemberAttributeSetting[]> | undefined
     const hasValidAttributes = async ({ member, payload }: IPayloadMemberUpdate) => {
       if (!member.attributes) {
         return true
       }
+      attributeSettings ??= getMemberAttributeSettings(this.pgQx, this.redisClient)
+      const settings = await attributeSettings
       try {
         await memberAttributeService.validateAttributes(
           payload.platform,
           structuredClone(member.attributes),
+          settings,
         )
         return true
       } catch {
