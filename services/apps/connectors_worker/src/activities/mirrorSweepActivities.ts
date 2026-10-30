@@ -14,7 +14,6 @@ import {
   type IMirrorSweepSummary,
   MIRROR_RESOLVE_CONCURRENCY,
   type MirrorBatchResult,
-  chunk,
   mirrorSince,
   orderMirrorCandidates,
 } from '../mirrorSweep'
@@ -28,15 +27,20 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 async function mirrorCandidates(
   qx: QueryExecutor,
   candidates: IMirrorCandidate[],
+  limit: number,
   since: string,
   result: MirrorBatchResult,
   cancellation: AbortSignal,
 ): Promise<void> {
   try {
-    for (const group of chunk(candidates, MIRROR_RESOLVE_CONCURRENCY)) {
+    let next = 0
+    while (result.mirrored < limit && next < candidates.length) {
       if (cancellation.aborted) {
         throw new Error('mirror batch cancelled')
       }
+      const groupSize = Math.min(MIRROR_RESOLVE_CONCURRENCY, limit - result.mirrored)
+      const group = candidates.slice(next, next + groupSize)
+      next += group.length
       const outcomes = await Promise.all(group.map((candidate) => mirrorRepo(qx, candidate, since)))
       result.attempted += group.length
       outcomes.forEach((outcome, i) => {
@@ -94,7 +98,8 @@ export async function mirrorBatch(limit: number): Promise<MirrorBatchResult> {
     await initNangoCloudClient()
     await mirrorCandidates(
       qx,
-      ordered.slice(0, limit),
+      ordered,
+      limit,
       mirrorSince(now),
       result,
       activityContext.cancellationSignal,

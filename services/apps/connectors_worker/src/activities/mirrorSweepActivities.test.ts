@@ -74,7 +74,7 @@ describe('mirror sweep activities', () => {
   })
   afterEach(() => vi.useRealTimers())
 
-  it('mirrors the most active candidates up to the limit, five at a time, logging every skip', async () => {
+  it('mirrors the most active candidates until the limit is mirrored, refilling skips, five at a time, logging every skip', async () => {
     mocks.listUnmirroredNangoRepos.mockResolvedValue(
       ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'].map(repo),
     )
@@ -99,7 +99,7 @@ describe('mirror sweep activities', () => {
         : { outcome: 'mirrored', unitsInserted: 8 }
     })
 
-    await expect(mirrorBatch(7)).resolves.toEqual({
+    await expect(mirrorBatch(5)).resolves.toEqual({
       candidates: 8,
       attempted: 7,
       mirrored: 5,
