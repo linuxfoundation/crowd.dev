@@ -60,17 +60,22 @@ function parseArgs(rawArgv: string[]): { segmentId: string; since?: string; back
   return { segmentId, since, backfill }
 }
 
-// The backfill top must meet the live cursor, or the badges between the two are never listed.
+function isoOrNull(value: unknown): string | null {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
+}
+
+// The top must meet what is already covered: the floor of the last backfill, or the live cursor
+// before any; the badges between the two would otherwise never be listed.
 async function armBackfill(qx: QueryExecutor, unit: ISyncUnit, backfill: Backfill): Promise<void> {
-  const liveSince = unit.watermark?.since
-  if (typeof liveSince !== 'string' || !Number.isFinite(Date.parse(liveSince))) {
+  const covered = isoOrNull(unit.watermark?.historyFrom) ?? isoOrNull(unit.watermark?.since)
+  if (!covered) {
     throw new Error(
       `badge poll unit ${unit.id} has no live cursor yet: let it run once or seed it with --since`,
     )
   }
-  if (Date.parse(backfill.top) < Date.parse(liveSince)) {
+  if (Date.parse(backfill.top) < Date.parse(covered)) {
     throw new Error(
-      `--backfill-until ${backfill.top} is before the live cursor ${liveSince} of unit ${unit.id}`,
+      `--backfill-until ${backfill.top} leaves a gap below ${covered}, the earliest point unit ${unit.id} covers`,
     )
   }
   const armed = await mergeSyncUnitWatermark(qx, unit.id, { backfill })

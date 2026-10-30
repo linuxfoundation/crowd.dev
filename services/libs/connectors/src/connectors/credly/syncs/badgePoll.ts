@@ -53,6 +53,7 @@ export type CredlyBadgePollWatermark = {
   until: string | null
   page: number
   backfill?: CredlyBackfillCursor
+  historyFrom?: string
 }
 
 function parsableIso(value: unknown): string | null {
@@ -94,11 +95,13 @@ function readWatermark(
   const until = parsableIso(raw?.until)
   const resumable = until !== null && wholeSecond(until) > wholeSecond(since)
   const backfill = readBackfill(raw?.backfill)
+  const historyFrom = parsableIso(raw?.historyFrom)
   return {
     since,
     until: resumable ? until : null,
     page: resumable ? savedPage(raw?.page) : 1,
     ...(backfill && { backfill }),
+    ...(historyFrom && { historyFrom }),
   }
 }
 
@@ -137,6 +140,16 @@ function withBackfill(
 ): CredlyBadgePollWatermark {
   const { backfill: _dropped, ...forward } = watermark
   return backfill ? { ...forward, backfill } : forward
+}
+
+// The lowest floor reached is kept so the next arming can be checked against it, not the live cursor.
+function withHistoryFrom(
+  watermark: CredlyBadgePollWatermark,
+  floor: string,
+): CredlyBadgePollWatermark {
+  const known = watermark.historyFrom
+  const historyFrom = known && Date.parse(known) < Date.parse(floor) ? known : floor
+  return { ...watermark, historyFrom }
 }
 
 // Numbered pages over a mutable sort key skip a badge whenever an earlier one leaves the window
@@ -230,6 +243,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   }
   if (ctx.watermark?.backfill && !watermark.backfill) {
     ctx.log.warn({ backfill: ctx.watermark.backfill }, 'credly backfill cursor unreadable, dropped')
+    await ctx.commitWatermark(watermark)
   }
 
   const counters = {
@@ -478,8 +492,11 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     if (drainedPage(window, result.page)) {
       counters.backfillWindows += 1
       const next = afterBackfillDrain(cursor)
-      if (!next) ctx.log.info({ floor: cursor.floor }, 'credly backfill reached its floor')
       watermark = withBackfill(watermark, next)
+      if (!next) {
+        watermark = withHistoryFrom(watermark, cursor.floor)
+        ctx.log.info({ floor: cursor.floor }, 'credly backfill reached its floor')
+      }
     } else {
       watermark = withBackfill(watermark, { ...cursor, ...nextPage(window, result.page.data) })
     }

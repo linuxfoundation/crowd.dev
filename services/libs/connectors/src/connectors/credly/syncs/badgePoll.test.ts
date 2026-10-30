@@ -1152,8 +1152,22 @@ describe('runBadgePoll backfill', () => {
       { min: MID, max: TOP },
       { min: FLOOR, max: MID },
     ])
-    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
     expect(LOG.info).toHaveBeenCalledWith({ floor: FLOOR }, 'credly backfill reached its floor')
+  })
+
+  it('keeps the lowest floor reached across armings', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const earlier = '2026-10-01T00:00:00.000Z'
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      historyFrom: earlier,
+      backfill: { floor: FLOOR, top: TOP },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: earlier })
   })
 
   it('serves the live window first and keeps the backfill cursor through it', async () => {
@@ -1190,7 +1204,7 @@ describe('runBadgePoll backfill', () => {
       window: { min: MID, max: TOP },
       page: 3,
     })
-    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
   })
 
   it('halves a failing backfill window and walks its upper half before moving down', async () => {
@@ -1230,7 +1244,7 @@ describe('runBadgePoll backfill', () => {
     })
   })
 
-  it('ignores a backfill cursor it cannot read', async () => {
+  it('drops a backfill cursor it cannot read and commits the watermark without it', async () => {
     const { ctx, watermarks } = makeCtx({
       since: HORIZON,
       backfill: { floor: FLOOR, top: 'not a date' },
@@ -1240,7 +1254,7 @@ describe('runBadgePoll backfill', () => {
 
     expect(outcome).toEqual({ complete: true })
     expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
-    expect(watermarks).toEqual([])
+    expect(watermarks).toEqual([{ since: HORIZON, until: null, page: 1 }])
     expect(LOG.warn).toHaveBeenCalledWith(
       { backfill: { floor: FLOOR, top: 'not a date' } },
       'credly backfill cursor unreadable, dropped',
