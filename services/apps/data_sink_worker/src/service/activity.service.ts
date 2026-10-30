@@ -12,6 +12,7 @@ import {
   isValidEmail,
   normalizeMemberIdentities,
   normalizeMemberIdentityValue,
+  omitUrlValues,
   parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
@@ -31,6 +32,8 @@ import {
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
+import { getMemberAttributeSettings } from '@crowd/data-access-layer/src/members/attributeSettings'
+import { IDbMemberAttributeSetting } from '@crowd/data-access-layer/src/members/types'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -58,7 +61,9 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
+import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
 import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
+import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -89,6 +94,292 @@ function lineCountsFromAttributes(attributes: Record<string, unknown> | undefine
   }
 
   return { insertions, deletions }
+}
+
+function isSameActor(payload: IActivityProcessData): boolean {
+  return (
+    !!payload.dbMember &&
+    !!payload.dbObjectMember &&
+    payload.activity.username === payload.activity.objectMemberUsername
+  )
+}
+
+type MemberRole = 'member' | 'objectMember'
+
+interface ITimedMemberUpdate {
+  member: IMemberData
+  timestamp: string
+}
+
+interface IPayloadMemberUpdate extends ITimedMemberUpdate {
+  payload: IActivityProcessData
+  role: MemberRole
+  dbMember: IDbMember
+}
+
+interface IMemberUpdateGroup {
+  dbMember: IDbMember
+  updates: IPayloadMemberUpdate[]
+}
+
+interface IMemberUpdateFailure {
+  err: Error
+  metadata?: Record<string, unknown>
+}
+
+interface IMemberUpdateResults {
+  memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
+  failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
+}
+
+function timestampMs(timestamp: string): number {
+  const ms = new Date(timestamp).getTime()
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function updateRunKey(payload: IActivityProcessData): string {
+  return `${payload.segmentId}:${payload.integrationId}:${payload.platform}`
+}
+
+function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMemberUpdateGroup> {
+  const updatesByMember = new Map<string, IMemberUpdateGroup>()
+  const addUpdate = (
+    payload: IActivityProcessData,
+    role: MemberRole,
+    dbMember: IDbMember,
+    member: IMemberData,
+  ) => {
+    const entry = updatesByMember.get(dbMember.id) ?? { dbMember, updates: [] }
+    entry.updates.push({ payload, role, dbMember, member, timestamp: payload.activity.timestamp })
+    updatesByMember.set(dbMember.id, entry)
+  }
+
+  for (const payload of payloads) {
+    if (payload.dbMember) {
+      addUpdate(payload, 'member', payload.dbMember, payload.activity.member)
+    }
+
+    if (payload.dbObjectMember && !isSameActor(payload)) {
+      addUpdate(payload, 'objectMember', payload.dbObjectMember, payload.activity.objectMember)
+    }
+  }
+
+  return updatesByMember
+}
+
+function identityKey(identity: IMemberIdentity): string {
+  return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value)}`.toLowerCase()
+}
+
+// Members whose updates in this batch depend on each other: they send an identity another one sends,
+// or a verified one another owns. Their activities have to be applied in timestamp order.
+function linkedMembers(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  dbMemberIdentities: Map<string, IMemberIdentity[]>,
+  identityOwners: Map<string, string>,
+): string[][] {
+  const parent = new Map<string, string>()
+  const root = (memberId: string): string => {
+    let id = memberId
+    while (parent.get(id) !== id) {
+      id = parent.get(id)
+    }
+    return id
+  }
+
+  const memberByIdentity = new Map<string, string>()
+  const link = (identity: IMemberIdentity, memberId: string) => {
+    if (!identity.value) {
+      return
+    }
+    const key = identityKey(identity)
+    const other = memberByIdentity.get(key)
+    if (other === undefined) {
+      memberByIdentity.set(key, memberId)
+    } else {
+      parent.set(root(other), root(memberId))
+    }
+  }
+
+  for (const memberId of updatesByMember.keys()) {
+    parent.set(memberId, memberId)
+  }
+  for (const memberId of updatesByMember.keys()) {
+    for (const identity of dbMemberIdentities.get(memberId) ?? []) {
+      if (identity.verified) {
+        link(identity, memberId)
+      }
+    }
+  }
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const { member } of updates) {
+      for (const identity of member.identities ?? []) {
+        link(identity, memberId)
+
+        const owner =
+          identity.verified && identity.value && identityOwners.get(identityKey(identity))
+        if (owner && owner !== memberId) {
+          if (!parent.has(owner)) {
+            parent.set(owner, owner)
+          }
+          parent.set(root(owner), root(memberId))
+        }
+      }
+    }
+  }
+
+  const groups = new Map<string, string[]>()
+  for (const memberId of updatesByMember.keys()) {
+    const group = groups.get(root(memberId)) ?? []
+    group.push(memberId)
+    groups.set(root(memberId), group)
+  }
+  return Array.from(groups.values())
+}
+
+// Members that send a verified identity owned by another member, or sent by another member of
+// the batch, can be merged by their update.
+function membersThatCanMerge(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  identityOwners: Map<string, string>,
+): Set<string> {
+  const sendersByIdentity = new Map<string, Set<string>>()
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const identity of updates.flatMap((u) => u.member.identities ?? [])) {
+      if (identity.verified && identity.value) {
+        const key = identityKey(identity)
+        sendersByIdentity.set(key, (sendersByIdentity.get(key) ?? new Set<string>()).add(memberId))
+      }
+    }
+  }
+
+  const memberIds = new Set<string>()
+  for (const [key, senders] of sendersByIdentity) {
+    const owner = identityOwners.get(key)
+    for (const memberId of senders) {
+      if (senders.size > 1 || (owner && owner !== memberId)) {
+        memberIds.add(memberId)
+      }
+    }
+  }
+  return memberIds
+}
+
+function oldestFirstUpdateRuns(updates: IPayloadMemberUpdate[]): IPayloadMemberUpdate[][] {
+  const runs: IPayloadMemberUpdate[][] = []
+  const sorted = [...updates].sort((a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp))
+  for (const update of sorted) {
+    const run = runs[runs.length - 1]
+    if (
+      run &&
+      run[0].dbMember.id === update.dbMember.id &&
+      updateRunKey(run[0].payload) === updateRunKey(update.payload)
+    ) {
+      run.push(update)
+    } else {
+      runs.push([update])
+    }
+  }
+  return runs
+}
+
+function followRedirects(redirects: Map<string, string>, memberId: string): string {
+  const seen = new Set<string>()
+  let id = memberId
+  while (redirects.has(id) && !seen.has(id)) {
+    seen.add(id)
+    id = redirects.get(id)
+  }
+  return id
+}
+
+// Takes attributes in validateAttributes' { [platform]: value } form, as mergeData checks them
+function hasGithubBotFlag(attributes: Record<string, unknown> | undefined): boolean {
+  const isBot = attributes?.[MemberAttributeName.IS_BOT]
+  return (
+    !!isBot &&
+    typeof isBot === 'object' &&
+    !!(isBot as Record<string, unknown>)[PlatformType.GITHUB]
+  )
+}
+
+function combineMemberUpdates(
+  updatesOldestFirst: ITimedMemberUpdate[],
+  dbMember: IDbMember,
+  platform: PlatformType,
+): IMemberUpdateData {
+  // mergeData drops a bot-flagged activity's attributes after validating them. A combined update
+  // must do it per activity (each is validated before combining); a single one is left to mergeData.
+  const dropBotFlagged =
+    updatesOldestFirst.length > 1 &&
+    !hasGithubBotFlag(dbMember.attributes as Record<string, unknown>)
+
+  const joinedAt = updatesOldestFirst
+    .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
+    .reduce(getEarliestMemberJoinedAt)
+
+  // Like validateAttributes, per activity: drop empty values and wrap plain ones as
+  // { [platform]: value }, so a newer empty or plain value never replaces an older value.
+  const asPlatformValues = (attributes: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(attributes)
+        .filter(([, value]) => !isEmptyAttributeValue(value))
+        .map(([name, value]): [string, unknown] => {
+          if (typeof value !== 'object') {
+            return [name, { [platform]: value }]
+          }
+          if (Array.isArray(value)) {
+            return [name, value]
+          }
+          const byPlatform = Object.entries(value).filter(([, v]) => !isEmptyAttributeValue(v))
+          return [name, byPlatform.length > 0 ? Object.fromEntries(byPlatform) : undefined]
+        })
+        .filter(([, value]) => value !== undefined),
+    )
+
+  // update() drops URL locations after merging; dropping them per activity keeps an older valid one
+  const withoutUrlLocation = (attributes: Record<string, unknown>) => {
+    const location = attributes[MemberAttributeName.LOCATION]
+    if (location === undefined || location === null) {
+      return attributes
+    }
+    return { ...attributes, [MemberAttributeName.LOCATION]: omitUrlValues(location) }
+  }
+
+  const attributes = updatesOldestFirst
+    .filter((u) => u.member.attributes)
+    .map((u) => asPlatformValues(u.member.attributes))
+    .filter((attributes) => !(dropBotFlagged && hasGithubBotFlag(attributes)))
+    .map(withoutUrlLocation)
+  const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
+  const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
+
+  return {
+    attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
+    joinedAt,
+    identities: updatesOldestFirst.flatMap((u) => u.member.identities ?? []),
+    organizations: organizations.length > 0 ? organizations : undefined,
+    reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
+  }
+}
+
+function emailDomainTimestamps(updates: ITimedMemberUpdate[]): ActivityTimestampsByEmailDomain {
+  const timestamps: ActivityTimestampsByEmailDomain = new Map()
+  for (const { member, timestamp } of updates) {
+    for (const identity of member.identities ?? []) {
+      if (identity.verified && identity.type === MemberIdentityType.EMAIL && identity.value) {
+        // update() drops invalid emails, so they must not add dates to a domain either
+        const email = normalizeMemberIdentityValue(identity.value)
+        const domain = isValidEmail(email) ? email.split('@')[1] : undefined
+        if (domain) {
+          const domainTimestamps = timestamps.get(domain) ?? []
+          domainTimestamps.push(timestamp)
+          timestamps.set(domain, domainTimestamps)
+        }
+      }
+    }
+  }
+  return timestamps
 }
 
 export default class ActivityService extends LoggerBase {
@@ -312,6 +603,18 @@ export default class ActivityService extends LoggerBase {
         results.set(resultId, {
           success: false,
           err: new UnrepeatableError('Activity does not have a username or member.'),
+        })
+        continue
+      }
+
+      if (Number.isNaN(new Date(activity.timestamp).getTime())) {
+        this.log.error(
+          { platform, timestamp: activity.timestamp },
+          'Activity has an invalid timestamp.',
+        )
+        results.set(resultId, {
+          success: false,
+          err: new UnrepeatableError('Activity has an invalid timestamp.'),
         })
         continue
       }
@@ -1408,163 +1711,45 @@ export default class ActivityService extends LoggerBase {
       )
     }
 
-    // Tracks merge redirects across payloads in this batch. When a member update redirects
-    // X→Y (merge), subsequent payloads for the same platform:username skip the update and
-    // reuse Y — avoids calling update() on an already-absorbed member row.
-    const memberMap = new Map<string, string>()
+    const memberUpdates = await logExecutionTimeV2(
+      async () =>
+        this.updateMembers(relevantPayloads, memberService, dbMemberIdentities, orgPromiseCache),
+      this.log,
+      'activityService -> processActivities -> updateMembers',
+    )
 
     for (const payload of relevantPayloads) {
-      const memberKey = `${payload.platform}:${payload.activity.username}`
-      const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
-      // When actor and objectActor are the same person, skip the objectMember update and
-      // copy memberId after Promise.all resolves.
-      const sameActorKey = !!(
-        payload.dbMember &&
-        payload.dbObjectMember &&
-        memberKey === objectMemberKey
-      )
-
-      const promises = []
-      // update members and orgs with them
-      if (payload.dbMember) {
-        if (memberMap.has(memberKey)) {
-          payload.memberId = memberMap.get(memberKey)
-          payload.dbMember = undefined
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.member.attributes,
-                  joinedAt: payload.activity.member.joinedAt
-                    ? new Date(payload.activity.member.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.member.identities,
-                  organizations: payload.activity.member.organizations,
-                  reach: payload.activity.member.reach,
-                },
-                payload.dbMember,
-                dbMemberIdentities.get(payload.dbMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.memberId = redirectId ?? payload.dbMember.id
-                if (redirectId) {
-                  memberMap.set(memberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'member',
-                  payload.dbMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.memberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbMember.id) {
-                      memberMap.set(memberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating member!', err),
-                  })
-                }
-              }),
-          )
-        }
+      const memberFailure = memberUpdates.failures.member.get(payload)
+      if (memberFailure) {
+        resultMap.set(payload.resultId, {
+          success: false,
+          err: new ApplicationError('Error while updating member!', memberFailure.err),
+          metadata: memberFailure.metadata,
+        })
       }
 
-      if (payload.dbObjectMember && !sameActorKey) {
-        if (memberMap.has(objectMemberKey)) {
-          payload.objectMemberId = memberMap.get(objectMemberKey)
-          payload.dbObjectMember = undefined
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbObjectMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.objectMember.attributes,
-                  joinedAt: payload.activity.objectMember.joinedAt
-                    ? new Date(payload.activity.objectMember.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.objectMember.identities,
-                  organizations: payload.activity.objectMember.organizations,
-                  reach: payload.activity.objectMember.reach,
-                },
-                payload.dbObjectMember,
-                dbMemberIdentities.get(payload.dbObjectMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
-                if (redirectId) {
-                  memberMap.set(objectMemberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'objectMember',
-                  payload.dbObjectMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.objectMemberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbObjectMember.id) {
-                      memberMap.set(objectMemberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating object member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating object member!', err),
-                  })
-                }
-              }),
-          )
-        }
+      const objectMemberFailure = memberUpdates.failures.objectMember.get(payload)
+      if (objectMemberFailure) {
+        resultMap.set(payload.resultId, {
+          success: false,
+          err: new ApplicationError('Error while updating object member!', objectMemberFailure.err),
+          metadata: objectMemberFailure.metadata,
+        })
       }
 
-      if (promises.length > 0) {
-        await logExecutionTimeV2(
-          async () => Promise.all(promises),
-          this.log,
-          'activityService -> processActivities -> Promise.all (memberService.update)',
-        )
+      // dbMember stays the row from before the batch: an activity's isBot and isTeamMember fall
+      // back to it, so a later activity in the batch can't change an earlier activity's flags
+      const memberId = memberUpdates.memberIds.member.get(payload)
+      if (memberId) {
+        payload.memberId = memberId
       }
 
-      if (sameActorKey) {
+      const objectMemberId = memberUpdates.memberIds.objectMember.get(payload)
+      if (objectMemberId) {
+        payload.objectMemberId = objectMemberId
+      }
+
+      if (isSameActor(payload)) {
         payload.objectMemberId = payload.memberId
       }
 
@@ -1868,10 +2053,256 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
+  private async updateMembers(
+    payloads: IActivityProcessData[],
+    memberService: MemberService,
+    dbMemberIdentities: Map<string, IMemberIdentity[]>,
+    orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
+  ): Promise<IMemberUpdateResults> {
+    const staleMemberIds = new Set<string>()
+    const freshMembers = new Map<string, IDbMember>()
+    const refreshMembers = async (memberIds: string[]) => {
+      const [identities, members] = await logExecutionTimeV2(
+        () =>
+          Promise.all([
+            findIdentitiesForMembers(this.pgQx, memberIds),
+            this.memberRepo.findByIds(memberIds),
+          ]),
+        this.log,
+        'activityService -> updateMembers -> refreshMembers',
+      )
+      for (const memberId of memberIds) {
+        dbMemberIdentities.set(memberId, identities.get(memberId) ?? [])
+      }
+      for (const member of members) {
+        freshMembers.set(member.id, member)
+      }
+    }
+
+    const redirects = new Map<string, string>()
+    const redirect = (memberId: string, redirectId: string) => {
+      if (redirectId !== memberId) {
+        redirects.set(memberId, redirectId)
+        staleMemberIds.add(redirectId)
+      }
+    }
+
+    const currentRow = (dbMember: IDbMember): IDbMember | undefined => {
+      const memberId = followRedirects(redirects, dbMember.id)
+      return freshMembers.get(memberId) ?? (memberId === dbMember.id ? dbMember : undefined)
+    }
+
+    const updateMember = async (
+      dbMember: IDbMember,
+      updates: IPayloadMemberUpdate[],
+    ): Promise<string> => {
+      const memberId = followRedirects(redirects, dbMember.id)
+      if (staleMemberIds.has(memberId)) {
+        await refreshMembers([memberId])
+      }
+      staleMemberIds.add(memberId)
+
+      const original = currentRow(dbMember)
+      if (!original) {
+        throw new Error(`Member ${memberId} not found!`)
+      }
+
+      const { payload } = updates[0]
+      const redirectId = await memberService.update(
+        memberId,
+        payload.segmentId,
+        payload.integrationId,
+        combineMemberUpdates(updates, original, payload.platform),
+        original,
+        dbMemberIdentities.get(memberId),
+        payload.platform,
+        orgPromiseCache,
+        emailDomainTimestamps(updates),
+      )
+      if (redirectId) {
+        redirect(memberId, redirectId)
+      }
+      return redirectId || memberId
+    }
+
+    const results: IMemberUpdateResults = {
+      memberIds: { member: new Map(), objectMember: new Map() },
+      failures: { member: new Map(), objectMember: new Map() },
+    }
+    const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
+      for (const update of updates) {
+        results.memberIds[update.role].set(update.payload, memberId)
+      }
+    }
+
+    const redirectToSurvivor = (dbMember: IDbMember, err: unknown) => {
+      const survivingId = err instanceof ApplicationError ? err.metadata?.survivingId : undefined
+      if (typeof survivingId === 'string') {
+        redirect(followRedirects(redirects, dbMember.id), survivingId)
+      }
+    }
+
+    // A failed activity is not retried by the per-activity updates: they run after newer
+    // activities and would write its older data over theirs.
+    const updateSingleActivity = async (dbMember: IDbMember, update: IPayloadMemberUpdate) => {
+      try {
+        setMemberId([update], await updateMember(dbMember, [update]))
+      } catch (err) {
+        redirectToSurvivor(dbMember, err)
+        const target = currentRow(dbMember) ?? dbMember
+        const result = await this.handleMemberIdentityError(
+          err,
+          update.payload,
+          update.role,
+          target,
+        )
+        if (typeof result === 'string') {
+          redirect(followRedirects(redirects, target.id), result)
+          setMemberId([update], result)
+        } else {
+          results.failures[update.role].set(update.payload, { err, metadata: result })
+        }
+      }
+    }
+
+    // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
+    // their activities in timestamp order; members that can't merge don't affect each other.
+    const updatesByMember = groupUpdatesByMember(payloads)
+    const sentIdentities = distinctBy(
+      Array.from(updatesByMember.values())
+        .flatMap(({ updates }) => updates.flatMap((u) => u.member.identities ?? []))
+        .filter((identity) => identity.verified && identity.value),
+      identityKey,
+    )
+    const owners =
+      sentIdentities.length > 0
+        ? await logExecutionTimeV2(
+            () => findMembersByIdentities(this.pgQx, sentIdentities, undefined, true),
+            this.log,
+            'activityService -> updateMembers -> findMembersByIdentities',
+          )
+        : new Map<string, string>()
+    const identityOwners = new Map(
+      Array.from(owners, ([key, memberId]) => [key.toLowerCase(), memberId]),
+    )
+
+    // A combined update that merges its member halfway can't be undone before its activities are
+    // retried, so a member that can merge in this batch gets its activities applied one by one.
+    const mergeableMemberIds = membersThatCanMerge(updatesByMember, identityOwners)
+
+    const runs = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners)
+      .flatMap((memberIds) =>
+        oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates)),
+      )
+      .map((run) => {
+        const memberId = run[0].dbMember.id
+        return {
+          dbMember: run[0].dbMember,
+          run,
+          combine:
+            updatesByMember.get(memberId).updates.length > 1 && !mergeableMemberIds.has(memberId),
+        }
+      })
+      .sort(
+        (a, b) =>
+          timestampMs(a.run[a.run.length - 1].timestamp) -
+          timestampMs(b.run[b.run.length - 1].timestamp),
+      )
+
+    const memberAttributeService = new MemberAttributeService(
+      this.redisClient,
+      this.pgStore,
+      this.log,
+    )
+    // read once per batch, outside the try: a failed read must fail the batch, not mark activities
+    // as invalid
+    let attributeSettings: Promise<IDbMemberAttributeSetting[]> | undefined
+    const hasValidAttributes = async ({ member, payload }: IPayloadMemberUpdate) => {
+      if (!member.attributes) {
+        return true
+      }
+      attributeSettings ??= logExecutionTimeV2(
+        () => getMemberAttributeSettings(this.pgQx, this.redisClient),
+        this.log,
+        'activityService -> updateMembers -> getMemberAttributeSettings',
+      )
+      const settings = await attributeSettings
+      try {
+        await logExecutionTimeV2(
+          () =>
+            memberAttributeService.validateAttributes(
+              payload.platform,
+              structuredClone(member.attributes),
+              settings,
+            ),
+          this.log,
+          'activityService -> updateMembers -> validateAttributes',
+        )
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const updateCombined = async (dbMember: IDbMember, updates: IPayloadMemberUpdate[]) => {
+      if (updates.length <= 1) {
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+        return
+      }
+
+      try {
+        setMemberId(updates, await updateMember(dbMember, updates))
+      } catch (runErr) {
+        this.log.warn(
+          { err: runErr, memberId: dbMember.id, activities: updates.length },
+          'Member update failed, retrying per activity!',
+        )
+        redirectToSurvivor(dbMember, runErr)
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+      }
+    }
+
+    for (const { dbMember, run, combine } of runs) {
+      if (!combine) {
+        for (const update of run) {
+          await updateSingleActivity(dbMember, update)
+        }
+        continue
+      }
+
+      // An activity that fails validation is updated alone, in its place in timestamp order, so it
+      // fails on its own as without combining and a wrong verdict can't reorder the updates.
+      let combinable: IPayloadMemberUpdate[] = []
+      for (const update of run) {
+        if (await hasValidAttributes(update)) {
+          combinable.push(update)
+        } else {
+          await updateCombined(dbMember, combinable)
+          combinable = []
+          await updateSingleActivity(dbMember, update)
+        }
+      }
+      await updateCombined(dbMember, combinable)
+    }
+
+    // Updates that ran before a later one merged their member away must follow that redirect too.
+    for (const memberIds of Object.values(results.memberIds)) {
+      for (const [payload, memberId] of memberIds) {
+        memberIds.set(payload, followRedirects(redirects, memberId))
+      }
+    }
+
+    return results
+  }
+
   private async handleMemberIdentityError(
     error: any,
     payload: IActivityProcessData,
-    memberType: 'member' | 'objectMember',
+    memberType: MemberRole,
     dbMember?: IDbMember,
   ): Promise<string | Record<string, unknown> | undefined> {
     const checkForIdentityConstraint = (error: any): boolean => {
@@ -2148,6 +2579,14 @@ export default class ActivityService extends LoggerBase {
     platform: PlatformType,
     dbMember?: IDbMember,
   ): unknown {
+    // validateAttributes stores a plain value as { [platform]: value } and drops empty values
+    const incoming = member.attributes[attName]
+    const platformValue =
+      incoming && typeof incoming === 'object'
+        ? (incoming as Record<string, unknown>)[platform]
+        : incoming
+    const incomingValue = isEmptyAttributeValue(platformValue) ? undefined : platformValue
+
     let result: unknown
     if (dbMember && dbMember.attributes[attName]) {
       // db member already has this attribute
@@ -2162,15 +2601,15 @@ export default class ActivityService extends LoggerBase {
         result = att.system
       } else {
         // if it's not manually set we check if incoming member data has the attribute set for the platform
-        if (member.attributes[attName] && member.attributes[attName][platform]) {
-          result = member.attributes[attName][platform]
+        if (incomingValue) {
+          result = incomingValue
         } else {
           // if none of those work we just use db member attribute default value
           result = att.default
         }
       }
-    } else if (member.attributes[attName] && member.attributes[attName][platform]) {
-      result = member.attributes[attName][platform]
+    } else if (incomingValue) {
+      result = incomingValue
     }
 
     return result

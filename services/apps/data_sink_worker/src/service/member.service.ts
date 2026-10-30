@@ -60,7 +60,11 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { IMemberCreateData, IMemberUpdateData } from './member.data'
+import {
+  ActivityTimestampsByEmailDomain,
+  IMemberCreateData,
+  IMemberUpdateData,
+} from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
 
@@ -318,17 +322,13 @@ export default class MemberService extends LoggerBase {
           true,
         )
       } catch (err) {
-        // If we've already followed at least one redirect the original member id is stale.
-        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
-        // instead of the already-absorbed original member.
-        if (survivingId !== initialSurvivingId) {
-          throw new ApplicationError(
-            'identity conflict after redirect sync',
-            err instanceof Error ? err : undefined,
-            { survivingId },
-          )
-        }
-        throw err
+        // The updated member was already merged into survivingId, so handleMemberIdentityError
+        // must use survivingId as the merge target instead of the absorbed member.
+        throw new ApplicationError(
+          'identity conflict after redirect sync',
+          err instanceof Error ? err : undefined,
+          { survivingId },
+        )
       }
 
       if (!nextRedirectId) {
@@ -338,7 +338,7 @@ export default class MemberService extends LoggerBase {
       if (mergeCount + 1 >= maxMerges) {
         throw new ApplicationError('identity sync exceeded merge limit', undefined, {
           mergeCount: mergeCount + 1,
-          survivingId,
+          survivingId: nextRedirectId,
           maxMerges,
         })
       }
@@ -633,7 +633,7 @@ export default class MemberService extends LoggerBase {
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
     orgPromiseCache?: OrgPromiseCache,
-    activityTimestamp?: string,
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
   ): Promise<string | void> {
     return logExecutionTimeV2(
       async () => {
@@ -895,7 +895,7 @@ export default class MemberService extends LoggerBase {
     emails: string[],
     orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
-    activityTimestamp?: string,
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
     isBotMember = false,
   ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
@@ -959,7 +959,13 @@ export default class MemberService extends LoggerBase {
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          await this.bufferMemberOrganizationActivityDates(memberId, result.id, activityTimestamp)
+          await this.bufferMemberOrganizationActivityDates(
+            memberId,
+            result.id,
+            typeof activityTimestamp === 'string'
+              ? [activityTimestamp]
+              : (activityTimestamp.get(domain) ?? []),
+          )
         }
       }
     }
@@ -1196,20 +1202,28 @@ export default class MemberService extends LoggerBase {
   private async bufferMemberOrganizationActivityDates(
     memberId: string,
     organizationId: string,
-    activityTimestamp: string,
+    activityTimestamps: string[],
   ): Promise<void> {
-    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+    const dates = Array.from(
+      new Set(activityTimestamps.map((t) => new Date(t).toISOString().split('T')[0])),
+    )
+    if (dates.length === 0) {
+      return
+    }
 
     // Each member gets one flat set: values are "orgId|date"
     const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-    const value = `${organizationId}|${date}`
+    const values = dates.map((date) => `${organizationId}|${date}`)
 
     await this.redisClient
       .multi()
-      .sAdd(datesKey, value)
+      .sAdd(datesKey, values)
       .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
       .exec()
 
-    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
+    this.log.debug(
+      { memberId, organizationId, dates },
+      'Buffered activity dates and queued member.',
+    )
   }
 }

@@ -10,6 +10,8 @@ export interface IMemberUpdateData {
   reach?: Partial<Record<PlatformType, number>>
 }
 
+export type ActivityTimestampsByEmailDomain = Map<string, string[]>
+
 export interface IMemberCreateData {
   attributes: Record<string, unknown>
   displayName: string
