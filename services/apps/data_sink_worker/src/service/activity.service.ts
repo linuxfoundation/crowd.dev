@@ -320,9 +320,8 @@ function combineMemberUpdates(
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
     .reduce(getEarliestMemberJoinedAt)
 
-  // validateAttributes drops empty values, as a whole and per platform, and turns a plain value
-  // into { [platform]: value }. Doing that per activity keeps a newer empty or plain value from
-  // replacing an older value.
+  // Like validateAttributes, per activity: drop empty values and wrap plain ones as
+  // { [platform]: value }, so a newer empty or plain value never replaces an older value.
   const asPlatformValues = (attributes: Record<string, unknown>) =>
     Object.fromEntries(
       Object.entries(attributes)
