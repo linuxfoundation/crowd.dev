@@ -2064,10 +2064,15 @@ export default class ActivityService extends LoggerBase {
     const staleMemberIds = new Set<string>()
     const freshMembers = new Map<string, IDbMember>()
     const refreshMembers = async (memberIds: string[]) => {
-      const [identities, members] = await Promise.all([
-        findIdentitiesForMembers(this.pgQx, memberIds),
-        this.memberRepo.findByIds(memberIds),
-      ])
+      const [identities, members] = await logExecutionTimeV2(
+        () =>
+          Promise.all([
+            findIdentitiesForMembers(this.pgQx, memberIds),
+            this.memberRepo.findByIds(memberIds),
+          ]),
+        this.log,
+        'activityService -> updateMembers -> refreshMembers',
+      )
       for (const memberId of memberIds) {
         dbMemberIdentities.set(memberId, identities.get(memberId) ?? [])
       }
@@ -2173,7 +2178,11 @@ export default class ActivityService extends LoggerBase {
     )
     const owners =
       sentIdentities.length > 0
-        ? await findMembersByIdentities(this.pgQx, sentIdentities, undefined, true)
+        ? await logExecutionTimeV2(
+            () => findMembersByIdentities(this.pgQx, sentIdentities, undefined, true),
+            this.log,
+            'activityService -> updateMembers -> findMembersByIdentities',
+          )
         : new Map<string, string>()
     const identityOwners = new Map(
       Array.from(owners, ([key, memberId]) => [key.toLowerCase(), memberId]),
@@ -2214,13 +2223,22 @@ export default class ActivityService extends LoggerBase {
       if (!member.attributes) {
         return true
       }
-      attributeSettings ??= getMemberAttributeSettings(this.pgQx, this.redisClient)
+      attributeSettings ??= logExecutionTimeV2(
+        () => getMemberAttributeSettings(this.pgQx, this.redisClient),
+        this.log,
+        'activityService -> updateMembers -> getMemberAttributeSettings',
+      )
       const settings = await attributeSettings
       try {
-        await memberAttributeService.validateAttributes(
-          payload.platform,
-          structuredClone(member.attributes),
-          settings,
+        await logExecutionTimeV2(
+          () =>
+            memberAttributeService.validateAttributes(
+              payload.platform,
+              structuredClone(member.attributes),
+              settings,
+            ),
+          this.log,
+          'activityService -> updateMembers -> validateAttributes',
         )
         return true
       } catch {
