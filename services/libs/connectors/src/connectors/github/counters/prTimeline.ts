@@ -4,6 +4,7 @@ import { GithubActivityType } from '@crowd/integrations'
 import type { ConnectorHttp } from '../../../http/client'
 import { ProviderContractError } from '../../../http/errors'
 import type { CountContext, SourceCounter } from '../../../types'
+import { boundedRange } from '../../../validation'
 import { githubGraphql } from '../gql'
 import { parseRepoChannel } from '../paging'
 import { LISTING_LAG_MS } from '../prWalk'
@@ -76,8 +77,9 @@ async function countPrTimeline(
   window: CountWindow,
 ): Promise<Record<PrTimelineKey, number>> {
   const { owner, repo } = parseRepoChannel(ctx.channel.channelName)
-  const query = buildQuery(window.kind === 'range')
-  const windowVariables = window.kind === 'range' ? { from: window.from, to: window.to } : {}
+  const range = boundedRange(window)
+  const query = buildQuery(range !== null)
+  const windowVariables = range === null ? {} : { from: range.from, to: range.to }
   const totals = Object.fromEntries(KEYS.map((key) => [key, 0])) as Record<PrTimelineKey, number>
   let cursor: string | null = null
   for (;;) {
@@ -88,17 +90,17 @@ async function countPrTimeline(
       ctx.log,
     )
     const { nodes, pageInfo } = data.repository.pullRequests
-    let pageBelowFloor = window.kind === 'range' && nodes.length > 0
+    let pageBelowFloor = range !== null && nodes.length > 0
     for (const node of nodes) {
       if (node === null) {
         throw new ProviderContractError('github returned a null pull request node')
       }
-      if (window.kind === 'range') {
+      if (range !== null) {
         const updatedAt = Date.parse(node.updatedAt as string)
-        if (updatedAt >= Date.parse(window.from) - LISTING_LAG_MS) {
+        if (updatedAt >= Date.parse(range.from) - LISTING_LAG_MS) {
           pageBelowFloor = false
         }
-        if (updatedAt < Date.parse(window.from)) {
+        if (updatedAt < Date.parse(range.from)) {
           continue
         }
         for (const key of KEYS) {

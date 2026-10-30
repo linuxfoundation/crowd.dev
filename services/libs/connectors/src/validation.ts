@@ -18,6 +18,17 @@ export function selectCounters(
   })
 }
 
+export type CountRange = Extract<CountWindow, { kind: 'range' }>
+
+const EPOCH = '1970-01-01T00:00:00.000Z'
+
+export function boundedRange(window: CountWindow): CountRange | null {
+  if (window.kind === 'range') {
+    return window
+  }
+  return window.to === undefined ? null : { kind: 'range', from: EPOCH, to: window.to }
+}
+
 export function assertKnownCounterKeys(manifest: AnyManifest, keys: string[]): void {
   const known = new Set((manifest.counters ?? []).map((counter) => counter.key))
   const unknownKey = keys.find((key) => !known.has(key))

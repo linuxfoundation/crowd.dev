@@ -37,6 +37,11 @@ describe('countTinybirdActivities', () => {
     expect(params.windowTo).toBe('2026-10-02 00:00:00.000')
     expect(params.segmentId).toBe('seg-1')
     expect(params.types).toEqual(['issues-opened', 'pull_request-opened'])
+
+    await run('seg-1', { kind: 'all-time', to: '2026-10-02T00:00:00.000Z' })
+    const [, boundedParams] = executeSql.mock.calls[1]
+    expect(boundedParams.windowFrom).toBe('1970-01-01 00:00:00.000')
+    expect(boundedParams.windowTo).toBe('2026-10-02 00:00:00.000')
   })
 
   it('sends no bounds for an all-time window and no segment when null', async () => {

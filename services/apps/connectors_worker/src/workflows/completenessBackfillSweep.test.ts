@@ -25,10 +25,11 @@ describe('completenessBackfillSweep', () => {
     vi.clearAllMocks()
   })
 
-  it('starts one all-time child per due check, completes every check including a failed one and logs the summary', async () => {
+  it('starts one child per due check counting up to its onboarding, completes every check including a failed one and logs the summary', async () => {
     const checks = Array.from({ length: 12 }, (_, i) => ({
       integrationId: 'i',
       channelId: `c${String(i).padStart(2, '0')}`,
+      onboardedAt: '2026-10-29T09:05:00.000Z',
     }))
     mocks.dueBackfillChecks.mockResolvedValue(checks)
     mocks.executeChild.mockImplementation(async (_workflow, options) => {
@@ -45,7 +46,7 @@ describe('completenessBackfillSweep', () => {
       args: [
         {
           target: { kind: 'channelId', integrationId: 'i', channelId: 'c00' },
-          window: { kind: 'all-time' },
+          window: { kind: 'all-time', to: '2026-10-29T09:05:00.000Z' },
           counterKeys: null,
         },
       ],

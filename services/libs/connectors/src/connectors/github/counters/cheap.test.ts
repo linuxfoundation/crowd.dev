@@ -53,7 +53,7 @@ function counter(key: string): SourceCounter {
 }
 
 describe('github cheap counters', () => {
-  it('counts a range through inclusive search qualifiers', async () => {
+  it('counts a range, or an all-time window with an end, through inclusive search qualifiers', async () => {
     const { ctx, requests } = fakeContext([{ data: { search: { issueCount: 7 } } }])
     const window = '2026-10-17T00:00:00Z..2026-10-23T23:59:59Z'
 
@@ -68,6 +68,11 @@ describe('github cheap counters', () => {
         q: `repo:foo/bar ${qualifiers}`,
       })
     }
+
+    await counter('pull_request-opened').count(ctx, { kind: 'all-time', to: range.to })
+    expect(requests[requests.length - 1].data?.variables).toEqual({
+      q: 'repo:foo/bar is:pr created:1970-01-01T00:00:00Z..2026-10-23T23:59:59Z',
+    })
   })
 
   it('counts discussions in a range through GraphQL search', async () => {

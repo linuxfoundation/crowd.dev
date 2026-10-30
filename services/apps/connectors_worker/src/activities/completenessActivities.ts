@@ -70,10 +70,21 @@ export async function listValidationChannels(input: {
   })
 }
 
-export async function dueBackfillChecks(): Promise<{ integrationId: string; channelId: string }[]> {
+export async function dueBackfillChecks(): Promise<
+  { integrationId: string; channelId: string; onboardedAt: string }[]
+> {
   const qx = dbStoreQx(svc.postgres.writer)
   await markReadyBackfillChecks(qx)
-  return listDueBackfillChecks(qx, BACKFILL_VALIDATION_DELAY_SECONDS, BACKFILL_CHECKS_PER_SWEEP)
+  const checks = await listDueBackfillChecks(
+    qx,
+    BACKFILL_VALIDATION_DELAY_SECONDS,
+    BACKFILL_CHECKS_PER_SWEEP,
+  )
+  return checks.map(({ integrationId, channelId, createdAt }) => ({
+    integrationId,
+    channelId,
+    onboardedAt: createdAt.toISOString(),
+  }))
 }
 
 export async function completeBackfillCheck(input: {

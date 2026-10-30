@@ -14,6 +14,7 @@ const BACKFILL_VALIDATION_BATCH_SIZE = 10
 interface IBackfillCheck {
   integrationId: string
   channelId: string
+  onboardedAt: string
 }
 
 async function validateBackfill(check: IBackfillCheck): Promise<boolean> {
@@ -25,6 +26,7 @@ async function validateBackfill(check: IBackfillCheck): Promise<boolean> {
 async function runBackfillValidation({
   integrationId,
   channelId,
+  onboardedAt,
 }: IBackfillCheck): Promise<boolean> {
   try {
     const result = await executeChild(validateCompleteness, {
@@ -33,7 +35,7 @@ async function runBackfillValidation({
       args: [
         {
           target: { kind: 'channelId', integrationId, channelId },
-          window: { kind: 'all-time' },
+          window: { kind: 'all-time', to: onboardedAt },
           counterKeys: null,
         },
       ],

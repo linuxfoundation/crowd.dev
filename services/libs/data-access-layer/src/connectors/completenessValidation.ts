@@ -95,7 +95,7 @@ export async function listValidationChannelsPage(
 
 function windowBounds(window: CountWindow): { windowStart: string; windowEnd: string } {
   return window.kind === 'all-time'
-    ? { windowStart: '-infinity', windowEnd: 'infinity' }
+    ? { windowStart: '-infinity', windowEnd: window.to ?? 'infinity' }
     : { windowStart: window.from, windowEnd: window.to }
 }
 
@@ -163,9 +163,9 @@ export async function listDueBackfillChecks(
   qx: QueryExecutor,
   delaySeconds: number,
   limit: number,
-): Promise<{ integrationId: string; channelId: string }[]> {
+): Promise<{ integrationId: string; channelId: string; createdAt: Date }[]> {
   return qx.select(
-    `SELECT "integrationId", "channelId"
+    `SELECT "integrationId", "channelId", "createdAt"
      FROM integration.completeness_backfill_checks
      WHERE "readyAt" <= now() - make_interval(secs => $(delaySeconds))
      ORDER BY "readyAt"

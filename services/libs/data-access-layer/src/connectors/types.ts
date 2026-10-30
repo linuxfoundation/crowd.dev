@@ -69,7 +69,9 @@ export interface ISyncRunSuccess extends ISyncRunProgress {
   complete: boolean
 }
 
-export type CountWindow = { kind: 'range'; from: string; to: string } | { kind: 'all-time' }
+export type CountWindow =
+  | { kind: 'range'; from: string; to: string }
+  | { kind: 'all-time'; to?: string }
 
 export type ValidationTarget =
   | { kind: 'units'; unitIds: string[] }

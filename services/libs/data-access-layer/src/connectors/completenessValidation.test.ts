@@ -96,16 +96,26 @@ describe('upsertValidationResult', () => {
     expect(rows[0]).toMatchObject({ sourceCount: 10, tinybirdCount: 12, gap: -2 })
   })
 
-  test('all-time stores infinite bounds and stays separate from a range row', async ({ qx }) => {
+  test('all-time stores infinite bounds, or its end when bounded, and stays separate from a range row', async ({
+    qx,
+  }) => {
     const unitId = await createSyncUnit(qx, { integrationId: await createIntegration(qx) })
+    const to = '2026-10-29T09:05:00.000Z'
 
     await upsertValidationResult(qx, baseResult({ unitId, window: { kind: 'all-time' } }))
+    await upsertValidationResult(qx, baseResult({ unitId, window: { kind: 'all-time', to } }))
     await upsertValidationResult(qx, baseResult({ unitId }))
 
     const rows = await getResults(qx, unitId)
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatchObject({ windowStart: '-infinity', windowEnd: 'infinity' })
-    expect(rows[1].windowStart).not.toBe('-infinity')
+    expect(rows).toHaveLength(3)
+    expect(rows.filter((row) => row.windowStart === '-infinity')).toHaveLength(2)
+    expect(
+      await qx.selectOneOrNone(
+        `SELECT 1 FROM integration.sync_validation_results
+         WHERE "unitId" = $(unitId) AND "windowStart" = '-infinity' AND "windowEnd" = $(to)::timestamptz`,
+        { unitId, to },
+      ),
+    ).not.toBeNull()
   })
 
   test('rejects an empty window', async ({ qx }) => {
