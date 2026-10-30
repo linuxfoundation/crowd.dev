@@ -1,9 +1,9 @@
 import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
 
-import { ProviderUnavailableError } from '../../../http/errors'
+import { ConnectorError, ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
-import { fetchBadgesPage } from '../apiClient'
+import { fetchBadge, fetchBadgesPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
 import {
@@ -27,6 +27,9 @@ export const WINDOW_LAG_MS = 5 * MINUTE_MS
 // and a long catch-up advances in persisted steps.
 export const MAX_PAGES_PER_RUN = 100
 const FIRST_RUN_LOOKBACK_MS = DAY_MS
+// A renewed badge keeps the old state_updated_at (linuxfoundation/lfx-cdp-insights-ops#967), so no
+// window ever lists it: it is reached only through the replaced badge's link, chain by chain.
+export const MAX_REPLACEMENT_HOPS = 5
 
 export type CredlyBadgePollWatermark = {
   since: string
@@ -92,6 +95,10 @@ function halveWindow(watermark: CredlyBadgePollWatermark): CredlyBadgePollWaterm
 // A timeout or an unreachable host is also provider.unavailable, but halving does not help there.
 function isCredlyServerError(err: unknown): boolean {
   return err instanceof ProviderUnavailableError && (err.options?.status ?? 0) >= 500
+}
+
+function isCredlyNotFound(err: unknown): boolean {
+  return err instanceof ConnectorError && err.options?.status === 404
 }
 
 function newBadgeActivities(badge: CredlyBadge): CredlyActivity[] {
@@ -166,6 +173,8 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     locked: 0,
     windows: 0,
     splits: 0,
+    replacements: 0,
+    replacementsMissing: 0,
   }
   const lockedThisRun = new Set<string>()
 
@@ -257,6 +266,50 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     counters.badges += badges.length
   }
 
+  const replacementIds = (badges: CredlyBadge[], seen: Set<string>): string[] => {
+    const ids = badges
+      .filter((badge) => routing.targets.has(badge.badge_template.id))
+      .map((badge) => badge.replacement_badge_id)
+      .filter((id): id is string => !!id && !seen.has(id))
+    return [...new Set(ids)]
+  }
+
+  const unknownBadgeIds = async (ids: string[]): Promise<string[]> => {
+    if (!ctx.emitEnabled || ids.length === 0) return ids
+    const known = new Set((await ctx.deps.findBadges(ids)).map((row) => row.badgeId))
+    return ids.filter((id) => !known.has(id))
+  }
+
+  // Replacements are fetched before the page is emitted, and only those the state table does not
+  // know: a run cut short re-fetches the page and finds the renewed badges still unknown.
+  const withReplacements = async (badges: CredlyBadge[]): Promise<CredlyBadge[] | null> => {
+    const all = [...badges]
+    const seen = new Set(badges.map((badge) => badge.id))
+    let pending = badges
+    for (let hop = 0; hop < MAX_REPLACEMENT_HOPS && pending.length > 0; hop += 1) {
+      const fetched: CredlyBadge[] = []
+      for (const badgeId of await unknownBadgeIds(replacementIds(pending, seen))) {
+        if (!ctx.hasRunBudget()) return null
+        seen.add(badgeId)
+        try {
+          fetched.push(await fetchBadge(ctx.http, { organizationId, badgeId }, ctx.log))
+          counters.replacements += 1
+        } catch (err) {
+          if (!isCredlyNotFound(err)) throw err
+          counters.replacementsMissing += 1
+          ctx.log.warn({ badgeId }, 'credly replacement badge not found, skipping it')
+        }
+      }
+      all.push(...fetched)
+      pending = fetched
+    }
+    const cut = replacementIds(pending, seen)
+    if (cut.length > 0) {
+      ctx.log.warn({ badgeIds: cut }, 'credly replacement chain cut at the hop cap')
+    }
+    return all
+  }
+
   while (counters.pagesFetched < MAX_PAGES_PER_RUN && ctx.hasRunBudget()) {
     if (!watermark.until) {
       const next = openWindow(watermark.since, horizonMs)
@@ -290,7 +343,9 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     }
     counters.pagesFetched += 1
 
-    await emitPage(page.data)
+    const badges = await withReplacements(page.data)
+    if (!badges) break
+    await emitPage(badges)
 
     const drained = watermark.page >= page.metadata.total_pages
     if (drained) {

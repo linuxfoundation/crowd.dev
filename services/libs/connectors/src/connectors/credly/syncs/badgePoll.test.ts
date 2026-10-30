@@ -6,18 +6,25 @@ import type { Logger } from '@crowd/logging'
 
 import { ProviderContractError, ProviderUnavailableError } from '../../../http/errors'
 import type { Credential, SyncContext } from '../../../types'
-import { fetchBadgesPage } from '../apiClient'
+import { fetchBadge, fetchBadgesPage } from '../apiClient'
 import type { BadgesPageParams, CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps, CredlyTemplateRouting } from '../deps'
-import { MAX_PAGES_PER_RUN, MAX_WINDOW_MS, WINDOW_LAG_MS, runBadgePoll } from './badgePoll'
+import {
+  MAX_PAGES_PER_RUN,
+  MAX_REPLACEMENT_HOPS,
+  MAX_WINDOW_MS,
+  WINDOW_LAG_MS,
+  runBadgePoll,
+} from './badgePoll'
 
 vi.mock('../apiClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../apiClient')>()
-  return { ...actual, fetchBadgesPage: vi.fn() }
+  return { ...actual, fetchBadgesPage: vi.fn(), fetchBadge: vi.fn() }
 })
 
 const mockedFetchBadgesPage = vi.mocked(fetchBadgesPage)
+const mockedFetchBadge = vi.mocked(fetchBadge)
 
 const NOW = new Date('2026-10-23T12:00:00.000Z')
 const HORIZON = new Date(NOW.getTime() - WINDOW_LAG_MS).toISOString()
@@ -152,6 +159,7 @@ describe('runBadgePoll', () => {
     vi.useFakeTimers()
     vi.setSystemTime(NOW)
     mockedFetchBadgesPage.mockReset()
+    mockedFetchBadge.mockReset()
   })
 
   afterEach(() => {
@@ -833,5 +841,232 @@ describe('runBadgePoll', () => {
         page: 1,
       },
     ])
+  })
+})
+
+describe('runBadgePoll replacements', () => {
+  const RENEWAL_AT = '2026-10-22T11:00:00.000Z'
+
+  function replaced(id: string, replacementBadgeId: string, overrides: Partial<CredlyBadge> = {}) {
+    return badge({
+      id,
+      state: 'replaced',
+      replacement_badge_id: replacementBadgeId,
+      badge_url: null,
+      ...overrides,
+    })
+  }
+
+  function renewed(id: string, replacesBadgeId: string, overrides: Partial<CredlyBadge> = {}) {
+    return badge({
+      id,
+      issued_at: '2020-02-10T00:00:00.000Z',
+      state_updated_at: '2020-02-10T09:00:00.000Z',
+      created_at: RENEWAL_AT,
+      replaces_badge_id: replacesBadgeId,
+      badge_url: null,
+      ...overrides,
+    })
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    mockedFetchBadgesPage.mockReset()
+    mockedFetchBadge.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('fetches the renewed badge of a replaced one and emits it dated at the renewal', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('old', 'new')]))
+    mockedFetchBadge.mockResolvedValueOnce(renewed('new', 'old'))
+    const { ctx, emits, deps, saved } = makeCtx()
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(mockedFetchBadge).toHaveBeenCalledWith(
+      ctx.http,
+      { organizationId: ORGANIZATION_ID, badgeId: 'new' },
+      LOG,
+    )
+    expect(deps.findBadges).toHaveBeenNthCalledWith(1, ['new'])
+    expect(emits).toHaveLength(1)
+    expect(
+      emits[0].records.map((r) => {
+        const { sourceId, type, timestamp } = r as Record<string, string>
+        return [sourceId, type, timestamp]
+      }),
+    ).toEqual([
+      ['old', CredlyActivityType.ISSUED_BADGE, '2026-10-22T00:00:00.000Z'],
+      ['old', CredlyActivityType.REPLACED_BADGE, '2026-10-22T10:00:00.000Z'],
+      ['new', CredlyActivityType.ISSUED_BADGE, RENEWAL_AT],
+      ['new', CredlyActivityType.ACCEPTED_BADGE, RENEWAL_AT],
+    ])
+    expect(saved.map((row) => [row.badgeId, row.state, row.replacesBadgeId])).toEqual([
+      ['old', 'replaced', null],
+      ['new', 'accepted', 'old'],
+    ])
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'credly_badge_poll_run', replacements: 1 }),
+      expect.any(String),
+    )
+  })
+
+  it('follows a chain of replacements to its end, each badge once', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('a', 'b')]))
+    mockedFetchBadge
+      .mockResolvedValueOnce(renewed('b', 'a', { state: 'replaced', replacement_badge_id: 'c' }))
+      .mockResolvedValueOnce(renewed('c', 'b'))
+    const { ctx, emitted } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(mockedFetchBadge.mock.calls.map(([, params]) => params.badgeId)).toEqual(['b', 'c'])
+    expect(emitted[0].map((r) => (r as { sourceId: string }).sourceId)).toEqual([
+      'a',
+      'a',
+      'b',
+      'b',
+      'c',
+      'c',
+    ])
+  })
+
+  it('does not fetch a replacement the state table knows or the page already lists', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([replaced('old-1', 'known'), replaced('old-2', 'listed'), renewed('listed', 'old-2')]),
+    )
+    const { ctx, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge({ badgeId: 'known' }),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(deps.findBadges).toHaveBeenNthCalledWith(1, ['known'])
+    expect(mockedFetchBadge).not.toHaveBeenCalled()
+  })
+
+  it('follows the link of a replaced badge whatever its state is now', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([replaced('old', 'new', { state: 'revoked', revocation_reason: 'Issued twice' })]),
+    )
+    mockedFetchBadge.mockResolvedValueOnce(renewed('new', 'old'))
+    const { ctx, emitted } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emitted[0].map((r) => (r as { sourceId: string }).sourceId)).toEqual([
+      'old',
+      'old',
+      'new',
+      'new',
+    ])
+  })
+
+  it('warns when a chain is longer than the hop cap', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('b-0', 'b-1')]))
+    for (let i = 1; i <= MAX_REPLACEMENT_HOPS; i += 1) {
+      mockedFetchBadge.mockResolvedValueOnce(
+        renewed(`b-${i}`, `b-${i - 1}`, { state: 'replaced', replacement_badge_id: `b-${i + 1}` }),
+      )
+    }
+    const { ctx } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(mockedFetchBadge).toHaveBeenCalledTimes(MAX_REPLACEMENT_HOPS)
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeIds: [`b-${MAX_REPLACEMENT_HOPS + 1}`] },
+      'credly replacement chain cut at the hop cap',
+    )
+  })
+
+  it('leaves the replacements of held templates alone', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([replaced('old', 'new', { badge_template: { id: 'tpl-held', name: 'Held' } })]),
+    )
+    const { ctx } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(mockedFetchBadge).not.toHaveBeenCalled()
+  })
+
+  it('skips a replacement credly no longer serves and keeps the rest', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([replaced('old-1', 'gone'), replaced('old-2', 'new')]),
+    )
+    mockedFetchBadge
+      .mockRejectedValueOnce(
+        new ProviderContractError('provider returned status 404', { status: 404 }),
+      )
+      .mockResolvedValueOnce(renewed('new', 'old-2'))
+    const { ctx, emitted } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(emitted[0].map((r) => (r as { sourceId: string }).sourceId)).toEqual([
+      'old-1',
+      'old-1',
+      'old-2',
+      'old-2',
+      'new',
+      'new',
+    ])
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeId: 'gone' },
+      'credly replacement badge not found, skipping it',
+    )
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ replacements: 1, replacementsMissing: 1 }),
+      expect.any(String),
+    )
+  })
+
+  it('fails the run on any other error from the replacement fetch', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('old', 'new')]))
+    mockedFetchBadge.mockRejectedValueOnce(
+      new ProviderUnavailableError('provider returned status 503', { status: 503 }),
+    )
+    const { ctx, emitted } = makeCtx()
+
+    await expect(runBadgePoll(ctx)).rejects.toBeInstanceOf(ProviderUnavailableError)
+    expect(emitted).toHaveLength(0)
+  })
+
+  it('defers the whole page when the budget runs out while following links', async () => {
+    const since = '2026-10-21T00:00:00.000Z'
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('old', 'new')]))
+    let calls = 0
+    const { ctx, emitted, lastWatermark } = makeCtx(
+      { since, until: HORIZON, page: 1 },
+      () => calls++ < 1,
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(mockedFetchBadge).not.toHaveBeenCalled()
+    expect(emitted).toHaveLength(0)
+    expect(lastWatermark()).toBeUndefined()
+  })
+
+  it('fetches every replacement during a shadow run without reading the state table', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('old', 'new')]))
+    mockedFetchBadge.mockResolvedValueOnce(renewed('new', 'old'))
+    const { ctx, emitted, deps } = makeCtx(null, () => true, DEFAULT_ROUTING, false, [
+      storedBadge({ badgeId: 'new' }),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(deps.findBadges).not.toHaveBeenCalled()
+    expect(mockedFetchBadge).toHaveBeenCalledTimes(1)
+    expect(emitted[0]).toHaveLength(4)
   })
 })
