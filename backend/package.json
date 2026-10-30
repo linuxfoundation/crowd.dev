@@ -61,6 +61,7 @@
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",
+    "@crowd/snowflake": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",

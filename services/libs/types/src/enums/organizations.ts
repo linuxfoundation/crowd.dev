@@ -54,4 +54,5 @@ export enum OrganizationAttributeSource {
   GITHUB = 'github',
   EMAIL = 'email',
   LLM = 'llm',
+  SALESFORCE = 'salesforce',
 }
