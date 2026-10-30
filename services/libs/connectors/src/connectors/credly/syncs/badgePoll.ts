@@ -266,18 +266,28 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     counters.badges += badges.length
   }
 
-  const replacementIds = (badges: CredlyBadge[], seen: Set<string>): string[] => {
-    const ids = badges
-      .filter((badge) => routing.targets.has(badge.badge_template.id))
-      .map((badge) => badge.replacement_badge_id)
-      .filter((id): id is string => !!id && !seen.has(id))
-    return [...new Set(ids)]
-  }
+  const unseen = (ids: (string | null | undefined)[], seen: Set<string>): string[] => [
+    ...new Set(ids.filter((id): id is string => !!id && !seen.has(id))),
+  ]
 
-  const unknownBadgeIds = async (ids: string[]): Promise<string[]> => {
-    if (!ctx.emitEnabled || ids.length === 0) return ids
-    const known = new Set((await ctx.deps.findBadges(ids)).map((row) => row.badgeId))
-    return ids.filter((id) => !known.has(id))
+  const replacementIds = (badges: CredlyBadge[], seen: Set<string>): string[] =>
+    unseen(
+      badges
+        .filter((badge) => routing.targets.has(badge.badge_template.id))
+        .map((badge) => badge.replacement_badge_id),
+      seen,
+    )
+
+  // A known replacement is not fetched again, but its stored link is still followed: a run that
+  // died after saving part of a chain must reach the end of the chain on retry.
+  const splitKnown = async (ids: string[]): Promise<{ unknown: string[]; linked: string[] }> => {
+    if (!ctx.emitEnabled || ids.length === 0) return { unknown: ids, linked: [] }
+    const known = await ctx.deps.findBadges(ids)
+    const knownIds = new Set(known.map((row) => row.badgeId))
+    return {
+      unknown: ids.filter((id) => !knownIds.has(id)),
+      linked: known.map((row) => row.replacementBadgeId).filter((id): id is string => !!id),
+    }
   }
 
   // Replacements are fetched before the page is emitted, and only those the state table does not
@@ -285,12 +295,13 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   const withReplacements = async (badges: CredlyBadge[]): Promise<CredlyBadge[] | null> => {
     const all = [...badges]
     const seen = new Set(badges.map((badge) => badge.id))
-    let pending = badges
-    for (let hop = 0; hop < MAX_REPLACEMENT_HOPS && pending.length > 0; hop += 1) {
+    let ids = replacementIds(badges, seen)
+    for (let hop = 0; hop < MAX_REPLACEMENT_HOPS && ids.length > 0; hop += 1) {
+      for (const id of ids) seen.add(id)
+      const { unknown, linked } = await splitKnown(ids)
       const fetched: CredlyBadge[] = []
-      for (const badgeId of await unknownBadgeIds(replacementIds(pending, seen))) {
+      for (const badgeId of unknown) {
         if (!ctx.hasRunBudget()) return null
-        seen.add(badgeId)
         try {
           fetched.push(await fetchBadge(ctx.http, { organizationId, badgeId }, ctx.log))
           counters.replacements += 1
@@ -301,11 +312,10 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         }
       }
       all.push(...fetched)
-      pending = fetched
+      ids = unseen([...replacementIds(fetched, seen), ...linked], seen)
     }
-    const cut = replacementIds(pending, seen)
-    if (cut.length > 0) {
-      ctx.log.warn({ badgeIds: cut }, 'credly replacement chain cut at the hop cap')
+    if (ids.length > 0) {
+      ctx.log.warn({ badgeIds: ids }, 'credly replacement chain cut at the hop cap')
     }
     return all
   }

@@ -986,6 +986,25 @@ describe('runBadgePoll replacements', () => {
     )
   })
 
+  it('follows the stored link of a known replacement to reach the end of a chain', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('a', 'b')]))
+    mockedFetchBadge.mockResolvedValueOnce(renewed('c', 'b'))
+    const { ctx, deps, emitted } = makeCtx(null, () => true, DEFAULT_ROUTING, true, [
+      storedBadge({ badgeId: 'b', state: 'replaced', replacementBadgeId: 'c' }),
+    ])
+
+    await runBadgePoll(ctx)
+
+    expect(vi.mocked(deps.findBadges).mock.calls.slice(0, 2)).toEqual([[['b']], [['c']]])
+    expect(mockedFetchBadge.mock.calls.map(([, params]) => params.badgeId)).toEqual(['c'])
+    expect(emitted[0].map((r) => (r as { sourceId: string }).sourceId)).toEqual([
+      'a',
+      'a',
+      'c',
+      'c',
+    ])
+  })
+
   it('leaves the replacements of held templates alone', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(
       page([replaced('old', 'new', { badge_template: { id: 'tpl-held', name: 'Held' } })]),
