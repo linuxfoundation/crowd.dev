@@ -171,8 +171,8 @@ function identityKey(identity: IMemberIdentity): string {
   return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value)}`.toLowerCase()
 }
 
-// Members that can merge into each other or into the same member in this batch: a verified identity
-// they send is owned or sent by another. Their activities have to be applied in timestamp order.
+// Members whose updates in this batch depend on each other: they send an identity another one sends,
+// or a verified one another owns. Their activities have to be applied in timestamp order.
 function linkedMembers(
   updatesByMember: Map<string, IMemberUpdateGroup>,
   dbMemberIdentities: Map<string, IMemberIdentity[]>,
@@ -189,7 +189,7 @@ function linkedMembers(
 
   const memberByIdentity = new Map<string, string>()
   const link = (identity: IMemberIdentity, memberId: string) => {
-    if (!identity.verified || !identity.value) {
+    if (!identity.value) {
       return
     }
     const key = identityKey(identity)
@@ -206,7 +206,9 @@ function linkedMembers(
   }
   for (const memberId of updatesByMember.keys()) {
     for (const identity of dbMemberIdentities.get(memberId) ?? []) {
-      link(identity, memberId)
+      if (identity.verified) {
+        link(identity, memberId)
+      }
     }
   }
   for (const [memberId, { updates }] of updatesByMember) {
