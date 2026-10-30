@@ -102,9 +102,6 @@ function isSameActor(payload: IActivityProcessData): boolean {
   )
 }
 
-// getEarliestValidDate treats dates this close to the epoch as activities without a timestamp
-const EPOCH_TOLERANCE_MS = 5 * 86_400_000
-
 type MemberRole = 'member' | 'objectMember'
 
 interface ITimedMemberUpdate {
@@ -315,7 +312,7 @@ function combineMemberUpdates(
 
   const joinedAt = updatesOldestFirst
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
-    .filter((d) => d.getTime() > EPOCH_TOLERANCE_MS)
+    .reduce(getEarliestMemberJoinedAt)
 
   // validateAttributes drops empty values, as a whole and per platform, and turns a plain value
   // into { [platform]: value }. Doing that per activity keeps a newer empty or plain value from
@@ -357,8 +354,7 @@ function combineMemberUpdates(
 
   return {
     attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
-    joinedAt:
-      joinedAt.length > 0 ? new Date(Math.min(...joinedAt.map((d) => d.getTime()))) : undefined,
+    joinedAt,
     identities: updatesOldestFirst.flatMap((u) => u.member.identities ?? []),
     organizations: organizations.length > 0 ? organizations : undefined,
     reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
