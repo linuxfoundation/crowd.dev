@@ -40,6 +40,7 @@ export const credlyBadgeSchema = z
     id: z.string(),
     state: z.enum(CREDLY_BADGE_STATES),
     issued_at: z.string(),
+    created_at: nullableString,
     expires_at: nullableString,
     state_updated_at: nullableString,
     recipient_email: z.string().trim().min(1),

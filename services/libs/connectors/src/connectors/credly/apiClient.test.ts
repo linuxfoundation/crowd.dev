@@ -8,6 +8,7 @@ import { ConnectorCodeError, ProviderContractError } from '../../http/errors'
 import {
   CREDLY_API_BASE_URL,
   CREDLY_MIN_CALL_INTERVAL_MS,
+  fetchBadge,
   fetchBadgeTemplatesPage,
   fetchBadgesPage,
   resetCredlyPacing,
@@ -225,6 +226,41 @@ describe('fetchBadgesPage', () => {
 
     expect(mockedTimeout).toHaveBeenCalledTimes(1)
     expect(mockedTimeout).toHaveBeenCalledWith(CREDLY_MIN_CALL_INTERVAL_MS)
+  })
+})
+
+describe('fetchBadge', () => {
+  it('requests one badge by id and parses it', async () => {
+    const http = httpReturning({
+      data: badge({ id: 'badge-9', created_at: '2026-10-27T22:51:00Z' }),
+    })
+
+    const result = await fetchBadge(http, { organizationId: 'org-1', badgeId: 'badge-9' }, log)
+
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'get',
+        url: `${CREDLY_API_BASE_URL}/organizations/org-1/badges/badge-9`,
+        params: {},
+      }),
+      log,
+      expect.any(Number),
+    )
+    expect(result).toMatchObject({ id: 'badge-9', created_at: '2026-10-27T22:51:00Z' })
+  })
+
+  it('fails on a body that is not a badge, naming the field', async () => {
+    const http = httpReturning({ data: badge({ state: 'unknown' }) })
+
+    const failure = await fetchBadge(
+      http,
+      { organizationId: 'org-1', badgeId: 'badge-9' },
+      log,
+    ).catch((err) => err)
+
+    expect(failure).toBeInstanceOf(ProviderContractError)
+    expect(failure.message).toContain('credly badge does not match')
+    expect(failure.message).toContain('data.state')
   })
 })
 

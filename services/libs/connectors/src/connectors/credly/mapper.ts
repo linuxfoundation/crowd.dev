@@ -45,17 +45,27 @@ export const credlyActivitySchema = z.object({
 
 export type CredlyActivity = z.infer<typeof credlyActivitySchema>
 
+// A renewed badge is born with the dates of the badge it replaces copied onto it
+// (linuxfoundation/lfx-cdp-insights-ops#967): only created_at dates the renewal.
+export function issuedAt(badge: CredlyBadge): string {
+  return badge.replaces_badge_id && badge.created_at ? badge.created_at : badge.issued_at
+}
+
+export function stateChangedAt(badge: CredlyBadge): string {
+  const stateUpdatedAt = badge.state_updated_at ?? badge.issued_at
+  if (!badge.created_at) return stateUpdatedAt
+  return Date.parse(badge.created_at) > Date.parse(stateUpdatedAt)
+    ? badge.created_at
+    : stateUpdatedAt
+}
+
 export function issuedBadgeActivity(badge: CredlyBadge): CredlyActivity {
-  return badgeActivity(badge, CredlyActivityType.ISSUED_BADGE, badge.issued_at)
+  return badgeActivity(badge, CredlyActivityType.ISSUED_BADGE, issuedAt(badge))
 }
 
 export function stateBadgeActivity(badge: CredlyBadge): CredlyActivity | null {
   if (badge.state === 'pending') return null
-  return badgeActivity(
-    badge,
-    STATE_ACTIVITY_TYPES[badge.state],
-    badge.state_updated_at ?? badge.issued_at,
-  )
+  return badgeActivity(badge, STATE_ACTIVITY_TYPES[badge.state], stateChangedAt(badge))
 }
 
 export function expiredBadgeActivity(badge: CredlyBadge): CredlyActivity | null {
@@ -128,6 +138,7 @@ function badgeActivity(
       globalActivityUrl: template.global_activity_url,
       state: badge.state,
       issuedAt: badge.issued_at,
+      createdAt: badge.created_at,
       expiresAt: badge.expires_at,
       stateUpdatedAt: badge.state_updated_at,
       revocationReason: badge.revocation_reason,

@@ -266,3 +266,46 @@ describe('credlyBadgeSchema', () => {
     expect(() => credlyBadgeSchema.parse({ ...BASE_BADGE, recipient_email: '   ' })).toThrow()
   })
 })
+
+describe('renewed badge dates', () => {
+  const RENEWED: CredlyBadge = {
+    ...BASE_BADGE,
+    id: '873b5157-4444-4555-8666-777788889999',
+    issued_at: '2020-02-10T00:00:00.000Z',
+    state_updated_at: '2020-02-10T09:00:00.000Z',
+    created_at: '2026-10-27T22:51:12.000Z',
+    replaces_badge_id: '0d27994b-5555-4666-8777-888899990000',
+  }
+
+  it('dates the issue and the acceptance of a renewed badge at its creation', () => {
+    expect(issuedBadgeActivity(RENEWED).timestamp).toBe('2026-10-27T22:51:12.000Z')
+    expect(stateBadgeActivity(RENEWED)?.timestamp).toBe('2026-10-27T22:51:12.000Z')
+    expect(issuedBadgeActivity(RENEWED).attributes).toMatchObject({
+      createdAt: '2026-10-27T22:51:12.000Z',
+      issuedAt: '2020-02-10T00:00:00.000Z',
+    })
+  })
+
+  it('keeps a later state change of a renewed badge on its own date', () => {
+    const revoked = stateBadgeActivity({
+      ...RENEWED,
+      state: 'revoked',
+      state_updated_at: '2026-11-02T08:00:00.000Z',
+    })
+
+    expect(revoked?.timestamp).toBe('2026-11-02T08:00:00.000Z')
+  })
+
+  it('leaves a badge that replaces nothing on its issue date, even when created later', () => {
+    const activity = issuedBadgeActivity({ ...BASE_BADGE, created_at: '2026-10-19T14:30:00.000Z' })
+
+    expect(activity.timestamp).toBe('2026-10-19T00:00:00.000Z')
+  })
+
+  it('falls back to the copied dates when created_at is missing', () => {
+    const badge = { ...RENEWED, created_at: null }
+
+    expect(issuedBadgeActivity(badge).timestamp).toBe('2020-02-10T00:00:00.000Z')
+    expect(stateBadgeActivity(badge)?.timestamp).toBe('2020-02-10T09:00:00.000Z')
+  })
+})

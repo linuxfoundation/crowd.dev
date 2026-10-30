@@ -65,6 +65,8 @@ const badgesPageSchema = z.object({
   metadata: pageMetadataSchema,
 })
 
+const badgeSchema = z.object({ data: credlyBadgeSchema })
+
 export const credlyBadgeTemplateListingSchema = z
   .object({
     id: z.string(),
@@ -108,6 +110,20 @@ export async function fetchBadgesPage(
   const page = parsePage<CredlyBadge>(badgesPageSchema, body, 'badges')
   assertBadgesInsideWindow(page.data, window)
   return page
+}
+
+export async function fetchBadge(
+  http: ConnectorHttp,
+  params: { organizationId: string; badgeId: string },
+  log: Logger,
+): Promise<CredlyBadge> {
+  const body = await credlyGet(
+    http,
+    `/organizations/${params.organizationId}/badges/${encodeURIComponent(params.badgeId)}`,
+    {},
+    log,
+  )
+  return parseBody<{ data: CredlyBadge }>(badgeSchema, body, 'badge').data
 }
 
 export async function fetchBadgeTemplatesPage(
@@ -206,15 +222,17 @@ function assertBadgesInsideWindow(badges: CredlyBadge[], window: StateUpdatedWin
 }
 
 function parsePage<T>(schema: z.ZodTypeAny, body: unknown, what: string): CredlyPage<T> {
+  return parseBody<CredlyPage<T>>(schema, body, `${what} page`)
+}
+
+function parseBody<T>(schema: z.ZodTypeAny, body: unknown, what: string): T {
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 5)
       .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
       .join('; ')
-    throw new ProviderContractError(
-      `credly ${what} page does not match the expected shape: ${issues}`,
-    )
+    throw new ProviderContractError(`credly ${what} does not match the expected shape: ${issues}`)
   }
-  return parsed.data as CredlyPage<T>
+  return parsed.data as T
 }
