@@ -18,7 +18,7 @@ export async function scheduleMirrorSweep(): Promise<void> {
         type: 'startWorkflow',
         workflowType: mirrorSweep,
         taskQueue: 'connectors',
-        args: [{ batchSize: 1000, shadowCap: 5000 }],
+        args: [{ batchSize: 2500, shadowCap: 5000 }],
         workflowExecutionTimeout: '2 hours',
       },
     })
