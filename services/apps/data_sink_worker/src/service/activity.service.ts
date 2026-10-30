@@ -306,9 +306,11 @@ function combineMemberUpdates(
   dbMember: IDbMember,
   platform: PlatformType,
 ): IMemberUpdateData {
-  // mergeData discards incoming attributes that flag a non-bot member as a bot. Applied to the
-  // combined attributes it would drop every activity's attributes, so it's applied per activity.
-  const dbMemberIsBot = hasGithubBotFlag(dbMember.attributes as Record<string, unknown>)
+  // mergeData drops a bot-flagged activity's attributes after validating them. A combined update
+  // must do it per activity (each is validated before combining); a single one is left to mergeData.
+  const dropBotFlagged =
+    updatesOldestFirst.length > 1 &&
+    !hasGithubBotFlag(dbMember.attributes as Record<string, unknown>)
 
   const joinedAt = updatesOldestFirst
     .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
@@ -346,7 +348,7 @@ function combineMemberUpdates(
   const attributes = updatesOldestFirst
     .filter(
       (u) =>
-        u.member.attributes && (dbMemberIsBot || !hasGithubBotFlag(u.member.attributes, platform)),
+        u.member.attributes && !(dropBotFlagged && hasGithubBotFlag(u.member.attributes, platform)),
     )
     .map((u) => withoutUrlLocation(asPlatformValues(u.member.attributes)))
   const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
