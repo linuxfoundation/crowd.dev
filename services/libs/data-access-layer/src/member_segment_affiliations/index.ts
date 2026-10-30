@@ -76,6 +76,7 @@ export async function findMemberAffiliations(
       FROM "memberSegmentAffiliations"
       WHERE "memberId" = $(memberId)
         AND "deletedAt" IS NULL
+      ORDER BY "dateStart" DESC NULLS LAST, "organizationId", id
     `,
     { memberId },
   )

@@ -291,7 +291,7 @@ export async function prepareMemberOrganizationAffiliationTimeline(
       WHERE mo."memberId" = $(memberId)
         AND mo."deletedAt" IS NULL
         AND coalesce(ovr."allowAffiliation", true) = true
-      ORDER BY mo."dateStart" DESC
+      ORDER BY mo."dateStart" DESC, mo."organizationId", mo.id
     `,
     { memberId },
   )

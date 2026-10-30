@@ -9,7 +9,7 @@ export const PR_PAGE_SIZE = 50
 // bounds re-walk cost on a run that dies far above every prior window, at the cost of
 // re-fetching the dropped window's PRs once more before it gets picked back up
 const MAX_COVERED_WINDOWS = 8
-const LISTING_LAG_MS = 48 * 60 * 60 * 1000
+export const LISTING_LAG_MS = 48 * 60 * 60 * 1000
 
 export type OnPrProcessed = (pr: PullRequestNode) => Promise<void>
 
