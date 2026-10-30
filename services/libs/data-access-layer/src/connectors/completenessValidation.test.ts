@@ -360,6 +360,17 @@ describe('backfill checks', () => {
       { integrationId },
     )
     expect(await isListed(3600)).toBe(true)
+    const listed = (await listDueBackfillChecks(qx, 3600, 1000)).find(
+      (check) => check.integrationId === integrationId && check.channelId === channelId,
+    )
+    const { matches } = await qx.selectOne(
+      `SELECT date_trunc('second', "createdAt") = $(onboardedAt)::timestamptz AS matches
+       FROM integration.completeness_backfill_checks
+       WHERE "integrationId" = $(integrationId) AND "channelId" = $(channelId)`,
+      { integrationId, channelId, onboardedAt: listed?.onboardedAt },
+    )
+    expect(listed?.onboardedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
+    expect(matches).toBe(true)
 
     await insertBackfillCheck(qx, integrationId, channelId)
     expect((await readyAt()).readyAt).toBeNull()

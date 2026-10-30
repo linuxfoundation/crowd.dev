@@ -29,7 +29,7 @@ describe('completenessBackfillSweep', () => {
     const checks = Array.from({ length: 12 }, (_, i) => ({
       integrationId: 'i',
       channelId: `c${String(i).padStart(2, '0')}`,
-      onboardedAt: '2026-10-29T09:05:00.000Z',
+      onboardedAt: '2026-10-29T09:05:00Z',
     }))
     mocks.dueBackfillChecks.mockResolvedValue(checks)
     mocks.executeChild.mockImplementation(async (_workflow, options) => {
@@ -46,7 +46,7 @@ describe('completenessBackfillSweep', () => {
       args: [
         {
           target: { kind: 'channelId', integrationId: 'i', channelId: 'c00' },
-          window: { kind: 'all-time', to: '2026-10-29T09:05:00.000Z' },
+          window: { kind: 'all-time', to: '2026-10-29T09:05:00Z' },
           counterKeys: null,
         },
       ],

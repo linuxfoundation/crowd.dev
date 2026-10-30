@@ -75,16 +75,7 @@ export async function dueBackfillChecks(): Promise<
 > {
   const qx = dbStoreQx(svc.postgres.writer)
   await markReadyBackfillChecks(qx)
-  const checks = await listDueBackfillChecks(
-    qx,
-    BACKFILL_VALIDATION_DELAY_SECONDS,
-    BACKFILL_CHECKS_PER_SWEEP,
-  )
-  return checks.map(({ integrationId, channelId, createdAt }) => ({
-    integrationId,
-    channelId,
-    onboardedAt: createdAt.toISOString(),
-  }))
+  return listDueBackfillChecks(qx, BACKFILL_VALIDATION_DELAY_SECONDS, BACKFILL_CHECKS_PER_SWEEP)
 }
 
 export async function completeBackfillCheck(input: {

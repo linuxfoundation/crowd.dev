@@ -163,9 +163,11 @@ export async function listDueBackfillChecks(
   qx: QueryExecutor,
   delaySeconds: number,
   limit: number,
-): Promise<{ integrationId: string; channelId: string; createdAt: Date }[]> {
+): Promise<{ integrationId: string; channelId: string; onboardedAt: string }[]> {
   return qx.select(
-    `SELECT "integrationId", "channelId", "createdAt"
+    `SELECT "integrationId", "channelId",
+            to_char(date_trunc('second', "createdAt") AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "onboardedAt"
      FROM integration.completeness_backfill_checks
      WHERE "readyAt" <= now() - make_interval(secs => $(delaySeconds))
      ORDER BY "readyAt"
