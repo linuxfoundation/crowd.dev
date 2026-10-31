@@ -3,8 +3,8 @@ export async function mapWithConcurrency<T, R>(
   limit: number,
   fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-  if (limit < 1) {
-    throw new Error(`Concurrency limit must be at least 1, got ${limit}`)
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error(`Concurrency limit must be an integer at least 1, got ${limit}`)
   }
   const results: R[] = Array.from({ length: items.length })
   let next = 0
