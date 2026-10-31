@@ -69,8 +69,8 @@ import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// How many groups of linked members a batch updates at once
-const MEMBER_UPDATE_CONCURRENCY = Number(process.env.MEMBER_UPDATE_CONCURRENCY || 10)
+// How many groups of linked members a batch updates at once; matches the worker's DB pool size
+const MEMBER_UPDATE_CONCURRENCY = Number(process.env.MEMBER_UPDATE_CONCURRENCY || 5)
 
 function toLineCount(value: unknown): number | undefined {
   if (typeof value === 'number') {
