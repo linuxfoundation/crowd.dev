@@ -121,6 +121,26 @@ export async function insertOrganizationIdentities(
   return qx.result(query)
 }
 
+function findStoredOrgIdentity(
+  stored: IOrganizationIdentity[],
+  identity: Partial<IOrganizationIdentity>,
+): IOrganizationIdentity | undefined {
+  return stored.find(
+    (s) =>
+      s.value === identity.value && s.platform === identity.platform && s.type === identity.type,
+  )
+}
+
+export function hasAllOrgIdentities(
+  stored: IOrganizationIdentity[],
+  identities: Partial<IOrganizationIdentity>[],
+): boolean {
+  return identities.every((identity) => {
+    const existing = findStoredOrgIdentity(stored, identity)
+    return existing && (identity.verified === undefined || existing.verified === identity.verified)
+  })
+}
+
 export async function upsertOrgIdentities(
   qe: QueryExecutor,
   organizationId: string,
@@ -132,9 +152,7 @@ export async function upsertOrgIdentities(
   const toUpdate: Partial<IOrganizationIdentity>[] = []
 
   for (const i of identities) {
-    const existing = existingIdentities.find(
-      (ei) => ei.value === i.value && ei.platform === i.platform && ei.type === i.type,
-    )
+    const existing = findStoredOrgIdentity(existingIdentities, i)
     if (!existing) {
       toCreate.push({
         organizationId,

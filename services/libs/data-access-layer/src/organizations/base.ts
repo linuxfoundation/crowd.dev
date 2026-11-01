@@ -22,9 +22,23 @@ import { QueryExecutor } from '../queryExecutor'
 import { findManyLfSegmentsByNames } from '../segments'
 import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
-import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
-import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
-import { IDbOrganization, IDbOrganizationInput, IFindOrCreateOrganizationResult } from './types'
+import {
+  hasAllOrgAttributes,
+  isOrgAttributeDefault,
+  markOrgAttributeDefault,
+  upsertOrgAttributes,
+} from './attributes'
+import {
+  hasAllOrgIdentities,
+  insertOrganizationIdentities,
+  upsertOrgIdentities,
+} from './identities'
+import {
+  IDbOrgAttribute,
+  IDbOrganization,
+  IDbOrganizationInput,
+  IFindOrCreateOrganizationResult,
+} from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -530,6 +544,52 @@ async function findOrgForUpdate(qe: QueryExecutor, id: string): Promise<IDbOrgan
   )
 }
 
+interface IStoredOrg {
+  attributes: IDbOrgAttribute[]
+  identities: IOrganizationIdentity[]
+}
+
+async function findOrgAttributesAndIdentities(qe: QueryExecutor, id: string): Promise<IStoredOrg> {
+  return qe.selectOne(
+    `
+      select
+        coalesce((select jsonb_agg(oa) from "orgAttributes" oa where oa."organizationId" = $(id)), '[]') as attributes,
+        coalesce((select jsonb_agg(oi) from "organizationIdentities" oi where oi."organizationId" = $(id)), '[]') as identities
+    `,
+    { id },
+  )
+}
+
+function planOrgUpdate(
+  data: IOrganization,
+  source: string,
+  existing: IDbOrganization,
+  stored: IStoredOrg,
+) {
+  // prepareOrganizationData rewrites the default flags of the attributes it gets, so it gets copies
+  const processed = prepareOrganizationData(
+    data,
+    source,
+    existing,
+    stored.attributes.map((a) => ({ ...a })),
+  )
+  const updateOrganization = Object.keys(processed.organization).length > 0
+  const upsertIdentities = !hasAllOrgIdentities(stored.identities, data.identities)
+  const upsertAttributes = !hasAllOrgAttributes(stored.attributes, processed.attributes)
+  const markDefaults = processed.attributes.filter(
+    (a) => a.default && !isOrgAttributeDefault(stored.attributes, a),
+  )
+  return {
+    processed,
+    updateOrganization,
+    upsertIdentities,
+    upsertAttributes,
+    markDefaults,
+    changesNothing:
+      !updateOrganization && !upsertIdentities && !upsertAttributes && markDefaults.length === 0,
+  }
+}
+
 // lockOrganization: a caller that runs this concurrently without transactions passes a lock, so
 // calls that reach the same organization through different identities update it one at a time
 export async function findOrCreateOrganization(
@@ -618,24 +678,29 @@ export async function findOrCreateOrganization(
     if (existing) {
       log.trace(`Found existing organization, organization will be updated!`)
 
+      let stored = await logExecutionTimeV2(
+        async () => findOrgAttributesAndIdentities(qe, existing.id),
+        log,
+        'organizationService -> findOrCreateOrganization -> findOrgAttributesAndIdentities',
+      )
+      let plan = planOrgUpdate(data, source, existing, stored)
+      if (plan.changesNothing) {
+        return { id: existing.id, created: false }
+      }
+
       const release = await lockOrganization?.(existing.id)
       try {
         if (release) {
           // read it again: the call that held the lock may have changed it
           existing = (await findOrgForUpdate(qe, existing.id)) ?? existing
+          stored = await findOrgAttributesAndIdentities(qe, existing.id)
+          plan = planOrgUpdate(data, source, existing, stored)
         }
 
-        const existingAttributes = await logExecutionTimeV2(
-          async () => findOrgAttributes(qe, existing.id),
-          log,
-          'organizationService -> findOrCreateOrganization -> findOrgAttributes',
-        )
-
-        const processed = prepareOrganizationData(data, source, existing, existingAttributes)
-
+        const { processed } = plan
         log.trace({ updateData: processed.organization }, `Updating organization!`)
 
-        if (Object.keys(processed.organization).length > 0) {
+        if (plan.updateOrganization) {
           log.info({ orgId: existing.id }, `Updating organization!`)
           await logExecutionTimeV2(
             async () =>
@@ -644,30 +709,32 @@ export async function findOrCreateOrganization(
             'organizationService -> findOrCreateOrganization -> updateOrganization',
           )
         }
-        await logExecutionTimeV2(
-          async () =>
-            upsertOrgIdentities(
-              qe,
-              existing.id,
-              data.identities.map((i) => ({ ...i, source })),
-              integrationId,
-            ),
-          log,
-          'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
-        )
-        await logExecutionTimeV2(
-          async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
-          log,
-          'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
-        )
-        for (const attr of processed.attributes) {
-          if (attr.default) {
-            await logExecutionTimeV2(
-              async () => markOrgAttributeDefault(qe, existing.id, attr),
-              log,
-              'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
-            )
-          }
+        if (plan.upsertIdentities) {
+          await logExecutionTimeV2(
+            async () =>
+              upsertOrgIdentities(
+                qe,
+                existing.id,
+                data.identities.map((i) => ({ ...i, source })),
+                integrationId,
+              ),
+            log,
+            'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
+          )
+        }
+        if (plan.upsertAttributes) {
+          await logExecutionTimeV2(
+            async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
+            log,
+            'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
+          )
+        }
+        for (const attr of plan.markDefaults) {
+          await logExecutionTimeV2(
+            async () => markOrgAttributeDefault(qe, existing.id, attr),
+            log,
+            'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
+          )
         }
 
         id = existing.id
