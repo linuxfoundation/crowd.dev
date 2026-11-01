@@ -2272,8 +2272,15 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    await mapWithConcurrency(groups, MEMBER_UPDATE_CONCURRENCY, async (runs) => {
+    // A failure stops the other groups between runs, but the batch only fails once their
+    // in-flight updates are done, so a retry of the batch can't overlap them.
+    let failure: { err: unknown } | undefined
+    const updateGroup = async (runs: (typeof groups)[number]) => {
       for (const { dbMember, run, combine } of runs) {
+        if (failure) {
+          return
+        }
+
         if (!combine) {
           for (const update of run) {
             await updateSingleActivity(dbMember, update)
@@ -2295,7 +2302,18 @@ export default class ActivityService extends LoggerBase {
         }
         await updateCombined(dbMember, combinable)
       }
+    }
+
+    await mapWithConcurrency(groups, MEMBER_UPDATE_CONCURRENCY, async (runs) => {
+      try {
+        await updateGroup(runs)
+      } catch (err) {
+        failure ??= { err }
+      }
     })
+    if (failure) {
+      throw failure.err
+    }
 
     // Updates that ran before a later one merged their member away must follow that redirect too.
     for (const memberIds of Object.values(results.memberIds)) {
