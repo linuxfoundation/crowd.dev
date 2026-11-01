@@ -92,6 +92,52 @@ function orgCacheKey(org: IOrganization): string | null {
   return null
 }
 
+// Per batch (through its org promise cache): the latest find-or-create call for each verified
+// identity. A call waits for the earlier ones that share an identity with it, so it finds the
+// organization they created instead of creating a duplicate when members are updated concurrently.
+const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
+
+function orgLockKeys(org: IOrganization): string[] {
+  return (org.identities ?? [])
+    .filter((i) => i.verified && i.value)
+    .map((i) =>
+      // findOrCreateOrganization matches a primary domain on any platform
+      i.type === OrganizationIdentityType.PRIMARY_DOMAIN
+        ? `${i.type}:${i.value.toLowerCase()}`
+        : `${i.platform}:${i.type}:${i.value.toLowerCase()}`,
+    )
+}
+
+function findOrCreateOrgOnce(
+  orgPromiseCache: OrgPromiseCache | undefined,
+  org: IOrganization,
+  findOrCreate: () => Promise<IFindOrCreateOrganizationResult | undefined>,
+): Promise<IFindOrCreateOrganizationResult | undefined> {
+  const key = orgCacheKey(org)
+  const cached = key ? orgPromiseCache?.get(key) : undefined
+  if (cached) {
+    return cached
+  }
+  if (!orgPromiseCache) {
+    return findOrCreate()
+  }
+
+  const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
+  orgIdentityLocks.set(orgPromiseCache, locks)
+  const lockKeys = orgLockKeys(org)
+  const promise = Promise.all(lockKeys.map((k) => locks.get(k))).then(findOrCreate)
+  const settled = promise.catch(() => undefined)
+  for (const k of lockKeys) {
+    locks.set(k, settled)
+  }
+
+  if (key) {
+    orgPromiseCache.set(key, promise)
+    promise.catch(() => orgPromiseCache.delete(key))
+  }
+  return promise
+}
+
 // Integrations stamp activities without a date at 1970-01-01 (e.g. Slack channel members), which is
 // never a real join date, so a date this close to the epoch never wins
 const JOINED_AT_PLACEHOLDER_UNTIL = Date.UTC(1970, 0, 6)
@@ -526,23 +572,13 @@ export default class MemberService extends LoggerBase {
                 continue
               }
 
-              const key = orgCacheKey(org)
-              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-              if (cachedOrgPromise) {
-                orgIdPromise = cachedOrgPromise
-              } else {
-                orgIdPromise = logExecutionTimeV2(
+              const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
+                logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
                   this.log,
                   'memberService -> create -> orgService.findOrCreate',
-                )
-                if (key) {
-                  orgPromiseCache?.set(key, orgIdPromise)
-                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-                }
-              }
-              const result = await orgIdPromise
+                ),
+              )
               if (result) {
                 organizations.push({
                   id: result.id,
@@ -793,23 +829,13 @@ export default class MemberService extends LoggerBase {
 
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const key = orgCacheKey(org)
-              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-              if (cachedOrgPromise) {
-                orgIdPromise = cachedOrgPromise
-              } else {
-                orgIdPromise = logExecutionTimeV2(
+              const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
+                logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
                   this.log,
                   'memberService -> update -> orgService.findOrCreate',
-                )
-                if (key) {
-                  orgPromiseCache?.set(key, orgIdPromise)
-                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-                }
-              }
-              const result = await orgIdPromise
+                ),
+              )
               if (result) {
                 organizations.push({
                   id: result.id,
@@ -934,23 +960,9 @@ export default class MemberService extends LoggerBase {
           },
         ],
       }
-      const key = orgCacheKey(org)
-      const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-      let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-      if (cachedOrgPromise) {
-        orgIdPromise = cachedOrgPromise
-      } else {
-        orgIdPromise = orgService.findOrCreate(
-          OrganizationAttributeSource.EMAIL,
-          integrationId,
-          org,
-        )
-        if (key) {
-          orgPromiseCache?.set(key, orgIdPromise)
-          orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-        }
-      }
-      const result = await orgIdPromise
+      const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
+        orgService.findOrCreate(OrganizationAttributeSource.EMAIL, integrationId, org),
+      )
       if (result) {
         organizations.push({
           id: result.id,
