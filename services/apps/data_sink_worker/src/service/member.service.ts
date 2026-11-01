@@ -99,9 +99,11 @@ function orgCacheKey(org: IOrganization): string | null {
 const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
 
 // Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
-// normalization, a primary domain on any platform, and the display name as the fallback
+// normalization, a primary domain on any platform, and the name as the fallback. Without a
+// display name, an organization is created under its first verified identity's value.
 function orgLockKeys(org: IOrganization): string[] {
   const keys: string[] = []
+  let creationName: string | undefined
   for (const identity of org.identities ?? []) {
     if (!identity.verified || !identity.value) {
       continue
@@ -114,6 +116,7 @@ function orgLockKeys(org: IOrganization): string[] {
     if (!value) {
       continue
     }
+    creationName ??= value
     keys.push(
       identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
         ? `${identity.type}:${value.toLowerCase()}`
@@ -121,7 +124,7 @@ function orgLockKeys(org: IOrganization): string[] {
     )
   }
 
-  const name = org.displayName?.trim().toLowerCase()
+  const name = (org.displayName || creationName)?.trim().toLowerCase()
   if (name) {
     keys.push(`name:${name}`)
   }
