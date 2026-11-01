@@ -35,10 +35,11 @@ export class OrganizationService extends LoggerBase {
     source: string,
     integrationId: string,
     data: IOrganization,
+    lockOrganization?: (organizationId: string) => Promise<() => void>,
   ): Promise<IFindOrCreateOrganizationResult | undefined> {
     return this.store.transactionally(async (txStore) => {
       const qe = dbStoreQx(txStore)
-      return findOrCreateOrganization(qe, source, data, integrationId, true)
+      return findOrCreateOrganization(qe, source, data, integrationId, true, lockOrganization)
     })
   }
 

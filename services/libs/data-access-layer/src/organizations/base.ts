@@ -523,12 +523,22 @@ export async function getTimeseriesOfActiveOrganizations(
   return qx.select(query, { ...params })
 }
 
+async function findOrgForUpdate(qe: QueryExecutor, id: string): Promise<IDbOrganization | null> {
+  return qe.selectOneOrNone(
+    `select ${prepareSelectColumns(ORG_SELECT_COLUMNS, 'o')} from organizations o where o.id = $(id)`,
+    { id },
+  )
+}
+
+// lockOrganization: a caller that runs this concurrently without transactions passes a lock, so
+// calls that reach the same organization through different identities update it one at a time
 export async function findOrCreateOrganization(
   qe: QueryExecutor,
   source: string,
   data: IOrganization,
   integrationId?: string,
   throttleUpdatedAt = false,
+  lockOrganization?: (organizationId: string) => Promise<() => void>,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
   data.identities = data.identities ?? []
   let verifiedIdentities = data.identities.filter((i) => i.verified)
@@ -608,52 +618,62 @@ export async function findOrCreateOrganization(
     if (existing) {
       log.trace(`Found existing organization, organization will be updated!`)
 
-      const existingAttributes = await logExecutionTimeV2(
-        async () => findOrgAttributes(qe, existing.id),
-        log,
-        'organizationService -> findOrCreateOrganization -> findOrgAttributes',
-      )
+      const release = await lockOrganization?.(existing.id)
+      try {
+        if (release) {
+          // read it again: the call that held the lock may have changed it
+          existing = (await findOrgForUpdate(qe, existing.id)) ?? existing
+        }
 
-      const processed = prepareOrganizationData(data, source, existing, existingAttributes)
-
-      log.trace({ updateData: processed.organization }, `Updating organization!`)
-
-      if (Object.keys(processed.organization).length > 0) {
-        log.info({ orgId: existing.id }, `Updating organization!`)
-        await logExecutionTimeV2(
-          async () =>
-            updateOrganization(qe, existing.id, processed.organization, throttleUpdatedAt),
+        const existingAttributes = await logExecutionTimeV2(
+          async () => findOrgAttributes(qe, existing.id),
           log,
-          'organizationService -> findOrCreateOrganization -> updateOrganization',
+          'organizationService -> findOrCreateOrganization -> findOrgAttributes',
         )
-      }
-      await logExecutionTimeV2(
-        async () =>
-          upsertOrgIdentities(
-            qe,
-            existing.id,
-            data.identities.map((i) => ({ ...i, source })),
-            integrationId,
-          ),
-        log,
-        'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
-      )
-      await logExecutionTimeV2(
-        async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
-        log,
-        'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
-      )
-      for (const attr of processed.attributes) {
-        if (attr.default) {
+
+        const processed = prepareOrganizationData(data, source, existing, existingAttributes)
+
+        log.trace({ updateData: processed.organization }, `Updating organization!`)
+
+        if (Object.keys(processed.organization).length > 0) {
+          log.info({ orgId: existing.id }, `Updating organization!`)
           await logExecutionTimeV2(
-            async () => markOrgAttributeDefault(qe, existing.id, attr),
+            async () =>
+              updateOrganization(qe, existing.id, processed.organization, throttleUpdatedAt),
             log,
-            'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
+            'organizationService -> findOrCreateOrganization -> updateOrganization',
           )
         }
-      }
+        await logExecutionTimeV2(
+          async () =>
+            upsertOrgIdentities(
+              qe,
+              existing.id,
+              data.identities.map((i) => ({ ...i, source })),
+              integrationId,
+            ),
+          log,
+          'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
+        )
+        await logExecutionTimeV2(
+          async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
+          log,
+          'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
+        )
+        for (const attr of processed.attributes) {
+          if (attr.default) {
+            await logExecutionTimeV2(
+              async () => markOrgAttributeDefault(qe, existing.id, attr),
+              log,
+              'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
+            )
+          }
+        }
 
-      id = existing.id
+        id = existing.id
+      } finally {
+        release?.()
+      }
     } else {
       log.trace(`Organization wasn't found via website or identities.`)
       const displayName = data.displayName ? data.displayName : verifiedIdentities[0].value

@@ -131,10 +131,35 @@ function orgLockKeys(org: IOrganization): string[] {
   return keys
 }
 
+// Per batch: the latest update of each existing organization. Calls with different identities can
+// resolve to the same organization (so the identity locks don't order them), and the data sink
+// has no transactions, so they update it one at a time.
+const orgIdLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<void>>>()
+
+function lockOrganizationFor(orgPromiseCache: OrgPromiseCache) {
+  return async (organizationId: string): Promise<() => void> => {
+    const locks = orgIdLocks.get(orgPromiseCache) ?? new Map<string, Promise<void>>()
+    orgIdLocks.set(orgPromiseCache, locks)
+    const previous = locks.get(organizationId) ?? Promise.resolve()
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    locks.set(
+      organizationId,
+      previous.then(() => held),
+    )
+    await previous
+    return release
+  }
+}
+
 function findOrCreateOrgOnce(
   orgPromiseCache: OrgPromiseCache | undefined,
   org: IOrganization,
-  findOrCreate: () => Promise<IFindOrCreateOrganizationResult | undefined>,
+  findOrCreate: (
+    lockOrganization?: (organizationId: string) => Promise<() => void>,
+  ) => Promise<IFindOrCreateOrganizationResult | undefined>,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
   const key = orgCacheKey(org)
   const cached = key ? orgPromiseCache?.get(key) : undefined
@@ -148,7 +173,9 @@ function findOrCreateOrgOnce(
   const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
   orgIdentityLocks.set(orgPromiseCache, locks)
   const lockKeys = orgLockKeys(org)
-  const promise = Promise.all(lockKeys.map((k) => locks.get(k))).then(findOrCreate)
+  const promise = Promise.all(lockKeys.map((k) => locks.get(k))).then(() =>
+    findOrCreate(lockOrganizationFor(orgPromiseCache)),
+  )
   const settled = promise.catch(() => undefined)
   for (const k of lockKeys) {
     locks.set(k, settled)
@@ -595,9 +622,9 @@ export default class MemberService extends LoggerBase {
                 continue
               }
 
-              const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
+              const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
                 logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org),
+                  () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
                   this.log,
                   'memberService -> create -> orgService.findOrCreate',
                 ),
@@ -852,9 +879,9 @@ export default class MemberService extends LoggerBase {
 
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
+              const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
                 logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org),
+                  () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
                   this.log,
                   'memberService -> update -> orgService.findOrCreate',
                 ),
@@ -983,8 +1010,13 @@ export default class MemberService extends LoggerBase {
           },
         ],
       }
-      const result = await findOrCreateOrgOnce(orgPromiseCache, org, () =>
-        orgService.findOrCreate(OrganizationAttributeSource.EMAIL, integrationId, org),
+      const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
+        orgService.findOrCreate(
+          OrganizationAttributeSource.EMAIL,
+          integrationId,
+          org,
+          lockOrganization,
+        ),
       )
       if (result) {
         organizations.push({
