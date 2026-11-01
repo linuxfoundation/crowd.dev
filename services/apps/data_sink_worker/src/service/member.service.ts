@@ -12,6 +12,7 @@ import {
   isObjectEmpty,
   isSameMemberIdentity,
   normalizeDisplayName,
+  normalizeHostname,
   normalizeMemberIdentities,
   omitUrlValues,
   singleOrDefault,
@@ -97,15 +98,34 @@ function orgCacheKey(org: IOrganization): string | null {
 // organization they created instead of creating a duplicate when members are updated concurrently.
 const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
 
+// Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
+// normalization, a primary domain on any platform, and the display name as the fallback
 function orgLockKeys(org: IOrganization): string[] {
-  return (org.identities ?? [])
-    .filter((i) => i.verified && i.value)
-    .map((i) =>
-      // findOrCreateOrganization matches a primary domain on any platform
-      i.type === OrganizationIdentityType.PRIMARY_DOMAIN
-        ? `${i.type}:${i.value.toLowerCase()}`
-        : `${i.platform}:${i.type}:${i.value.toLowerCase()}`,
+  const keys: string[] = []
+  for (const identity of org.identities ?? []) {
+    if (!identity.verified || !identity.value) {
+      continue
+    }
+    const isDomain = [
+      OrganizationIdentityType.PRIMARY_DOMAIN,
+      OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+    ].includes(identity.type)
+    const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
+    if (!value) {
+      continue
+    }
+    keys.push(
+      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
+        ? `${identity.type}:${value.toLowerCase()}`
+        : `${identity.platform}:${identity.type}:${value.toLowerCase()}`,
     )
+  }
+
+  const name = org.displayName?.trim().toLowerCase()
+  if (name) {
+    keys.push(`name:${name}`)
+  }
+  return keys
 }
 
 function findOrCreateOrgOnce(
