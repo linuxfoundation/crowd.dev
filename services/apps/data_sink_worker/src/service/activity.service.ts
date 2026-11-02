@@ -63,7 +63,12 @@ import {
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
-import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
+import MemberService, {
+  applyNewestOrgPayloads,
+  getEarliestMemberJoinedAt,
+  mergeIfAllowed,
+  registerOrgPayloadActivities,
+} from './member.service'
 import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { IProcessActivityResult } from './types'
 
@@ -1454,10 +1459,21 @@ export default class ActivityService extends LoggerBase {
     const preparedActivities: IActivityPrepareForUpsertResult[] = []
 
     const memberService = new MemberService(this.pgStore, this.redisClient, this.temporal, this.log)
-    // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
-    // unique org per batch. Concurrent member creates that reference the same org await the
-    // same promise instead of firing redundant DB round trips.
+    // One findOrCreateOrganization per distinct organization payload per batch: members that carry
+    // the same payload await the same promise
     const orgPromiseCache = new Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>()
+    registerOrgPayloadActivities(
+      orgPromiseCache,
+      relevantPayloads.flatMap((p) =>
+        [p.activity.member, p.activity.objectMember]
+          .filter((member) => member)
+          .map((member) => ({
+            source: p.platform,
+            timestamp: p.activity.timestamp,
+            organizations: member.organizations,
+          })),
+      ),
+    )
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -1721,6 +1737,18 @@ export default class ActivityService extends LoggerBase {
       this.log,
       'activityService -> processActivities -> updateMembers',
     )
+
+    // Only decides which organization values are the defaults, so a failure here doesn't fail the
+    // activities whose members were already updated
+    try {
+      await logExecutionTimeV2(
+        async () => applyNewestOrgPayloads(orgPromiseCache, this.log),
+        this.log,
+        'activityService -> processActivities -> applyNewestOrgPayloads',
+      )
+    } catch (err) {
+      this.log.error(err, 'Failed to apply the newest organization payloads of the batch!')
+    }
 
     for (const payload of relevantPayloads) {
       const memberFailure = memberUpdates.failures.member.get(payload)

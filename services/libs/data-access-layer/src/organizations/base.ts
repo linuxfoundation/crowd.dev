@@ -254,12 +254,16 @@ export async function markOrganizationEnriched(
 
 export async function addOrgsToSegments(
   qe: QueryExecutor,
-  segmentIds: string[],
-  orgIds: string[],
+  unsortedSegmentIds: string[],
+  unsortedOrgIds: string[],
 ): Promise<void> {
-  if (orgIds.length === 0 || segmentIds.length === 0) {
+  if (unsortedOrgIds.length === 0 || unsortedSegmentIds.length === 0) {
     return
   }
+
+  // Concurrent inserts of the same new rows in opposite order can deadlock
+  const segmentIds = [...unsortedSegmentIds].sort()
+  const orgIds = [...unsortedOrgIds].sort()
 
   const parameters: Record<string, unknown> = {
     tenantId: DEFAULT_TENANT_ID,
