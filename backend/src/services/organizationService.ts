@@ -19,7 +19,7 @@ import {
   mergeObjects,
   normalizeHostname,
 } from '@crowd/common'
-import { unmergeRoles } from '@crowd/common_services'
+import { signalMemberUpdate, unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -27,7 +27,7 @@ import {
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
-import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { deleteOrganizationSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -1093,6 +1093,7 @@ export default class OrganizationService extends LoggerBase {
   ) {
     let tx
     let recalculateAffiliations = false
+    let segmentOnlyMemberIds: string[] = []
 
     try {
       const repoOptions = await SequelizeRepository.createTransactionalRepositoryOptions(
@@ -1185,7 +1186,7 @@ export default class OrganizationService extends LoggerBase {
       ) {
         await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
         if (data.isAffiliationBlocked) {
-          await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
+          segmentOnlyMemberIds = await deleteOrganizationSegmentAffiliations(qx, record.id)
         }
         recalculateAffiliations = true
       }
@@ -1201,6 +1202,10 @@ export default class OrganizationService extends LoggerBase {
           syncToOpensearch,
           recalculateAffiliations,
         })
+      }
+
+      for (const memberId of segmentOnlyMemberIds) {
+        await signalMemberUpdate(this.options.temporal, memberId)
       }
 
       return record

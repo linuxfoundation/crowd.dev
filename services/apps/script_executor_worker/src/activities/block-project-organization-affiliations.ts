@@ -1,6 +1,6 @@
 import { OrganizationField, findOrgById, pgpQx, updateOrganization } from '@crowd/data-access-layer'
 import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member-organization-affiliation'
-import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { deleteOrganizationSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import OrganizationRepository from '@crowd/data-access-layer/src/old/apps/script_executor_worker/organization.repo'
 import { IChangeAffiliationOverrideData, IMemberOrganization } from '@crowd/types'
 
@@ -36,7 +36,12 @@ export async function setOrganizationAffiliationPolicyIfNotBlocked(
     }
 
     await updateOrganization(qx, organizationId, { isAffiliationBlocked: true })
-    await deleteMemberSegmentAffiliations(qx, { organizationId })
+    const segmentOnlyMemberIds = await deleteOrganizationSegmentAffiliations(qx, organizationId)
+
+    if (segmentOnlyMemberIds.length > 0) {
+      await markMemberForAffiliationRecalc(segmentOnlyMemberIds)
+    }
+
     return false
   } catch (error) {
     svc.log.error(error, 'Error setting organization affiliation policy!')
