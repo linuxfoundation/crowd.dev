@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
+import type { ICredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 import { CredlyActivityType } from '@crowd/integrations/src/integrations/credly/types'
 import type { Logger } from '@crowd/logging'
 
@@ -102,7 +103,9 @@ function makeCtx(
   routing: CredlyTemplateRouting = DEFAULT_ROUTING,
   emitEnabled = true,
   stored: ICredlyBadgeRow[] = [],
+  releases: ICredlyTemplateRelease[] = [],
 ) {
+  const queue = [...releases]
   const emitted: unknown[][] = []
   const emits: { records: unknown[]; segmentId?: string; integrationId?: string }[] = []
   const watermarks: Record<string, unknown>[] = []
@@ -116,6 +119,15 @@ function makeCtx(
     }),
     listDueExpiries: vi.fn(async () => []),
     markExpiriesEmitted: vi.fn(async () => 0),
+    nextRelease: vi.fn(async () => queue[0] ?? null),
+    saveReleaseCursor: vi.fn(async (release, cursor) => {
+      queue[0] = { ...release, ...cursor }
+      return 1
+    }),
+    completeRelease: vi.fn(async () => {
+      queue.shift()
+      return 1
+    }),
   }
   const ctx: SyncContext<CredlyDeps> = {
     channel: { channelId: ORGANIZATION_ID, channelName: ORGANIZATION_ID },
@@ -1259,5 +1271,260 @@ describe('runBadgePoll backfill', () => {
       { backfill: { floor: FLOOR, top: 'not a date' } },
       'credly backfill cursor unreadable, dropped',
     )
+  })
+})
+
+describe('runBadgePoll releases', () => {
+  const FLOOR = '2026-10-10T00:00:00.000Z'
+  const TOP = '2026-10-20T00:00:00.000Z'
+  const MID = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+
+  function release(badgeTemplateId: string, overrides: Partial<ICredlyTemplateRelease> = {}) {
+    return {
+      badgeTemplateId,
+      floor: FLOOR,
+      top: TOP,
+      since: null,
+      until: null,
+      page: 1,
+      queuedAt: '2026-11-02T10:00:00.000Z',
+      completedAt: null,
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    mockedFetchBadgesPage.mockReset()
+    mockedFetchBadge.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('re-reads a released template with the template filter, window by window, then completes it', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const { ctx, emitted, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(requestedParams().map((p) => [p.window.min, p.window.max, p.badgeTemplateId])).toEqual([
+      [MID, TOP, 'template-1'],
+      [FLOOR, MID, 'template-1'],
+    ])
+    expect(emitted).toHaveLength(2)
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(LOG.info).toHaveBeenCalledWith(
+      { badgeTemplateId: 'template-1' },
+      'credly template history released',
+    )
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'credly_badge_poll_run', releasePages: 2, releases: 1 }),
+      expect.any(String),
+    )
+  })
+
+  it('halves a failing release window and walks its upper half before moving down', async () => {
+    const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
+    mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+
+    await runBadgePoll(ctx)
+
+    const half = new Date(Date.parse(MID) + MAX_WINDOW_MS / 2).toISOString()
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: MID, max: TOP },
+      { min: MID, max: half },
+      { min: half, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads the routing for a release queued after the run started instead of skipping it', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+    vi.mocked(deps.loadTemplateRouting).mockResolvedValueOnce({
+      targets: new Map(),
+      staleTemplateIds: [],
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(vi.mocked(deps.loadTemplateRouting).mock.calls).toEqual([[false], [true]])
+    expect(mockedFetchBadgesPage).toHaveBeenCalledTimes(2)
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(LOG.warn).not.toHaveBeenCalled()
+  })
+
+  it('completes a release whose template is not mapped without calling credly', async () => {
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('tpl-unmapped')],
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateId: 'tpl-unmapped' },
+      'credly release skipped: template not mapped',
+    )
+  })
+
+  it('stops skipping unmapped releases at the cap, leaving the run incomplete', async () => {
+    const releases = Array.from({ length: MAX_PAGES_PER_RUN + 1 }, (_, i) =>
+      release(`tpl-unmapped-${i}`),
+    )
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      releases,
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(deps.completeRelease).toHaveBeenCalledTimes(MAX_PAGES_PER_RUN)
+  })
+
+  it('stops at the page cap mid-release with the cursor saved, and stays incomplete', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(
+      page([badge({ id: 'b', state_updated_at: MID })], 1, 1000),
+    )
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(mockedFetchBadgesPage).toHaveBeenCalledTimes(MAX_PAGES_PER_RUN)
+    expect(deps.completeRelease).not.toHaveBeenCalled()
+    expect(vi.mocked(deps.saveReleaseCursor).mock.lastCall?.[1]).toEqual({
+      floor: FLOOR,
+      top: TOP,
+      since: MID,
+      until: TOP,
+      page: MAX_PAGES_PER_RUN + 1,
+    })
+  })
+
+  it('serves a release before the global history, which then goes on without the filter', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const { ctx } = makeCtx(
+      { since: HORIZON, backfill: { floor: FLOOR, top: TOP } },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1', { floor: MID })],
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(requestedParams().map((p) => [p.window.min, p.badgeTemplateId])).toEqual([
+      [MID, 'template-1'],
+      [MID, undefined],
+      [FLOOR, undefined],
+    ])
+  })
+
+  it('drops a walk whose release was queued again underneath and reads the queue afresh', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+    vi.mocked(deps.saveReleaseCursor).mockResolvedValue(0)
+    vi.mocked(deps.nextRelease).mockResolvedValueOnce(release('template-1')).mockResolvedValue(null)
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: true })
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(deps.nextRelease).toHaveBeenCalledTimes(2)
+  })
+
+  it('completes a release whose bounds cannot be read, with a warning', async () => {
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1', { floor: TOP, top: FLOOR })],
+    )
+
+    await runBadgePoll(ctx)
+
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateId: 'template-1' },
+      'credly release skipped: bounds unreadable',
+    )
+  })
+
+  it('leaves the release queue alone during a shadow run', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      false,
+      [],
+      [release('template-1')],
+    )
+
+    await runBadgePoll(ctx)
+
+    expect(deps.nextRelease).not.toHaveBeenCalled()
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
   })
 })

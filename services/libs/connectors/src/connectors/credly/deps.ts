@@ -14,6 +14,15 @@ import {
   markCredlyExpiriesEmitted,
   upsertCredlyBadges,
 } from '@crowd/data-access-layer/src/credly/badges'
+import type {
+  ICredlyTemplateRelease,
+  ICredlyTemplateReleaseCursor,
+} from '@crowd/data-access-layer/src/credly/releases'
+import {
+  completeCredlyTemplateRelease,
+  nextPendingCredlyTemplateRelease,
+  saveCredlyTemplateReleaseCursor,
+} from '@crowd/data-access-layer/src/credly/releases'
 
 import type { DepsFactoryInput } from '../../types'
 
@@ -29,19 +38,26 @@ export interface CredlyTemplateRouting {
 }
 
 export interface CredlyDeps {
-  loadTemplateRouting(): Promise<CredlyTemplateRouting>
+  loadTemplateRouting(fresh?: boolean): Promise<CredlyTemplateRouting>
   lockTemplate(badgeTemplateId: string, target: CredlyTemplateTarget): Promise<boolean>
   findBadges(badgeIds: string[]): Promise<ICredlyBadgeRow[]>
   saveBadges(badges: ICredlyBadgeInput[]): Promise<void>
   listDueExpiries(now: Date, limit: number, after?: ICredlyExpiryCursor): Promise<ICredlyBadgeRow[]>
   markExpiriesEmitted(badgeIds: string[]): Promise<number>
+  nextRelease(): Promise<ICredlyTemplateRelease | null>
+  saveReleaseCursor(
+    release: ICredlyTemplateRelease,
+    cursor: ICredlyTemplateReleaseCursor,
+  ): Promise<number>
+  completeRelease(release: ICredlyTemplateRelease): Promise<number>
 }
 
 export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
   let routing: Promise<CredlyTemplateRouting> | null = null
 
   return {
-    loadTemplateRouting() {
+    loadTemplateRouting(fresh = false) {
+      if (fresh) routing = null
       routing ??= Promise.all([
         listActiveCredlyTemplateMappings(qx),
         listStaleCredlyTemplateMappings(qx),
@@ -70,6 +86,15 @@ export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
     },
     markExpiriesEmitted(badgeIds) {
       return markCredlyExpiriesEmitted(qx, badgeIds)
+    },
+    nextRelease() {
+      return nextPendingCredlyTemplateRelease(qx)
+    },
+    saveReleaseCursor(release, cursor) {
+      return saveCredlyTemplateReleaseCursor(qx, release, cursor)
+    },
+    completeRelease(release) {
+      return completeCredlyTemplateRelease(qx, release)
     },
   }
 }

@@ -1,4 +1,5 @@
 import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
+import type { ICredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 
 import { ConnectorError, ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
@@ -134,6 +135,25 @@ function afterBackfillDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor 
   return { ...cursor, top, since: null, until: null, page: 1 }
 }
 
+function afterReleaseDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor | undefined {
+  const next = afterBackfillDrain(cursor)
+  return next && !next.since ? openBackfillWindow(next) : next
+}
+
+function releaseCursor(release: ICredlyTemplateRelease): CredlyBackfillCursor | undefined {
+  const iso = (value: string | null) => {
+    const parsable = parsableIso(value)
+    return parsable === null ? null : toIsoTimestamp(parsable)
+  }
+  return readBackfill({
+    floor: iso(release.floor),
+    top: iso(release.top),
+    since: iso(release.since),
+    until: iso(release.until),
+    page: release.page,
+  })
+}
+
 function withBackfill(
   watermark: CredlyBadgePollWatermark,
   backfill: CredlyBackfillCursor | undefined,
@@ -227,13 +247,17 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   assertCredentialKind(credential, 'credly-oauth-client')
   const { organizationId } = credential.data
 
-  const routing = await ctx.deps.loadTemplateRouting()
-  if (routing.staleTemplateIds.length > 0) {
-    ctx.log.warn(
-      { badgeTemplateIds: routing.staleTemplateIds },
-      'credly template mappings point to a deleted or moved integration, their badges are held',
-    )
+  const loadRouting = async (fresh: boolean) => {
+    const loaded = await ctx.deps.loadTemplateRouting(fresh)
+    if (loaded.staleTemplateIds.length > 0) {
+      ctx.log.warn(
+        { badgeTemplateIds: loaded.staleTemplateIds },
+        'credly template mappings point to a deleted or moved integration, their badges are held',
+      )
+    }
+    return loaded
   }
+  let routing = await loadRouting(false)
 
   const startedAtMs = Date.now()
   const horizonMs = startedAtMs - WINDOW_LAG_MS
@@ -263,6 +287,9 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     replacementsMissing: 0,
     backfillPages: 0,
     backfillWindows: 0,
+    releasePages: 0,
+    releases: 0,
+    releasesSkipped: 0,
   }
   const lockedThisRun = new Set<string>()
 
@@ -410,11 +437,17 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
   const fetchOrHalve = async (
     window: Window,
+    badgeTemplateId?: string,
   ): Promise<{ page: CredlyPage<CredlyBadge> } | { halved: Window }> => {
     try {
       const page = await fetchBadgesPage(
         ctx.http,
-        { organizationId, window: { min: window.since, max: window.until }, page: window.page },
+        {
+          organizationId,
+          window: { min: window.since, max: window.until },
+          page: window.page,
+          badgeTemplateId,
+        },
         ctx.log,
       )
       counters.pagesFetched += 1
@@ -463,7 +496,76 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     await ctx.commitWatermark(watermark)
   }
 
+  // A released template is re-read with the template filter before the global history; a write that
+  // touches 0 rows means the release was queued again underneath, so the queue is read afresh.
+  const skipRelease = async (release: ICredlyTemplateRelease, reason: string) => {
+    ctx.log.warn({ badgeTemplateId: release.badgeTemplateId }, reason)
+    counters.releasesSkipped += 1
+    await ctx.deps.completeRelease(release)
+    return ctx.deps.nextRelease()
+  }
+  const advanceRelease = async (release: ICredlyTemplateRelease, cursor: CredlyBackfillCursor) =>
+    (await ctx.deps.saveReleaseCursor(release, cursor))
+      ? { ...release, ...cursor }
+      : ctx.deps.nextRelease()
+  let release = ctx.emitEnabled && !watermark.until ? await ctx.deps.nextRelease() : null
   while (
+    release &&
+    counters.pagesFetched < MAX_PAGES_PER_RUN &&
+    counters.releasesSkipped < MAX_PAGES_PER_RUN &&
+    ctx.hasRunBudget()
+  ) {
+    const templateId = release.badgeTemplateId
+    if (!routing.targets.has(templateId)) routing = await loadRouting(true)
+    if (!routing.targets.has(templateId)) {
+      release = await skipRelease(release, 'credly release skipped: template not mapped')
+      continue
+    }
+    let cursor = releaseCursor(release)
+    if (!cursor) {
+      release = await skipRelease(release, 'credly release skipped: bounds unreadable')
+      continue
+    }
+    if (!cursor.since || !cursor.until) {
+      cursor = openBackfillWindow(cursor)
+      if ((await ctx.deps.saveReleaseCursor(release, cursor)) === 0) {
+        release = await ctx.deps.nextRelease()
+        continue
+      }
+    }
+    const window: Window = { since: cursor.since, until: cursor.until, page: cursor.page }
+
+    const result = await fetchOrHalve(window, templateId)
+    if ('halved' in result) {
+      release = await advanceRelease(release, { ...cursor, ...result.halved })
+      continue
+    }
+    counters.releasePages += 1
+
+    const badges = await withReplacements(result.page.data)
+    if (!badges) break
+    await emitPage(badges)
+
+    let next: CredlyBackfillCursor | undefined
+    if (drainedPage(window, result.page)) {
+      next = afterReleaseDrain(cursor)
+    } else {
+      next = { ...cursor, ...nextPage(window, result.page.data) }
+    }
+    if (!next) {
+      if (await ctx.deps.completeRelease(release)) {
+        counters.releases += 1
+        ctx.log.info({ badgeTemplateId: templateId }, 'credly template history released')
+      }
+      release = await ctx.deps.nextRelease()
+    } else {
+      release = await advanceRelease(release, next)
+    }
+  }
+  const releasePending = release !== null
+
+  while (
+    !releasePending &&
     watermark.backfill &&
     !watermark.until &&
     counters.pagesFetched < MAX_PAGES_PER_RUN &&
@@ -508,5 +610,5 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     { event: 'credly_badge_poll_run', ...counters, ...watermark, caughtUp },
     'credly badge poll run',
   )
-  return { complete: caughtUp && !watermark.backfill }
+  return { complete: caughtUp && !watermark.backfill && !releasePending }
 }

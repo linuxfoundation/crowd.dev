@@ -21,6 +21,7 @@ export interface TemplateToResolve {
   name: string
   badgeCount?: number | null
   url?: string | null
+  createdAt?: string | null
 }
 
 export interface ResolvedTemplate extends Required<
