@@ -235,7 +235,7 @@ const winsOver = (a: IAppliedOrgPayload, b: IAppliedOrgPayload): boolean =>
       : a.payloadKey > b.payloadKey
 
 // The payload applied last sets the defaults of its source, and which one that is depends on timing,
-// so they are applied again from the lowest ranked to the winner (newest activity, most activities)
+// so they are applied again from lowest ranked to the winner (newest activity, most activities)
 export async function applyNewestOrgPayloads(
   orgPromiseCache: OrgPromiseCache,
   log: Logger,
@@ -268,6 +268,10 @@ export async function applyNewestOrgPayloads(
   }
 }
 
+// Per batch: the organization each identity key resolved to. Later payloads with the same identities
+// go there without a lookup: an earlier payload may have unverified their identity
+const orgIdsOfIdentityKeys = new WeakMap<OrgPromiseCache, Map<string, string>>()
+
 // Payloads that share identities wait for each other, so they all land on the same organization
 // and each adds what it carries
 function findOrCreateOrgOnce(
@@ -293,10 +297,20 @@ function findOrCreateOrgOnce(
   const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
   orgIdentityLocks.set(orgPromiseCache, locks)
   const lockKeys = orgLockKeys(org)
+  const resolvedIds = orgIdsOfIdentityKeys.get(orgPromiseCache) ?? new Map<string, string>()
+  orgIdsOfIdentityKeys.set(orgPromiseCache, resolvedIds)
   const promise = Promise.all(lockKeys.map((k) => locks.get(k)))
-    .then(() => findOrCreate(lockOrganizationFor(orgPromiseCache)))
+    .then(() =>
+      findOrCreate(
+        lockOrganizationFor(orgPromiseCache),
+        identityKey ? resolvedIds.get(identityKey) : undefined,
+      ),
+    )
     .then((result) => {
       if (result) {
+        if (identityKey && !resolvedIds.has(identityKey)) {
+          resolvedIds.set(identityKey, result.id)
+        }
         const payloads = batchOrgPayloads(orgPromiseCache)
         payloads.applied.push({
           organizationId: result.id,
