@@ -14,7 +14,7 @@ const PLACEHOLDER_EMPLOYER_NAMES = new Set([
 ])
 
 export function isPlaceholderEmployerName(name: string | null | undefined): boolean {
-  return !!name && PLACEHOLDER_EMPLOYER_NAMES.has(name.toLowerCase().replace(/[^a-z]/g, ''))
+  return !!name && PLACEHOLDER_EMPLOYER_NAMES.has(name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
 }
 
 export function generateOrganizationNameVariants(name: string): string[] {

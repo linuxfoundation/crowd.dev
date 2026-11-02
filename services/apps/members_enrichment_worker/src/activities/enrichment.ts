@@ -309,7 +309,6 @@ export async function updateMemberUsingSquashedPayload(
   const affectedOrgIds: string[] = []
   const orgIdsToSync: string[] = []
   let affiliationNeedsRefresh = false
-  let individualNoAccountOrgId: string | null = null
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
     let didUpdate = false
@@ -434,7 +433,7 @@ export async function updateMemberUsingSquashedPayload(
 
     if (squashedPayload.memberOrganizations.length > 0) {
       if (squashedPayload.memberOrganizations.some((org) => isPlaceholderEmployerName(org.name))) {
-        individualNoAccountOrgId = await findIndividualNoAccountOrganizationId(qx)
+        const individualNoAccountOrgId = await findIndividualNoAccountOrganizationId(qx)
 
         squashedPayload.memberOrganizations = squashedPayload.memberOrganizations.flatMap((org) => {
           if (!isPlaceholderEmployerName(org.name)) return [org]
@@ -757,10 +756,7 @@ export async function updateMemberUsingSquashedPayload(
 
   if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
     await signalMemberUpdate(svc.temporal, memberId, {
-      // syncing the placeholder org re-indexes all of its several hundred thousand members
-      memberOrganizationIds: [...new Set(affectedOrgIds)].filter(
-        (orgId) => orgId !== individualNoAccountOrgId,
-      ),
+      memberOrganizationIds: [...new Set(affectedOrgIds)],
       syncToOpensearch: true,
     })
   }
