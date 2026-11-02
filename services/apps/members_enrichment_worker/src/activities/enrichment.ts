@@ -7,6 +7,7 @@ import {
   getCountry,
   hasAttributeValue,
   hasIntersection,
+  isPlaceholderEmployerName,
   omitUrlValues,
   replaceDoubleQuotes,
   sanitizeMemberOrganizationDateRange,
@@ -40,6 +41,7 @@ import {
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
 import {
+  findIndividualNoAccountOrganizationId,
   findOrCreateOrganization,
   findOrgByVerifiedIdentity,
   insertOrganizationIdentities,
@@ -307,6 +309,7 @@ export async function updateMemberUsingSquashedPayload(
   const affectedOrgIds: string[] = []
   const orgIdsToSync: string[] = []
   let affiliationNeedsRefresh = false
+  let individualNoAccountOrgId: string | null = null
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
     let didUpdate = false
@@ -430,6 +433,16 @@ export async function updateMemberUsingSquashedPayload(
     )
 
     if (squashedPayload.memberOrganizations.length > 0) {
+      if (squashedPayload.memberOrganizations.some((org) => isPlaceholderEmployerName(org.name))) {
+        individualNoAccountOrgId = await findIndividualNoAccountOrganizationId(qx)
+
+        squashedPayload.memberOrganizations = squashedPayload.memberOrganizations.flatMap((org) => {
+          if (!isPlaceholderEmployerName(org.name)) return [org]
+          if (!individualNoAccountOrgId) return []
+          return [{ ...org, organizationId: individualNoAccountOrgId, identities: [] }]
+        })
+      }
+
       // try matching member's existing organizations with the new ones
       // we'll be using displayName, title, dates
       for (const org of squashedPayload.memberOrganizations) {
@@ -744,7 +757,10 @@ export async function updateMemberUsingSquashedPayload(
 
   if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
     await signalMemberUpdate(svc.temporal, memberId, {
-      memberOrganizationIds: [...new Set(affectedOrgIds)],
+      // syncing the placeholder org re-indexes all of its several hundred thousand members
+      memberOrganizationIds: [...new Set(affectedOrgIds)].filter(
+        (orgId) => orgId !== individualNoAccountOrgId,
+      ),
       syncToOpensearch: true,
     })
   }

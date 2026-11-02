@@ -17,6 +17,7 @@ sources:
   - services/libs/common_services/src/services/common.member.service.ts
   - services/libs/data-access-layer/src/affiliations/index.ts
   - services/libs/types/src/enums/merging.ts
+  - services/libs/common/src/organization.ts
   - docs/adr/0015-how-cdp-stores-member-identities.md
 ---
 
@@ -93,6 +94,11 @@ work history from external sources. Member sources are under
 `services/apps/members_enrichment_worker/src/sources/`: Clearbit, Crustdata, LFID, ProgAI and
 SERP. Enrichment follows the same rule as ingest: it does not add an unverified identity that
 another member already has.
+
+Placeholder employer labels such as "Freelance", "Self-employed" or "Student"
+(`isPlaceholderEmployerName` in `services/libs/common/src/organization.ts`) are never organizations:
+`findOrCreateOrganization` skips them on every path. Enrichment records such a role as a work
+experience at the `Individual - No Account` organization instead.
 
 ## Affiliation
 

@@ -5,12 +5,24 @@ import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
-import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
+import {
+  BadRequestError,
+  InternalError,
+  isPlaceholderEmployerName,
+  normalizeHostname,
+} from '@crowd/common'
 import { findOrCreateOrganization } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
 
 const bodySchema = z.object({
-  name: z.string().trim().min(1),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (name) => !isPlaceholderEmployerName(name),
+      'Name is a placeholder, not an organization',
+    ),
   domain: z.string().trim().min(1),
   source: z.string().trim().min(1),
   logo: z.string().trim().min(1).optional(),
