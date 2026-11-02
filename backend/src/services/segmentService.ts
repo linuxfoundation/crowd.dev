@@ -1,6 +1,7 @@
 import { Transaction } from 'sequelize'
 
 import { Error400, generateOrganizationNameVariants, validateNonLfSlug } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   QueryExecutor,
   findManyOrganizationsByNames,
@@ -8,7 +9,7 @@ import {
 } from '@crowd/data-access-layer'
 import { ICreateInsightsProject, findBySlug } from '@crowd/data-access-layer/src/collections'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
-import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { deleteOrganizationSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   buildSegmentActivityTypes,
   getSegmentSubprojects,
@@ -37,6 +38,17 @@ import OrganizationService from './organizationService'
 interface UnnestedActivityTypes {
   [key: string]: any
 }
+
+interface BlockedOrganizationAffiliations {
+  organizationIds: string[]
+  segmentOnlyMemberIds: string[]
+}
+
+const NO_BLOCKED_AFFILIATIONS: BlockedOrganizationAffiliations = {
+  organizationIds: [],
+  segmentOnlyMemberIds: [],
+}
+
 export default class SegmentService extends LoggerBase {
   options: IServiceOptions
 
@@ -150,26 +162,16 @@ export default class SegmentService extends LoggerBase {
 
       // Only apply project-org affiliation blocking for LF segments.
       // Use the persisted segment flag (not raw input) as the source of truth.
-      const orgIds = projectGroup.isLF
+      const blockedAffiliations = projectGroup.isLF
         ? await this.blockOrganizationAffiliationIfSegmentNameMatches(
             projectGroup.name,
             transaction,
           )
-        : []
+        : NO_BLOCKED_AFFILIATIONS
 
       await SequelizeRepository.commitTransaction(transaction)
 
-      if (orgIds.length > 0) {
-        const organizationService = new OrganizationService(this.options)
-
-        for (const orgId of orgIds) {
-          // Trigger org update workflow to recalculate affiliations
-          await organizationService.startOrganizationUpdateWorkflow(orgId, {
-            syncToOpensearch: true,
-            recalculateAffiliations: true,
-          })
-        }
-      }
+      await this.recalculateBlockedAffiliations(blockedAffiliations)
 
       return await this.findById(projectGroup.id)
     } catch (error) {
@@ -232,23 +234,13 @@ export default class SegmentService extends LoggerBase {
 
       // Only apply project-org affiliation blocking for LF segments.
       // Use the persisted segment flag (not raw input) as the source of truth.
-      const orgIds = project.isLF
+      const blockedAffiliations = project.isLF
         ? await this.blockOrganizationAffiliationIfSegmentNameMatches(project.name, transaction)
-        : []
+        : NO_BLOCKED_AFFILIATIONS
 
       await SequelizeRepository.commitTransaction(transaction)
 
-      if (orgIds.length > 0) {
-        const organizationService = new OrganizationService(this.options)
-
-        for (const orgId of orgIds) {
-          // Trigger org update workflow to recalculate affiliations
-          await organizationService.startOrganizationUpdateWorkflow(orgId, {
-            syncToOpensearch: true,
-            recalculateAffiliations: true,
-          })
-        }
-      }
+      await this.recalculateBlockedAffiliations(blockedAffiliations)
 
       return await this.findById(project.id)
     } catch (error) {
@@ -264,22 +256,13 @@ export default class SegmentService extends LoggerBase {
     try {
       const subproject = await this.createSubprojectInternal(data, qx, transaction)
 
-      const orgIds = subproject.isLF
+      const blockedAffiliations = subproject.isLF
         ? await this.blockOrganizationAffiliationIfSegmentNameMatches(subproject.name, transaction)
-        : []
+        : NO_BLOCKED_AFFILIATIONS
 
       await SequelizeRepository.commitTransaction(transaction)
 
-      if (orgIds.length > 0) {
-        const organizationService = new OrganizationService(this.options)
-
-        for (const orgId of orgIds) {
-          await organizationService.startOrganizationUpdateWorkflow(orgId, {
-            syncToOpensearch: true,
-            recalculateAffiliations: true,
-          })
-        }
-      }
+      await this.recalculateBlockedAffiliations(blockedAffiliations)
 
       return await this.findById(subproject.id)
     } catch (error) {
@@ -719,7 +702,7 @@ export default class SegmentService extends LoggerBase {
   private async blockOrganizationAffiliationIfSegmentNameMatches(
     segmentName: string,
     transaction: Transaction,
-  ): Promise<string[]> {
+  ): Promise<BlockedOrganizationAffiliations> {
     const qx = SequelizeRepository.getQueryExecutor({
       ...this.options,
       transaction,
@@ -731,24 +714,42 @@ export default class SegmentService extends LoggerBase {
       generateOrganizationNameVariants(segmentName),
     )
 
-    if (organizations.length === 0) {
-      return []
+    const result: BlockedOrganizationAffiliations = {
+      organizationIds: [],
+      segmentOnlyMemberIds: [],
     }
-
-    const result: string[] = []
 
     for (const o of organizations) {
       if (!o.isAffiliationBlocked) {
         const updatedOrgId = await updateOrganization(qx, o.id, { isAffiliationBlocked: true })
         if (updatedOrgId) {
           await applyOrganizationAffiliationPolicyToMembers(qx, updatedOrgId, false)
-          await deleteMemberSegmentAffiliations(qx, { organizationId: updatedOrgId })
-          result.push(updatedOrgId)
+          const memberIds = await deleteOrganizationSegmentAffiliations(qx, updatedOrgId)
+          result.organizationIds.push(updatedOrgId)
+          result.segmentOnlyMemberIds.push(...memberIds)
         }
       }
     }
 
     return result
+  }
+
+  private async recalculateBlockedAffiliations({
+    organizationIds,
+    segmentOnlyMemberIds,
+  }: BlockedOrganizationAffiliations): Promise<void> {
+    const organizationService = new OrganizationService(this.options)
+
+    for (const orgId of organizationIds) {
+      await organizationService.startOrganizationUpdateWorkflow(orgId, {
+        syncToOpensearch: true,
+        recalculateAffiliations: true,
+      })
+    }
+
+    for (const memberId of new Set(segmentOnlyMemberIds)) {
+      await signalMemberUpdate(this.options.temporal, memberId)
+    }
   }
 
   /**

@@ -17,7 +17,7 @@ import {
   updateOrganization,
 } from '@crowd/data-access-layer'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
-import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { deleteOrganizationSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   IAttributes,
   IMemberIdentity,
@@ -29,6 +29,7 @@ import {
 } from '@crowd/types'
 
 import { svc } from '../../main'
+import { triggerMemberAffiliationsRefresh } from '../member/memberUpdate'
 
 export async function getOrganizationForFakeAnalysis(
   organizationId: string,
@@ -131,7 +132,11 @@ export async function markOrganizationAsFake(organizationId: string): Promise<vo
 
   await updateOrganization(qx, organizationId, { isAffiliationBlocked: true })
   await applyOrganizationAffiliationPolicyToMembers(qx, organizationId, false)
-  await deleteMemberSegmentAffiliations(qx, { organizationId })
+  const segmentOnlyMemberIds = await deleteOrganizationSegmentAffiliations(qx, organizationId)
+
+  for (const memberId of segmentOnlyMemberIds) {
+    await triggerMemberAffiliationsRefresh(memberId)
+  }
 
   const workflowId = `${TemporalWorkflowId.ORGANIZATION_UPDATE}/${organizationId}`
 
