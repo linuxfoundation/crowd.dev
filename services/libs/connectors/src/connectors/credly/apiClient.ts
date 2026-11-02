@@ -28,6 +28,7 @@ export interface BadgesPageParams {
   per?: number
   states?: CredlyBadgeState[]
   expiresAtMax?: string
+  badgeTemplateId?: string
 }
 
 export interface BadgeTemplatesPageParams {
@@ -101,6 +102,7 @@ export async function fetchBadgesPage(
       'filter[state_updated_at_max]': window.max,
       ...(params.states?.length && { 'filter[state]': params.states.join(',') }),
       ...(params.expiresAtMax && { 'filter[expires_at_max]': params.expiresAtMax }),
+      ...(params.badgeTemplateId && { 'filter[badge_template_id]': params.badgeTemplateId }),
       sort: 'state_updated_at',
       per: params.per ?? CREDLY_PAGE_SIZE,
       page: params.page,

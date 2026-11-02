@@ -98,7 +98,7 @@ describe('fetchBadgesPage', () => {
     )
   })
 
-  it('adds state and expires_at_max only as extra filters inside the window', async () => {
+  it('adds state, expires_at_max and badge_template_id only as extra filters inside the window', async () => {
     const http = httpReturning(pageOf([]))
 
     await fetchBadgesPage(
@@ -110,6 +110,7 @@ describe('fetchBadgesPage', () => {
         per: 1,
         states: ['accepted', 'replaced'],
         expiresAtMax: '2026-10-22T00:00:00.000Z',
+        badgeTemplateId: 'tpl-lfc131',
       },
       log,
     )
@@ -119,6 +120,7 @@ describe('fetchBadgesPage', () => {
       'filter[state_updated_at_max]': '2026-10-21T00:00:00Z',
       'filter[state]': 'accepted,replaced',
       'filter[expires_at_max]': '2026-10-22T00:00:00.000Z',
+      'filter[badge_template_id]': 'tpl-lfc131',
       sort: 'state_updated_at',
       per: 1,
       page: 1,
