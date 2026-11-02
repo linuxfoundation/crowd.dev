@@ -17,6 +17,11 @@ function roleKey(
   return role.memberId
 }
 
+function isSameDate(a: Date | string | null, b: Date | string | null): boolean {
+  if (!a || !b) return !a && !b
+  return new Date(a).getTime() === new Date(b).getTime()
+}
+
 export function roleExistsInArray(
   role: IMemberOrganization,
   roles: IMemberOrganization[],
@@ -27,8 +32,8 @@ export function roleExistsInArray(
     (r) =>
       roleKey(r, strategy) === key &&
       r.title === role.title &&
-      r.dateStart === role.dateStart &&
-      r.dateEnd === role.dateEnd,
+      isSameDate(r.dateStart, role.dateStart) &&
+      isSameDate(r.dateEnd, role.dateEnd),
   )
 }
 
