@@ -77,11 +77,11 @@ type EmailDomainOrganization = {
   created: boolean
 }
 
-// Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
-// normalization and a primary domain on any platform
+// Domains after hostname normalization, like findOrCreateOrganization looks them up. The lock key
+// takes a primary domain on any platform, as the lookup's fallback does
 function verifiedOrgIdentityKey(
   identity: NonNullable<IOrganization['identities']>[number],
-): { key: string; value: string } | undefined {
+): { key: string; lockKey: string; value: string } | undefined {
   if (!identity.verified || !identity.value) {
     return undefined
   }
@@ -93,12 +93,14 @@ function verifiedOrgIdentityKey(
   if (!value) {
     return undefined
   }
+  const key = `${identity.platform}:${identity.type}:${value.toLowerCase()}`
   return {
     value,
-    key:
+    key,
+    lockKey:
       identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
         ? `${identity.type}:${value.toLowerCase()}`
-        : `${identity.platform}:${identity.type}:${value.toLowerCase()}`,
+        : key,
   }
 }
 
@@ -134,7 +136,7 @@ function orgLockKeys(org: IOrganization): string[] {
       continue
     }
     creationName ??= verified.value
-    keys.push(verified.key)
+    keys.push(verified.lockKey)
   }
 
   const name = (org.displayName || creationName)?.trim().toLowerCase()
