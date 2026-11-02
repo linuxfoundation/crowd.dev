@@ -10,6 +10,7 @@ import {
   generateUUIDv1,
   isDomainExcluded,
   isValidEmail,
+  mapWithConcurrency,
   normalizeMemberIdentities,
   normalizeMemberIdentityValue,
   omitUrlValues,
@@ -67,6 +68,9 @@ import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// How many groups of linked members a batch updates at once; matches the worker's DB pool size
+const MEMBER_UPDATE_CONCURRENCY = Number(process.env.MEMBER_UPDATE_CONCURRENCY || 5)
 
 function toLineCount(value: unknown): number | undefined {
   if (typeof value === 'number') {
@@ -2165,8 +2169,6 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
-    // their activities in timestamp order; members that can't merge don't affect each other.
     const updatesByMember = groupUpdatesByMember(payloads)
     const sentIdentities = distinctBy(
       Array.from(updatesByMember.values())
@@ -2190,24 +2192,28 @@ export default class ActivityService extends LoggerBase {
     // retried, so a member that can merge in this batch gets its activities applied one by one.
     const mergeableMemberIds = membersThatCanMerge(updatesByMember, identityOwners)
 
-    const runs = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners)
-      .flatMap((memberIds) =>
-        oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates)),
-      )
-      .map((run) => {
-        const memberId = run[0].dbMember.id
-        return {
-          dbMember: run[0].dbMember,
-          run,
-          combine:
-            updatesByMember.get(memberId).updates.length > 1 && !mergeableMemberIds.has(memberId),
-        }
-      })
-      .sort(
-        (a, b) =>
-          timestampMs(a.run[a.run.length - 1].timestamp) -
-          timestampMs(b.run[b.run.length - 1].timestamp),
-      )
+    // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
+    // their activities in timestamp order. Members that can't merge don't affect each other, so
+    // each group of linked members is updated in order and the groups are updated concurrently.
+    const groups = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners).map(
+      (memberIds) =>
+        oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates))
+          .map((run) => {
+            const memberId = run[0].dbMember.id
+            return {
+              dbMember: run[0].dbMember,
+              run,
+              combine:
+                updatesByMember.get(memberId).updates.length > 1 &&
+                !mergeableMemberIds.has(memberId),
+            }
+          })
+          .sort(
+            (a, b) =>
+              timestampMs(a.run[a.run.length - 1].timestamp) -
+              timestampMs(b.run[b.run.length - 1].timestamp),
+          ),
+    )
 
     const memberAttributeService = new MemberAttributeService(
       this.redisClient,
@@ -2266,27 +2272,47 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    for (const { dbMember, run, combine } of runs) {
-      if (!combine) {
-        for (const update of run) {
-          await updateSingleActivity(dbMember, update)
+    // A failure stops the other groups between runs, but the batch only fails once their
+    // in-flight updates are done, so a retry of the batch can't overlap them.
+    let failure: { err: unknown } | undefined
+    const updateGroup = async (runs: (typeof groups)[number]) => {
+      for (const { dbMember, run, combine } of runs) {
+        if (failure) {
+          return
         }
-        continue
-      }
 
-      // An activity that fails validation is updated alone, in its place in timestamp order, so it
-      // fails on its own as without combining and a wrong verdict can't reorder the updates.
-      let combinable: IPayloadMemberUpdate[] = []
-      for (const update of run) {
-        if (await hasValidAttributes(update)) {
-          combinable.push(update)
-        } else {
-          await updateCombined(dbMember, combinable)
-          combinable = []
-          await updateSingleActivity(dbMember, update)
+        if (!combine) {
+          for (const update of run) {
+            await updateSingleActivity(dbMember, update)
+          }
+          continue
         }
+
+        // An activity that fails validation is updated alone, in its place in timestamp order, so
+        // it fails on its own as without combining and a wrong verdict can't reorder the updates.
+        let combinable: IPayloadMemberUpdate[] = []
+        for (const update of run) {
+          if (await hasValidAttributes(update)) {
+            combinable.push(update)
+          } else {
+            await updateCombined(dbMember, combinable)
+            combinable = []
+            await updateSingleActivity(dbMember, update)
+          }
+        }
+        await updateCombined(dbMember, combinable)
       }
-      await updateCombined(dbMember, combinable)
+    }
+
+    await mapWithConcurrency(groups, MEMBER_UPDATE_CONCURRENCY, async (runs) => {
+      try {
+        await updateGroup(runs)
+      } catch (err) {
+        failure ??= { err }
+      }
+    })
+    if (failure) {
+      throw failure.err
     }
 
     // Updates that ran before a later one merged their member away must follow that redirect too.
