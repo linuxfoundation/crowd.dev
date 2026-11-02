@@ -416,7 +416,6 @@ export default class OrganizationService extends LoggerBase {
               // check if anything to delete in primary
               const rolesToDelete = memberOrganizations.filter(
                 (r) =>
-                  r.source !== 'ui' &&
                   !primaryUnmergedRoles.some(
                     (pr) =>
                       pr.memberId === r.memberId &&
