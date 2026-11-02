@@ -65,6 +65,25 @@ export async function saveCredlyTemplateReleaseCursor(
   )
 }
 
+export interface IUnreleasedMappedCredlyTemplate {
+  badgeTemplateId: string
+  badgeCount: number | null
+}
+
+// Lightest templates first: they drain fast and don't sit behind the handful of
+// high-volume ones in the FIFO queue a single release walker works through.
+export async function listMappedCredlyTemplatesWithoutRelease(
+  qx: QueryExecutor,
+): Promise<IUnreleasedMappedCredlyTemplate[]> {
+  return qx.select(
+    `SELECT m."badgeTemplateId", m."badgeCount"
+     FROM integration."credlyTemplateMappings" m
+     LEFT JOIN integration."credlyTemplateReleases" r ON r."badgeTemplateId" = m."badgeTemplateId"
+     WHERE m.status = 'mapped' AND r."badgeTemplateId" IS NULL
+     ORDER BY m."badgeCount" ASC NULLS FIRST, m."badgeTemplateId"`,
+  )
+}
+
 export async function completeCredlyTemplateRelease(
   qx: QueryExecutor,
   release: Pick<ICredlyTemplateRelease, 'badgeTemplateId' | 'queuedAt'>,

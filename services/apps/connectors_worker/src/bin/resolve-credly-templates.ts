@@ -14,7 +14,10 @@ import {
   listCredlyTemplateMappings,
   listHeldCredlyTemplateMappings,
 } from '@crowd/data-access-layer/src/credly'
-import { queueCredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
+import {
+  listMappedCredlyTemplatesWithoutRelease,
+  queueCredlyTemplateRelease,
+} from '@crowd/data-access-layer/src/credly/releases'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -29,6 +32,7 @@ import {
   loadCredlyTemplates,
   loadSubprojectSegments,
   releasesToQueue,
+  unreleasedTemplatesToQueue,
 } from '../credlyTemplateResolve'
 
 const log = getServiceLogger()
@@ -36,9 +40,18 @@ const HELD_QUEUE_PRINTED = 20
 
 function usage(): never {
   log.error(
-    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>] | --release <badge template id>',
+    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>] | --release <badge template id> | --release-unreleased --integration-id <uuid>',
   )
   process.exit(1)
+}
+
+function credlyHttpClient(token: string): ReturnType<typeof createHttpClient> {
+  return createHttpClient({
+    acquireToken: async () => ({ id: CREDLY_POOL_ENTRY_ID, value: token }),
+    parkToken: async () => undefined,
+    invalidateToken: async () => undefined,
+    log,
+  })
 }
 
 function takeFlag(argv: string[], flag: string): string | undefined {
@@ -59,6 +72,7 @@ function takeSwitch(argv: string[], flag: string): boolean {
 
 interface Args {
   release?: string
+  releaseUnreleased: boolean
   integrationId: string
   apply: boolean
   notify: 'changes' | 'digest' | null
@@ -70,7 +84,20 @@ function parseArgs(rawArgv: string[]): Args {
   const release = takeFlag(argv, '--release')
   if (release) {
     if (argv.length > 0) usage()
-    return { release, integrationId: '', apply: false, notify: null, outFile: '' }
+    return {
+      release,
+      releaseUnreleased: false,
+      integrationId: '',
+      apply: false,
+      notify: null,
+      outFile: '',
+    }
+  }
+  const releaseUnreleased = takeSwitch(argv, '--release-unreleased')
+  if (releaseUnreleased) {
+    const integrationId = takeFlag(argv, '--integration-id')
+    if (!integrationId || argv.length > 0) usage()
+    return { releaseUnreleased, integrationId, apply: false, notify: null, outFile: '' }
   }
   const integrationId = takeFlag(argv, '--integration-id')
   const apply = takeSwitch(argv, '--apply')
@@ -81,11 +108,13 @@ function parseArgs(rawArgv: string[]): Args {
     takeFlag(argv, '--out') ??
     join(tmpdir(), `credly-resolve-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
   if (!integrationId || argv.length > 0) usage()
-  return { integrationId, apply, notify, outFile }
+  return { releaseUnreleased: false, integrationId, apply, notify, outFile }
 }
 
 async function main(): Promise<void> {
-  const { release, integrationId, apply, notify, outFile } = parseArgs(process.argv.slice(2))
+  const { release, releaseUnreleased, integrationId, apply, notify, outFile } = parseArgs(
+    process.argv.slice(2),
+  )
   const db = await getDbConnection(WRITE_DB_CONFIG())
   const qx = pgpQx(db)
 
@@ -107,15 +136,35 @@ async function main(): Promise<void> {
     return
   }
 
+  if (releaseUnreleased) {
+    const credential = await getCredential(qx, integrationId)
+    assertCredentialKind(credential, 'credly-oauth-client')
+    const { token } = await mintCredlyAccessToken(credential)
+    const http = credlyHttpClient(token)
+    const [listing, unreleased] = await Promise.all([
+      loadCredlyTemplates(http, credential.data.organizationId, log),
+      listMappedCredlyTemplatesWithoutRelease(qx),
+    ])
+    if (!listing.complete) {
+      log.warn(
+        'the credly listing was not complete; templates missing from it fall back to the full history floor',
+      )
+    }
+    const releases = unreleasedTemplatesToQueue(listing.templates, unreleased, new Date())
+    for (const queued of releases) {
+      await queueCredlyTemplateRelease(qx, queued)
+    }
+    log.info(
+      { queued: releases.length, lightest: releases[0], heaviest: releases[releases.length - 1] },
+      'credly mapped templates without a release were queued, lightest first',
+    )
+    return
+  }
+
   const credential = await getCredential(qx, integrationId)
   assertCredentialKind(credential, 'credly-oauth-client')
   const { token } = await mintCredlyAccessToken(credential)
-  const http = createHttpClient({
-    acquireToken: async () => ({ id: CREDLY_POOL_ENTRY_ID, value: token }),
-    parkToken: async () => undefined,
-    invalidateToken: async () => undefined,
-    log,
-  })
+  const http = credlyHttpClient(token)
 
   const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 3 })
   try {
