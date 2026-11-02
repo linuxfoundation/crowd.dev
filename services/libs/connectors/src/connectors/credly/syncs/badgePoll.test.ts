@@ -1335,6 +1335,53 @@ describe('runBadgePoll releases', () => {
     )
   })
 
+  it('halves a failing release window and walks its upper half before moving down', async () => {
+    const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
+    mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+
+    await runBadgePoll(ctx)
+
+    const half = new Date(Date.parse(MID) + MAX_WINDOW_MS / 2).toISOString()
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: MID, max: TOP },
+      { min: MID, max: half },
+      { min: half, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads the routing for a release queued after the run started instead of skipping it', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('template-1')],
+    )
+    vi.mocked(deps.loadTemplateRouting).mockResolvedValueOnce({
+      targets: new Map(),
+      staleTemplateIds: [],
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(deps.loadTemplateRouting).toHaveBeenCalledTimes(2)
+    expect(mockedFetchBadgesPage).toHaveBeenCalledTimes(2)
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(LOG.warn).not.toHaveBeenCalled()
+  })
+
   it('completes a release whose template is not mapped without calling credly', async () => {
     const { ctx, deps } = makeCtx(
       { since: HORIZON },
