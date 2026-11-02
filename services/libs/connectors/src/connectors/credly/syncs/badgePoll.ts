@@ -289,6 +289,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     backfillWindows: 0,
     releasePages: 0,
     releases: 0,
+    releasesSkipped: 0,
   }
   const lockedThisRun = new Set<string>()
 
@@ -499,6 +500,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   // touches 0 rows means the release was queued again underneath, so the queue is read afresh.
   const skipRelease = async (release: ICredlyTemplateRelease, reason: string) => {
     ctx.log.warn({ badgeTemplateId: release.badgeTemplateId }, reason)
+    counters.releasesSkipped += 1
     await ctx.deps.completeRelease(release)
     return ctx.deps.nextRelease()
   }
@@ -507,7 +509,12 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       ? { ...release, ...cursor }
       : ctx.deps.nextRelease()
   let release = ctx.emitEnabled && !watermark.until ? await ctx.deps.nextRelease() : null
-  while (release && counters.pagesFetched < MAX_PAGES_PER_RUN && ctx.hasRunBudget()) {
+  while (
+    release &&
+    counters.pagesFetched < MAX_PAGES_PER_RUN &&
+    counters.releasesSkipped < MAX_PAGES_PER_RUN &&
+    ctx.hasRunBudget()
+  ) {
     const templateId = release.badgeTemplateId
     if (!routing.targets.has(templateId)) routing = await loadRouting(true)
     if (!routing.targets.has(templateId)) {

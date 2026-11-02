@@ -1403,6 +1403,26 @@ describe('runBadgePoll releases', () => {
     )
   })
 
+  it('stops skipping unmapped releases at the cap, leaving the run incomplete', async () => {
+    const releases = Array.from({ length: MAX_PAGES_PER_RUN + 1 }, (_, i) =>
+      release(`tpl-unmapped-${i}`),
+    )
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      releases,
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+    expect(deps.completeRelease).toHaveBeenCalledTimes(MAX_PAGES_PER_RUN)
+  })
+
   it('stops at the page cap mid-release with the cursor saved, and stays incomplete', async () => {
     mockedFetchBadgesPage.mockResolvedValue(
       page([badge({ id: 'b', state_updated_at: MID })], 1, 1000),
