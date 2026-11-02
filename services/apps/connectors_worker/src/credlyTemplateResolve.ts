@@ -15,6 +15,8 @@ import {
   findOrCreateCredlyIntegration,
   upsertCredlyTemplateDecision,
 } from '@crowd/data-access-layer/src/credly'
+import type { ICredlyTemplateReleaseInput } from '@crowd/data-access-layer/src/credly/releases'
+import { queueCredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegments } from '@crowd/data-access-layer/src/segments'
 import type { Logger } from '@crowd/logging'
@@ -77,6 +79,7 @@ export async function loadCredlyTemplates(
         name: template.name,
         badgeCount: typeof count === 'number' && Number.isFinite(count) ? count : null,
         url: template.url ?? null,
+        createdAt: template.created_at ?? null,
       })
     }
     if (result.data.length === 0 || page >= result.metadata.total_pages) break
@@ -183,19 +186,56 @@ export interface ApplyResult {
   outcomes: Record<CredlyDecisionOutcome, number>
   integrationsCreated: number
   deactivated: number
+  releasesQueued: number
 }
 
+// Credly moved to its current platform in March 2019; nothing older carries a state_updated_at.
+export const CREDLY_HISTORY_START = '2019-03-01T00:00:00.000Z'
+
+export function releaseFloor(createdAt: string | null | undefined, top: Date): string {
+  const createdMs = Date.parse(createdAt ?? '')
+  const startMs = Date.parse(CREDLY_HISTORY_START)
+  const floorMs = Number.isFinite(createdMs) ? Math.max(createdMs, startMs) : startMs
+  return new Date(Math.min(floorMs, top.getTime() - 1000)).toISOString()
+}
+
+export function releasesToQueue(
+  plan: ResolvePlan,
+  templates: TemplateToResolve[],
+  now: Date,
+): ICredlyTemplateReleaseInput[] {
+  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
+  return plan.entries
+    .filter(
+      (entry) =>
+        entry.kind === 'changed' &&
+        entry.before !== null &&
+        !entry.before.startsWith('mapped:') &&
+        entry.after?.startsWith('mapped:'),
+    )
+    .map((entry) => ({
+      badgeTemplateId: entry.badgeTemplateId,
+      floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
+      top: now.toISOString(),
+    }))
+}
+
+// A release is queued in the same transaction as the decision that frees the template: a run that
+// dies in between leaves the template held, and the next run decides it again.
 export async function applyDecisions(
   qx: QueryExecutor,
   decisions: ResolvedTemplate[],
   missing: PlanEntry[],
   log: Logger,
+  releases: ICredlyTemplateReleaseInput[] = [],
 ): Promise<ApplyResult> {
   const result: ApplyResult = {
     outcomes: { inserted: 0, updated: 0, unchanged: 0, locked: 0 },
     integrationsCreated: 0,
     deactivated: 0,
+    releasesQueued: 0,
   }
+  const releaseById = new Map(releases.map((release) => [release.badgeTemplateId, release]))
   const integrationBySegment = new Map<string, string>()
   for (const decision of decisions) {
     let integrationId: string | null = null
@@ -208,7 +248,15 @@ export async function applyDecisions(
         integrationBySegment.set(decision.segmentId, integrationId)
       }
     }
-    const outcome = await upsertCredlyTemplateDecision(qx, { ...decision, integrationId })
+    const release = releaseById.get(decision.badgeTemplateId)
+    const outcome = await qx.tx(async (tx) => {
+      const stored = await upsertCredlyTemplateDecision(tx, { ...decision, integrationId })
+      if (release && (stored === 'inserted' || stored === 'updated')) {
+        await queueCredlyTemplateRelease(tx, release)
+        result.releasesQueued += 1
+      }
+      return stored
+    })
     result.outcomes[outcome] += 1
     if (outcome === 'locked') {
       log.warn(

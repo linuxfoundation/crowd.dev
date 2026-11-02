@@ -78,6 +78,7 @@ export const credlyBadgeTemplateListingSchema = z
     type_category: z.string().nullable().optional(),
     global_activity_url: z.string().nullable().optional(),
     reporting_tags: z.array(z.string()).nullable().optional(),
+    created_at: z.string().nullable().optional(),
   })
   .passthrough()
 

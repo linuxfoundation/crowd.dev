@@ -13,6 +13,7 @@ import {
   listCredlyTemplateMappings,
   listHeldCredlyTemplateMappings,
 } from '@crowd/data-access-layer/src/credly'
+import { queueCredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -20,11 +21,13 @@ import { SnowflakeClient } from '@crowd/snowflake'
 
 import { activeHeld, buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
 import {
+  CREDLY_HISTORY_START,
   applyDecisions,
   buildPlan,
   loadCatalogue,
   loadCredlyTemplates,
   loadSubprojectSegments,
+  releasesToQueue,
 } from '../credlyTemplateResolve'
 
 const log = getServiceLogger()
@@ -32,7 +35,7 @@ const HELD_QUEUE_PRINTED = 20
 
 function usage(): never {
   log.error(
-    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>]',
+    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>] | --release <badge template id>',
   )
   process.exit(1)
 }
@@ -54,6 +57,7 @@ function takeSwitch(argv: string[], flag: string): boolean {
 }
 
 interface Args {
+  release?: string
   integrationId: string
   apply: boolean
   notify: 'changes' | 'digest' | null
@@ -62,6 +66,11 @@ interface Args {
 
 function parseArgs(rawArgv: string[]): Args {
   const argv = rawArgv.filter((arg) => arg !== '--')
+  const release = takeFlag(argv, '--release')
+  if (release) {
+    if (argv.length > 0) usage()
+    return { release, integrationId: '', apply: false, notify: null, outFile: '' }
+  }
   const integrationId = takeFlag(argv, '--integration-id')
   const apply = takeSwitch(argv, '--apply')
   const digest = takeSwitch(argv, '--digest')
@@ -75,9 +84,19 @@ function parseArgs(rawArgv: string[]): Args {
 }
 
 async function main(): Promise<void> {
-  const { integrationId, apply, notify, outFile } = parseArgs(process.argv.slice(2))
+  const { release, integrationId, apply, notify, outFile } = parseArgs(process.argv.slice(2))
   const db = await getDbConnection(WRITE_DB_CONFIG())
   const qx = pgpQx(db)
+
+  if (release) {
+    await queueCredlyTemplateRelease(qx, {
+      badgeTemplateId: release,
+      floor: CREDLY_HISTORY_START,
+      top: new Date().toISOString(),
+    })
+    log.info({ badgeTemplateId: release }, 'credly template history queued for release')
+    return
+  }
 
   const credential = await getCredential(qx, integrationId)
   assertCredentialKind(credential, 'credly-oauth-client')
@@ -153,7 +172,13 @@ async function main(): Promise<void> {
         'the credly listing changed while paging: templates not seen are left as they are',
       )
     }
-    const result = await applyDecisions(qx, decisions, listing.complete ? missing : [], log)
+    const result = await applyDecisions(
+      qx,
+      decisions,
+      listing.complete ? missing : [],
+      log,
+      releasesToQueue(plan, templates, new Date()),
+    )
     const heldQueue = await listHeldCredlyTemplateMappings(qx)
     log.info(
       {

@@ -125,6 +125,9 @@ async function main(): Promise<void> {
     saveBadges: async () => undefined,
     listDueExpiries: async () => [],
     markExpiriesEmitted: async () => 0,
+    nextRelease: async () => null,
+    saveReleaseCursor: async () => 0,
+    completeRelease: async () => 0,
   }
 
   const outcome = await runBadgePoll({

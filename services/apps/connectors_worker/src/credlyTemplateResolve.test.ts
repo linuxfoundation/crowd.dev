@@ -5,10 +5,12 @@ import type { ResolvedTemplate } from '@crowd/connectors/src/connectors/credly/m
 import type { ICredlyStoredTemplateMapping } from '@crowd/data-access-layer/src/credly'
 
 import {
+  CREDLY_HISTORY_START,
   buildPlan,
   loadCatalogue,
   loadCredlyTemplates,
   loadSubprojectSegments,
+  releasesToQueue,
 } from './credlyTemplateResolve'
 
 function decision(id: string, overrides: Partial<ResolvedTemplate> = {}): ResolvedTemplate {
@@ -221,8 +223,8 @@ describe('loadCredlyTemplates', () => {
 
     expect(listing.complete).toBe(true)
     expect(listing.templates).toEqual([
-      { id: 'a', name: 'A', badgeCount: 3, url: null },
-      { id: 'b', name: 'B', badgeCount: null, url: null },
+      { id: 'a', name: 'A', badgeCount: 3, url: null, createdAt: null },
+      { id: 'b', name: 'B', badgeCount: null, url: null, createdAt: null },
     ])
   })
 
@@ -232,5 +234,82 @@ describe('loadCredlyTemplates', () => {
       .mockResolvedValueOnce(page([{ id: 'a', name: 'A' }], 2))
 
     expect((await loadCredlyTemplates(http, 'org', log)).complete).toBe(false)
+  })
+})
+
+describe('releasesToQueue', () => {
+  const now = new Date('2026-11-02T12:00:00.000Z')
+  const plan = (
+    entries: {
+      badgeTemplateId: string
+      kind: string
+      before: string | null
+      after: string | null
+    }[],
+  ) =>
+    ({
+      entries: entries.map((e) => ({ ...e, badgeTemplateName: e.badgeTemplateId })),
+      counts: {},
+    }) as never
+
+  it('queues the templates that left the held queue for a project, from their creation date', () => {
+    const releases = releasesToQueue(
+      plan([
+        {
+          badgeTemplateId: 'lfc131',
+          kind: 'changed',
+          before: 'held:no_project',
+          after: 'mapped:green-software',
+        },
+        { badgeTemplateId: 'old', kind: 'changed', before: 'held:no_match', after: 'mapped:cncf' },
+        { badgeTemplateId: 'moved', kind: 'changed', before: 'mapped:k8s', after: 'mapped:cncf' },
+        {
+          badgeTemplateId: 'locked',
+          kind: 'locked',
+          before: 'held:no_match',
+          after: 'mapped:cncf',
+        },
+        { badgeTemplateId: 'excluded', kind: 'changed', before: 'held:test', after: 'excluded' },
+        {
+          badgeTemplateId: 'unexcluded',
+          kind: 'changed',
+          before: 'excluded',
+          after: 'mapped:finops',
+        },
+        { badgeTemplateId: 'fresh', kind: 'new', before: null, after: 'mapped:k8s' },
+      ]),
+      [
+        { id: 'lfc131', name: 'LFC131', createdAt: '2022-10-25T19:41:32.416Z' },
+        { id: 'old', name: 'Old', createdAt: '2018-04-19T00:00:00.000Z' },
+        { id: 'unexcluded', name: 'Unexcluded', createdAt: '2026-11-02T12:00:00.000Z' },
+      ],
+      now,
+    )
+
+    expect(releases).toEqual([
+      {
+        badgeTemplateId: 'lfc131',
+        floor: '2022-10-25T19:41:32.416Z',
+        top: '2026-11-02T12:00:00.000Z',
+      },
+      { badgeTemplateId: 'old', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+      {
+        badgeTemplateId: 'unexcluded',
+        floor: '2026-11-02T11:59:59.000Z',
+        top: '2026-11-02T12:00:00.000Z',
+      },
+    ])
+  })
+
+  it('falls back to the history start when the template has no creation date', () => {
+    const releases = releasesToQueue(
+      plan([
+        { badgeTemplateId: 'x', kind: 'changed', before: 'held:no_match', after: 'mapped:k8s' },
+      ]),
+      [{ id: 'x', name: 'X', createdAt: null }],
+      now,
+    )
+
+    expect(releases[0].floor).toBe(CREDLY_HISTORY_START)
   })
 })
