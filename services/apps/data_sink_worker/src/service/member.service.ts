@@ -216,8 +216,8 @@ export function registerOrgPayloadActivities(
   const payloads = batchOrgPayloads(orgPromiseCache).activities
   for (const { source, timestamp, organizations } of activities) {
     const ms = new Date(timestamp).getTime()
-    for (const org of organizations ?? []) {
-      const key = orgPayloadKey(source, org)
+    // an activity counts once for each payload, however many times it carries it
+    for (const key of new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))) {
       const known = payloads.get(key)
       payloads.set(key, {
         newestMs: Math.max(known?.newestMs ?? ms, ms),
@@ -235,7 +235,7 @@ const winsOver = (a: IAppliedOrgPayload, b: IAppliedOrgPayload): boolean =>
       : a.payloadKey > b.payloadKey
 
 // The payload applied last sets the defaults of its source, and which one that is depends on timing,
-// so the winner (newest activity, then most activities) is applied again
+// so they are applied again from the lowest ranked to the winner (newest activity, most activities)
 export async function applyNewestOrgPayloads(
   orgPromiseCache: OrgPromiseCache,
   log: Logger,
@@ -249,18 +249,21 @@ export async function applyNewestOrgPayloads(
   }
 
   for (const payloads of byOrganizationAndSource.values()) {
-    if (new Set(payloads.map((p) => p.payloadKey)).size < 2) {
+    const distinct = Array.from(new Map(payloads.map((p) => [p.payloadKey, p])).values())
+    if (distinct.length < 2) {
       continue
     }
-    const winner = payloads.reduce((a, b) => (winsOver(b, a) ? b : a))
-    try {
-      await winner.apply()
-    } catch (err) {
-      log.error(
-        err,
-        { organizationId: winner.organizationId, source: winner.source },
-        'Failed to apply the newest organization payload!',
-      )
+    distinct.sort((a, b) => (winsOver(a, b) ? 1 : winsOver(b, a) ? -1 : 0))
+    for (const payload of distinct) {
+      try {
+        await payload.apply()
+      } catch (err) {
+        log.error(
+          err,
+          { organizationId: payload.organizationId, source: payload.source },
+          'Failed to apply an organization payload again!',
+        )
+      }
     }
   }
 }

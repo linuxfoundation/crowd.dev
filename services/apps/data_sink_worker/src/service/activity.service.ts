@@ -1464,15 +1464,14 @@ export default class ActivityService extends LoggerBase {
     const orgPromiseCache = new Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>()
     registerOrgPayloadActivities(
       orgPromiseCache,
-      relevantPayloads.flatMap((p) =>
-        [p.activity.member, p.activity.objectMember]
-          .filter((member) => member)
-          .map((member) => ({
-            source: p.platform,
-            timestamp: p.activity.timestamp,
-            organizations: member.organizations,
-          })),
-      ),
+      relevantPayloads.map((p) => ({
+        source: p.platform,
+        timestamp: p.activity.timestamp,
+        organizations: [
+          ...(p.activity.member?.organizations ?? []),
+          ...(p.activity.objectMember?.organizations ?? []),
+        ],
+      })),
     )
 
     // find distinct members to create
