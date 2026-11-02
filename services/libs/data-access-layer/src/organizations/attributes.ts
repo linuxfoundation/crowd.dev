@@ -86,6 +86,34 @@ export const upsertOrgAttributes = async (
   }
 }
 
+const isSameOrgAttribute = (
+  stored: IDbOrgAttribute,
+  attribute: { name: string; source: string; value: string },
+): boolean =>
+  stored.name === attribute.name &&
+  stored.source === attribute.source &&
+  stored.value === attribute.value
+
+// Must match the conflict key of upsertOrgAttributes: organizationId, name, source, md5(value)
+export function hasAllOrgAttributes(
+  stored: IDbOrgAttribute[],
+  attributes: IDbOrgAttributeInput[],
+): boolean {
+  return attributes.every((attribute) => stored.some((s) => isSameOrgAttribute(s, attribute)))
+}
+
+// Must match the flags markOrgAttributeDefault sets
+export function isOrgAttributeDefault(
+  stored: IDbOrgAttribute[],
+  attribute: { name: string; source: string; value: string },
+): boolean {
+  const sameName = stored.filter((s) => s.name === attribute.name)
+  return (
+    sameName.some((s) => isSameOrgAttribute(s, attribute)) &&
+    sameName.every((s) => s.default === isSameOrgAttribute(s, attribute))
+  )
+}
+
 export async function markOrgAttributeDefault(
   qx: QueryExecutor,
   organizationId: string,

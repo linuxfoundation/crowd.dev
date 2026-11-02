@@ -22,9 +22,23 @@ import { QueryExecutor } from '../queryExecutor'
 import { findManyLfSegmentsByNames } from '../segments'
 import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
-import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
-import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
-import { IDbOrganization, IDbOrganizationInput, IFindOrCreateOrganizationResult } from './types'
+import {
+  hasAllOrgAttributes,
+  isOrgAttributeDefault,
+  markOrgAttributeDefault,
+  upsertOrgAttributes,
+} from './attributes'
+import {
+  hasAllOrgIdentities,
+  insertOrganizationIdentities,
+  upsertOrgIdentities,
+} from './identities'
+import {
+  IDbOrgAttribute,
+  IDbOrganization,
+  IDbOrganizationInput,
+  IFindOrCreateOrganizationResult,
+} from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -530,6 +544,45 @@ async function findOrgForUpdate(qe: QueryExecutor, id: string): Promise<IDbOrgan
   )
 }
 
+interface IStoredOrg {
+  attributes: IDbOrgAttribute[]
+  identities: IOrganizationIdentity[]
+}
+
+async function findOrgAttributesAndIdentities(qe: QueryExecutor, id: string): Promise<IStoredOrg> {
+  return qe.selectOne(
+    `
+      select
+        coalesce((select jsonb_agg(oa) from "orgAttributes" oa where oa."organizationId" = $(id)), '[]') as attributes,
+        coalesce((select jsonb_agg(oi) from "organizationIdentities" oi where oi."organizationId" = $(id)), '[]') as identities
+    `,
+    { id },
+  )
+}
+
+function planOrgUpdate(
+  data: IOrganization,
+  source: string,
+  existing: IDbOrganization,
+  stored: IStoredOrg,
+) {
+  // prepareOrganizationData rewrites the default flags of the attributes it gets, so it gets copies
+  const processed = prepareOrganizationData(
+    data,
+    source,
+    existing,
+    stored.attributes.map((a) => ({ ...a })),
+  )
+  return {
+    processed,
+    changesNothing:
+      Object.keys(processed.organization).length === 0 &&
+      hasAllOrgIdentities(stored.identities, data.identities) &&
+      hasAllOrgAttributes(stored.attributes, processed.attributes) &&
+      processed.attributes.every((a) => !a.default || isOrgAttributeDefault(stored.attributes, a)),
+  }
+}
+
 // lockOrganization: a caller that runs this concurrently without transactions passes a lock, so
 // calls that reach the same organization through different identities update it one at a time
 export async function findOrCreateOrganization(
@@ -618,21 +671,28 @@ export async function findOrCreateOrganization(
     if (existing) {
       log.trace(`Found existing organization, organization will be updated!`)
 
+      let stored = await logExecutionTimeV2(
+        async () => findOrgAttributesAndIdentities(qe, existing.id),
+        log,
+        'organizationService -> findOrCreateOrganization -> findOrgAttributesAndIdentities',
+      )
+      let plan = planOrgUpdate(data, source, existing, stored)
+      if (plan.changesNothing) {
+        return { id: existing.id, created: false }
+      }
+
       const release = await lockOrganization?.(existing.id)
       try {
         if (release) {
           // read it again: the call that held the lock may have changed it
           existing = (await findOrgForUpdate(qe, existing.id)) ?? existing
+          stored = await findOrgAttributesAndIdentities(qe, existing.id)
+          plan = planOrgUpdate(data, source, existing, stored)
         }
 
-        const existingAttributes = await logExecutionTimeV2(
-          async () => findOrgAttributes(qe, existing.id),
-          log,
-          'organizationService -> findOrCreateOrganization -> findOrgAttributes',
-        )
-
-        const processed = prepareOrganizationData(data, source, existing, existingAttributes)
-
+        // Once anything changes, every write runs as before: a decision taken from the earlier read
+        // could be stale by now for callers without the lock
+        const { processed } = plan
         log.trace({ updateData: processed.organization }, `Updating organization!`)
 
         if (Object.keys(processed.organization).length > 0) {
