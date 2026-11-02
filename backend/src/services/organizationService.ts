@@ -19,7 +19,7 @@ import {
   mergeObjects,
   normalizeHostname,
 } from '@crowd/common'
-import { signalMemberUpdate, unmergeRoles } from '@crowd/common_services'
+import { roleExistsInArray, signalMemberUpdate, unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -416,13 +416,10 @@ export default class OrganizationService extends LoggerBase {
               // check if anything to delete in primary
               const rolesToDelete = memberOrganizations.filter(
                 (r) =>
-                  r.source !== 'ui' &&
-                  !primaryUnmergedRoles.some(
-                    (pr) =>
-                      pr.memberId === r.memberId &&
-                      pr.title === r.title &&
-                      pr.dateStart === r.dateStart &&
-                      pr.dateEnd === r.dateEnd,
+                  !roleExistsInArray(
+                    r,
+                    primaryUnmergedRoles,
+                    MemberRoleUnmergeStrategy.SAME_ORGANIZATION,
                   ),
               )
 

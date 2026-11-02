@@ -4,6 +4,7 @@ import {
   MemberOrgDate,
   MemberOrgStintChange,
   MemberRoleUnmergeStrategy,
+  OrganizationSource,
 } from '@crowd/types'
 
 function roleKey(
@@ -16,7 +17,12 @@ function roleKey(
   return role.memberId
 }
 
-function roleExistsInArray(
+function isSameDate(a: Date | string | null, b: Date | string | null): boolean {
+  if (!a || !b) return !a && !b
+  return new Date(a).getTime() === new Date(b).getTime()
+}
+
+export function roleExistsInArray(
   role: IMemberOrganization,
   roles: IMemberOrganization[],
   strategy: MemberRoleUnmergeStrategy,
@@ -26,8 +32,8 @@ function roleExistsInArray(
     (r) =>
       roleKey(r, strategy) === key &&
       r.title === role.title &&
-      r.dateStart === role.dateStart &&
-      r.dateEnd === role.dateEnd,
+      isSameDate(r.dateStart, role.dateStart) &&
+      isSameDate(r.dateEnd, role.dateEnd),
   )
 }
 
@@ -59,15 +65,19 @@ export function unmergeRoles(
   secondaryBackupRoles: IMemberOrganization[],
   strategy: MemberRoleUnmergeStrategy,
 ): IMemberOrganization[] {
-  const unmergedRoles: IMemberOrganization[] = mergedRoles.filter(
-    (role) =>
-      role.source === 'ui' ||
-      !secondaryBackupRoles.some((r) => roleKey(r, strategy) === roleKey(role, strategy)),
+  const cameFromSecondary = (role: IMemberOrganization) =>
+    roleExistsInArray(role, secondaryBackupRoles, strategy) &&
+    !roleExistsInArray(role, primaryBackupRoles, strategy)
+
+  const unmergedRoles: IMemberOrganization[] = mergedRoles.filter((role) =>
+    role.source === OrganizationSource.UI
+      ? !cameFromSecondary(role)
+      : !secondaryBackupRoles.some((r) => roleKey(r, strategy) === roleKey(role, strategy)),
   )
 
   const editableRoles = mergedRoles.filter(
     (role) =>
-      role.source !== 'ui' &&
+      role.source !== OrganizationSource.UI &&
       secondaryBackupRoles.some((r) => roleKey(r, strategy) === roleKey(role, strategy)),
   )
 

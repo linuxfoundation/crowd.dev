@@ -59,10 +59,11 @@ import {
   MergeActionState,
   MergeActionStep,
   MergeActionType,
+  OrganizationSource,
 } from '@crowd/types'
 
 import { BotDetectionService } from '../bot.service'
-import { unmergeRoles } from '../member-organization'
+import { roleExistsInArray, unmergeRoles } from '../member-organization'
 
 const logger = getServiceLogger()
 
@@ -591,16 +592,13 @@ export async function unmergeMember(
     const memberOrganizationsMap = await fetchManyMemberOrgsWithOrgData(tx, [memberId])
     const memberOrganizations = memberOrganizationsMap.get(memberId) ?? []
 
+    const isRoleIn = (role: IMemberRoleWithOrganization, roles: IMemberRoleWithOrganization[]) =>
+      roleExistsInArray(role, roles, MemberRoleUnmergeStrategy.SAME_MEMBER)
+
     rolesToDelete = memberOrganizations.filter(
       (r) =>
-        r.source !== 'ui' &&
-        !primary.memberOrganizations.some(
-          (pr) =>
-            pr.organizationId === r.organizationId &&
-            pr.title === r.title &&
-            pr.dateStart === r.dateStart &&
-            pr.dateEnd === r.dateEnd,
-        ),
+        !isRoleIn(r, primary.memberOrganizations) &&
+        (r.source !== OrganizationSource.UI || isRoleIn(r, secondary.memberOrganizations)),
     )
 
     for (const role of rolesToDelete) {
