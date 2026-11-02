@@ -137,7 +137,6 @@ export async function markOrgAttributeDefault(
         END
         WHERE "organizationId" = $(organizationId)
           AND name = $(name)
-          AND "default" IS DISTINCT FROM (source = $(source) AND value = $(value))
       `,
       {
         organizationId,

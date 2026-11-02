@@ -573,20 +573,13 @@ function planOrgUpdate(
     existing,
     stored.attributes.map((a) => ({ ...a })),
   )
-  const updateOrganization = Object.keys(processed.organization).length > 0
-  const upsertIdentities = !hasAllOrgIdentities(stored.identities, data.identities)
-  const upsertAttributes = !hasAllOrgAttributes(stored.attributes, processed.attributes)
-  const markDefaults = processed.attributes.filter(
-    (a) => a.default && !isOrgAttributeDefault(stored.attributes, a),
-  )
   return {
     processed,
-    updateOrganization,
-    upsertIdentities,
-    upsertAttributes,
-    markDefaults,
     changesNothing:
-      !updateOrganization && !upsertIdentities && !upsertAttributes && markDefaults.length === 0,
+      Object.keys(processed.organization).length === 0 &&
+      hasAllOrgIdentities(stored.identities, data.identities) &&
+      hasAllOrgAttributes(stored.attributes, processed.attributes) &&
+      processed.attributes.every((a) => !a.default || isOrgAttributeDefault(stored.attributes, a)),
   }
 }
 
@@ -697,10 +690,12 @@ export async function findOrCreateOrganization(
           plan = planOrgUpdate(data, source, existing, stored)
         }
 
+        // Once anything changes, every write runs as before: a decision taken from the earlier read
+        // could be stale by now for callers without the lock
         const { processed } = plan
         log.trace({ updateData: processed.organization }, `Updating organization!`)
 
-        if (plan.updateOrganization) {
+        if (Object.keys(processed.organization).length > 0) {
           log.info({ orgId: existing.id }, `Updating organization!`)
           await logExecutionTimeV2(
             async () =>
@@ -709,32 +704,30 @@ export async function findOrCreateOrganization(
             'organizationService -> findOrCreateOrganization -> updateOrganization',
           )
         }
-        if (plan.upsertIdentities) {
-          await logExecutionTimeV2(
-            async () =>
-              upsertOrgIdentities(
-                qe,
-                existing.id,
-                data.identities.map((i) => ({ ...i, source })),
-                integrationId,
-              ),
-            log,
-            'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
-          )
-        }
-        if (plan.upsertAttributes) {
-          await logExecutionTimeV2(
-            async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
-            log,
-            'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
-          )
-        }
-        for (const attr of plan.markDefaults) {
-          await logExecutionTimeV2(
-            async () => markOrgAttributeDefault(qe, existing.id, attr),
-            log,
-            'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
-          )
+        await logExecutionTimeV2(
+          async () =>
+            upsertOrgIdentities(
+              qe,
+              existing.id,
+              data.identities.map((i) => ({ ...i, source })),
+              integrationId,
+            ),
+          log,
+          'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
+        )
+        await logExecutionTimeV2(
+          async () => upsertOrgAttributes(qe, existing.id, processed.attributes),
+          log,
+          'organizationService -> findOrCreateOrganization -> upsertOrgAttributes',
+        )
+        for (const attr of processed.attributes) {
+          if (attr.default) {
+            await logExecutionTimeV2(
+              async () => markOrgAttributeDefault(qe, existing.id, attr),
+              log,
+              'organizationService -> findOrCreateOrganization -> markOrgAttributeDefault',
+            )
+          }
         }
 
         id = existing.id
