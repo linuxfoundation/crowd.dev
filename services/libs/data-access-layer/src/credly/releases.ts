@@ -1,3 +1,5 @@
+import { PlatformType } from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
 export interface ICredlyTemplateReleaseInput {
@@ -70,6 +72,9 @@ export interface IUnreleasedMappedCredlyTemplate {
   badgeCount: number | null
 }
 
+// Same "live and routable" predicate as listActiveCredlyTemplateMappings: an inactive or
+// unroutable mapping would have its release completed with nothing fetched (the walker
+// finds it unmapped in routing), burning the one release a future re-mapping could queue.
 // Lightest templates first: they drain fast and don't sit behind the handful of
 // high-volume ones in the FIFO queue a single release walker works through.
 export async function listMappedCredlyTemplatesWithoutRelease(
@@ -78,9 +83,16 @@ export async function listMappedCredlyTemplatesWithoutRelease(
   return qx.select(
     `SELECT m."badgeTemplateId", m."badgeCount"
      FROM integration."credlyTemplateMappings" m
+     JOIN public.integrations i ON i.id = m."integrationId"
      LEFT JOIN integration."credlyTemplateReleases" r ON r."badgeTemplateId" = m."badgeTemplateId"
-     WHERE m.status = 'mapped' AND r."badgeTemplateId" IS NULL
+     WHERE m.status = 'mapped'
+       AND m."deactivatedAt" IS NULL
+       AND i.platform = $(platform)
+       AND i."deletedAt" IS NULL
+       AND i."segmentId" = m."segmentId"
+       AND r."badgeTemplateId" IS NULL
      ORDER BY m."badgeCount" ASC NULLS FIRST, m."badgeTemplateId"`,
+    { platform: PlatformType.CREDLY },
   )
 }
 

@@ -4,7 +4,11 @@ import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
-import { findOrCreateCredlyIntegration, upsertCredlyTemplateDecision } from './index'
+import {
+  deactivateCredlyTemplateMapping,
+  findOrCreateCredlyIntegration,
+  upsertCredlyTemplateDecision,
+} from './index'
 import {
   completeCredlyTemplateRelease,
   listMappedCredlyTemplatesWithoutRelease,
@@ -26,7 +30,7 @@ async function mappedTemplate(
   qx: QueryExecutor,
   badgeTemplateId: string,
   badgeCount: number | null,
-): Promise<void> {
+): Promise<{ integrationId: string }> {
   const segmentId = generateUUIDv1()
   await qx.result(
     `INSERT INTO public.segments (id, slug, name, "tenantId", "createdAt", "updatedAt")
@@ -44,6 +48,7 @@ async function mappedTemplate(
     rule: 'exact_sku',
     ruleVersion: 1,
   })
+  return { integrationId }
 }
 
 async function queue(qx: QueryExecutor, badgeTemplateId: string, floor = FLOOR, top = TOP) {
@@ -147,6 +152,27 @@ describe('listMappedCredlyTemplatesWithoutRelease', () => {
     ])
 
     await queueCredlyTemplateRelease(qx, { badgeTemplateId: 'tpl-x', floor: FLOOR, top: TOP })
+
+    expect(await listMappedCredlyTemplatesWithoutRelease(qx)).toEqual([])
+  })
+
+  test('excludes a deactivated mapping', async ({ qx }) => {
+    await emptyQueue(qx)
+    await mappedTemplate(qx, 'tpl-deactivated', 1)
+    await deactivateCredlyTemplateMapping(qx, 'tpl-deactivated')
+
+    expect(await listMappedCredlyTemplatesWithoutRelease(qx)).toEqual([])
+  })
+
+  test('excludes a mapping whose integration was deleted', async ({ qx }) => {
+    await emptyQueue(qx)
+    const { integrationId } = await mappedTemplate(qx, 'tpl-orphaned', 1)
+    await qx.result(
+      `UPDATE public.integrations SET "deletedAt" = now() WHERE id = $(integrationId)`,
+      {
+        integrationId,
+      },
+    )
 
     expect(await listMappedCredlyTemplatesWithoutRelease(qx)).toEqual([])
   })
