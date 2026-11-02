@@ -77,15 +77,40 @@ type EmailDomainOrganization = {
   created: boolean
 }
 
+// Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
+// normalization and a primary domain on any platform
+function verifiedOrgIdentityKey(
+  identity: NonNullable<IOrganization['identities']>[number],
+): { key: string; value: string } | undefined {
+  if (!identity.verified || !identity.value) {
+    return undefined
+  }
+  const isDomain = [
+    OrganizationIdentityType.PRIMARY_DOMAIN,
+    OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+  ].includes(identity.type)
+  const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
+  if (!value) {
+    return undefined
+  }
+  return {
+    value,
+    key:
+      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
+        ? `${identity.type}:${value.toLowerCase()}`
+        : `${identity.platform}:${identity.type}:${value.toLowerCase()}`,
+  }
+}
+
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
  * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
  * across members in the same batch.
  */
 function orgCacheKey(org: IOrganization): string | null {
-  const verified = (org.identities ?? [])
-    .filter((i) => i.verified)
-    .map((i) => `${i.platform}:${i.type}:${i.value.toLowerCase()}`)
+  const verified = Array.from(
+    new Set((org.identities ?? []).map((i) => verifiedOrgIdentityKey(i)?.key).filter(Boolean)),
+  )
     .sort()
     .join('|')
   if (verified) return verified
@@ -98,30 +123,18 @@ function orgCacheKey(org: IOrganization): string | null {
 // organization they created instead of creating a duplicate when members are updated concurrently.
 const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
 
-// Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
-// normalization, a primary domain on any platform, and the name as the fallback. Without a
-// display name, an organization is created under its first verified identity's value.
+// The verified identities, and the name as the fallback. Without a display name, an organization
+// is created under its first verified identity's value.
 function orgLockKeys(org: IOrganization): string[] {
   const keys: string[] = []
   let creationName: string | undefined
   for (const identity of org.identities ?? []) {
-    if (!identity.verified || !identity.value) {
+    const verified = verifiedOrgIdentityKey(identity)
+    if (!verified) {
       continue
     }
-    const isDomain = [
-      OrganizationIdentityType.PRIMARY_DOMAIN,
-      OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-    ].includes(identity.type)
-    const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
-    if (!value) {
-      continue
-    }
-    creationName ??= value
-    keys.push(
-      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
-        ? `${identity.type}:${value.toLowerCase()}`
-        : `${identity.platform}:${identity.type}:${value.toLowerCase()}`,
-    )
+    creationName ??= verified.value
+    keys.push(verified.key)
   }
 
   const name = (org.displayName || creationName)?.trim().toLowerCase()
