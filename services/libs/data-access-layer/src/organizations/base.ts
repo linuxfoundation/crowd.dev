@@ -1,8 +1,10 @@
 import {
   DEFAULT_TENANT_ID,
+  INDIVIDUAL_NO_ACCOUNT_ORGANIZATION_NAME,
   UnrepeatableError,
   generateOrganizationNameVariants,
   generateUUIDv1,
+  isPlaceholderEmployerName,
   normalizeHostname,
 } from '@crowd/common'
 import { getServiceChildLogger, logExecutionTimeV2 } from '@crowd/logging'
@@ -82,6 +84,10 @@ export async function findOrgIdByUniqueDisplayName(
   )
 
   return rows.length === 1 ? rows[0].id : null
+}
+
+export function findIndividualNoAccountOrganizationId(qx: QueryExecutor): Promise<string | null> {
+  return findOrgIdByUniqueDisplayName(qx, INDIVIDUAL_NO_ACCOUNT_ORGANIZATION_NAME)
 }
 
 export async function findOrgBySourceId(
@@ -593,6 +599,11 @@ export async function findOrCreateOrganization(
   throttleUpdatedAt = false,
   lockOrganization?: (organizationId: string) => Promise<() => void>,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
+  if (isPlaceholderEmployerName(data.displayName)) {
+    log.debug({ displayName: data.displayName }, 'Skipping placeholder employer name.')
+    return undefined
+  }
+
   data.identities = data.identities ?? []
   let verifiedIdentities = data.identities.filter((i) => i.verified)
 
