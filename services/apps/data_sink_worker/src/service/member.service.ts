@@ -276,6 +276,7 @@ function findOrCreateOrgOnce(
   org: IOrganization,
   findOrCreate: (
     lockOrganization?: (organizationId: string) => Promise<() => void>,
+    organizationId?: string,
   ) => Promise<IFindOrCreateOrganizationResult | undefined>,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
   const payloadKey = orgPayloadKey(source, org)
@@ -292,9 +293,8 @@ function findOrCreateOrgOnce(
   const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
   orgIdentityLocks.set(orgPromiseCache, locks)
   const lockKeys = orgLockKeys(org)
-  const apply = () => findOrCreate(lockOrganizationFor(orgPromiseCache))
   const promise = Promise.all(lockKeys.map((k) => locks.get(k)))
-    .then(apply)
+    .then(() => findOrCreate(lockOrganizationFor(orgPromiseCache)))
     .then((result) => {
       if (result) {
         const payloads = batchOrgPayloads(orgPromiseCache)
@@ -303,7 +303,7 @@ function findOrCreateOrgOnce(
           source,
           payloadKey,
           activities: payloads.activities.get(payloadKey) ?? { newestMs: 0, count: 0 },
-          apply,
+          apply: () => findOrCreate(lockOrganizationFor(orgPromiseCache), result.id),
         })
       }
       return result
@@ -758,9 +758,16 @@ export default class MemberService extends LoggerBase {
                 orgPromiseCache,
                 platform,
                 org,
-                (lockOrganization) =>
+                (lockOrganization, organizationId) =>
                   logExecutionTimeV2(
-                    () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
                     this.log,
                     'memberService -> create -> orgService.findOrCreate',
                   ),
@@ -1019,9 +1026,16 @@ export default class MemberService extends LoggerBase {
                 orgPromiseCache,
                 platform,
                 org,
-                (lockOrganization) =>
+                (lockOrganization, organizationId) =>
                   logExecutionTimeV2(
-                    () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
                     this.log,
                     'memberService -> update -> orgService.findOrCreate',
                   ),
@@ -1154,12 +1168,13 @@ export default class MemberService extends LoggerBase {
         orgPromiseCache,
         OrganizationAttributeSource.EMAIL,
         org,
-        (lockOrganization) =>
+        (lockOrganization, organizationId) =>
           orgService.findOrCreate(
             OrganizationAttributeSource.EMAIL,
             integrationId,
             org,
             lockOrganization,
+            organizationId,
           ),
       )
       if (result) {
