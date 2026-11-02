@@ -100,7 +100,7 @@ export const DEFAULT_WIDGET_VALUES: Record<
     platform: ALL_PLATFORM_TYPES,
   },
   [Widgets.PACKAGE_DOWNLOADS]: {
-    enabled: true,
+    enabled: false,
     platform: [PlatformType.GITHUB, PlatformType.GITHUB_NANGO],
   },
   [Widgets.PACKAGE_DEPENDENCY]: {
