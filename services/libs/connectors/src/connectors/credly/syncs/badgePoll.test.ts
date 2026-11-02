@@ -1376,7 +1376,7 @@ describe('runBadgePoll releases', () => {
 
     await runBadgePoll(ctx)
 
-    expect(deps.loadTemplateRouting).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.loadTemplateRouting).mock.calls).toEqual([[false], [true]])
     expect(mockedFetchBadgesPage).toHaveBeenCalledTimes(2)
     expect(deps.completeRelease).toHaveBeenCalledTimes(1)
     expect(LOG.warn).not.toHaveBeenCalled()

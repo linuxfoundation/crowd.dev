@@ -10,6 +10,7 @@ import {
   mintCredlyAccessToken,
 } from '@crowd/connectors/src/connectors/credly/oauth'
 import {
+  listActiveCredlyTemplateMappings,
   listCredlyTemplateMappings,
   listHeldCredlyTemplateMappings,
 } from '@crowd/data-access-layer/src/credly'
@@ -89,6 +90,14 @@ async function main(): Promise<void> {
   const qx = pgpQx(db)
 
   if (release) {
+    const active = await listActiveCredlyTemplateMappings(qx)
+    if (!active.some((mapping) => mapping.badgeTemplateId === release)) {
+      log.error(
+        { badgeTemplateId: release },
+        'credly template is not mapped to a live integration, nothing to release',
+      )
+      process.exit(1)
+    }
     await queueCredlyTemplateRelease(qx, {
       badgeTemplateId: release,
       floor: CREDLY_HISTORY_START,

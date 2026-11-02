@@ -94,6 +94,18 @@ describe('createCredlyDeps', () => {
     expect(mockedStale).toHaveBeenCalledTimes(1)
   })
 
+  it('reads the mapping again when a fresh routing is asked for', async () => {
+    const deps = createCredlyDeps({ qx, integrationId: 'anchor' })
+
+    const first = await deps.loadTemplateRouting()
+    const fresh = await deps.loadTemplateRouting(true)
+    const cached = await deps.loadTemplateRouting()
+
+    expect(fresh).not.toBe(first)
+    expect(cached).toBe(fresh)
+    expect(mockedActive).toHaveBeenCalledTimes(2)
+  })
+
   it('locks a template through the mapping table', async () => {
     vi.mocked(lockCredlyTemplateMapping).mockResolvedValueOnce(true)
     const deps = createCredlyDeps({ qx, integrationId: 'anchor' })

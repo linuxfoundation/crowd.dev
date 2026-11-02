@@ -208,9 +208,8 @@ export function releasesToQueue(
   return plan.entries
     .filter(
       (entry) =>
-        entry.kind === 'changed' &&
-        entry.before !== null &&
-        !entry.before.startsWith('mapped:') &&
+        (entry.kind === 'changed' || entry.kind === 'new') &&
+        !entry.before?.startsWith('mapped:') &&
         entry.after?.startsWith('mapped:'),
     )
     .map((entry) => ({

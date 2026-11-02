@@ -252,7 +252,7 @@ describe('releasesToQueue', () => {
       counts: {},
     }) as never
 
-  it('queues the templates that left the held queue for a project, from their creation date', () => {
+  it('queues the templates that reached a project, new or released, from their creation date', () => {
     const releases = releasesToQueue(
       plan([
         {
@@ -282,6 +282,7 @@ describe('releasesToQueue', () => {
         { id: 'lfc131', name: 'LFC131', createdAt: '2022-10-25T19:41:32.416Z' },
         { id: 'old', name: 'Old', createdAt: '2018-04-19T00:00:00.000Z' },
         { id: 'unexcluded', name: 'Unexcluded', createdAt: '2026-11-02T12:00:00.000Z' },
+        { id: 'fresh', name: 'Fresh', createdAt: '2026-11-01T09:00:00.000Z' },
       ],
       now,
     )
@@ -296,6 +297,11 @@ describe('releasesToQueue', () => {
       {
         badgeTemplateId: 'unexcluded',
         floor: '2026-11-02T11:59:59.000Z',
+        top: '2026-11-02T12:00:00.000Z',
+      },
+      {
+        badgeTemplateId: 'fresh',
+        floor: '2026-11-01T09:00:00.000Z',
         top: '2026-11-02T12:00:00.000Z',
       },
     ])

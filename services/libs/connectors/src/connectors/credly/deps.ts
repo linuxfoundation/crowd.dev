@@ -38,7 +38,7 @@ export interface CredlyTemplateRouting {
 }
 
 export interface CredlyDeps {
-  loadTemplateRouting(): Promise<CredlyTemplateRouting>
+  loadTemplateRouting(fresh?: boolean): Promise<CredlyTemplateRouting>
   lockTemplate(badgeTemplateId: string, target: CredlyTemplateTarget): Promise<boolean>
   findBadges(badgeIds: string[]): Promise<ICredlyBadgeRow[]>
   saveBadges(badges: ICredlyBadgeInput[]): Promise<void>
@@ -56,7 +56,8 @@ export function createCredlyDeps({ qx }: DepsFactoryInput): CredlyDeps {
   let routing: Promise<CredlyTemplateRouting> | null = null
 
   return {
-    loadTemplateRouting() {
+    loadTemplateRouting(fresh = false) {
+      if (fresh) routing = null
       routing ??= Promise.all([
         listActiveCredlyTemplateMappings(qx),
         listStaleCredlyTemplateMappings(qx),

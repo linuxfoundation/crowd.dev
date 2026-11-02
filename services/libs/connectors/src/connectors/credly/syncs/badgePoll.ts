@@ -141,8 +141,10 @@ function afterReleaseDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor |
 }
 
 function releaseCursor(release: ICredlyTemplateRelease): CredlyBackfillCursor | undefined {
-  const iso = (value: string | Date | null) =>
-    value === null ? null : value instanceof Date ? value.toISOString() : toIsoTimestamp(value)
+  const iso = (value: string | null) => {
+    const parsable = parsableIso(value)
+    return parsable === null ? null : toIsoTimestamp(parsable)
+  }
   return readBackfill({
     floor: iso(release.floor),
     top: iso(release.top),
@@ -245,13 +247,17 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   assertCredentialKind(credential, 'credly-oauth-client')
   const { organizationId } = credential.data
 
-  let routing = await ctx.deps.loadTemplateRouting()
-  if (routing.staleTemplateIds.length > 0) {
-    ctx.log.warn(
-      { badgeTemplateIds: routing.staleTemplateIds },
-      'credly template mappings point to a deleted or moved integration, their badges are held',
-    )
+  const loadRouting = async (fresh: boolean) => {
+    const loaded = await ctx.deps.loadTemplateRouting(fresh)
+    if (loaded.staleTemplateIds.length > 0) {
+      ctx.log.warn(
+        { badgeTemplateIds: loaded.staleTemplateIds },
+        'credly template mappings point to a deleted or moved integration, their badges are held',
+      )
+    }
+    return loaded
   }
+  let routing = await loadRouting(false)
 
   const startedAtMs = Date.now()
   const horizonMs = startedAtMs - WINDOW_LAG_MS
@@ -489,21 +495,21 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     await ctx.commitWatermark(watermark)
   }
 
-  // A released template is re-read on its own, with the template filter, before the global history:
-  // it is the one with badges nobody has seen. A shadow run leaves the queue alone.
-  // A write that touches 0 rows means the release was queued again underneath: this walk is stale
-  // and the queue is read afresh. A release queued during this run is newer than the routing loaded
-  // at its start, so an unknown template is checked again against fresh routing before it is skipped.
+  // A released template is re-read with the template filter before the global history; a write that
+  // touches 0 rows means the release was queued again underneath, so the queue is read afresh.
   const skipRelease = async (release: ICredlyTemplateRelease, reason: string) => {
     ctx.log.warn({ badgeTemplateId: release.badgeTemplateId }, reason)
     await ctx.deps.completeRelease(release)
     return ctx.deps.nextRelease()
   }
-  let releasePending = false
+  const advanceRelease = async (release: ICredlyTemplateRelease, cursor: CredlyBackfillCursor) =>
+    (await ctx.deps.saveReleaseCursor(release, cursor))
+      ? { ...release, ...cursor }
+      : ctx.deps.nextRelease()
   let release = ctx.emitEnabled && !watermark.until ? await ctx.deps.nextRelease() : null
   while (release && counters.pagesFetched < MAX_PAGES_PER_RUN && ctx.hasRunBudget()) {
     const templateId = release.badgeTemplateId
-    if (!routing.targets.has(templateId)) routing = await ctx.deps.loadTemplateRouting()
+    if (!routing.targets.has(templateId)) routing = await loadRouting(true)
     if (!routing.targets.has(templateId)) {
       release = await skipRelease(release, 'credly release skipped: template not mapped')
       continue
@@ -524,10 +530,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
     const result = await fetchOrHalve(window, templateId)
     if ('halved' in result) {
-      const halved = { ...cursor, ...result.halved }
-      release = (await ctx.deps.saveReleaseCursor(release, halved))
-        ? { ...release, ...halved }
-        : await ctx.deps.nextRelease()
+      release = await advanceRelease(release, { ...cursor, ...result.halved })
       continue
     }
     counters.releasePages += 1
@@ -543,18 +546,16 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       next = { ...cursor, ...nextPage(window, result.page.data) }
     }
     if (!next) {
-      counters.releases += 1
       if (await ctx.deps.completeRelease(release)) {
+        counters.releases += 1
         ctx.log.info({ badgeTemplateId: templateId }, 'credly template history released')
       }
       release = await ctx.deps.nextRelease()
     } else {
-      release = (await ctx.deps.saveReleaseCursor(release, next))
-        ? { ...release, ...next }
-        : await ctx.deps.nextRelease()
+      release = await advanceRelease(release, next)
     }
   }
-  releasePending = release !== null
+  const releasePending = release !== null
 
   while (
     !releasePending &&
