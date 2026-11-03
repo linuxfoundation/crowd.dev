@@ -8,27 +8,33 @@ workflows are listed in
 
 ## Scoring a member pair
 
-`MemberSimilarityCalculator` returns a score from 0 to 1. The first rule that matches decides.
-The fuzzy path starts from the edit distance between the closest pair of verified identities and
-only stays high if at least one additional check passes.
+`MemberSimilarityCalculator.calculateSimilarity` returns a score from 0 to 1. It checks the rules
+in this order and returns at the first match. The fuzzy path at the end starts from the edit
+distance between the closest pair of verified identities and only stays high if at least one
+additional check passes.
 
 ```mermaid
 flowchart TD
     A[Candidate pair] --> B{"Clashing verified usernames on one platform?"}
     B -->|yes| L1[0.2]
-    B -->|no| C{"Email matches across verified and unverified?"}
+    B -->|no| C{"Email verified on one side, unverified on the other?"}
     C -->|yes| H98[0.98]
-    C -->|no| D{"Unverified identity matches a verified one?"}
-    D -->|"primary unverified = similar verified"| H98
-    D -->|"email-as-username or noreply match"| H95[0.95]
-    D -->|"primary verified = similar unverified"| H95
-    D -->|no| E["Closest verified identities by edit distance"]
-    E --> F{"Distance longer than the identity?"}
+    C -->|no| D{"An unverified identity of the primary..."}
+    D -->|"equals a verified identity"| H98
+    D -->|"matches as email-as-username"| H95[0.95]
+    D -->|no| N{"A noreply email resolves to the other's GitHub or GitLab username?"}
+    N -->|yes| H95
+    N -->|no| V{"A verified identity of the primary..."}
+    V -->|"equals an unverified identity, or matches as email-as-username"| H95
+    V -->|no| E{"Any verified identities to compare?"}
+    E -->|no| S90["Start at 0.9"]
+    E -->|yes| F{"Edit distance longer than the identity?"}
     F -->|yes| L2[0.2]
     F -->|no| G["Start at 1 - distance / length"]
-    G --> X{"Any additional check passes?"}
+    S90 --> X{"Any additional check passes?"}
+    G --> X
     X -->|no| L3[0.2]
-    X -->|yes| Y["Bump by (1 - score) / 6 per check, max 1"]
+    X -->|yes| Y["Bump by (1 - start) / 6 per check, max 1"]
 ```
 
 The additional checks are: same location, roles in the same organization, shared languages,
