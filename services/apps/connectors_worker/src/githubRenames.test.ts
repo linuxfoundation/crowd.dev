@@ -527,6 +527,63 @@ describe('applyGithubRenames', () => {
     expect(eventsOf('warn', 'lifecycle_repo_skipped')).toEqual([
       expect.objectContaining({ message: expect.stringContaining('state_mismatch') }),
     ])
+
+    vi.clearAllMocks()
+    mocks.fetchGithubIntegration.mockResolvedValue({
+      id: 'int-1',
+      orgs: [
+        org('acme', [
+          'https://github.com/acme/old',
+          'https://github.com/acme/two',
+          'https://github.com/acme/keep',
+        ]),
+      ],
+    })
+    mocks.fetchGithubIntegrationMapping.mockResolvedValue({
+      'https://github.com/acme/old': 'sub-old',
+      'https://github.com/acme/two': 'sub-two',
+      'https://github.com/acme/keep': 'sub-keep',
+    })
+    const twoToNew = { from: 'https://github.com/acme/two', to: renameOld.to }
+    await expect(applyGithubRenames(qx, 'int-1', [renameOld, twoToNew], token)).resolves.toEqual({
+      applied: 2,
+      refused: 0,
+      failed: 0,
+    })
+    expect(postedPayload().mapping).toEqual({
+      'https://github.com/acme/keep': 'sub-keep',
+      'https://github.com/acme/New': 'sub-old',
+    })
+    expect(eventsOf('info', 'github_rename_applied')).toEqual([
+      expect.objectContaining({ ...renameOld, action: 'swapped' }),
+      expect.objectContaining({
+        ...twoToNew,
+        action: 'disconnected',
+        reason: 'new_name_already_live',
+      }),
+    ])
+
+    vi.clearAllMocks()
+    reads = 0
+    mocks.fetchGithubIntegration.mockImplementation(async () => {
+      reads++
+      const urls = ['https://github.com/acme/old', 'https://github.com/acme/keep']
+      return {
+        id: 'int-1',
+        orgs: [org('acme', reads === 1 ? urls : [...urls, 'https://github.com/acme/New'])],
+      }
+    })
+    mocks.fetchGithubIntegrationMapping.mockImplementation(async () => ({
+      'https://github.com/acme/old': 'sub-old',
+      'https://github.com/acme/keep': 'sub-keep',
+      ...(reads === 1 ? {} : { 'https://github.com/acme/New': 'sub-new' }),
+    }))
+
+    await applyGithubRenames(qx, 'int-1', [renameOld], token)
+    expect(postedPayload().mapping).toEqual({
+      'https://github.com/acme/keep': 'sub-keep',
+      'https://github.com/acme/New': 'sub-new',
+    })
   })
 
   it('reports progress once per decided rename and fetches a new owner logo once', async () => {

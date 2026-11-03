@@ -405,6 +405,24 @@ function keepConnected<T extends { rename: IGithubRename } | IGithubRename>(
   return items.filter(isConnected)
 }
 
+function connectEachTargetOnce(
+  state: IIntegrationState,
+  decisions: IResolvedDecision[],
+): IResolvedDecision[] {
+  const taken = hydratedUrls(state.orgs)
+  return decisions.map((decision) => {
+    if (decision.action !== 'swapped') {
+      return decision
+    }
+    const target = urlKey(decision.rename.to)
+    if (taken.has(target)) {
+      return disconnect(decision.rename, 'new_name_already_live')
+    }
+    taken.add(target)
+    return decision
+  })
+}
+
 async function postUnderLock(
   context: IRenameContext,
   decisions: IResolvedDecision[],
@@ -427,7 +445,8 @@ async function postUnderLock(
     return NO_RENAMES
   }
 
-  return postDecisions(context, state, await withFreshOrgLogos(context, state.orgs, connected))
+  const targeted = connectEachTargetOnce(state, connected)
+  return postDecisions(context, state, await withFreshOrgLogos(context, state.orgs, targeted))
 }
 
 function lockBackoffMs(attempt: number): number {
