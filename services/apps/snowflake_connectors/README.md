@@ -56,7 +56,9 @@ Each child runs `executeExport(platform, sourceName)`:
 1. Reads the latest `exportStartedAt` among this source's jobs that completed without an error. With no such job, the
    export is a full export.
 2. Calls the source's `buildSourceQuery(sinceTimestamp)`. With a timestamp, the query returns rows updated since then,
-   plus every row for projects whose segment was created since then.
+   plus every row for projects whose segment was created since then. The TNC sources filter on event time instead
+   (enrollment, certificate issue or course action), so a correction to an older TNC record in an existing project is
+   not exported again.
 3. Runs `COPY INTO` in batches of 10,000 rows. Each batch writes one Parquet file under
    `<CROWD_SNOWFLAKE_S3_BUCKET_PATH>/<platform>/<source>/<yyyy>/<mm>/<dd>/`.
 4. Inserts one row per file into `integration."snowflakeExportJobs"`.

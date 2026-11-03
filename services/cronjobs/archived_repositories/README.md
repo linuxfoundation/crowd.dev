@@ -31,7 +31,7 @@ Each run of the main process reads up to `ARCHIVED_REPOSITORIES_CHECKER_BATCH_SI
 first, then the ones checked longest ago.
 
 It enqueues each URL into one of two BullMQ queues, `github-archived-repo-checker` or `gitlab-archived-repo-checker`.
-A failed job is retried up to 4 times with exponential backoff.
+A failed job is retried up to 3 times with exponential backoff (4 attempts in total).
 
 ### Rate limits
 

@@ -98,8 +98,10 @@ An incremental clone raises `ReOnboardingRequiredError`, and the run ends with
 
 - the clone is no longer shallow but `lastProcessedCommit` is missing (history was rewritten, for
   example by a force push), or
-- the time since `lockedAt` exceeds `STUCK_RECURRENT_REPO_TIMEOUT_HOURS`
-  (`STUCK_ONBOARDING_REPO_TIMEOUT_HOURS` when there is no `lastProcessedCommit`).
+- the time since `lockedAt` exceeds `STUCK_RECURRENT_REPO_TIMEOUT_HOURS`. The code also
+  defines `STUCK_ONBOARDING_REPO_TIMEOUT_HOURS` for repositories without a `lastProcessedCommit`,
+  but those always take the full-clone path, which returns before the timeout check, so it never
+  applies.
 
 ### 4. First-batch services
 
@@ -195,26 +197,26 @@ of inserts. `operationType` is one of `Clone`, `Commit`, `Maintainer`, `Affiliat
 
 All settings are environment variables read in `src/crowdgit/settings.py`.
 
-| Variable                                                                                              | Default   | Purpose                                                              |
-| ----------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------- |
-| `CROWD_DB_WRITE_HOST`, `CROWD_DB_PORT`, `CROWD_DB_USERNAME`, `CROWD_DB_PASSWORD`, `CROWD_DB_DATABASE` | required  | Postgres connection                                                  |
-| `CROWD_KAFKA_BROKERS`, `CROWD_KAFKA_TOPIC`                                                            | required  | Kafka producer target                                                |
-| `CROWD_KAFKA_EXTRA`                                                                                   | unset     | JSON with `ssl` and `sasl` settings, in the kafkajs format           |
-| `CROWD_AWS_BEDROCK_ACCESS_KEY_ID`, `CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY`, `CROWD_AWS_BEDROCK_REGION`  | unset     | Bedrock client for maintainer and affiliation parsing                |
-| `CROWD_SSO_LF_TENANT_ID`                                                                              | built in  | Tenant ID written on results                                         |
-| `WORKER_POLLING_INTERVAL_SEC`                                                                         | `5`       | Sleep between loop iterations                                        |
-| `WORKER_ERROR_BACKOFF_SEC`                                                                            | `10`      | Sleep after a loop error                                             |
-| `WORKER_SHUTDOWN_TIMEOUT_SEC`                                                                         | `3600`    | Time to finish the current repository on shutdown                    |
-| `REPOSITORY_UPDATE_INTERVAL_HOURS`                                                                    | `24`      | Recurrent processing interval; also the fork parent freshness window |
-| `FAILED_RETRY_INTERVAL_HOURS`                                                                         | `6`       | Retry interval for `failed` repositories                             |
-| `MAX_CONCURRENT_ONBOARDINGS`                                                                          | `3`       | Onboarding repositories processed at once across all workers         |
-| `MAX_INTEGRATION_RESULTS`                                                                             | `5000000` | `integration.results` size above which onboarding pauses             |
-| `STUCK_RECURRENT_REPO_TIMEOUT_HOURS`                                                                  | `4`       | Incremental clone timeout before `pending_reonboard`                 |
-| `STUCK_ONBOARDING_REPO_TIMEOUT_HOURS`                                                                 | `12`      | Same timeout for repositories without `lastProcessedCommit`          |
-| `MAINTAINER_UPDATE_INTERVAL_HOURS`                                                                    | `24`      | Maintainer refresh when a file was found                             |
-| `MAINTAINER_RETRY_INTERVAL_DAYS`                                                                      | `30`      | Maintainer retry when no file was found                              |
-| `AFFILIATION_UPDATE_INTERVAL_HOURS`                                                                   | `24`      | Affiliation refresh when a file was found                            |
-| `AFFILIATION_RETRY_INTERVAL_DAYS`                                                                     | `30`      | Affiliation retry when no file was found                             |
+| Variable                                                                                              | Default   | Purpose                                                                                |
+| ----------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `CROWD_DB_WRITE_HOST`, `CROWD_DB_PORT`, `CROWD_DB_USERNAME`, `CROWD_DB_PASSWORD`, `CROWD_DB_DATABASE` | required  | Postgres connection                                                                    |
+| `CROWD_KAFKA_BROKERS`, `CROWD_KAFKA_TOPIC`                                                            | required  | Kafka producer target                                                                  |
+| `CROWD_KAFKA_EXTRA`                                                                                   | unset     | JSON with `ssl` and `sasl` settings, in the kafkajs format                             |
+| `CROWD_AWS_BEDROCK_ACCESS_KEY_ID`, `CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY`, `CROWD_AWS_BEDROCK_REGION`  | unset     | Bedrock client for maintainer and affiliation parsing                                  |
+| `CROWD_SSO_LF_TENANT_ID`                                                                              | built in  | Tenant ID written on results                                                           |
+| `WORKER_POLLING_INTERVAL_SEC`                                                                         | `5`       | Sleep between loop iterations                                                          |
+| `WORKER_ERROR_BACKOFF_SEC`                                                                            | `10`      | Sleep after a loop error                                                               |
+| `WORKER_SHUTDOWN_TIMEOUT_SEC`                                                                         | `3600`    | Time to finish the current repository on shutdown                                      |
+| `REPOSITORY_UPDATE_INTERVAL_HOURS`                                                                    | `24`      | Recurrent processing interval; also the fork parent freshness window                   |
+| `FAILED_RETRY_INTERVAL_HOURS`                                                                         | `6`       | Retry interval for `failed` repositories                                               |
+| `MAX_CONCURRENT_ONBOARDINGS`                                                                          | `3`       | Onboarding repositories processed at once across all workers                           |
+| `MAX_INTEGRATION_RESULTS`                                                                             | `5000000` | `integration.results` size above which onboarding pauses                               |
+| `STUCK_RECURRENT_REPO_TIMEOUT_HOURS`                                                                  | `4`       | Incremental clone timeout before `pending_reonboard`                                   |
+| `STUCK_ONBOARDING_REPO_TIMEOUT_HOURS`                                                                 | `12`      | Meant for repositories without `lastProcessedCommit`; never applies today (see step 3) |
+| `MAINTAINER_UPDATE_INTERVAL_HOURS`                                                                    | `24`      | Maintainer refresh when a file was found                                               |
+| `MAINTAINER_RETRY_INTERVAL_DAYS`                                                                      | `30`      | Maintainer retry when no file was found                                                |
+| `AFFILIATION_UPDATE_INTERVAL_HOURS`                                                                   | `24`      | Affiliation refresh when a file was found                                              |
+| `AFFILIATION_RETRY_INTERVAL_DAYS`                                                                     | `30`      | Affiliation retry when no file was found                                               |
 
 `CROWD_KAFKA_USER` and `CROWD_KAFKA_PASSWORD` are read but not used; credentials come from
 `CROWD_KAFKA_EXTRA`.
@@ -257,17 +259,22 @@ LIMIT 20;
 **A repository stays in `processing`.** The worker clears `lockedAt` in a `finally` block, so a
 lock that outlives any reasonable run means the worker process died (for example, out of memory or
 killed during shutdown). Neither queue picks a locked row, and a dead onboarding run still counts
-against `MAX_CONCURRENT_ONBOARDINGS`. Check that no worker is running it, then release it:
+against `MAX_CONCURRENT_ONBOARDINGS`. Check that no worker is running it, then release it. A
+repository that was never processed goes back to `pending`, because the recurrent queue needs a
+`lastProcessedAt` and would never pick it up as `failed`:
 
 ```sql
 UPDATE git."repositoryProcessing" rp
-SET state = 'failed', "lockedAt" = NULL, "updatedAt" = NOW()
+SET state = CASE WHEN rp."lastProcessedAt" IS NULL THEN 'pending' ELSE 'failed' END,
+    "lockedAt" = NULL, "updatedAt" = NOW()
 FROM public.repositories r
 WHERE rp."repositoryId" = r.id AND r.url = 'https://github.com/<owner>/<repo>';
 ```
 
 **Re-onboard a repository.** Reset the processing row so the next run does a full clone and
-reprocesses every service. Set `priority = 0` as well to put it at the front of the onboarding
+reprocesses every service except affiliations, which keep their own interval in
+`git."repoAffiliationRegistry"` (`AFFILIATION_UPDATE_INTERVAL_HOURS` after a file was found,
+`AFFILIATION_RETRY_INTERVAL_DAYS` otherwise). Set `priority = 0` as well to put it at the front of the onboarding
 queue. Skip rows in `processing`.
 
 ```sql
@@ -278,6 +285,15 @@ FROM public.repositories r
 WHERE rp."repositoryId" = r.id
   AND r.url = 'https://github.com/<owner>/<repo>'
   AND rp.state != 'processing';
+```
+
+To force the affiliation check in the same run, also clear its last run:
+
+```sql
+UPDATE git."repoAffiliationRegistry" ar
+SET "lastRunAt" = NULL, "updatedAt" = NOW()
+FROM public.repositories r
+WHERE ar."repoId" = r.id AND r.url = 'https://github.com/<owner>/<repo>';
 ```
 
 A manual re-onboard does not change `reOnboardingCount`, so its activities get no `cycle`

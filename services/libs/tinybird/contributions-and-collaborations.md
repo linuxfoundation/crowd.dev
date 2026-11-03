@@ -45,8 +45,12 @@ Metric pipes join on `activityTypes`. They do not read the `isContribution` colu
 ## How pipes apply the classification
 
 The metric pipes below read the cleaned buckets of the
-[bucketing architecture](./bucketing-architecture.md), so bots and disabled or excluded
-repositories are already gone before the classification applies.
+[bucketing architecture](./bucketing-architecture.md), so bots and disabled repositories are
+already gone before the classification applies. Repositories marked `excluded` are not removed
+there: bucket cleaning uses `repos_to_channels`, which checks only `enabled`. Pipes that must
+leave out excluded repositories filter them separately, for example with
+`repos_to_channels_excluded` as `health_score_active_contributors` does; the aggregates without
+that filter still count them.
 
 ```mermaid
 flowchart LR
