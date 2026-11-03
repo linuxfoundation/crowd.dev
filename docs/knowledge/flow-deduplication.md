@@ -41,17 +41,17 @@ one merge that ingest does on its own (a verified identity collision), are in
 
 ## Who does what
 
-| Part                                                        | Role                                                                                                                                                                         |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `merge_suggestions_worker` (task queue `merge-suggestions`) | Generates suggestions on Temporal schedules and runs the LLM review workflows                                                                                                |
-| `entity_merging_worker` (task queue `entity-merging`)       | Finishes merges and unmerges in the background: moves `activityRelations`, syncs OpenSearch, deletes the secondary record, notifies the UI                                   |
-| `CommonMemberService.merge` (`common_services`)             | Synchronous part of a member merge, used by the API and by the LLM review                                                                                                    |
-| `member/unmerge.ts` (`common_services`)                     | Unmerge preview and synchronous member unmerge                                                                                                                               |
-| `backend/src/services/organizationService.ts`               | Synchronous organization merge, unmerge and no-merge                                                                                                                         |
-| `backend/src/api/`                                          | `PUT /member/:id/merge`, `/unmerge`, `/unmerge/preview`, `/no-merge`, the same for `/organization/:id`, `POST /membersToMerge`, `/organizationsToMerge`, `GET /mergeActions` |
-| `search_sync_api`                                           | Updates OpenSearch after a merge; the suggestion generator searches that index                                                                                               |
-| `profiles_worker` (task queue `profiles`)                   | Recalculates activity affiliations after a merge (`memberUpdate`, `organizationUpdate`)                                                                                      |
-| Amazon Bedrock                                              | Model behind the LLM review; calls only happen when `CROWD_ENABLE_LLM` is `true`                                                                                             |
+| Part                                                        | Role                                                                                                                                                                                               |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merge_suggestions_worker` (task queue `merge-suggestions`) | Generates suggestions on Temporal schedules and runs the LLM review workflows                                                                                                                      |
+| `entity_merging_worker` (task queue `entity-merging`)       | Finishes merges and unmerges in the background: moves `activityRelations`, syncs OpenSearch, deletes the secondary record, notifies the UI                                                         |
+| `CommonMemberService.merge` (`common_services`)             | Synchronous part of a member merge, used by the API and by the LLM review                                                                                                                          |
+| `member/unmerge.ts` (`common_services`)                     | Unmerge preview and synchronous member unmerge                                                                                                                                                     |
+| `backend/src/services/organizationService.ts`               | Synchronous organization merge, unmerge and no-merge                                                                                                                                               |
+| `backend/src/api/`                                          | `PUT /member/:id/merge` and `/no-merge`, `POST /member/:id/unmerge` and `/unmerge/preview`, the same for `/organization/:id`, `POST /membersToMerge`, `/organizationsToMerge`, `GET /mergeActions` |
+| `search_sync_api`                                           | Updates OpenSearch after a merge; the suggestion generator searches that index                                                                                                                     |
+| `profiles_worker` (task queue `profiles`)                   | Recalculates activity affiliations after a merge (`memberUpdate`, `organizationUpdate`)                                                                                                            |
+| Amazon Bedrock                                              | Model behind the LLM review; calls only happen when `CROWD_ENABLE_LLM` is `true`                                                                                                                   |
 
 ## Workflows
 
