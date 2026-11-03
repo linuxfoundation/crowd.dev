@@ -223,13 +223,18 @@ describe('mirror sweep activities', () => {
         { from: 'old-b', to: 'new-b' },
       ],
       'token-int-1',
+      expect.any(Function),
     )
     expect(mocks.applyGithubRenames).toHaveBeenCalledWith(
       'qx',
       'int-2',
       [{ from: 'old-c', to: 'new-c' }],
       'token-int-2',
+      expect.any(Function),
     )
+    const heartbeats = mocks.heartbeat.mock.calls.length
+    mocks.applyGithubRenames.mock.calls[0][4]()
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(heartbeats + 1)
     expect(mocks.log.warn).not.toHaveBeenCalled()
   })
 })

@@ -1,10 +1,15 @@
 import axios from 'axios'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BackendRequestError } from '@crowd/project-onboarding/src/onboarder'
 import type { IGithubOrgSettings } from '@crowd/project-onboarding/src/types'
 
-import { applyGithubRenames, buildRenamePayload, hydratedReposMatch } from './githubRenames'
+import {
+  RENAME_LOCK_WAIT_MS,
+  applyGithubRenames,
+  buildRenamePayload,
+  hydratedReposMatch,
+} from './githubRenames'
 
 const mocks = vi.hoisted(() => ({
   readBackendApiConfig: vi.fn(),
@@ -13,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   postGithubNangoConnect: vi.fn(),
   fetchGithubOrgLogo: vi.fn(),
   fetchGithubLifecycleIntegration: vi.fn(),
+  tryLockGithubRenames: vi.fn(),
   findRepositoryByUrlInsensitive: vi.fn(),
   resolveRepo: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -29,6 +35,7 @@ vi.mock('@crowd/project-onboarding/src/onboarder', async (importOriginal) => ({
 }))
 vi.mock('@crowd/data-access-layer/src/integrations', () => ({
   fetchGithubLifecycleIntegration: mocks.fetchGithubLifecycleIntegration,
+  tryLockGithubRenames: mocks.tryLockGithubRenames,
 }))
 vi.mock('@crowd/data-access-layer/src/repositories', () => ({
   findRepositoryByUrlInsensitive: mocks.findRepositoryByUrlInsensitive,
@@ -38,7 +45,8 @@ vi.mock('@crowd/connectors/src/connectors/github/discover', () => ({
 }))
 
 const NOW = new Date('2026-11-03T10:00:00Z')
-const qx = {} as never
+const txQx = { kind: 'tx' }
+const qx = { tx: vi.fn(async (fn: (tx: unknown) => unknown) => fn(txQx)) } as never
 const token = vi.fn(async () => 'ghs_token')
 
 const repo = (url: string) => ({
@@ -217,6 +225,7 @@ describe('applyGithubRenames', () => {
       forkedFrom: null,
     }))
     mocks.postGithubNangoConnect.mockResolvedValue(undefined)
+    mocks.tryLockGithubRenames.mockResolvedValue(true)
   })
 
   it('returns zeros for no renames without any lookup', async () => {
@@ -426,5 +435,235 @@ describe('applyGithubRenames', () => {
       expect.objectContaining({ ...renameOld, message: 'boom' }),
     ])
     expect(eventsOf('info', 'github_rename_applied')).toEqual([])
+  })
+  it('serializes per integration and builds the post from the state re-read under the lock', async () => {
+    const order: string[] = []
+    mocks.tryLockGithubRenames.mockImplementation(async () => {
+      order.push('lock')
+      return true
+    })
+    mocks.fetchGithubIntegrationMapping.mockImplementation(async () => {
+      order.push('read')
+      return order.includes('lock')
+        ? {
+            'https://github.com/acme/old': 'sub-old',
+            'https://github.com/acme/Deux': 'sub-two',
+            'https://github.com/acme/keep': 'sub-keep',
+          }
+        : {
+            'https://github.com/acme/old': 'sub-old',
+            'https://github.com/acme/two': 'sub-two',
+            'https://github.com/acme/keep': 'sub-keep',
+          }
+    })
+    mocks.fetchGithubIntegration.mockImplementation(async () => ({
+      id: 'int-1',
+      orgs: [
+        org('acme', [
+          'https://github.com/acme/old',
+          order.includes('lock') ? 'https://github.com/acme/Deux' : 'https://github.com/acme/two',
+          'https://github.com/acme/keep',
+        ]),
+      ],
+    }))
+    mocks.postGithubNangoConnect.mockImplementation(async () => {
+      order.push('post')
+    })
+
+    const result = await applyGithubRenames(qx, 'int-1', [renameOld], token)
+
+    expect(result).toEqual({ applied: 1, refused: 0, failed: 0 })
+    expect(order).toEqual(['read', 'lock', 'read', 'post'])
+    expect(mocks.tryLockGithubRenames).toHaveBeenCalledWith(txQx, 'int-1')
+    expect(postedPayload().mapping).toEqual({
+      'https://github.com/acme/Deux': 'sub-two',
+      'https://github.com/acme/keep': 'sub-keep',
+      'https://github.com/acme/New': 'sub-old',
+    })
+  })
+
+  it('re-applies the guard and the not-connected noop to the state read under the lock', async () => {
+    let reads = 0
+    mocks.fetchGithubIntegration.mockImplementation(async () => {
+      reads++
+      const urls = ['https://github.com/acme/two', 'https://github.com/acme/keep']
+      return {
+        id: 'int-1',
+        orgs: [org('acme', reads === 1 ? ['https://github.com/acme/old', ...urls] : urls)],
+      }
+    })
+    mocks.fetchGithubIntegrationMapping.mockImplementation(async () => ({
+      ...(reads === 1 ? { 'https://github.com/acme/old': 'sub-old' } : {}),
+      'https://github.com/acme/two': 'sub-two',
+      'https://github.com/acme/keep': 'sub-keep',
+    }))
+
+    await expect(applyGithubRenames(qx, 'int-1', [renameOld], token)).resolves.toEqual({
+      applied: 0,
+      refused: 0,
+      failed: 0,
+    })
+    expect(mocks.postGithubNangoConnect).not.toHaveBeenCalled()
+    expect(eventsOf('info', 'github_rename_noop')).toEqual([
+      expect.objectContaining({ ...renameOld, reason: 'old_repo_not_connected' }),
+    ])
+
+    vi.clearAllMocks()
+    reads = 0
+    mocks.fetchGithubIntegration.mockImplementation(async () => {
+      reads++
+      return { id: 'int-1', orgs: [org('acme', ['https://github.com/acme/old'])] }
+    })
+    mocks.fetchGithubIntegrationMapping.mockImplementation(async () =>
+      reads === 1 ? { 'https://github.com/acme/old': 'sub-old' } : {},
+    )
+
+    await expect(applyGithubRenames(qx, 'int-1', [renameOld], token)).resolves.toEqual({
+      applied: 0,
+      refused: 1,
+      failed: 0,
+    })
+    expect(mocks.postGithubNangoConnect).not.toHaveBeenCalled()
+    expect(eventsOf('warn', 'lifecycle_repo_skipped')).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('state_mismatch') }),
+    ])
+  })
+
+  it('reports progress once per decided rename and fetches a new owner logo once', async () => {
+    mocks.fetchGithubOrgLogo.mockResolvedValue('L')
+    const onProgress = vi.fn()
+    const moves = ['old', 'two', 'keep'].map((name) => ({
+      from: `https://github.com/acme/${name}`,
+      to: `https://github.com/beta/${name}`,
+    }))
+    const gone = { from: 'https://github.com/acme/gone', to: 'https://github.com/beta/gone' }
+
+    const result = await applyGithubRenames(qx, 'int-1', [...moves, gone], token, onProgress)
+
+    expect(result).toEqual({ applied: 3, refused: 0, failed: 0 })
+    expect(onProgress).toHaveBeenCalledTimes(3)
+    expect(mocks.fetchGithubOrgLogo).toHaveBeenCalledTimes(1)
+    expect(postedPayload().settings.orgs.find(({ name }) => name === 'beta')?.logo).toBe('L')
+  })
+
+  it('fetches the logo under the lock when the owner left the integration meanwhile', async () => {
+    mocks.fetchGithubOrgLogo.mockResolvedValue('L')
+    const transfer = { from: 'https://github.com/acme/old', to: 'https://github.com/beta/x' }
+    let reads = 0
+    mocks.fetchGithubIntegration.mockImplementation(async () => {
+      reads++
+      return {
+        id: 'int-1',
+        orgs: [
+          org('acme', ['https://github.com/acme/old']),
+          ...(reads === 1 ? [org('beta', [])] : []),
+        ],
+      }
+    })
+    mocks.fetchGithubIntegrationMapping.mockResolvedValue({ 'https://github.com/acme/old': 's' })
+
+    await applyGithubRenames(qx, 'int-1', [transfer], token)
+
+    expect(mocks.fetchGithubOrgLogo).toHaveBeenCalledTimes(1)
+    expect(postedPayload().settings.orgs.find(({ name }) => name === 'beta')?.logo).toBe('L')
+  })
+
+  it('connects the url GitHub resolves and checks that url for a live row', async () => {
+    const renamed = { from: 'https://github.com/acme/old', to: 'https://github.com/acme/new' }
+    mocks.resolveRepo.mockResolvedValue({
+      channelId: 'id-new',
+      channelName: 'https://github.com/acme/New-Name',
+      forkedFrom: null,
+    })
+
+    await applyGithubRenames(qx, 'int-1', [renamed], token)
+
+    expect(mocks.findRepositoryByUrlInsensitive).toHaveBeenCalledWith(
+      qx,
+      'https://github.com/acme/New-Name',
+    )
+    expect(postedPayload().mapping).toEqual({
+      'https://github.com/acme/two': 'sub-two',
+      'https://github.com/acme/keep': 'sub-keep',
+      'https://github.com/acme/New-Name': 'sub-old',
+    })
+
+    vi.clearAllMocks()
+    mocks.findRepositoryByUrlInsensitive.mockImplementation(async (_qx: unknown, url: string) =>
+      url === 'https://github.com/acme/New-Name' ? { id: 'repo-live', url } : null,
+    )
+
+    await applyGithubRenames(qx, 'int-1', [renamed], token)
+
+    expect(Object.keys(postedPayload().mapping)).toEqual([
+      'https://github.com/acme/two',
+      'https://github.com/acme/keep',
+    ])
+    expect(eventsOf('info', 'github_rename_applied')).toEqual([
+      expect.objectContaining({ action: 'disconnected', reason: 'new_name_already_live' }),
+    ])
+  })
+  describe('when another rename holds the integration lock', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('waits without holding the lock, heartbeating, and posts once it is free', async () => {
+      const onProgress = vi.fn()
+      mocks.tryLockGithubRenames
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true)
+
+      const applying = applyGithubRenames(qx, 'int-1', [renameOld], token, onProgress)
+      await vi.runAllTimersAsync()
+
+      await expect(applying).resolves.toEqual({ applied: 1, refused: 0, failed: 0 })
+      expect(mocks.tryLockGithubRenames).toHaveBeenCalledTimes(3)
+      expect(mocks.fetchGithubIntegration).toHaveBeenCalledTimes(2)
+      expect(mocks.postGithubNangoConnect).toHaveBeenCalledTimes(1)
+      expect(onProgress).toHaveBeenCalledTimes(3)
+    })
+
+    it('fails every decided rename with lock_busy at the wait deadline', async () => {
+      mocks.tryLockGithubRenames.mockResolvedValue(false)
+      const start = Date.now()
+
+      const applying = applyGithubRenames(qx, 'int-1', [renameOld, renameTwo], token)
+      await vi.runAllTimersAsync()
+
+      await expect(applying).resolves.toEqual({ applied: 0, refused: 0, failed: 2 })
+      expect(Date.now() - start).toBeLessThanOrEqual(RENAME_LOCK_WAIT_MS)
+      expect(mocks.fetchGithubIntegration).toHaveBeenCalledTimes(1)
+      expect(mocks.postGithubNangoConnect).not.toHaveBeenCalled()
+      expect(eventsOf('error', 'github_rename_failed')).toEqual([
+        expect.objectContaining({ ...renameOld, reason: 'lock_busy' }),
+        expect.objectContaining({ ...renameTwo, reason: 'lock_busy' }),
+      ])
+    })
+  })
+
+  it('skips a rename GitHub resolves back to the old name as a no-op', async () => {
+    mocks.resolveRepo.mockImplementation(async (_token: string, owner: string, name: string) => ({
+      channelId: 'id',
+      channelName:
+        name === 'New' ? 'https://github.com/Acme/Old' : `https://github.com/${owner}/${name}`,
+      forkedFrom: null,
+    }))
+
+    const result = await applyGithubRenames(qx, 'int-1', [renameOld, renameTwo], token)
+
+    expect(result).toEqual({ applied: 1, refused: 0, failed: 0 })
+    expect(postedPayload().mapping).toEqual({
+      'https://github.com/acme/old': 'sub-old',
+      'https://github.com/acme/keep': 'sub-keep',
+      'https://github.com/acme/Deux': 'sub-two',
+    })
+    expect(eventsOf('info', 'github_rename_noop')).toEqual([
+      expect.objectContaining({ ...renameOld, reason: 'renamed_back' }),
+    ])
   })
 })

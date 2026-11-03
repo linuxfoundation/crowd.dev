@@ -1166,10 +1166,13 @@ describe('github lifecycle activities', () => {
             { from: a2.from, to: a2.to },
           ],
           tokenA,
+          expect.any(Function),
         ],
-        [mocks.qx, 'B', [{ from: b1.from, to: b1.to }], tokenB],
+        [mocks.qx, 'B', [{ from: b1.from, to: b1.to }], tokenB, expect.any(Function)],
       ])
       expect(mocks.heartbeat).toHaveBeenCalledTimes(2)
+      mocks.applyGithubRenames.mock.calls[0][4]()
+      expect(mocks.heartbeat).toHaveBeenCalledTimes(3)
     })
   })
 })

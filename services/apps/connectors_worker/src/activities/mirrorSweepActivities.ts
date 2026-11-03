@@ -37,6 +37,7 @@ async function applyCollectedRenames(
       integrationId,
       renames,
       installationTokenSource(qx, integrationId),
+      () => Context.current().heartbeat(result),
     )
     result.renamesApplied += applied.applied
     result.renamesRefused += applied.refused

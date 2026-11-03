@@ -1118,6 +1118,7 @@ export async function applyRenames({
       integrationId,
       group,
       installationTokenSource(qx, integrationId),
+      heartbeat,
     )
     total.applied += outcome.applied
     total.refused += outcome.refused
