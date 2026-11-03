@@ -77,15 +77,42 @@ type EmailDomainOrganization = {
   created: boolean
 }
 
+// Domains after hostname normalization, like findOrCreateOrganization looks them up. The lock key
+// takes a primary domain on any platform, as the lookup's fallback does
+function verifiedOrgIdentityKey(
+  identity: NonNullable<IOrganization['identities']>[number],
+): { key: string; lockKey: string; value: string } | undefined {
+  if (!identity.verified || !identity.value) {
+    return undefined
+  }
+  const isDomain = [
+    OrganizationIdentityType.PRIMARY_DOMAIN,
+    OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+  ].includes(identity.type)
+  const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
+  if (!value) {
+    return undefined
+  }
+  const key = `${identity.platform}:${identity.type}:${value.toLowerCase()}`
+  return {
+    value,
+    key,
+    lockKey:
+      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
+        ? `${identity.type}:${value.toLowerCase()}`
+        : key,
+  }
+}
+
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
  * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
  * across members in the same batch.
  */
 function orgCacheKey(org: IOrganization): string | null {
-  const verified = (org.identities ?? [])
-    .filter((i) => i.verified)
-    .map((i) => `${i.platform}:${i.type}:${i.value.toLowerCase()}`)
+  const verified = Array.from(
+    new Set((org.identities ?? []).map((i) => verifiedOrgIdentityKey(i)?.key).filter(Boolean)),
+  )
     .sort()
     .join('|')
   if (verified) return verified
@@ -98,30 +125,18 @@ function orgCacheKey(org: IOrganization): string | null {
 // organization they created instead of creating a duplicate when members are updated concurrently.
 const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
 
-// Keyed the way findOrCreateOrganization looks organizations up: domains after hostname
-// normalization, a primary domain on any platform, and the name as the fallback. Without a
-// display name, an organization is created under its first verified identity's value.
+// The verified identities, and the name as the fallback. Without a display name, an organization
+// is created under its first verified identity's value.
 function orgLockKeys(org: IOrganization): string[] {
   const keys: string[] = []
   let creationName: string | undefined
   for (const identity of org.identities ?? []) {
-    if (!identity.verified || !identity.value) {
+    const verified = verifiedOrgIdentityKey(identity)
+    if (!verified) {
       continue
     }
-    const isDomain = [
-      OrganizationIdentityType.PRIMARY_DOMAIN,
-      OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-    ].includes(identity.type)
-    const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
-    if (!value) {
-      continue
-    }
-    creationName ??= value
-    keys.push(
-      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
-        ? `${identity.type}:${value.toLowerCase()}`
-        : `${identity.platform}:${identity.type}:${value.toLowerCase()}`,
-    )
+    creationName ??= verified.value
+    keys.push(verified.lockKey)
   }
 
   const name = (org.displayName || creationName)?.trim().toLowerCase()
@@ -154,14 +169,146 @@ function lockOrganizationFor(orgPromiseCache: OrgPromiseCache) {
   }
 }
 
+const stableJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+
+// Domains are normalized like findOrCreateOrganization normalizes them in place, so the key is the
+// same before and after the payload is applied
+function orgPayloadKey(source: string, org: IOrganization): string {
+  const content: Record<string, unknown> = {
+    ...org,
+    identities: (org.identities ?? [])
+      .map((i) =>
+        [
+          OrganizationIdentityType.PRIMARY_DOMAIN,
+          OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+        ].includes(i.type)
+          ? { ...i, value: i.value ? normalizeHostname(i.value, false) : i.value }
+          : i,
+      )
+      .filter((i) => i.value !== undefined),
+  }
+  // the source of the member's link to the organization, not organization data
+  delete content.source
+  return stableJson({ source, content })
+}
+
+interface IOrgPayloadActivities {
+  newestMs: number
+  count: number
+}
+
+interface IAppliedOrgPayload {
+  organizationId: string
+  source: string
+  payloadKey: string
+  activities: IOrgPayloadActivities
+  apply: () => Promise<unknown>
+}
+
+const orgPayloadsOfBatch = new WeakMap<
+  OrgPromiseCache,
+  { activities: Map<string, IOrgPayloadActivities>; applied: IAppliedOrgPayload[] }
+>()
+
+function batchOrgPayloads(orgPromiseCache: OrgPromiseCache) {
+  let payloads = orgPayloadsOfBatch.get(orgPromiseCache)
+  if (!payloads) {
+    payloads = { activities: new Map(), applied: [] }
+    orgPayloadsOfBatch.set(orgPromiseCache, payloads)
+  }
+  return payloads
+}
+
+export function registerOrgPayloadActivities(
+  orgPromiseCache: OrgPromiseCache,
+  activities: { source: string; timestamp: string; organizations?: IOrganization[] }[],
+): void {
+  const payloads = batchOrgPayloads(orgPromiseCache).activities
+  for (const { source, timestamp, organizations } of activities) {
+    const time = new Date(timestamp).getTime()
+    const ms = Number.isFinite(time) ? time : 0
+    let keys: Set<string>
+    try {
+      // an activity counts once for each payload, however many times it carries it
+      keys = new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))
+    } catch {
+      // runs before the per-member error handling, which reports a malformed organization
+      continue
+    }
+    for (const key of keys) {
+      const known = payloads.get(key)
+      payloads.set(key, {
+        newestMs: Math.max(known?.newestMs ?? ms, ms),
+        count: (known?.count ?? 0) + 1,
+      })
+    }
+  }
+}
+
+const winsOver = (a: IAppliedOrgPayload, b: IAppliedOrgPayload): boolean =>
+  a.activities.newestMs !== b.activities.newestMs
+    ? a.activities.newestMs > b.activities.newestMs
+    : a.activities.count !== b.activities.count
+      ? a.activities.count > b.activities.count
+      : a.payloadKey > b.payloadKey
+
+// The payload applied last sets the defaults of its source, and which one that is depends on timing,
+// so they are applied again from lowest ranked to the winner (newest activity, most activities)
+export async function applyNewestOrgPayloads(
+  orgPromiseCache: OrgPromiseCache,
+  log: Logger,
+): Promise<void> {
+  const byOrganizationAndSource = new Map<string, IAppliedOrgPayload[]>()
+  for (const payload of batchOrgPayloads(orgPromiseCache).applied) {
+    const key = `${payload.organizationId}#${payload.source}`
+    const payloads = byOrganizationAndSource.get(key) ?? []
+    payloads.push(payload)
+    byOrganizationAndSource.set(key, payloads)
+  }
+
+  for (const payloads of byOrganizationAndSource.values()) {
+    const distinct = Array.from(new Map(payloads.map((p) => [p.payloadKey, p])).values())
+    if (distinct.length < 2) {
+      continue
+    }
+    distinct.sort((a, b) => (winsOver(a, b) ? 1 : winsOver(b, a) ? -1 : 0))
+    for (const payload of distinct) {
+      try {
+        await payload.apply()
+      } catch (err) {
+        log.error(
+          err,
+          { organizationId: payload.organizationId, source: payload.source },
+          'Failed to apply an organization payload again!',
+        )
+      }
+    }
+  }
+}
+
+// Per batch: the organization each identity key resolved to. Later payloads with the same identities
+// go there without a lookup: an earlier payload may have unverified their identity
+const orgIdsOfIdentityKeys = new WeakMap<OrgPromiseCache, Map<string, string>>()
+
+// Payloads that share identities wait for each other, so they all land on the same organization
+// and each adds what it carries
 function findOrCreateOrgOnce(
   orgPromiseCache: OrgPromiseCache | undefined,
+  source: string,
   org: IOrganization,
   findOrCreate: (
     lockOrganization?: (organizationId: string) => Promise<() => void>,
+    organizationId?: string,
   ) => Promise<IFindOrCreateOrganizationResult | undefined>,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
-  const key = orgCacheKey(org)
+  const payloadKey = orgPayloadKey(source, org)
+  const identityKey = orgCacheKey(org)
+  const key = identityKey ? `${identityKey}#${payloadKey}` : null
   const cached = key ? orgPromiseCache?.get(key) : undefined
   if (cached) {
     return cached
@@ -173,9 +320,31 @@ function findOrCreateOrgOnce(
   const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
   orgIdentityLocks.set(orgPromiseCache, locks)
   const lockKeys = orgLockKeys(org)
-  const promise = Promise.all(lockKeys.map((k) => locks.get(k))).then(() =>
-    findOrCreate(lockOrganizationFor(orgPromiseCache)),
-  )
+  const resolvedIds = orgIdsOfIdentityKeys.get(orgPromiseCache) ?? new Map<string, string>()
+  orgIdsOfIdentityKeys.set(orgPromiseCache, resolvedIds)
+  const promise = Promise.all(lockKeys.map((k) => locks.get(k)))
+    .then(() =>
+      findOrCreate(
+        lockOrganizationFor(orgPromiseCache),
+        identityKey ? resolvedIds.get(identityKey) : undefined,
+      ),
+    )
+    .then((result) => {
+      if (result) {
+        if (identityKey && !resolvedIds.has(identityKey)) {
+          resolvedIds.set(identityKey, result.id)
+        }
+        const payloads = batchOrgPayloads(orgPromiseCache)
+        payloads.applied.push({
+          organizationId: result.id,
+          source,
+          payloadKey,
+          activities: payloads.activities.get(payloadKey) ?? { newestMs: 0, count: 0 },
+          apply: () => findOrCreate(lockOrganizationFor(orgPromiseCache), result.id),
+        })
+      }
+      return result
+    })
   const settled = promise.catch(() => undefined)
   for (const k of lockKeys) {
     locks.set(k, settled)
@@ -622,12 +791,23 @@ export default class MemberService extends LoggerBase {
                 continue
               }
 
-              const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
-                logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
-                  this.log,
-                  'memberService -> create -> orgService.findOrCreate',
-                ),
+              const result = await findOrCreateOrgOnce(
+                orgPromiseCache,
+                platform,
+                org,
+                (lockOrganization, organizationId) =>
+                  logExecutionTimeV2(
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
+                    this.log,
+                    'memberService -> create -> orgService.findOrCreate',
+                  ),
               )
               if (result) {
                 organizations.push({
@@ -879,12 +1059,23 @@ export default class MemberService extends LoggerBase {
 
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
-                logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org, lockOrganization),
-                  this.log,
-                  'memberService -> update -> orgService.findOrCreate',
-                ),
+              const result = await findOrCreateOrgOnce(
+                orgPromiseCache,
+                platform,
+                org,
+                (lockOrganization, organizationId) =>
+                  logExecutionTimeV2(
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
+                    this.log,
+                    'memberService -> update -> orgService.findOrCreate',
+                  ),
               )
               if (result) {
                 organizations.push({
@@ -1010,13 +1201,18 @@ export default class MemberService extends LoggerBase {
           },
         ],
       }
-      const result = await findOrCreateOrgOnce(orgPromiseCache, org, (lockOrganization) =>
-        orgService.findOrCreate(
-          OrganizationAttributeSource.EMAIL,
-          integrationId,
-          org,
-          lockOrganization,
-        ),
+      const result = await findOrCreateOrgOnce(
+        orgPromiseCache,
+        OrganizationAttributeSource.EMAIL,
+        org,
+        (lockOrganization, organizationId) =>
+          orgService.findOrCreate(
+            OrganizationAttributeSource.EMAIL,
+            integrationId,
+            org,
+            lockOrganization,
+            organizationId,
+          ),
       )
       if (result) {
         organizations.push({

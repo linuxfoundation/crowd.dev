@@ -254,12 +254,16 @@ export async function markOrganizationEnriched(
 
 export async function addOrgsToSegments(
   qe: QueryExecutor,
-  segmentIds: string[],
-  orgIds: string[],
+  unsortedSegmentIds: string[],
+  unsortedOrgIds: string[],
 ): Promise<void> {
-  if (orgIds.length === 0 || segmentIds.length === 0) {
+  if (unsortedOrgIds.length === 0 || unsortedSegmentIds.length === 0) {
     return
   }
+
+  // Concurrent inserts of the same new rows in opposite order can deadlock
+  const segmentIds = [...unsortedSegmentIds].sort()
+  const orgIds = [...unsortedOrgIds].sort()
 
   const parameters: Record<string, unknown> = {
     tenantId: DEFAULT_TENANT_ID,
@@ -598,6 +602,7 @@ export async function findOrCreateOrganization(
   integrationId?: string,
   throttleUpdatedAt = false,
   lockOrganization?: (organizationId: string) => Promise<() => void>,
+  organizationId?: string,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
   if (isPlaceholderEmployerName(data.displayName)) {
     log.debug({ displayName: data.displayName }, 'Skipping placeholder employer name.')
@@ -637,8 +642,16 @@ export async function findOrCreateOrganization(
     }
 
     let existing
+    // A payload applied again goes to the organization it went to before: a later payload may have
+    // unverified the identity it was found by
+    if (organizationId) {
+      existing = await findOrgForUpdate(qe, organizationId)
+      if (!existing) {
+        return undefined
+      }
+    }
     // find existing org by sent verified identities
-    for (const identity of verifiedIdentities) {
+    for (const identity of existing ? [] : verifiedIdentities) {
       existing = await logExecutionTimeV2(
         async () => findOrgByVerifiedIdentity(qe, identity),
         log,
