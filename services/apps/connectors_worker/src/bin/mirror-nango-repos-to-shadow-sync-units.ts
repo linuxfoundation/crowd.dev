@@ -14,7 +14,7 @@ const log = getServiceLogger()
 interface MirrorReportRow {
   owner: string
   repoName: string
-  outcome: 'mirrored' | 'skipped'
+  outcome: 'mirrored' | 'renamed' | 'skipped'
   reason?: string
   unitsInserted?: number
 }
@@ -54,19 +54,29 @@ async function mirrorOne(
     },
     since,
   )
-  return result.outcome === 'mirrored'
-    ? {
+  switch (result.outcome) {
+    case 'mirrored':
+      return {
         owner: repo.owner,
         repoName: repo.name,
         outcome: 'mirrored',
         unitsInserted: result.unitsInserted,
       }
-    : {
+    case 'renamed':
+      return {
+        owner: repo.owner,
+        repoName: repo.name,
+        outcome: 'renamed',
+        reason: `${result.from} -> ${result.to}`,
+      }
+    case 'skipped':
+      return {
         owner: repo.owner,
         repoName: repo.name,
         outcome: 'skipped',
         reason: result.message ? `${result.reason}: ${result.message}` : result.reason,
       }
+  }
 }
 
 setImmediate(async () => {

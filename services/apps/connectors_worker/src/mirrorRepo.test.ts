@@ -123,11 +123,32 @@ describe('mirrorRepo', () => {
     )
   })
 
-  it('skips a repo whose channel resolves to another name', async () => {
+  it('mirrorRepo returns renamed with the stored and GitHub urls', async () => {
     mocks.resolveRepoChannel.mockResolvedValue({
       channelId: 'R_1',
       channelName: 'https://github.com/acme/widget-next',
     })
+    mocks.findIntegrationRepositoryUrl.mockResolvedValue('https://github.com/acme/Widget')
+
+    await expect(mirrorRepo(qx, candidate, since)).resolves.toEqual({
+      outcome: 'renamed',
+      from: 'https://github.com/acme/Widget',
+      to: 'https://github.com/acme/widget-next',
+    })
+    expect(mocks.findIntegrationRepositoryUrl).toHaveBeenCalledWith(
+      qx,
+      'i-1',
+      'https://github.com/acme/widget',
+    )
+    expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
+  })
+
+  it('mirrorRepo keeps repo_renamed without a stored row', async () => {
+    mocks.resolveRepoChannel.mockResolvedValue({
+      channelId: 'R_1',
+      channelName: 'https://github.com/acme/widget-next',
+    })
+    mocks.findIntegrationRepositoryUrl.mockResolvedValue(null)
 
     await expect(mirrorRepo(qx, candidate, since)).resolves.toEqual({
       outcome: 'skipped',

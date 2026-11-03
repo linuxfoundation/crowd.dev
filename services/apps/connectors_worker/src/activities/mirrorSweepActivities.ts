@@ -7,6 +7,8 @@ import { TinybirdClient } from '@crowd/database'
 import { initNangoCloudClient } from '@crowd/nango'
 
 import { readGithubChannelActivity } from '../githubChannelActivity'
+import { installationTokenSource } from '../githubInstallationToken'
+import { type IGithubRename, applyGithubRenames } from '../githubRenames'
 import { svc } from '../main'
 import { mirrorRepo } from '../mirrorRepo'
 import {
@@ -24,6 +26,24 @@ export async function countShadowRepos(): Promise<number> {
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 
+async function applyCollectedRenames(
+  qx: QueryExecutor,
+  renamesByIntegration: Map<string, IGithubRename[]>,
+  result: MirrorBatchResult,
+): Promise<void> {
+  for (const [integrationId, renames] of renamesByIntegration) {
+    const applied = await applyGithubRenames(
+      qx,
+      integrationId,
+      renames,
+      installationTokenSource(qx, integrationId),
+    )
+    result.renamesApplied += applied.applied
+    result.renamesRefused += applied.refused
+    result.renamesFailed += applied.failed
+  }
+}
+
 async function mirrorCandidates(
   qx: QueryExecutor,
   candidates: IMirrorCandidate[],
@@ -32,6 +52,7 @@ async function mirrorCandidates(
   result: MirrorBatchResult,
   cancellation: AbortSignal,
 ): Promise<void> {
+  const renamesByIntegration = new Map<string, IGithubRename[]>()
   try {
     let next = 0
     while (result.mirrored < limit && next < candidates.length) {
@@ -50,6 +71,12 @@ async function mirrorCandidates(
           return
         }
         const { integrationId, owner, repoName } = group[i]
+        if (outcome.outcome === 'renamed') {
+          const renames = renamesByIntegration.get(integrationId) ?? []
+          renames.push({ from: outcome.from, to: outcome.to })
+          renamesByIntegration.set(integrationId, renames)
+          return
+        }
         result.skipped++
         svc.log.warn(
           {
@@ -68,6 +95,7 @@ async function mirrorCandidates(
     svc.log.error({ err, ...result }, 'mirror batch stopped')
     result.failed = true
   }
+  await applyCollectedRenames(qx, renamesByIntegration, result)
 }
 
 export async function mirrorBatch(limit: number): Promise<MirrorBatchResult> {
@@ -78,6 +106,9 @@ export async function mirrorBatch(limit: number): Promise<MirrorBatchResult> {
     mirrored: 0,
     skipped: 0,
     unitsInserted: 0,
+    renamesApplied: 0,
+    renamesRefused: 0,
+    renamesFailed: 0,
     failed: false,
   }
   const heartbeat = setInterval(() => {
