@@ -1335,6 +1335,36 @@ describe('runBadgePoll releases', () => {
     )
   })
 
+  it('caps release completions at one per run, leaving the rest pending', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['template-1', DEFAULT_TARGET],
+        ['template-2', DEFAULT_TARGET],
+      ]),
+      staleTemplateIds: [],
+    }
+    const { ctx, deps } = makeCtx(
+      { since: HORIZON },
+      () => true,
+      routing,
+      true,
+      [],
+      [release('template-1'), release('template-2')],
+    )
+
+    const outcome = await runBadgePoll(ctx)
+
+    expect(outcome).toEqual({ complete: false })
+    expect(deps.nextRelease).toHaveBeenCalledTimes(2)
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+    expect(requestedParams().every((p) => p.badgeTemplateId === 'template-1')).toBe(true)
+    expect(LOG.info).toHaveBeenCalledWith(
+      { badgeTemplateId: 'template-1' },
+      'credly template history released',
+    )
+  })
+
   it('halves a failing release window and walks its upper half before moving down', async () => {
     const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
     mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
