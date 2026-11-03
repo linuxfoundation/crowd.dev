@@ -23,17 +23,10 @@ list post. This note is the end-to-end map. The Tinybird half is documented in d
 `services/libs/tinybird/`; this note covers the half before it and points into those docs.
 
 Each activity is split in two at the data sink, and the halves reach Tinybird by different
-routes:
+routes.
 
-```
-source platform
-  → ingestion service                 (one of several paths, below)
-  → data_sink_worker                  (resolves member and organization)
-      ├─ full activity → Kafka "activities" topic ──────────────────→ Kafka Connect → Tinybird "activities"
-      └─ relation row  → Postgres "activityRelations" → Sequin → Kafka → Kafka Connect → Tinybird "activityRelations"
-  → Tinybird pipes, reading either datasource or joining them
-  → LFX Insights (Nuxt server and public API) and other consumers
-```
+The diagrams of the whole path, from ingestion to LFX Insights, are in
+[`docs/design/activity-pipeline.md`](../design/activity-pipeline.md).
 
 ## 1. Ingestion paths
 
