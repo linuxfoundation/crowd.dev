@@ -240,13 +240,13 @@ describe('reconcileGithubIntegration', () => {
     vi.clearAllMocks()
     calls.length = 0
     const toCreate = Array.from({ length: 1200 }, (_, i) => `https://github.com/acme/repo-${i}`)
+    answer('discoverFullSyncRepos', { discovered: [], skipped: [], renameValidationComplete: true })
     answer('planGithubLifecycle', plan({ toCreate }), plan({ deleted: true, desired: 0 }))
     answer('onboardGithubRepos', {
       created: 10,
       unitsInserted: 80,
       skipped: 490,
       integrationDeleted: true,
-      renames: [],
     })
     answer('softDeleteIntegrationRepositories', 2)
     answer('countUndrainedUnits', 0)

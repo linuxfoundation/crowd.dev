@@ -76,7 +76,8 @@ export async function reconcileGithubIntegration({
   }
 
   try {
-    const discovery = await longActivity.discoverFullSyncRepos({ integrationId })
+    const discovered = await longActivity.discoverFullSyncRepos({ integrationId })
+    const discovery = { ...discovered, renames: recordedRenames(discovered) }
     if (discovery.renames.length > 0) {
       await applyRenames(discovery.renames, summary)
     }
@@ -184,6 +185,10 @@ async function deleteIfNowDeleted(
   }
 }
 
+function recordedRenames<T>({ renames }: { renames?: T[] }): T[] {
+  return renames ?? []
+}
+
 function deferredCreates(keys: string[]): ILifecycleSkip[] {
   return keys.map((url) => ({
     url,
@@ -277,7 +282,7 @@ async function createPhase(
     summary.created += onboarded.created
     summary.unitsInserted += onboarded.unitsInserted
     summary.skipped += onboarded.skipped
-    renames.push(...onboarded.renames)
+    renames.push(...recordedRenames(onboarded))
     if (onboarded.integrationDeleted) {
       summary.skipped += Math.max(toCreate.length - (batchIndex + 1) * ONBOARD_BATCH_SIZE, 0)
       return { integrationDeleted: true, renames }
