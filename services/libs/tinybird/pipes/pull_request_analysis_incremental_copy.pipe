@@ -1,0 +1,309 @@
+DESCRIPTION >
+    Hourly incremental update of `pull_requests_analyzed`. Each run reads the PR events whose `updatedAt` is at most one day
+    older than the table's latest `snapshotId`, aggregates them once per PR, merges them onto the PR's current row and
+    replaces the table. Grouping a whole window per PR before the merge means events of one PR that arrived in different
+    insert batches can no longer overwrite each other, and a child event that arrived before its opened event is picked up
+    again once the opened event is in the window.
+    The one-day overlap makes the window tolerate ingestion delays, and every merge rule is a `least()` or a keep-if-set, so
+    re-reading events is idempotent. After a stall, one run catches up on everything back to the latest `snapshotId`, as long
+    as the stall is shorter than the 3-day TTL of `activityRelations_enrich_snapshot_MV_ds`.
+    Reviews and approvals count only non-author activity (IN-1226), as in `pull_request_analysis_initial_snapshot`.
+
+NODE pr_window
+DESCRIPTION >
+    Lower `updatedAt` bound of this run. Ignores `snapshotId`s more than two hours in the future so a bad `updatedAt`
+    cannot move the window past unread events.
+
+SQL >
+    SELECT max(snapshotId) - INTERVAL 1 DAY AS fromUpdatedAt
+    FROM pull_requests_analyzed
+    WHERE snapshotId <= now() + INTERVAL 2 HOUR
+
+NODE pr_delta_events
+DESCRIPTION >
+    PR events in the window, latest version of each activity only, so a member merge that rewrites an activity is read
+    with its new `memberId`. The `snapshotId` bound prunes the daily snapshots (`snapshotId` is the start of the day after
+    `updatedAt`).
+
+SQL >
+    SELECT
+        activityId,
+        if(
+            type IN (
+                'pull_request-opened',
+                'merge_request-opened',
+                'changeset-created',
+                'changeset-abandoned',
+                'changeset-merged'
+            ),
+            sourceId,
+            if(type = 'patchset_approval-created', splitByChar('-', sourceParentId)[1], sourceParentId)
+        ) AS prSourceId,
+        sourceParentId,
+        lower(channel) AS channel,
+        timestamp AS ts,
+        segmentId,
+        gitChangedLinesBucket,
+        memberId,
+        organizationId,
+        platform,
+        updatedAt,
+        type,
+        pullRequestReviewState
+    FROM activityRelations_enrich_snapshot_MV_ds
+    WHERE
+        snapshotId >= toStartOfDay((SELECT fromUpdatedAt FROM pr_window))
+        AND updatedAt >= (SELECT fromUpdatedAt FROM pr_window)
+        AND type IN (
+            'pull_request-opened',
+            'merge_request-opened',
+            'changeset-created',
+            'pull_request-assigned',
+            'merge_request-assigned',
+            'pull_request-review-requested',
+            'merge_request-review-requested',
+            'pull_request-reviewed',
+            'merge_request-review-changes-requested',
+            'patchset-created',
+            'merge_request-review-approved',
+            'patchset_approval-created',
+            'pull_request-closed',
+            'merge_request-closed',
+            'changeset-closed',
+            'changeset-abandoned',
+            'pull_request-merged',
+            'merge_request-merged',
+            'changeset-merged'
+        )
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY activityId
+
+NODE pr_delta_authors
+DESCRIPTION >
+    Author of each PR in the window: from its current row, or from an opened event in the window.
+
+SQL >
+    SELECT sourceId AS prSourceId, memberId
+    FROM pull_requests_analyzed
+    WHERE memberId != '' AND sourceId IN (SELECT prSourceId FROM pr_delta_events)
+    UNION ALL
+    SELECT prSourceId, memberId
+    FROM pr_delta_events
+    WHERE
+        type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created') AND memberId != ''
+
+NODE pr_delta_non_author
+DESCRIPTION >
+    Drops reviews and approvals by the PR author, or by anyone when the author is unknown. Other event types pass through.
+
+SQL >
+    SELECT e.*
+    FROM pr_delta_events AS e ANY
+    LEFT JOIN pr_delta_authors AS a ON a.prSourceId = e.prSourceId
+    WHERE
+        e.type NOT IN (
+            'pull_request-reviewed',
+            'merge_request-review-changes-requested',
+            'merge_request-review-approved',
+            'patchset_approval-created'
+        )
+        OR (e.memberId != '' AND a.memberId != '' AND e.memberId != a.memberId)
+
+NODE pr_delta_aggregated
+DESCRIPTION >
+    One row per PR in the window. The upstream datasource can hold several versions of an activity, so patchsets are
+    counted by distinct activity.
+
+SQL >
+    SELECT
+        prSourceId,
+        argMinIf(
+            activityId, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS id,
+        argMinIf(
+            channel, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS channel,
+        argMinIf(
+            segmentId, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS segmentId,
+        argMinIf(
+            gitChangedLinesBucket,
+            ts,
+            type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS gitChangedLinesBucket,
+        argMinIf(
+            memberId, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS memberId,
+        argMinIf(
+            organizationId,
+            ts,
+            type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS organizationId,
+        argMinIf(
+            platform, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS platform,
+        minIf(
+            ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS openedAt,
+        toInt64(
+            uniqExactIf(activityId, type = 'patchset-created' AND sourceParentId = prSourceId)
+        ) AS numberOfPatchsets,
+        minIf(ts, type IN ('pull_request-assigned', 'merge_request-assigned')) AS assignedAt,
+        minIf(
+            ts, type IN ('pull_request-review-requested', 'merge_request-review-requested')
+        ) AS reviewRequestedAt,
+        minIf(
+            ts,
+            type IN (
+                'pull_request-reviewed',
+                'merge_request-review-changes-requested',
+                'merge_request-review-approved',
+                'patchset_approval-created'
+            )
+        ) AS reviewedAt,
+        minIf(
+            ts,
+            (type = 'pull_request-reviewed' AND pullRequestReviewState = 'APPROVED')
+            OR type IN ('merge_request-review-approved', 'patchset_approval-created')
+        ) AS approvedAt,
+        minIf(
+            ts,
+            type IN (
+                'pull_request-closed', 'merge_request-closed', 'changeset-closed', 'changeset-abandoned'
+            )
+        ) AS closedAt,
+        minIf(
+            ts, type IN ('pull_request-merged', 'merge_request-merged', 'changeset-merged')
+        ) AS mergedAt,
+        minIf(
+            ts,
+            type IN (
+                'pull_request-closed',
+                'pull_request-merged',
+                'merge_request-closed',
+                'merge_request-merged',
+                'changeset-merged',
+                'changeset-closed',
+                'changeset-abandoned'
+            )
+        ) AS resolvedAt,
+        toDateTime(toStartOfHour(max(updatedAt))) + INTERVAL 1 HOUR AS snapshotId
+    FROM pr_delta_non_author
+    GROUP BY prSourceId
+    HAVING prSourceId != ''
+
+NODE pr_touched_rows
+DESCRIPTION >
+    Current row of each PR in the window. Keeps one row per PR, preferring a real `openedAt` over the epoch fallback.
+
+SQL >
+    SELECT *
+    FROM pull_requests_analyzed
+    WHERE sourceId IN (SELECT prSourceId FROM pr_delta_aggregated)
+    ORDER BY openedAt = toDateTime(0), snapshotId DESC
+    LIMIT 1 BY sourceId
+
+NODE pr_merged
+DESCRIPTION >
+    Window aggregate merged onto the current row. A timestamp from the window wins only when it is earlier. Aggregates with
+    no default (`minIf` over no rows) come back as epoch, so they count as unset. A PR with no opened event in the window
+    and no current row is skipped; its events are read again once the opened event arrives.
+
+SQL >
+    SELECT
+        if(existing.id != '', existing.id, new.id) AS id,
+        new.prSourceId AS sourceId,
+        if(existing.openedAt != toDateTime(0), existing.openedAt, new.openedAt) AS openedAt,
+        if(existing.segmentId != '', existing.segmentId, new.segmentId) AS segmentId,
+        if(existing.channel != '', lower(existing.channel), new.channel) AS channel,
+        if(existing.memberId != '', existing.memberId, new.memberId) AS memberId,
+        if(
+            existing.organizationId != '', existing.organizationId, new.organizationId
+        ) AS organizationId,
+        if(
+            existing.gitChangedLinesBucket != '',
+            existing.gitChangedLinesBucket,
+            new.gitChangedLinesBucket
+        ) AS gitChangedLinesBucket,
+        if(
+            new.assignedAt = toDateTime(0),
+            existing.assignedAt,
+            least(ifNull(existing.assignedAt, new.assignedAt), new.assignedAt)
+        ) AS assignedAt,
+        if(
+            new.reviewRequestedAt = toDateTime(0),
+            existing.reviewRequestedAt,
+            least(ifNull(existing.reviewRequestedAt, new.reviewRequestedAt), new.reviewRequestedAt)
+        ) AS reviewRequestedAt,
+        if(
+            new.reviewedAt = toDateTime(0),
+            existing.reviewedAt,
+            least(ifNull(existing.reviewedAt, new.reviewedAt), new.reviewedAt)
+        ) AS reviewedAt,
+        if(
+            new.approvedAt = toDateTime(0),
+            existing.approvedAt,
+            least(ifNull(existing.approvedAt, new.approvedAt), new.approvedAt)
+        ) AS approvedAt,
+        if(
+            new.closedAt = toDateTime(0),
+            existing.closedAt,
+            least(ifNull(existing.closedAt, new.closedAt), new.closedAt)
+        ) AS closedAt,
+        if(
+            new.mergedAt = toDateTime(0),
+            existing.mergedAt,
+            least(ifNull(existing.mergedAt, new.mergedAt), new.mergedAt)
+        ) AS mergedAt,
+        if(
+            new.resolvedAt = toDateTime(0),
+            existing.resolvedAt,
+            least(ifNull(existing.resolvedAt, new.resolvedAt), new.resolvedAt)
+        ) AS resolvedAt,
+        if(
+            assignedAt IS NULL, NULL, toUnixTimestamp(assignedAt) - toUnixTimestamp(openedAt)
+        ) AS assignedInSeconds,
+        if(
+            reviewRequestedAt IS NULL,
+            NULL,
+            toUnixTimestamp(reviewRequestedAt) - toUnixTimestamp(openedAt)
+        ) AS reviewRequestedInSeconds,
+        if(
+            reviewedAt IS NULL, NULL, toUnixTimestamp(reviewedAt) - toUnixTimestamp(openedAt)
+        ) AS reviewedInSeconds,
+        if(
+            closedAt IS NULL, NULL, toUnixTimestamp(closedAt) - toUnixTimestamp(openedAt)
+        ) AS closedInSeconds,
+        if(
+            mergedAt IS NULL, NULL, toUnixTimestamp(mergedAt) - toUnixTimestamp(openedAt)
+        ) AS mergedInSeconds,
+        if(
+            resolvedAt IS NULL, NULL, toUnixTimestamp(resolvedAt) - toUnixTimestamp(openedAt)
+        ) AS resolvedInSeconds,
+        if(existing.platform != '', existing.platform, new.platform) AS platform,
+        if(
+            new.numberOfPatchsets > 0,
+            greatest(ifNull(existing.numberOfPatchsets, 0), new.numberOfPatchsets),
+            existing.numberOfPatchsets
+        ) AS numberOfPatchsets,
+        greatest(ifNull(existing.snapshotId, toDateTime(0)), new.snapshotId) AS snapshotId
+    FROM pr_delta_aggregated AS new ANY
+    LEFT JOIN pr_touched_rows AS existing ON new.prSourceId = existing.sourceId
+    WHERE if(existing.id != '', existing.id, new.id) != ''
+
+NODE pr_analysis_results
+DESCRIPTION >
+    Updated rows for the PRs in the window, plus every other row unchanged.
+
+SQL >
+    SELECT *
+    FROM pr_merged
+    UNION ALL
+    SELECT *
+    FROM pull_requests_analyzed
+    WHERE sourceId NOT IN (SELECT sourceId FROM pr_merged)
+
+TYPE COPY
+TARGET_DATASOURCE pull_requests_analyzed
+COPY_MODE replace
+COPY_SCHEDULE 20 * * * *

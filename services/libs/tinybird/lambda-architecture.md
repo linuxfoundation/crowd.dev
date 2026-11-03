@@ -209,57 +209,20 @@ bucket datasources directly) by:
 **Example: Pull Requests Pipeline**
 
 ```
-═══════════════════════════════════════════════════════════════════════════════
-                         HOURLY EXECUTION TIMELINE
-═══════════════════════════════════════════════════════════════════════════════
+Continuously:  PR events (opened, reviewed, merged, ...) land in
+               activityRelations_enrich_snapshot_MV_ds through the main MV.
 
-Time:   :00              :30                    :59        Next Hour :00
-        │                │                      │          │
-        │                │                      │          │
-Step 1: │ PR events      │                      │          │
-        │ arrive (opened,│                      │          │
-        │ reviewed,      │                      │          │
-        │ approved,      │                      │          │
-        │ merged)        │                      │          │
-        ↓                │                      │          │
-        │                │                      │          │
-Step 2: MV triggers      │                      │          │
-        immediately      │                      │          │
-        • Enriches PR    │                      │          │
-        • Calculates     │                      │          │
-        •  metrics       │                      │          │
-        • Adds snapshot  │                      │          │
-        ↓                │                      │          │
-        │                │                      │          │
-Step 3: Writes to        │                      │          │
-        pull_request_    │                      │          │
-        analyzed_MV_ds   │                      │          │
-        with snapshotId  │                      │          │
-        = (next hour)    │                      │          │
-                         ↓                      │          │
-                         │                      │          │
-Step 4:                  Copy pipe runs         │          │
-                         (at :30)               │          │
-                         • Fetch NEW PRs        │          │
-                         •  (from MV_ds)        │          │
-                         • Fetch OLD PRs        │          │
-                         •  (from serving)      │          │
-                         • UNION ALL            │          │
-                         • New snapshotId       │          │
-                         ↓                      │          │
-                         │                      │          │
-Step 5:                  Appends to             │          │
-                         pull_requests_         │          │
-                         analyzed               │          │
-                         datasource             │          │
-                                          ↓          ↓
-                                    [Continues   [Next cycle]
-                                     processing]
-
-Queries:                 Always filter by max(snapshotId) to get latest data
-                         ↓
-                         Only sees deduplicated view (latest snapshot)
+Hourly at :20: pull_request_analysis_incremental_copy runs
+               • Window: updatedAt >= max(snapshotId of pull_requests_analyzed) - 1 day
+               • Aggregates the window's events once per PR
+               • Merges them onto each PR's current row (earliest timestamp wins)
+               • Replaces pull_requests_analyzed: updated rows + every other row unchanged
 ```
+
+The window starts at the serving table's own watermark, so after a missed or failed run the next run catches up on
+everything since then. The one-day overlap re-reads events that arrived late; the merge is idempotent, so re-reading is
+safe. A stall longer than the 3-day TTL of `activityRelations_enrich_snapshot_MV_ds` needs a rebuild with
+`pull_request_analysis_initial_snapshot`.
 
 ---
 
@@ -335,56 +298,21 @@ The Pull Requests pipeline demonstrates how to **branch from the main pipeline**
     └─ pull_request-closed, pull_request-merged, etc.
 
 
-[4*] Enrichment Layer - PR Analysis MV (Baseline-Merge Strategy)
+[4*] Merge Layer - PR Incremental Copy
     ┌────────────────────────────────────────┐
-    │  pull_request_analysis_MV              │
-    │  _baseline_merge                       │
-    │  (TYPE: MATERIALIZED)                  │
-    └────────────────────────────────────────┘
-                     ↓ (triggers on PR-related activities)
-
-    Node 1: new_pull_request_related_activity
-    └─ Filters PR events from latest snapshot
-
-    Node 2: new_events_aggregated
-    ├─ Aggregates NEW delta events by prSourceId
-    ├─ Uses argMinIf/minIf for lifecycle timestamps
-    ├─ Handles opened events (sourceId) + child events (sourceParentId)
-    └─ Groups by normalized PR identifier
-
-    Node 3: pull_request_analysis_results_merged
-    ├─ LEFT JOIN: new_events → pull_requests_analyzed (BASELINE)
-    ├─ Merge Strategy:
-    │   • Strings: if(existing != '', existing, new)
-    │   • Timestamps: COALESCE + least() for earliest
-    │   • Handles new PRs + updated existing PRs
-    └─ Result: Merged PR records
-
-
-[5*] Enrichment Layer Output
-    ┌────────────────────────────────────────┐
-    │  pull_request_analyzed_MV_ds           │
-    └────────────────────────────────────────┘
-                     ↓
-    • TYPE: ReplacingMergeTree
-    • Purpose: Temporary MV output
-
-
-[6*] Merge Layer - PR Snapshot Merger
-    ┌────────────────────────────────────────┐
-    │  pull_request_analysis_snapshot        │
-    │  _merger_copy                          │
-    │  (TYPE: COPY, every hour at :00)       │
+    │  pull_request_analysis_incremental     │
+    │  _copy                                 │
+    │  (TYPE: COPY, every hour at :20)       │
     └────────────────────────────────────────┘
                      ↓
 
-    What it does:
-    ├─ Fetches: NEW data from MV_ds (latest snapshot + 1 hour)
-    ├─ Fetches: OLD data from pull_requests_analyzed (max snapshot)
-    ├─ Merges: UNION ALL → creates new snapshot
-    ├─ Mode: replace
-    └─ Schedule: 0 * * * * (hourly at minute 0)
-
+    Node pr_window: lower updatedAt bound = max(snapshotId) - 1 day
+    Node pr_delta_events: PR events in the window, latest version per activity
+    Node pr_delta_non_author: drops reviews/approvals by the PR author
+    Node pr_delta_aggregated: one row per PR (argMinIf/minIf per lifecycle stage)
+    Node pr_merged: window aggregate merged onto the PR's current row
+    Node pr_analysis_results: pr_merged UNION ALL untouched rows
+    └─ Mode: replace
 
 [Final] Serving Layer - PR Analytics
     ┌────────────────────────────────────────┐
@@ -409,7 +337,7 @@ The Pull Requests pipeline demonstrates how to **branch from the main pipeline**
 
 ## Baseline-Merge Strategy (Pull Requests)
 
-The PR MV uses a **baseline-merge** pattern to efficiently update PR records:
+The PR incremental copy uses a **baseline-merge** pattern to update PR records without recomputing them from full history:
 
 ### The Problem
 
@@ -422,8 +350,8 @@ The PR MV uses a **baseline-merge** pattern to efficiently update PR records:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  BASELINE (Existing)        +        DELTA (New Events)          │
-│  pull_requests_analyzed              MV latest snapshot          │
-│  ────────────────────                ─────────────────           │
+│  pull_requests_analyzed              events in the window        │
+│  ────────────────────                ────────────────────        │
 │  PR #123                             PR #123                     │
 │  • opened: 2024-01-01                • reviewed: 2024-01-05      │
 │  • assigned: 2024-01-02              (NEW lifecycle event)       │
@@ -466,7 +394,7 @@ COALESCE(
 
 1. **New PR**: `existing` is empty → uses all `new` data
 2. **Updated PR**: Merges timestamps (takes earliest), preserves metadata
-3. **Unchanged PR**: Not in new delta → not processed
+3. **Unchanged PR**: Not in the window → copied unchanged
 4. **Replace mode copying**: Since data is currently much less than activities, we can afford replace mode copies here. Result data will always be replaced with the freshest snapshot and there'll be only one snapshot available, so that we don't have to filter by the latest snapshot for PRs.
 
 ---
@@ -562,8 +490,8 @@ Each invocation appends its results; rows accumulate into the full dataset.
 
 ⚠️  Before the first bucket run, ENSURE pull_requests_analyzed is empty (append mode does NOT deduplicate).
 
-This is separate from the hourly PR Merger (pull_request_analysis_snapshot_merger_copy.pipe),
-which increments pull_requests_analyzed via baseline-merge once the initial snapshot is populated.
+This is separate from the hourly pull_request_analysis_incremental_copy.pipe, which updates
+pull_requests_analyzed via baseline-merge once the initial snapshot is populated.
 ```
 
 #### 3. segmentId_aggregates_initial_snapshot (replace-mode)
@@ -612,18 +540,18 @@ for N in $(seq 0 9); do
 done
 ```
 
-If you interrupted a mid-run or suspect duplicates exist, either clear the datasource before retrying or use the scheduled PR Merger (`pull_request_analysis_snapshot_merger_copy`) to replace the entire snapshot (but note it requires the existing baseline to compute deltas — an empty datasource will produce no output).
+If you interrupted a mid-run or suspect duplicates exist, clear the datasource before retrying. The scheduled `pull_request_analysis_incremental_copy` dedups only the PRs it touches, and with an empty datasource it has no watermark and produces no output.
 
 ### Comparison: Initial vs Merger Copy Pipes
 
 | Aspect                | activityRelations Initial Snapshot                      | segmentId_aggregates Initial Snapshot   | PR Initial Snapshot                                                                                         | Bucket Merger (activityRelations)                       | PR Merger                                    |
 | --------------------- | ------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
-| **Pipe Name(s)**      | `activityRelations_enrich_initial_snapshot_0..2`        | `segmentId_aggregates_initial_snapshot` | `pull_request_analysis_initial_snapshot`                                                                    | `activityRelations_snapshot_merger_copy_0..2`           | `pull_request_analysis_snapshot_merger_copy` |
+| **Pipe Name(s)**      | `activityRelations_enrich_initial_snapshot_0..2`        | `segmentId_aggregates_initial_snapshot` | `pull_request_analysis_initial_snapshot`                                                                    | `activityRelations_snapshot_merger_copy_0..2`           | `pull_request_analysis_incremental_copy`     |
 | **Status**            | Active                                                  | Active                                  | Active (bucketed only; single-shot deprecated)                                                              | Active                                                  | Active                                       |
-| **Schedule**          | @on-demand (manual)                                     | @on-demand (manual)                     | @on-demand (manual)                                                                                         | Daily (01:30/01:34/01:38 UTC)                           | Hourly (0 * * * *)                           |
+| **Schedule**          | @on-demand (manual)                                     | @on-demand (manual)                     | @on-demand (manual)                                                                                         | Daily (01:30/01:34/01:38 UTC)                           | Hourly (20 * * * *)                          |
 | **Mode**              | replace (atomic)                                        | replace (atomic)                        | append (splits into `num_buckets` runs)                                                                     | replace (atomic per-bucket)                             | replace                                      |
-| **Purpose**           | Bootstrap activityRelations serving layer (3 buckets)   | Bootstrap segment aggregates            | Bootstrap PR analytics (full rebuild, run with params)                                                      | Incremental merge of activityRelations MV deltas        | Incremental merge of PR events               |
-| **Source**            | Base `activityRelations` table                          | Latest snapshot (query-time)            | Base `activityRelations_enriched_deduplicated_bucket_union`                                                 | MV output + own bucket (carry-forward)                  | PR MV output + target                        |
+| **Purpose**           | Bootstrap activityRelations serving layer (3 buckets)   | Bootstrap segment aggregates            | Bootstrap PR analytics (full rebuild, run with params)                                                      | Incremental merge of activityRelations MV deltas        | Incremental merge of PR events in the window |
+| **Source**            | Base `activityRelations` table                          | Latest snapshot (query-time)            | Base `activityRelations_enriched_deduplicated_bucket_union`                                                 | MV output + own bucket (carry-forward)                  | Snapshot MV events + target                  |
 | **Target Datasource** | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `segmentsAggregatedMV`                  | `pull_requests_analyzed`                                                                                    | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `pull_requests_analyzed`                     |
 | **Frequency**         | Once at setup (or rarely to recover a bucket)           | Once at setup                           | Once at setup (split as: `for N in 0..9; tb pipe copy run ... --param bucket_id=$N --param num_buckets=10`) | Continuous (daily, one run per bucket)                  | Continuous (hourly)                          |
 
@@ -667,7 +595,7 @@ WHERE snapshotId = (SELECT max(snapshotId) FROM datasource_name)
    than 2 daily runs can no longer catch up incrementally and needs its initial
    snapshot pipe re-run (the bucket keeps serving its last good data meanwhile)
 2. **MV behind**: Check latest `snapshotId` in MV_ds
-3. **Copy pipe not run**: Bucket mergers run daily at 01:30-01:38 UTC; PR merger hourly at :00
+3. **Copy pipe not run**: Bucket mergers run daily at 01:30-01:38 UTC; PR incremental copy hourly at :20
 4. **Filtering**: Check member/repo/segment filters in MV
 5. **A bucket is lagging**: Compare `max(snapshotId)` per bucket datasource — with
    replace-mode buckets a failed run leaves old (not missing) data, so look for
