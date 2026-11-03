@@ -29,6 +29,9 @@ export const WINDOW_LAG_MS = 5 * MINUTE_MS
 // and a long catch-up advances in persisted steps.
 export const MAX_PAGES_PER_RUN = 100
 const PROGRESS_EVERY_PAGES = 10
+// A burst of near-empty templates could all complete in one run; capping completions spreads
+// the resulting writes across runs instead (linuxfoundation/lfx-cdp-insights-ops#998).
+export const MAX_RELEASES_COMPLETED_PER_RUN = 1
 const FIRST_RUN_LOOKBACK_MS = DAY_MS
 // A renewed badge keeps the old state_updated_at (linuxfoundation/lfx-cdp-insights-ops#967), so no
 // window ever lists it: it is reached only through the replaced badge's link, chain by chain.
@@ -518,6 +521,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   let release = ctx.emitEnabled && !watermark.until ? await ctx.deps.nextRelease() : null
   while (
     release &&
+    counters.releases < MAX_RELEASES_COMPLETED_PER_RUN &&
     counters.pagesFetched < MAX_PAGES_PER_RUN &&
     counters.releasesSkipped < MAX_PAGES_PER_RUN &&
     ctx.hasRunBudget()
