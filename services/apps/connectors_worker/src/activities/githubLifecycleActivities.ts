@@ -1,11 +1,6 @@
 import { Context } from '@temporalio/activity'
 
 import { generateUUIDv4 } from '@crowd/common'
-import { type Credential, getCredential } from '@crowd/connectors'
-import {
-  mintInstallationToken,
-  resolveInstallationId,
-} from '@crowd/connectors/src/connectors/github/appToken'
 import {
   type GithubOrgRepo,
   listOrgRepos,
@@ -43,6 +38,7 @@ import {
 import { githubChannelName } from '@crowd/nango'
 import { PlatformType } from '@crowd/types'
 
+import { type TokenSource, installationTokenSource } from '../githubInstallationToken'
 import {
   type IGithubLifecycleDiff,
   type IGithubLifecycleSummary,
@@ -66,7 +62,6 @@ const MAX_INITIAL_DELAY_SECONDS = 3600
 const INITIAL_DELAY_STEP_SECONDS = 2
 const MAX_RATE_LIMIT_WAIT_MS = 15 * 60_000
 const RATE_LIMIT_HEARTBEAT_SLICE_MS = 20_000
-const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000
 const GITHUB_ORG_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
 const ORG_RENAME_PROBE_MAX_KEYS = 10
 const ONBOARD_RECHECK_EVERY_N_CHUNKS = 20
@@ -101,8 +96,6 @@ interface IFreshRepo {
   repo: GithubOrgRepo
   forkedFrom: string | null
 }
-
-type TokenSource = () => Promise<string>
 
 interface IDiscoveryContext {
   qx: QueryExecutor
@@ -176,31 +169,6 @@ async function sleepWithHeartbeats(ms: number): Promise<void> {
   for (let remaining = ms; remaining > 0; remaining -= RATE_LIMIT_HEARTBEAT_SLICE_MS) {
     heartbeat()
     await Context.current().sleep(Math.min(remaining, RATE_LIMIT_HEARTBEAT_SLICE_MS))
-  }
-}
-
-async function resolveInstallation(
-  qx: QueryExecutor,
-  integrationId: string,
-): Promise<{ credential: Credential; installationId: string }> {
-  const credential = await getCredential(qx, integrationId)
-  return { credential, installationId: await resolveInstallationId(credential) }
-}
-
-function installationTokenSource(qx: QueryExecutor, integrationId: string): TokenSource {
-  let installation: ReturnType<typeof resolveInstallation> | null = null
-  let current: { token: string; expiresAt: string } | null = null
-  return async () => {
-    if (current && Date.parse(current.expiresAt) - Date.now() >= TOKEN_REFRESH_MARGIN_MS) {
-      return current.token
-    }
-    installation ??= resolveInstallation(qx, integrationId).catch((err: unknown) => {
-      installation = null
-      throw err
-    })
-    const { credential, installationId } = await installation
-    current = await mintInstallationToken(credential, installationId)
-    return current.token
   }
 }
 
