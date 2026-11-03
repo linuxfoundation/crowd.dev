@@ -106,4 +106,7 @@ for each. A member whose suggestion was ignored can qualify again, because ignor
   LLM answer in `llmPromptHistory` (type `member_bot_validation`, `entityId` is the member ID).
 - A bot not flagged: the member predates detection or was only updated; run the backfill script
   or add the handle to `knownBots`.
-- `merge_suggestions_worker` also uses `isKnownBot` to keep bots out of member merge suggestions.
+- `merge_suggestions_worker` uses `isKnownBot` in two narrow places in
+  `memberSimilarityCalculator.ts`: a known-bot display name keeps a Git email clash counting as a
+  clash, and known-bot names are not used as a matching Git local part. Bot pairs can still be
+  scored high and suggested.

@@ -87,5 +87,6 @@ one merge that ingest does on its own (a verified identity collision), are in
   found by the public API, and enrichment conflicts.
 - A merge rewrites `activityRelations` in Postgres, which then replicates to Tinybird; see
   [`data-flow.md`](data-flow.md). Activity content is not touched.
-- Rejecting a suggestion, an LLM "no", and every unmerge write a no-merge row, so the pair is not
-  suggested again until the evidence changes.
+- Rejecting a suggestion, an LLM "no", and every unmerge write a no-merge row. A member no-merge
+  row stops applying when the members' evidence changes (ADR-0027). An organization no-merge row
+  has no evidence check: the pair stays excluded until the row is deleted.

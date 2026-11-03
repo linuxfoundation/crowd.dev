@@ -70,9 +70,10 @@ flowchart TD
   man -->|no| uni["Drop universities if<br/>a company also matches"]
   uni --> pri{"Any marked primary?"}
   pri -->|yes| r3["First primary with a start date,<br/>else first primary"]
-  pri -->|no| dated{"Exactly one<br/>with a start date?"}
-  dated -->|yes| r4["Use it"]
-  dated -->|no| src["Keep the best source tier:<br/>ui, project-registry,<br/>email-domain, enrichment-*"]
+  pri -->|no| dated{"How many have<br/>a start date?"}
+  dated -->|one| r4["Use it"]
+  dated -->|several| src["Keep only the dated ones,<br/>then the best source tier:<br/>ui, project-registry,<br/>email-domain, enrichment-*"]
+  dated -->|none| cnt
   src --> cnt{"One org has strictly<br/>more members?"}
   cnt -->|yes| r5["Use it"]
   cnt -->|no| r6["Longest date range"]

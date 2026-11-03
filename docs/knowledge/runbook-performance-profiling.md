@@ -98,9 +98,9 @@ On a deployed service, set the same variables on that service's deployment and r
 
 ## Reading the output
 
-- **One slow query**: sort the query lines by `durationSeconds`. For a read, run the slowest
-  `query` with its `values` under `EXPLAIN ANALYZE`. `EXPLAIN ANALYZE` executes the statement, so
-  look at a slow write only on a disposable database.
+- **One slow query**: sort the query lines by `durationSeconds`. Start with plain `EXPLAIN` on the
+  slowest `query` and its `values`, which plans the statement without running it. `EXPLAIN ANALYZE`
+  runs the statement, so use it on a read, or on a write only against a disposable database.
 - **A slow step in a worker**: compare `took` times across operation names. A slow outer
   operation with fast inner ones points at code between the wrapped calls.
 - **Both together**: turn on query profiling with a threshold alongside operation timing, with

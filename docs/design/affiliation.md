@@ -76,9 +76,11 @@ per-project affiliations.
 
 ## Recalculation and propagation
 
-A change to any input signals the member's `memberUpdate` workflow. The workflow rebuilds the
+A change to an input signals the member's `memberUpdate` workflow. The workflow rebuilds the
 member's timeline and rewrites `activityRelations`; Postgres replication carries the change to
-Tinybird. The rules each path uses to pick an organization are in
+Tinybird. One writer does not signal: `git_integration` writes rows from repository affiliation
+files without starting a recalculation, so existing activities keep their organization until
+another change recalculates the member. The rules each path uses to pick an organization are in
 [`member-organization-affiliation/README.md`](../../services/libs/data-access-layer/src/member-organization-affiliation/README.md).
 
 ```mermaid
