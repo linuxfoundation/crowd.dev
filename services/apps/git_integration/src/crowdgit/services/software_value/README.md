@@ -1,115 +1,103 @@
-# Project Overview
+# Software value
 
-This tool analyzes source code repositories and saves some data about the to a database, including the estimated cost
-to create the project, and some statistics about the programming languages used.
+This tool analyzes a source code repository and saves data about it to the Insights database: the
+estimated cost to develop the project, and statistics about the programming languages it uses.
 
-It leverages a tool called [scc](https://github.com/boyter/scc) to gather the statistics about the codebase.
+It is a Go binary that wraps [scc](https://github.com/boyter/scc). The git integration worker
+calls it as a subprocess.
 
-It was a simple proof of concept that graduated into a real tool, so please feel free to contribute and improve it.
+## How it runs
 
-## Getting started
+`software_value_service.py` runs the binary at `/usr/local/bin/software-value` once per repository
+processing run, on the first clone batch (`is_first_batch` in `crowdgit/worker/repository_worker.py`). That
+batch is a depth-1 clone of the default branch, so scc measures the files at the branch head.
 
-This explains how to set up and run the software-value tool locally.
-To run the tool on a production server, follow the Ansible instructions below.
+The worker picks up a repository again when its last processing is older than
+`REPOSITORY_UPDATE_INTERVAL_HOURS` (default 24, in `crowdgit/settings.py`), so the numbers refresh
+at that rate.
 
-### Requirements
+Before it calls the binary, the service:
 
-- Go (latest stable version)
-- PostgreSQL 14+
-- [scc](https://github.com/boyter/scc) binary (path set in config)
+- skips repositories listed in `_SOFTWARE_VALUE_EXCLUDED_REPO_IDS`;
+- measures the clone with `du -sb` and, at 10 GB or more, passes `--no-large`, which makes scc skip
+  files larger than 100 MB to avoid running out of memory.
 
-The version of scc tested at this time was v3.5.0.
-Using a different version may break this tool because the output format may have changed.
+The binary always exits with code 0 and prints a JSON status on stdout:
 
-### Running the tool locally
+```json
+{ "status": "failure", "error_code": "NO_COST_FOUND", "error_message": "..." }
+```
 
-1. Clone the repository and navigate to the project directory.
+The service records the status, error code and duration as a service execution with operation type
+`SOFTWARE_VALUE`. Error codes are defined in `types.go`.
 
-2. Install dependencies:
- `go mod download`
+## What it computes
 
-3. Create your configuration file:
-   - Copy `config.toml.example` to `config.toml`.
-   - Edit `config.toml` to set your database credentials, paths, and other settings.
+For the repository at the path given as the only argument, the binary:
 
-4. Place the scc binary in the correct location:
-   - Ensure the `scc` binary is in the path specified in your `config.toml` file.
+1. Reads the `origin` remote with `git remote get-url origin` and rewrites `git@`, `ssh://git@`
+   and `http://` URLs to `https://`. This URL is the key in both tables.
+2. Runs `scc --format=short` and parses the COCOMO line "Estimated Cost to Develop" into a
+   dollar amount. A cost of zero fails the run with `NO_COST_FOUND` and saves nothing.
+3. Runs `scc --format=json` for per-language counts: bytes, code bytes, lines, code, comment and
+   blank lines, complexity, file count and weighted complexity.
+4. Upserts the cost into `project_costs` and one row per language into `language_stats`.
 
-5. Build and run the application: `go run ./`
+## Data model
 
+The tables live in the Insights database, not the CDP database. `db.sql` defines them:
 
+| Table            | Key                         | Holds                                   |
+| ---------------- | --------------------------- | --------------------------------------- |
+| `project_costs`  | `repo_url`                  | `estimated_cost` (whole dollars)        |
+| `language_stats` | `(repo_url, language_name)` | scc's per-language counts for that repo |
 
-## Deploying with Ansible
+`language_stats.repo_url` references `project_costs` with `ON DELETE CASCADE`.
 
-In the `ansible` directory, there is an Ansible playbook that can be used to deploy the tool automatically.
-You can run it with the following command:
+## Where the numbers go
+
+`project_costs` is replicated to Tinybird as the datasource
+`services/libs/tinybird/datasources/softwareValueProjectCosts.datasource`. From there:
+
+- `repositories_populated_copy.pipe` exposes the cost per repository as `softwareValue`;
+- `segments_aggregates_with_ids_copy.pipe` sums the cost of a project's repositories into the
+  project's `softwareValue`.
+
+`language_stats` has no Tinybird datasource in this repository.
+
+## Configuration
+
+The binary reads the Insights database connection from environment variables:
+
+| Variable                 | Use                             |
+| ------------------------ | ------------------------------- |
+| `INSIGHTS_DB_WRITE_HOST` | Host                            |
+| `INSIGHTS_DB_PORT`       | Port                            |
+| `INSIGHTS_DB_USERNAME`   | User                            |
+| `INSIGHTS_DB_PASSWORD`   | Password                        |
+| `INSIGHTS_DB_DATABASE`   | Database name                   |
+| `INSIGHTS_DB_SSLMODE`    | `sslmode` for the connection    |
+| `INSIGHTS_DB_POOL_MAX`   | Maximum connections in the pool |
+| `INSIGHTS_DB_READONLY`   | `true` opens read-only sessions |
+
+It finds `scc` on `PATH`.
+
+## Build
+
+`scripts/services/docker/Dockerfile.git_integration` builds the binary in a Go stage, installs scc
+v3.5.0 with `go install`, and copies both to `/usr/local/bin` in the git integration image. The
+parser depends on scc's output format, so test before changing the scc version.
+
+## Running locally
+
+Requirements: Go (the version in `go.mod`), PostgreSQL with the tables from `db.sql`, and scc
+v3.5.0 on `PATH`.
 
 ```bash
-ansible-playbook -i inventory.ini playbook.yml
+go mod download
+export INSIGHTS_DB_WRITE_HOST=localhost INSIGHTS_DB_PORT=5432 INSIGHTS_DB_USERNAME=... \
+  INSIGHTS_DB_PASSWORD=... INSIGHTS_DB_DATABASE=... INSIGHTS_DB_SSLMODE=disable INSIGHTS_DB_POOL_MAX=4
+go run ./ [--no-large] /path/to/cloned/repository
 ```
 
-For this, you will need an `ansible/inventory.ini` file that specifies the target hosts and their SSH access details,
-as well as an `ansible/group_vars/software_value.yaml` with the necessary variables for the config.toml template.
-
-Here's an example of what your `inventory.ini` file might look like:
-
-```ini
-[software_value]
-100.10.20.30 ansible_user=ubuntu
-```
-
-And these are the group variables that you need, with the variables replaced for your environment:
-
-```yaml
-db_insights_host: "10.10.10.10"
-db_insights_port: 5432
-db_insights_user: "lfx"
-db_insights_password: "mightypassword"
-db_insights_dbname: "lfx_insights_software_value"
-db_insights_sslmode: "require"
-db_insights_pool_max: 10
-db_insights_readonly: false
-
-db_cm_host: "10.20.30.40"
-db_cm_port: 5432
-db_cm_user: "cm"
-db_cm_password: "passwordmight"
-db_cm_dbname: "cm"
-db_cm_sslmode: "require"
-db_cm_pool_max: 10
-db_cm_readonly: true
-
-scc_path: "{{ svc_home }}/scc"
-target_path: "/path/to/repositories"
-batch_size: 100
-```
-
-If you modified the code and want to build an updated binary to be uploaded to the server, you can use:
-
-```bash
-go build -ldflags "-w" -o software-value ./ && strip software-value
-````
-
-## Running automatically
-
-You should not need to do this.
-These instructions are provided for just for completeness.
-You should use the Ansible playbook to deploy the tool instead.
-
-There are Systemd service and timer unit templates included in the `ansible/templates` directory.
-The templates are named `lfx-software-value.service.j2` and `lfx-software-value.timer.j2`.
-Make copies, rename them to `lfx-software-value.service` and `lfx-software-value.timer`, and edit them to replace the
-variables with the correct values for your situation.
-Finally, copy them to`/etc/systemd/system/` in the machine you want to run the tool,
-and enable them with the following commands:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable lfx-software-value.timer
-```
-
-Then start the timer with:
-
-```bash
-sudo systemctl start lfx-software-value.timer
-```
+The repository must be a git clone with an `origin` remote.

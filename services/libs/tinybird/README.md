@@ -4,6 +4,9 @@
 
 - [Introduction](#introduction)
 - [Journey of Data](#journey-of-data-from-cdp-to-insights)
+- [Architecture Overview](#architecture-overview)
+- [Code Contributions and Collaborations](#code-contributions-and-collaborations)
+- [CDP Activity Queries](#cdp-activity-queries-activities_relations_filtered)
 - [Making Changes to Resources](#making-changes-to-resources)
 - [How to Iterate on Data](#how-to-iterate-on-data)
 - [Testing Tinybird Pipes Locally](#testing-tinybird-pipes-locally)
@@ -72,6 +75,52 @@ The following table compares the two parallel architectures processing activityR
 - Use Bucketing Architecture output (`activityRelations_deduplicated_cleaned_bucket_*_ds`) for: Insights API, project-specific analytics, filtered queries - since each bucket contains a subset of project data, main use-case is project-specific widgets
 
 - **Use Lambda Architecture output** (`activityRelations_enriched_deduplicated_bucket_union`) for: CDP operations, monitoring, any use case requiring complete unfiltered data, where we can not use the filtered buckets
+
+## Code contributions and collaborations
+
+Insights metrics count activities by class: code contributions, collaborations, or other. The
+classes come from the `activityTypes` table, and each metric pipe either takes the classes as
+parameters through `activityTypes_filtered.pipe` or fixes them in its SQL. See
+[contributions-and-collaborations.md](./contributions-and-collaborations.md) for the table, the
+parameters and the list of pipes in each group.
+
+## CDP activity queries: `activities_relations_filtered`
+
+The CDP backend lists and counts activities through `pipes/activities_relations_filtered.pipe`.
+The caller is `queryActivities` and `queryActivitiesCounter` in
+`services/libs/data-access-layer/src/activities/sql.ts`; `buildActivitiesParams` in
+`services/libs/data-access-layer/src/activities/tinybirdAdapter.ts` builds the parameters.
+
+**Source.** The pipe reads Lambda output, so results include bots and every repository. When
+`G1_memberIds` is set and no `G2_` to `G5_` parameter is, it reads `activityRelations_by_member_ds`, a member-sorted
+mirror of `activityRelations_enriched_deduplicated_bucket_union` that
+`activityRelations_by_member_copy.pipe` rebuilds nightly. Any other filter shape reads the bucket
+union directly. Both hold the same rows.
+
+**Base filters.** `segments`, `startDate`, `endDate`, `platform`, `activity_type`,
+`activity_types`, `repos` and `indirectFork` apply to every row. `repos` and `indirectFork` look
+up the activity in `activities_deduplicated_ds`: `repos` by a case-insensitive substring match on
+`url`, `indirectFork` by the `isIndirectFork` attribute. The pipe applies no
+contribution filter of its own.
+
+**Filter groups.** For anything the base filters cannot express, the pipe takes up to five groups,
+`G1_` to `G5_`. Each group accepts `memberIds`, `activityTypes`, `organizationIds`, `platforms`,
+`channels` and `ids`, each with an `_exclude` variant. Conditions inside a group combine with AND;
+groups combine with OR; the group block as a whole is ANDed with the base filters.
+
+```text
+base filters AND ( (G1 conditions) OR (G2 conditions) OR ... OR (G5 conditions) )
+```
+
+`buildActivitiesParams` turns the API's logical filter (`and`, `or`, `not`) into this shape. Each
+branch of an `or` becomes a group, top-level `and` conditions are copied into every group, and
+`not` maps to the `_exclude` parameters. The adapter drops groups past the fifth and logs a
+warning. It also caps `segments` at 600 IDs.
+
+**Output.** Rows sort by `timestamp DESC, id DESC` and page with `page` and `pageSize`. A
+`searchTerm` matches the activity `title` or `body` in `activities_deduplicated_ds`.
+`countOnly=1` returns a single `count` row instead of the page. The final node joins `attributes`,
+`url`, `body` and `title` from `activities_deduplicated_ds` for the rows on the page.
 
 ## Making changes to resources
 
