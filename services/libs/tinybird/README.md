@@ -94,8 +94,8 @@ The caller is `queryActivities` and `queryActivitiesCounter` in
 **Source.** The pipe reads Lambda output, so results include bots and every repository. When
 `G1_memberIds` is set and no `G2_` to `G5_` parameter is, it reads `activityRelations_by_member_ds`, a member-sorted
 mirror of `activityRelations_enriched_deduplicated_bucket_union` that
-`activityRelations_by_member_copy.pipe` rebuilds nightly. Any other filter shape reads the bucket
-union directly. Both hold the same rows.
+`activityRelations_by_member_copy.pipe` rebuilds. Any other filter shape reads the bucket
+union directly. The mirror is a full snapshot (`COPY_MODE replace`, daily at 03:35 UTC), so it lags the bucket union by up to a day: activities added or changed since the last copy are missing from member-only queries, and removed ones still appear, until the next run.
 
 **Base filters.** `segments`, `startDate`, `endDate`, `platform`, `activity_type`,
 `activity_types`, `repos` and `indirectFork` apply to every row. `repos` and `indirectFork` look
