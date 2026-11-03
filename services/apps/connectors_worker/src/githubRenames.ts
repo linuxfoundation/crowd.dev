@@ -172,6 +172,13 @@ function logRefused(integrationId: string, rename: IGithubRename, cause: string)
   )
 }
 
+function logNoop(integrationId: string, rename: IGithubRename): void {
+  svc.log.info(
+    { event: 'github_rename_noop', integrationId, ...rename, reason: 'old_repo_not_connected' },
+    'github repo rename skipped, old repository is not connected',
+  )
+}
+
 function logFailed(integrationId: string, failure: IRenameFailure): void {
   svc.log.error(
     {
@@ -361,22 +368,16 @@ export async function applyGithubRenames(
 
   const hydrated = hydratedUrls(state.orgs)
   const connected = renames.filter((rename) => hydrated.has(urlKey(rename.from)))
-  const { refused } = refuseAll(
-    integrationId,
-    renames.filter((rename) => !hydrated.has(urlKey(rename.from))),
-    'old repository is not live on this integration',
-  )
+  renames
+    .filter((rename) => !hydrated.has(urlKey(rename.from)))
+    .forEach((rename) => logNoop(integrationId, rename))
 
   const { decisions, failures } = await decideRenames(context, state.orgs, connected)
   failures.forEach((failure) => logFailed(integrationId, failure))
   if (decisions.length === 0) {
-    return { ...NO_RENAMES, refused, failed: failures.length }
+    return { ...NO_RENAMES, failed: failures.length }
   }
 
   const posted = await postDecisions(context, state.orgs, state.mapping, decisions)
-  return {
-    ...posted,
-    refused: posted.refused + refused,
-    failed: posted.failed + failures.length,
-  }
+  return { ...posted, failed: posted.failed + failures.length }
 }

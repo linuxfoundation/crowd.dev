@@ -14,6 +14,7 @@ import {
   touchHeartbeat,
 } from './activities/dispatcherActivities'
 import {
+  applyRenames,
   countUndrainedUnits,
   decommissionAllUnits,
   decommissionChannels,
@@ -54,6 +55,7 @@ import { executeSync, recordSyncRunTimeout } from './activities/syncRunActivitie
 export {
   activateUnit,
   admitByBudget,
+  applyRenames,
   claimDue,
   completeBackfillCheck,
   countShadowRepos,

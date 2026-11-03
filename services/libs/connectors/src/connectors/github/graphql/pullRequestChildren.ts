@@ -91,6 +91,7 @@ export interface PrCommitNode {
 
 export interface PrCommitsPage {
   repository: {
+    url: string
     pullRequest: {
       commits: {
         totalCount: number
@@ -209,6 +210,7 @@ export const COMMENTS_FOR_THREADS_QUERY = `
 export const PR_COMMITS_QUERY = `
   query ($owner: String!, $repo: String!, $prNumber: Int!, $first: Int!, $cursor: String) {
     repository(name: $repo, owner: $owner) {
+      url
       pullRequest(number: $prNumber) {
         commits(first: $first, after: $cursor) {
           totalCount
@@ -250,6 +252,7 @@ export const PR_COMMITS_QUERY = `
 export const PR_COMMITS_QUERY_NO_STATS = `
   query ($owner: String!, $repo: String!, $prNumber: Int!, $first: Int!, $cursor: String) {
     repository(name: $repo, owner: $owner) {
+      url
       pullRequest(number: $prNumber) {
         commits(first: $first, after: $cursor) {
           totalCount

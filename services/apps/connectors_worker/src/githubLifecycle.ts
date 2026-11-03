@@ -124,3 +124,7 @@ export function isRenamedRepo(key: string, channelName: string): boolean {
 export function reconcileGithubIntegrationWorkflowId(integrationId: string): string {
   return `connectors-reconcile-github-integration/${integrationId}`
 }
+
+export function applyGithubRenameWorkflowId(integrationId: string, channelId: string): string {
+  return `connectors-github-rename/${integrationId}/${channelId}`
+}

@@ -322,20 +322,26 @@ describe('applyGithubRenames', () => {
     ])
   })
 
-  it('refuses a rename whose old repository is no longer on the integration', async () => {
+  it('skips a rename whose old repository is no longer on the integration as a no-op', async () => {
     const removed = { from: 'https://github.com/acme/gone', to: 'https://github.com/acme/Back' }
 
     const result = await applyGithubRenames(qx, 'int-1', [removed, renameOld], token)
 
-    expect(result).toEqual({ applied: 1, refused: 1, failed: 0 })
+    expect(result).toEqual({ applied: 1, refused: 0, failed: 0 })
     expect(mocks.resolveRepo).toHaveBeenCalledTimes(1)
+    expect(mocks.findRepositoryByUrlInsensitive).not.toHaveBeenCalledWith(qx, removed.to)
     expect(Object.keys(postedPayload().mapping)).not.toContain(removed.to)
-    expect(eventsOf('warn', 'lifecycle_repo_skipped')).toEqual([
-      expect.objectContaining({
-        url: removed.from,
-        reason: 'repo_renamed',
-        message: expect.stringContaining('old repository is not live on this integration'),
-      }),
+    expect(eventsOf('warn', 'lifecycle_repo_skipped')).toEqual([])
+    expect(eventsOf('info', 'github_rename_noop')).toEqual([
+      {
+        event: 'github_rename_noop',
+        integrationId: 'int-1',
+        ...removed,
+        reason: 'old_repo_not_connected',
+      },
+    ])
+    expect(eventsOf('info', 'github_rename_applied')).toEqual([
+      expect.objectContaining({ ...renameOld }),
     ])
   })
 
