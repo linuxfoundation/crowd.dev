@@ -230,9 +230,17 @@ export function registerOrgPayloadActivities(
 ): void {
   const payloads = batchOrgPayloads(orgPromiseCache).activities
   for (const { source, timestamp, organizations } of activities) {
-    const ms = new Date(timestamp).getTime()
-    // an activity counts once for each payload, however many times it carries it
-    for (const key of new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))) {
+    const time = new Date(timestamp).getTime()
+    const ms = Number.isFinite(time) ? time : 0
+    let keys: Set<string>
+    try {
+      // an activity counts once for each payload, however many times it carries it
+      keys = new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))
+    } catch {
+      // runs before the per-member error handling, which reports a malformed organization
+      continue
+    }
+    for (const key of keys) {
       const known = payloads.get(key)
       payloads.set(key, {
         newestMs: Math.max(known?.newestMs ?? ms, ms),

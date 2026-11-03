@@ -1467,10 +1467,9 @@ export default class ActivityService extends LoggerBase {
       relevantPayloads.map((p) => ({
         source: p.platform,
         timestamp: p.activity.timestamp,
-        organizations: [
-          ...(p.activity.member?.organizations ?? []),
-          ...(p.activity.objectMember?.organizations ?? []),
-        ],
+        organizations: [p.activity.member, p.activity.objectMember].flatMap((member) =>
+          Array.isArray(member?.organizations) ? member.organizations : [],
+        ),
       })),
     )
 
