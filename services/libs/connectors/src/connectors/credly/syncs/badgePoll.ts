@@ -28,6 +28,7 @@ export const WINDOW_LAG_MS = 5 * MINUTE_MS
 // The watermark is persisted only when the run ends, so runs stay short (~9 min at 5 s per page)
 // and a long catch-up advances in persisted steps.
 export const MAX_PAGES_PER_RUN = 100
+const PROGRESS_EVERY_PAGES = 10
 const FIRST_RUN_LOOKBACK_MS = DAY_MS
 // A renewed badge keeps the old state_updated_at (linuxfoundation/lfx-cdp-insights-ops#967), so no
 // window ever lists it: it is reached only through the replaced badge's link, chain by chain.
@@ -451,6 +452,12 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         ctx.log,
       )
       counters.pagesFetched += 1
+      if (counters.pagesFetched % PROGRESS_EVERY_PAGES === 0) {
+        ctx.log.info(
+          { event: 'credly_badge_poll_progress', ...counters },
+          'credly badge poll progress',
+        )
+      }
       return { page }
     } catch (err) {
       const halved = isCredlyServerError(err) ? halveWindow(window) : null
