@@ -59,6 +59,9 @@ export interface IGithubLifecycleSummary {
   deletesSuppressed: boolean
   failed: boolean
   skipped: number
+  renamesApplied: number
+  renamesRefused: number
+  renamesFailed: number
   durationMs: number
 }
 

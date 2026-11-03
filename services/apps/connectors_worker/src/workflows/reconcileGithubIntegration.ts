@@ -6,12 +6,14 @@ import type * as activities from '../activities/githubLifecycleActivities'
 import type {
   IDiscoverFullSyncReposResult,
   IGithubLifecyclePlan,
+  IOwnedGithubRename,
 } from '../activities/githubLifecycleActivities'
 import {
   type IGithubLifecycleSummary,
   type ILifecycleSkip,
   githubRepoKey,
 } from '../githubLifecycle'
+import type { IGithubRename } from '../githubRenames'
 import { chunk } from '../mirrorSweepLimits'
 import { pollUntilDrained } from './drain'
 
@@ -24,7 +26,7 @@ const activity = proxyActivities<typeof activities>({
 })
 
 const longActivity = proxyActivities<
-  Pick<typeof activities, 'discoverFullSyncRepos' | 'onboardGithubRepos'>
+  Pick<typeof activities, 'discoverFullSyncRepos' | 'onboardGithubRepos' | 'applyRenames'>
 >({
   startToCloseTimeout: '90 minutes',
   heartbeatTimeout: '5 minutes',
@@ -38,6 +40,13 @@ const ONBOARD_BATCH_SIZE = 500
 export interface IReconcileGithubIntegrationInput {
   integrationId: string
 }
+
+interface ICreatePhaseResult {
+  integrationDeleted: boolean
+  renames: IGithubRename[]
+}
+
+const NOTHING_CREATED: ICreatePhaseResult = { integrationDeleted: false, renames: [] }
 
 export type ReconcileGithubIntegrationResult = IGithubLifecycleSummary & {
   outcome?: 'not_found' | 'not_github_nango'
@@ -60,11 +69,17 @@ export async function reconcileGithubIntegration({
     deletesSuppressed: false,
     failed: false,
     skipped: 0,
+    renamesApplied: 0,
+    renamesRefused: 0,
+    renamesFailed: 0,
     durationMs: 0,
   }
 
   try {
     const discovery = await longActivity.discoverFullSyncRepos({ integrationId })
+    if (discovery.renames.length > 0) {
+      await applyRenames(discovery.renames, summary)
+    }
     const plan = await activity.planGithubLifecycle({ integrationId })
     summary.deleted = plan.deleted
     summary.desired = plan.desired
@@ -96,7 +111,10 @@ async function applyPlan(
   discovery: IDiscoverFullSyncReposResult,
   summary: IGithubLifecycleSummary,
 ): Promise<void> {
-  const renamed = renamedKeys(discovery.skipped)
+  const renamed = new Set([
+    ...renamedKeys(discovery.skipped),
+    ...discovery.renames.map(({ to }) => urlKey(to)),
+  ])
   const creatable = plan.toCreate.filter((key) => !renamed.has(key))
   const toCreate = discovery.renameValidationComplete ? creatable : []
   const alreadySkipped = skippedKeys(discovery.skipped)
@@ -120,22 +138,44 @@ async function applyPlan(
     return
   }
 
-  const deletedDuringCreate =
-    toCreate.length > 0 &&
-    (await createPhase(integrationId, toCreate, resolvedByKey(discovery.discovered), summary))
-  await deleteIfNowDeleted(integrationId, summary, deletedDuringCreate)
+  const created =
+    toCreate.length > 0
+      ? await createPhase(integrationId, toCreate, resolvedByKey(discovery.discovered), summary)
+      : NOTHING_CREATED
+  const renamedDuringCreate = created.renames.length > 0
+  if (renamedDuringCreate) {
+    await applyRenames(
+      created.renames.map((rename) => ({ integrationId, ...rename })),
+      summary,
+    )
+  }
+  await deleteIfNowDeleted(integrationId, summary, created.integrationDeleted, renamedDuringCreate)
+}
+
+async function applyRenames(
+  renames: IOwnedGithubRename[],
+  summary: IGithubLifecycleSummary,
+): Promise<void> {
+  const outcome = await longActivity.applyRenames({ renames })
+  summary.renamesApplied += outcome.applied
+  summary.renamesRefused += outcome.refused
+  summary.renamesFailed += outcome.failed
 }
 
 async function deleteIfNowDeleted(
   integrationId: string,
   summary: IGithubLifecycleSummary,
   deletedDuringCreate: boolean,
+  renamedDuringCreate: boolean,
 ): Promise<void> {
   const replanned = await activity.planGithubLifecycle({ integrationId })
   if (replanned.deleted) {
     summary.deleted = true
     await deletePhase(integrationId, replanned, summary)
     return
+  }
+  if (renamedDuringCreate && replanned.toDeleteKeys.length > 0) {
+    await deletePhase(integrationId, replanned, summary)
   }
   if (deletedDuringCreate) {
     log.warn('github lifecycle onboarding stopped: integration is no longer live github-nango', {
@@ -152,8 +192,12 @@ function deferredCreates(keys: string[]): ILifecycleSkip[] {
   }))
 }
 
+function urlKey(url: string): string {
+  return githubRepoKey(url) ?? url.toLowerCase()
+}
+
 function skippedKeys(skips: ILifecycleSkip[]): Set<string> {
-  return new Set(skips.map(({ url }) => githubRepoKey(url) ?? url.toLowerCase()))
+  return new Set(skips.map(({ url }) => urlKey(url)))
 }
 
 function renamedKeys(skips: ILifecycleSkip[]): Set<string> {
@@ -221,7 +265,8 @@ async function createPhase(
   toCreate: string[],
   resolved: Record<string, Channel>,
   summary: IGithubLifecycleSummary,
-): Promise<boolean> {
+): Promise<ICreatePhaseResult> {
+  const renames: IGithubRename[] = []
   for (const [batchIndex, keys] of chunk(toCreate, ONBOARD_BATCH_SIZE).entries()) {
     const onboarded = await longActivity.onboardGithubRepos({
       integrationId,
@@ -232,10 +277,11 @@ async function createPhase(
     summary.created += onboarded.created
     summary.unitsInserted += onboarded.unitsInserted
     summary.skipped += onboarded.skipped
+    renames.push(...onboarded.renames)
     if (onboarded.integrationDeleted) {
       summary.skipped += Math.max(toCreate.length - (batchIndex + 1) * ONBOARD_BATCH_SIZE, 0)
-      return true
+      return { integrationDeleted: true, renames }
     }
   }
-  return false
+  return { integrationDeleted: false, renames }
 }

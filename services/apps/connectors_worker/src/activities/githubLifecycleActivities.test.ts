@@ -2,6 +2,7 @@ import axios from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  applyRenames,
   discoverFullSyncRepos,
   onboardGithubRepos,
   planGithubLifecycle,
@@ -28,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   resolveRepo: vi.fn(),
   heartbeat: vi.fn(),
   sleep: vi.fn(),
+  applyGithubRenames: vi.fn(),
+  installationTokenSource: vi.fn(),
   qx: { tx: vi.fn() },
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
@@ -62,6 +65,12 @@ vi.mock('@crowd/connectors/src/connectors/github/discover', () => ({
   listOrgRepos: mocks.listOrgRepos,
   resolveRepo: mocks.resolveRepo,
 }))
+vi.mock('../githubRenames', () => ({ applyGithubRenames: mocks.applyGithubRenames }))
+vi.mock('../githubInstallationToken', async (importActual) => {
+  const actual = await importActual<typeof import('../githubInstallationToken')>()
+  mocks.installationTokenSource.mockImplementation(actual.installationTokenSource)
+  return { installationTokenSource: mocks.installationTokenSource }
+})
 vi.mock('@temporalio/activity', () => ({
   Context: { current: () => ({ heartbeat: mocks.heartbeat, sleep: mocks.sleep }) },
 }))
@@ -178,6 +187,7 @@ describe('github lifecycle activities', () => {
 
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [channelOf(fresh), channelOf(fork)],
       skipped: [
         { url: 'bad name!', reason: 'invalid_url', message: expect.any(String) },
@@ -229,6 +239,7 @@ describe('github lifecycle activities', () => {
     mocks.listOrgRepos.mockRejectedValue(rateLimitError())
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'broken', 'other'].map((url) =>
         expect.objectContaining({ url, reason: 'rate_limited' }),
@@ -240,6 +251,7 @@ describe('github lifecycle activities', () => {
     mocks.findRepositoryOwnersForSegment.mockResolvedValue(null)
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'broken', 'other'].map((url) => ({
         url,
@@ -254,6 +266,7 @@ describe('github lifecycle activities', () => {
     })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [],
       skipped: [],
     })
@@ -277,6 +290,7 @@ describe('github lifecycle activities', () => {
     })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: [
         { url: 'broken', reason: 'github_error', message: '502' },
@@ -307,6 +321,7 @@ describe('github lifecycle activities', () => {
     mocks.addRepoToGitIntegration.mockResolvedValue(undefined)
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [channelOf(fresh)],
       skipped: ['broken', 'blocked'].map((url) => ({
         url,
@@ -323,6 +338,7 @@ describe('github lifecycle activities', () => {
     )
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: [
         { url: 'forbidden', reason: 'github_error', message: '403' },
@@ -352,6 +368,7 @@ describe('github lifecycle activities', () => {
       })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [],
       skipped: [
         { url: 'broken', reason: 'repo_not_found', message: 'org not found on GitHub' },
@@ -377,6 +394,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveRepo.mockRejectedValueOnce(rateLimitError())
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: [
         { url: 'broken', reason: 'repo_not_found', message: 'org not found on GitHub' },
@@ -391,6 +409,7 @@ describe('github lifecycle activities', () => {
     vi.clearAllMocks()
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [],
       skipped: [{ url: 'broken', reason: 'repo_not_found', message: 'org not found on GitHub' }],
     })
@@ -415,6 +434,7 @@ describe('github lifecycle activities', () => {
     })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [forks[0], forks[2], forks[3], forks[4]].map(channelOf),
       skipped: [
         { url: forks[1].channelName, reason: 'rate_limited', message: 'Too Many Requests' },
@@ -492,6 +512,7 @@ describe('github lifecycle activities', () => {
 
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [
         channelOf(listings.acme[1]),
         channelOf(listings.beta[1]),
@@ -543,6 +564,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveRepo.mockRejectedValue(httpError(404))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [
         channelOf(listings.acme[0]),
         channelOf(listings.acme[1]),
@@ -577,6 +599,7 @@ describe('github lifecycle activities', () => {
       .mockResolvedValueOnce({ ...channelOf(repoOf('neworg', 'e')), forkedFrom: null })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [channelOf(repoOf('neworg', 'f'))],
       skipped: [key('neworg', 'd'), key('neworg', 'e')].map((url) => ({
         url,
@@ -596,6 +619,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveRepo.mockRejectedValueOnce(httpError(404)).mockRejectedValueOnce(httpError(502))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'beta', 'neworg'].map((url) => ({
         url,
@@ -612,6 +636,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveRepo.mockRejectedValue(rateLimitError())
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'beta', 'neworg'].map((url) =>
         expect.objectContaining({ url, reason: 'rate_limited' }),
@@ -623,6 +648,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveRepo.mockRejectedValue(httpError(502))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'beta', 'neworg'].map((url) => ({
         url,
@@ -641,6 +667,7 @@ describe('github lifecycle activities', () => {
       .mockRejectedValueOnce(new Error('mint failed'))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'beta', 'neworg'].map((url) => ({
         url,
@@ -661,6 +688,7 @@ describe('github lifecycle activities', () => {
       .mockResolvedValue({ ...nangoIntegration(twoOrgs), deletedAt: '2026-10-22T09:59:00Z' })
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: [],
       skipped: ['acme', 'beta'].map((url) => ({
         url,
@@ -681,6 +709,7 @@ describe('github lifecycle activities', () => {
       )
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: true,
+      renames: [],
       discovered: listings.beta.map(channelOf),
       skipped: [{ url: 'acme', reason: 'org_not_full_sync', message: expect.any(String) }],
     })
@@ -691,6 +720,7 @@ describe('github lifecycle activities', () => {
     mocks.resolveInstallationId.mockRejectedValueOnce(new Error('no installation'))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
+      renames: [],
       discovered: [],
       skipped: [
         { url: 'acme', reason: 'token_mint_failed', message: 'no installation' },
@@ -753,6 +783,7 @@ describe('github lifecycle activities', () => {
       unitsInserted: 40,
       skipped: 2,
       integrationDeleted: false,
+      renames: [],
     })
 
     expect(peak).toBe(5)
@@ -794,7 +825,13 @@ describe('github lifecycle activities', () => {
 
     await expect(
       onboardGithubRepos({ integrationId: 'int-1', keys, resolved: {} }),
-    ).resolves.toEqual({ created: 4, unitsInserted: 32, skipped: 3, integrationDeleted: false })
+    ).resolves.toEqual({
+      created: 4,
+      unitsInserted: 32,
+      skipped: 3,
+      integrationDeleted: false,
+      renames: [],
+    })
     expect(mocks.onboardGithubRepo).toHaveBeenCalledTimes(6)
     expect(mocks.sleep.mock.calls.map(([ms]) => ms)).toEqual([20_000, 20_000, 20_000])
     expect(mocks.log.warn).toHaveBeenCalledTimes(3)
@@ -810,7 +847,13 @@ describe('github lifecycle activities', () => {
     })
     await expect(
       onboardGithubRepos({ integrationId: 'int-1', keys: keys.slice(0, 2), resolved: {} }),
-    ).resolves.toEqual({ created: 0, unitsInserted: 0, skipped: 2, integrationDeleted: true })
+    ).resolves.toEqual({
+      created: 0,
+      unitsInserted: 0,
+      skipped: 2,
+      integrationDeleted: true,
+      renames: [],
+    })
     expect(mocks.onboardGithubRepo).not.toHaveBeenCalled()
     expect(mocks.mintInstallationToken).not.toHaveBeenCalled()
     expect(mocks.log.warn).toHaveBeenCalledWith(
@@ -827,7 +870,13 @@ describe('github lifecycle activities', () => {
         resolved: {},
         startIndex: 1000,
       }),
-    ).resolves.toEqual({ created: 2, unitsInserted: 16, skipped: 1, integrationDeleted: false })
+    ).resolves.toEqual({
+      created: 2,
+      unitsInserted: 16,
+      skipped: 1,
+      integrationDeleted: false,
+      renames: [],
+    })
     expect(
       mocks.onboardGithubRepo.mock.calls.map(([, , , key, options]) => [
         key,
@@ -850,7 +899,13 @@ describe('github lifecycle activities', () => {
       .mockResolvedValueOnce({ ...nangoIntegration([]), deletedAt: '2026-10-22T10:30:00Z' })
     await expect(
       onboardGithubRepos({ integrationId: 'int-1', keys: many, resolved: {} }),
-    ).resolves.toEqual({ created: 100, unitsInserted: 800, skipped: 25, integrationDeleted: true })
+    ).resolves.toEqual({
+      created: 100,
+      unitsInserted: 800,
+      skipped: 25,
+      integrationDeleted: true,
+      renames: [],
+    })
     expect(mocks.onboardGithubRepo).toHaveBeenCalledTimes(100)
     expect(mocks.fetchGithubLifecycleIntegration).toHaveBeenCalledTimes(2)
     expect(mocks.log.warn).toHaveBeenCalledTimes(25)
@@ -866,7 +921,13 @@ describe('github lifecycle activities', () => {
       .mockRejectedValueOnce(new Error('db down'))
     await expect(
       onboardGithubRepos({ integrationId: 'int-1', keys: many, resolved: {} }),
-    ).resolves.toEqual({ created: 125, unitsInserted: 1000, skipped: 0, integrationDeleted: false })
+    ).resolves.toEqual({
+      created: 125,
+      unitsInserted: 1000,
+      skipped: 0,
+      integrationDeleted: false,
+      renames: [],
+    })
     expect(mocks.onboardGithubRepo).toHaveBeenCalledTimes(125)
     expect(mocks.getReposForGithubIntegration).toHaveBeenCalledTimes(2)
     expect(mocks.log.warn).toHaveBeenCalledWith(
@@ -895,7 +956,13 @@ describe('github lifecycle activities', () => {
     )
     await expect(
       onboardGithubRepos({ integrationId: 'int-1', keys, resolved: {} }),
-    ).resolves.toEqual({ created: 5, unitsInserted: 40, skipped: 2, integrationDeleted: false })
+    ).resolves.toEqual({
+      created: 5,
+      unitsInserted: 40,
+      skipped: 2,
+      integrationDeleted: false,
+      renames: [],
+    })
     expect(mocks.onboardGithubRepo.mock.calls.map(([, , , key]) => key)).toEqual([
       ...keys.slice(0, 5),
       keys[6],
@@ -975,5 +1042,134 @@ describe('github lifecycle activities', () => {
       ...nothing,
     })
     expect(mocks.getReposForGithubIntegration).toHaveBeenCalledTimes(1)
+  })
+
+  describe('renames', () => {
+    const OLD = 'https://github.com/org/Old'
+    const NEW = 'https://github.com/org/New'
+    const MOVED_FROM = 'https://github.com/org/Gone'
+    const MOVED_TO = 'https://github.com/Other/Moved'
+
+    const discoverWithLiveOldRows = (rows: Record<string, { url: string; owner: string }>) => {
+      mocks.fetchGithubLifecycleIntegration.mockResolvedValue(
+        nangoIntegration([{ name: 'org', fullSync: true }]),
+      )
+      mocks.getReposForGithubIntegration.mockResolvedValue([])
+      mocks.findRepositoryOwnersForSegment.mockResolvedValue(owners)
+      mocks.listOrgRepos.mockResolvedValue([{ channelId: 'id-new', channelName: NEW, fork: false }])
+      mocks.listGithubRepoKeysUnderOwners.mockResolvedValue([OLD, MOVED_FROM])
+      mocks.resolveRepo.mockImplementation(
+        async (_token: string, _owner: string, name: string) => ({
+          channelId: `id-${name}`,
+          channelName: name === 'old' ? NEW.toLowerCase() : MOVED_TO,
+          forkedFrom: null,
+        }),
+      )
+      mocks.findRepositoryByUrlInsensitive.mockImplementation(async (_qx: unknown, url: string) => {
+        const row = rows[url.toLowerCase()]
+        return row ? { url: row.url, sourceIntegrationId: row.owner } : null
+      })
+      return discoverFullSyncRepos({ integrationId: 'int-1' })
+    }
+
+    it('discovery returns a rename owned by the integration of the old row', async () => {
+      await expect(
+        discoverWithLiveOldRows({
+          [OLD.toLowerCase()]: { url: OLD, owner: 'B' },
+          [MOVED_FROM.toLowerCase()]: { url: MOVED_FROM, owner: 'int-1' },
+        }),
+      ).resolves.toEqual({
+        renameValidationComplete: true,
+        renames: [
+          { integrationId: 'B', from: OLD, to: NEW },
+          { integrationId: 'int-1', from: MOVED_FROM, to: MOVED_TO },
+        ],
+        discovered: [],
+        skipped: [],
+      })
+      expect(mocks.upsertRepository).not.toHaveBeenCalled()
+      expect(mocks.addRepoToGitIntegration).not.toHaveBeenCalled()
+    })
+
+    it('discovery keeps the repo_renamed skip without a live old row', async () => {
+      await expect(
+        discoverWithLiveOldRows({ [OLD.toLowerCase()]: { url: OLD, owner: 'B' } }),
+      ).resolves.toEqual({
+        renameValidationComplete: true,
+        renames: [{ integrationId: 'B', from: OLD, to: NEW }],
+        discovered: [],
+        skipped: [
+          {
+            url: MOVED_TO.toLowerCase(),
+            reason: 'repo_renamed',
+            message: `renamed from ${MOVED_FROM.toLowerCase()}`,
+          },
+        ],
+      })
+      expect(mocks.upsertRepository).not.toHaveBeenCalled()
+    })
+
+    it('onboardGithubRepos collects renamed outcomes', async () => {
+      const kept = 'https://github.com/org/kept'
+      mocks.fetchGithubLifecycleIntegration.mockResolvedValue(nangoIntegration([]))
+      mocks.getReposForGithubIntegration.mockResolvedValue([{ url: OLD }, { url: kept }])
+      mocks.onboardGithubRepo.mockImplementation(
+        async (_qx: unknown, _token: string, _id: string, key: string) =>
+          key === kept ? { outcome: 'created', unitsInserted: 8 } : { outcome: 'renamed', to: NEW },
+      )
+
+      await expect(
+        onboardGithubRepos({
+          integrationId: 'int-1',
+          keys: [OLD.toLowerCase(), kept],
+          resolved: {},
+        }),
+      ).resolves.toEqual({
+        created: 1,
+        unitsInserted: 8,
+        skipped: 0,
+        integrationDeleted: false,
+        renames: [{ from: OLD, to: NEW }],
+      })
+      expect(mocks.log.warn).not.toHaveBeenCalled()
+    })
+
+    it('applyRenames groups by integration', async () => {
+      mocks.applyGithubRenames
+        .mockResolvedValueOnce({ applied: 1, refused: 1, failed: 0 })
+        .mockResolvedValueOnce({ applied: 0, refused: 0, failed: 1 })
+      const a1 = { integrationId: 'A', from: OLD, to: NEW }
+      const b1 = { integrationId: 'B', from: MOVED_FROM, to: MOVED_TO }
+      const a2 = {
+        integrationId: 'A',
+        from: 'https://github.com/org/x',
+        to: 'https://github.com/org/y',
+      }
+
+      await expect(applyRenames({ renames: [a1, b1, a2] })).resolves.toEqual({
+        applied: 1,
+        refused: 1,
+        failed: 1,
+      })
+
+      expect(mocks.installationTokenSource.mock.calls).toEqual([
+        [mocks.qx, 'A'],
+        [mocks.qx, 'B'],
+      ])
+      const [tokenA, tokenB] = mocks.installationTokenSource.mock.results.map(({ value }) => value)
+      expect(mocks.applyGithubRenames.mock.calls).toEqual([
+        [
+          mocks.qx,
+          'A',
+          [
+            { from: a1.from, to: a1.to },
+            { from: a2.from, to: a2.to },
+          ],
+          tokenA,
+        ],
+        [mocks.qx, 'B', [{ from: b1.from, to: b1.to }], tokenB],
+      ])
+      expect(mocks.heartbeat).toHaveBeenCalledTimes(2)
+    })
   })
 })
