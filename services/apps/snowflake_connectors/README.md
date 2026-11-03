@@ -173,7 +173,9 @@ To run the worker in Docker with the rest of the local stack, use `./cli service
   created once; if `snowflake-s3-export` already exists in Temporal, a change to its schedule in code does not apply
   until the schedule is updated or deleted there.
 - **Activities are missing for a project.** Look at `resolveSkippedCount` in the job's `metrics`. A non-zero count means
-  rows had no matching `subproject` segment for their `PROJECT_SLUG` and `PROJECT_ID`.
+  the resolver returned nothing for some rows: either no `subproject` segment matches their `PROJECT_SLUG` and
+  `PROJECT_ID` (`Segment not found, skipping`), or the integration could not be found after waiting on another
+  consumer's creation lock (`Integration not found after lock contention, skipping`). The log line tells them apart.
 - **Rows are skipped by the transformer.** Look at `transformSkippedCount` and the `Failed to transform row, skipping`
   log lines, which list the row's keys.
 - **A job failed.** Its `error` column holds the message. The S3 file stays in place, but the job is not claimed again.

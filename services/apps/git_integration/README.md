@@ -14,7 +14,9 @@ own internals and how to run it.
 
 The service is a FastAPI app (`src/crowdgit/server.py`) whose lifespan starts one
 `RepositoryWorker` loop. `GET /` is a health check. On shutdown the worker stops picking new
-repositories and gets up to `WORKER_SHUTDOWN_TIMEOUT_SEC` to finish the current one.
+repositories and gets up to `WORKER_SHUTDOWN_TIMEOUT_SEC` to finish the current one; after that the
+run is cancelled. If the process is killed sooner, for example by a container grace period shorter
+than that timeout, the repository keeps its lock and stays in `processing` (see Troubleshooting).
 
 | Component                     | Path                                           | What it does                                                                                                 |
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
