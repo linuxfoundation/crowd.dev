@@ -51,7 +51,7 @@ const DATA_FIX_ORGANIZATION_IDS = [
   '29b501fa-a681-4fc8-b059-1405dc713e2b',
 ]
 
-const PARALLEL_MEMBERS = 10
+const PARALLEL_MEMBERS = 50
 
 const options = [
   {
