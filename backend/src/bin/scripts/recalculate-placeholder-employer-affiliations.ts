@@ -108,7 +108,6 @@ setImmediate(async () => {
   log.info(`Found ${memberIds.length} members to process`)
 
   let processed = 0
-  const failedMemberIds: string[] = []
 
   for (const chunk of chunkArray(memberIds, PARALLEL_MEMBERS)) {
     await Promise.all(
@@ -117,24 +116,19 @@ setImmediate(async () => {
           await signalMemberUpdate(temporal, memberId, { syncToOpensearch: true })
           await temporal.workflow.result(`${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`)
         } catch (err) {
-          failedMemberIds.push(memberId)
           log.error({ memberId, err }, 'Failed to recalculate affiliations for member!')
+          throw err
         }
       }),
     )
 
     processed += chunk.length
     log.info(
-      {
-        processed,
-        failed: failedMemberIds.length,
-        total: memberIds.length,
-        lastMemberId: chunk[chunk.length - 1],
-      },
+      { processed, total: memberIds.length, lastMemberId: chunk[chunk.length - 1] },
       'Processed chunk!',
     )
   }
 
-  log.info({ processed, failedMemberIds }, 'Script completed!')
-  process.exit(failedMemberIds.length > 0 ? 1 : 0)
+  log.info({ processed }, 'Script completed!')
+  process.exit(0)
 })
