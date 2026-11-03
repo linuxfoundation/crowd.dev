@@ -296,9 +296,10 @@ FROM public.repositories r
 WHERE ar."repoId" = r.id AND r.url = 'https://github.com/<owner>/<repo>';
 ```
 
-A manual re-onboard does not change `reOnboardingCount`, so its activities get no `cycle`
-attribute. When the reason is rewritten history, increment `reOnboardingCount` in the same update
-to mark the new cycle.
+A manual re-onboard does not change `reOnboardingCount`, so its activities keep the current
+cycle: no `cycle` attribute when the count is 0, otherwise the same `onboarding-<n>` as the last
+re-onboard, which mixes them with that cycle's activities. When the reason is rewritten history,
+increment `reOnboardingCount` in the same update to mark a new cycle.
 
 **Many repositories in `pending_reonboard`.** These wait for the weekend by design. To run one
 sooner, re-onboard it manually as above.

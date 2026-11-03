@@ -10,11 +10,13 @@ calls it as a subprocess.
 
 `software_value_service.py` runs the binary at `/usr/local/bin/software-value` once per repository
 processing run, on the first clone batch (`is_first_batch` in `crowdgit/worker/repository_worker.py`). That
-batch is a depth-1 clone of the default branch, so scc measures the files at the branch head.
+batch is a full clone for a new repository or a changed default branch, and a depth-1 clone otherwise;
+either way the working tree is the head of the default branch, which is what scc measures.
 
 The worker picks up a repository again when its last processing is older than
-`REPOSITORY_UPDATE_INTERVAL_HOURS` (default 24, in `crowdgit/settings.py`), so the numbers refresh
-at that rate.
+`REPOSITORY_UPDATE_INTERVAL_HOURS` (default 24, in `crowdgit/settings.py`), or
+`FAILED_RETRY_INTERVAL_HOURS` after a failed run, so the numbers refresh at most at that rate. They
+reach Insights only after the Tinybird copy pipes that read them next run.
 
 Before it calls the binary, the service:
 
