@@ -14,10 +14,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 FILE_PATH="${FILE_PATH#./}"
 FILE_PATH="${FILE_PATH#"$REPO_ROOT"/}"
 
-KNOWLEDGE_DIR="$REPO_ROOT/docs/knowledge"
-[ -d "$KNOWLEDGE_DIR" ] || exit 0
+DOC_DIRS=(docs/knowledge docs/design)
 
-[[ "$FILE_PATH" == docs/knowledge/* ]] && exit 0
+for dir in "${DOC_DIRS[@]}"; do
+  [[ "$FILE_PATH" == "$dir"/* ]] && exit 0
+done
 
 note_sources() {
   awk '
@@ -38,22 +39,24 @@ note_sources() {
 }
 
 matches=()
-for note in "$KNOWLEDGE_DIR"/*.md; do
-  [ -e "$note" ] || continue
-  while IFS= read -r source; do
-    [ -z "$source" ] && continue
-    if [[ "$FILE_PATH" == "$source" ]] || { [[ "$source" == */ ]] && [[ "$FILE_PATH" == "$source"* ]]; }; then
-      matches+=("docs/knowledge/$(basename "$note")")
-      break
-    fi
-  done < <(note_sources "$note")
+for dir in "${DOC_DIRS[@]}"; do
+  for note in "$REPO_ROOT/$dir"/*.md; do
+    [ -e "$note" ] || continue
+    while IFS= read -r source; do
+      [ -z "$source" ] && continue
+      if [[ "$FILE_PATH" == "$source" ]] || { [[ "$source" == */ ]] && [[ "$FILE_PATH" == "$source"* ]]; }; then
+        matches+=("$dir/$(basename "$note")")
+        break
+      fi
+    done < <(note_sources "$note")
+  done
 done
 
 [ ${#matches[@]} -eq 0 ] && exit 0
 
 notes=$(printf ', %s' "${matches[@]}")
 notes="${notes:2}"
-message="Knowledge check: $FILE_PATH is a listed source of $notes. If this change makes the note wrong, fix the note in the same pull request."
+message="Knowledge check: $FILE_PATH is a listed source of $notes. If this change makes the doc wrong, fix it in the same pull request."
 
 jq -n --arg ctx "$message" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $ctx}}'
 exit 0
