@@ -19,7 +19,11 @@ import {
   singleOrDefault,
   trimUtf8ToMaxByteLength,
 } from '@crowd/common'
-import { CommonMemberService, SearchSyncWorkerEmitter } from '@crowd/common_services'
+import {
+  CommonMemberService,
+  IAffiliationRequest,
+  SearchSyncWorkerEmitter,
+} from '@crowd/common_services'
 import {
   IFindOrCreateOrganizationResult,
   createOrUpdateRelations,
@@ -1748,6 +1752,11 @@ export default class ActivityService extends LoggerBase {
       this.log.error(err, 'Failed to apply the newest organization payloads of the batch!')
     }
 
+    const isBotOf = new Map<(typeof relevantPayloads)[number], boolean>()
+    const affiliationRequests: {
+      payload: (typeof relevantPayloads)[number]
+      request: IAffiliationRequest
+    }[] = []
     for (const payload of relevantPayloads) {
       const memberFailure = memberUpdates.failures.member.get(payload)
       if (memberFailure) {
@@ -1793,6 +1802,7 @@ export default class ActivityService extends LoggerBase {
         payload.platform,
         payload.dbMember,
       ) as boolean
+      isBotOf.set(payload, isBot)
 
       if (!isBot) {
         // Trust the email the activity arrived with (username only).
@@ -1801,20 +1811,15 @@ export default class ActivityService extends LoggerBase {
           ? payload.activity.username.split('@')[1]?.toLowerCase()
           : undefined
 
-        const affiliationEmailDomain = domain && !isDomainExcluded(domain) ? domain : undefined
-
-        // associate activity with organization
-        payload.organizationId = await logExecutionTimeV2(
-          async () =>
-            this.commonMemberService.findAffiliation(
-              payload.memberId,
-              payload.segmentId,
-              payload.activity.timestamp,
-              affiliationEmailDomain,
-            ),
-          this.log,
-          'activityService -> processActivities -> commonMemberService.findAffiliation',
-        )
+        affiliationRequests.push({
+          payload,
+          request: {
+            memberId: payload.memberId,
+            segmentId: payload.segmentId,
+            timestamp: payload.activity.timestamp,
+            affiliationEmailDomain: domain && !isDomainExcluded(domain) ? domain : undefined,
+          },
+        })
       } else {
         // for bot members, we don't want to affiliate the activity with an organization
         payload.organizationId = null
@@ -1823,6 +1828,24 @@ export default class ActivityService extends LoggerBase {
           'Skipping organization affiliation for bot member!',
         )
       }
+    }
+
+    // associate activities with organizations, after updateMembers added any new ones
+    const organizationIds = await logExecutionTimeV2(
+      async () =>
+        this.commonMemberService.findAffiliations(affiliationRequests.map((a) => a.request)),
+      this.log,
+      'activityService -> processActivities -> commonMemberService.findAffiliations',
+    )
+    affiliationRequests.forEach(({ payload }, i) => {
+      payload.organizationId = organizationIds[i]
+    })
+
+    for (const payload of relevantPayloads) {
+      if (resultMap.has(payload.resultId)) {
+        continue
+      }
+      const isBot = isBotOf.get(payload)
 
       if (!payload.memberId) {
         this.log.error(`Member id not set - can't continue!`)
