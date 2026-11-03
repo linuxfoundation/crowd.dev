@@ -133,23 +133,24 @@ pnpm dev-workers
 
 There's a Dockerfile that can be used to build a container image.
 
-The Kubernenetes resource files are in our private repository.
+The Kubernetes resource files are kept in a private infrastructure repository.
 
 The Dockerfile doesn't contain a `CMD` instruction, so you need to specify the command to run when starting the
 container.
 
-To build the Docker image, tagged both with a local name and one for the OCI registry, run:
+To build the Docker image, tagged both with a local name and one for the container registry, run:
 
 ```bash
+export REGISTRY=<your registry> && \
 export DATE_TAG=$(date +%s).$(git rev-parse --short HEAD) && \
 echo $DATE_TAG && \
 docker build --platform linux/amd64 -f ./Dockerfile \
   --tag archived-repositories-checker:"${DATE_TAG}" \
-  --tag sjc.ocir.io/axbydjxa5zuh/archived-repositories-checker:"${DATE_TAG}" .
+  --tag "${REGISTRY}"/archived-repositories-checker:"${DATE_TAG}" .
 ```
 
-To push the Docker image to the OCI registry, run:
+To push the Docker image to the container registry, run:
 
 ```bash
-docker push sjc.ocir.io/axbydjxa5zuh/archived-repositories-checker:"${DATE_TAG}"
+docker push "${REGISTRY}"/archived-repositories-checker:"${DATE_TAG}"
 ```

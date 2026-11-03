@@ -193,7 +193,7 @@ ALTER TABLE public."tableName" REPLICA IDENTITY FULL;
 ```
 
 3. (only for PROD) You need to create the topic in oracle kafka, it doesn't get created automaticly
-4. Update tinybird kafka connect plugin env ( it's under crowd-kube/lf-prod-oracle(lf-staging-oracle)/kafka-connect/tinybird-sink.properties.enc ), there are list of tracked files in the decrypted file.
+4. Add the topic to the Tinybird sink configuration of Kafka Connect, which lists the tracked topics. In production and staging it is kept in the private infrastructure repository.
 5. Restart kafka-connect
 6. Create tinybird datasource schema and push it to tinybird
 7. Add access to the table to sequin user in postgres
