@@ -123,7 +123,8 @@ its own failure in `git."serviceExecutions"` and does not stop the run.
 
   Maintainers resolve to verified `memberIdentities` by GitHub username, then by email. The
   service upserts new `(identity, role)` pairs into `maintainersInternal` and sets `endDate` on
-  pairs that disappeared from the file. A pair whose GitHub username or email is still in the file
+  pairs that disappeared from the file. The first run for a repository (no `lastMaintainerRunAt`)
+  only inserts; end-dating starts from the second run. A pair whose GitHub username or email is still in the file
   but no longer resolves to a verified identity keeps its open row; it is only end-dated once it
   leaves the file or its identity is deleted. For forks, maintainers already listed on the parent are dropped. In a
   CNCF project that has a `.project` repository, the other repositories skip maintainer extraction,
@@ -285,13 +286,18 @@ queue. Skip rows in `processing`.
 
 ```sql
 UPDATE git."repositoryProcessing" rp
-SET "lastProcessedAt" = NULL, "lastProcessedCommit" = NULL, "lastMaintainerRunAt" = NULL,
+SET "lastProcessedAt" = NULL, "lastProcessedCommit" = NULL,
+    "lastMaintainerRunAt" = CASE WHEN rp."lastMaintainerRunAt" IS NULL THEN NULL
+                                 ELSE TIMESTAMPTZ '1970-01-01' END,
     branch = NULL, "lockedAt" = NULL, state = 'pending', "updatedAt" = NOW()
 FROM public.repositories r
 WHERE rp."repositoryId" = r.id
   AND r.url = 'https://github.com/<owner>/<repo>'
   AND rp.state != 'processing';
 ```
+
+`lastMaintainerRunAt` is set to an old date rather than cleared: with no previous run the service
+takes its first-run path, which only inserts maintainers and never end-dates removed ones.
 
 To force the affiliation check in the same run, also clear its last run:
 
