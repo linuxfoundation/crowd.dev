@@ -66,13 +66,16 @@ flowchart TD
     V -->|yes| H{"Edit distance longer than the identity?"}
     H -->|yes| L2[0.2]
     H -->|no| G["Start at 1 - distance / length"]
-    G --> X{"Same location, industry or ticker?"}
+    G --> Z{"Start is 0? (distance equals length)"}
+    Z -->|"yes, start 0.9"| X
+    Z -->|no| X{"Same location, industry or ticker?"}
     X -->|no| M[0.75]
     X -->|yes| K[Keep the starting score]
 ```
 
-The bump per passing check is rounded down to 0, so a passing check keeps the starting score
-instead of raising it. A pair that passes no additional check scores exactly 0.75 whatever its
+A starting score of 0 is replaced by 0.9 (`startingScore || HIGH_CONFIDENCE_SCORE`), so a pair
+whose edit distance equals the identity length starts high, not low. The bump per passing check
+is rounded down to 0, so a passing check keeps the starting score instead of raising it. A pair that passes no additional check scores exactly 0.75 whatever its
 starting score: it lands in `organizationToMergeRaw` but not in `organizationToMerge`. A pair
 with a low edit-distance score and a passing check keeps that low score, so it scores lower than
 the same pair with no passing check.
