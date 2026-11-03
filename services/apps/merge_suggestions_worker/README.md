@@ -45,25 +45,34 @@ matching covers platforms that store emails as usernames: Git, Jira, Confluence 
 
 ## Scoring an organization pair
 
-`OrganizationSimilarityCalculator` follows the same pattern with organization signals.
+`OrganizationSimilarityCalculator.calculateSimilarity` checks the rules in this order and returns
+at the first match. The identity checks run for each verified identity of the primary
+organization in turn.
 
 ```mermaid
 flowchart TD
     A[Candidate pair] --> B{"Same name and shared verified primary domain?"}
     B -->|yes| S85[0.85]
     B -->|no| C{"Clashing identities?"}
-    C -->|yes| L[0.2]
+    C -->|yes| L1[0.2]
     C -->|no| D{"Verified identity matches an unverified one?"}
     D -->|yes| S95[0.95]
     D -->|no| E{"Same display name?"}
-    E -->|yes| X
+    E -->|"yes, start 0.9"| X
     E -->|no| F{"Similar domain pattern?"}
     F -->|"yes, start 0.85"| X
-    F -->|no| G["Start at edit-distance score"]
+    F -->|no| V{"Any verified identities to compare?"}
+    V -->|"no, start 0.9"| X
+    V -->|yes| H{"Edit distance longer than the identity?"}
+    H -->|yes| L2[0.2]
+    H -->|no| G["Start at 1 - distance / length"]
     G --> X{"Same location, industry or ticker?"}
     X -->|no| M[0.75]
     X -->|yes| K[Keep the starting score]
 ```
 
-An organization pair that passes no additional check scores exactly 0.75, so it lands in
-`organizationToMergeRaw` but not in `organizationToMerge`.
+The bump per passing check is rounded down to 0, so a passing check keeps the starting score
+instead of raising it. A pair that passes no additional check scores exactly 0.75 whatever its
+starting score: it lands in `organizationToMergeRaw` but not in `organizationToMerge`. A pair
+with a low edit-distance score and a passing check keeps that low score, so it scores lower than
+the same pair with no passing check.
