@@ -79,9 +79,9 @@ To time other code, wrap it in `logExecutionTimeV2` with a name in the same patt
 ## Where the output goes
 
 Both switches write through the service logger in `services/libs/logging/src/logger.ts`, a
-Bunyan logger that writes to stdout. In local development and tests the lines are short and
-human-readable; everywhere else they are JSON, one object per line, with the service name in
-`name`.
+Bunyan logger that writes to stdout. In local development, in tests and in scripts
+(`SERVICE=script`) the lines are short and human-readable; everywhere else they are JSON, one
+object per line, with the service name in `name`.
 
 `LOG_LEVEL` sets the lowest level written and defaults to `info`. Query profiling needs `warn` or
 lower, and operation timing needs `info` or lower.
@@ -98,8 +98,9 @@ On a deployed service, set the same variables on that service's deployment and r
 
 ## Reading the output
 
-- **One slow query**: sort the query lines by `durationSeconds` and run the slowest `query` with
-  its `values` under `EXPLAIN ANALYZE`.
+- **One slow query**: sort the query lines by `durationSeconds`. For a read, run the slowest
+  `query` with its `values` under `EXPLAIN ANALYZE`. `EXPLAIN ANALYZE` executes the statement, so
+  look at a slow write only on a disposable database.
 - **A slow step in a worker**: compare `took` times across operation names. A slow outer
   operation with fast inner ones points at code between the wrapped calls.
 - **Both together**: turn on query profiling with a threshold alongside operation timing, with

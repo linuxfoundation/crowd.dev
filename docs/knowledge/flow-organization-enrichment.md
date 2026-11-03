@@ -74,7 +74,8 @@ then calls `continueAsNew` until no organization qualifies.
 6. Applies the data to the organization only when it differs from the cache, through
    `applyEnrichmentToOrganization` in `src/activities/enrichment.ts`, and sets
    `organizationEnrichments.lastUpdatedAt`.
-7. Always sets `organizationEnrichments.lastTriedAt`.
+7. Sets `organizationEnrichments.lastTriedAt` as its last step. A run that fails earlier, for
+   example on a source error, does not set it.
 
 ## What enrichment writes
 
@@ -90,17 +91,18 @@ overrides a manual edit or those sources' values.
 
 ## Tables
 
-| Table                              | Holds                                                                                      |
-| ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| `organizationEnrichmentCache`      | Raw source payload per organization and `source`; `updatedAt` drives the 90-day refresh    |
-| `organizationEnrichments`          | `lastTriedAt` (every attempt) and `lastUpdatedAt` (attempts that changed the organization) |
-| `organizationsGlobalActivityCount` | Materialized view: activity count per organization, used for eligibility and ordering      |
+| Table                              | Holds                                                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `organizationEnrichmentCache`      | Raw source payload per organization and `source`; `updatedAt` drives the 90-day refresh                    |
+| `organizationEnrichments`          | `lastTriedAt` (attempts that reached the end) and `lastUpdatedAt` (attempts that changed the organization) |
+| `organizationsGlobalActivityCount` | Materialized view: activity count per organization, used for eligibility and ordering                      |
 
 ## Where to look
 
 - Is enrichment running: compare recent `lastTriedAt` and `lastUpdatedAt` in
-  `organizationEnrichments`. Rows with `lastTriedAt` and no `lastUpdatedAt` were tried but changed
-  nothing.
+  `organizationEnrichments`, and check the `enrichOrganization` runs in Temporal: a failed run
+  leaves no `lastTriedAt`, so an old timestamp does not prove nothing ran. Rows with `lastTriedAt`
+  and no `lastUpdatedAt` were tried but changed nothing.
 - Why an organization is skipped: check its verified primary domain, its row in
   `organizationsGlobalActivityCount`, and its cache age.
 - Why a domain was chosen: the LLM answer is in `llmPromptHistory` (type

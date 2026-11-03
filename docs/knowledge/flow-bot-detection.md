@@ -85,17 +85,20 @@ suggestion and, if the system had flagged the member, adds a `memberNoBot` row.
 
 ## Flag precedence
 
-When new activity arrives for an existing member, `data_sink_worker` resolves each attribute in
-the order `custom` (set by a person), then `system` (set by bot detection), then the incoming
-platform value, then `default`. So a manual decision is never overwritten, and a system flag
-survives later platform data.
+When new activity arrives for an existing member, `data_sink_worker` (`memberAttValue` in
+`activity.service.ts`) uses the first truthy value among `custom` (set by a person), `system` (set
+by bot detection) and the incoming platform value, then falls back to `default`. A manual `true`
+and a system flag survive later platform data, but a manual `custom: false` does not stop a true
+system flag or platform value from winning.
 
 ## Existing members
 
 `backend/src/bin/scripts/process-bot-members.ts` backfills the LLM check for existing members.
 `fetchBotCandidateMembers` in `services/libs/data-access-layer/src/members/bot.ts` selects members
-whose identities or display name match a broad set of bot-like patterns and that have no `isBot`
-flag, no suggestion and no `memberNoBot` row; the script starts the workflow for each.
+whose identities or display name match a broad set of bot-like patterns, whose `isBot.default` is
+not `true`, and that have no suggestion and no `memberNoBot` row; the script starts the workflow
+for each. A member whose suggestion was ignored can qualify again, because ignoring adds a
+`memberNoBot` row only when the system had flagged the member.
 
 ## Where to look
 
