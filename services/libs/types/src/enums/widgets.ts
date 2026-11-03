@@ -104,7 +104,7 @@ export const DEFAULT_WIDGET_VALUES: Record<
     platform: [PlatformType.GITHUB, PlatformType.GITHUB_NANGO],
   },
   [Widgets.PACKAGE_DEPENDENCY]: {
-    enabled: true,
+    enabled: false,
     platform: [PlatformType.GITHUB, PlatformType.GITHUB_NANGO],
   },
   [Widgets.MAILING_LIST_MESSAGES]: {
