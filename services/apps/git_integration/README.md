@@ -138,9 +138,9 @@ its own failure in `git."serviceExecutions"` and does not stop the run.
   [How CDP affiliates activities with organizations](../../../docs/knowledge/flow-affiliation.md).
 - **Licenses** run `licensee detect` and write SPDX identifiers with confidence of at least 98 to
   `public.repositories.licenses`. A license file that matches nothing reliably is stored as
-  `NOASSERTION`; no license file stores an empty list. A `licensee` failure (missing binary,
-  timeout or error) is only logged and also stores an empty list, so an empty `licenses` value does
-  not prove the repository has no license file.
+  `NOASSERTION`; no license file stores an empty list. A missing binary or a timeout is logged as a warning and stores an empty list. Any other
+  non-zero `licensee` exit is logged at info level as "found no license", so it looks exactly like
+  a repository without a license file, in the data and in the logs.
 
 ### 5. Commits
 

@@ -19,8 +19,10 @@ lives in [`services/libs/snowflake`](../../libs/snowflake).
 | Platform registry    | `src/integrations/index.ts`, `src/integrations/types.ts`                | Lists each platform's data sources, with a query builder and transformer per source                    |
 
 `src/index.ts` starts the worker: it registers both Temporal schedules, starts the consumer, and then starts the
-Temporal worker. On `SIGINT` or `SIGTERM` the consumer finishes its current job before stopping; the process force-exits
-after 2 hours.
+Temporal worker. On `SIGINT` or `SIGTERM` the consumer stops claiming jobs and tries to finish the current one; the process
+force-exits after 2 hours, or sooner if the container is killed. An interrupted job keeps `processingStartedAt` with no
+`completedAt` or `error`: no consumer claims it again, and the activities it already emitted stay. Re-run it by clearing
+`processingStartedAt`.
 
 ## Sources
 
