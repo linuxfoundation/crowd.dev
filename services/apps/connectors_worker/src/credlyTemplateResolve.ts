@@ -222,9 +222,8 @@ export function releasesToQueue(
     }))
 }
 
-// One-time catch-up for templates that were mapped before the release queue existed: same floor
-// rule as a normal release, ordered lightest-first by the caller so they drain ahead of the few
-// high-volume ones a single release walker works through serially.
+// One-time catch-up for templates mapped before the release queue existed: same floor rule as a
+// normal release, lightest-first ordering left to the caller.
 export function unreleasedTemplatesToQueue(
   templates: TemplateToResolve[],
   unreleased: IUnreleasedMappedCredlyTemplate[],

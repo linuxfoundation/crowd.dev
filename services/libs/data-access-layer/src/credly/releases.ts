@@ -72,11 +72,8 @@ export interface IUnreleasedMappedCredlyTemplate {
   badgeCount: number | null
 }
 
-// Same "live and routable" predicate as listActiveCredlyTemplateMappings: an inactive or
-// unroutable mapping would have its release completed with nothing fetched (the walker
-// finds it unmapped in routing), burning the one release a future re-mapping could queue.
-// Lightest templates first: they drain fast and don't sit behind the handful of
-// high-volume ones in the FIFO queue a single release walker works through.
+// Same "live and routable" predicate as listActiveCredlyTemplateMappings, so an unroutable
+// mapping can't burn its one release; lightest first drains ahead of heavy ones in the FIFO queue.
 export async function listMappedCredlyTemplatesWithoutRelease(
   qx: QueryExecutor,
 ): Promise<IUnreleasedMappedCredlyTemplate[]> {
