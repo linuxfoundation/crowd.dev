@@ -4,11 +4,11 @@ Major architecture diagrams for CDP: how services, stores and repositories conne
 the repository's `AGENTS.md` and the notes in [`docs/knowledge/`](../knowledge/README.md); these
 docs show the picture behind them.
 
-| Doc | What it shows |
-| --- | ------------- |
-| [`activity-pipeline.md`](activity-pipeline.md) | How an activity travels from a source platform through the data sink, Kafka, Postgres and Sequin to Tinybird |
-| [`deduplication.md`](deduplication.md) | How merge suggestions are generated and reviewed, and how merges and unmerges run across the API and workers |
-| [`affiliation.md`](affiliation.md) | Where affiliation data comes from, how recalculation reaches Tinybird, how the API serves it, and the data model |
+| Doc                                            | What it shows                                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [`activity-pipeline.md`](activity-pipeline.md) | How an activity travels from a source platform through the data sink, Kafka, Postgres and Sequin to Tinybird     |
+| [`deduplication.md`](deduplication.md)         | How merge suggestions are generated and reviewed, and how merges and unmerges run across the API and workers     |
+| [`affiliation.md`](affiliation.md)             | Where affiliation data comes from, how recalculation reaches Tinybird, how the API serves it, and the data model |
 
 ## Where a doc goes
 
