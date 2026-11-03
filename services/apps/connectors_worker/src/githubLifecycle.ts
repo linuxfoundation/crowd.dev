@@ -38,6 +38,7 @@ export type LifecycleSkipReason =
   | 'org_not_full_sync'
   | 'no_longer_desired'
   | 'incomplete_listing'
+  | 'awaiting_old_units_drain'
 
 export interface ILifecycleSkip {
   url: string

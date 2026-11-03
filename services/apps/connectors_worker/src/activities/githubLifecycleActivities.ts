@@ -821,11 +821,12 @@ function recordOnboardOutcomes(
       return
     }
     result.skipped++
-    logRepoSkipped(integrationId, {
-      url: keys[i],
-      reason: outcome.reason,
-      message: outcome.message,
-    })
+    logRepoSkipped(
+      integrationId,
+      outcome.outcome === 'renamed'
+        ? { url: keys[i], reason: 'repo_renamed', message: `renamed to ${outcome.to}` }
+        : { url: keys[i], reason: outcome.reason, message: outcome.message },
+    )
   })
 }
 

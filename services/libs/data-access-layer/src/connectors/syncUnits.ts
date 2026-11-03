@@ -504,6 +504,21 @@ export async function hasSyncUnitsForChannel(
   return row.exists === true
 }
 
+export async function listSyncUnitChannelNames(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+): Promise<string[]> {
+  const rows = await qx.select(
+    `SELECT DISTINCT "channelName"
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND "channelId" = $(channelId)`,
+    { integrationId, channelId },
+  )
+  return rows.map((row: { channelName: string }) => row.channelName)
+}
+
 export async function lockSyncUnitChannel(qx: QueryExecutor, channelId: string): Promise<void> {
   await qx.selectOne(
     `SELECT pg_advisory_xact_lock(hashtextextended('syncUnitChannel:' || $(channelId), 0))`,
