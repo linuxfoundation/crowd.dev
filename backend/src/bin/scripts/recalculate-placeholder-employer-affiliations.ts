@@ -2,6 +2,7 @@ import commandLineArgs from 'command-line-args'
 
 import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 import { signalMemberUpdate } from '@crowd/common_services'
+import { pgpQx } from '@crowd/data-access-layer'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/utils'
 import { getServiceLogger } from '@crowd/logging'
@@ -61,12 +62,6 @@ const options = [
     type: String,
     description: 'Resume after this member ID (the last one logged as processed).',
   },
-  {
-    name: 'help',
-    alias: 'h',
-    type: Boolean,
-    description: 'Print this usage guide.',
-  },
 ]
 
 const parameters = commandLineArgs(options)
@@ -81,12 +76,13 @@ setImmediate(async () => {
     user: DB_CONFIG.username,
     password: DB_CONFIG.password,
   })
+  const qx = pgpQx(db)
   const temporal = await getTemporalClient(TEMPORAL_CONFIG)
 
   log.info({ startAfter }, 'Running script with the following parameters!')
 
   // loaded once because each query scans every work experience of Individual - No Account
-  const rows: { memberId: string }[] = await db.any(
+  const rows: { memberId: string }[] = await qx.select(
     `
     select "memberId" from (
       select "memberId" from "memberOrganizations"
@@ -112,7 +108,7 @@ setImmediate(async () => {
   log.info(`Found ${memberIds.length} members to process`)
 
   let processed = 0
-  let failed = 0
+  const failedMemberIds: string[] = []
 
   for (const chunk of chunkArray(memberIds, PARALLEL_MEMBERS)) {
     await Promise.all(
@@ -121,7 +117,7 @@ setImmediate(async () => {
           await signalMemberUpdate(temporal, memberId, { syncToOpensearch: true })
           await temporal.workflow.result(`${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`)
         } catch (err) {
-          failed++
+          failedMemberIds.push(memberId)
           log.error({ memberId, err }, 'Failed to recalculate affiliations for member!')
         }
       }),
@@ -129,11 +125,16 @@ setImmediate(async () => {
 
     processed += chunk.length
     log.info(
-      { processed, failed, total: memberIds.length, lastMemberId: chunk[chunk.length - 1] },
+      {
+        processed,
+        failed: failedMemberIds.length,
+        total: memberIds.length,
+        lastMemberId: chunk[chunk.length - 1],
+      },
       'Processed chunk!',
     )
   }
 
-  log.info({ processed, failed }, 'Script completed!')
-  process.exit(failed > 0 ? 1 : 0)
+  log.info({ processed, failedMemberIds }, 'Script completed!')
+  process.exit(failedMemberIds.length > 0 ? 1 : 0)
 })
