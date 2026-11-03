@@ -84,6 +84,24 @@ export interface IAffiliationRequest {
   affiliationEmailDomain?: string
 }
 
+// the experiences from the best-ranked source; more than one is a tie
+function highestPrioritySourceTier(experiences: IWorkExperienceData[]): IWorkExperienceData[] {
+  let bestRank = 4
+  let tier: IWorkExperienceData[] = []
+
+  for (const exp of experiences) {
+    const rank = getMemberOrganizationSourceRank(exp.source)
+    if (rank < bestRank) {
+      bestRank = rank
+      tier = [exp]
+    } else if (rank === bestRank) {
+      tier.push(exp)
+    }
+  }
+
+  return tier
+}
+
 export class CommonMemberService extends LoggerBase {
   public constructor(
     private readonly qx: QueryExecutor,
@@ -353,12 +371,14 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
-    // A tie on source rank among experiences without a primary one is decided by member count
+    // only a tie in the best source tier, with no primary experience, is decided by member count
     const countedIds = [
       ...new Set(
         [...candidates.values()]
           .filter((list) => list.length > 1 && !list.some((e) => e.isPrimaryWorkExperience))
-          .flatMap((list) => list.map((e) => e.organizationId)),
+          .map(highestPrioritySourceTier)
+          .filter((tier) => tier.length > 1)
+          .flatMap((tier) => tier.map((e) => e.organizationId)),
       ),
     ]
     const memberCounts = new Map(
@@ -403,18 +423,7 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
-      let bestRank = 4
-      let highestPrioritySourceExperiences: IWorkExperienceData[] = []
-
-      for (const exp of experiences) {
-        const rank = getMemberOrganizationSourceRank(exp.source)
-        if (rank < bestRank) {
-          bestRank = rank
-          highestPrioritySourceExperiences = [exp]
-        } else if (rank === bestRank) {
-          highestPrioritySourceExperiences.push(exp)
-        }
-      }
+      const highestPrioritySourceExperiences = highestPrioritySourceTier(experiences)
 
       // Keep only candidates from the highest-priority source tier
       if (highestPrioritySourceExperiences.length === 1) {
