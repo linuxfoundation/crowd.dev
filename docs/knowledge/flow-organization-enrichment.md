@@ -68,7 +68,11 @@ then calls `continueAsNew` until no organization qualifies.
    (`selectMostRelevantDomainWithLLM` in `src/activities/llm.ts`, query type
    `select_most_relevant_domain`). This guards against enriching from a wrong domain left by a bad
    merge.
-4. Calls the source. A 404 or 422 means no data; 401, 403 and 400 fail without retry.
+4. Calls the source. A 404 or 422 means no data. Other failures retry the activity up to 5 times,
+   except 400, 401 and 403, which fail it at once. The workflow rethrows those without marking them
+   non-retryable, so `triggerOrganizationsEnrichment` still retries the whole child workflow, up to
+   10 attempts. Only a non-retryable failure from the domain-selection LLM step ends the child
+   workflow without retries.
 5. Writes `organizationEnrichmentCache`: creates it, replaces `data` when it changed, or only
    bumps `updatedAt` when nothing new came back.
 6. Applies the data to the organization only when it differs from the cache, through
