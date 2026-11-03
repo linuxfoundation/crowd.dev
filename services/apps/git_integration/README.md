@@ -123,7 +123,9 @@ its own failure in `git."serviceExecutions"` and does not stop the run.
 
   Maintainers resolve to verified `memberIdentities` by GitHub username, then by email. The
   service upserts new `(identity, role)` pairs into `maintainersInternal` and sets `endDate` on
-  pairs that disappeared. For forks, maintainers already listed on the parent are dropped. In a
+  pairs that disappeared from the file. A pair whose GitHub username or email is still in the file
+  but no longer resolves to a verified identity keeps its open row; it is only end-dated once it
+  leaves the file or its identity is deleted. For forks, maintainers already listed on the parent are dropped. In a
   CNCF project that has a `.project` repository, the other repositories skip maintainer extraction,
   and the `.project` file end-dates their maintainer rows.
 
@@ -133,7 +135,9 @@ its own failure in `git."serviceExecutions"` and does not stop the run.
   [How CDP affiliates activities with organizations](../../../docs/knowledge/flow-affiliation.md).
 - **Licenses** run `licensee detect` and write SPDX identifiers with confidence of at least 98 to
   `public.repositories.licenses`. A license file that matches nothing reliably is stored as
-  `NOASSERTION`; no license file stores an empty list.
+  `NOASSERTION`; no license file stores an empty list. A `licensee` failure (missing binary,
+  timeout or error) is only logged and also stores an empty list, so an empty `licenses` value does
+  not prove the repository has no license file.
 
 ### 5. Commits
 
@@ -235,8 +239,10 @@ The service needs `git`, `ripgrep`, `licensee` and the two Go binaries, so it ru
    insert a row into `public.repositories` and a matching `git."repositoryProcessing"` row.
 
 Other targets: `make lint`, `make format`, `make rebuild`, `make cmd -- <command>`, and
-`make add_package name=<pkg>`. `make test` runs pytest locally against a generated test repository
-with a mocked database; see [src/test/README.md](src/test/README.md).
+`make add_package name=<pkg>`. `make test` runs pytest locally on commit and activity extraction
+against a test repository built from a seed file, with the queue service mocked. It takes optional
+`test=<file>`, `repo=<name>` and `expected=<file>` arguments; see
+[src/test/README.md](src/test/README.md).
 
 ## Troubleshooting
 
@@ -322,4 +328,4 @@ not found" error. No queue picks it again; once the repository is reachable, re-
 `maintainer-interval-not-elapsed` is the normal skip between runs, and
 `maintainer-skipped-project-level-source` means a CNCF `.project` repository owns the project's
 maintainers. Extracted maintainers without a verified GitHub or email identity in CDP are logged
-and skipped.
+and skipped; if they had a row before, it stays open rather than being end-dated.
