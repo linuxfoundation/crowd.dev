@@ -1,3 +1,5 @@
+import { PlatformType } from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
 export interface ICredlyTemplateReleaseInput {
@@ -62,6 +64,32 @@ export async function saveCredlyTemplateReleaseCursor(
      WHERE "badgeTemplateId" = $(badgeTemplateId) AND "queuedAt" = $(queuedAt)
        AND "completedAt" IS NULL`,
     { badgeTemplateId: release.badgeTemplateId, queuedAt: release.queuedAt, ...cursor },
+  )
+}
+
+export interface IUnreleasedMappedCredlyTemplate {
+  badgeTemplateId: string
+  badgeCount: number | null
+}
+
+// Same "live and routable" predicate as listActiveCredlyTemplateMappings, so an unroutable
+// mapping can't burn its one release; lightest first drains ahead of heavy ones in the FIFO queue.
+export async function listMappedCredlyTemplatesWithoutRelease(
+  qx: QueryExecutor,
+): Promise<IUnreleasedMappedCredlyTemplate[]> {
+  return qx.select(
+    `SELECT m."badgeTemplateId", m."badgeCount"
+     FROM integration."credlyTemplateMappings" m
+     JOIN public.integrations i ON i.id = m."integrationId"
+     LEFT JOIN integration."credlyTemplateReleases" r ON r."badgeTemplateId" = m."badgeTemplateId"
+     WHERE m.status = 'mapped'
+       AND m."deactivatedAt" IS NULL
+       AND i.platform = $(platform)
+       AND i."deletedAt" IS NULL
+       AND i."segmentId" = m."segmentId"
+       AND r."badgeTemplateId" IS NULL
+     ORDER BY m."badgeCount" ASC NULLS FIRST, m."badgeTemplateId"`,
+    { platform: PlatformType.CREDLY },
   )
 }
 

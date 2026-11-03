@@ -15,7 +15,10 @@ import {
   findOrCreateCredlyIntegration,
   upsertCredlyTemplateDecision,
 } from '@crowd/data-access-layer/src/credly'
-import type { ICredlyTemplateReleaseInput } from '@crowd/data-access-layer/src/credly/releases'
+import type {
+  ICredlyTemplateReleaseInput,
+  IUnreleasedMappedCredlyTemplate,
+} from '@crowd/data-access-layer/src/credly/releases'
 import { queueCredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegments } from '@crowd/data-access-layer/src/segments'
@@ -217,6 +220,21 @@ export function releasesToQueue(
       floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
       top: now.toISOString(),
     }))
+}
+
+// One-time catch-up for templates mapped before the release queue existed: same floor rule as a
+// normal release, lightest-first ordering left to the caller.
+export function unreleasedTemplatesToQueue(
+  templates: TemplateToResolve[],
+  unreleased: IUnreleasedMappedCredlyTemplate[],
+  now: Date,
+): ICredlyTemplateReleaseInput[] {
+  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
+  return unreleased.map((entry) => ({
+    badgeTemplateId: entry.badgeTemplateId,
+    floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
+    top: now.toISOString(),
+  }))
 }
 
 // A release is queued in the same transaction as the decision that frees the template: a run that

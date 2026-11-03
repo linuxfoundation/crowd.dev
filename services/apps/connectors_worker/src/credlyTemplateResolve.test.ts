@@ -11,6 +11,7 @@ import {
   loadCredlyTemplates,
   loadSubprojectSegments,
   releasesToQueue,
+  unreleasedTemplatesToQueue,
 } from './credlyTemplateResolve'
 
 function decision(id: string, overrides: Partial<ResolvedTemplate> = {}): ResolvedTemplate {
@@ -317,5 +318,44 @@ describe('releasesToQueue', () => {
     )
 
     expect(releases[0].floor).toBe(CREDLY_HISTORY_START)
+  })
+})
+
+describe('unreleasedTemplatesToQueue', () => {
+  const now = new Date('2026-11-02T12:00:00.000Z')
+
+  it('queues one release per unreleased template, floored at its own creation date', () => {
+    const releases = unreleasedTemplatesToQueue(
+      [
+        { id: 'ckad', name: 'CKAD', createdAt: '2019-01-01T00:00:00.000Z' },
+        { id: 'fresh', name: 'Fresh', createdAt: '2026-11-01T09:00:00.000Z' },
+      ],
+      [
+        { badgeTemplateId: 'fresh', badgeCount: 10 },
+        { badgeTemplateId: 'ckad', badgeCount: 58312 },
+      ],
+      now,
+    )
+
+    expect(releases).toEqual([
+      {
+        badgeTemplateId: 'fresh',
+        floor: '2026-11-01T09:00:00.000Z',
+        top: '2026-11-02T12:00:00.000Z',
+      },
+      { badgeTemplateId: 'ckad', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+    ])
+  })
+
+  it('falls back to the history start for a template missing from the listing', () => {
+    const releases = unreleasedTemplatesToQueue(
+      [],
+      [{ badgeTemplateId: 'gone', badgeCount: 3 }],
+      now,
+    )
+
+    expect(releases).toEqual([
+      { badgeTemplateId: 'gone', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+    ])
   })
 })
