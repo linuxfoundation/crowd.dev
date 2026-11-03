@@ -20,8 +20,13 @@ interface ISegmentQueryResponse {
   count?: number
 }
 
+interface IIntegrationRow {
+  id: string
+  settings?: { orgs?: Array<Partial<IGithubOrgSettings>> }
+}
+
 interface IIntegrationQueryResponse {
-  rows?: Array<{ id: string; settings?: { orgs?: Array<Partial<IGithubOrgSettings>> } }>
+  rows?: IIntegrationRow[]
 }
 
 interface IIntegrationRepositoryMapping {
@@ -29,10 +34,23 @@ interface IIntegrationRepositoryMapping {
   segment: { id: string }
 }
 
-interface IOnboardingApiConfig {
+export interface IBackendApiConfig {
   apiUrl: string
   apiToken: string
+}
+
+interface IOnboardingApiConfig extends IBackendApiConfig {
   githubToken: string
+}
+
+export class BackendRequestError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'BackendRequestError'
+    this.status = status
+  }
 }
 
 const GITHUB_NANGO_PLATFORM = 'github-nango'
@@ -44,16 +62,26 @@ const ERROR_BODY_MAX_LENGTH = 500
 const MISSING_CONFIG_ERROR =
   'Missing API configuration: CROWD_API_SERVICE_URL, CROWD_LF_AGENT_USER_TOKEN, or CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'
 
-function readOnboardingApiConfig(): IOnboardingApiConfig | null {
+export function readBackendApiConfig(): IBackendApiConfig | null {
   const apiUrl = process.env.CROWD_API_SERVICE_URL
   const apiToken = process.env.CROWD_LF_AGENT_USER_TOKEN
-  const githubTokens = process.env.CROWD_GITHUB_PERSONAL_ACCESS_TOKENS
 
-  if (!apiUrl || !apiToken || !githubTokens) {
+  if (!apiUrl || !apiToken) {
     return null
   }
 
-  return { apiUrl, apiToken, githubToken: githubTokens.split(',')[0].trim() }
+  return { apiUrl, apiToken }
+}
+
+function readOnboardingApiConfig(): IOnboardingApiConfig | null {
+  const backendConfig = readBackendApiConfig()
+  const githubTokens = process.env.CROWD_GITHUB_PERSONAL_ACCESS_TOKENS
+
+  if (!backendConfig || !githubTokens) {
+    return null
+  }
+
+  return { ...backendConfig, githubToken: githubTokens.split(',')[0].trim() }
 }
 
 function errorResult(error: string, segmentId: string | null = null): IOnboardingResult {
@@ -255,7 +283,28 @@ async function queryGithubIntegration(
   return { id: integration.id, orgs: (integration.settings?.orgs ?? []).map(toOrgSettings) }
 }
 
-async function fetchGithubIntegrationMapping(
+export async function fetchGithubIntegration(
+  integrationId: string,
+  segmentId: string,
+  config: IBackendApiConfig,
+): Promise<IGithubIntegrationSnapshot> {
+  const query = new URLSearchParams({ 'segments[]': segmentId })
+  const response = await fetch(`${config.apiUrl}/integration/${integrationId}?${query}`, {
+    headers: { Authorization: `Bearer ${config.apiToken}` },
+    signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      `Integration returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+    )
+  }
+
+  const integration = (await response.json()) as IIntegrationRow
+  return { id: integration.id, orgs: (integration.settings?.orgs ?? []).map(toOrgSettings) }
+}
+
+export async function fetchGithubIntegrationMapping(
   integrationId: string,
   segmentId: string,
   apiUrl: string,
@@ -383,7 +432,7 @@ async function createProjectSegment(
   return segmentId
 }
 
-async function fetchGithubOrgLogo(owner: string, githubToken: string): Promise<string> {
+export async function fetchGithubOrgLogo(owner: string, githubToken: string): Promise<string> {
   try {
     const response = await fetch(`https://api.github.com/users/${owner}`, {
       headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/json' },
@@ -434,7 +483,7 @@ async function fetchGithubOrgSettings(
   return buildGithubOrgSettings({ ...input, orgLogo, forkedFrom })
 }
 
-async function postGithubNangoConnect(
+export async function postGithubNangoConnect(
   payload: Record<string, unknown>,
   apiUrl: string,
   token: string,
@@ -447,8 +496,9 @@ async function postGithubNangoConnect(
   })
 
   if (!response.ok) {
-    throw new Error(
+    throw new BackendRequestError(
       `GitHub integration returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+      response.status,
     )
   }
 }

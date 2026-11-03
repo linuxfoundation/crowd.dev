@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  BackendRequestError,
   buildGithubIntegrationPayload,
   buildGithubOrgSettings,
   connectRepoToSegment,
   connectReposToSegment,
   deriveOrganizationProjectNameCandidates,
   deriveProjectNameCandidates,
+  fetchGithubIntegration,
   mergeGithubOrgSettings,
   onboardOrganizationProject,
+  postGithubNangoConnect,
+  readBackendApiConfig,
   readErrorBody,
   resolveProjectSegment,
 } from './onboarder'
@@ -811,5 +815,62 @@ describe('readErrorBody', () => {
     await response.text()
 
     expect(await readErrorBody(response)).toBe('')
+  })
+})
+
+describe('backend api client', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('readBackendApiConfig returns null without CROWD_LF_AGENT_USER_TOKEN', () => {
+    vi.stubEnv('CROWD_API_SERVICE_URL', 'http://api')
+    vi.stubEnv('CROWD_LF_AGENT_USER_TOKEN', '')
+
+    expect(readBackendApiConfig()).toBeNull()
+  })
+
+  it('readBackendApiConfig returns url and token without a PAT', () => {
+    vi.stubEnv('CROWD_API_SERVICE_URL', 'http://api')
+    vi.stubEnv('CROWD_LF_AGENT_USER_TOKEN', 't')
+    vi.stubEnv('CROWD_GITHUB_PERSONAL_ACCESS_TOKENS', '')
+
+    expect(readBackendApiConfig()).toEqual({ apiUrl: 'http://api', apiToken: 't' })
+  })
+
+  it('fetchGithubIntegration reads orgs by id', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: 'i1',
+        settings: { orgs: [{ name: 'org', repos: [{ url: 'https://github.com/org/a' }] }] },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const integration = await fetchGithubIntegration('i1', 's1', {
+      apiUrl: 'http://api',
+      apiToken: 't',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api/integration/i1?segments%5B%5D=s1',
+      expect.objectContaining({ headers: { Authorization: 'Bearer t' } }),
+    )
+    expect(integration).toMatchObject({
+      id: 'i1',
+      orgs: [{ name: 'org', fullSync: false, repos: [{ url: 'https://github.com/org/a' }] }],
+    })
+  })
+
+  it('postGithubNangoConnect throws BackendRequestError with the status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('bad', { status: 400 })),
+    )
+
+    const failure = postGithubNangoConnect({}, 'http://api', 't')
+
+    await expect(failure).rejects.toBeInstanceOf(BackendRequestError)
+    await expect(failure).rejects.toMatchObject({ status: 400 })
   })
 })
