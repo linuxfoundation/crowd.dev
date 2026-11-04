@@ -16,7 +16,6 @@
     "script:validate-completeness": "tsx src/bin/validate-completeness.ts",
     "script:mirror-nango-repos": "tsx src/bin/mirror-nango-repos-to-shadow-sync-units.ts",
     "script:probe-credly-api": "tsx src/bin/probe-credly-api.ts",
-    "script:seed-credly-sync-unit": "tsx src/bin/seed-credly-sync-unit.ts",
     "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
     "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts"
   },

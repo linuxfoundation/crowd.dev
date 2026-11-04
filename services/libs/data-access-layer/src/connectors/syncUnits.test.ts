@@ -12,6 +12,7 @@ import {
   decommissionAllSyncUnits,
   decommissionSyncUnitsForChannels,
   deleteDrainedSyncUnits,
+  findSyncUnitByChannelId,
   hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
   listSyncUnitChannelNames,
@@ -420,6 +421,35 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
     expect(await countShadowRepos(qx)).toBe(2)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/shadow')).toBe(true)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/unknown')).toBe(false)
+  })
+})
+
+describe('findSyncUnitByChannelId', () => {
+  test('finds the unit of that channel and sync, scoped to the integration and sync name', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const other = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'badgePoll',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'expirySync',
+    })
+    await createSyncUnit(qx, other, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'badgePoll',
+    })
+
+    const found = await findSyncUnitByChannelId(qx, integrationId, 'tpl-cka', 'badgePoll')
+
+    expect(found?.id).toBe(unitId)
+    expect(await findSyncUnitByChannelId(qx, integrationId, 'tpl-missing', 'badgePoll')).toBeNull()
   })
 })
 
