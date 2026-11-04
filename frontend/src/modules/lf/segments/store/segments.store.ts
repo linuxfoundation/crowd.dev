@@ -6,7 +6,16 @@ import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { LfRole } from '@/shared/modules/permissions/types/Roles';
 import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 import type { AxiosError } from 'axios';
-import type { ProjectGroup, Project, SubProject } from '@/modules/lf/segments/types/Segments';
+import type {
+  ProjectGroup,
+  Project,
+  SubProject,
+  ProjectGroupRequest,
+  ProjectRequest,
+  CreateProjectRequest,
+  SubProjectRequest,
+  CreateSubProjectRequest,
+} from '@/modules/lf/segments/types/Segments';
 
 interface Pagination {
   pageSize: number;
@@ -57,8 +66,6 @@ interface ListProjectsParams {
   limit?: number | null;
   reset?: boolean;
 }
-
-type SegmentPayload = Record<string, unknown>;
 
 type SegmentId = string | string[] | null;
 
@@ -181,10 +188,10 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       });
   }
 
-  function updateProjectGroupList(id: SegmentId, data: SegmentPayload) {
+  function updateProjectGroupList(id: SegmentId, data: ProjectGroupRequest) {
     projectGroups.value.list = projectGroups.value.list.map((p) => {
       if (p.id === id) {
-        // shortcut: the group becomes `data` alone, as on main (old code spread an undefined p.value). revisit: X-10
+        // shortcut: replaces the entry with `data` (drops id, as main). revisit: when the list refetches after edit
         return { ...data } as unknown as ProjectGroup;
       }
       return p;
@@ -192,7 +199,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
     projectGroups.value.reload = true;
   }
 
-  function createProjectGroup(data: SegmentPayload) {
+  function createProjectGroup(data: ProjectGroupRequest) {
     return LfService.createProjectGroup(data)
       .then(() => {
         ToastStore.success('Project Group created successfully');
@@ -207,7 +214,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       .finally(() => Promise.resolve());
   }
 
-  function updateProjectGroup(id: SegmentId, data: SegmentPayload) {
+  function updateProjectGroup(id: SegmentId, data: ProjectGroupRequest) {
     return LfService.updateSegment(id, data)
       .then(() => {
         ToastStore.success('Project Group updated successfully');
@@ -298,7 +305,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       });
   }
 
-  function updateProjectList(id: SegmentId, data: SegmentPayload) {
+  function updateProjectList(id: SegmentId, data: Partial<ProjectRequest>) {
     projects.value.list = projects.value.list.map((p) => {
       if (p.id === id) {
         return { ...p, ...data };
@@ -307,7 +314,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
     });
   }
 
-  function createProject(data: SegmentPayload) {
+  function createProject(data: CreateProjectRequest) {
     return LfService.createProject(data)
       .then(() => {
         ToastStore.success('Project created successfully');
@@ -321,7 +328,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       .finally(() => Promise.resolve());
   }
 
-  function updateProject(id: SegmentId, data: SegmentPayload) {
+  function updateProject(id: SegmentId, data: Partial<ProjectRequest>) {
     return LfService.updateSegment(id, data)
       .then(() => {
         ToastStore.success('Project updated successfully');
@@ -349,7 +356,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       });
   }
 
-  function createSubProject(data: SegmentPayload) {
+  function createSubProject(data: CreateSubProjectRequest) {
     return LfService.createSubProject(data)
       .then(() => {
         ToastStore.success('Sub-project created successfully');
@@ -363,7 +370,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       .finally(() => Promise.resolve());
   }
 
-  function updateSubProject(id: SegmentId, data: SegmentPayload) {
+  function updateSubProject(id: SegmentId, data: SubProjectRequest) {
     return LfService.updateSegment(id, data)
       .then(() => {
         ToastStore.success('Sub-project updated successfully');
