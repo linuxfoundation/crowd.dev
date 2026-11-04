@@ -70,6 +70,7 @@
 
   <app-bulk-edit-attribute-popover
     v-model="bulkAttributesUpdateVisible"
+    @reload="onBulkAttributesUpdated"
   />
 </template>
 
@@ -116,6 +117,12 @@ const bulkAttributesUpdateVisible = ref(false);
 // Note: Backend cache is invalidated by passing invalidateCache parameter to update/delete operations
 const refreshMemberData = async () => {
   await invalidate.members();
+};
+
+// The bulk attribute edit no longer mutates the selected rows, so drop the stale selection and refetch
+const onBulkAttributesUpdated = async () => {
+  selectedMembers.value = [];
+  await refreshMemberData();
 };
 
 // Helper function to fetch member with all attributes before bulk update

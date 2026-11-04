@@ -412,13 +412,15 @@ const handleSubmit = async () => {
     }),
   };
 
-  await memberStore.bulkUpdateMembersAttribute({
+  const updatedMembers = await memberStore.bulkUpdateMembersAttribute({
     members: [...selectedMembers.value],
     attributesToSave: data,
   });
 
   computedVisible.value = false;
-  emits('reload', true);
+  if (updatedMembers !== undefined) {
+    emits('reload', true);
+  }
 
   return null;
 };
