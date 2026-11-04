@@ -11,51 +11,6 @@ import { MemberModel } from '../member-model';
 export default {
   ...sharedActions('member', MemberService),
 
-  async doDestroyCustomAttributes({ commit, dispatch }, id) {
-    try {
-      const response = await MemberService.destroyCustomAttribute(id);
-
-      dispatch('doFetchCustomAttributes');
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doUpdateCustomAttributes({ commit, dispatch }, { id, data }) {
-    try {
-      const response = await MemberService.updateCustomAttribute(id, data);
-
-      dispatch('doFetchCustomAttributes');
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doFetchCustomAttributes({ commit }) {
-    try {
-      const response = await MemberService.fetchCustomAttributes();
-    } catch (error) {
-      Errors.handle(error);
-    }
-  },
-
-  async doCreateCustomAttributes({ commit, dispatch }, values) {
-    try {
-      const response = await MemberService.createCustomAttributes(values);
-
-      dispatch('doFetchCustomAttributes');
-
-      return response;
-    } catch (error) {
-      if (error.response.status !== 500) {
-        Errors.handle(error);
-      }
-
-      ToastStore.error('Custom Attributes could not be created');
-    }
-    return null;
-  },
-
   async doMerge({ commit }, { memberToKeep, memberToMerge }) {
     try {
       await MemberService.merge(memberToKeep, memberToMerge);
@@ -103,13 +58,17 @@ export default {
 
             // If the attribute value is an array, then append the values and not overwrite them
             if (attributeValue && Array.isArray(attributeValue.default)) {
-              memberToUpdate.attributes[attributeName] = memberToUpdate.attributes[attributeName] || { default: [] };
+              memberToUpdate.attributes[attributeName] = memberToUpdate.attributes[
+                attributeName
+              ] || { default: [] };
 
               // Get existing values of member attribute
               const existingValues = memberToUpdate.attributes[attributeName].default;
 
               // Append only the new values to the member attribute and not the existing ones
-              const newValues = attributeValue.default.filter((value) => !existingValues.includes(value));
+              const newValues = attributeValue.default.filter(
+                (value) => !existingValues.includes(value),
+              );
               memberToUpdate.attributes[attributeName].default.push(...newValues);
             } else if (attributeValue && typeof attributeValue.default !== 'undefined') {
               memberToUpdate.attributes[attributeName] = { default: attributeValue.default };
@@ -135,5 +94,4 @@ export default {
       ToastStore.error('There was an error updating attribute');
     }
   },
-
 };

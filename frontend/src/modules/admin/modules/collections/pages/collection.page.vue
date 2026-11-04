@@ -126,12 +126,13 @@ import { cloneDeep } from 'lodash';
 import type {
   QueryFunction,
 } from '@tanstack/vue-query';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInfiniteQuery, useMutation } from '@tanstack/vue-query';
+import { queryKeys } from '@/shared/queries/keys';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import { useDebounce } from '@vueuse/core';
 import type { Pagination } from '@/shared/types/Pagination';
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const search = ref('');
 const searchValue = useDebounce(search, 300);
@@ -141,10 +142,7 @@ const removeCollectionId = ref<string>('');
 const isCollectionDialogOpen = ref<boolean>(false);
 const collectionEditObject = ref<CollectionModel | undefined>(undefined);
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_COLLECTIONS,
-  searchValue.value,
-]);
+const queryKey = computed(() => queryKeys.collections.search(searchValue.value));
 const queryFn = COLLECTIONS_SERVICE.query(() => ({
   filter: searchValue.value
     ? {
@@ -224,9 +222,7 @@ const updateMutation = useMutation({
   onSuccess: (collection: CollectionRequest) => {
     ToastStore.closeAll();
     ToastStore.success(`Collection successfully ${collection!.starred ? 'mark as featured' : 'unmark as featured'}`);
-    queryClient.invalidateQueries({
-      queryKey: [TanstackKey.ADMIN_COLLECTIONS],
-    });
+    invalidate.collections();
   },
   onError: () => {
     ToastStore.closeAll();
@@ -277,9 +273,7 @@ const deleteCollectionMutation = useMutation({
   onSuccess: () => {
     ToastStore.closeAll();
     ToastStore.success('Collection successfully deleted');
-    queryClient.invalidateQueries({
-      queryKey: [TanstackKey.ADMIN_COLLECTIONS],
-    });
+    invalidate.collections();
     closeRemoveDialog();
   },
   onError: () => {

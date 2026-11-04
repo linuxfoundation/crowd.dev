@@ -95,13 +95,12 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfTableBulkActions from '@/ui-kit/table/table-bulk-actions.vue';
-import { useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 
 const { trackEvent } = useProductTracking();
 
 const route = useRoute();
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const authStore = useAuthStore();
 const { getUser } = authStore;
@@ -116,9 +115,7 @@ const bulkAttributesUpdateVisible = ref(false);
 // Refresh member data by invalidating TanStack Query cache
 // Note: Backend cache is invalidated by passing invalidateCache parameter to update/delete operations
 const refreshMemberData = async () => {
-  await queryClient.invalidateQueries({
-    queryKey: [TanstackKey.MEMBERS_LIST],
-  });
+  await invalidate.members();
 };
 
 // Helper function to fetch member with all attributes before bulk update

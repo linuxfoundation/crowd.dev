@@ -117,14 +117,14 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppDeleteConfirmDialog from '@/shared/dialog/delete-confirm-dialog.vue';
 import { cloneDeep } from 'lodash';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import type {
   QueryFunction,
 } from '@tanstack/vue-query';
 import {
   useInfiniteQuery,
   useMutation,
-  useQueryClient,
 } from '@tanstack/vue-query';
 import { useDebounce } from '@vueuse/core';
 import type { Pagination } from '@/shared/types/Pagination';
@@ -133,7 +133,7 @@ import LfInsightsProjectAdd from '../components/lf-insights-project-add.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '../services/insights-projects.service';
 import type { InsightsProjectModel } from '../models/insights-project.model';
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const search = ref('');
 const searchValue = useDebounce(search, 300);
@@ -145,10 +145,7 @@ const isProjectDialogOpen = ref<boolean>(false);
 const selectedProject = ref<InsightsProjectModel | undefined>(undefined);
 const removeProjectDialog = ref<boolean>(false);
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_INSIGHTS_PROJECTS,
-  searchValue.value,
-]);
+const queryKey = computed(() => queryKeys.insightsProjects.search(searchValue.value));
 
 const queryFn = INSIGHTS_PROJECTS_SERVICE.query(() => ({
   filter: searchValue.value
@@ -235,9 +232,7 @@ const removeMutation = useMutation({
   onSuccess: () => {
     ToastStore.closeAll();
     ToastStore.success('Project successfully removed');
-    queryClient.invalidateQueries({
-      queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS],
-    });
+    invalidate.insightsProjects();
     onCloseRemoveProject();
   },
   onError: () => {

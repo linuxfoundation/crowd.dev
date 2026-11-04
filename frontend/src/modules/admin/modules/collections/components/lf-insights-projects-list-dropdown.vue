@@ -76,7 +76,7 @@ import type { QueryFunction } from '@tanstack/vue-query';
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import { useDebounce } from '@vueuse/core';
 import type { Pagination } from '@/shared/types/Pagination';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 
 import { ToastStore } from '@/shared/message/notification';
 import { INSIGHTS_PROJECTS_SERVICE } from '../../insights-projects/services/insights-projects.service';
@@ -117,10 +117,7 @@ const isPopoverVisible = ref(false);
 const displayProjects = computed(() => removeSelectedProject(
   insightsProjectsStore.searchInsightsProjects(searchQuery.value),
 ));
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_INSIGHTS_PROJECTS,
-  searchValue.value,
-]);
+const queryKey = computed(() => queryKeys.insightsProjects.search(searchValue.value));
 
 const queryFn = INSIGHTS_PROJECTS_SERVICE.query(() => ({
   limit: 20,

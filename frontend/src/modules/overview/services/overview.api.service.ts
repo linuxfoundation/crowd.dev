@@ -1,7 +1,7 @@
 import type { QueryFunction } from '@tanstack/vue-query';
 import { type ComputedRef, computed } from 'vue';
 import { useInfiniteQuery, useQuery } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import authAxios from '@/shared/axios/auth-axios';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
@@ -12,32 +12,34 @@ import type {
 } from '../types/overview.types';
 
 export interface GlobalIntegrationStatusCountQueryParams {
-  platform: string | undefined
-  segment?: string
+  platform: string | undefined;
+  segment?: string;
 }
 
 export interface GlobalIntegrationIntegrationsQueryParams {
-  platform: string | undefined
-  status: string[]
-  query: string
-  limit: number
-  segment?: string
+  platform: string | undefined;
+  status: string[];
+  query: string;
+  limit: number;
+  segment?: string;
 }
 
 export interface IntegrationProgressListQueryParams {
-  segments?: string[]
+  segments?: string[];
 }
 
 export interface DashboardMetricsQueryParams {
-  segment?: string
+  segment?: string;
 }
 
 class OverviewApiService {
   fetchProjectById(params: ComputedRef<string>) {
-    const queryKey = computed(() => [TanstackKey.PROJECT_BY_ID, params.value]);
-    const queryFn = computed<QueryFunction<Project>>(() => this.fetchProjectByIdQueryFn(() => ({
-      id: params.value,
-    })));
+    const queryKey = computed(() => queryKeys.overview.projectById(params.value));
+    const queryFn = computed<QueryFunction<Project>>(() =>
+      this.fetchProjectByIdQueryFn(() => ({
+        id: params.value,
+      })),
+    );
 
     return useQuery<Project>({
       queryKey,
@@ -48,25 +50,24 @@ class OverviewApiService {
   fetchProjectByIdQueryFn(
     query: () => Record<string, string | number | boolean | undefined | string[] | null>,
   ): QueryFunction<Project> {
-    return () => authAxios
-      .get(`/segment/${query().id}`, {
-        params: {
-          segments: [query().id],
-        },
-      })
-      .then((res) => res.data);
+    return () =>
+      authAxios
+        .get(`/segment/${query().id}`, {
+          params: {
+            segments: [query().id],
+          },
+        })
+        .then((res) => res.data);
   }
 
   fetchGlobalIntegrationStatusCount(params: ComputedRef<GlobalIntegrationStatusCountQueryParams>) {
-    const queryKey = computed(() => [
-      TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT,
-      params.value.platform,
-      params.value.segment,
-    ]);
-    const queryFn = computed<QueryFunction<GlobalIntegrationStatusCount[]>>(() => this.fetchGlobalIntegrationStatusCountQueryFn(() => ({
-      platform: params.value.platform,
-      segment: params.value.segment,
-    })));
+    const queryKey = computed(() => queryKeys.overview.integrationStatusCount(params.value));
+    const queryFn = computed<QueryFunction<GlobalIntegrationStatusCount[]>>(() =>
+      this.fetchGlobalIntegrationStatusCountQueryFn(() => ({
+        platform: params.value.platform,
+        segment: params.value.segment,
+      })),
+    );
 
     return useQuery<GlobalIntegrationStatusCount[]>({
       queryKey,
@@ -77,25 +78,21 @@ class OverviewApiService {
   fetchGlobalIntegrationStatusCountQueryFn(
     query: () => Record<string, string | number | boolean | undefined | string[] | null>,
   ): QueryFunction<GlobalIntegrationStatusCount[]> {
-    return () => authAxios
-      .get('/integration/global/status', {
-        params: query(),
-      })
-      .then((res) => res.data);
+    return () =>
+      authAxios
+        .get('/integration/global/status', {
+          params: query(),
+        })
+        .then((res) => res.data);
   }
 
   fetchGlobalIntegrations(params: ComputedRef<GlobalIntegrationIntegrationsQueryParams>) {
-    const queryKey = computed(() => [
-      TanstackKey.GLOBAL_INTEGRATIONS,
-      params.value.platform,
-      params.value.status,
-      params.value.query,
-      params.value.limit,
-      params.value.segment,
-    ]);
-    const queryFn = computed<QueryFunction<IntegrationStatusResponse>>(() => this.fetchGlobalIntegrationsQueryFn(() => ({
-      ...params.value,
-    })));
+    const queryKey = computed(() => queryKeys.overview.integrations(params.value));
+    const queryFn = computed<QueryFunction<IntegrationStatusResponse>>(() =>
+      this.fetchGlobalIntegrationsQueryFn(() => ({
+        ...params.value,
+      })),
+    );
 
     return useInfiniteQuery<
       IntegrationStatusResponse,
@@ -115,11 +112,12 @@ class OverviewApiService {
   fetchGlobalIntegrationsQueryFn(
     query: () => Record<string, string | number | boolean | undefined | string[] | null>,
   ): QueryFunction<IntegrationStatusResponse> {
-    return ({ pageParam = 0 }) => authAxios
-      .get('/integration/global', {
-        params: { offset: pageParam, ...query() },
-      })
-      .then((res) => res.data);
+    return ({ pageParam = 0 }) =>
+      authAxios
+        .get('/integration/global', {
+          params: { offset: pageParam, ...query() },
+        })
+        .then((res) => res.data);
   }
 
   getNextPageIntegrationsParam(lastPage: IntegrationStatusResponse): number | undefined {
@@ -129,10 +127,12 @@ class OverviewApiService {
   }
 
   fetchDashboardMetrics(params: ComputedRef<DashboardMetricsQueryParams>) {
-    const queryKey = computed(() => [TanstackKey.DASHBOARD_METRICS, params.value.segment]);
-    const queryFn = computed<QueryFunction<DashboardMetrics>>(() => this.fetchDashboardMetricsQueryFn(() => ({
-      ...params.value,
-    })));
+    const queryKey = computed(() => queryKeys.overview.dashboardMetrics(params.value));
+    const queryFn = computed<QueryFunction<DashboardMetrics>>(() =>
+      this.fetchDashboardMetricsQueryFn(() => ({
+        ...params.value,
+      })),
+    );
 
     return useQuery<DashboardMetrics>({
       queryKey,
@@ -143,18 +143,21 @@ class OverviewApiService {
   fetchDashboardMetricsQueryFn(
     query: () => Record<string, string | number | boolean | undefined | string[] | null>,
   ): QueryFunction<DashboardMetrics> {
-    return () => authAxios
-      .get('/dashboard/metrics', {
-        params: query(),
-      })
-      .then((res) => res.data);
+    return () =>
+      authAxios
+        .get('/dashboard/metrics', {
+          params: query(),
+        })
+        .then((res) => res.data);
   }
 
   fetchIntegrationProgressList(params: ComputedRef<IntegrationProgressListQueryParams>) {
-    const queryKey = computed(() => [TanstackKey.INTEGRATION_PROGRESS_LIST, params.value.segments]);
-    const queryFn = computed<QueryFunction<IntegrationProgress[]>>(() => this.fetchIntegrationProgressListQueryFn(() => ({
-      segments: params.value.segments,
-    })));
+    const queryKey = computed(() => queryKeys.overview.integrationProgress(params.value));
+    const queryFn = computed<QueryFunction<IntegrationProgress[]>>(() =>
+      this.fetchIntegrationProgressListQueryFn(() => ({
+        segments: params.value.segments,
+      })),
+    );
 
     return useQuery<IntegrationProgress[]>({
       queryKey,
@@ -166,14 +169,12 @@ class OverviewApiService {
   fetchIntegrationProgressListQueryFn(
     query: () => Record<string, string | number | boolean | undefined | string[] | null>,
   ): QueryFunction<IntegrationProgress[]> {
-    return () => authAxios
-      .post(
-        '/integration/progress/list',
-        {
+    return () =>
+      authAxios
+        .post('/integration/progress/list', {
           segments: query().segments,
-        },
-      )
-      .then((res) => res.data);
+        })
+        .then((res) => res.data);
   }
 }
 
