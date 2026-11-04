@@ -592,6 +592,27 @@ export async function decommissionSyncUnitsForChannels(
   )
 }
 
+// Credly's channelName is a renamable display title (see alignSyncUnitChannelName), unlike
+// GitHub's stable repo-slug channelName, so a removed template is matched by channelId here.
+export async function decommissionSyncUnitsForChannelIds(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelIds: string[],
+): Promise<number> {
+  if (channelIds.length === 0) {
+    return 0
+  }
+
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'decommissioned', "updatedAt" = now()
+     WHERE "integrationId" = $(integrationId)
+       AND status <> 'decommissioned'
+       AND "channelId" = ANY($(channelIds)::text[])`,
+    { integrationId, channelIds },
+  )
+}
+
 export async function decommissionAllSyncUnits(
   qx: QueryExecutor,
   integrationId: string,
