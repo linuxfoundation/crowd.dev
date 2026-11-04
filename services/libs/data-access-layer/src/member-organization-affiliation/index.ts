@@ -265,7 +265,9 @@ export async function prepareMemberOrganizationAffiliationTimeline(
       WITH aggs as (
       SELECT
           osa."organizationId",
-          sum(osa."memberCount") AS total_count
+          -- numeric so it arrives as a number: on an integer column sum() is bigint, which
+          -- pg returns as a string, and the member-count tie-break compared text ("24" > "1342066")
+          sum(osa."memberCount")::numeric AS total_count
       FROM "organizationSegmentsAgg" osa
       -- only the member's organizations; summing every organization took seconds per refresh
       WHERE osa."organizationId" IN (
