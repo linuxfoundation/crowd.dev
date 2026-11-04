@@ -39,7 +39,7 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import type { Pagination } from '@/shared/types/Pagination';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import { segmentService } from '@/modules/lf/segments/segments.service';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 
@@ -64,7 +64,7 @@ const model = computed({
 });
 
 const { data, isPending } = useQuery<Pagination<ProjectGroup>>({
-  queryKey: [TanstackKey.ADMIN_PROJECT_GROUPS, 'integration-foundations'],
+  queryKey: queryKeys.projectGroups.integrationFoundations,
   queryFn: segmentService.queryProjectGroups(() => ({
     limit: 500,
     offset: 0,
