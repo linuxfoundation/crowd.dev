@@ -108,7 +108,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { QueryFunction } from '@tanstack/vue-query';
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { Pagination } from '@/shared/types/Pagination';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import { useDebounce } from '@vueuse/core';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -136,10 +136,7 @@ const {
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_PROJECT_GROUPS,
-  searchValue.value,
-]);
+const queryKey = computed(() => queryKeys.projectGroups.search(searchValue.value));
 
 const projectGroupsQueryFn = segmentService.queryProjectGroups(() => ({
   limit: 20,

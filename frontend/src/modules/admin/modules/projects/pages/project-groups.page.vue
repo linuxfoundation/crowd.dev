@@ -103,7 +103,7 @@ import type { QueryFunction } from '@tanstack/vue-query';
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { Pagination } from '@/shared/types/Pagination';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import { segmentService } from '@/modules/lf/segments/segments.service';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -128,11 +128,7 @@ const isProjectFormDrawerOpen = ref(false);
 
 const isProjectAdminUser = computed(() => roles.value.includes(LfRole.projectAdmin));
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_PROJECT_GROUPS,
-  isProjectAdminUser.value,
-  searchQuery.value,
-]);
+const queryKey = computed(() => queryKeys.projectGroups.adminList(isProjectAdminUser.value, searchQuery.value));
 
 const projectGroupsQueryFn = segmentService.queryProjectGroups(() => ({
   limit: 20,

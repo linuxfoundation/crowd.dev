@@ -111,7 +111,7 @@ import { INSIGHTS_PROJECTS_SERVICE } from '@/modules/admin/modules/insights-proj
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import { useDebounce } from '@vueuse/core';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import type { QueryFunction } from '@tanstack/vue-query';
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { Pagination } from '@/shared/types/Pagination';
@@ -174,10 +174,7 @@ const rules = {
 
 const $v = useVuelidate(rules, form);
 
-const queryKey = computed(() => [
-  TanstackKey.ADMIN_SUB_PROJECTS,
-  searchValue.value,
-]);
+const queryKey = computed(() => queryKeys.subProjects.search(searchValue.value));
 
 const queryFn = INSIGHTS_PROJECTS_SERVICE.querySubProjects(() => ({
   limit: 20,
