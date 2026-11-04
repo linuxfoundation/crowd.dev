@@ -267,7 +267,14 @@ export async function prepareMemberOrganizationAffiliationTimeline(
           osa."organizationId",
           sum(osa."memberCount") AS total_count
       FROM "organizationSegmentsAgg" osa
-      WHERE osa."segmentId" IN (
+      -- only the member's organizations; summing every organization took seconds per refresh
+      WHERE osa."organizationId" IN (
+          SELECT "organizationId"
+          FROM "memberOrganizations"
+          WHERE "memberId" = $(memberId)
+            AND "deletedAt" IS NULL
+      )
+      AND osa."segmentId" IN (
           SELECT id
           FROM segments
           WHERE "grandparentId" is not null
@@ -407,116 +414,133 @@ export async function prepareMemberOrganizationAffiliationTimeline(
   return [...baseTimeline, ...manualTimeline, ...emailAffiliations]
 }
 
-async function processAffiliationActivities(
+// Manual segment affiliations come first, then email domains, then the date-based timeline.
+// The three kinds cover disjoint activities, so the order only makes an overlap deterministic.
+function timelineItemRank(item: TimelineItem, index: number): number {
+  const kind = item.segmentId ? 0 : item.matchEmailDomain ? 1 : 2
+  return kind * 1_000_000 + index
+}
+
+// Writes the timeline in one pass per batch: each activity takes the organization of the first
+// timeline item that covers it, and only changed activities are written. Activities are read by
+// memberId only, so the plan never depends on date-range estimates.
+async function applyAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
-  affiliation: TimelineItem,
+  timeline: TimelineItem[],
   batchSize = 5000,
-): Promise<number> {
-  let rowsUpdated
+): Promise<{ processed: number; batches: number }> {
+  if (timeline.length === 0) {
+    return { processed: 0, batches: 0 }
+  }
+
+  const items = timeline.map((item, index) => ({
+    rank: timelineItemRank(item, index),
+    organizationId: item.organizationId ?? null,
+    dateStart: item.dateStart ?? null,
+    dateEnd: item.dateEnd ?? null,
+    segmentId: item.segmentId ?? null,
+    matchEmailDomain: item.matchEmailDomain ?? null,
+    excludeEmailDomains:
+      !item.matchEmailDomain && item.excludeEmailDomains?.length ? item.excludeEmailDomains : null,
+    skipManual: !!item.skipManualAffiliationSegments,
+  }))
+  const checkManualCoverage = items.some((item) => item.skipManual)
+
   let processed = 0
-
-  const params: Record<string, unknown> = {
-    memberId,
-    batchSize,
-    organizationId: affiliation.organizationId ?? null,
-  }
-
-  // Build the where conditions for the subquery
-  const conditions = [`ar."memberId" = $(memberId)`]
-
-  // Organization filtering
-  if (affiliation.organizationId) {
-    conditions.push(`(ar."organizationId" is null or ar."organizationId" <> $(organizationId))`)
-  } else {
-    conditions.push(`ar."organizationId" is not null`)
-  }
-
-  // Date filtering
-  if (affiliation.dateStart) {
-    conditions.push(`ar."timestamp" >= $(dateStart)::date`)
-    params.dateStart = affiliation.dateStart
-  }
-  if (affiliation.dateEnd) {
-    conditions.push(`ar."timestamp" < $(dateEnd)::date + interval '1 day'`)
-    params.dateEnd = affiliation.dateEnd
-  }
-
-  // Give each pass a disjoint slice of activities by email so no row is written twice: matchEmailDomain
-  // takes activities on this org's domain, excludeEmailDomains takes the rest (no '@', or a foreign domain).
-  if (affiliation.matchEmailDomain) {
-    conditions.push(`split_part(lower(ar.username), '@', 2) = $(matchEmailDomain)`)
-    params.matchEmailDomain = affiliation.matchEmailDomain
-  } else if (affiliation.excludeEmailDomains?.length) {
-    conditions.push(`(
-      position('@' in coalesce(ar.username, '')) = 0
-      OR lower(split_part(ar.username, '@', 2)) NOT IN ($(excludeEmailDomains:csv))
-    )`)
-    params.excludeEmailDomains = affiliation.excludeEmailDomains
-  }
-
-  // Segment filtering (for manual affiliations)
-  if (affiliation.segmentId) {
-    conditions.push(`ar."segmentId" = $(segmentId)`)
-    params.segmentId = affiliation.segmentId
-  }
-
-  // Don't overwrite activities that a member segment affiliation covers
-  // Those are handled in the manual timeline.
-  if (affiliation.skipManualAffiliationSegments) {
-    conditions.push(`
-      NOT EXISTS (
-        SELECT 1
-        FROM "memberSegmentAffiliations" msa
-        WHERE msa."memberId" = $(memberId)
-          AND msa."segmentId" = ar."segmentId"
-          AND msa."deletedAt" IS NULL
-          AND msa."organizationId" IS NOT NULL
-          AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
-          AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
-      )
-    `)
-  }
-
-  const whereClause = conditions.join(' and ')
+  let batches = 0
+  let rowCount: number
 
   do {
-    const rowCount = await qx.result(
+    rowCount = await qx.result(
       `
-        UPDATE "activityRelations"
-        SET "organizationId" = $(organizationId), "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "activityId" in (
-          select ar."activityId" from "activityRelations" ar
-          where ${whereClause}
-          limit $(batchSize)
+        WITH items AS (
+          SELECT *
+          FROM jsonb_to_recordset($(items:json)::jsonb) AS i(
+            "rank" int,
+            "organizationId" uuid,
+            "dateStart" text,
+            "dateEnd" text,
+            "segmentId" uuid,
+            "matchEmailDomain" text,
+            "excludeEmailDomains" text[],
+            "skipManual" boolean
+          )
+        ),
+        changes AS (
+          SELECT ar."activityId", target."organizationId"
+          FROM "activityRelations" ar
+          -- activities a member segment affiliation covers are left to the manual timeline
+          CROSS JOIN LATERAL (
+            SELECT $(checkManualCoverage) AND EXISTS (
+              SELECT 1
+              FROM "memberSegmentAffiliations" msa
+              WHERE msa."memberId" = $(memberId)
+                AND msa."segmentId" = ar."segmentId"
+                AND msa."deletedAt" IS NULL
+                AND msa."organizationId" IS NOT NULL
+                AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
+                AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
+            ) AS covered
+          ) manual
+          CROSS JOIN LATERAL (
+            SELECT i."organizationId"
+            FROM items i
+            WHERE (i."dateStart" IS NULL OR ar."timestamp" >= i."dateStart"::date)
+              AND (i."dateEnd" IS NULL OR ar."timestamp" < i."dateEnd"::date + interval '1 day')
+              AND (i."segmentId" IS NULL OR ar."segmentId" = i."segmentId")
+              AND (
+                i."matchEmailDomain" IS NULL
+                OR split_part(lower(ar.username), '@', 2) = i."matchEmailDomain"
+              )
+              AND (
+                i."excludeEmailDomains" IS NULL
+                OR position('@' in coalesce(ar.username, '')) = 0
+                OR lower(split_part(ar.username, '@', 2)) <> ALL (i."excludeEmailDomains")
+              )
+              AND (NOT i."skipManual" OR NOT manual.covered)
+            ORDER BY i."rank"
+            LIMIT 1
+          ) target
+          WHERE ar."memberId" = $(memberId)
+            AND target."organizationId" IS DISTINCT FROM ar."organizationId"
+          LIMIT $(batchSize)
         )
+        UPDATE "activityRelations" ar
+        SET "organizationId" = changes."organizationId", "updatedAt" = CURRENT_TIMESTAMP
+        FROM changes
+        WHERE ar."activityId" = changes."activityId"
       `,
-      params,
+      { memberId, items, checkManualCoverage, batchSize },
     )
 
-    rowsUpdated = rowCount
-    processed += rowsUpdated
-  } while (rowsUpdated === batchSize)
+    processed += rowCount
+    batches++
+  } while (rowCount === batchSize)
 
-  logger.debug({ memberId, affiliation, processed }, 'Processed activities for affiliation!')
-
-  return processed
+  return { processed, batches }
 }
 
 export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, memberId: string) {
   const start = performance.now()
 
-  const affiliations = await prepareMemberOrganizationAffiliationTimeline(qx, memberId)
+  const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, memberId)
+  const timelineMs = performance.now() - start
 
-  // process timeline in parallel
-  const results = await Promise.all(
-    affiliations.map((affiliation) => processAffiliationActivities(qx, memberId, affiliation)),
-  )
+  const { processed, batches } = await applyAffiliationTimeline(qx, memberId, timeline)
 
   const duration = performance.now() - start
-  const processed = results.reduce((acc, processed) => acc + processed, 0)
 
-  logger.info({ memberId }, `Refreshed ${processed} activities in ${duration}ms`)
+  logger.info(
+    {
+      memberId,
+      timelineItems: timeline.length,
+      batches,
+      timelineMs: Math.round(timelineMs),
+      updateMs: Math.round(duration - timelineMs),
+    },
+    `Refreshed ${processed} activities in ${duration}ms`,
+  )
 }
 
 export async function changeMemberOrganizationAffiliationOverrides(
