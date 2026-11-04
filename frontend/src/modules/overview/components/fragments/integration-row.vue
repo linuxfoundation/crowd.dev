@@ -90,7 +90,7 @@ import { getIntegrationStatus } from '@/modules/admin/modules/integration/config
 import { lfIntegrations } from '@/config/integrations';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfxDropdown from '@/ui-kit/lfx/dropdown/dropdown.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -104,7 +104,7 @@ const props = defineProps<{
 
 const { trackEvent } = useProductTracking();
 
-const { doDestroy } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 const isSettingsOpen = ref(false);
 const hasOpenedSettings = ref(false);
@@ -135,7 +135,7 @@ const disconnectIntegration = async (integration: IntegrationStatus) => {
       platform: integration.platform,
     },
   });
-  await doDestroy(integration.id);
+  await integrationStore.destroy(integration.id);
 
   // TODO: Fetch integrations
 };

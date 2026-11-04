@@ -14,11 +14,12 @@ const { buildFilterFromAttributes } = customAttributesService();
 
 let lastRequestId = 0;
 
-const fetchCustomAttributes = (): Promise<void> => MemberService.fetchCustomAttributes()
-  .then(() => undefined)
-  .catch((error: unknown) => {
-    Errors.handle(error);
-  });
+const fetchCustomAttributes = (): Promise<void> =>
+  MemberService.fetchCustomAttributes()
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      Errors.handle(error);
+    });
 
 export default {
   fetchMembers(

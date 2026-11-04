@@ -95,7 +95,7 @@ import type {
 import LfGithubSettingsMapping from '@/config/integrations/github-nango/components/settings/github-settings-mapping.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import { ToastStore } from '@/shared/message/notification';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import AppDrawer from '@/shared/drawer/drawer.vue';
 import {
@@ -120,7 +120,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
@@ -213,7 +213,7 @@ const connect = () => {
     props.integration?.id,
   )
     .then((integration) => {
-      doFetch([integration.segmentId]);
+      integrationStore.fetch([integration.segmentId]);
 
       trackEvent({
         key: FeatureEventKey.CONNECT_INTEGRATION,

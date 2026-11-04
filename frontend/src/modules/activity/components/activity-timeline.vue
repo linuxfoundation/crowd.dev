@@ -204,7 +204,6 @@
 </template>
 
 <script setup lang="ts">
-import { useStore } from 'vuex';
 import {
   computed, ref, h, onMounted, watch,
 } from 'vue';
@@ -219,6 +218,7 @@ import AppActivityContentFooter from '@/modules/activity/components/activity-con
 import AppLfActivityParent from '@/modules/lf/activity/components/lf-activity-parent.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfActivityDisplay from '@/shared/modules/activity/components/activity-display.vue';
@@ -262,7 +262,7 @@ const SearchIcon = h(
   [],
 );
 
-const store = useStore();
+const integrationStore = useIntegrationStore();
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 
@@ -425,10 +425,7 @@ watch(platform, async (newValue, oldValue) => {
 });
 
 onMounted(async () => {
-  await store.dispatch(
-    'integration/doFetch',
-    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
-  );
+  await integrationStore.fetch(selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : []);
   await fetchActivities();
 });
 

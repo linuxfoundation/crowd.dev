@@ -148,8 +148,10 @@
 <script lang="ts" setup>
 import type { IntegrationConfig } from '@/config/integrations';
 import { computed, onMounted, ref } from 'vue';
-import { mapGetters } from '@/shared/vuex/vuex.helpers';
+import { storeToRefs } from 'pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfIntegrationStatus from '@/modules/admin/modules/integration/components/integration-status.vue';
+import type { IntegrationStatusSource } from '@/modules/admin/modules/integration/config/status';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -172,33 +174,34 @@ const props = defineProps<{
 
 const route = useRoute();
 
-const { findByPlatform } = mapGetters('integration');
+const { findByPlatform } = storeToRefs(useIntegrationStore());
 
 const isModalOpen = ref(false);
 const isDisconnectDisabled = ref(false);
 
 const integration = computed(() => findByPlatform.value(props.config.key));
 
-const status = computed(() => getIntegrationStatus(integration.value));
+// shortcut: an unconnected platform passes undefined, as before. revisit: when the status config accepts a missing integration.
+const status = computed(() => getIntegrationStatus(integration.value as IntegrationStatusSource));
 const isV2 = computed(() => integration.value?.isNango && integration.value?.status);
 
 const lastDataCheckCompleted = computed(() => {
-  if (['github', 'gerrit', 'jira', 'confluence'].includes(integration.value.platform)) {
+  if (['github', 'gerrit', 'jira', 'confluence'].includes(integration.value?.platform ?? '')) {
     return '1 hour ago';
   }
 
-  if (integration.value.platform === 'git') {
+  if (integration.value?.platform === 'git') {
     return '5 hours ago';
   }
 
-  return dateHelper(integration.value.lastProcessedAt).fromNow();
+  return dateHelper(integration.value?.lastProcessedAt).fromNow();
 });
 
 const isDropdownVisible = computed(() => !props.config.autoManaged || !!props.config.dropdownComponent);
 
-const isInProgress = computed(() => integration.value.status === 'in-progress');
-const hasError = computed(() => integration.value.status === 'error');
-const isComplete = computed(() => integration.value.status === 'done');
+const isInProgress = computed(() => integration.value?.status === 'in-progress');
+const hasError = computed(() => integration.value?.status === 'error');
+const isComplete = computed(() => integration.value?.status === 'done');
 
 const selectedProgress = computed(() => (props.progress || []).find((p) => p.platform === props.config.key));
 
