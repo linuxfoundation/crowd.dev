@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Credential } from '../../types'
+import { CREDLY_SAFE_CALLS_PER_WINDOW } from './budget'
 import { discoverCredly } from './discover'
 import { credlyConnector } from './index'
 
@@ -41,6 +42,8 @@ describe('credlyConnector', () => {
     ])
     expect(credlyConnector.preparePool).toBeTypeOf('function')
     expect(credlyConnector.mintToken).toBeTypeOf('function')
+    expect(credlyConnector.probeBudget).toBeTypeOf('function')
+    expect(credlyConnector.runCostEstimate).toBe(CREDLY_SAFE_CALLS_PER_WINDOW)
     expect(credlyConnector.emitsOwnSegment).toBe(true)
   })
 })

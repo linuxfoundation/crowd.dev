@@ -29,7 +29,7 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     const pool = createTokenPool(svc.redis, unit.platform, {
       probeBudget: manifest?.probeBudget,
     })
-    return pool.hasHeadroom(DEFAULT_RUN_ESTIMATE)
+    return pool.hasHeadroom(manifest?.runCostEstimate ?? DEFAULT_RUN_ESTIMATE)
   })
   const result = {
     admitted: units.filter((_, index) => headrooms[index]),

@@ -1,4 +1,5 @@
 import type { Manifest } from '../../types'
+import { CREDLY_SAFE_CALLS_PER_WINDOW, probeCredlyBudget } from './budget'
 import { createCredlyDeps } from './deps'
 import type { CredlyDeps } from './deps'
 import { discoverCredly } from './discover'
@@ -26,6 +27,8 @@ export const credlyConnector: Manifest<CredlyDeps> = {
   discover: discoverCredly,
   preparePool: prepareCredlyPool,
   mintToken: createCredlyTokenMinter,
+  probeBudget: probeCredlyBudget,
+  runCostEstimate: CREDLY_SAFE_CALLS_PER_WINDOW,
   createDeps: createCredlyDeps,
   emitsOwnSegment: true,
 }
