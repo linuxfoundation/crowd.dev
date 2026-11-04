@@ -8,6 +8,7 @@ are in [`docs/design/`](../design/README.md), which also explains which kind of 
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | [`sys-cdp.md`](sys-cdp.md)                                             | Every service under `services/apps/`, grouped by what it does                            |
 | [`data-flow.md`](data-flow.md)                                         | How an activity travels from a source platform to Tinybird and LFX Insights              |
+| [`sys-connectors.md`](sys-connectors.md)                               | Where the connector framework lives, its tables, and the decisions behind it             |
 | [`member-identity.md`](member-identity.md)                             | How members, organizations and their identities are stored, resolved and merged          |
 | [`flow-affiliation.md`](flow-affiliation.md)                           | Which organization each activity is credited to, and how that is recalculated and served |
 | [`flow-deduplication.md`](flow-deduplication.md)                       | How duplicate members and organizations are suggested, reviewed, merged and unmerged     |

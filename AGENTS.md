@@ -48,6 +48,7 @@ Old and new patterns coexist. Always use the new pattern.
 - **Multi-tenancy -> single tenant**: Multi-tenancy is being phased out. The tenant table still exists. Code uses `DEFAULT_TENANT_ID` from `@crowd/common`. Don't add new multi-tenant logic.
 - **Legacy auth -> Auth0**: Auth0 is the current auth system. Ignore old JWT patterns.
 - **Zod for validation**: Public API endpoints use Zod schemas with `validateOrThrow`. Follow this pattern for all new endpoints.
+- **Connector routing -> the channel is the mapping**: a connector record goes to the integration and segment of the sync unit that fetched it. Don't add mapping tables or routing in `integration.settings`. Read [`services/libs/connectors/README.md`](services/libs/connectors/README.md) before touching connectors or `sync_units`.
 
 ## Working with the database
 
