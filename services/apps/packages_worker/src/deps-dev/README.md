@@ -1,8 +1,12 @@
 # bq-dataset-ingest — BQ → GCS → Postgres pipeline
 
-Ingests public BigQuery datasets (deps.dev, OpenSSF Scorecard) into the
+Ingests public BigQuery datasets (deps.dev) into the
 packages database via a BQ export → GCS Parquet → staging → merge pipeline.
 Runs on the `bq-dataset-ingest` Temporal task queue.
+
+OpenSSF Scorecard no longer comes from BigQuery (the public dataset was retired on
+2026-08-30): the `scorecard` kind calls `https://api.securityscorecards.dev` once per
+CDP GitHub repo and writes `repos.scorecard_*` and `repo_scorecard_checks` directly.
 
 ## How to run
 
@@ -71,12 +75,15 @@ The override logic lives in `src/deps-dev/activities/bqExportToGcs.ts`.
 
 ## Environment variables
 
-| Variable                       | Required  | Purpose                                                 |
-| ------------------------------ | --------- | ------------------------------------------------------- |
-| `OSSPCKGS_GCP_PROJECT`         | yes       | GCP project ID for BQ and GCS                           |
-| `OSSPCKGS_GCS_BUCKET`          | yes       | GCS bucket for Parquet exports                          |
-| `OSSPCKGS_GCP_CREDENTIALS_B64` | yes       | Base64-encoded GCP service account JSON                 |
-| `CROWD_TEMPORAL_SERVER_URL`    | yes       | Temporal server address                                 |
-| `CROWD_TEMPORAL_NAMESPACE`     | yes       | Temporal namespace (overrides `backend-config` default) |
-| `CROWD_TEMPORAL_CERTIFICATE`   | prod only | Base64-encoded mTLS client certificate                  |
-| `CROWD_TEMPORAL_PRIVATE_KEY`   | prod only | Base64-encoded mTLS private key                         |
+| Variable                         | Required  | Purpose                                                                |
+| -------------------------------- | --------- | ---------------------------------------------------------------------- |
+| `OSSPCKGS_GCP_PROJECT`           | yes       | GCP project ID for BQ and GCS                                          |
+| `OSSPCKGS_GCS_BUCKET`            | yes       | GCS bucket for Parquet exports                                         |
+| `OSSPCKGS_GCP_CREDENTIALS_B64`   | yes       | Base64-encoded GCP service account JSON                                |
+| `CROWD_TEMPORAL_SERVER_URL`      | yes       | Temporal server address                                                |
+| `CROWD_TEMPORAL_NAMESPACE`       | yes       | Temporal namespace (overrides `backend-config` default)                |
+| `CROWD_TEMPORAL_CERTIFICATE`     | prod only | Base64-encoded mTLS client certificate                                 |
+| `CROWD_TEMPORAL_PRIVATE_KEY`     | prod only | Base64-encoded mTLS private key                                        |
+| `SCORECARD_API_BASE_URL`         | no        | Scorecard REST base URL (default `https://api.securityscorecards.dev`) |
+| `SCORECARD_API_CONCURRENCY`      | no        | Parallel Scorecard requests per page (default 20)                      |
+| `SCORECARD_API_FETCH_TIMEOUT_MS` | no        | Per-request timeout in ms (default 15000)                              |

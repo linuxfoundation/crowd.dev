@@ -1,5 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
-import { IDbRepoUpsert } from './types'
+import { IDbRepoScorecardCheckUpsert, IDbRepoScorecardUpdate, IDbRepoUpsert } from './types'
 
 export async function findRepoIdsByUrl(
   qx: QueryExecutor,
@@ -52,5 +52,67 @@ export async function deleteMavenPackageRepoLinks(
     `DELETE FROM package_repos
      WHERE package_id = ANY($(packageIds)::bigint[]) AND source = 'declared'`,
     { packageIds },
+  )
+}
+
+export async function updateRepoScorecards(
+  qx: QueryExecutor,
+  rows: IDbRepoScorecardUpdate[],
+): Promise<number> {
+  if (rows.length === 0) return 0
+  return qx.result(
+    `
+    WITH v AS (
+      SELECT
+        (j->>'repoId')::bigint          AS id,
+        (j->>'score')::numeric(3,1)     AS score,
+        (j->>'lastRunAt')::timestamptz  AS last_run_at
+      FROM jsonb_array_elements($(rows)::jsonb) j
+    ),
+    locked AS (
+      SELECT r.id
+      FROM repos r
+      JOIN v ON v.id = r.id
+      ORDER BY r.id
+      FOR NO KEY UPDATE OF r
+    )
+    UPDATE repos r
+    SET scorecard_score       = v.score,
+        scorecard_last_run_at = v.last_run_at,
+        updated_at            = NOW()
+    FROM v
+    JOIN locked ON locked.id = v.id
+    WHERE r.id = v.id
+      AND (
+        r.scorecard_score IS DISTINCT FROM v.score
+        OR r.scorecard_last_run_at IS DISTINCT FROM v.last_run_at
+      )
+    `,
+    { rows: JSON.stringify(rows) },
+  )
+}
+
+export async function upsertRepoScorecardChecks(
+  qx: QueryExecutor,
+  rows: IDbRepoScorecardCheckUpsert[],
+): Promise<number> {
+  if (rows.length === 0) return 0
+  return qx.result(
+    `
+    INSERT INTO repo_scorecard_checks (repo_id, check_name, score, reason)
+    SELECT
+      (j->>'repoId')::bigint,
+      j->>'checkName',
+      (j->>'score')::real,
+      j->>'reason'
+    FROM jsonb_array_elements($(rows)::jsonb) j
+    ON CONFLICT (repo_id, check_name) DO UPDATE SET
+      score      = EXCLUDED.score,
+      reason     = EXCLUDED.reason,
+      updated_at = NOW()
+    WHERE repo_scorecard_checks.score IS DISTINCT FROM EXCLUDED.score
+       OR repo_scorecard_checks.reason IS DISTINCT FROM EXCLUDED.reason
+    `,
+    { rows: JSON.stringify(rows) },
   )
 }

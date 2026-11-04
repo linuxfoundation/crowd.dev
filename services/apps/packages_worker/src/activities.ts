@@ -88,7 +88,11 @@ export {
   syncGovernanceContributors,
 } from './member-contributors/activities'
 export { slackNotify } from './activities/index'
-export { syncGithubRepos } from './scorecard/activities'
+export {
+  ingestScorecardPage,
+  notifyScorecardIngestFailed,
+  syncGithubRepos,
+} from './scorecard/activities'
 export {
   sweepPackageRepoConfidenceScores,
   reportTiedPackageRepos,
