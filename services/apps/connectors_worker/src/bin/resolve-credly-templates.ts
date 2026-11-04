@@ -9,6 +9,7 @@ import {
   CREDLY_POOL_ENTRY_ID,
   mintCredlyAccessToken,
 } from '@crowd/connectors/src/connectors/credly/oauth'
+import { WINDOW_LAG_MS } from '@crowd/connectors/src/connectors/credly/syncs/badgePoll'
 import {
   findSyncUnitByChannelId,
   mergeSyncUnitWatermark,
@@ -118,7 +119,8 @@ async function main(): Promise<void> {
       )
       process.exit(1)
     }
-    const backfill = { floor: CREDLY_HISTORY_START, top: new Date().toISOString() }
+    const top = new Date(Date.now() - WINDOW_LAG_MS).toISOString()
+    const backfill = { floor: CREDLY_HISTORY_START, top }
     const armed = await mergeSyncUnitWatermark(qx, unit.id, { backfill })
     if (armed === 0) {
       log.error(
