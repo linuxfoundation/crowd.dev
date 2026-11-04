@@ -164,10 +164,13 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           await cleanupOrphanMemberSegmentAffiliations(tx, memberId, [existing.organizationId])
 
           const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
+            existing.organizationId,
             data.organizationId,
           ])
+          const isSourceBlocked = orgAffiliationPolicyById.get(existing.organizationId) ?? false
+          const isTargetBlocked = orgAffiliationPolicyById.get(data.organizationId) ?? false
 
-          if (orgAffiliationPolicyById.get(data.organizationId)) {
+          if (isTargetBlocked) {
             await changeMemberOrganizationAffiliationOverrides(tx, [
               {
                 memberId,
@@ -179,6 +182,16 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
               memberId,
               organizationId: data.organizationId,
             })
+          } else if (isSourceBlocked) {
+            // A deny on a blocked org's row is indistinguishable from the policy one, so it's lifted
+            // with the move (same as merge). Set true rather than undefined: the upsert COALESCEs.
+            await changeMemberOrganizationAffiliationOverrides(tx, [
+              {
+                memberId,
+                memberOrganizationId: workExperienceId,
+                allowAffiliation: true,
+              },
+            ])
           }
         }
       })
