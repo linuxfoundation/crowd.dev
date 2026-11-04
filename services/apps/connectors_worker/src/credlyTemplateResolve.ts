@@ -5,6 +5,7 @@ import type {
   ResolvedTemplate,
   TemplateToResolve,
 } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
+import { WINDOW_LAG_MS } from '@crowd/connectors/src/connectors/credly/syncs/badgePoll'
 import type {
   CredlyDecisionOutcome,
   ICredlyStoredTemplateMapping,
@@ -219,18 +220,18 @@ export function unreleasedTemplatesToQueue(
   }))
 }
 
-// The live cursor starts exactly where the backfill's top ends, so a unit onboarded long before
-// its first actual run never misses the badge activity in between: top alone says where the next
-// one goes, for the live poll just as much as for the backfill cursor.
+// The live cursor starts where the backfill's top ends, both clamped to WINDOW_LAG_MS before `now`
+// like every live window in badgePoll.ts, so a badge Credly hasn't surfaced yet isn't missed.
 function backfillWatermark(
   createdAt: string | null | undefined,
   now: Date,
 ): Record<string, unknown> {
+  const top = new Date(now.getTime() - WINDOW_LAG_MS)
   return {
-    since: now.toISOString(),
+    since: top.toISOString(),
     backfill: {
-      floor: releaseFloor(createdAt, now),
-      top: now.toISOString(),
+      floor: releaseFloor(createdAt, top),
+      top: top.toISOString(),
       since: null,
       until: null,
       page: 1,
