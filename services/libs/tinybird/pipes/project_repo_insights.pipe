@@ -10,6 +10,9 @@ DESCRIPTION >
     - `orderByDirection`: Optional string ('asc' or 'desc'), defaults to 'asc'
     - `pageSize`: Optional integer for result limit, defaults to 10
     - `page`: Optional integer for pagination offset calculation, defaults to 0
+    - `limit`: Optional integer row count; when given, it and `offset` replace `pageSize` and `page`
+    - `offset`: Optional integer number of rows to skip, defaults to 0, used with `limit`
+    - Rows that tie on the sort field and name are ordered by `type`, then `id`
     - Response: Project and repository records with insights metrics
     - `healthScoreV2`, `healthLabel`, `lifecycleLabel`, `impactScore`, `impactLabel` are the Akrites-methodology fields (see `project_insights_copy_ds` for band definitions); may be null when the record has no linked package data. `healthScoreV2` is distinct from the legacy `healthScore` field.
     - `maintainerHealthScoreV2` (0-40), `securitySupplyChainScoreV2` (0-35), `developmentActivityScoreV2` (0-25) are the Health Score v2 category breakdown (IN-1212). For project records: independent medians (`quantileExact(0.5)`) over the project's enabled, non-excluded repos; `healthScoreV2` is their sum (null-guarded per IN-1248). For repo records: per-repo values passed through from `health_score_v2_repo_copy_ds`; they sum to `healthScoreV2` only when all three categories are available; missing categories are imputed at the population median rate (IN-1249). Null when the record has no value for that category.
@@ -120,6 +123,9 @@ SQL >
         ) == 'ASC' %} ASC
         {% else %} DESC
         {% end %},
-        name ASC
-    LIMIT {{ Int32(pageSize, 10) }}
-    OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+        name ASC,
+        type ASC,
+        id ASC
+    {% if defined(limit) %} LIMIT {{ Int32(limit, 10) }} OFFSET {{ Int32(offset, 0) }}
+    {% else %} LIMIT {{ Int32(pageSize, 10) }} OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+    {% end %}
