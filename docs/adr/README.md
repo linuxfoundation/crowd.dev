@@ -42,6 +42,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0033](./0033-connector-emit-per-call-segment.md)              | Connector emit() takes per-call segment overrides                                                    | accepted | 2026-09-30 |
 | [ADR-0034](./0034-connector-sync-deps-bag.md)                      | Connector syncs get database access through a typed per-connector deps bag                           | accepted | 2026-10-13 |
 | [ADR-0035](./0035-merge-suggestion-sources.md)                     | Track where merge suggestions come from                                                              | accepted | 2026-10-20 |
+| [ADR-0036](./0036-connector-channel-is-the-mapping.md)             | Connector routing — the sync unit's channel is the mapping                                           | proposed | 2026-11-04 |
 
 ## Why ADRs?
 
