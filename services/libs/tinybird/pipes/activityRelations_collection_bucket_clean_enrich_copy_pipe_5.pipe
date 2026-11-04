@@ -4,8 +4,8 @@ DESCRIPTION >
     copy pipes (activityRelations_bucket_clean_enrich_copy_pipe_5.pipe) - the result depends on
     activityRelations, member bot-status, and repository enable/disable state, none of which are
     append-only-safe, so this recomputes the full bucket via COPY_MODE replace rather than
-    appending. Scheduled daily, staggered 5 minutes apart across all 10 collection buckets (this
-    bucket at :20) so all 10 full-replace jobs don't fire simultaneously.
+    appending. Scheduled daily, staggered 20 minutes apart across all 10 collection buckets (this
+    bucket at 08:40 UTC) so each full-replace job mostly finishes before the next starts.
 
 NODE country_mapping_array
 SQL >
@@ -54,4 +54,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE activityRelations_collection_deduplicated_cleaned_bucket_5_ds
 COPY_MODE replace
-COPY_SCHEDULE 25 4 * * *
+COPY_SCHEDULE 40 8 * * *
