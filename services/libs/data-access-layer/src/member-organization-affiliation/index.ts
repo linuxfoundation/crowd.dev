@@ -423,9 +423,8 @@ function timelineItemRank(item: TimelineItem, index: number): number {
   return kind * 1_000_000 + index
 }
 
-// Writes the timeline in one pass per batch: each activity takes the organization of the first
-// timeline item that covers it, and only changed activities are written. Activities are read by
-// memberId only, so the plan never depends on date-range estimates.
+// Read activities by memberId only: date-range filters got bad plans, as future-dated
+// activities make Postgres estimate any recent week at a few thousand rows.
 async function applyAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
