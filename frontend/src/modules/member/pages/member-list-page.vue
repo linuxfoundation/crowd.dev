@@ -69,6 +69,9 @@
         v-model:pagination="pagination"
         :has-integrations="hasIntegrations"
         :has-members="membersCount > 0"
+        :members="membersData?.rows ?? []"
+        :total-members="membersCount"
+        :saved-filter-body="savedFilterBody"
         :is-page-loading="loading"
         :is-table-loading="tableLoading"
         @update:pagination="onPaginationChange"
@@ -86,6 +89,8 @@ import AppLfPageHeader from '@/modules/lf/layout/components/lf-page-header.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import AppMemberListTable from '@/modules/member/components/list/member-list-table.vue';
 import { MemberService } from '@/modules/member/member-service';
+import { useMembersQuery } from '@/modules/member/queries/useMembersQuery';
+import type { MembersListParams } from '@/modules/member/queries/useMembersQuery';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import AppPageWrapper from '@/shared/layout/page-wrapper.vue';
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
@@ -140,7 +145,7 @@ const { search: initialSearch, filter: initialFilter, orderBy: initialOrderBy } 
   memberSavedViews,
 );
 
-const queryParams = ref({
+const queryParams = ref<MembersListParams>({
   search: initialSearch || '',
   filter: initialFilter,
   offset: 0,
@@ -149,34 +154,16 @@ const queryParams = ref({
   segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
 });
 
-// Create a computed query key for members
-const membersQueryKey = computed(() => queryKeys.members.list({
-  projectGroupId: selectedProjectGroup.value?.id,
-  search: queryParams.value.search,
-  filter: queryParams.value.filter,
-  offset: queryParams.value.offset,
-  limit: queryParams.value.limit,
-  orderBy: queryParams.value.orderBy,
-  segments: queryParams.value.segments,
-}));
-
-// Query for members list with caching
 const {
   data: membersData,
   isLoading: membersLoading,
   isFetching: membersFetching,
-} = useQuery({
-  queryKey: membersQueryKey,
-  queryFn: () => MemberService.listMembers({
-    search: queryParams.value.search,
-    filter: queryParams.value.filter,
-    offset: queryParams.value.offset,
-    limit: queryParams.value.limit,
-    orderBy: queryParams.value.orderBy,
-    segments: queryParams.value.segments,
-  }),
-  enabled: !!selectedProjectGroup.value?.id,
-});
+  isPlaceholderData: membersIsPlaceholder,
+} = useMembersQuery(
+  queryParams,
+  computed(() => selectedProjectGroup.value?.id),
+  !!selectedProjectGroup.value?.id,
+);
 
 // Create a computed query key for merge suggestions
 const mergeSuggestionsQueryKey = computed(() => queryKeys.members.mergeSuggestionsCount(selectedProjectGroup.value?.id));
@@ -190,12 +177,11 @@ const {
   enabled: !!selectedProjectGroup.value?.id,
 });
 
-// Watch for members data changes and update the store
+const savedFilterBody = ref<Omit<MembersListParams, 'segments'> | Record<string, never>>({});
+
 watch(membersData, (newData) => {
-  if (newData) {
-    memberStore.members = newData.rows || [];
-    memberStore.totalMembers = newData.count || 0;
-    memberStore.savedFilterBody = {
+  if (newData && !membersIsPlaceholder.value) {
+    savedFilterBody.value = {
       search: queryParams.value.search,
       filter: queryParams.value.filter,
       offset: queryParams.value.offset,

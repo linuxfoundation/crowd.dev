@@ -16,14 +16,10 @@ import {
 import { customAttributesService } from '@/shared/modules/filters/services/custom-attributes.service';
 import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
-import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
-import type { Pagination } from '@/shared/types/Pagination';
 import type { Member } from '@/modules/member/types/Member';
 import allMembers from '@/modules/member/config/saved-views/views/all-members';
 
 const { buildFilterFromAttributes } = customAttributesService();
-
-let lastRequestId = 0;
 
 const refetchCustomAttributes = (): Promise<void> => MemberService.fetchCustomAttributes()
   .then(() => undefined)
@@ -37,34 +33,6 @@ export const useMemberStore = defineStore('member', () => {
   const customAttributesFilter = ref<Record<string, FilterConfig>>({});
   const selectedMembers = ref<Member[]>([]);
   const toMergeMember = ref<{ id: string; segmentId: string } | null>(null);
-
-  const members = ref<Member[]>([]);
-  const totalMembers = ref(0);
-  const savedFilterBody = ref<ApiFilter>({});
-
-  function fetchMembers({ body = {}, reload = false }: { body?: ApiFilter, reload?: boolean }): Promise<Pagination<Member>> {
-    const mappedBody = reload ? { ...savedFilterBody.value, ...body } : body;
-    selectedMembers.value = [];
-    const currentRequestId = new Date().getTime();
-    lastRequestId = currentRequestId;
-    return MemberService.listMembers(mappedBody)
-      .then((data: Pagination<Member>) => {
-        if (lastRequestId === currentRequestId) {
-          members.value = data.rows;
-          totalMembers.value = data.count;
-          savedFilterBody.value = mappedBody;
-          return Promise.resolve(data);
-        }
-        return Promise.reject(data);
-      })
-      .catch((err) => {
-        if (lastRequestId === currentRequestId) {
-          members.value = [];
-          totalMembers.value = 0;
-        }
-        return Promise.reject(err);
-      });
-  }
 
   function getMemberCustomAttributes(): Promise<Record<string, FilterConfig>> {
     return MemberService.fetchCustomAttributes()
@@ -157,10 +125,6 @@ export const useMemberStore = defineStore('member', () => {
     customAttributesFilter,
     selectedMembers,
     toMergeMember,
-    members,
-    totalMembers,
-    savedFilterBody,
-    fetchMembers,
     getMemberCustomAttributes,
     fetchCustomAttributes,
     createCustomAttribute,
