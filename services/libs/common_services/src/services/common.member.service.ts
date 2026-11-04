@@ -35,6 +35,10 @@ import {
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
   findIdentitiesForMembers,
+  findManyAllUnknownDatedOrganizations,
+  findManyMemberManualAffiliations,
+  findManyMemberWorkExperiences,
+  findManyMostRecentUnknownDatedOrganizations,
   findMemberById,
   findMemberCountEstimateOfOrganizations,
   findMemberManualAffiliation,
@@ -58,7 +62,10 @@ import {
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
-import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
+import {
+  IOrganizationMemberCount,
+  IWorkExperienceData,
+} from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import {
   decrementMemberMergeSuggestionCounts,
@@ -69,6 +76,31 @@ import { Client as TemporalClient } from '@crowd/temporal'
 import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+export interface IAffiliationRequest {
+  memberId: string
+  segmentId: string
+  timestamp: string
+  affiliationEmailDomain?: string
+}
+
+// the experiences from the best-ranked source; more than one is a tie
+function highestPrioritySourceTier(experiences: IWorkExperienceData[]): IWorkExperienceData[] {
+  let bestRank = 4
+  let tier: IWorkExperienceData[] = []
+
+  for (const exp of experiences) {
+    const rank = getMemberOrganizationSourceRank(exp.source)
+    if (rank < bestRank) {
+      bestRank = rank
+      tier = [exp]
+    } else if (rank === bestRank) {
+      tier.push(exp)
+    }
+  }
+
+  return tier
+}
 
 export class CommonMemberService extends LoggerBase {
   public constructor(
@@ -254,8 +286,130 @@ export class CommonMemberService extends LoggerBase {
     return null
   }
 
+  // Same steps and rules as findAffiliation for many activities: each step is one query for the
+  // requests still unresolved, and member counts and organization domains are read once
+  public async findAffiliations(requests: IAffiliationRequest[]): Promise<(string | null)[]> {
+    const results: (string | null)[] = requests.map(() => null)
+    const candidates = new Map<number, IWorkExperienceData[]>()
+
+    const manual = await findManyMemberManualAffiliations(
+      this.qx,
+      requests.map(({ memberId, segmentId, timestamp }, key) => ({
+        key,
+        memberId,
+        segmentId,
+        timestamp,
+      })),
+    )
+    let open = requests.map((_, key) => key).filter((key) => !manual.has(key))
+    for (const [key, affiliation] of manual) {
+      results[key] = affiliation.organizationId
+    }
+
+    const takeFound = (found: Map<number, IWorkExperienceData[]>) => {
+      open = open.filter((key) => {
+        const experiences = found.get(key)
+        if (experiences?.length > 0) {
+          candidates.set(key, experiences)
+          return false
+        }
+        return true
+      })
+    }
+
+    takeFound(
+      await findManyMemberWorkExperiences(
+        this.qx,
+        open
+          .filter((key) => requests[key].affiliationEmailDomain)
+          .map((key) => ({
+            key,
+            memberId: requests[key].memberId,
+            timestamp: requests[key].timestamp,
+            orgDomain: requests[key].affiliationEmailDomain,
+          })),
+      ),
+    )
+
+    const current = await findManyMemberWorkExperiences(
+      this.qx,
+      open.map((key) => ({
+        key,
+        memberId: requests[key].memberId,
+        timestamp: requests[key].timestamp,
+      })),
+    )
+    const overlapping = open.filter((key) => current.get(key)?.length > 1)
+    takeFound(current)
+
+    takeFound(
+      await findManyMostRecentUnknownDatedOrganizations(
+        this.qx,
+        open.map((key) => ({
+          key,
+          memberId: requests[key].memberId,
+          timestamp: requests[key].timestamp,
+        })),
+      ),
+    )
+    takeFound(
+      await findManyAllUnknownDatedOrganizations(
+        this.qx,
+        open.map((key) => ({ key, memberId: requests[key].memberId })),
+      ),
+    )
+
+    if (overlapping.length > 0) {
+      const domains = await fetchManyOrganizationVerifiedPrimaryDomains(this.qx, [
+        ...new Set(overlapping.flatMap((key) => candidates.get(key).map((e) => e.organizationId))),
+      ])
+      for (const key of overlapping) {
+        candidates.set(
+          key,
+          preferCompanyOverUniversityWhenOverlapping(candidates.get(key), domains),
+        )
+      }
+    }
+
+    // only a tie in the best source tier, with no primary experience, is decided by member count
+    const countedIds = [
+      ...new Set(
+        [...candidates.values()]
+          .filter((list) => list.length > 1 && !list.some((e) => e.isPrimaryWorkExperience))
+          .map(highestPrioritySourceTier)
+          .filter((tier) => tier.length > 1)
+          .flatMap((tier) => tier.map((e) => e.organizationId)),
+      ),
+    ]
+    const memberCounts = new Map(
+      countedIds.length > 0
+        ? (await findMemberCountEstimateOfOrganizations(this.qx, countedIds)).map((c) => [
+            c.organizationId,
+            c.memberCount,
+          ])
+        : [],
+    )
+    // the same values and order findMemberCountEstimateOfOrganizations returns for these ids
+    const findMemberCounts = async (organizationIds: string[]) =>
+      organizationIds
+        .map((organizationId) => ({
+          organizationId,
+          memberCount: memberCounts.get(organizationId) ?? 0,
+        }))
+        .sort((a, b) => b.memberCount - a.memberCount)
+
+    for (const [key, experiences] of candidates) {
+      results[key] = await this.decidePrimaryOrganizationId(experiences, findMemberCounts)
+    }
+
+    return results
+  }
+
   public async decidePrimaryOrganizationId(
     experiences: IWorkExperienceData[],
+    findMemberCounts: (organizationIds: string[]) => Promise<IOrganizationMemberCount[]> = (
+      organizationIds,
+    ) => findMemberCountEstimateOfOrganizations(this.qx, organizationIds),
   ): Promise<string | null> {
     if (experiences.length > 0) {
       if (experiences.length === 1) {
@@ -269,18 +423,7 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
-      let bestRank = 4
-      let highestPrioritySourceExperiences: IWorkExperienceData[] = []
-
-      for (const exp of experiences) {
-        const rank = getMemberOrganizationSourceRank(exp.source)
-        if (rank < bestRank) {
-          bestRank = rank
-          highestPrioritySourceExperiences = [exp]
-        } else if (rank === bestRank) {
-          highestPrioritySourceExperiences.push(exp)
-        }
-      }
+      const highestPrioritySourceExperiences = highestPrioritySourceTier(experiences)
 
       // Keep only candidates from the highest-priority source tier
       if (highestPrioritySourceExperiences.length === 1) {
@@ -288,8 +431,7 @@ export class CommonMemberService extends LoggerBase {
       }
 
       // decide based on the member count in the organizations
-      const memberCounts = await findMemberCountEstimateOfOrganizations(
-        this.qx,
+      const memberCounts = await findMemberCounts(
         highestPrioritySourceExperiences.map((e) => e.organizationId),
       )
 

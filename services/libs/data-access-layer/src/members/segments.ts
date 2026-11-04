@@ -404,6 +404,198 @@ export async function findAllUnkownDatedOrganizations(
   return filterOutBlacklistedTitles(result)
 }
 
+// The batch variants below run the single-member query above once per lookup through a LATERAL
+// join, so filters and ordering stay the same. Results are keyed by the lookup's key.
+
+function groupRowsByKey<T>(rows: (T & { _key: number })[]): Map<number, T[]> {
+  const byKey = new Map<number, T[]>()
+  for (const { _key, ...row } of rows) {
+    const list = byKey.get(_key) ?? []
+    list.push(row as unknown as T)
+    byKey.set(_key, list)
+  }
+  return byKey
+}
+
+export async function findManyMemberManualAffiliations(
+  qx: QueryExecutor,
+  lookups: { key: number; memberId: string; segmentId: string; timestamp: string }[],
+): Promise<Map<number, IManualAffiliationData>> {
+  if (lookups.length === 0) {
+    return new Map()
+  }
+
+  const rows: (IManualAffiliationData & { _key: number })[] = await qx.select(
+    `
+      SELECT l."key" AS "_key", msa.*
+      FROM unnest(
+        $(keys)::int[], $(memberIds)::uuid[], $(segmentIds)::uuid[], $(timestamps)::timestamptz[]
+      ) AS l("key", "memberId", "segmentId", "timestamp")
+      CROSS JOIN LATERAL (
+        SELECT * FROM "memberSegmentAffiliations"
+        WHERE "memberId" = l."memberId"
+          AND "segmentId" = l."segmentId"
+          AND "deletedAt" IS NULL
+          AND (
+            ("dateStart" <= l."timestamp" AND "dateEnd" >= l."timestamp")
+            OR ("dateStart" <= l."timestamp" AND "dateEnd" IS NULL)
+            OR ("dateStart" IS NULL AND "dateEnd" IS NULL)
+          )
+        ORDER BY "dateStart" DESC NULLS LAST, "organizationId", id
+        LIMIT 1
+      ) msa
+    `,
+    {
+      keys: lookups.map((l) => l.key),
+      memberIds: lookups.map((l) => l.memberId),
+      segmentIds: lookups.map((l) => l.segmentId),
+      timestamps: lookups.map((l) => l.timestamp),
+    },
+  )
+
+  return new Map([...groupRowsByKey(rows)].map(([key, list]) => [key, list[0]]))
+}
+
+// A lookup with orgDomain matches findMemberWorkExperience with a domain, one without matches it by date
+export async function findManyMemberWorkExperiences(
+  qx: QueryExecutor,
+  lookups: { key: number; memberId: string; timestamp: string; orgDomain?: string }[],
+): Promise<Map<number, IWorkExperienceData[]>> {
+  if (lookups.length === 0) {
+    return new Map()
+  }
+
+  const rows: (IWorkExperienceData & { _key: number })[] = await qx.select(
+    `
+      SELECT l."key" AS "_key", e.*
+      FROM unnest(
+        $(keys)::int[], $(memberIds)::uuid[], $(timestamps)::timestamptz[], $(orgDomains)::text[]
+      ) AS l("key", "memberId", "timestamp", "orgDomain")
+      CROSS JOIN LATERAL (
+        SELECT
+          mo.*,
+          coalesce(ovr."isPrimaryWorkExperience", false) AS "isPrimaryWorkExperience",
+          row_number() OVER (ORDER BY mo."dateStart" DESC, mo."organizationId", mo.id) AS "_ord"
+        FROM "memberOrganizations" mo
+        LEFT JOIN "memberOrganizationAffiliationOverrides" ovr
+          ON ovr."memberOrganizationId" = mo.id
+        WHERE mo."memberId" = l."memberId"
+          AND mo."deletedAt" IS NULL
+          AND coalesce(ovr."allowAffiliation", true) = true
+          AND CASE
+            WHEN l."orgDomain" IS NOT NULL THEN EXISTS (
+              SELECT 1
+              FROM "organizationIdentities" oi
+              WHERE oi."organizationId" = mo."organizationId"
+                AND oi.type = 'primary-domain'
+                AND oi.verified = true
+                AND lower(oi.value) = lower(l."orgDomain")
+            )
+            ELSE (
+              mo."dateStart" <= l."timestamp"
+              AND (mo."dateEnd" >= l."timestamp" OR mo."dateEnd" IS NULL)
+            )
+          END
+      ) e
+      ORDER BY l."key", e."_ord"
+    `,
+    {
+      keys: lookups.map((l) => l.key),
+      memberIds: lookups.map((l) => l.memberId),
+      timestamps: lookups.map((l) => l.timestamp),
+      orgDomains: lookups.map((l) => l.orgDomain || null),
+    },
+  )
+
+  return filterGroupedExperiences(rows)
+}
+
+export async function findManyMostRecentUnknownDatedOrganizations(
+  qx: QueryExecutor,
+  lookups: { key: number; memberId: string; timestamp: string }[],
+): Promise<Map<number, IWorkExperienceData[]>> {
+  if (lookups.length === 0) {
+    return new Map()
+  }
+
+  const rows: (IWorkExperienceData & { _key: number })[] = await qx.select(
+    `
+      SELECT l."key" AS "_key", e.*
+      FROM unnest($(keys)::int[], $(memberIds)::uuid[], $(timestamps)::timestamptz[])
+        AS l("key", "memberId", "timestamp")
+      CROSS JOIN LATERAL (
+        SELECT
+          mo.*,
+          coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience",
+          row_number() OVER (ORDER BY mo."createdAt" DESC, mo."organizationId") AS "_ord"
+        FROM "memberOrganizations" mo
+        LEFT JOIN "memberOrganizationAffiliationOverrides" ovr on ovr."memberOrganizationId" = mo.id
+        WHERE mo."memberId" = l."memberId"
+          AND mo."dateStart" IS NULL
+          AND mo."dateEnd" IS NULL
+          AND mo."createdAt" <= l."timestamp"
+          AND mo."deletedAt" IS NULL
+          AND coalesce(ovr."allowAffiliation", true) = true
+      ) e
+      ORDER BY l."key", e."_ord"
+    `,
+    {
+      keys: lookups.map((l) => l.key),
+      memberIds: lookups.map((l) => l.memberId),
+      timestamps: lookups.map((l) => l.timestamp),
+    },
+  )
+
+  return filterGroupedExperiences(rows)
+}
+
+export async function findManyAllUnknownDatedOrganizations(
+  qx: QueryExecutor,
+  lookups: { key: number; memberId: string }[],
+): Promise<Map<number, IWorkExperienceData[]>> {
+  if (lookups.length === 0) {
+    return new Map()
+  }
+
+  const rows: (IWorkExperienceData & { _key: number })[] = await qx.select(
+    `
+      SELECT l."key" AS "_key", e.*
+      FROM unnest($(keys)::int[], $(memberIds)::uuid[]) AS l("key", "memberId")
+      CROSS JOIN LATERAL (
+        SELECT
+          mo.*,
+          coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience",
+          row_number() OVER (ORDER BY mo."createdAt", mo."organizationId") AS "_ord"
+        FROM "memberOrganizations" mo
+        LEFT JOIN "memberOrganizationAffiliationOverrides" ovr on ovr."memberOrganizationId" = mo.id
+        WHERE mo."memberId" = l."memberId"
+          AND mo."dateStart" IS NULL
+          AND mo."dateEnd" IS NULL
+          AND mo."deletedAt" IS NULL
+          AND coalesce(ovr."allowAffiliation", true) = true
+      ) e
+      ORDER BY l."key", e."_ord"
+    `,
+    {
+      keys: lookups.map((l) => l.key),
+      memberIds: lookups.map((l) => l.memberId),
+    },
+  )
+
+  return filterGroupedExperiences(rows)
+}
+
+function filterGroupedExperiences(
+  rows: (IWorkExperienceData & { _key: number; _ord?: unknown })[],
+): Map<number, IWorkExperienceData[]> {
+  const byKey = new Map<number, IWorkExperienceData[]>()
+  for (const [key, list] of groupRowsByKey(rows)) {
+    const experiences = list.map(({ _ord, ...experience }) => experience as IWorkExperienceData)
+    byKey.set(key, filterOutBlacklistedTitles(experiences))
+  }
+  return byKey
+}
+
 function filterOutBlacklistedTitles(experiences: IWorkExperienceData[]): IWorkExperienceData[] {
   return experiences.filter(
     (row) =>

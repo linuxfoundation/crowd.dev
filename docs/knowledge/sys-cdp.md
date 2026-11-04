@@ -14,6 +14,11 @@ sources:
 
 # CDP services
 
+CDP, the Community Data Platform, collects contributions from community platforms, matches and
+enriches the people and organizations behind them, and serves the result to LFX products such as
+Insights. Postgres is the source of truth, Tinybird serves analytics, OpenSearch serves search,
+and Temporal runs the workflows. [`../design/`](../design/README.md) shows how these connect.
+
 `services/apps/` holds 34 services. Most are Temporal workers built on
 `@crowd/archetype-worker`; a few are Kafka queue consumers or HTTP services. Shared code lives in
 `services/libs/`, and database queries in `services/libs/data-access-layer`.
