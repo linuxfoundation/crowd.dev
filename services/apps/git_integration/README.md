@@ -107,8 +107,9 @@ An incremental clone raises `ReOnboardingRequiredError`, and the run ends with
 
 ### 4. First-batch services
 
-These need the working tree, so they run once, on the first batch, in this order. Each one records
-its own failure in `git."serviceExecutions"` and does not stop the run.
+These need the working tree, so they run once, on the first batch, in this order. A failure in one
+does not stop the run. Each records its result in `git."serviceExecutions"` except licenses, which
+have no operation type there and only write to the logs.
 
 - **Software value** and **vulnerability scanner** run their Go binaries on the checkout. The
   binaries write their results to the database themselves; see their READMEs.
