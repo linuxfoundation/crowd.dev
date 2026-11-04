@@ -42,6 +42,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0033](./0033-connector-emit-per-call-segment.md)              | Connector emit() takes per-call segment overrides                                                    | accepted | 2026-09-30 |
 | [ADR-0034](./0034-connector-sync-deps-bag.md)                      | Connector syncs get database access through a typed per-connector deps bag                           | accepted | 2026-10-13 |
 | [ADR-0035](./0035-merge-suggestion-sources.md)                     | Track where merge suggestions come from                                                              | accepted | 2026-10-20 |
+| [ADR-0037](./0037-sched-historical-import-script.md)               | Import past Sched events with a re-runnable crowd.dev script                                         | proposed | 2026-11-04 |
 
 ## Why ADRs?
 
