@@ -258,11 +258,6 @@ class CommitService(BaseService):
         return name.strip()
 
     def parse_github_noreply_email(self, email: str) -> str | None:
-        """
-        Extract the GitHub username from a noreply email, e.g. "123+john@users.noreply.github.com".
-
-        @see https://docs.github.com/en/account-and-profile/reference/email-addresses-reference#your-noreply-email-address
-        """
         if not email.lower().endswith(self._GITHUB_NOREPLY_SUFFIX):
             return None
 
