@@ -3,6 +3,8 @@ import type { CredlyHoldReason, ICredlyTemplateDecision } from '@crowd/data-acce
 import type { Catalogue, CatalogueCourse, CatalogueIndex } from './catalogue'
 import { indexCatalogue, normalizeTitle } from './catalogue'
 import { extractCourseCode, normalizeSku, skuBase } from './courseCode'
+import type { CompiledEventRule, CredlyEventRule } from './eventRules'
+import { EVENT_RULES_VERSION, compileEventRules, matchEventRules } from './eventRules'
 import type { CredlyTemplateOverride } from './overrides'
 
 export const RULE_VERSION = 1
@@ -12,6 +14,7 @@ export type CredlyMappingRule =
   | 'sku_vote'
   | 'base_sku'
   | 'title'
+  | 'event'
   | 'override'
   | 'hold'
   | 'excluded'
@@ -21,6 +24,7 @@ export interface TemplateToResolve {
   name: string
   badgeCount?: number | null
   url?: string | null
+  activityUrl?: string | null
   createdAt?: string | null
 }
 
@@ -36,6 +40,7 @@ export interface ResolverInput {
   catalogue: Catalogue
   segmentIdBySlug: Map<string, string>
   overrides: readonly CredlyTemplateOverride[]
+  eventRules: readonly CredlyEventRule[]
 }
 
 interface ProjectMatch {
@@ -138,24 +143,52 @@ function titleMatch(index: CatalogueIndex, name: string): ProjectMatch | Hold | 
   return { holdReason: 'ambiguous', evidence: { title, projects } }
 }
 
+function eventRule(
+  rules: readonly CompiledEventRule[],
+  template: TemplateToResolve,
+): ProjectMatch | null {
+  const matches = matchEventRules(rules, template)
+  if (matches.length === 0) return null
+  const [first] = matches
+  return {
+    projectSlug: first.rule.projectSlug,
+    rule: 'event',
+    matchedSku: null,
+    evidence: {
+      ruleId: first.rule.id,
+      matched: first.matched,
+      rulesVersion: EVENT_RULES_VERSION,
+      matchedRuleIds: matches.map((match) => match.rule.id),
+    },
+  }
+}
+
 function isHold(outcome: ProjectMatch | Hold): outcome is Hold {
   return 'holdReason' in outcome
 }
 
-function decide(index: CatalogueIndex, template: TemplateToResolve): ProjectMatch | Hold {
+function decide(
+  index: CatalogueIndex,
+  rules: readonly CompiledEventRule[],
+  template: TemplateToResolve,
+): ProjectMatch | Hold {
   if (TEST_BADGE_NAME.test(template.name)) {
     return { holdReason: 'test', evidence: { name: template.name } }
   }
   const code = extractCourseCode(template.name)
   if (!code) {
-    return titleMatch(index, template.name) ?? { holdReason: 'no_match', evidence: {} }
+    return (
+      titleMatch(index, template.name) ??
+      eventRule(rules, template) ?? { holdReason: 'no_match', evidence: {} }
+    )
   }
   const sku = normalizeSku(code.code)
   const outcome =
     exactSku(index, sku) ??
     skuVote(index, sku) ??
     baseSku(index, sku) ??
-    titleMatch(index, code.title)
+    titleMatch(index, code.title) ??
+    eventRule(rules, template)
   if (outcome) return outcome
   const known = index.coursesBySku.has(sku) || index.coursesByBase.has(code.base)
   return { holdReason: known ? 'no_project' : 'no_match', evidence: { code: sku } }
@@ -174,13 +207,16 @@ function applyOverride(template: TemplateToResolve, override: CredlyTemplateOver
 export function resolveTemplates(input: ResolverInput): ResolvedTemplate[] {
   const index = indexCatalogue(input.catalogue)
   const overrides = new Map(input.overrides.map((o) => [o.badgeTemplateId, o]))
+  const eventRules = compileEventRules(input.eventRules)
   const segmentIdBySlug = new Map(
     [...input.segmentIdBySlug].map(([slug, id]) => [slug.toLowerCase(), id]),
   )
 
   return input.templates.map((template) => {
     const override = overrides.get(template.id)
-    const outcome = override ? applyOverride(template, override) : decide(index, template)
+    const outcome = override
+      ? applyOverride(template, override)
+      : decide(index, eventRules, template)
     const base = {
       badgeTemplateId: template.id,
       badgeTemplateName: template.name,

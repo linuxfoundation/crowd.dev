@@ -207,7 +207,7 @@ describe('loadCredlyTemplates', () => {
   const log = {} as Parameters<typeof loadCredlyTemplates>[2]
   const http = {} as Parameters<typeof loadCredlyTemplates>[0]
   const page = (
-    data: { id: string; name: string; badges_count?: unknown }[],
+    data: { id: string; name: string; badges_count?: unknown; global_activity_url?: string }[],
     total_count: number,
   ) =>
     ({
@@ -217,15 +217,34 @@ describe('loadCredlyTemplates', () => {
 
   it('reads every page and reports the listing complete when totals and ids line up', async () => {
     vi.mocked(fetchBadgeTemplatesPage)
-      .mockResolvedValueOnce(page([{ id: 'a', name: 'A', badges_count: 3 }], 2))
+      .mockResolvedValueOnce(
+        page(
+          [
+            {
+              id: 'a',
+              name: 'A',
+              badges_count: 3,
+              global_activity_url: 'https://events.linuxfoundation.org/kubecon/',
+            },
+          ],
+          2,
+        ),
+      )
       .mockResolvedValueOnce(page([{ id: 'b', name: 'B', badges_count: null }], 2))
 
     const listing = await loadCredlyTemplates(http, 'org', log)
 
     expect(listing.complete).toBe(true)
     expect(listing.templates).toEqual([
-      { id: 'a', name: 'A', badgeCount: 3, url: null, createdAt: null },
-      { id: 'b', name: 'B', badgeCount: null, url: null, createdAt: null },
+      {
+        id: 'a',
+        name: 'A',
+        badgeCount: 3,
+        url: null,
+        activityUrl: 'https://events.linuxfoundation.org/kubecon/',
+        createdAt: null,
+      },
+      { id: 'b', name: 'B', badgeCount: null, url: null, activityUrl: null, createdAt: null },
     ])
   })
 
