@@ -23,7 +23,7 @@ import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
   integration: Integration<unknown> | undefined,
@@ -33,7 +33,7 @@ const props = defineProps<{
 
 const route = useRoute();
 
-const { doGitlabConnect } = mapActions('integration');
+const { connectGitlab } = useIntegrationStore();
 
 const isFinishingModalOpen = ref(false);
 
@@ -75,7 +75,7 @@ const finallizeGitlabConnect = () => {
 
   if (code && source === 'gitlab') {
     isFinishingModalOpen.value = true;
-    doGitlabConnect({
+    connectGitlab({
       code,
       state,
       segmentId: props.segmentId,

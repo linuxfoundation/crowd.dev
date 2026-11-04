@@ -139,7 +139,6 @@ import {
 } from 'vue';
 import confluence from '@/config/integrations/confluence/config';
 import formChangeDetector from '@/shared/form/form-change';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
   EventType,
@@ -152,6 +151,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps({
   integration: {
@@ -213,7 +213,7 @@ const revertChanges = () => {
   }
 };
 
-const { doConfluenceConnect } = mapActions('integration');
+const { connectConfluence } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -273,7 +273,7 @@ const connect = async () => {
 
   const isUpdate = props.integration?.settings;
 
-  doConfluenceConnect({
+  connectConfluence({
     id: props.integration?.id,
     settings: {
       url: form.url,

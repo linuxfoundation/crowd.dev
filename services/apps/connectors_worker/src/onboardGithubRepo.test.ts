@@ -9,7 +9,7 @@ import { onboardGithubRepo } from './onboardGithubRepo'
 const mocks = vi.hoisted(() => ({
   resolveRepo: vi.fn(),
   hasActiveSyncUnitsForChannelElsewhere: vi.fn(),
-  hasSyncUnitsForChannel: vi.fn(),
+  listSyncUnitChannelNames: vi.fn(),
   lockSyncUnitChannel: vi.fn(),
   alignSyncUnitChannelName: vi.fn(),
   upsertSyncUnits: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock('@crowd/connectors/src/connectors/github/discover', () => ({
 }))
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   hasActiveSyncUnitsForChannelElsewhere: mocks.hasActiveSyncUnitsForChannelElsewhere,
-  hasSyncUnitsForChannel: mocks.hasSyncUnitsForChannel,
+  listSyncUnitChannelNames: mocks.listSyncUnitChannelNames,
   lockSyncUnitChannel: mocks.lockSyncUnitChannel,
   alignSyncUnitChannelName: mocks.alignSyncUnitChannelName,
   upsertSyncUnits: mocks.upsertSyncUnits,
@@ -53,7 +53,7 @@ describe('onboardGithubRepo', () => {
     vi.clearAllMocks()
     mocks.resolveRepo.mockResolvedValue({ channelId: 'R_1', channelName: key, forkedFrom: null })
     mocks.hasActiveSyncUnitsForChannelElsewhere.mockResolvedValue(false)
-    mocks.hasSyncUnitsForChannel.mockResolvedValue(false)
+    mocks.listSyncUnitChannelNames.mockResolvedValue([])
     mocks.upsertSyncUnits.mockImplementation(async (_qx, units: unknown[]) => units.length)
   })
 
@@ -73,14 +73,14 @@ describe('onboardGithubRepo', () => {
     )
     const staleLockBefore: Date = mocks.hasActiveSyncUnitsForChannelElsewhere.mock.calls[0][3]
     expect(Date.now() - staleLockBefore.getTime()).toBeGreaterThanOrEqual(LIFECYCLE_STALE_LOCK_MS)
-    expect(mocks.hasSyncUnitsForChannel).toHaveBeenCalledWith(txQx, 'i-1', 'R_1')
+    expect(mocks.listSyncUnitChannelNames).toHaveBeenCalledWith(txQx, 'i-1', 'R_1')
     expect(mocks.insertBackfillCheck).toHaveBeenCalledTimes(1)
     expect(mocks.insertBackfillCheck).toHaveBeenCalledWith(txQx, 'i-1', 'R_1')
     expect(mocks.upsertSyncUnits.mock.calls[0][0]).toBe(txQx)
     const callOrder = [
       mocks.lockSyncUnitChannel,
       mocks.hasActiveSyncUnitsForChannelElsewhere,
-      mocks.hasSyncUnitsForChannel,
+      mocks.listSyncUnitChannelNames,
       mocks.upsertSyncUnits,
     ].map((fn) => fn.mock.invocationCallOrder[0])
     expect(callOrder).toEqual([...callOrder].sort((a, b) => a - b))
@@ -120,7 +120,10 @@ describe('onboardGithubRepo', () => {
         initialDelaySeconds: 4,
         resolved: { channelId: 'R_9', channelName: 'https://github.com/acme/widget-next' },
       }),
-    ).resolves.toEqual({ outcome: 'skipped', reason: 'repo_renamed' })
+    ).resolves.toEqual({
+      outcome: 'renamed',
+      to: 'https://github.com/acme/widget-next',
+    })
     expect(mocks.resolveRepo).not.toHaveBeenCalled()
 
     mocks.upsertSyncUnits.mockClear()
@@ -149,12 +152,12 @@ describe('onboardGithubRepo', () => {
       forkedFrom: null,
     })
     await expect(onboardGithubRepo(qx, 'tok', 'i-1', key, { storedUrl: key })).resolves.toEqual({
-      outcome: 'skipped',
-      reason: 'repo_renamed',
+      outcome: 'renamed',
+      to: 'https://github.com/acme/widget-next',
     })
 
     mocks.resolveRepo.mockResolvedValue({ channelId: 'R_1', channelName: key, forkedFrom: null })
-    mocks.hasSyncUnitsForChannel.mockResolvedValue(true)
+    mocks.listSyncUnitChannelNames.mockResolvedValue([key])
     await expect(onboardGithubRepo(qx, 'tok', 'i-1', key, { storedUrl: key })).resolves.toEqual({
       outcome: 'skipped',
       reason: 'already_present',
@@ -163,7 +166,7 @@ describe('onboardGithubRepo', () => {
     expect(mocks.alignSyncUnitChannelName).toHaveBeenCalledWith(txQx, 'i-1', 'R_1', key)
     mocks.alignSyncUnitChannelName.mockClear()
 
-    mocks.hasSyncUnitsForChannel.mockResolvedValue(false)
+    mocks.listSyncUnitChannelNames.mockResolvedValue([])
     mocks.hasActiveSyncUnitsForChannelElsewhere.mockResolvedValue(true)
     await expect(onboardGithubRepo(qx, 'tok', 'i-1', key, { storedUrl: key })).resolves.toEqual({
       outcome: 'skipped',
@@ -213,5 +216,51 @@ describe('onboardGithubRepo', () => {
     })
     expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
     expect(mocks.insertBackfillCheck).not.toHaveBeenCalled()
+  })
+
+  it('returns renamed with GitHub name', async () => {
+    mocks.resolveRepo.mockResolvedValue({
+      channelId: 'R_1',
+      channelName: 'https://github.com/org/New',
+      forkedFrom: null,
+    })
+    await expect(
+      onboardGithubRepo(qx, 'tok', 'i-1', 'https://github.com/org/old', {
+        storedUrl: 'https://github.com/org/old',
+      }),
+    ).resolves.toEqual({ outcome: 'renamed', to: 'https://github.com/org/New' })
+    expect(tx).not.toHaveBeenCalled()
+  })
+
+  it('waits when existing units carry another name', async () => {
+    mocks.listSyncUnitChannelNames.mockResolvedValue(['https://github.com/org/old'])
+    await expect(
+      onboardGithubRepo(qx, 'tok', 'i-1', 'https://github.com/org/new', {
+        storedUrl: 'https://github.com/org/New',
+        resolved: { channelId: 'R_1', channelName: 'https://github.com/org/new' },
+      }),
+    ).resolves.toEqual({
+      outcome: 'skipped',
+      reason: 'awaiting_old_units_drain',
+      message: 'units of https://github.com/org/old still exist',
+    })
+    expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
+    expect(mocks.alignSyncUnitChannelName).not.toHaveBeenCalled()
+  })
+
+  it('aligns a case-only spelling', async () => {
+    mocks.listSyncUnitChannelNames.mockResolvedValue(['https://github.com/Org/repo'])
+    await expect(
+      onboardGithubRepo(qx, 'tok', 'i-1', 'https://github.com/org/repo', {
+        storedUrl: 'https://github.com/org/repo',
+        resolved: { channelId: 'R_1', channelName: 'https://github.com/org/repo' },
+      }),
+    ).resolves.toMatchObject({ outcome: 'skipped', reason: 'already_present' })
+    expect(mocks.alignSyncUnitChannelName).toHaveBeenCalledWith(
+      txQx,
+      'i-1',
+      'R_1',
+      'https://github.com/org/repo',
+    )
   })
 })

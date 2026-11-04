@@ -9,6 +9,7 @@ const activities = vi.hoisted(() => {
     'discoverFullSyncRepos',
     'planGithubLifecycle',
     'onboardGithubRepos',
+    'applyRenames',
     'decommissionChannels',
     'decommissionAllUnits',
     'softDeleteIntegrationRepositories',
@@ -56,6 +57,7 @@ const plan = (overrides: Record<string, unknown> = {}) => ({
 
 const lifecycleActivities = [
   'onboardGithubRepos',
+  'applyRenames',
   'decommissionChannels',
   'decommissionAllUnits',
   'softDeleteIntegrationRepositories',
@@ -78,7 +80,7 @@ describe('reconcileGithubIntegration', () => {
     }
     activities.discoverFullSyncRepos.mockImplementation(async () => {
       calls.push('discoverFullSyncRepos')
-      return { discovered: [], skipped: [], renameValidationComplete: true }
+      return { discovered: [], skipped: [], renames: [], renameValidationComplete: true }
     })
     activities.listUndeletedChannels.mockImplementation(async () => {
       calls.push('listUndeletedChannels')
@@ -101,6 +103,7 @@ describe('reconcileGithubIntegration', () => {
       return {
         discovered: [discovered, { channelId: 'R_2', channelName: 'not-a-url' }],
         skipped: [{ url: 'acme', reason: 'github_error' }],
+        renames: [],
         renameValidationComplete: true,
       }
     })
@@ -115,7 +118,12 @@ describe('reconcileGithubIntegration', () => {
     answer('deleteDrainedUnits', 8)
     activities.onboardGithubRepos.mockImplementation(async ({ keys }: { keys: string[] }) => {
       calls.push('onboardGithubRepos')
-      return { created: keys.length - 1, unitsInserted: (keys.length - 1) * 8, skipped: 1 }
+      return {
+        created: keys.length - 1,
+        unitsInserted: (keys.length - 1) * 8,
+        skipped: 1,
+        renames: [],
+      }
     })
 
     const summary = await reconcileGithubIntegration({ integrationId })
@@ -175,7 +183,12 @@ describe('reconcileGithubIntegration', () => {
     expect(activities.logGithubLifecycleSummary).toHaveBeenCalledWith(summary)
 
     vi.clearAllMocks()
-    answer('discoverFullSyncRepos', { discovered: [], skipped: [], renameValidationComplete: true })
+    answer('discoverFullSyncRepos', {
+      discovered: [],
+      skipped: [],
+      renames: [],
+      renameValidationComplete: true,
+    })
     answer(
       'planGithubLifecycle',
       plan({ toCreate: [NEW], invalidUrls: ['not-a-url'], deletesSuppressed: true }),
@@ -227,6 +240,7 @@ describe('reconcileGithubIntegration', () => {
     vi.clearAllMocks()
     calls.length = 0
     const toCreate = Array.from({ length: 1200 }, (_, i) => `https://github.com/acme/repo-${i}`)
+    answer('discoverFullSyncRepos', { discovered: [], skipped: [], renameValidationComplete: true })
     answer('planGithubLifecycle', plan({ toCreate }), plan({ deleted: true, desired: 0 }))
     answer('onboardGithubRepos', {
       created: 10,
@@ -295,6 +309,7 @@ describe('reconcileGithubIntegration', () => {
       unitsInserted: 0,
       skipped: 1,
       integrationDeleted: true,
+      renames: [],
     })
 
     const stopped = await reconcileGithubIntegration({ integrationId })
@@ -319,16 +334,116 @@ describe('reconcileGithubIntegration', () => {
       return {
         discovered: [],
         skipped: [{ url: 'https://github.com/org/New', reason: 'repo_renamed' }],
+        renames: [],
         renameValidationComplete: true,
       }
     })
     answer('planGithubLifecycle', plan({ toCreate: [renamedTo, NEW] }))
-    answer('onboardGithubRepos', { created: 1, unitsInserted: 8, skipped: 0 })
+    answer('onboardGithubRepos', { created: 1, unitsInserted: 8, skipped: 0, renames: [] })
 
     const summary = await reconcileGithubIntegration({ integrationId })
 
     expect(activities.onboardGithubRepos.mock.calls.map(([input]) => input.keys)).toEqual([[NEW]])
     expect(summary).toMatchObject({ created: 1, skipped: 1 })
+  })
+
+  it('applies discovery renames before planning and keeps their new names out of onboarding', async () => {
+    const rename = {
+      integrationId: 'int-2',
+      from: 'https://github.com/org/Old',
+      to: 'https://github.com/org/New',
+    }
+    answer('discoverFullSyncRepos', {
+      discovered: [],
+      skipped: [],
+      renames: [rename],
+      renameValidationComplete: true,
+    })
+    answer('applyRenames', { applied: 1, refused: 1, failed: 0 })
+    answer('planGithubLifecycle', plan({ toCreate: ['https://github.com/org/new', NEW] }))
+    answer('onboardGithubRepos', { created: 1, unitsInserted: 8, skipped: 0, renames: [] })
+
+    const summary = await reconcileGithubIntegration({ integrationId })
+
+    expect(calls).toEqual([
+      'discoverFullSyncRepos',
+      'applyRenames',
+      'planGithubLifecycle',
+      'onboardGithubRepos',
+      'planGithubLifecycle',
+      'logGithubLifecycleSummary',
+    ])
+    expect(activities.applyRenames).toHaveBeenCalledWith({ renames: [rename] })
+    expect(activities.onboardGithubRepos.mock.calls.map(([input]) => input.keys)).toEqual([[NEW]])
+    expect(summary).toMatchObject({
+      created: 1,
+      skipped: 0,
+      renamesApplied: 1,
+      renamesRefused: 1,
+      renamesFailed: 0,
+    })
+  })
+
+  it('applies onboarding renames then re-plans and deletes the old channels', async () => {
+    const OLD = 'https://github.com/acme/old'
+    const discoveryRename = {
+      integrationId,
+      from: 'https://github.com/acme/A',
+      to: 'https://github.com/acme/B',
+    }
+    const onboardRename = { from: 'https://github.com/acme/Old', to: 'https://github.com/acme/New' }
+    answer('discoverFullSyncRepos', {
+      discovered: [],
+      skipped: [],
+      renames: [discoveryRename],
+      renameValidationComplete: true,
+    })
+    answer(
+      'applyRenames',
+      { applied: 1, refused: 1, failed: 0 },
+      { applied: 1, refused: 0, failed: 1 },
+    )
+    answer('planGithubLifecycle', plan({ toCreate: [OLD] }), plan({ toDeleteKeys: [OLD] }))
+    answer('onboardGithubRepos', {
+      created: 0,
+      unitsInserted: 0,
+      skipped: 0,
+      integrationDeleted: false,
+      renames: [onboardRename],
+    })
+    answer('countUndrainedUnits', 0)
+    answer('deleteDrainedUnits', 8)
+
+    const summary = await reconcileGithubIntegration({ integrationId })
+
+    expect(calls).toEqual([
+      'discoverFullSyncRepos',
+      'applyRenames',
+      'planGithubLifecycle',
+      'onboardGithubRepos',
+      'applyRenames',
+      'planGithubLifecycle',
+      'decommissionChannels',
+      'countUndrainedUnits',
+      'deleteDrainedUnits',
+      'listUndeletedChannels',
+      'logGithubLifecycleSummary',
+    ])
+    expect(activities.applyRenames.mock.calls.map(([input]) => input)).toEqual([
+      { renames: [discoveryRename] },
+      { renames: [{ integrationId, ...onboardRename }] },
+    ])
+    expect(activities.decommissionChannels).toHaveBeenCalledWith({
+      integrationId,
+      channelKeys: [OLD],
+    })
+    expect(summary).toMatchObject({
+      deleted: false,
+      deletedUnits: 8,
+      renamesApplied: 2,
+      renamesRefused: 1,
+      renamesFailed: 1,
+    })
   })
 
   it('defers every create while discovery could not validate renames, and still tears down', async () => {
@@ -340,6 +455,7 @@ describe('reconcileGithubIntegration', () => {
         { url: 'acme', reason: 'incomplete_listing' },
         { url: 'https://github.com/acme/B', reason: 'github_error' },
       ],
+      renames: [],
       renameValidationComplete: false,
     })
     answer('planGithubLifecycle', plan({ toCreate: [a, b], toDeleteKeys: [REMOVED] }))

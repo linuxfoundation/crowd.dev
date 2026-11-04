@@ -9,6 +9,7 @@ import {
   getCredential,
   getManifest,
   getSync,
+  RepositoryRenamedError,
 } from '@crowd/connectors'
 import type { ConnectorHttp, Emitter, ErrorClass, SyncContext } from '@crowd/connectors'
 import {
@@ -28,12 +29,16 @@ import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/i
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getChildLogger } from '@crowd/logging'
+import type { Logger } from '@crowd/logging'
+import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
+import { applyGithubRenameWorkflowId } from '../githubLifecycle'
 import { svc } from '../main'
 import { RUN_BUDGET_MS } from '../runLimits'
 import { resolveRunSegmentId } from '../runSegment'
 import { cadenceRunAt, failureRunAt, shortDeferRunAt } from '../scheduling'
 import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
+import type { IOwnedGithubRename } from './githubLifecycleActivities'
 
 const DEAD_LETTER_AFTER: Partial<Record<ErrorClass, number>> = {
   'provider.auth': 5,
@@ -55,6 +60,29 @@ function syncRunLogFields(activityContext: Context, unit: ISyncUnit): Record<str
     syncName: unit.syncName,
     channelId: unit.channelId,
     channelName: unit.channelName,
+  }
+}
+
+async function startGithubRename(unit: ISyncUnit, currentUrl: string, log: Logger): Promise<void> {
+  const rename: IOwnedGithubRename = {
+    integrationId: unit.integrationId,
+    from: unit.channelName,
+    to: currentUrl,
+  }
+  try {
+    await svc.temporal.workflow.start('applyGithubRename', {
+      taskQueue: 'connectors',
+      workflowId: applyGithubRenameWorkflowId(unit.integrationId, unit.channelId),
+      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      workflowExecutionTimeout: '1 hour',
+      args: [rename],
+    })
+  } catch (err) {
+    log.error(
+      { event: 'github_rename_start_failed', ...rename, errMsg: (err as Error).message },
+      'failed to start the github rename workflow',
+    )
   }
 }
 
@@ -86,6 +114,22 @@ export async function executeSync(unitId: string): Promise<void> {
   let committedWatermark = unit.watermark
   const startedAt = Date.now()
   const runDeadline = startedAt + RUN_BUDGET_MS
+
+  const keepProgressOrPark = async (resumeAt: Date, err: ConnectorError): Promise<boolean> => {
+    if (emitter && committedWatermark) {
+      await recordRunPartial(
+        qx,
+        unitId,
+        { watermark: committedWatermark, emittedCount: emitter.emittedCount() },
+        resumeAt,
+        err.errorClass,
+        err.message,
+      )
+      return true
+    }
+    await parkUnit(qx, unitId, resumeAt, err.errorClass, err.message)
+    return false
+  }
 
   const cancellationReason = () =>
     (activityContext.cancellationSignal.reason as Error | undefined)?.message ?? null
@@ -208,6 +252,22 @@ export async function executeSync(unitId: string): Promise<void> {
       'sync run summary',
     )
   } catch (err) {
+    if (err instanceof RepositoryRenamedError) {
+      const nextRunAt = cadenceRunAt(getSync(unit.platform, unit.syncName).cadenceMinutes)
+      const progressCommitted = await keepProgressOrPark(nextRunAt, err)
+      await startGithubRename(unit, err.currentUrl, log)
+      log.info(
+        runSummary({
+          outcome: 'renamed',
+          errorClass: err.errorClass,
+          errorMessage: err.message,
+          nextRunAt,
+          progressCommitted,
+        }),
+        'sync run summary',
+      )
+      return
+    }
     if (
       err instanceof ConnectorError &&
       (PARKED_ERROR_CLASSES as readonly string[]).includes(err.errorClass)
@@ -215,19 +275,7 @@ export async function executeSync(unitId: string): Promise<void> {
       const fallbackMs =
         err.errorClass === 'provider.rate_limit' ? RATE_LIMIT_FALLBACK_MS : UNAVAILABLE_PARK_MS
       const resumeAt = err.options?.resumeAt ?? new Date(Date.now() + fallbackMs)
-      const progressCommitted = Boolean(emitter && committedWatermark)
-      if (emitter && committedWatermark) {
-        await recordRunPartial(
-          qx,
-          unitId,
-          { watermark: committedWatermark, emittedCount: emitter.emittedCount() },
-          resumeAt,
-          err.errorClass,
-          err.message,
-        )
-      } else {
-        await parkUnit(qx, unitId, resumeAt, err.errorClass, err.message)
-      }
+      const progressCommitted = await keepProgressOrPark(resumeAt, err)
       log.info(
         runSummary({
           outcome: 'parked',

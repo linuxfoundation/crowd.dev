@@ -1,8 +1,8 @@
 import authAxios from '@/shared/axios/auth-axios';
 import { AuthService } from '@/modules/auth/services/auth.service';
-import { router } from '@/router';
+import { getRouter } from '@/router/instance';
 
-const getSegments = () => ({ segments: [router.currentRoute.value.params.id] });
+const getSegments = () => ({ segments: [getRouter().currentRoute.value.params.id] });
 
 export class IntegrationService {
   static async update(id, data, segments = []) {

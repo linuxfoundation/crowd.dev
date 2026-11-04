@@ -14,6 +14,7 @@ import {
   listGithubChannelsOwnedElsewhere,
   listGithubIntegrationsNeedingReconcile,
   listGithubRepoKeysUnderOwners,
+  tryLockGithubRenames,
 } from './index'
 
 const test = withQx(base)
@@ -227,6 +228,20 @@ describe('fetchGithubLifecycleIntegration', () => {
     })
     expect(deletedRow?.deletedAt).not.toBeNull()
     expect(await fetchGithubLifecycleIntegration(qx, generateUUIDv1())).toBeNull()
+  })
+})
+
+describe('tryLockGithubRenames', () => {
+  test('locks per integration until the holding transaction ends', async ({ qx }) => {
+    const integrationId = generateUUIDv1()
+    const tryLock = () => qx.tx((tx) => tryLockGithubRenames(tx, integrationId))
+
+    await qx.tx(async (holder) => {
+      expect(await tryLockGithubRenames(holder, integrationId)).toBe(true)
+      expect(await tryLock()).toBe(false)
+      expect(await qx.tx((tx) => tryLockGithubRenames(tx, generateUUIDv1()))).toBe(true)
+    })
+    expect(await tryLock()).toBe(true)
   })
 })
 

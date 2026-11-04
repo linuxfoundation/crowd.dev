@@ -1,11 +1,6 @@
 import { Context } from '@temporalio/activity'
 
 import { generateUUIDv4 } from '@crowd/common'
-import { type Credential, getCredential } from '@crowd/connectors'
-import {
-  mintInstallationToken,
-  resolveInstallationId,
-} from '@crowd/connectors/src/connectors/github/appToken'
 import {
   type GithubOrgRepo,
   listOrgRepos,
@@ -43,6 +38,7 @@ import {
 import { githubChannelName } from '@crowd/nango'
 import { PlatformType } from '@crowd/types'
 
+import { type TokenSource, installationTokenSource } from '../githubInstallationToken'
 import {
   type IGithubLifecycleDiff,
   type IGithubLifecycleSummary,
@@ -53,6 +49,7 @@ import {
   diffGithubLifecycle,
   githubRepoKey,
 } from '../githubLifecycle'
+import { type IGithubRename, type IGithubRenamesResult, applyGithubRenames } from '../githubRenames'
 import {
   githubResolveSkipReason,
   lifecycleSkipReasonFor,
@@ -66,14 +63,18 @@ const MAX_INITIAL_DELAY_SECONDS = 3600
 const INITIAL_DELAY_STEP_SECONDS = 2
 const MAX_RATE_LIMIT_WAIT_MS = 15 * 60_000
 const RATE_LIMIT_HEARTBEAT_SLICE_MS = 20_000
-const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000
 const GITHUB_ORG_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
 const ORG_RENAME_PROBE_MAX_KEYS = 10
 const ONBOARD_RECHECK_EVERY_N_CHUNKS = 20
 
+export interface IOwnedGithubRename extends IGithubRename {
+  integrationId: string
+}
+
 export interface IDiscoverFullSyncReposResult {
   discovered: Channel[]
   skipped: ILifecycleSkip[]
+  renames: IOwnedGithubRename[]
   renameValidationComplete: boolean
 }
 
@@ -89,6 +90,7 @@ export interface IOnboardReposResult {
   unitsInserted: number
   skipped: number
   integrationDeleted: boolean
+  renames: IGithubRename[]
 }
 
 interface IRepositoryOwners {
@@ -101,8 +103,6 @@ interface IFreshRepo {
   repo: GithubOrgRepo
   forkedFrom: string | null
 }
-
-type TokenSource = () => Promise<string>
 
 interface IDiscoveryContext {
   qx: QueryExecutor
@@ -129,6 +129,16 @@ interface IOrgRenames {
   movedKeys: string[]
 }
 
+interface IRenamedRepo {
+  oldKey: string
+  to: string
+}
+
+interface IRenameTargets {
+  renames: IOwnedGithubRename[]
+  unresolved: Map<string, string>
+}
+
 interface IOwnerProbe {
   probed: string[]
   url: string | null
@@ -153,6 +163,7 @@ type RateLimitedResult = Extract<OnboardRepoResult, { outcome: 'skipped' }>
 const NO_DISCOVERY: IDiscoverFullSyncReposResult = {
   discovered: [],
   skipped: [],
+  renames: [],
   renameValidationComplete: true,
 }
 
@@ -176,31 +187,6 @@ async function sleepWithHeartbeats(ms: number): Promise<void> {
   for (let remaining = ms; remaining > 0; remaining -= RATE_LIMIT_HEARTBEAT_SLICE_MS) {
     heartbeat()
     await Context.current().sleep(Math.min(remaining, RATE_LIMIT_HEARTBEAT_SLICE_MS))
-  }
-}
-
-async function resolveInstallation(
-  qx: QueryExecutor,
-  integrationId: string,
-): Promise<{ credential: Credential; installationId: string }> {
-  const credential = await getCredential(qx, integrationId)
-  return { credential, installationId: await resolveInstallationId(credential) }
-}
-
-function installationTokenSource(qx: QueryExecutor, integrationId: string): TokenSource {
-  let installation: ReturnType<typeof resolveInstallation> | null = null
-  let current: { token: string; expiresAt: string } | null = null
-  return async () => {
-    if (current && Date.parse(current.expiresAt) - Date.now() >= TOKEN_REFRESH_MARGIN_MS) {
-      return current.token
-    }
-    installation ??= resolveInstallation(qx, integrationId).catch((err: unknown) => {
-      installation = null
-      throw err
-    })
-    const { credential, installationId } = await installation
-    current = await mintInstallationToken(credential, installationId)
-    return current.token
   }
 }
 
@@ -359,10 +345,7 @@ async function probeRepoName(
   }
   const { owner, repo } = parsed
   try {
-    return {
-      outcome: 'resolved',
-      url: (await resolveRepo(token, owner, repo)).channelName.toLowerCase(),
-    }
+    return { outcome: 'resolved', url: (await resolveRepo(token, owner, repo)).channelName }
   } catch (err) {
     const failure = renameProbeFailure(err)
     if (failure === 'rate_limited') {
@@ -478,7 +461,7 @@ async function renamedOrgKeys(
       continue
     }
     const probedKey = probe.probed[probe.probed.length - 1]
-    if (probe.url !== probedKey) {
+    if (probe.url.toLowerCase() !== probedKey) {
       renames.names.set(probedKey, probe.url)
     }
     if (ownerOf(probe.url) !== owner) {
@@ -488,15 +471,21 @@ async function renamedOrgKeys(
   return renames
 }
 
+function listedNames(listed: IListedOrg[]): Map<string, string> {
+  return new Map(
+    listed.flatMap(({ repos }) =>
+      repos.map((repo) => [repo.channelName.toLowerCase(), repo.channelName] as const),
+    ),
+  )
+}
+
 async function renamedTargets(
   { qx, token, result }: IDiscoveryContext,
   { listed, gone }: IOrgListing,
   ownKeys: string[],
-): Promise<Map<string, string> | IDiscoveryAbort> {
+): Promise<Map<string, IRenamedRepo> | IDiscoveryAbort> {
   const listedOwners = new Set(listed.map(({ org }) => org.toLowerCase()))
-  const listedKeys = new Set(
-    listed.flatMap(({ repos }) => repos.map((repo) => repo.channelName.toLowerCase())),
-  )
+  const listedKeys = listedNames(listed)
   const candidates = liveRepoKeys(await listGithubRepoKeysUnderOwners(qx, [...listedOwners]))
   const orgRenames = await renamedOrgKeys(
     token,
@@ -515,21 +504,38 @@ async function renamedTargets(
   if (!(names instanceof Map)) {
     return names
   }
-  const renamedFrom = new Map<string, string>()
-  for (const [key, url] of [...orgRenames.names, ...names]) {
-    if (url !== key) {
-      renamedFrom.set(url, key)
+  const renamedFrom = new Map<string, IRenamedRepo>()
+  for (const [oldKey, url] of [...orgRenames.names, ...names]) {
+    const newKey = url.toLowerCase()
+    if (newKey !== oldKey) {
+      renamedFrom.set(newKey, { oldKey, to: listedKeys.get(newKey) ?? url })
     }
   }
   return renamedFrom
 }
 
+async function ownedRenames(
+  qx: QueryExecutor,
+  renamedFrom: Map<string, IRenamedRepo>,
+): Promise<IRenameTargets> {
+  const targets: IRenameTargets = { renames: [], unresolved: new Map() }
+  for (const [newKey, { oldKey, to }] of renamedFrom) {
+    const row = await findRepositoryByUrlInsensitive(qx, oldKey)
+    if (row) {
+      targets.renames.push({ integrationId: row.sourceIntegrationId, from: row.url, to })
+    } else {
+      targets.unresolved.set(newKey, oldKey)
+    }
+  }
+  return targets
+}
+
 function renameSkipMessages(
-  renamedFrom: Map<string, string>,
+  unresolved: Map<string, string>,
   ownKeys: Set<string>,
 ): Map<string, string> {
   return new Map(
-    [...renamedFrom].map(([newKey, oldKey]) => [
+    [...unresolved].map(([newKey, oldKey]) => [
       newKey,
       ownKeys.has(oldKey)
         ? `${newKey} is the new name of ${oldKey}, which this integration already tracks`
@@ -556,13 +562,11 @@ function skipOrgs(
 }
 
 function unlistedRenameSkips(
-  renamedFrom: Map<string, string>,
+  unresolved: Map<string, string>,
   listed: IListedOrg[],
 ): ILifecycleSkip[] {
-  const listedKeys = new Set(
-    listed.flatMap(({ repos }) => repos.map((repo) => repo.channelName.toLowerCase())),
-  )
-  return [...renamedFrom]
+  const listedKeys = listedNames(listed)
+  return [...unresolved]
     .filter(([newKey]) => !listedKeys.has(newKey))
     .map(([newKey, oldKey]) => ({
       url: newKey,
@@ -715,6 +719,7 @@ export async function discoverFullSyncRepos({
   if (!owners) {
     return {
       discovered: [],
+      renames: [],
       skipped: orgs.map((org) => ({
         url: org,
         reason: 'segment_not_ready',
@@ -734,6 +739,7 @@ export async function discoverFullSyncRepos({
   const result: IDiscoverFullSyncReposResult = {
     discovered: [],
     skipped: [],
+    renames: [],
     renameValidationComplete: true,
   }
   const context: IDiscoveryContext = { qx, token, integrationId, owners, result }
@@ -756,13 +762,16 @@ export async function discoverFullSyncRepos({
     )
     return { ...result, renameValidationComplete: false }
   }
-  result.skipped.push(...unlistedRenameSkips(renamedFrom, listed))
+  const { renames, unresolved } = await ownedRenames(qx, renamedFrom)
+  result.renames.push(...renames)
+  result.skipped.push(...unlistedRenameSkips(unresolved, listed))
 
+  const handedOver = [...renamedFrom.keys()].filter((newKey) => !unresolved.has(newKey))
   await persistListedOrgs(
     context,
     listed,
-    new Set(repoKeys),
-    renameSkipMessages(renamedFrom, new Set(ownKeys)),
+    new Set([...repoKeys, ...handedOver]),
+    renameSkipMessages(unresolved, new Set(ownKeys)),
   )
   return result
 }
@@ -845,11 +854,16 @@ function recordOnboardOutcomes(
   keys: string[],
   outcomes: OnboardRepoResult[],
   result: IOnboardReposResult,
+  storedUrls?: ReadonlyMap<string, string>,
 ): void {
   outcomes.forEach((outcome, i) => {
     if (outcome.outcome === 'created') {
       result.created++
       result.unitsInserted += outcome.unitsInserted
+      return
+    }
+    if (outcome.outcome === 'renamed') {
+      result.renames.push({ from: storedUrls?.get(keys[i]) ?? keys[i], to: outcome.to })
       return
     }
     result.skipped++
@@ -1007,6 +1021,7 @@ export async function onboardGithubRepos({
     unitsInserted: 0,
     skipped: 0,
     integrationDeleted: false,
+    renames: [],
   }
   const storedUrls = await desiredReposIfLive(qx, integrationId)
   const initial = narrowDesired({ integrationId, result }, new Set(keys), storedUrls, keys)
@@ -1069,6 +1084,7 @@ export async function onboardGithubRepos({
       [...retry.outcomes.keys()],
       [...retry.outcomes.values()],
       result,
+      storedUrls,
     )
     heartbeat()
     if (retry.desired === null) {
@@ -1079,6 +1095,37 @@ export async function onboardGithubRepos({
   }
 
   return result
+}
+
+function renamesByIntegration(renames: IOwnedGithubRename[]): Map<string, IGithubRename[]> {
+  const grouped = new Map<string, IGithubRename[]>()
+  for (const { integrationId, from, to } of renames) {
+    grouped.set(integrationId, [...(grouped.get(integrationId) ?? []), { from, to }])
+  }
+  return grouped
+}
+
+export async function applyRenames({
+  renames,
+}: {
+  renames: IOwnedGithubRename[]
+}): Promise<IGithubRenamesResult> {
+  const qx = writerQx()
+  const total: IGithubRenamesResult = { applied: 0, refused: 0, failed: 0 }
+  for (const [integrationId, group] of renamesByIntegration(renames)) {
+    const outcome = await applyGithubRenames(
+      qx,
+      integrationId,
+      group,
+      installationTokenSource(qx, integrationId),
+      heartbeat,
+    )
+    total.applied += outcome.applied
+    total.refused += outcome.refused
+    total.failed += outcome.failed
+    heartbeat()
+  }
+  return total
 }
 
 export async function softDeleteIntegrationRepositories({

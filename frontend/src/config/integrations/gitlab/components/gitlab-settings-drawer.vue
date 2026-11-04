@@ -207,7 +207,7 @@ import useVuelidate from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -231,7 +231,7 @@ const router = useRouter();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 // Store
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 // Drawer visibility
 const isDrawerVisible = computed({
@@ -421,7 +421,7 @@ const connect = () => {
       .then(() => {
         isDrawerVisible.value = false;
 
-        doFetch([props.integration.segmentId]);
+        integrationStore.fetch([props.integration.segmentId]);
 
         showIntegrationProgressNotification(
           'gitlab',

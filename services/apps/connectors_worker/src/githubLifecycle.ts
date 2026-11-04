@@ -38,6 +38,7 @@ export type LifecycleSkipReason =
   | 'org_not_full_sync'
   | 'no_longer_desired'
   | 'incomplete_listing'
+  | 'awaiting_old_units_drain'
 
 export interface ILifecycleSkip {
   url: string
@@ -58,6 +59,9 @@ export interface IGithubLifecycleSummary {
   deletesSuppressed: boolean
   failed: boolean
   skipped: number
+  renamesApplied: number
+  renamesRefused: number
+  renamesFailed: number
   durationMs: number
 }
 
@@ -119,4 +123,8 @@ export function isRenamedRepo(key: string, channelName: string): boolean {
 
 export function reconcileGithubIntegrationWorkflowId(integrationId: string): string {
   return `connectors-reconcile-github-integration/${integrationId}`
+}
+
+export function applyGithubRenameWorkflowId(integrationId: string, channelId: string): string {
+  return `connectors-github-rename/${integrationId}/${channelId}`
 }

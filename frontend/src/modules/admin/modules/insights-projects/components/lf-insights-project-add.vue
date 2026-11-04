@@ -141,8 +141,9 @@ import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import cloneDeep from 'lodash/cloneDeep';
 import { ToastStore } from '@/shared/message/notification';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useMutation, useQuery } from '@tanstack/vue-query';
+import { queryKeys } from '@/shared/queries/keys';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 import LfInsightsProjectAddRepositoryGroups
   from '@/modules/admin/modules/insights-projects/components/lf-insights-project-add-repository-groups.vue';
@@ -261,7 +262,7 @@ onMounted(() => {
 });
 
 const { isLoading, isSuccess, data } = useQuery({
-  queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS, props.insightsProjectId],
+  queryKey: queryKeys.insightsProjects.detail(props.insightsProjectId),
   queryFn: () => {
     if (props.insightsProjectId === undefined) {
       return Promise.resolve(null);
@@ -306,11 +307,9 @@ const onSubmit = () => {
   }
 };
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = (res: InsightsProjectModel) => {
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS],
-  });
+  invalidate.insightsProjects();
   ToastStore.closeAll();
   ToastStore.success(
     `Insights project ${isEditForm.value ? 'updated' : 'created'} successfully`,

@@ -4,6 +4,7 @@ export type ErrorClass =
   | 'provider.auth'
   | 'provider.access_denied'
   | 'provider.contract'
+  | 'provider.repository_renamed'
   | 'connector.code'
   | 'sink.rejected'
   | 'worker.timeout'
@@ -68,6 +69,16 @@ export class ProviderContractError extends ConnectorError {
   constructor(message = 'unexpected provider response', options?: ConnectorErrorOptions) {
     super('provider.contract', message, options)
     this.name = 'ProviderContractError'
+  }
+}
+
+export class RepositoryRenamedError extends ConnectorError {
+  constructor(
+    readonly currentUrl: string,
+    options?: ConnectorErrorOptions,
+  ) {
+    super('provider.repository_renamed', `repository renamed to ${currentUrl}`, options)
+    this.name = 'RepositoryRenamedError'
   }
 }
 

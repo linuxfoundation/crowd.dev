@@ -63,3 +63,30 @@ export interface ProjectRequest {
   isLF: boolean;
   parentSlug: string;
 }
+
+export interface ProjectGroupRequest {
+  name: string;
+  slug: string;
+  sourceId: string;
+  url: string;
+  status: string;
+  isLF?: boolean;
+}
+
+export interface CreateProjectRequest extends ProjectRequest {
+  segments: string[];
+}
+
+export interface SubProjectRequest {
+  name: string;
+  slug: string;
+  sourceId: string;
+  status: string;
+  isLF: boolean;
+  parentSlug: string | null;
+  grandparentSlug: string | null;
+}
+
+export interface CreateSubProjectRequest extends SubProjectRequest {
+  segments: (string | null)[];
+}

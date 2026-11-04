@@ -5,8 +5,8 @@ import type { Channel } from '@crowd/connectors/src/types'
 import {
   alignSyncUnitChannelName,
   hasActiveSyncUnitsForChannelElsewhere,
-  hasSyncUnitsForChannel,
   insertBackfillCheck,
+  listSyncUnitChannelNames,
   lockSyncUnitChannel,
   upsertSyncUnits,
 } from '@crowd/data-access-layer/src/connectors'
@@ -17,6 +17,7 @@ import { lifecycleSkipReasonFor, rateLimitResetAt } from './githubSkipReasons'
 
 export type OnboardRepoResult =
   | { outcome: 'created'; unitsInserted: number }
+  | { outcome: 'renamed'; to: string }
   | { outcome: 'skipped'; reason: LifecycleSkipReason; message?: string; resetAt?: string }
 
 function resolveSkip(err: unknown): OnboardRepoResult {
@@ -56,7 +57,7 @@ export async function onboardGithubRepo(
   }
 
   if (isRenamedRepo(key, channel.channelName)) {
-    return { outcome: 'skipped', reason: 'repo_renamed' }
+    return { outcome: 'renamed', to: channel.channelName }
   }
   const channelName = storedUrl
   return qx.tx(async (txQx) => {
@@ -76,7 +77,16 @@ export async function onboardGithubRepo(
         message: `units exist for ${channelName} under another integration`,
       }
     }
-    if (await hasSyncUnitsForChannel(txQx, integrationId, channel.channelId)) {
+    const existingNames = await listSyncUnitChannelNames(txQx, integrationId, channel.channelId)
+    const staleName = existingNames.find((name) => name.toLowerCase() !== channelName.toLowerCase())
+    if (staleName !== undefined) {
+      return {
+        outcome: 'skipped',
+        reason: 'awaiting_old_units_drain',
+        message: `units of ${staleName} still exist`,
+      }
+    }
+    if (existingNames.length > 0) {
       await alignSyncUnitChannelName(txQx, integrationId, channel.channelId, channelName)
       return {
         outcome: 'skipped',

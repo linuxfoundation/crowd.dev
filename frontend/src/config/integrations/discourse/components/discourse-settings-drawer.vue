@@ -218,7 +218,6 @@ import discourse from '@/config/integrations/discourse/config';
 import { helpers, required, url } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import AppFormItem from '@/shared/form/form-item.vue';
 import formChangeDetector from '@/shared/form/form-change';
 // import elementChangeDetector from '@/shared/form/element-change';
@@ -233,6 +232,7 @@ import { ToastStore } from '@/shared/message/notification';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
   modelValue: boolean,
@@ -249,7 +249,7 @@ const showToken = ref(false);
 const payloadURL = ref<string | undefined>(undefined);
 const webhookSecret = ref<string | undefined>(undefined);
 
-const { doDiscourseConnect } = mapActions('integration');
+const { connectDiscourse } = useIntegrationStore();
 
 const copyToClipboard = async (type: string) => {
   const toCopy = type === 'url' ? payloadURL : webhookSecret;
@@ -435,7 +435,7 @@ const connect = async () => {
 
   const isUpdate = props.integration?.settings?.forumHostname;
 
-  doDiscourseConnect({
+  connectDiscourse({
     forumHostname: form.discourseURL,
     apiKey: form.apiKey,
     webhookSecret: webhookSecret.value,

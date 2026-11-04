@@ -220,7 +220,7 @@ import useVuelidate from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -251,7 +251,7 @@ const route = useRoute();
 const router = useRouter();
 
 // Store
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 // Drawer visibility
 const isDrawerVisible = computed({
@@ -348,7 +348,7 @@ const connect = () => {
       .then(() => {
         isDrawerVisible.value = false;
 
-        doFetch([props.integration.segmentId]);
+        integrationStore.fetch([props.integration.segmentId]);
 
         trackEvent({
           key: FeatureEventKey.CONNECT_INTEGRATION,

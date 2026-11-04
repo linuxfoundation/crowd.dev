@@ -37,7 +37,7 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 
@@ -47,7 +47,7 @@ const props = defineProps<{
   integrationId: string;
 }>();
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
-const { doDestroy } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 const { trackEvent } = useProductTracking();
 
 const disconnectConfirm = ref('');
@@ -72,7 +72,7 @@ const disconnectIntegration = () => {
       platform: props.platform,
     },
   });
-  doDestroy(props.integrationId);
+  integrationStore.destroy(props.integrationId);
 };
 
 </script>

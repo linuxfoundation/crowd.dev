@@ -94,8 +94,8 @@ import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import AppLfProjectColumn from '@/shared/project-column/lf-project-column.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '@/modules/admin/modules/insights-projects/services/insights-projects.service';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useMutation } from '@tanstack/vue-query';
+import { useInvalidate } from '@/shared/queries/invalidate';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfInsightsProjectDropdown from './lf-insights-projects-dropdown.vue';
@@ -112,11 +112,9 @@ const emit = defineEmits<{(e: 'onEditProject', id: string): void;
   (e: 'onDeleteProject', id: string): void;
 }>();
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = (res: InsightsProjectModel) => {
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS],
-  });
+  invalidate.insightsProjects();
   ToastStore.closeAll();
   ToastStore.success('Insights project updated successfully');
 };

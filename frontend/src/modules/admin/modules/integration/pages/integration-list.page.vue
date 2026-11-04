@@ -116,7 +116,8 @@ import LfxTabs from '@/ui-kit/lfx/tabs/tabs.vue';
 import LfIntegrationListItem from '@/modules/admin/modules/integration/components/integration-list-item.vue';
 import LfxTab from '@/ui-kit/lfx/tabs/tab.vue';
 import AppIntegrationProgressWrapper from '@/modules/integration/components/integration-progress-wrapper.vue';
-import { mapActions, mapGetters } from '@/shared/vuex/vuex.helpers';
+import { storeToRefs } from 'pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import config from '@/config';
 import { links } from '@/config/links';
@@ -126,8 +127,8 @@ import type { Project } from '@/modules/lf/segments/types/Segments';
 const route = useRoute();
 
 const { findSubProject } = useLfSegmentsStore();
-const { doFetch } = mapActions('integration');
-const { array, loadingFetch } = mapGetters('integration');
+const integrationStore = useIntegrationStore();
+const { array, loadingFetch } = storeToRefs(integrationStore);
 
 const { id, grandparentId } = route.params;
 
@@ -175,7 +176,7 @@ onMounted(() => {
   localStorage.setItem('segmentId', id as string);
   localStorage.setItem('segmentGrandparentId', grandparentId as string);
 
-  doFetch();
+  integrationStore.fetch();
   findSubProject(id).then((res) => {
     subproject.value = res;
   });

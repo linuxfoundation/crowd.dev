@@ -3,7 +3,11 @@ import type { Logger } from '@crowd/logging'
 
 import { summarizeBody } from '../../http/client'
 import type { ConnectorHttp } from '../../http/client'
-import { ProviderAccessDeniedError, ProviderContractError } from '../../http/errors'
+import {
+  ProviderAccessDeniedError,
+  ProviderContractError,
+  RepositoryRenamedError,
+} from '../../http/errors'
 import { isOrgPolicyRefusalMessage } from './interpret'
 
 interface GraphqlEnvelope<T> {
@@ -20,6 +24,16 @@ function hasResolvedRootField(data: unknown): boolean {
     data !== null &&
     Object.values(data).some((value) => value !== null && value !== undefined)
   )
+}
+
+function renamedRepositoryUrl(variables: Record<string, unknown>, data: unknown): string | null {
+  const { owner, repo } = variables
+  const url = (data as { repository?: { url?: unknown } | null }).repository?.url
+  if (typeof owner !== 'string' || typeof repo !== 'string' || typeof url !== 'string') {
+    return null
+  }
+  const queried = `https://github.com/${owner}/${repo}`.toLowerCase()
+  return url.toLowerCase() === queried ? null : url
 }
 
 export async function githubGraphql<T>(
@@ -49,6 +63,10 @@ export async function githubGraphql<T>(
       }
     }
     if (body.data && (!body.errors?.length || hasResolvedRootField(body.data))) {
+      const renamedTo = renamedRepositoryUrl(variables, body.data)
+      if (renamedTo) {
+        throw new RepositoryRenamedError(renamedTo)
+      }
       return body.data
     }
     const context = {

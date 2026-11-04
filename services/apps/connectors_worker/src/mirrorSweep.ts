@@ -37,17 +37,29 @@ export interface IMirrorSweepSummary {
   mirrored: number
   skipped: number
   unitsInserted: number
+  renamesApplied: number
+  renamesRefused: number
+  renamesFailed: number
   failed: boolean
   durationMs: number
 }
 
 export type MirrorBatchResult = Pick<
   IMirrorSweepSummary,
-  'candidates' | 'attempted' | 'mirrored' | 'skipped' | 'unitsInserted' | 'failed'
+  | 'candidates'
+  | 'attempted'
+  | 'mirrored'
+  | 'skipped'
+  | 'unitsInserted'
+  | 'renamesApplied'
+  | 'renamesRefused'
+  | 'renamesFailed'
+  | 'failed'
 >
 
 export type MirrorRepoResult =
   | { outcome: 'mirrored'; unitsInserted: number }
+  | { outcome: 'renamed'; from: string; to: string }
   | { outcome: 'skipped'; reason: MirrorSkipReason; message?: string }
 
 export type MirrorStage = 'nango' | 'mint' | 'resolve'

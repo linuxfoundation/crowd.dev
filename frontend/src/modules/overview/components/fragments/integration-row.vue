@@ -84,14 +84,13 @@
 import {
   computed, nextTick, ref, watch,
 } from 'vue';
-import { useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import { lfIntegrations } from '@/config/integrations';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfxDropdown from '@/ui-kit/lfx/dropdown/dropdown.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -105,11 +104,11 @@ const props = defineProps<{
 
 const { trackEvent } = useProductTracking();
 
-const { doDestroy } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 const isSettingsOpen = ref(false);
 const hasOpenedSettings = ref(false);
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const openSettings = async () => {
   hasOpenedSettings.value = true;
@@ -119,7 +118,7 @@ const openSettings = async () => {
 
 watch(isSettingsOpen, (open) => {
   if (!open) {
-    queryClient.invalidateQueries({ queryKey: [TanstackKey.GLOBAL_INTEGRATIONS] });
+    invalidate.globalIntegrations();
   }
 });
 
@@ -136,7 +135,7 @@ const disconnectIntegration = async (integration: IntegrationStatus) => {
       platform: integration.platform,
     },
   });
-  await doDestroy(integration.id);
+  await integrationStore.destroy(integration.id);
 
   // TODO: Fetch integrations
 };

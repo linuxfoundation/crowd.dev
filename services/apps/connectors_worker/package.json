@@ -29,6 +29,7 @@
     "@crowd/database": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
+    "@crowd/project-onboarding": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",

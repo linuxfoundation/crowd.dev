@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   countShadowRepos: vi.fn(),
   executeSql: vi.fn(),
   mirrorRepo: vi.fn(),
+  applyGithubRenames: vi.fn(),
+  installationTokenSource: vi.fn(),
   initNangoCloudClient: vi.fn(),
   heartbeat: vi.fn(),
   cancellation: new AbortController(),
@@ -41,6 +43,10 @@ vi.mock('@crowd/database', () => ({
   },
 }))
 vi.mock('../mirrorRepo', () => ({ mirrorRepo: mocks.mirrorRepo }))
+vi.mock('../githubRenames', () => ({ applyGithubRenames: mocks.applyGithubRenames }))
+vi.mock('../githubInstallationToken', () => ({
+  installationTokenSource: mocks.installationTokenSource,
+}))
 vi.mock('@crowd/nango', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@crowd/nango')>()),
   initNangoCloudClient: mocks.initNangoCloudClient,
@@ -105,6 +111,9 @@ describe('mirror sweep activities', () => {
       mirrored: 5,
       skipped: 2,
       unitsInserted: 40,
+      renamesApplied: 0,
+      renamesRefused: 0,
+      renamesFailed: 0,
       failed: false,
     })
 
@@ -152,6 +161,9 @@ describe('mirror sweep activities', () => {
       mirrored: 5,
       skipped: 0,
       unitsInserted: 40,
+      renamesApplied: 0,
+      renamesRefused: 0,
+      renamesFailed: 0,
       failed: true,
     })
     expect(mocks.log.error).toHaveBeenCalledTimes(1)
@@ -167,5 +179,62 @@ describe('mirror sweep activities', () => {
     mocks.cancellation.abort()
     await expect(mirrorBatch(2)).resolves.toMatchObject({ attempted: 0, failed: true })
     expect(mocks.mirrorRepo).not.toHaveBeenCalled()
+  })
+
+  it('mirrorBatch applies renames once per integration after the batch', async () => {
+    const repos = [
+      { ...repo('a'), integrationId: 'int-1' },
+      { ...repo('b'), integrationId: 'int-1' },
+      { ...repo('c'), integrationId: 'int-2' },
+      { ...repo('d'), integrationId: 'int-1' },
+    ]
+    mocks.listUnmirroredNangoRepos.mockResolvedValue(repos)
+    mocks.executeSql.mockResolvedValue({ data: [] })
+    mocks.installationTokenSource.mockImplementation((_qx, id: string) => `token-${id}`)
+    mocks.applyGithubRenames.mockImplementation(async (_qx, id: string) =>
+      id === 'int-1'
+        ? { applied: 1, refused: 1, failed: 0 }
+        : { applied: 0, refused: 0, failed: 1 },
+    )
+    mocks.mirrorRepo.mockImplementation(async (_qx: unknown, c: IMirrorCandidate) =>
+      c.repoName === 'd'
+        ? { outcome: 'mirrored', unitsInserted: 8 }
+        : { outcome: 'renamed', from: `old-${c.repoName}`, to: `new-${c.repoName}` },
+    )
+
+    await expect(mirrorBatch(5)).resolves.toEqual({
+      candidates: 4,
+      attempted: 4,
+      mirrored: 1,
+      skipped: 0,
+      unitsInserted: 8,
+      renamesApplied: 1,
+      renamesRefused: 1,
+      renamesFailed: 1,
+      failed: false,
+    })
+
+    expect(mocks.applyGithubRenames).toHaveBeenCalledTimes(2)
+    expect(mocks.applyGithubRenames).toHaveBeenCalledWith(
+      'qx',
+      'int-1',
+      [
+        { from: 'old-a', to: 'new-a' },
+        { from: 'old-b', to: 'new-b' },
+      ],
+      'token-int-1',
+      expect.any(Function),
+    )
+    expect(mocks.applyGithubRenames).toHaveBeenCalledWith(
+      'qx',
+      'int-2',
+      [{ from: 'old-c', to: 'new-c' }],
+      'token-int-2',
+      expect.any(Function),
+    )
+    const heartbeats = mocks.heartbeat.mock.calls.length
+    mocks.applyGithubRenames.mock.calls[0][4]()
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(heartbeats + 1)
+    expect(mocks.log.warn).not.toHaveBeenCalled()
   })
 })

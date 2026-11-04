@@ -234,7 +234,7 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import { lfIntegrations, type IntegrationConfig } from '@/config/integrations';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 
 const loading = ref(true);
@@ -252,7 +252,7 @@ const total = ref<number>(0);
 
 const integrationStatusCount = ref<Record<string, number>>({});
 
-const { doDestroy } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 
@@ -377,7 +377,7 @@ const disconnectIntegration = async (integration: IntegrationStatus) => {
       platform: integration.platform,
     },
   });
-  await doDestroy(integration.id);
+  await integrationStore.destroy(integration.id);
   fetchGlobalIntegrations();
 };
 </script>

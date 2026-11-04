@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ILifecycleChannel } from '@crowd/data-access-layer/src/connectors'
 
 import {
+  applyGithubRenameWorkflowId,
   diffGithubLifecycle,
   githubRepoKey,
   isRenamedRepo,
@@ -141,5 +142,11 @@ describe('reconcileGithubIntegrationWorkflowId', () => {
     expect(reconcileGithubIntegrationWorkflowId('abc')).toBe(
       'connectors-reconcile-github-integration/abc',
     )
+  })
+})
+
+describe('applyGithubRenameWorkflowId', () => {
+  it('builds the per-repo rename workflow id', () => {
+    expect(applyGithubRenameWorkflowId('abc', '123')).toBe('connectors-github-rename/abc/123')
   })
 })

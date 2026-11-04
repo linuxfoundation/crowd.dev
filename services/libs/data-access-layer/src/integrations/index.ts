@@ -930,6 +930,17 @@ export async function fetchGithubLifecycleIntegration(
   )
 }
 
+export async function tryLockGithubRenames(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<boolean> {
+  const row = await qx.selectOne(
+    `SELECT pg_try_advisory_xact_lock(hashtextextended('githubRenames:' || $(integrationId), 0)) AS locked`,
+    { integrationId },
+  )
+  return row.locked
+}
+
 const NANGO_MAPPING_CHANNEL_KEY = `lower('https://github.com/' || nm.owner || '/' || nm."repoName")`
 
 export async function listGithubChannelsOwnedElsewhere(
