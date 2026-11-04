@@ -111,8 +111,6 @@ interface ManifestBase<TDeps> {
   preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
-  // Estimated calls a single run spends against the budget probe above; admitByBudget's default
-  // (50) assumes GitHub-scale limits and never fit a provider with a much smaller safe ceiling.
   runCostEstimate?: number
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may
