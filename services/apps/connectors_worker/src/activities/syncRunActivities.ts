@@ -218,7 +218,7 @@ export async function executeSync(unitId: string): Promise<void> {
         }
         return resolvedCredential
       },
-      deps: manifest.createDeps?.({ qx, integrationId: unit.integrationId }),
+      deps: manifest.createDeps?.({ qx, integrationId: unit.integrationId, segmentId }),
     }
 
     const outcome = await sync.run(ctx)

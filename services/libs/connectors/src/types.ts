@@ -79,6 +79,7 @@ export interface PoolPreparation {
 export interface DepsFactoryInput {
   qx: QueryExecutor
   integrationId: string
+  segmentId: string | null
 }
 
 export type DepsFactory<TDeps> = (input: DepsFactoryInput) => TDeps

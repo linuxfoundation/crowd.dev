@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe('createOctolensDeps', () => {
   it("resolves keywordIds to their subproject integration, not the poll's own", async () => {
-    const deps = createOctolensDeps({ qx, integrationId: 'anchor' })
+    const deps = createOctolensDeps({ qx, integrationId: 'anchor', segmentId: null })
 
     expect(await deps.resolveKeywordTarget(1)).toEqual({
       segmentId: 'segment-a',
@@ -57,7 +57,7 @@ describe('createOctolensDeps', () => {
       { integrationId: 'integration-c', segmentId: 'segment-c', keywordId: 1, keyword: 'ebpf' },
       { integrationId: 'integration-b', segmentId: 'segment-b', keywordId: 2, keyword: 'cilium' },
     ])
-    const deps = createOctolensDeps({ qx, integrationId: 'anchor' })
+    const deps = createOctolensDeps({ qx, integrationId: 'anchor', segmentId: null })
 
     expect(await deps.resolveKeywordTarget(1)).toBeNull()
     expect(await deps.resolveKeywordTarget(2)).toEqual({
@@ -67,7 +67,7 @@ describe('createOctolensDeps', () => {
   })
 
   it('loads the mappings once per deps instance, not once per lookup', async () => {
-    const deps = createOctolensDeps({ qx, integrationId: 'integration-1' })
+    const deps = createOctolensDeps({ qx, integrationId: 'integration-1', segmentId: null })
 
     await deps.resolveKeywordTarget(1)
     await deps.resolveKeywordTarget(2)
@@ -77,8 +77,16 @@ describe('createOctolensDeps', () => {
   })
 
   it('reloads for a new deps instance, so each sync run sees fresh mappings', async () => {
-    await createOctolensDeps({ qx, integrationId: 'integration-1' }).resolveKeywordTarget(1)
-    await createOctolensDeps({ qx, integrationId: 'integration-1' }).resolveKeywordTarget(1)
+    await createOctolensDeps({
+      qx,
+      integrationId: 'integration-1',
+      segmentId: null,
+    }).resolveKeywordTarget(1)
+    await createOctolensDeps({
+      qx,
+      integrationId: 'integration-1',
+      segmentId: null,
+    }).resolveKeywordTarget(1)
 
     expect(mockedListMappings).toHaveBeenCalledTimes(2)
   })

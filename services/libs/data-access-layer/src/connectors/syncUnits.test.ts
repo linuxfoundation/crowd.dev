@@ -12,6 +12,7 @@ import {
   decommissionAllSyncUnits,
   decommissionSyncUnitsForChannels,
   deleteDrainedSyncUnits,
+  findSyncUnitByChannelId,
   hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
   listSyncUnitChannelNames,
@@ -423,6 +424,35 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
   })
 })
 
+describe('findSyncUnitByChannelId', () => {
+  test('finds the unit of that channel and sync, scoped to the integration and sync name', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const other = await createIntegration(qx)
+    const unitId = await createSyncUnit(qx, integrationId, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'badgePoll',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'expirySync',
+    })
+    await createSyncUnit(qx, other, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'badgePoll',
+    })
+
+    const found = await findSyncUnitByChannelId(qx, integrationId, 'tpl-cka', 'badgePoll')
+
+    expect(found?.id).toBe(unitId)
+    expect(await findSyncUnitByChannelId(qx, integrationId, 'tpl-missing', 'badgePoll')).toBeNull()
+  })
+})
+
 describe('listSyncUnitChannelNames', () => {
   test('returns distinct names of one channel', async ({ qx }) => {
     const integrationId = await createIntegration(qx)
@@ -457,14 +487,20 @@ describe('hasActiveSyncUnitsForChannelElsewhere', () => {
   const freshLock = new Date(Date.now() - 10 * 60_000).toISOString()
   const staleLock = new Date(Date.now() - 120 * 60_000).toISOString()
 
-  test('sees live or still-running units of another github-nango integration only', async ({
+  test('sees live or still-running units of another integration of the same platform only', async ({
     qx,
   }) => {
     const owner = await createIntegration(qx, { platform: 'github-nango' })
     const other = await createIntegration(qx, { platform: 'github-nango' })
     const unitId = await createSyncUnit(qx, owner, { channelName: 'R_1', syncName: 'issues' })
     const elsewhere = (integrationId: string, channelId: string) =>
-      hasActiveSyncUnitsForChannelElsewhere(qx, integrationId, channelId, staleLockBefore)
+      hasActiveSyncUnitsForChannelElsewhere(
+        qx,
+        integrationId,
+        channelId,
+        staleLockBefore,
+        'github-nango',
+      )
 
     expect(await elsewhere(other, 'R_1')).toBe(true)
     expect(await elsewhere(owner, 'R_1')).toBe(false)

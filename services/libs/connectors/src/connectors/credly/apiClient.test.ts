@@ -206,6 +206,32 @@ describe('fetchBadgesPage', () => {
     expect(failure.message).toContain('badge-2')
   })
 
+  it('fails when a badge_template_id filter returns a badge of another template', async () => {
+    const http = httpReturning(
+      pageOf([badge({ badge_template: { id: 'tpl-other', name: 'Other' } })]),
+    )
+
+    const failure = await fetchBadgesPage(
+      http,
+      { organizationId: 'org-1', window: WINDOW, page: 1, badgeTemplateId: 'tpl-lfc131' },
+      log,
+    ).catch((err) => err)
+
+    expect(failure).toBeInstanceOf(ProviderContractError)
+    expect(failure.message).toContain('tpl-other')
+    expect(failure.message).toContain('tpl-lfc131')
+  })
+
+  it('skips the template check when no badge_template_id filter was requested', async () => {
+    const http = httpReturning(
+      pageOf([badge({ badge_template: { id: 'tpl-other', name: 'Other' } })]),
+    )
+
+    await expect(
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+    ).resolves.toBeDefined()
+  })
+
   it('fails on a page that does not match the badge shape, naming the field but not the body', async () => {
     const http = httpReturning(pageOf([badge({ recipient_email: undefined })]))
 

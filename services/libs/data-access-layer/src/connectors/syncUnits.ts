@@ -1,5 +1,3 @@
-import { PlatformType } from '@crowd/types'
-
 import type { QueryExecutor } from '../queryExecutor'
 import { truncateErrorMessage } from '../utils'
 import type {
@@ -316,6 +314,22 @@ export async function findSyncUnitByChannelName(
      ORDER BY "updatedAt" DESC
      LIMIT 1`,
     { integrationId, platform, channelName, syncName },
+  )
+}
+
+export async function findSyncUnitByChannelId(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelId: string,
+  syncName: string,
+): Promise<ISyncUnit | null> {
+  return qx.selectOneOrNone(
+    `SELECT *
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND "channelId" = $(channelId)
+       AND "syncName" = $(syncName)`,
+    { integrationId, channelId, syncName },
   )
 }
 
@@ -642,6 +656,7 @@ export async function hasActiveSyncUnitsForChannelElsewhere(
   integrationId: string,
   channelId: string,
   staleLockBefore: Date,
+  platform: string,
 ): Promise<boolean> {
   const row = await qx.selectOne(
     `SELECT EXISTS (
@@ -656,7 +671,7 @@ export async function hasActiveSyncUnitsForChannelElsewhere(
            OR su."lockedAt" >= $(staleLockBefore)
          )
      ) AS exists`,
-    { integrationId, channelId, platform: PlatformType.GITHUB_NANGO, staleLockBefore },
+    { integrationId, channelId, platform, staleLockBefore },
   )
   return row.exists === true
 }

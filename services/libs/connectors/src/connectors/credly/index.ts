@@ -30,5 +30,4 @@ export const credlyConnector: Manifest<CredlyDeps> = {
   probeBudget: probeCredlyBudget,
   runCostEstimate: CREDLY_SAFE_CALLS_PER_WINDOW,
   createDeps: createCredlyDeps,
-  emitsOwnSegment: true,
 }
