@@ -20,14 +20,17 @@ import {
 import { normalizeMemberOrganizationDate, signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
+  changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
   cleanupOrphanMemberSegmentAffiliations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findMemberById,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
   IMemberOrganization,
   MemberOrganizationDateRange,
@@ -156,9 +159,27 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           stampVerifiedAt: true,
         })
 
-        // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
         if (existing.organizationId !== data.organizationId) {
+          // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
           await cleanupOrphanMemberSegmentAffiliations(tx, memberId, [existing.organizationId])
+
+          const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
+            data.organizationId,
+          ])
+
+          if (orgAffiliationPolicyById.get(data.organizationId)) {
+            await changeMemberOrganizationAffiliationOverrides(tx, [
+              {
+                memberId,
+                memberOrganizationId: workExperienceId,
+                allowAffiliation: false,
+              },
+            ])
+            await deleteMemberSegmentAffiliations(tx, {
+              memberId,
+              organizationId: data.organizationId,
+            })
+          }
         }
       })
 
