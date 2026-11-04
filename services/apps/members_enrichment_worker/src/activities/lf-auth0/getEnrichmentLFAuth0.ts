@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 
 import { GetUsers200ResponseOneOfInner, ManagementClient } from 'auth0'
 
+import { isValidEmail } from '@crowd/common'
 import { RedisCache, acquireLock, releaseLock } from '@crowd/redis'
 import { IMember, MemberIdentityType, PlatformType } from '@crowd/types'
 
@@ -77,10 +78,10 @@ async function getEnrichmentData(
   const lfidIdentity =
     member.identities?.find(
       (i) =>
+        i.type === MemberIdentityType.USERNAME &&
         (i.platform === PlatformType.LFID ||
-          i.platform === PlatformType.TNC ||
-          i.platform === PlatformType.CVENT) &&
-        i.type === MemberIdentityType.USERNAME,
+          ((i.platform === PlatformType.TNC || i.platform === PlatformType.CVENT) &&
+            !isValidEmail(i.value))),
     ) || null
 
   const emailIdentity =
