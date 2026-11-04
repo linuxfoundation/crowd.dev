@@ -317,22 +317,6 @@ export async function findSyncUnitByChannelName(
   )
 }
 
-export async function findSyncUnitByChannelId(
-  qx: QueryExecutor,
-  integrationId: string,
-  channelId: string,
-  syncName: string,
-): Promise<ISyncUnit | null> {
-  return qx.selectOneOrNone(
-    `SELECT *
-     FROM integration.sync_units
-     WHERE "integrationId" = $(integrationId)
-       AND "channelId" = $(channelId)
-       AND "syncName" = $(syncName)`,
-    { integrationId, channelId, syncName },
-  )
-}
-
 export async function setSyncUnitEmitEnabled(
   qx: QueryExecutor,
   id: string,

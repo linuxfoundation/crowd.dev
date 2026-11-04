@@ -16,6 +16,10 @@ import {
   lockCredlyTemplateMapping,
   upsertCredlyTemplateDecision,
 } from '@crowd/data-access-layer/src/credly'
+import type {
+  ICredlyTemplateReleaseInput,
+  IUnreleasedMappedCredlyTemplate,
+} from '@crowd/data-access-layer/src/credly/releases'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegments } from '@crowd/data-access-layer/src/segments'
 import type { Logger } from '@crowd/logging'
@@ -198,6 +202,21 @@ export function releaseFloor(createdAt: string | null | undefined, top: Date): s
   const startMs = Date.parse(CREDLY_HISTORY_START)
   const floorMs = Number.isFinite(createdMs) ? Math.max(createdMs, startMs) : startMs
   return new Date(Math.min(floorMs, top.getTime() - 1000)).toISOString()
+}
+
+// One-time catch-up for templates mapped before the release queue existed: same floor rule as a
+// normal release, lightest-first ordering left to the caller.
+export function unreleasedTemplatesToQueue(
+  templates: TemplateToResolve[],
+  unreleased: IUnreleasedMappedCredlyTemplate[],
+  now: Date,
+): ICredlyTemplateReleaseInput[] {
+  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
+  return unreleased.map((entry) => ({
+    badgeTemplateId: entry.badgeTemplateId,
+    floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
+    top: now.toISOString(),
+  }))
 }
 
 // The live cursor starts exactly where the backfill's top ends, so a unit onboarded long before

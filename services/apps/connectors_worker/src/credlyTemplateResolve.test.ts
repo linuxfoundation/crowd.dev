@@ -6,11 +6,13 @@ import type { ICredlyStoredTemplateMapping } from '@crowd/data-access-layer/src/
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import {
+  CREDLY_HISTORY_START,
   applyDecisions,
   buildPlan,
   loadCatalogue,
   loadCredlyTemplates,
   loadSubprojectSegments,
+  unreleasedTemplatesToQueue,
 } from './credlyTemplateResolve'
 import { onboardCredlyTemplate } from './onboardCredlyTemplate'
 
@@ -235,6 +237,45 @@ describe('loadCredlyTemplates', () => {
       .mockResolvedValueOnce(page([{ id: 'a', name: 'A' }], 2))
 
     expect((await loadCredlyTemplates(http, 'org', log)).complete).toBe(false)
+  })
+})
+
+describe('unreleasedTemplatesToQueue', () => {
+  const now = new Date('2026-11-02T12:00:00.000Z')
+
+  it('queues one release per unreleased template, floored at its own creation date', () => {
+    const releases = unreleasedTemplatesToQueue(
+      [
+        { id: 'ckad', name: 'CKAD', createdAt: '2019-01-01T00:00:00.000Z' },
+        { id: 'fresh', name: 'Fresh', createdAt: '2026-11-01T09:00:00.000Z' },
+      ],
+      [
+        { badgeTemplateId: 'fresh', badgeCount: 10 },
+        { badgeTemplateId: 'ckad', badgeCount: 58312 },
+      ],
+      now,
+    )
+
+    expect(releases).toEqual([
+      {
+        badgeTemplateId: 'fresh',
+        floor: '2026-11-01T09:00:00.000Z',
+        top: '2026-11-02T12:00:00.000Z',
+      },
+      { badgeTemplateId: 'ckad', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+    ])
+  })
+
+  it('falls back to the history start for a template missing from the listing', () => {
+    const releases = unreleasedTemplatesToQueue(
+      [],
+      [{ badgeTemplateId: 'gone', badgeCount: 3 }],
+      now,
+    )
+
+    expect(releases).toEqual([
+      { badgeTemplateId: 'gone', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+    ])
   })
 })
 
