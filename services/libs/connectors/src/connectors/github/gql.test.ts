@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
-import { ProviderAccessDeniedError, ProviderContractError } from '../../http/errors'
+import {
+  ProviderAccessDeniedError,
+  ProviderContractError,
+  RepositoryRenamedError,
+} from '../../http/errors'
 import { githubGraphql } from './gql'
 
 const log = {
@@ -111,5 +115,53 @@ describe('githubGraphql', () => {
 
     await expect(githubGraphql(http, 'query', {}, log)).resolves.toEqual(partial.data)
     expect(http.request).toHaveBeenCalledTimes(1)
+  })
+  it('throws RepositoryRenamedError when the repository url names another repo', async () => {
+    const http = httpReturning([
+      { data: { repository: { url: 'https://github.com/react/create-react-app' } } },
+    ])
+
+    const pending = githubGraphql(
+      http,
+      'query',
+      { owner: 'facebookincubator', repo: 'create-react-app' },
+      log,
+    )
+
+    await expect(pending).rejects.toBeInstanceOf(RepositoryRenamedError)
+    await expect(pending).rejects.toMatchObject({
+      currentUrl: 'https://github.com/react/create-react-app',
+      errorClass: 'provider.repository_renamed',
+      message: 'repository renamed to https://github.com/react/create-react-app',
+    })
+  })
+
+  it('ignores a case-only difference', async () => {
+    const data = { repository: { url: 'https://github.com/Acme/Repo' } }
+    const http = httpReturning([{ data }])
+
+    await expect(
+      githubGraphql(http, 'query', { owner: 'acme', repo: 'repo' }, log),
+    ).resolves.toEqual(data)
+  })
+
+  it('ignores queries without owner/repo variables or without repository url', async () => {
+    const withUrl = { repository: { url: 'https://github.com/react/create-react-app' } }
+    const withoutUrl = { repository: { issues: { nodes: [] } } }
+
+    await expect(
+      githubGraphql(httpReturning([{ data: withUrl }]), 'query', {}, log),
+    ).resolves.toEqual(withUrl)
+    await expect(
+      githubGraphql(httpReturning([{ data: withUrl }]), 'query', { owner: 'acme', repo: 7 }, log),
+    ).resolves.toEqual(withUrl)
+    await expect(
+      githubGraphql(
+        httpReturning([{ data: withoutUrl }]),
+        'query',
+        { owner: 'facebookincubator', repo: 'create-react-app' },
+        log,
+      ),
+    ).resolves.toEqual(withoutUrl)
   })
 })

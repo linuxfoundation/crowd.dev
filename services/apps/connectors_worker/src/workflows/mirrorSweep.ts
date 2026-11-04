@@ -68,6 +68,9 @@ export async function mirrorSweep(input: IMirrorSweepInput): Promise<IMirrorSwee
     mirrored: 0,
     skipped: 0,
     unitsInserted: 0,
+    renamesApplied: 0,
+    renamesRefused: 0,
+    renamesFailed: 0,
     failed: false,
     durationMs: 0,
   }

@@ -139,7 +139,14 @@ export async function mirrorRepo(
   }
 
   if (isRenamedChannel(candidate, channel.channelName)) {
-    return { outcome: 'skipped', reason: 'repo_renamed' }
+    const from = await findIntegrationRepositoryUrl(
+      qx,
+      candidate.integrationId,
+      githubChannelName(candidate.owner, candidate.repoName),
+    )
+    return from === null
+      ? { outcome: 'skipped', reason: 'repo_renamed' }
+      : { outcome: 'renamed', from, to: channel.channelName }
   }
   const channelName = await storedChannelName(qx, candidate, channel.channelName)
   if (await hasSyncUnitsForChannel(qx, candidate.integrationId, channel.channelId)) {

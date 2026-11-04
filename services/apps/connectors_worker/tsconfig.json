@@ -27,6 +27,9 @@
       "path": "../../libs/nango"
     },
     {
+      "path": "../../libs/project-onboarding"
+    },
+    {
       "path": "../../libs/redis"
     },
     {

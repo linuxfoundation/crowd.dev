@@ -20,6 +20,7 @@ export interface PullRequestNode {
 
 export interface PullRequestsPage {
   repository: {
+    url: string
     pullRequests: {
       pageInfo: {
         endCursor: string | null
@@ -66,6 +67,7 @@ const ACTOR_FIELDS = `
 export const PULL_REQUESTS_QUERY = `
   query ($owner: String!, $repo: String!, $first: Int!, $cursor: String, $direction: OrderDirection!) {
     repository(owner: $owner, name: $repo) {
+      url
       pullRequests(first: $first, after: $cursor, orderBy: {field: UPDATED_AT, direction: $direction}) {
         pageInfo {
           endCursor

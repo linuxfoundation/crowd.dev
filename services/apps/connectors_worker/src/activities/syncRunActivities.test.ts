@@ -5,8 +5,10 @@ import {
   ProviderAccessDeniedError,
   ProviderAuthError,
   ProviderContractError,
+  RepositoryRenamedError,
 } from '@crowd/connectors'
 import type { ConnectorError, SyncContext, SyncOutcome } from '@crowd/connectors'
+import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 import { executeSync, recordSyncRunTimeout } from './syncRunActivities'
@@ -22,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   recordRunFailure: vi.fn(),
   recordRunTimeout: vi.fn(),
   rescheduleUnit: vi.fn(),
+  recordRunPartial: vi.fn(),
+  parkUnit: vi.fn(),
+  startWorkflow: vi.fn(),
   emittedCount: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -44,6 +49,7 @@ vi.mock('../main', () => ({
     postgres: { writer: {} },
     redis: {},
     dataSinkWorkerEmitter: {},
+    temporal: { workflow: { start: mocks.startWorkflow } },
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   },
 }))
@@ -68,10 +74,10 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   reassertUnitClaim: mocks.reassertUnitClaim,
   recordRunSuccess: mocks.recordRunSuccess,
   rescheduleUnit: mocks.rescheduleUnit,
-  recordRunPartial: vi.fn(),
+  recordRunPartial: mocks.recordRunPartial,
   recordRunFailure: mocks.recordRunFailure,
   recordRunTimeout: mocks.recordRunTimeout,
-  parkUnit: vi.fn(),
+  parkUnit: mocks.parkUnit,
   recordShadowRecords: vi.fn(),
 }))
 
@@ -230,6 +236,94 @@ describe('executeSync failure', () => {
       deadLetterAfter,
       SHORT_DEFER_RUN_AT,
       null,
+    )
+  })
+})
+
+describe('executeSync rename', () => {
+  const GITHUB_UNIT = {
+    ...UNIT,
+    platform: 'github-nango',
+    syncName: 'issues',
+    channelId: '123456',
+    channelName: 'https://github.com/facebookincubator/create-react-app',
+  }
+  const CURRENT_URL = 'https://github.com/react/create-react-app'
+  const renamed = () => new RepositoryRenamedError(CURRENT_URL)
+
+  beforeEach(() => {
+    mocks.getUnitById.mockResolvedValue(GITHUB_UNIT)
+  })
+
+  it('a rename keeps committed progress, reschedules at cadence and starts the rename workflow once', async () => {
+    mocks.run.mockImplementation(async (ctx: SyncContext<unknown>) => {
+      await ctx.commitWatermark({ cursor: 'after' })
+      throw renamed()
+    })
+
+    await expect(executeSync(UNIT.id)).resolves.toBeUndefined()
+
+    expect(mocks.recordRunPartial).toHaveBeenCalledWith(
+      {},
+      UNIT.id,
+      { watermark: { cursor: 'after' }, emittedCount: 3 },
+      CADENCE_RUN_AT,
+      'provider.repository_renamed',
+      `repository renamed to ${CURRENT_URL}`,
+    )
+    expect(mocks.parkUnit).not.toHaveBeenCalled()
+    expect(mocks.recordRunFailure).not.toHaveBeenCalled()
+    expect(mocks.startWorkflow).toHaveBeenCalledTimes(1)
+    expect(mocks.startWorkflow).toHaveBeenCalledWith('applyGithubRename', {
+      taskQueue: 'connectors',
+      workflowId: 'connectors-github-rename/integration-1/123456',
+      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      workflowExecutionTimeout: '1 hour',
+      args: [
+        {
+          integrationId: 'integration-1',
+          from: GITHUB_UNIT.channelName,
+          to: CURRENT_URL,
+        },
+      ],
+    })
+    expect(mocks.log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'sync_run_summary', outcome: 'renamed' }),
+      'sync run summary',
+    )
+  })
+
+  it('a rename without progress parks the unit at cadence', async () => {
+    mocks.getUnitById.mockResolvedValue({ ...GITHUB_UNIT, watermark: null })
+    mocks.run.mockRejectedValue(renamed())
+
+    await executeSync(UNIT.id)
+
+    expect(mocks.parkUnit).toHaveBeenCalledWith(
+      {},
+      UNIT.id,
+      CADENCE_RUN_AT,
+      'provider.repository_renamed',
+      `repository renamed to ${CURRENT_URL}`,
+    )
+    expect(mocks.recordRunPartial).not.toHaveBeenCalled()
+    expect(mocks.recordRunFailure).not.toHaveBeenCalled()
+    expect(mocks.startWorkflow).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed rename workflow start does not fail the run', async () => {
+    mocks.getUnitById.mockResolvedValue({ ...GITHUB_UNIT, watermark: null })
+    mocks.run.mockRejectedValue(renamed())
+    mocks.startWorkflow.mockRejectedValue(new Error('temporal unavailable'))
+
+    await expect(executeSync(UNIT.id)).resolves.toBeUndefined()
+
+    expect(mocks.parkUnit).toHaveBeenCalledTimes(1)
+    expect(mocks.recordRunFailure).not.toHaveBeenCalled()
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'github_rename_start_failed', to: CURRENT_URL }),
+      expect.any(String),
     )
   })
 })

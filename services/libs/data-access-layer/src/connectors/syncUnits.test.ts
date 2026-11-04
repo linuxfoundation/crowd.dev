@@ -14,6 +14,7 @@ import {
   deleteDrainedSyncUnits,
   hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
+  listSyncUnitChannelNames,
   listShadowDiffUnits,
   listShadowDiffUnitsPage,
   listDecommissionedSyncUnitChannels,
@@ -57,6 +58,7 @@ async function createSyncUnit(
   integrationId: string,
   overrides: {
     channelName: string
+    channelId?: string
     syncName: string
     status?: string
     emitEnabled?: boolean
@@ -71,12 +73,13 @@ async function createSyncUnit(
     INSERT INTO integration.sync_units
       (id, "integrationId", platform, "channelId", "channelName", "syncName", status, "emitEnabled", watermark, "lockedAt")
     VALUES
-      ($(id), $(integrationId), $(platform), $(channelName), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb, $(lockedAt)::timestamptz)
+      ($(id), $(integrationId), $(platform), $(channelId), $(channelName), $(syncName), $(status), $(emitEnabled), $(watermark)::jsonb, $(lockedAt)::timestamptz)
     `,
     {
       id,
       integrationId,
       platform: overrides.platform ?? 'github',
+      channelId: overrides.channelId ?? overrides.channelName,
       channelName: overrides.channelName,
       syncName: overrides.syncName,
       status: overrides.status ?? 'active',
@@ -417,6 +420,35 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
     expect(await countShadowRepos(qx)).toBe(2)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/shadow')).toBe(true)
     expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/unknown')).toBe(false)
+  })
+})
+
+describe('listSyncUnitChannelNames', () => {
+  test('returns distinct names of one channel', async ({ qx }) => {
+    const integrationId = await createIntegration(qx)
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'R_1',
+      channelName: 'https://github.com/org/old',
+      syncName: 'issues',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'R_1',
+      channelName: 'https://github.com/org/old',
+      syncName: 'forks',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'R_1',
+      channelName: 'https://github.com/org/New',
+      syncName: 'discussions',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'R_2',
+      channelName: 'https://github.com/org/other',
+      syncName: 'issues',
+    })
+
+    const names = await listSyncUnitChannelNames(qx, integrationId, 'R_1')
+    expect([...names].sort()).toEqual(['https://github.com/org/New', 'https://github.com/org/old'])
   })
 })
 

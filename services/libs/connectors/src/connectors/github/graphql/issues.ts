@@ -24,6 +24,7 @@ export interface IssueNode {
 
 export interface IssuesPage {
   repository: {
+    url: string
     issues: {
       pageInfo: {
         endCursor: string | null
@@ -60,6 +61,7 @@ export interface IssueCommentsBatchPage {
 
 export interface IssueCommentsPaginatedPage {
   repository: {
+    url: string
     issue: {
       comments: IssueCommentsConnection
     } | null
@@ -108,6 +110,7 @@ export const ISSUE_COMMENTS_QUERY = `
 export const ISSUE_COMMENTS_PAGINATED_QUERY = `
   query ($owner: String!, $repo: String!, $issueNumber: Int!, $first: Int!, $cursor: String) {
     repository(owner: $owner, name: $repo) {
+      url
       issue(number: $issueNumber) {
         comments(first: $first, after: $cursor) {
           pageInfo {
@@ -126,6 +129,7 @@ export const ISSUE_COMMENTS_PAGINATED_QUERY = `
 export const ISSUES_QUERY = `
   query ($owner: String!, $repo: String!, $first: Int!, $cursor: String, $since: DateTime) {
     repository(owner: $owner, name: $repo) {
+      url
       issues(
         first: $first
         after: $cursor

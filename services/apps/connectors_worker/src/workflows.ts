@@ -1,3 +1,4 @@
+import { applyGithubRename } from './workflows/applyGithubRename'
 import { completenessBackfillSweep } from './workflows/completenessBackfillSweep'
 import { dispatcher } from './workflows/dispatcher'
 import { githubLifecycleSweep } from './workflows/githubLifecycleSweep'
@@ -12,6 +13,7 @@ import { validateCompleteness } from './workflows/validateCompleteness'
 import { weeklyCompletenessValidation } from './workflows/weeklyCompletenessValidation'
 
 export {
+  applyGithubRename,
   completenessBackfillSweep,
   dispatcher,
   githubLifecycleSweep,
