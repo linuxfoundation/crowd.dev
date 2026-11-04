@@ -2,13 +2,25 @@ import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { assertCredentialKind, createHttpClient, getCredential } from '@crowd/connectors'
+import { DataSinkWorkerEmitter } from '@crowd/common_services'
+import {
+  type Credential,
+  assertCredentialKind,
+  createHttpClient,
+  getCredential,
+} from '@crowd/connectors'
+import { createCredlyDeps } from '@crowd/connectors/src/connectors/credly/deps'
+import { credlyActivitySchema } from '@crowd/connectors/src/connectors/credly/mapper'
 import { credlyTemplateOverrides } from '@crowd/connectors/src/connectors/credly/mapping/overrides'
 import { resolveTemplates } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
 import {
   CREDLY_POOL_ENTRY_ID,
   mintCredlyAccessToken,
 } from '@crowd/connectors/src/connectors/credly/oauth'
+import { drainCredlyReleases } from '@crowd/connectors/src/connectors/credly/syncs/badgePoll'
+import { createEmit } from '@crowd/connectors/src/emit'
+import { findSyncUnitByChannelName } from '@crowd/data-access-layer/src/connectors'
+import { recordShadowRecords } from '@crowd/data-access-layer/src/connectors/shadowRecords'
 import {
   listActiveCredlyTemplateMappings,
   listCredlyTemplateMappings,
@@ -19,8 +31,11 @@ import {
   queueCredlyTemplateRelease,
 } from '@crowd/data-access-layer/src/credly/releases'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
+import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { DbStore } from '@crowd/database'
 import { getServiceLogger } from '@crowd/logging'
+import { QUEUE_CONFIG, QueueFactory } from '@crowd/queue'
 import { SnowflakeClient } from '@crowd/snowflake'
 
 import { activeHeld, buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
@@ -37,19 +52,28 @@ import {
 
 const log = getServiceLogger()
 const HELD_QUEUE_PRINTED = 20
+const DEFAULT_DRAIN_PACING_MS = 2_000
 
 function usage(): never {
   log.error(
-    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>] | --release <badge template id> | --release-unreleased --integration-id <uuid>',
+    'Usage: resolve-credly-templates --integration-id <uuid> [--apply [--notify | --digest]] [--out <file>] | --release <badge template id> | --release-unreleased --integration-id <uuid> | --drain-releases --integration-id <uuid> [--pacing-ms <n>]',
   )
   process.exit(1)
 }
 
-function credlyHttpClient(token: string): ReturnType<typeof createHttpClient> {
+// Re-mints on invalidation instead of capturing one token for the process lifetime: the drain
+// command can run long enough (paced release completions, a large backlog) to outlive a token's TTL.
+function credlyHttpClient(credential: Credential): ReturnType<typeof createHttpClient> {
+  let token: string | null = null
   return createHttpClient({
-    acquireToken: async () => ({ id: CREDLY_POOL_ENTRY_ID, value: token }),
+    acquireToken: async () => {
+      if (!token) ({ token } = await mintCredlyAccessToken(credential))
+      return { id: CREDLY_POOL_ENTRY_ID, value: token }
+    },
     parkToken: async () => undefined,
-    invalidateToken: async () => undefined,
+    invalidateToken: async () => {
+      token = null
+    },
     log,
   })
 }
@@ -73,6 +97,8 @@ function takeSwitch(argv: string[], flag: string): boolean {
 interface Args {
   release?: string
   releaseUnreleased: boolean
+  drainReleases: boolean
+  pacingMs: number
   integrationId: string
   apply: boolean
   notify: 'changes' | 'digest' | null
@@ -87,6 +113,8 @@ function parseArgs(rawArgv: string[]): Args {
     return {
       release,
       releaseUnreleased: false,
+      drainReleases: false,
+      pacingMs: DEFAULT_DRAIN_PACING_MS,
       integrationId: '',
       apply: false,
       notify: null,
@@ -97,7 +125,31 @@ function parseArgs(rawArgv: string[]): Args {
   if (releaseUnreleased) {
     const integrationId = takeFlag(argv, '--integration-id')
     if (!integrationId || argv.length > 0) usage()
-    return { releaseUnreleased, integrationId, apply: false, notify: null, outFile: '' }
+    return {
+      releaseUnreleased,
+      drainReleases: false,
+      pacingMs: DEFAULT_DRAIN_PACING_MS,
+      integrationId,
+      apply: false,
+      notify: null,
+      outFile: '',
+    }
+  }
+  const drainReleases = takeSwitch(argv, '--drain-releases')
+  if (drainReleases) {
+    const integrationId = takeFlag(argv, '--integration-id')
+    const pacingMsRaw = takeFlag(argv, '--pacing-ms')
+    const pacingMs = pacingMsRaw ? Number(pacingMsRaw) : DEFAULT_DRAIN_PACING_MS
+    if (!integrationId || !Number.isFinite(pacingMs) || pacingMs < 0 || argv.length > 0) usage()
+    return {
+      drainReleases,
+      pacingMs,
+      releaseUnreleased: false,
+      integrationId,
+      apply: false,
+      notify: null,
+      outFile: '',
+    }
   }
   const integrationId = takeFlag(argv, '--integration-id')
   const apply = takeSwitch(argv, '--apply')
@@ -108,15 +160,98 @@ function parseArgs(rawArgv: string[]): Args {
     takeFlag(argv, '--out') ??
     join(tmpdir(), `credly-resolve-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
   if (!integrationId || argv.length > 0) usage()
-  return { releaseUnreleased: false, integrationId, apply, notify, outFile }
+  return {
+    releaseUnreleased: false,
+    drainReleases: false,
+    pacingMs: DEFAULT_DRAIN_PACING_MS,
+    integrationId,
+    apply,
+    notify,
+    outFile,
+  }
 }
 
 async function main(): Promise<void> {
-  const { release, releaseUnreleased, integrationId, apply, notify, outFile } = parseArgs(
-    process.argv.slice(2),
-  )
+  const {
+    release,
+    releaseUnreleased,
+    drainReleases,
+    pacingMs,
+    integrationId,
+    apply,
+    notify,
+    outFile,
+  } = parseArgs(process.argv.slice(2))
   const db = await getDbConnection(WRITE_DB_CONFIG())
   const qx = pgpQx(db)
+
+  if (drainReleases) {
+    const credential = await getCredential(qx, integrationId)
+    assertCredentialKind(credential, 'credly-oauth-client')
+    const { organizationId } = credential.data
+    const http = credlyHttpClient(credential)
+
+    const unit = await findSyncUnitByChannelName(
+      qx,
+      integrationId,
+      'credly',
+      organizationId,
+      'badgePoll',
+    )
+    if (!unit) {
+      log.error(
+        { integrationId, organizationId },
+        'no credly badgePoll sync unit found for this integration',
+      )
+      process.exit(1)
+    }
+
+    const queueClient = QueueFactory.createQueueService(QUEUE_CONFIG())
+    const sinkEmitter = new DataSinkWorkerEmitter(queueClient, log)
+    await sinkEmitter.init()
+    try {
+      const streamRepo = new IntegrationStreamRepository(new DbStore(log, db), log)
+      const emitter = createEmit({
+        publishResult: streamRepo.publishExternalResult.bind(streamRepo),
+        sinkEmitter,
+        recordShadow: (records) => recordShadowRecords(qx, unit.id, records),
+        unit,
+        segmentId: null,
+        emitsOwnSegment: true,
+        schema: credlyActivitySchema,
+        log,
+      })
+
+      let stopped = false
+      const stop = (signal: string) => {
+        log.info({ signal }, 'credly release drain stopping, finishing the current page')
+        stopped = true
+      }
+      process.once('SIGINT', () => stop('SIGINT'))
+      process.once('SIGTERM', () => stop('SIGTERM'))
+
+      const result = await drainCredlyReleases(
+        {
+          channel: { channelId: unit.channelId, channelName: unit.channelName },
+          integrationId,
+          watermark: null,
+          emitEnabled: unit.emitEnabled,
+          emit: emitter.emit,
+          commitWatermark: async () => undefined,
+          hasRunBudget: () => !stopped,
+          http,
+          log,
+          getCredential: async () => credential,
+          deps: createCredlyDeps({ qx, integrationId }),
+        },
+        { pacingMs, shouldStop: () => stopped },
+      )
+      log.info({ ...result, emitted: emitter.emittedCount() }, 'credly release drain finished')
+    } finally {
+      await queueClient.disconnectProducer()
+    }
+    return
+  }
 
   if (release) {
     const active = await listActiveCredlyTemplateMappings(qx)
@@ -139,8 +274,7 @@ async function main(): Promise<void> {
   if (releaseUnreleased) {
     const credential = await getCredential(qx, integrationId)
     assertCredentialKind(credential, 'credly-oauth-client')
-    const { token } = await mintCredlyAccessToken(credential)
-    const http = credlyHttpClient(token)
+    const http = credlyHttpClient(credential)
     const [listing, unreleased] = await Promise.all([
       loadCredlyTemplates(http, credential.data.organizationId, log),
       listMappedCredlyTemplatesWithoutRelease(qx),
@@ -163,8 +297,7 @@ async function main(): Promise<void> {
 
   const credential = await getCredential(qx, integrationId)
   assertCredentialKind(credential, 'credly-oauth-client')
-  const { token } = await mintCredlyAccessToken(credential)
-  const http = credlyHttpClient(token)
+  const http = credlyHttpClient(credential)
 
   const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 3 })
   try {

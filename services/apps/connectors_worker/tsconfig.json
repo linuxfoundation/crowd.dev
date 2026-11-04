@@ -12,6 +12,9 @@
       "path": "../../libs/common"
     },
     {
+      "path": "../../libs/common_services"
+    },
+    {
       "path": "../../libs/connectors"
     },
     {
@@ -25,6 +28,9 @@
     },
     {
       "path": "../../libs/nango"
+    },
+    {
+      "path": "../../libs/queue"
     },
     {
       "path": "../../libs/redis"

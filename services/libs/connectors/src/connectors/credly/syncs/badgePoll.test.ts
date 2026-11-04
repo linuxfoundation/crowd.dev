@@ -16,6 +16,7 @@ import {
   MAX_REPLACEMENT_HOPS,
   MAX_WINDOW_MS,
   WINDOW_LAG_MS,
+  drainCredlyReleases,
   runBadgePoll,
 } from './badgePoll'
 
@@ -1556,5 +1557,169 @@ describe('runBadgePoll releases', () => {
 
     expect(deps.nextRelease).not.toHaveBeenCalled()
     expect(mockedFetchBadgesPage).not.toHaveBeenCalled()
+  })
+})
+
+describe('drainCredlyReleases', () => {
+  const FLOOR = '2026-10-10T00:00:00.000Z'
+  const TOP = '2026-10-20T00:00:00.000Z'
+
+  function release(badgeTemplateId: string, overrides: Partial<ICredlyTemplateRelease> = {}) {
+    return {
+      badgeTemplateId,
+      floor: FLOOR,
+      top: TOP,
+      since: null,
+      until: null,
+      page: 1,
+      queuedAt: '2026-11-02T10:00:00.000Z',
+      completedAt: null,
+      ...overrides,
+    }
+  }
+
+  const noStop = () => false
+
+  beforeEach(() => {
+    vi.useRealTimers()
+    mockedFetchBadgesPage.mockReset()
+    mockedFetchBadge.mockReset()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('drains every queued release, pacing between completions', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['template-1', DEFAULT_TARGET],
+        ['template-2', DEFAULT_TARGET],
+      ]),
+      staleTemplateIds: [],
+    }
+    const { ctx, deps } = makeCtx(
+      null,
+      () => true,
+      routing,
+      true,
+      [],
+      [release('template-1'), release('template-2')],
+    )
+
+    const result = await drainCredlyReleases(ctx, { pacingMs: 0, shouldStop: noStop })
+
+    expect(result).toEqual({ released: 2, skipped: 0 })
+    expect(deps.completeRelease).toHaveBeenCalledTimes(2)
+    expect(deps.nextRelease).toHaveBeenCalledTimes(3)
+  })
+
+  it('never touches the release queue for a non-emitting (shadow) unit', async () => {
+    const { ctx, deps } = makeCtx(
+      null,
+      () => true,
+      DEFAULT_ROUTING,
+      false,
+      [],
+      [release('template-1')],
+    )
+
+    const result = await drainCredlyReleases(ctx, { pacingMs: 0, shouldStop: noStop })
+
+    expect(result).toEqual({ released: 0, skipped: 0 })
+    expect(deps.nextRelease).not.toHaveBeenCalled()
+    expect(deps.completeRelease).not.toHaveBeenCalled()
+  })
+
+  it('stops when told to, leaving the rest of the queue untouched', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['template-1', DEFAULT_TARGET],
+        ['template-2', DEFAULT_TARGET],
+      ]),
+      staleTemplateIds: [],
+    }
+    const { ctx, deps } = makeCtx(
+      null,
+      () => true,
+      routing,
+      true,
+      [],
+      [release('template-1'), release('template-2')],
+    )
+    let stop = false
+    vi.mocked(deps.completeRelease).mockImplementationOnce(async () => {
+      stop = true
+      return 1
+    })
+
+    const result = await drainCredlyReleases(ctx, {
+      pacingMs: 0,
+      shouldStop: () => stop,
+    })
+
+    expect(result).toEqual({ released: 1, skipped: 0 })
+    expect(deps.completeRelease).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a release whose template is no longer mapped and keeps going', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const { ctx, deps } = makeCtx(
+      null,
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('tpl-unmapped'), release('template-1')],
+    )
+
+    const result = await drainCredlyReleases(ctx, { pacingMs: 0, shouldStop: noStop })
+
+    expect(result).toEqual({ released: 1, skipped: 1 })
+    expect(deps.completeRelease).toHaveBeenCalledTimes(2)
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeTemplateId: 'tpl-unmapped' },
+      'credly release skipped: template not mapped',
+    )
+  })
+
+  it('also paces a skipped release, not just a successful completion', async () => {
+    const { ctx } = makeCtx(
+      null,
+      () => true,
+      DEFAULT_ROUTING,
+      true,
+      [],
+      [release('tpl-unmapped'), release('tpl-unmapped-2')],
+    )
+
+    const startedAt = Date.now()
+    await drainCredlyReleases(ctx, { pacingMs: 20, shouldStop: noStop })
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20)
+  })
+
+  it('actually waits pacingMs between completions', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([badge({ id: 'old-1' })]))
+    const routing: CredlyTemplateRouting = {
+      targets: new Map([
+        ['template-1', DEFAULT_TARGET],
+        ['template-2', DEFAULT_TARGET],
+      ]),
+      staleTemplateIds: [],
+    }
+    const { ctx } = makeCtx(
+      null,
+      () => true,
+      routing,
+      true,
+      [],
+      [release('template-1'), release('template-2')],
+    )
+
+    const startedAt = Date.now()
+    await drainCredlyReleases(ctx, { pacingMs: 20, shouldStop: noStop })
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20)
   })
 })
