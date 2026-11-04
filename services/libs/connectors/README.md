@@ -2,7 +2,15 @@
 
 The connector framework (integrations v2). This library holds one manifest per platform (`src/connectors/<platform>/`) and the framework around it: emit, HTTP client and token pool, credentials, registry. `services/apps/connectors_worker` dispatches and runs the syncs. Where it sits in CDP: [`docs/knowledge/sys-connectors.md`](../../../docs/knowledge/sys-connectors.md).
 
-Read this before adding a connector, a sync, or anything that writes `integration.sync_units`. Why routing works this way: [ADR-0036](../../../docs/adr/0036-connector-channel-is-the-mapping.md).
+Read this before adding a connector, a sync, or anything that writes `integration.sync_units`.
+
+## Why
+
+The [Integration Builder v2 architecture](https://linuxfoundation-dxwx.dsp.so/CQLF4CI1-integration-builder-v2-nango-deprecation) ([lfx-cdp-insights-ops#28](https://github.com/linuxfoundation/lfx-cdp-insights-ops/issues/28)) gives every integration one model: a connector, an integration, sync units, runs and activities, with `integration.sync_units` holding one row per (channel, sync). The rules below keep it that way.
+
+- **No mapping tables.** A connector that routes records through its own table rebuilds, outside `sync_units`, everything the framework already does per unit: find-or-create of integrations, locking, reconciliation, deactivation, backfill tracking. Each new connector would add another set.
+- **Fan-out is an exception.** [ADR-0033](../../../docs/adr/0033-connector-emit-per-call-segment.md) lets one unit emit to many segments for Octolens, a single org-wide feed whose shared 500 requests/hour budget can't afford one poll per project. It is not a general pattern.
+- **Channels never move in place.** The sink dedupes on (platform, type, `sourceId`, channel, segment, timestamp), so a record re-emitted under another segment becomes a second activity.
 
 ## Model
 
@@ -21,7 +29,7 @@ Read this before adding a connector, a sync, or anything that writes `integratio
 1. Never add a table, a `settings` key or a cache that maps provider keys to integrations or segments. If you need one, the provider key is a channel: create units for it under the destination integration.
 2. `sync_units` is the source of truth for what an integration syncs. `integration.settings` may mirror it for the UI, never drive it. GitHub's `settings` and `public.repositories` predate this rule and stay (Insights reads `repositories`); don't copy that pattern.
 3. Call `emit()` without `segmentId`/`integrationId` overrides. Only a connector that declares `emitsOwnSegment` (one unit emitting to many segments, ADR-0033) passes them, on every call, and that is allowed only when the provider can't filter requests by channel, or a shared org-wide budget can't afford one poll per channel. It needs a segment-less anchor integration and sign-off before any code.
-4. A channel has one owning integration. Check `hasActiveSyncUnitsForChannelElsewhere` under `lockSyncUnitChannel` before creating units, and skip with a reason when another integration owns it.
+4. A channel has one owning integration per platform. In the transaction that creates the units, take `lockSyncUnitChannel`, check that no other live integration of the same platform owns the channel, and skip with a reason when one does. `hasActiveSyncUnitsForChannelElsewhere` is the GitHub check and only looks at `github-nango` integrations: give it a platform parameter before another connector uses it, don't copy it.
 5. Moving a channel to another integration means decommissioning the old units and onboarding new ones (see `onboardGithubRepo`). Never rewrite `integrationId`, `channelId` or `segmentId` on units that have emitted.
 6. Rules or review that decide _whether_ a channel is synced (matchers, overrides, a held queue) live outside the emit path. Their only output is units created or decommissioned; reviewer decisions belong in code or config, not in a routing table.
 

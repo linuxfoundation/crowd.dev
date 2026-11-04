@@ -47,8 +47,9 @@ to a segment.
 
 ## Decisions
 
-- [ADR-0036](../adr/0036-connector-channel-is-the-mapping.md): the sync unit's channel is the
-  mapping to a segment; no per-platform mapping tables.
+- [Integration Builder v2 architecture](https://linuxfoundation-dxwx.dsp.so/CQLF4CI1-integration-builder-v2-nango-deprecation)
+  ([lfx-cdp-insights-ops#28](https://github.com/linuxfoundation/lfx-cdp-insights-ops/issues/28)):
+  one model for every integration, one sync unit per (channel, sync).
 - [ADR-0033](../adr/0033-connector-emit-per-call-segment.md): per-call segment overrides on
   `emit()`, the fan-out exception Octolens uses.
 - [ADR-0034](../adr/0034-connector-sync-deps-bag.md): syncs reach the database through a typed
