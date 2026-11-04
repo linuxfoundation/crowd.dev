@@ -266,7 +266,6 @@ import { required, email } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import groupsio from '@/config/integrations/groupsio/config';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import AppFormItem from '@/shared/form/form-item.vue';
 import formChangeDetector from '@/shared/form/form-change';
 import { IntegrationService } from '@/modules/integration/integration-service';
@@ -283,6 +282,7 @@ import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps({
   integration: {
@@ -305,7 +305,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
-const { doGroupsioConnect } = mapActions('integration');
+const { connectGroupsio } = useIntegrationStore();
 
 const form = reactive({
   email: '',
@@ -591,7 +591,7 @@ const connect = async () => {
       isAllowed: true,
     }));
 
-  doGroupsioConnect({
+  connectGroupsio({
     email: form.email,
     token: cookie.value,
     tokenExpiry: cookieExpiry.value,
