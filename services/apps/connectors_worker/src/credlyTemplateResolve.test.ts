@@ -244,6 +244,7 @@ const applyMocks = vi.hoisted(() => ({
   deactivateCredlyTemplateMapping: vi.fn(),
   lockCredlyTemplateMapping: vi.fn(),
   onboardCredlyTemplate: vi.fn(),
+  decommissionSyncUnitsForChannelIds: vi.fn(),
 }))
 
 vi.mock('@crowd/data-access-layer/src/credly', async (importOriginal) => {
@@ -257,12 +258,20 @@ vi.mock('@crowd/data-access-layer/src/credly', async (importOriginal) => {
   }
 })
 
+vi.mock('@crowd/data-access-layer/src/connectors', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@crowd/data-access-layer/src/connectors')>()
+  return {
+    ...actual,
+    decommissionSyncUnitsForChannelIds: applyMocks.decommissionSyncUnitsForChannelIds,
+  }
+})
+
 vi.mock('./onboardCredlyTemplate', () => ({
   onboardCredlyTemplate: applyMocks.onboardCredlyTemplate,
 }))
 
 describe('applyDecisions', () => {
-  const qx = {} as QueryExecutor
+  const qx = { tx: (fn: (txQx: QueryExecutor) => unknown) => fn(qx) } as QueryExecutor
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -274,6 +283,7 @@ describe('applyDecisions', () => {
     applyMocks.upsertCredlyTemplateDecision.mockResolvedValue('inserted')
     applyMocks.onboardCredlyTemplate.mockResolvedValue({ outcome: 'created' })
     applyMocks.lockCredlyTemplateMapping.mockResolvedValue(true)
+    applyMocks.decommissionSyncUnitsForChannelIds.mockResolvedValue(0)
   })
 
   it('onboards a sync unit for a mapped decision, seeding its backfill from the creation date', async () => {
@@ -290,6 +300,7 @@ describe('applyDecisions', () => {
           url: null,
         },
       ],
+      [],
       { warn: vi.fn() } as never,
     )
 
@@ -319,13 +330,13 @@ describe('applyDecisions', () => {
       message: 'units exist for CKA under another integration',
     })
 
-    await applyDecisions(qx, [decision('cka')], [], [], { warn: vi.fn() } as never)
+    await applyDecisions(qx, [decision('cka')], [], [], [], { warn: vi.fn() } as never)
 
     expect(applyMocks.lockCredlyTemplateMapping).not.toHaveBeenCalled()
   })
 
   it('reuses one integration per segment across several mapped templates', async () => {
-    await applyDecisions(qx, [decision('cka'), decision('ckad')], [], [], {
+    await applyDecisions(qx, [decision('cka'), decision('ckad')], [], [], [], {
       warn: vi.fn(),
     } as never)
 
@@ -337,6 +348,7 @@ describe('applyDecisions', () => {
     const result = await applyDecisions(
       qx,
       [decision('held', { status: 'held', holdReason: 'no_match', segmentId: null })],
+      [],
       [],
       [],
       { warn: vi.fn() } as never,
@@ -351,7 +363,7 @@ describe('applyDecisions', () => {
     applyMocks.upsertCredlyTemplateDecision.mockResolvedValueOnce('locked')
     const log = { warn: vi.fn() }
 
-    const result = await applyDecisions(qx, [decision('cka')], [], [], log as never)
+    const result = await applyDecisions(qx, [decision('cka')], [], [], [], log as never)
 
     expect(applyMocks.onboardCredlyTemplate).not.toHaveBeenCalled()
     expect(result.outcomes.locked).toBe(1)
@@ -374,10 +386,64 @@ describe('applyDecisions', () => {
         },
       ],
       [],
+      [],
       { warn: vi.fn() } as never,
     )
 
     expect(applyMocks.deactivateCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'gone')
     expect(result.deactivated).toBe(1)
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).not.toHaveBeenCalled()
+  })
+
+  it('decommissions the sync unit of a template a complete listing confirms is gone', async () => {
+    applyMocks.deactivateCredlyTemplateMapping.mockResolvedValueOnce(1)
+    applyMocks.decommissionSyncUnitsForChannelIds.mockResolvedValueOnce(1)
+
+    const result = await applyDecisions(
+      qx,
+      [],
+      [
+        {
+          kind: 'missing',
+          badgeTemplateId: 'gone',
+          badgeTemplateName: 'Gone',
+          before: 'mapped:k8s',
+          after: null,
+        },
+      ],
+      [],
+      [stored('gone', { integrationId: 'int-k8s' })],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).toHaveBeenCalledWith(qx, 'int-k8s', [
+      'gone',
+    ])
+    expect(result.unitsDecommissioned).toBe(1)
+  })
+
+  it('wraps the decision write, onboarding and mapping lock in one transaction', async () => {
+    const txQx = {} as QueryExecutor
+    const tx = vi.fn((fn: (txQx: QueryExecutor) => unknown) => fn(txQx))
+    const txAwareQx = { tx } as unknown as QueryExecutor
+
+    await applyDecisions(txAwareQx, [decision('cka')], [], [], [], { warn: vi.fn() } as never)
+
+    expect(tx).toHaveBeenCalledTimes(1)
+    expect(applyMocks.upsertCredlyTemplateDecision).toHaveBeenCalledWith(
+      txQx,
+      expect.objectContaining({ badgeTemplateId: 'cka' }),
+    )
+    expect(onboardCredlyTemplate).toHaveBeenCalledWith(
+      txQx,
+      'int-k8s',
+      'cka',
+      'cka',
+      expect.any(Object),
+    )
+    expect(applyMocks.lockCredlyTemplateMapping).toHaveBeenCalledWith(txQx, 'cka', {
+      segmentId: 'seg-k8s',
+      integrationId: 'int-k8s',
+    })
   })
 })

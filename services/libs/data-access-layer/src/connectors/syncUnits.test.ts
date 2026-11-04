@@ -10,6 +10,7 @@ import {
   countShadowRepos,
   countUndrainedDecommissionedSyncUnits,
   decommissionAllSyncUnits,
+  decommissionSyncUnitsForChannelIds,
   decommissionSyncUnitsForChannels,
   deleteDrainedSyncUnits,
   findSyncUnitByChannelId,
@@ -910,6 +911,37 @@ describe('sync unit lifecycle', () => {
         id: untouched,
       }),
     ).toEqual({ status: 'decommissioned', lockedAt: null })
+  })
+})
+
+describe('decommissionSyncUnitsForChannelIds', () => {
+  test('matches by channelId, ignoring a channelName shared with another channel', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const stranger = await createIntegration(qx)
+    const removed = await createSyncUnit(qx, integrationId, {
+      channelId: 'template-a',
+      channelName: 'Renamed Template A',
+      syncName: 'badgePoll',
+      platform: 'credly',
+    })
+    const renamedButSameId = await createSyncUnit(qx, integrationId, {
+      channelId: 'template-b',
+      channelName: 'template-a',
+      syncName: 'badgePoll',
+      platform: 'credly',
+    })
+    const statusOf = async (id: string): Promise<string> =>
+      (await qx.selectOne(`SELECT status FROM integration.sync_units WHERE id = $(id)`, { id }))
+        .status
+
+    expect(await decommissionSyncUnitsForChannelIds(qx, integrationId, [])).toBe(0)
+    expect(await decommissionSyncUnitsForChannelIds(qx, stranger, ['template-a'])).toBe(0)
+    expect(await decommissionSyncUnitsForChannelIds(qx, integrationId, ['template-a'])).toBe(1)
+    expect(await decommissionSyncUnitsForChannelIds(qx, integrationId, ['template-a'])).toBe(0)
+    expect(await statusOf(removed)).toBe('decommissioned')
+    expect(await statusOf(renamedButSameId)).toBe('active')
   })
 })
 
