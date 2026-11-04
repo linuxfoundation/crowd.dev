@@ -20,14 +20,17 @@ import {
 import { normalizeMemberOrganizationDate, signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
+  changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
   cleanupOrphanMemberSegmentAffiliations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findMemberById,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
   IMemberOrganization,
   MemberOrganizationDateRange,
@@ -156,9 +159,40 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           stampVerifiedAt: true,
         })
 
-        // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
         if (existing.organizationId !== data.organizationId) {
+          // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
           await cleanupOrphanMemberSegmentAffiliations(tx, memberId, [existing.organizationId])
+
+          const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
+            existing.organizationId,
+            data.organizationId,
+          ])
+          const isSourceBlocked = orgAffiliationPolicyById.get(existing.organizationId) ?? false
+          const isTargetBlocked = orgAffiliationPolicyById.get(data.organizationId) ?? false
+
+          if (isTargetBlocked) {
+            await changeMemberOrganizationAffiliationOverrides(tx, [
+              {
+                memberId,
+                memberOrganizationId: workExperienceId,
+                allowAffiliation: false,
+              },
+            ])
+            await deleteMemberSegmentAffiliations(tx, {
+              memberId,
+              organizationId: data.organizationId,
+            })
+          } else if (isSourceBlocked) {
+            // A deny on a blocked org's row is indistinguishable from the policy one, so it's lifted
+            // with the move (same as merge). Set true rather than undefined: the upsert COALESCEs.
+            await changeMemberOrganizationAffiliationOverrides(tx, [
+              {
+                memberId,
+                memberOrganizationId: workExperienceId,
+                allowAffiliation: true,
+              },
+            ])
+          }
         }
       })
 
