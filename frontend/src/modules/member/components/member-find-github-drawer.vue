@@ -83,7 +83,6 @@
 </template>
 
 <script setup>
-import { useStore } from 'vuex';
 import {
   ref,
   computed,
@@ -93,6 +92,7 @@ import {
 
 import { ToastStore } from '@/shared/message/notification';
 import { MemberService } from '@/modules/member/member-service';
+import { useMemberStore } from '@/modules/member/store/pinia';
 import cloneDeep from 'lodash/cloneDeep';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
@@ -105,7 +105,7 @@ const props = defineProps({
   },
 });
 const emit = defineEmits(['update:modelValue']);
-const store = useStore();
+const memberStore = useMemberStore();
 const memberModel = reactive(cloneDeep(props.modelValue));
 
 const suggestions = ref([]);
@@ -160,7 +160,7 @@ const handleSubmit = async () => {
   MemberService.update(props.modelValue.id, {
     username: { ...memberModel.username, github: [selected.value] },
   }).then(() => {
-    store.dispatch('member/doFind', props.modelValue.id).then(() => {
+    memberStore.findMember(props.modelValue.id).then(() => {
       ToastStore.success('GitHub added successfully');
     });
   }).catch((err) => {
