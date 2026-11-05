@@ -37,7 +37,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     lfxHeader.docslink = 'https://docs.linuxfoundation.org/lfx/community-management';
-    lfxHeader.supportlink = 'https://jira.linuxfoundation.org/plugins/servlet/desk/portal/4?requestGroup=54';
+    lfxHeader.supportlink =
+      'https://jira.linuxfoundation.org/plugins/servlet/desk/portal/4?requestGroup=54';
 
     Auth0Service.getUser().then((auth0User?: Auth0UserWithLfClaims) => {
       if (auth0User) {
@@ -122,10 +123,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function handleLocalAuth() {
-    if (['production', 'staging'].includes(config.env)) {
+    if (['production', 'staging'].includes(config.env!)) {
       return Promise.reject();
     }
-    const localToken = AuthService.getToken() || new URLSearchParams(window.location.search).get('my-jwt');
+    const localToken =
+      AuthService.getToken() || new URLSearchParams(window.location.search).get('my-jwt');
     if (localToken) {
       return getUser(localToken);
     }
@@ -134,15 +136,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function init() {
-    Auth0Service.isAuthenticated()
-      .then((isAuthenticated) => {
-        if (!isAuthenticated) {
-          handleLocalAuth()
-            .catch(() => silentLogin());
-        } else {
-          silentLogin();
-        }
-      });
+    Auth0Service.isAuthenticated().then((isAuthenticated) => {
+      if (!isAuthenticated) {
+        handleLocalAuth().catch(() => silentLogin());
+      } else {
+        silentLogin();
+      }
+    });
   }
 
   function ensureTrackingSession(): Promise<void> {
