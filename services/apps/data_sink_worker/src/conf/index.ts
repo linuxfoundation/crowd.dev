@@ -48,6 +48,15 @@ export const DB_CONFIG = (): IDatabaseConfig => {
   return dbConfig
 }
 
+// only the worker process uses these; bin scripts share DB_CONFIG without them
+let dbTimeoutsConfig: Partial<IDatabaseConfig> | undefined
+export const DB_TIMEOUTS_CONFIG = (): Partial<IDatabaseConfig> => {
+  if (dbTimeoutsConfig) return dbTimeoutsConfig
+
+  dbTimeoutsConfig = config.get<Partial<IDatabaseConfig>>('dbTimeouts')
+  return dbTimeoutsConfig
+}
+
 let temporalConfig: ITemporalConfig | undefined
 export const TEMPORAL_CONFIG = (): ITemporalConfig | undefined => {
   if (temporalConfig) return temporalConfig
