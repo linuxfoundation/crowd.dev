@@ -26,7 +26,7 @@ function usage(): never {
 
 setImmediate(async () => {
   try {
-    const argv = process.argv.slice(2)
+    const argv = process.argv.slice(2).filter((arg) => arg !== '--')
     const apply = argv.includes('--apply')
     if (argv.some((arg) => arg !== '--apply')) usage()
 
