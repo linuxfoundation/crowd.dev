@@ -18,6 +18,10 @@
 import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
 import { computed, ref, watch } from 'vue';
 
+defineOptions({
+  name: 'LfMemberTeamMemberSetting',
+});
+
 const props = defineProps<{
     modelValue: IncludeEnum | '',
     settings: Record<string, string>,
@@ -47,10 +51,4 @@ watch(() => props.settings, (current) => {
   }
   previousSettings.value = { ...current };
 }, { deep: true, immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMemberTeamMemberSetting',
-};
 </script>

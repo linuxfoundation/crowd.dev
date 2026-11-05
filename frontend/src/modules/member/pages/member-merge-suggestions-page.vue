@@ -153,6 +153,10 @@ import LfMemberMergeSuggestionDropdown
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { MemberMergeSuggestion, MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
 
+defineOptions({
+  name: 'AppMemberMergeSuggestionsPage',
+});
+
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
 const mergeSuggestions = ref<MemberMergeSuggestion[]>([]);
@@ -245,10 +249,4 @@ const loadMore = () => {
 onMounted(() => {
   getTotalCount();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberMergeSuggestionsPage',
-};
 </script>

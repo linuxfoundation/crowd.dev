@@ -62,6 +62,10 @@ type Attribute = {
   name: string,
 };
 
+defineOptions({
+  name: 'AppBulkEditAttributeDropdown',
+});
+
 const props = defineProps<{
   modelValue: {
     default: Attribute[],
@@ -93,12 +97,6 @@ const selectItem = (item: Attribute, source: string) => {
   emit('change', { [source]: item });
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppBulkEditAttributeDropdown',
-};
 </script>
 
 <style>

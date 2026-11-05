@@ -40,6 +40,10 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import type { MemberBotSuggestionRef } from '@/modules/member/types/MemberSuggestion';
 
+defineOptions({
+  name: 'LfMemberBotSuggestionDropdown',
+});
+
 const props = defineProps<{
   suggestion: MemberBotSuggestionRef,
 }>();
@@ -61,10 +65,4 @@ const ignore = (suggestion: MemberBotSuggestionRef) => {
   emit('ignoreSuggestion', suggestion);
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMemberBotSuggestionDropdown',
-};
 </script>
