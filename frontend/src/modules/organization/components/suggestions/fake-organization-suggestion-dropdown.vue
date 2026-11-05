@@ -40,6 +40,10 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import type { FakeOrganizationSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
+defineOptions({
+  name: 'LfFakeOrganizationSuggestionDropdown',
+});
+
 const props = defineProps<{
   suggestion: FakeOrganizationSuggestion,
 }>();
@@ -56,11 +60,5 @@ const dismiss = (suggestion: FakeOrganizationSuggestion) => {
   });
 
   emit('dismiss', suggestion);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFakeOrganizationSuggestionDropdown',
 };
 </script>

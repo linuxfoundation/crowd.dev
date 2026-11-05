@@ -21,13 +21,11 @@ import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Organization } from '@/modules/organization/types/Organization';
 
+defineOptions({
+  name: 'LfOrganizationSyncingActivities',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationSyncingActivities',
-};
 </script>
