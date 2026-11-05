@@ -9,6 +9,8 @@ const CHECK_INTERVAL_MS = 30 * 1000
 const WAITING_COUNT_MAX_AGE_MS = 5 * 60 * 1000
 
 export interface IConsumerLiveness {
+  trackTopic(topic: string): boolean
+  isTracking(topic: string): boolean
   start(): void
   stop(): void
   messageStarted(): number
@@ -96,6 +98,7 @@ export const createConsumerLiveness = (
   let interval: NodeJS.Timeout | undefined
   let stuck = false
   let staleWaitingLogged = false
+  let trackedTopic: string | undefined
 
   const check = async (): Promise<void> => {
     const now = Date.now()
@@ -134,6 +137,16 @@ export const createConsumerLiveness = (
   }
 
   return {
+    trackTopic(topic) {
+      trackedTopic = trackedTopic ?? topic
+      if (trackedTopic !== topic) {
+        log.warn({ topic, trackedTopic }, 'Consumer liveness only tracks one topic per process!')
+      }
+      return trackedTopic === topic
+    },
+    isTracking(topic) {
+      return trackedTopic === topic
+    },
     start() {
       if (interval) {
         return
@@ -167,11 +180,14 @@ export const createConsumerLiveness = (
       waitingSince = Date.now()
     },
     setWaitingInAssignedPartitions(count) {
-      if (count > 0 && waiting === 0) {
-        waitingSince = Date.now()
+      const now = Date.now()
+      const previousIsStale =
+        waitingUpdatedAt === undefined || now - waitingUpdatedAt > WAITING_COUNT_MAX_AGE_MS
+      if (count > 0 && (waiting === 0 || previousIsStale)) {
+        waitingSince = now
       }
       waiting = count
-      waitingUpdatedAt = Date.now()
+      waitingUpdatedAt = now
     },
     consumerFailed(reason) {
       failure = reason
@@ -179,15 +195,21 @@ export const createConsumerLiveness = (
   }
 }
 
-export const createConsumerLivenessFromEnv = (log: Logger): IConsumerLiveness | undefined => {
+let processLiveness: IConsumerLiveness | undefined
+
+// one heartbeat file per process, so every queue service instance must share one tracker
+export const getProcessConsumerLiveness = (log: Logger): IConsumerLiveness | undefined => {
   const file = process.env.CROWD_QUEUE_LIVENESS_FILE
   if (!file) {
     return undefined
   }
 
-  return createConsumerLiveness(
-    log,
-    file,
-    parseThresholdMs(process.env.CROWD_QUEUE_LIVENESS_THRESHOLD_MS),
-  )
+  processLiveness =
+    processLiveness ??
+    createConsumerLiveness(
+      log,
+      file,
+      parseThresholdMs(process.env.CROWD_QUEUE_LIVENESS_THRESHOLD_MS),
+    )
+  return processLiveness
 }

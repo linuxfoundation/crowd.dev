@@ -48,7 +48,11 @@ export async function getKafkaMessageCounts(
         totalMessages += Math.max(0, high - low)
         consumedMessages += Math.max(0, committed - low)
         totalLeft += Math.max(0, high - committed)
-        unconsumedByPartition.set(offset.partition, Math.max(0, high - committed))
+        // without a commit the consumer starts at the latest offset, so older records aren't waiting
+        unconsumedByPartition.set(
+          offset.partition,
+          offset.offset === '-1' ? 0 : Math.max(0, high - committed),
+        )
       }
     }
 

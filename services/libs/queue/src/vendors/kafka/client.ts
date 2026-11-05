@@ -17,7 +17,7 @@ import {
   IQueueSendResult,
 } from '../../types'
 import { configMap } from './config'
-import { IConsumerLiveness, createConsumerLivenessFromEnv } from './liveness'
+import { IConsumerLiveness, getProcessConsumerLiveness } from './liveness'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
 import { getKafkaMessageCounts } from './utils'
 
@@ -63,7 +63,6 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
   private consumers: Map<string, Consumer>
   private assignedPartitionsByTopic: Map<string, number[]>
   private readonly liveness: IConsumerLiveness | undefined
-  private livenessTopic: string | undefined
   private processingMessages: number
   private started: boolean
   private producer?: Producer | undefined = undefined
@@ -79,7 +78,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
     this.started = false
     this.consumers = new Map<string, Consumer>()
     this.assignedPartitionsByTopic = new Map<string, number[]>()
-    this.liveness = createConsumerLivenessFromEnv(this.log)
+    this.liveness = getProcessConsumerLiveness(this.log)
     this.reconnectAttempts = new Map<string, number>()
     this.consumerStatus = new Map<string, boolean>()
   }
@@ -178,8 +177,8 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
       consumer.on(consumer.events.GROUP_JOIN, (event) => {
         const partitions = event.payload.memberAssignment?.[groupId] ?? []
         this.assignedPartitionsByTopic.set(groupId, partitions)
-        if (groupId === this.livenessTopic) {
-          this.liveness?.partitionsAssigned()
+        if (this.liveness?.isTracking(groupId)) {
+          this.liveness.partitionsAssigned()
         }
         this.log.info({ partitions }, 'Consumer has joined the group')
       })
@@ -199,8 +198,8 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
       })
       consumer.on(consumer.events.CRASH, async (event) => {
         this.log.error({ error: event.payload.error }, 'Consumer crashed')
-        if (!event.payload.restart && groupId === this.livenessTopic) {
-          this.liveness?.consumerFailed(
+        if (!event.payload.restart && this.liveness?.isTracking(groupId)) {
+          this.liveness.consumerFailed(
             `the consumer crashed and won't restart: ${event.payload.error?.message}`,
           )
         }
@@ -430,18 +429,10 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
       const consumer = await this.getConsumer(queueConf.name)
       await consumer.subscribe({ topic: queueConf.name })
 
-      if (this.liveness) {
-        if (this.livenessTopic === undefined || this.livenessTopic === queueConf.name) {
-          this.livenessTopic = queueConf.name
-          this.liveness.start()
-        } else {
-          this.log.warn(
-            { topic: queueConf.name, livenessTopic: this.livenessTopic },
-            'Consumer liveness only tracks the first topic of this process!',
-          )
-        }
+      const trackLiveness = this.liveness?.trackTopic(queueConf.name) ?? false
+      if (trackLiveness) {
+        this.liveness.start()
       }
-      const trackLiveness = this.livenessTopic === queueConf.name
 
       // Add periodic health check
       healthCheckInterval = setInterval(async () => {
@@ -521,7 +512,9 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
               this.addJob()
               const livenessId = trackLiveness ? this.liveness?.messageStarted() : undefined
 
-              processMessage(data)
+              // a synchronous throw must still reach the catch/finally below
+              Promise.resolve()
+                .then(() => processMessage(data))
                 .then(() => {
                   const duration = performance.now() - now
                   timings.push(duration)
