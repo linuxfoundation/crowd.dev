@@ -4,7 +4,7 @@
   "main": "src/index.ts",
   "dependencies": {
     "@crowd/logging": "workspace:*",
-    "dd-trace": "^5.63.0"
+    "dd-trace": "^5.131.1"
   },
   "devDependencies": {
     "@types/node": "catalog:"
