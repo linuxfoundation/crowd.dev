@@ -3,10 +3,27 @@ import CronTime from 'cron-time-generator'
 import { IS_PROD_ENV, distinct, timeout } from '@crowd/common'
 import { Logger } from '@crowd/logging'
 import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient, getKafkaMessageCounts } from '@crowd/queue'
+import { REDIS_CONFIG, RedisClient, getRedisClient } from '@crowd/redis'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import telemetry from '@crowd/telemetry'
 
 import { IJobDefinition } from '../types'
+
+const STALL_CHECKED_TOPIC_PREFIX = 'data-sink-worker-'
+const STALL_SNAPSHOT_KEY_PREFIX = 'queue-monitoring:partitions'
+const STALL_SNAPSHOT_TTL_SECONDS = 2 * 60 * 60
+const REDIS_OPERATION_TIMEOUT_MS = 5000
+
+interface IPartitionSnapshot {
+  committed: number
+  lag: number
+  stalledSince?: number
+}
+
+interface IGroupSnapshot {
+  at: number
+  partitions: Record<string, IPartitionSnapshot>
+}
 
 const job: IJobDefinition = {
   name: 'queue-monitoring',
@@ -25,6 +42,7 @@ const job: IJobDefinition = {
     await admin.connect()
 
     const map = await getTopicsAndConsumerGroups(ctx.log, admin)
+    const redis = await connectRedis(ctx.log)
 
     let msg = ``
 
@@ -49,6 +67,17 @@ const job: IJobDefinition = {
         telemetry.gauge(`kafka.${topic}.${group}.consumed`, counts.consumed)
         telemetry.gauge(`kafka.${topic}.${group}.unconsumed`, counts.unconsumed)
       }
+
+      if (topic.startsWith(STALL_CHECKED_TOPIC_PREFIX) && !toIgnore.includes(topic.trim())) {
+        if (!redis) {
+          msg += `Stall check for topic ${topic} skipped: Redis is unavailable!\n`
+        } else if (groups.includes(topic)) {
+          const stalled = await findStalledPartitions(ctx.log, admin, redis, topic)
+          if (stalled) {
+            msg += `${stalled}\n`
+          }
+        }
+      }
     }
 
     if (msg && msg.trim().length > 0) {
@@ -66,6 +95,123 @@ const job: IJobDefinition = {
     // sleep for 30 seconds to properly flush the metrics
     await timeout(30000)
   },
+}
+
+async function connectRedis(log: Logger): Promise<RedisClient | undefined> {
+  try {
+    // without a listener a dropped connection is an unhandled 'error' event that kills the job
+    return await withTimeout(
+      getRedisClient(REDIS_CONFIG(), false, (err) =>
+        log.warn(err, 'Redis client error during queue monitoring!'),
+      ),
+    )
+  } catch (err) {
+    log.error(err, 'Failed to connect to Redis, skipping the consumer stall check!')
+    return undefined
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Redis operation timed out!')),
+          REDIS_OPERATION_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function readPartitionOffsets(
+  admin: KafkaAdmin,
+  topic: string,
+): Promise<Record<string, { committed: number; lag: number }>> {
+  const topicOffsets = await admin.fetchTopicOffsets(topic)
+  const groupOffsets = await admin.fetchOffsets({ groupId: topic, topics: [topic] })
+
+  const result: Record<string, { committed: number; lag: number }> = {}
+  for (const { partition, offset } of groupOffsets[0]?.partitions ?? []) {
+    const topicOffset = topicOffsets.find((o) => o.partition === partition)
+    if (!topicOffset || offset === '-1') {
+      continue
+    }
+
+    const high = Number(topicOffset.offset)
+    const committed = Number(offset)
+    result[partition] = {
+      committed,
+      lag: Math.max(0, high - Math.max(committed, Number(topicOffset.low))),
+    }
+  }
+
+  return result
+}
+
+function formatDuration(ms: number): string {
+  const minutes = Math.round(ms / 60000)
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}
+
+async function findStalledPartitions(
+  log: Logger,
+  admin: KafkaAdmin,
+  redis: RedisClient,
+  topic: string,
+): Promise<string | undefined> {
+  try {
+    const key = `${STALL_SNAPSHOT_KEY_PREFIX}:${topic}`
+    const previousValue = await withTimeout(redis.get(key))
+    const previous: IGroupSnapshot | undefined = previousValue
+      ? JSON.parse(previousValue)
+      : undefined
+
+    const now = Date.now()
+    const current: IGroupSnapshot = { at: now, partitions: {} }
+    let stalledLag = 0
+    let stalledSince = now
+    const stalledPartitions: string[] = []
+
+    for (const [partition, offsets] of Object.entries(await readPartitionOffsets(admin, topic))) {
+      const before = previous?.partitions[partition]
+      const stalled =
+        before !== undefined &&
+        before.lag > 0 &&
+        offsets.lag > 0 &&
+        before.committed === offsets.committed
+
+      const snapshot: IPartitionSnapshot = { ...offsets }
+      if (stalled) {
+        snapshot.stalledSince = before.stalledSince ?? previous.at
+        stalledPartitions.push(partition)
+        stalledLag += offsets.lag
+        stalledSince = Math.min(stalledSince, snapshot.stalledSince)
+      }
+      current.partitions[partition] = snapshot
+    }
+
+    await withTimeout(redis.set(key, JSON.stringify(current), { EX: STALL_SNAPSHOT_TTL_SECONDS }))
+
+    if (stalledPartitions.length === 0) {
+      return undefined
+    }
+
+    log.warn({ topic, stalledPartitions, stalledLag }, 'Consumer group stopped consuming!')
+    const total = Object.keys(current.partitions).length
+    return (
+      `Consumer group ${topic}: ${stalledPartitions.length} of ${total} partitions consumed ` +
+      `nothing since ${new Date(stalledSince).toISOString()} (${formatDuration(now - stalledSince)}) ` +
+      `while ${stalledLag.toLocaleString('en-US')} messages wait on them!`
+    )
+  } catch (err) {
+    log.error(err, `Failed to check topic ${topic} for stalled partitions!`)
+    return `Stall check for topic ${topic} failed: ${err.message}`
+  }
 }
 
 async function getTopicsAndConsumerGroups(
