@@ -406,6 +406,15 @@ export async function activateSyncUnit(qx: QueryExecutor, id: string): Promise<n
   )
 }
 
+export async function reviveDecommissionedSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'active', "nextRunAt" = now(), "updatedAt" = now()
+     WHERE id = $(id) AND status = 'decommissioned'`,
+    { id },
+  )
+}
+
 export async function isSyncUnitLocked(qx: QueryExecutor, id: string): Promise<boolean> {
   const row = await qx.selectOneOrNone(
     `SELECT "lockedAt" IS NOT NULL AS locked
@@ -589,6 +598,27 @@ export async function decommissionSyncUnitsForChannels(
        AND status <> 'decommissioned'
        AND lower("channelName") = ANY($(channelKeys)::text[])`,
     { integrationId, channelKeys },
+  )
+}
+
+// Credly's channelName is a renamable display title (see alignSyncUnitChannelName), unlike
+// GitHub's stable repo-slug channelName, so a removed template is matched by channelId here.
+export async function decommissionSyncUnitsForChannelIds(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelIds: string[],
+): Promise<number> {
+  if (channelIds.length === 0) {
+    return 0
+  }
+
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'decommissioned', "updatedAt" = now()
+     WHERE "integrationId" = $(integrationId)
+       AND status <> 'decommissioned'
+       AND "channelId" = ANY($(channelIds)::text[])`,
+    { integrationId, channelIds },
   )
 }
 

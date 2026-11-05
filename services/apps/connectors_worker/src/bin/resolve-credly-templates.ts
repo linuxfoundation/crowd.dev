@@ -202,11 +202,23 @@ async function main(): Promise<void> {
         'the credly listing changed while paging: templates not seen are left as they are',
       )
     }
+    // A locked mapping that also vanished from Credly gets no signal anywhere else, so its sync
+    // unit would poll forever with nobody told unless this warns.
+    const missingLocked = plan.entries.filter(
+      (entry) => entry.kind === 'locked' && entry.after === null,
+    )
+    if (listing.complete && missingLocked.length > 0) {
+      log.warn(
+        { badgeTemplateIds: missingLocked.map((entry) => entry.badgeTemplateId) },
+        'credly templates are locked and gone from credly; their sync units need manual review before decommissioning',
+      )
+    }
     const result = await applyDecisions(
       qx,
       decisions,
       listing.complete ? missing : [],
       templates,
+      stored,
       log,
     )
     const heldQueue = await listHeldCredlyTemplateMappings(qx)

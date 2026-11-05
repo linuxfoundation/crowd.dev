@@ -1,8 +1,9 @@
 import {
   alignSyncUnitChannelName,
+  findSyncUnitByChannelId,
   hasActiveSyncUnitsForChannelElsewhere,
-  listSyncUnitChannelNames,
   lockSyncUnitChannel,
+  reviveDecommissionedSyncUnit,
   upsertSyncUnits,
 } from '@crowd/data-access-layer/src/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -12,6 +13,7 @@ import { LIFECYCLE_STALE_LOCK_MS } from './githubLifecycle'
 
 export type OnboardCredlyTemplateResult =
   | { outcome: 'created' }
+  | { outcome: 'reactivated' }
   | {
       outcome: 'skipped'
       reason: 'owned_by_other_integration' | 'already_present'
@@ -44,9 +46,20 @@ export async function onboardCredlyTemplate(
       }
     }
 
-    const existingNames = await listSyncUnitChannelNames(txQx, integrationId, badgeTemplateId)
-    if (existingNames.length > 0) {
+    const existing = await findSyncUnitByChannelId(
+      txQx,
+      integrationId,
+      badgeTemplateId,
+      'badgePoll',
+    )
+    if (existing) {
       await alignSyncUnitChannelName(txQx, integrationId, badgeTemplateId, badgeTemplateName)
+      // A reappeared template leaves its old unit decommissioned: revive it instead of treating
+      // it as already present, or the mapping would look healthy while nothing ever syncs again.
+      if (existing.status === 'decommissioned') {
+        await reviveDecommissionedSyncUnit(txQx, existing.id)
+        return { outcome: 'reactivated' }
+      }
       return {
         outcome: 'skipped',
         reason: 'already_present',

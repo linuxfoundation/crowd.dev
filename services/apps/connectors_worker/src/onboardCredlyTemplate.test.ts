@@ -7,7 +7,8 @@ import { onboardCredlyTemplate } from './onboardCredlyTemplate'
 
 const mocks = vi.hoisted(() => ({
   hasActiveSyncUnitsForChannelElsewhere: vi.fn(),
-  listSyncUnitChannelNames: vi.fn(),
+  findSyncUnitByChannelId: vi.fn(),
+  reviveDecommissionedSyncUnit: vi.fn(),
   lockSyncUnitChannel: vi.fn(),
   alignSyncUnitChannelName: vi.fn(),
   upsertSyncUnits: vi.fn(),
@@ -15,7 +16,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   hasActiveSyncUnitsForChannelElsewhere: mocks.hasActiveSyncUnitsForChannelElsewhere,
-  listSyncUnitChannelNames: mocks.listSyncUnitChannelNames,
+  findSyncUnitByChannelId: mocks.findSyncUnitByChannelId,
+  reviveDecommissionedSyncUnit: mocks.reviveDecommissionedSyncUnit,
   lockSyncUnitChannel: mocks.lockSyncUnitChannel,
   alignSyncUnitChannelName: mocks.alignSyncUnitChannelName,
   upsertSyncUnits: mocks.upsertSyncUnits,
@@ -33,7 +35,7 @@ describe('onboardCredlyTemplate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.hasActiveSyncUnitsForChannelElsewhere.mockResolvedValue(false)
-    mocks.listSyncUnitChannelNames.mockResolvedValue([])
+    mocks.findSyncUnitByChannelId.mockResolvedValue(null)
   })
 
   it('creates a badgePoll unit, checking the channel lock and other integrations under credly only', async () => {
@@ -51,7 +53,12 @@ describe('onboardCredlyTemplate', () => {
     )
     const staleLockBefore: Date = mocks.hasActiveSyncUnitsForChannelElsewhere.mock.calls[0][3]
     expect(Date.now() - staleLockBefore.getTime()).toBeGreaterThanOrEqual(LIFECYCLE_STALE_LOCK_MS)
-    expect(mocks.listSyncUnitChannelNames).toHaveBeenCalledWith(txQx, 'int-k8s', 'tpl-cka')
+    expect(mocks.findSyncUnitByChannelId).toHaveBeenCalledWith(
+      txQx,
+      'int-k8s',
+      'tpl-cka',
+      'badgePoll',
+    )
     expect(mocks.upsertSyncUnits).toHaveBeenCalledWith(txQx, [
       {
         integrationId: 'int-k8s',
@@ -79,8 +86,8 @@ describe('onboardCredlyTemplate', () => {
     expect(mocks.alignSyncUnitChannelName).not.toHaveBeenCalled()
   })
 
-  it('aligns the stored channel name and skips when a unit already exists', async () => {
-    mocks.listSyncUnitChannelNames.mockResolvedValue(['Old CKA Name'])
+  it('aligns the stored channel name and skips when an active unit already exists', async () => {
+    mocks.findSyncUnitByChannelId.mockResolvedValue({ id: 'unit-1', status: 'active' })
 
     await expect(onboardCredlyTemplate(qx, 'int-k8s', 'tpl-cka', 'CKA', backfill)).resolves.toEqual(
       {
@@ -90,6 +97,18 @@ describe('onboardCredlyTemplate', () => {
       },
     )
     expect(mocks.alignSyncUnitChannelName).toHaveBeenCalledWith(txQx, 'int-k8s', 'tpl-cka', 'CKA')
+    expect(mocks.reviveDecommissionedSyncUnit).not.toHaveBeenCalled()
+    expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
+  })
+
+  it('revives a decommissioned unit instead of leaving a reappeared template unsynced', async () => {
+    mocks.findSyncUnitByChannelId.mockResolvedValue({ id: 'unit-1', status: 'decommissioned' })
+
+    await expect(onboardCredlyTemplate(qx, 'int-k8s', 'tpl-cka', 'CKA', backfill)).resolves.toEqual(
+      { outcome: 'reactivated' },
+    )
+    expect(mocks.alignSyncUnitChannelName).toHaveBeenCalledWith(txQx, 'int-k8s', 'tpl-cka', 'CKA')
+    expect(mocks.reviveDecommissionedSyncUnit).toHaveBeenCalledWith(txQx, 'unit-1')
     expect(mocks.upsertSyncUnits).not.toHaveBeenCalled()
   })
 })
