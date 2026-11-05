@@ -69,3 +69,33 @@ export interface JiraConnectPayload extends SegmentTarget {
   projects: string[];
   isUpdate?: unknown;
 }
+
+export interface RedditOnboardPayload extends SegmentTarget {
+  subreddits: string[];
+}
+
+export type LinkedinConnectPayload = SegmentTarget;
+
+export interface LinkedinOnboardPayload extends SegmentTarget {
+  organizationId: string | null;
+}
+
+export interface DiscordConnectPayload {
+  guildId: QueryParam;
+}
+
+export interface DevtoConnectPayload extends SegmentTarget {
+  users: string[];
+  organizations: string[];
+  apiKey: string;
+}
+
+export interface HackerNewsConnectPayload extends SegmentTarget {
+  keywords: string[];
+  urls: string[];
+}
+
+export interface StackOverflowOnboardPayload extends SegmentTarget {
+  tags: string[];
+  keywords: string[];
+}

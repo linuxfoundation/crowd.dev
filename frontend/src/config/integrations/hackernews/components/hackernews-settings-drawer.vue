@@ -101,9 +101,9 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import hackernews from '@/config/integrations/hackernews/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import isUrl from '@/utils/isUrl';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -230,10 +230,6 @@ export default {
   },
 
   methods: {
-    ...mapActions({
-      doHackerNewsConnect: 'integration/doHackerNewsConnect',
-    }),
-
     canClose(done) {
       if (this.hasFormChanged) {
         this.$refs.changesConfirmationModalRef?.open().then((discardChanges) => {
@@ -309,7 +305,7 @@ export default {
 
       const relevantKeywords = this.keywords.filter((k) => !!k);
 
-      await this.doHackerNewsConnect({
+      await useIntegrationStore().connectHackerNews({
         urls: relevantUrls.map((u) => u.url),
         keywords: relevantKeywords,
         segmentId: this.segmentId,
