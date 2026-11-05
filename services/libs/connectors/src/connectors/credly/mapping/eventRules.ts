@@ -9,7 +9,7 @@ interface EventRuleBase {
 
 export type CredlyEventRule =
   | (EventRuleBase & { activityUrl: string })
-  | (EventRuleBase & { nameKeyword: string })
+  | (EventRuleBase & { nameKeyword: string; caseSensitive?: boolean })
 
 export interface EventRuleTemplate {
   name: string
@@ -36,9 +36,10 @@ export function normalizeActivityUrl(url: string): string {
     .replace(/\/+$/, '')
 }
 
-function keywordPattern(keyword: string): RegExp {
+function keywordPattern(keyword: string, caseSensitive: boolean): RegExp {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'i')
+  // Boundary check stays case-agnostic regardless of caseSensitive, which only governs the keyword.
+  return new RegExp(`(?<![a-zA-Z0-9])${escaped}(?![a-zA-Z0-9])`, caseSensitive ? '' : 'i')
 }
 
 function urlMatcher(activityUrl: string): CompiledEventRule['match'] {
@@ -55,15 +56,18 @@ function urlMatcher(activityUrl: string): CompiledEventRule['match'] {
   }
 }
 
-function keywordMatcher(keyword: string): CompiledEventRule['match'] {
-  const pattern = keywordPattern(keyword)
+function keywordMatcher(keyword: string, caseSensitive: boolean): CompiledEventRule['match'] {
+  const pattern = keywordPattern(keyword, caseSensitive)
   return (template) => (pattern.test(template.name) ? keyword : null)
 }
 
 export function compileEventRules(rules: readonly CredlyEventRule[]): CompiledEventRule[] {
   return rules.map((rule) => ({
     rule,
-    match: 'activityUrl' in rule ? urlMatcher(rule.activityUrl) : keywordMatcher(rule.nameKeyword),
+    match:
+      'activityUrl' in rule
+        ? urlMatcher(rule.activityUrl)
+        : keywordMatcher(rule.nameKeyword, rule.caseSensitive ?? false),
   }))
 }
 
@@ -86,7 +90,7 @@ const PROPOSED = 'proposed 2026-11-04 from the production held queue, awaiting r
 
 const rule = (
   id: string,
-  match: { activityUrl: string } | { nameKeyword: string },
+  match: { activityUrl: string } | { nameKeyword: string; caseSensitive?: boolean },
   projectSlug: string,
   note = REVIEW,
   approvedBy = 'joana',
@@ -188,7 +192,13 @@ export const credlyEventRules: readonly CredlyEventRule[] = [
   proposed('soss', 'SOSS', 'openssf'),
   proposed('hyperledger', 'Hyperledger', 'lf-decentralized-trust'),
   proposed('lfdt', 'LFDT', 'lf-decentralized-trust'),
-  proposed('user-conference', 'useR!', 'rcons'),
+  rule(
+    'user-conference',
+    { nameKeyword: 'useR!', caseSensitive: true },
+    'rcons',
+    PROPOSED,
+    'pending',
+  ),
   proposed('r-medicine', 'R/Medicine', 'rcons'),
   proposed('hpsf', 'HPSF', 'hpsf'),
   proposed('jupyter', 'Jupyter', 'jupyter'),

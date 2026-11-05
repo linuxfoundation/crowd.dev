@@ -187,11 +187,19 @@ describe('credlyEventRules', () => {
     expect(first?.rule.projectSlug).toBe(projectSlug)
   })
 
-  it('does not read OSS inside SOSS or OpenSSF', () => {
+  it('does not read OSS as a substring of SOSS or another word', () => {
     const slugs = (name: string) =>
       matchEventRules(PRODUCTION, { name }).map((m) => m.rule.projectSlug)
     expect(slugs('Speaker: SOSS Community Day Europe 2024')).toEqual(['openssf'])
     expect(slugs('Speaker: OpenSSF Day North America 2023')).toEqual(['openssf'])
+    expect(slugs('Glossary Workshop Badge')).toEqual([])
+  })
+
+  it('matches useR! only with its exact stylized case', () => {
+    const slugs = (name: string) =>
+      matchEventRules(PRODUCTION, { name }).map((m) => m.rule.projectSlug)
+    expect(slugs('Speaker: useR! Conference 2024')).toEqual(['rcons'])
+    expect(slugs('Certified Power User! Badge')).toEqual([])
   })
 
   it.each([
