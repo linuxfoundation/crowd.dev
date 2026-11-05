@@ -49,6 +49,7 @@
           >
             <template #defaultFilters>
               <div>・</div>
+              <!-- shortcut: Filter.settings is untyped. revisit: saved-views settings typing -->
               <lf-default-filters
                 :config="memberSavedViews"
                 :settings="filters.settings as DefaultFiltersSettings"
@@ -240,7 +241,7 @@
                       }"
                       class="block"
                     >
-                      <app-member-organizations-vertical :member="member" />
+                      <app-member-organizations-vertical :member="member as unknown as Contributor" />
                     </router-link>
                   </lf-table-cell>
 
@@ -381,8 +382,8 @@
           v-if="selectedActionMember"
           :member="selectedActionMember"
           hide-unmerge
-          @find-github="isFindGithubDrawerOpen = selectedActionMember"
-          @merge="isMergeDialogOpen = selectedActionMember"
+          @find-github="isFindGithubDrawerOpen = selectedActionMember as unknown as Contributor"
+          @merge="isMergeDialogOpen = selectedActionMember as unknown as Contributor"
           @close-dropdown="closeDropdown"
         />
       </div>
@@ -406,6 +407,7 @@ import AppMemberMergeDialog from '@/modules/member/components/member-merge-dialo
 import AppMemberOrganizationsVertical from '@/modules/member/components/member-organizations-vertical.vue';
 import { MemberService } from '@/modules/member/services/member.api.service';
 import { useMemberStore } from '@/modules/member/store/pinia';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import type { MembersListParams } from '@/modules/member/queries/useMembersQuery';
 import type { Member } from '@/modules/member/types/Member';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
@@ -448,7 +450,7 @@ interface TablePagination {
   perPage: number;
 }
 
-// shortcut: el-table API that LfTable does not expose. revisit: K-02 (CM-1711) sticky-header rewrite
+// shortcut: LfTable has no setScrollLeft; the call throws. revisit: K-02 (CM-1711)
 interface ScrollableTable {
   setScrollLeft(scrollLeft: number): void;
 }
@@ -492,13 +494,14 @@ const isScrollbarVisible = ref(false);
 const isTableHovered = ref(false);
 const isCursorDown = ref(false);
 
-const isMergeDialogOpen = ref<Member | null>(null);
+// shortcut: rows are Member, the dialog takes Contributor. revisit: K-20 (CM-1731)
+const isMergeDialogOpen = ref<Contributor | null>(null);
 
 const showMemberDropdownPopover = ref(false);
 const actionBtnRefs = ref<Record<string, Element | ComponentPublicInstance>>({});
 const selectedActionMember = ref<Member | null>(null);
 
-const isFindGithubDrawerOpen = ref<Member | null | false>(null);
+const isFindGithubDrawerOpen = ref<Contributor | null | false>(null);
 
 const memberStore = useMemberStore();
 const { filters, selectedMembers } = storeToRefs(memberStore);
@@ -681,8 +684,7 @@ const doExport = () => MemberService.export({
   orderBy: savedFilterBody.value.orderBy,
   limit: totalMembers.value,
   offset: null,
-  // shortcut: JS default param infers never[]. revisit: CM-1588 types MemberService.export
-  segments: [selectedProjectGroup.value?.id] as never[],
+  segments: [selectedProjectGroup.value?.id],
 });
 
 onMounted(async () => {
