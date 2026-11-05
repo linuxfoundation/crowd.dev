@@ -26,7 +26,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useMemberMergeMessage from '@/shared/modules/merge/config/useMemberMergeMessage';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import { ref } from 'vue';
@@ -97,7 +97,7 @@ const ignore = (suggestion: MemberMergeSuggestionRef) => {
   const primaryMember = suggestion.members[0];
   const secondaryMember = suggestion.members[1];
   sending.value = `${primaryMember.id}:${secondaryMember.id}`;
-  MemberService.addToNoMerge(...suggestion.members)
+  MemberService.addToNoMerge(primaryMember, secondaryMember)
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
       emit('reload');

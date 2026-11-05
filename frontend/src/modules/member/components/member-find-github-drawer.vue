@@ -91,7 +91,7 @@ import {
 } from 'vue';
 
 import { ToastStore } from '@/shared/message/notification';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import cloneDeep from 'lodash/cloneDeep';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

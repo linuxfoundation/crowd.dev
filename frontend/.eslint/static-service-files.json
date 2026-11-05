@@ -13,7 +13,6 @@
   "src/modules/data-quality/services/data-quality.api.service.ts",
   "src/modules/integration/integration-service.js",
   "src/modules/lf/segments/lf-segments-service.js",
-  "src/modules/member/member-service.js",
   "src/modules/organization/organization-service.js",
   "src/modules/organization/services/organization.api.service.ts",
   "src/modules/settings/settings-service.js",

@@ -332,7 +332,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';

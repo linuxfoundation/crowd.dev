@@ -75,7 +75,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import { useMemberStore } from '@/modules/member/store/pinia';

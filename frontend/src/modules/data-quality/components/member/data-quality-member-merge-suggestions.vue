@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts" setup>
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import {
   computed, onMounted, ref, watch,
 } from 'vue';

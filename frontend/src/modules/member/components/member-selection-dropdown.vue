@@ -46,7 +46,7 @@ import {
   defineProps,
   defineEmits,
 } from 'vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import AppAutocompleteOneInput from '@/shared/form/autocomplete-one-input.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

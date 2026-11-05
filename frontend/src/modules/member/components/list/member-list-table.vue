@@ -404,7 +404,7 @@ import AppMemberFindGithubDrawer from '@/modules/member/components/member-find-g
 import AppMemberJobTitle from '@/modules/member/components/member-job-title.vue';
 import AppMemberMergeDialog from '@/modules/member/components/member-merge-dialog.vue';
 import AppMemberOrganizationsVertical from '@/modules/member/components/member-organizations-vertical.vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
