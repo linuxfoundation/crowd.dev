@@ -18,7 +18,8 @@
     "script:probe-credly-api": "tsx src/bin/probe-credly-api.ts",
     "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
     "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts",
-    "script:migrate-credly-mapped-templates": "tsx src/bin/migrate-credly-mapped-templates.ts"
+    "script:migrate-credly-mapped-templates": "tsx src/bin/migrate-credly-mapped-templates.ts",
+    "script:backfill-stale-credly-templates": "tsx src/bin/backfill-stale-credly-templates.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
