@@ -33,7 +33,7 @@ import type {
   StackOverflowOnboardPayload,
 } from '@/modules/integration/types/ConnectPayloads';
 
-// shortcut: segmentId is always set after connect, as Vuex assumed. revisit: when IntegrationRecord.segmentId is required
+// shortcut: segmentId is always set after connect, as before the migration. revisit: when IntegrationRecord.segmentId is required
 const notifyProgress = (platform: string, segmentId?: string | null) =>
   showIntegrationProgressNotification(platform, segmentId as string);
 

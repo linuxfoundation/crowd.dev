@@ -59,7 +59,6 @@
     "lodash": "^4.17.23",
     "lodash-es": "^4.18.1",
     "logrocket": "^3.0.1",
-    "logrocket-vuex": "^0.0.3",
     "marked": "^4.3.0",
     "node-emoji": "^1.11.0",
     "nprogress": "0.2.0",
@@ -74,7 +73,6 @@
     "vue-router": "^4.1.6",
     "vue3-click-away": "^1.2.4",
     "vue3-lazyload": "^0.3.6",
-    "vuex": "^4.1.0",
     "yup": "^0.32.11"
   },
   "devDependencies": {

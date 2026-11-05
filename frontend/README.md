@@ -122,7 +122,7 @@ src/
   app.vue              root component
   router/              vue-router setup
   modules/<feature>/   one folder per feature area (member, organization, integration, ...):
-                          routes, a Pinia or Vuex store, pages, components, and an
+                          routes, a Pinia store, pages, components, and an
                           *.api.service.ts for backend calls
   shared/               cross-feature code: axios instance (auth-axios.js), generic model,
                           form/field helpers, dialogs, layout components, filters
@@ -140,15 +140,13 @@ stay inside its module plus whatever it needs from `shared/` or `ui-kit/`.
 ## State and data
 
 - **Client state** — Pinia, via `defineStore` setup stores per feature (e.g.
-  `modules/organization/store`). New state should be Pinia, not Vuex.
+  `modules/organization/store`).
 - **Server state** — TanStack Vue Query wraps calls to `*.api.service.ts` modules, which in turn
   use the shared `authAxios` instance (`src/shared/axios/auth-axios.js`).
 - **Services** — one `*.api.service.ts` module per API resource, exporting named functions (or a
   `const xService = { … }` object) that call `authAxios`. No classes with `static` methods: lint
   rejects them in `services/` folders and `*-service`/`*.service` files. The legacy static-class
   services are listed in `.eslint/static-service-files.json`; remove a file from it when you convert it.
-- **Vuex** (`src/store/`) is legacy and being phased out as part of CM-1482 in this epic. Don't
-  add new Vuex modules; migrate a module to Pinia when you're touching it anyway.
 
 ## How to add an integration
 
