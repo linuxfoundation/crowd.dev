@@ -1,18 +1,12 @@
 DESCRIPTION >
-    Hourly incremental update of `pull_requests_analyzed`. Each run reads the PR events whose `updatedAt` is at most one day
-    older than the table's latest `snapshotId`, aggregates them once per PR, merges them onto the PR's current row and
-    replaces the table. Grouping a whole window per PR before the merge means events of one PR that arrived in different
-    insert batches can no longer overwrite each other, and a child event that arrived before its opened event is picked up
-    again once the opened event is in the window.
-    The one-day overlap makes the window tolerate ingestion delays, and every merge rule is a `least()` or a keep-if-set, so
-    re-reading events is idempotent. After a stall, one run catches up on everything back to the latest `snapshotId`, as long
-    as the stall is shorter than the 3-day TTL of `activityRelations_enrich_snapshot_MV_ds`.
-    Reviews and approvals count only non-author activity (IN-1226), as in `pull_request_analysis_initial_snapshot`.
+    Hourly: aggregates the PR events of the last day before the table's latest `snapshotId`, merges them onto each PR's
+    current row and replaces the table. Every merge rule is idempotent, so re-reading the overlap is safe.
 
 NODE pr_window
 DESCRIPTION >
     Lower `updatedAt` bound of this run. Ignores `snapshotId`s more than two hours in the future so a bad `updatedAt`
-    cannot move the window past unread events.
+    cannot move the window past unread events. On an empty table `max` returns epoch and the subtraction wraps to 2106,
+    so the window is empty and the copy writes nothing.
 
 SQL >
     SELECT max(snapshotId) - INTERVAL 1 DAY AS fromUpdatedAt
@@ -39,7 +33,7 @@ SQL >
             sourceId,
             if(type = 'patchset_approval-created', splitByChar('-', sourceParentId)[1], sourceParentId)
         ) AS prSourceId,
-        sourceParentId,
+        sourceId,
         lower(channel) AS channel,
         timestamp AS ts,
         segmentId,
@@ -111,21 +105,18 @@ SQL >
 
 NODE pr_delta_aggregated
 DESCRIPTION >
-    One row per PR in the window. The upstream datasource can hold several versions of an activity, so patchsets are
-    counted by distinct activity.
+    One row per PR, segment and repository in the window, the key `pull_requests_analyzed` rows already have.
+    `numberOfPatchsets` is the highest patchset number in the window (Gerrit patchset `sourceId`s end in `-<number>`),
+    which the merge keeps with `greatest`, so patchsets older than the window still count.
 
 SQL >
     SELECT
         prSourceId,
+        segmentId,
+        channel,
         argMinIf(
             activityId, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
         ) AS id,
-        argMinIf(
-            channel, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
-        ) AS channel,
-        argMinIf(
-            segmentId, ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
-        ) AS segmentId,
         argMinIf(
             gitChangedLinesBucket,
             ts,
@@ -146,7 +137,10 @@ SQL >
             ts, type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
         ) AS openedAt,
         toInt64(
-            uniqExactIf(activityId, type = 'patchset-created' AND sourceParentId = prSourceId)
+            maxIf(
+                toUInt32OrZero(splitByChar('-', sourceId)[-1]),
+                type = 'patchset-created'
+            )
         ) AS numberOfPatchsets,
         minIf(ts, type IN ('pull_request-assigned', 'merge_request-assigned')) AS assignedAt,
         minIf(
@@ -189,33 +183,32 @@ SQL >
         ) AS resolvedAt,
         toDateTime(toStartOfHour(max(updatedAt))) + INTERVAL 1 HOUR AS snapshotId
     FROM pr_delta_non_author
-    GROUP BY prSourceId
+    GROUP BY prSourceId, segmentId, channel
     HAVING prSourceId != ''
 
 NODE pr_touched_rows
 DESCRIPTION >
-    Current row of each PR in the window. Keeps one row per PR, preferring a real `openedAt` over the epoch fallback.
+    Current row of each PR, segment and repository in the window, preferring a real `openedAt` over the epoch fallback.
 
 SQL >
     SELECT *
     FROM pull_requests_analyzed
-    WHERE sourceId IN (SELECT prSourceId FROM pr_delta_aggregated)
+    WHERE (sourceId, segmentId, channel) IN (SELECT prSourceId, segmentId, channel FROM pr_delta_aggregated)
     ORDER BY openedAt = toDateTime(0), snapshotId DESC
-    LIMIT 1 BY sourceId
+    LIMIT 1 BY sourceId, segmentId, channel
 
 NODE pr_merged
 DESCRIPTION >
-    Window aggregate merged onto the current row. A timestamp from the window wins only when it is earlier. Aggregates with
-    no default (`minIf` over no rows) come back as epoch, so they count as unset. A PR with no opened event in the window
-    and no current row is skipped; its events are read again once the opened event arrives.
+    Merges the window aggregate onto the current row: the earliest timestamp wins and epoch means unset. A PR with no
+    opened event yet is skipped until it arrives.
 
 SQL >
     SELECT
         if(existing.id != '', existing.id, new.id) AS id,
         new.prSourceId AS sourceId,
         if(existing.openedAt != toDateTime(0), existing.openedAt, new.openedAt) AS openedAt,
-        if(existing.segmentId != '', existing.segmentId, new.segmentId) AS segmentId,
-        if(existing.channel != '', lower(existing.channel), new.channel) AS channel,
+        new.segmentId AS segmentId,
+        new.channel AS channel,
         if(existing.memberId != '', existing.memberId, new.memberId) AS memberId,
         if(
             existing.organizationId != '', existing.organizationId, new.organizationId
@@ -288,7 +281,10 @@ SQL >
         ) AS numberOfPatchsets,
         greatest(ifNull(existing.snapshotId, toDateTime(0)), new.snapshotId) AS snapshotId
     FROM pr_delta_aggregated AS new ANY
-    LEFT JOIN pr_touched_rows AS existing ON new.prSourceId = existing.sourceId
+    LEFT JOIN pr_touched_rows AS existing
+        ON new.prSourceId = existing.sourceId
+        AND new.segmentId = existing.segmentId
+        AND new.channel = existing.channel
     WHERE if(existing.id != '', existing.id, new.id) != ''
 
 NODE pr_analysis_results
@@ -301,7 +297,7 @@ SQL >
     UNION ALL
     SELECT *
     FROM pull_requests_analyzed
-    WHERE sourceId NOT IN (SELECT sourceId FROM pr_merged)
+    WHERE (sourceId, segmentId, channel) NOT IN (SELECT sourceId, segmentId, channel FROM pr_merged)
 
 TYPE COPY
 TARGET_DATASOURCE pull_requests_analyzed
