@@ -42,6 +42,7 @@
             >
               <template #defaultFilters>
                 <div>・</div>
+                <!-- shortcut: Filter.settings is untyped. revisit: saved-views settings typing -->
                 <lf-default-filters
                   :config="organizationSavedViews"
                   :settings="filters.settings as DefaultFiltersSettings"
@@ -231,7 +232,7 @@
                           <a
                             v-if="getOrganizationWebsite(org)"
                             class="website-link hover:!text-gray-900"
-                            :href="withHttp(getOrganizationWebsite(org))"
+                            :href="withHttp(getOrganizationWebsite(org) as string)"
                             target="_blank"
                             rel="noopener noreferrer"
                             @click.stop
@@ -479,7 +480,7 @@ interface TablePagination {
 
 type OrganizationListRow = Organization & { segmentId?: string };
 
-// shortcut: el-table API that LfTable does not expose. revisit: K-02 (CM-1711) sticky-header rewrite
+// shortcut: LfTable has no setScrollLeft; the call throws. revisit: K-02 (CM-1711)
 interface ScrollableTable {
   setScrollLeft(scrollLeft: number): void;
 }
@@ -527,7 +528,7 @@ const { organizations, totalOrganizations, savedFilterBody } = toRefs(props);
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-// The Annual Revenue column has never had a declared flag, so it has always stayed hidden.
+// shortcut: showReach was never declared, so the Annual Revenue column stays hidden. revisit: revenue column removal
 const showReach = false;
 
 const isMergeDialogOpen = ref<Organization | null>(null);
@@ -607,7 +608,7 @@ const onColumnHeaderMouseOver = (id: string) => {
   selectedEnrichmentAttribute.value = id;
 };
 
-// shortcut: toElement is a non-standard MouseEvent field. revisit: K-01 (CM-1710) list table split
+// shortcut: toElement is a non-standard MouseEvent field. revisit: revenue column removal
 const closeEnrichmentPopover = (ev?: MouseEvent & { toElement?: Element | null }) => {
   if (ev?.toElement?.id !== 'popover-content') {
     showEnrichmentPopover.value = false;
@@ -719,12 +720,11 @@ const onTableMouseLeft = () => {
 };
 
 const doExport = () => OrganizationService.export({
-  filter: savedFilterBody.value.filter,
+  filter: savedFilterBody.value.filter as Record<string, unknown> | undefined,
   orderBy: savedFilterBody.value.orderBy,
   limit: totalOrganizations.value,
   offset: null,
-  // shortcut: JS default param infers never[]. revisit: CM-1596 types OrganizationService.export
-  segments: [selectedProjectGroup.value?.id] as never[],
+  segments: [selectedProjectGroup.value?.id] as string[],
 });
 
 watch(table, () => {
