@@ -100,10 +100,12 @@ const job: IJobDefinition = {
 
 async function connectRedis(log: Logger): Promise<RedisClient | undefined> {
   try {
-    const redis = await withTimeout(getRedisClient(REDIS_CONFIG()))
     // without a listener a dropped connection is an unhandled 'error' event that kills the job
-    redis.on('error', (err) => log.warn(err, 'Redis client error during queue monitoring!'))
-    return redis
+    return await withTimeout(
+      getRedisClient(REDIS_CONFIG(), false, (err) =>
+        log.warn(err, 'Redis client error during queue monitoring!'),
+      ),
+    )
   } catch (err) {
     log.error(err, 'Failed to connect to Redis, skipping the consumer stall check!')
     return undefined
@@ -209,7 +211,7 @@ async function findStalledPartitions(
     )
   } catch (err) {
     log.error(err, `Failed to check topic ${topic} for stalled partitions!`)
-    return undefined
+    return `Stall check for topic ${topic} failed: ${err.message}`
   }
 }
 
