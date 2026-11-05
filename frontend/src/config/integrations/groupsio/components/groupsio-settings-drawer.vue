@@ -406,7 +406,7 @@ const hasSelectedGroups = computed(() => Object.values(userSubscriptions.value).
 ));
 
 const getGroupsHierarchy = (groups: GroupsioSubscription[]): Record<string, GroupHierarchy> => {
-  // shortcut: mainGroup stays null for subgroup-only subscriptions, as before. revisit: K-03 split
+  // shortcut: subgroup-only subscriptions leave mainGroup null. revisit: when those must render
   const hierarchy: Record<string, Omit<GroupHierarchy, 'mainGroup'> & { mainGroup: SelectableGroup | null }> = {};
 
   groups.forEach((group) => {
@@ -452,8 +452,7 @@ const validateAccount = async () => {
     const response = await IntegrationService.groupsioGetToken(
       form.email,
       form.password,
-      // shortcut: main's JS service infers twoFactorCode as null. revisit: CM-1584 types it string | null
-      form.twoFactorCode as unknown as null,
+      form.twoFactorCode,
       [props.segmentId],
     );
     const { groupsioCookie, groupsioCookieExpiry } = response;
@@ -524,14 +523,15 @@ const isVisible = computed({
 });
 
 const revertChanges = () => {
-  form.email = props.integration?.settings?.email ?? '';
+  // shortcut: undefined without saved settings, as before. revisit: when settings.email is required
+  form.email = props.integration?.settings?.email as string;
   form.password = '';
   form.twoFactorCode = '';
   form.groups = props?.integration?.settings?.groups
     ? [...(props.integration?.settings.groups || [])]
     : [{}];
   form.groupsValidationState = new Array(form.groups.length).fill(true);
-  cookie.value = props?.integration?.settings?.token ?? '';
+  cookie.value = props?.integration?.settings?.token as string;
   isAPIConnectionValid.value = true;
   isVerifyingAccount.value = false;
   accountVerificationFailed.value = false;
