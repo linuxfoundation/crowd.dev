@@ -8,7 +8,6 @@ import { AuthService } from '@/modules/auth/services/auth.service';
  * It checks if user is undefined (if not, redirects to /)
  *
  * @param to
- * @param store
  * @param router
  * @returns {Promise<*>}
  */

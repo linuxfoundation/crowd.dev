@@ -4,13 +4,11 @@ import VueClickAway from 'vue3-click-away';
 import VueGridLayout from 'vue-grid-layout';
 // @ts-ignore
 import Vue3Sanitize from 'vue-3-sanitize';
-import LogRocketClient from 'logrocket';
 import VueLazyLoad from 'vue3-lazyload';
 import { createPinia } from 'pinia';
 // Keep Element Plus CSS eager so it stays ahead of app styles (integration configs are now lazy)
 import 'element-plus/dist/index.css';
 import { createRouter } from '@/router';
-import { createStore } from '@/store';
 import modules from '@/modules';
 import config from '@/config';
 
@@ -54,7 +52,6 @@ declare module 'vue' {
   const { captureException } = useLogRocket();
 
   const router = await createRouter();
-  const store = await createStore(LogRocketClient);
 
   app.use(VueGridLayout);
   app.use(Vue3Sanitize, vueSanitizeOptions);
@@ -79,7 +76,7 @@ declare module 'vue' {
       });
     });
 
-  app.use(store).use(router).mount('#app');
+  app.use(router).mount('#app');
 
   if (config.env === 'production' && config.hotjarKey) {
     // prettier-ignore
