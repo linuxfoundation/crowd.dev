@@ -49,6 +49,7 @@ export async function onboardCredlyTemplate(
     const existing = await findSyncUnitByChannelId(
       txQx,
       integrationId,
+      PlatformType.CREDLY,
       badgeTemplateId,
       'badgePoll',
     )

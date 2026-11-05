@@ -426,7 +426,7 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
 })
 
 describe('findSyncUnitByChannelId', () => {
-  test('finds the unit of that channel and sync, scoped to the integration and sync name', async ({
+  test('finds the unit of that channel and sync, scoped to the integration, platform and sync name', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
@@ -447,10 +447,17 @@ describe('findSyncUnitByChannelId', () => {
       syncName: 'badgePoll',
     })
 
-    const found = await findSyncUnitByChannelId(qx, integrationId, 'tpl-cka', 'badgePoll')
+    const found = await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-cka', 'badgePoll')
 
     expect(found?.id).toBe(unitId)
-    expect(await findSyncUnitByChannelId(qx, integrationId, 'tpl-missing', 'badgePoll')).toBeNull()
+    expect(
+      await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-missing', 'badgePoll'),
+    ).toBeNull()
+    // Only the platform differs from unitId: the unique index on sync_units doesn't cover it,
+    // so this is the only way to prove the filter without a row the schema could never produce.
+    expect(
+      await findSyncUnitByChannelId(qx, integrationId, 'credly', 'tpl-cka', 'badgePoll'),
+    ).toBeNull()
   })
 })
 

@@ -56,6 +56,7 @@ describe('onboardCredlyTemplate', () => {
     expect(mocks.findSyncUnitByChannelId).toHaveBeenCalledWith(
       txQx,
       'int-k8s',
+      'credly',
       'tpl-cka',
       'badgePoll',
     )
