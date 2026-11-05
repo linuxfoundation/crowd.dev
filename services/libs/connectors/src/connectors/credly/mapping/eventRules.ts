@@ -205,6 +205,7 @@ export const credlyEventRules: readonly CredlyEventRule[] = [
   proposed('sonic', 'SONiC', 'sonic-foundation'),
   proposed('egeria', 'Egeria', 'odpi-egeria'),
   proposed('automotive-linux', 'Automotive Linux', 'agl'),
+  proposed('als', 'ALS', 'agl'),
   proposed('openapi', 'OpenAPI', 'openapi'),
   proposed('linux-foundation-research', 'Linux Foundation Research', 'tlf'),
   proposed('member-summit', 'Member Summit', 'tlf'),

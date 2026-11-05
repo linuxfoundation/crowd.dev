@@ -180,7 +180,7 @@ describe('credlyEventRules', () => {
     ['Linux Foundation Research Forum Member 2025', 'tlf'],
     ['Speaker: The Linux Foundation Member Summit 2022', 'tlf'],
     ['Speaker: OSS + ELC North America 2026', 'tlf'],
-    ['Program Committee: OSS Japan + ALS+ ELC Asia 2026', 'tlf'],
+    ['Program Committee: OSS Japan + ALS+ ELC Asia 2026', 'agl'],
     ['Speaker: Embedded Linux Conference Europe 2020', 'tlf'],
   ])('sends %j to %s through a proposed rule', (name, projectSlug) => {
     const [first] = matchEventRules(PRODUCTION, { name })
