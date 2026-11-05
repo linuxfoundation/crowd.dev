@@ -1,5 +1,5 @@
 {
-  "vue/component-api-style": ["src/modules/member/components/member-last-activity.vue"],
+  "vue/component-api-style": [],
   "vue/block-lang": [
     "src/modules/activity/components/activity-icon.vue",
     "src/modules/admin/modules/projects/components/lf-sub-projects-list-modal.vue",
@@ -8,8 +8,6 @@
     "src/modules/member/components/bulk/bulk-edit-attribute-popover.vue",
     "src/modules/member/components/form/member-form-attributes.vue",
     "src/modules/member/components/form/member-form-global-attributes.vue",
-    "src/modules/member/components/member-last-activity.vue",
-    "src/modules/member/components/member-reach.vue",
     "src/modules/organization/components/form/organization-form-attributes.vue",
     "src/modules/organization/components/form/organization-form-details.vue",
     "src/modules/organization/components/form/organization-form-identities.vue",
@@ -17,9 +15,7 @@
     "src/modules/organization/components/form/organization-form-json.vue",
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number.vue",
-    "src/modules/organization/pages/organization-form-page.vue",
-    "src/shared/loading/page-loader.vue",
-    "src/shared/tag/tag-list.vue"
+    "src/modules/organization/pages/organization-form-page.vue"
   ],
   "vue/prefer-define-options": [
     "src/modules/activity/components/activity-icon.vue",
@@ -33,9 +29,7 @@
     "src/modules/organization/components/form/organization-form-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number.vue",
-    "src/modules/organization/pages/organization-form-page.vue",
-    "src/shared/loading/page-loader.vue",
-    "src/shared/modules/entities/Entities.vue"
+    "src/modules/organization/pages/organization-form-page.vue"
   ],
   "@typescript-eslint/no-explicit-any": []
 }
