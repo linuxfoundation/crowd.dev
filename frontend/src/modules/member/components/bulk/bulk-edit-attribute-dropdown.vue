@@ -52,7 +52,7 @@
 <script setup lang="ts">
 import {
   computed,
-  defineProps, ref,
+  ref,
   watch,
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
