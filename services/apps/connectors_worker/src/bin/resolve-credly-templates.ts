@@ -202,9 +202,8 @@ async function main(): Promise<void> {
         'the credly listing changed while paging: templates not seen are left as they are',
       )
     }
-    // A locked mapping needs a human to move it even when Credly still serves it; one that has also
-    // vanished from Credly gets no such signal anywhere else, so its sync unit would poll forever
-    // with nobody told.
+    // A locked mapping that also vanished from Credly gets no signal anywhere else, so its sync
+    // unit would poll forever with nobody told unless this warns.
     const missingLocked = plan.entries.filter(
       (entry) => entry.kind === 'locked' && entry.after === null,
     )

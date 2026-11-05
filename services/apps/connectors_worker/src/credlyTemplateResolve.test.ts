@@ -323,6 +323,21 @@ describe('applyDecisions', () => {
     })
   })
 
+  it('locks the mapping and counts a reactivated unit, for a template that reappeared', async () => {
+    applyMocks.onboardCredlyTemplate.mockResolvedValueOnce({ outcome: 'reactivated' })
+
+    const result = await applyDecisions(qx, [decision('cka')], [], [], [], {
+      warn: vi.fn(),
+    } as never)
+
+    expect(result.unitsReactivated).toBe(1)
+    expect(result.unitsOnboarded).toBe(0)
+    expect(applyMocks.lockCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'cka', {
+      segmentId: 'seg-k8s',
+      integrationId: 'int-k8s',
+    })
+  })
+
   it('does not lock the mapping when onboarding found the unit under another integration', async () => {
     applyMocks.onboardCredlyTemplate.mockResolvedValueOnce({
       outcome: 'skipped',
@@ -420,6 +435,31 @@ describe('applyDecisions', () => {
       'gone',
     ])
     expect(result.unitsDecommissioned).toBe(1)
+  })
+
+  it('leaves the unit running when another resolve relocked the mapping first', async () => {
+    applyMocks.deactivateCredlyTemplateMapping.mockResolvedValueOnce(0)
+
+    const result = await applyDecisions(
+      qx,
+      [],
+      [
+        {
+          kind: 'missing',
+          badgeTemplateId: 'gone',
+          badgeTemplateName: 'Gone',
+          before: 'mapped:k8s',
+          after: null,
+        },
+      ],
+      [],
+      [stored('gone', { integrationId: 'int-k8s' })],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).not.toHaveBeenCalled()
+    expect(result.deactivated).toBe(0)
+    expect(result.unitsDecommissioned).toBe(0)
   })
 
   it('wraps the decision write, onboarding and mapping lock in one transaction', async () => {

@@ -190,6 +190,7 @@ export interface ApplyResult {
   integrationsCreated: number
   deactivated: number
   unitsOnboarded: number
+  unitsReactivated: number
   unitsDecommissioned: number
 }
 
@@ -237,6 +238,7 @@ export async function applyDecisions(
     integrationsCreated: 0,
     deactivated: 0,
     unitsOnboarded: 0,
+    unitsReactivated: 0,
     unitsDecommissioned: 0,
   }
   const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
@@ -276,6 +278,8 @@ export async function applyDecisions(
       )
       if (onboarded.outcome === 'created') {
         result.unitsOnboarded += 1
+      } else if (onboarded.outcome === 'reactivated') {
+        result.unitsReactivated += 1
       } else if (onboarded.reason !== 'already_present') {
         log.warn(
           { badgeTemplateId: decision.badgeTemplateId, ...onboarded },
@@ -284,7 +288,11 @@ export async function applyDecisions(
       }
       // A unit synced under integrationId, so the mapping is frozen on it: a later resolve that
       // wants to move the template elsewhere gets 'locked' instead of silently orphaning the sync.
-      if (onboarded.outcome === 'created' || onboarded.reason === 'already_present') {
+      if (
+        onboarded.outcome === 'created' ||
+        onboarded.outcome === 'reactivated' ||
+        onboarded.reason === 'already_present'
+      ) {
         await lockCredlyTemplateMapping(txQx, decision.badgeTemplateId, {
           segmentId,
           integrationId,
@@ -311,19 +319,25 @@ export async function applyDecisions(
   for (const badgeTemplateId of missingWithoutIntegration) {
     result.deactivated += await deactivateCredlyTemplateMapping(qx, badgeTemplateId)
   }
-  // Deactivation and decommissioning happen in one transaction: a crash in between must not leave
-  // a mapping deactivated with its sync unit still polling, since a deactivated row never comes
-  // back as 'missing' on a later run, so the unit would then never be decommissioned.
+  // One transaction per integration: a deactivated row never comes back as 'missing' later, so a
+  // crash before decommissioning would leave that unit polling forever.
   for (const [integrationId, channelIds] of missingChannelIdsByIntegration) {
     await qx.tx(async (txQx) => {
+      // Only a channel actually deactivated here is decommissioned: a 0-row result means another
+      // resolve already relocked it, so its live unit must be left running, not torn down under it.
+      const deactivatedChannelIds: string[] = []
       for (const channelId of channelIds) {
-        result.deactivated += await deactivateCredlyTemplateMapping(txQx, channelId)
+        const deactivated = await deactivateCredlyTemplateMapping(txQx, channelId)
+        result.deactivated += deactivated
+        if (deactivated > 0) deactivatedChannelIds.push(channelId)
       }
-      result.unitsDecommissioned += await decommissionSyncUnitsForChannelIds(
-        txQx,
-        integrationId,
-        channelIds,
-      )
+      if (deactivatedChannelIds.length > 0) {
+        result.unitsDecommissioned += await decommissionSyncUnitsForChannelIds(
+          txQx,
+          integrationId,
+          deactivatedChannelIds,
+        )
+      }
     })
   }
   return result

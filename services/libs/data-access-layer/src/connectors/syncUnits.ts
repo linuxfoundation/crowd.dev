@@ -406,6 +406,15 @@ export async function activateSyncUnit(qx: QueryExecutor, id: string): Promise<n
   )
 }
 
+export async function reviveDecommissionedSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
+  return qx.result(
+    `UPDATE integration.sync_units
+     SET status = 'active', "nextRunAt" = now(), "updatedAt" = now()
+     WHERE id = $(id) AND status = 'decommissioned'`,
+    { id },
+  )
+}
+
 export async function isSyncUnitLocked(qx: QueryExecutor, id: string): Promise<boolean> {
   const row = await qx.selectOneOrNone(
     `SELECT "lockedAt" IS NOT NULL AS locked
