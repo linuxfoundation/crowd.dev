@@ -51,7 +51,7 @@
               <div>・</div>
               <lf-default-filters
                 :config="memberSavedViews"
-                :settings="filters.settings"
+                :settings="filters.settings as DefaultFiltersSettings"
               />
             </template>
           </app-pagination-sorter>
@@ -371,7 +371,7 @@
     <el-popover
       placement="bottom-end"
       popper-class="popover-dropdown"
-      :virtual-ref="actionBtnRefs[selectedActionMember?.id]"
+      :virtual-ref="selectedActionMember ? actionBtnRefs[selectedActionMember.id] : undefined"
       trigger="click"
       :visible="showMemberDropdownPopover"
       virtual-triggering
@@ -396,7 +396,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import AppMemberListEmails from '@/modules/member/components/list/columns/member-list-emails.vue';
 import AppMemberListToolbar from '@/modules/member/components/list/member-list-toolbar.vue';
@@ -406,6 +406,8 @@ import AppMemberMergeDialog from '@/modules/member/components/member-merge-dialo
 import AppMemberOrganizationsVertical from '@/modules/member/components/member-organizations-vertical.vue';
 import { MemberService } from '@/modules/member/services/member.api.service';
 import { useMemberStore } from '@/modules/member/store/pinia';
+import type { MembersListParams } from '@/modules/member/queries/useMembersQuery';
+import type { Member } from '@/modules/member/types/Member';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfDefaultFilters from '@/shared/modules/default-filters/components/default-filters.vue';
@@ -417,6 +419,7 @@ import {
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import AppPagination from '@/shared/pagination/pagination.vue';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
@@ -426,74 +429,76 @@ import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import LfTableHead from '@/ui-kit/table/TableHead.vue';
 import { formatNumber } from '@/utils/number';
 import { ClickOutside as vClickOutside } from 'element-plus';
+import type { ScrollbarInstance } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import {
   computed,
-  defineProps,
   onMounted, onUnmounted, ref,
   toRefs,
   watch,
 } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import { memberSavedViews } from '../../config/saved-views/main';
 import AppMemberBadge from '../member-badge.vue';
 import AppMemberDropdownContent from '../member-dropdown-content.vue';
 import AppMemberSentiment from '../member-sentiment.vue';
 
-const props = defineProps({
-  hasIntegrations: {
-    type: Boolean,
-    default: () => false,
-  },
-  hasMembers: {
-    type: Boolean,
-    default: () => false,
-  },
-  isPageLoading: {
-    type: Boolean,
-    default: () => true,
-  },
-  isTableLoading: {
-    type: Boolean,
-    default: () => false,
-  },
-  members: {
-    type: Array,
-    default: () => [],
-  },
-  totalMembers: {
-    type: Number,
-    default: () => 0,
-  },
-  savedFilterBody: {
-    type: Object,
-    default: () => ({}),
-  },
-  pagination: {
-    type: Object,
-    default: () => ({
-      page: 1,
-      perPage: 20,
-    }),
-  },
+interface TablePagination {
+  page: number;
+  perPage: number;
+}
+
+// shortcut: el-table API that LfTable does not expose. revisit: K-02 (CM-1711) sticky-header rewrite
+interface ScrollableTable {
+  setScrollLeft(scrollLeft: number): void;
+}
+
+defineOptions({ name: 'AppMemberListTable' });
+
+const props = withDefaults(defineProps<{
+  hasIntegrations?: boolean;
+  hasMembers?: boolean;
+  isPageLoading?: boolean;
+  isTableLoading?: boolean;
+  members?: Member[];
+  totalMembers?: number;
+  savedFilterBody?: Omit<MembersListParams, 'segments'> | Record<string, never>;
+  pagination?: TablePagination;
+}>(), {
+  hasIntegrations: false,
+  hasMembers: false,
+  isPageLoading: true,
+  isTableLoading: false,
+  members: () => [],
+  totalMembers: 0,
+  savedFilterBody: () => ({}),
+  pagination: () => ({
+    page: 1,
+    perPage: 20,
+  }),
 });
-const emit = defineEmits(['onAddMember', 'update:pagination']);
+const emit = defineEmits<{
+  onAddMember: [];
+  'update:pagination': [value: TablePagination];
+}>();
+
 const { trackEvent } = useProductTracking();
 const integrationStore = useIntegrationStore();
-const table = ref(null);
-const scrollbarRef = ref();
-const tableBodyRef = ref();
-const tableHeaderRef = ref();
+const table = ref<ScrollableTable | null>(null);
+const scrollbarRef = ref<ScrollbarInstance>();
+const tableBodyRef = ref<HTMLElement>();
+const tableHeaderRef = ref<HTMLElement>();
 const isScrollbarVisible = ref(false);
 const isTableHovered = ref(false);
 const isCursorDown = ref(false);
 
-const isMergeDialogOpen = ref(null);
+const isMergeDialogOpen = ref<Member | null>(null);
 
 const showMemberDropdownPopover = ref(false);
-const actionBtnRefs = ref({});
-const selectedActionMember = ref(null);
+const actionBtnRefs = ref<Record<string, Element | ComponentPublicInstance>>({});
+const selectedActionMember = ref<Member | null>(null);
 
-const isFindGithubDrawerOpen = ref(null);
+const isFindGithubDrawerOpen = ref<Member | null | false>(null);
 
 const memberStore = useMemberStore();
 const { filters, selectedMembers } = storeToRefs(memberStore);
@@ -526,8 +531,6 @@ const pagination = computed({
   },
 });
 
-const tableWidth = ref(0);
-
 document.onmouseup = () => {
   // As soon as mouse is released, set scrollbar visibility
   // according to wether the mouse is hovering the table or not
@@ -535,13 +538,13 @@ document.onmouseup = () => {
   isCursorDown.value = false;
 };
 
-const setActionBtnsRef = (el, id) => {
+const setActionBtnsRef = (el: Element | ComponentPublicInstance | null, id: string) => {
   if (el) {
     actionBtnRefs.value[id] = el;
   }
 };
 
-const onActionBtnClick = (member) => {
+const onActionBtnClick = (member: Member) => {
   if (selectedActionMember.value?.id === member.id) {
     showMemberDropdownPopover.value = false;
 
@@ -562,8 +565,8 @@ const closeDropdown = () => {
   }, 200);
 };
 
-const onClickOutside = (el) => {
-  if (!el.target?.id.includes('buttonRef')) {
+const onClickOutside = (el: MouseEvent) => {
+  if (!(el.target as HTMLElement | null)?.id.includes('buttonRef')) {
     closeDropdown();
   }
 };
@@ -576,7 +579,9 @@ const toggleAllMembersSelection = () => {
   }
 };
 
-const toggleMemberSelection = (member) => {
+const isSelected = (member: Member) => selectedMembers.value.find((r) => r.id === member.id) !== undefined;
+
+const toggleMemberSelection = (member: Member) => {
   if (isSelected(member)) {
     selectedMembers.value = selectedMembers.value.filter(
       (r) => r.id !== member.id,
@@ -586,9 +591,7 @@ const toggleMemberSelection = (member) => {
   }
 };
 
-const isSelected = (member) => selectedMembers.value.find((r) => r.id === member.id) !== undefined;
-
-function doChangeSort(sorter) {
+function doChangeSort(sorter: string) {
   trackEvent({
     key: FeatureEventKey.SORT_MEMBERS,
     type: EventType.FEATURE,
@@ -603,14 +606,14 @@ function doChangeSort(sorter) {
   };
 }
 
-function doChangePaginationCurrentPage(currentPage) {
+function doChangePaginationCurrentPage(currentPage: number) {
   emit('update:pagination', {
     ...pagination.value,
     page: currentPage,
   });
 }
 
-function doChangePaginationPageSize(pageSize) {
+function doChangePaginationPageSize(pageSize: number) {
   emit('update:pagination', {
     page: 1,
     perPage: pageSize,
@@ -622,19 +625,19 @@ function onSecondaryBtnClick() {
 }
 
 // On custom scrollbar scroll, set the table scroll with the same value
-const onCustomScrollbarScroll = ({ scrollLeft }) => {
-  table.value.setScrollLeft(scrollLeft);
+const onCustomScrollbarScroll = ({ scrollLeft }: { scrollLeft: number }) => {
+  table.value?.setScrollLeft(scrollLeft);
 };
 
 // On table body scroll, set the custom scrollbar scroll with the same value
 const onTableBodyScroll = () => {
-  scrollbarRef.value.setScrollLeft(tableBodyRef.value.scrollLeft);
+  scrollbarRef.value?.setScrollLeft(tableBodyRef.value?.scrollLeft ?? 0);
 };
 
 // On table header scroll, set the custom scrollbar scroll with the same value
 const onTableHeaderScroll = () => {
-  scrollbarRef.value.setScrollLeft(tableHeaderRef.value.scrollLeft);
-  table.value.setScrollLeft(tableHeaderRef.value.scrollLeft);
+  scrollbarRef.value?.setScrollLeft(tableHeaderRef.value?.scrollLeft ?? 0);
+  table.value?.setScrollLeft(tableHeaderRef.value?.scrollLeft ?? 0);
 };
 
 const onScrollMousedown = () => {
@@ -651,17 +654,13 @@ const onTableMouseLeft = () => {
   isScrollbarVisible.value = isCursorDown.value;
 };
 
-watch(table, (newValue) => {
-  if (newValue) {
-    tableWidth.value = table.value;
-  }
-
+watch(table, () => {
   // Add scroll events to table, it's not possible to access it from 'el-table'
   // as the overflowed element is within it
-  const tableBodyEl = document.querySelector(
+  const tableBodyEl = document.querySelector<HTMLElement>(
     '#members-table .el-scrollbar__wrap',
   );
-  const tableHeaderEl = document.querySelector(
+  const tableHeaderEl = document.querySelector<HTMLElement>(
     '#members-table .el-table__header-wrapper',
   );
 
@@ -682,7 +681,8 @@ const doExport = () => MemberService.export({
   orderBy: savedFilterBody.value.orderBy,
   limit: totalMembers.value,
   offset: null,
-  segments: [selectedProjectGroup.value?.id],
+  // shortcut: JS default param infers never[]. revisit: CM-1588 types MemberService.export
+  segments: [selectedProjectGroup.value?.id] as never[],
 });
 
 onMounted(async () => {
@@ -694,12 +694,6 @@ onUnmounted(() => {
   tableBodyRef.value?.removeEventListener('scroll', onTableBodyScroll);
   tableHeaderRef.value?.removeEventListener('scroll', onTableHeaderScroll);
 });
-</script>
-
-<script>
-export default {
-  name: 'AppMemberListTable',
-};
 </script>
 
 <style lang="scss">
