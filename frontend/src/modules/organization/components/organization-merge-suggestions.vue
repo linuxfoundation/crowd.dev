@@ -42,7 +42,7 @@
         <app-member-merge-similarity v-if="!loading && organizationsToMerge.similarity" :similarity="organizationsToMerge.similarity" />
         <lf-button
           type="secondary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingIgnore"
           @click="ignoreSuggestion()"
         >
@@ -50,7 +50,7 @@
         </lf-button>
         <lf-button
           type="primary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
@@ -128,7 +128,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, onMounted, computed, onUnmounted,
 } from 'vue';
@@ -145,28 +145,48 @@ import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/me
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { OrganizationService } from '../organization-service';
 
-const props = defineProps({
-  query: {
-    type: Object,
-    required: false,
-    default: () => ({}),
-  },
-  offset: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+interface OrganizationMergeSuggestion {
+  organizations: [Organization, Organization];
+  similarity: number;
+}
+
+interface EmptyOrganizationMergeSuggestion {
+  organizations: [];
+  similarity: 0;
+}
+
+interface OrganizationMergeSuggestionsResponse {
+  rows: (OrganizationMergeSuggestion | EmptyOrganizationMergeSuggestion)[];
+  hasMore: boolean;
+  offset: number;
+}
+
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsPage',
 });
 
-const emit = defineEmits(['reload']);
+const props = withDefaults(defineProps<{
+  query?: Record<string, unknown>;
+  offset?: number;
+}>(), {
+  query: () => ({}),
+  offset: 0,
+});
+
+const emit = defineEmits<{(e: 'reload'): void}>();
+
+defineSlots<{
+  actions?:() => unknown;
+}>();
 
 const organizationStore = useOrganizationStore();
 
 const { trackEvent } = useProductTracking();
 
-const organizationsToMerge = ref([]);
+const organizationsToMerge = ref<OrganizationMergeSuggestion | Record<string, never>>({});
 const primary = ref(0);
 const currentOffset = ref(0);
 const hasMore = ref(false);
@@ -180,8 +200,8 @@ const changed = ref(false);
 
 const bioHeight = ref(0);
 
-const clearOrganization = (organization) => {
-  const cleanedOrganization = { ...organization };
+const clearOrganization = <T extends object>(organization: T): Partial<T> => {
+  const cleanedOrganization: Partial<T> = { ...organization };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in cleanedOrganization) {
     if (!cleanedOrganization[key]) {
@@ -206,21 +226,21 @@ const preview = computed(() => {
   return mergedOrganizations;
 });
 
-const updateSuggestionsState = (res) => {
+const updateSuggestionsState = (res: OrganizationMergeSuggestionsResponse) => {
   hasMore.value = Boolean(res.hasMore);
-  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
+  const rows = res.rows.filter((suggestion): suggestion is OrganizationMergeSuggestion => suggestion.similarity > 0);
 
   if (rows.length > 0) {
     hasSuggestion.value = true;
     [organizationsToMerge.value] = rows;
   } else {
     hasSuggestion.value = false;
-    organizationsToMerge.value = [];
+    organizationsToMerge.value = {};
   }
 };
 
-const fetch = (page, trackNavigation = true) => {
-  if (page > -1) {
+const fetch = (page?: number, trackNavigation = true): Promise<void> => {
+  if (page !== undefined && page > -1) {
     currentOffset.value = page;
   }
 
@@ -345,10 +365,4 @@ onUnmounted(() => {
     emit('reload');
   }
 });
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationMergeSuggestionsPage',
-};
 </script>

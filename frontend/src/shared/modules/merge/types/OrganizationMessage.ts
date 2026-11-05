@@ -30,7 +30,7 @@ export interface OrganizationMessage {
     primaryOrganization,
     secondaryOrganization,
   }: SuccessMessage) => void;
-  apiErrorMessage: ({ error }: ApiErrorMessage) => void;
+  apiErrorMessage: ({ error }: ApiErrorMessage) => boolean;
   socketErrorMessage: ({
     primaryOrganization,
     secondaryOrganization,
