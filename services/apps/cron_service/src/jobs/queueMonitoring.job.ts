@@ -11,7 +11,6 @@ import { IJobDefinition } from '../types'
 
 const STALL_CHECKED_TOPIC_PREFIX = 'data-sink-worker-'
 const STALL_SNAPSHOT_KEY_PREFIX = 'queue-monitoring:partitions'
-// a restart after a longer outage starts fresh instead of comparing against hours-old offsets
 const STALL_SNAPSHOT_TTL_SECONDS = 2 * 60 * 60
 const REDIS_OPERATION_TIMEOUT_MS = 5000
 
