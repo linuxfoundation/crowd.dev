@@ -446,12 +446,6 @@ describe('findSyncUnitByChannelId', () => {
       channelName: 'CKA',
       syncName: 'badgePoll',
     })
-    await createSyncUnit(qx, integrationId, {
-      channelId: 'tpl-cka',
-      channelName: 'CKA',
-      syncName: 'badgePoll',
-      platform: 'credly',
-    })
 
     const found = await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-cka', 'badgePoll')
 
@@ -459,8 +453,10 @@ describe('findSyncUnitByChannelId', () => {
     expect(
       await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-missing', 'badgePoll'),
     ).toBeNull()
+    // Only the platform differs from unitId: the unique index on sync_units doesn't cover it,
+    // so this is the only way to prove the filter without a row the schema could never produce.
     expect(
-      await findSyncUnitByChannelId(qx, integrationId, 'credly', 'tpl-cka', 'expirySync'),
+      await findSyncUnitByChannelId(qx, integrationId, 'credly', 'tpl-cka', 'badgePoll'),
     ).toBeNull()
   })
 })
