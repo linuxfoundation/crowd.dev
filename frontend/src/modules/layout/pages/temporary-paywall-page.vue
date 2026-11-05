@@ -35,8 +35,7 @@ defineOptions({ name: 'AppPaywallPage' });
 const route = useRoute();
 
 const onCtaClick = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
-  (window as any).analytics.track('Upgrade Plan Contact', {
+  window.analytics.track('Upgrade Plan Contact', {
     route: route.path,
   });
 };
