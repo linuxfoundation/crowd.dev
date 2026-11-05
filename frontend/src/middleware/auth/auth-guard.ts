@@ -1,21 +1,18 @@
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { storeToRefs } from 'pinia';
+import type { GuardContext } from '@/middleware/types';
 
 /**
  * Auth Guard
  *
  * This middleware runs before rendering any route that has meta.auth = true
  *
- * User is authenticated, and both tenant & ser exist within our store (if not, redirects to /auth/signup)
- *
- * @param to
- * @param router
- * @returns {Promise<*>}
+ * User is authenticated, and both tenant & ser exist within our store (if not, redirects to /auth/signin)
  */
 
 export default async function ({
   to, router,
-}) {
+}: GuardContext): Promise<void> {
   if (!to.meta || !to.meta.auth) {
     return;
   }

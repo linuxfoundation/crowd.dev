@@ -1,4 +1,5 @@
 import { AuthService } from '@/modules/auth/services/auth.service';
+import type { GuardContext } from '@/middleware/types';
 
 /**
  * Unauth Guard
@@ -6,12 +7,8 @@ import { AuthService } from '@/modules/auth/services/auth.service';
  * This middleware runs before rendering any route that has meta.unauth = true
  *
  * It checks if user is undefined (if not, redirects to /)
- *
- * @param to
- * @param router
- * @returns {Promise<*>}
  */
-export default async function ({ to, router }) {
+export default async function ({ to, router }: GuardContext): Promise<void> {
   if (!to.meta || !to.meta.unauth) {
     return;
   }
