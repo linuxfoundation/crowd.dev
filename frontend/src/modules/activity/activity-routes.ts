@@ -1,3 +1,7 @@
+// Copyright (c) 2026 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+
+import type { RouteRecordRaw } from 'vue-router';
 import Layout from '@/modules/layout/components/layout.vue';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
@@ -5,7 +9,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 
 const ActivityListPage = () => import('@/modules/activity/pages/activity-list-page.vue');
 
-export default [
+const routes: RouteRecordRaw[] = [
   {
     name: '',
     path: '',
@@ -26,10 +30,10 @@ export default [
         meta: {
           auth: true,
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.activityRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.activityRead)],
       },
     ],
   },
 ];
+
+export default routes;
