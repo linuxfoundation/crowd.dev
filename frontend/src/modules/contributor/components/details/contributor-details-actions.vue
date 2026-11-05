@@ -94,7 +94,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { storeToRefs } from 'pinia';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import pluralize from 'pluralize';
 import LfContributorDropdown from '@/modules/contributor/components/shared/contributor-dropdown.vue';
 import { ContributorApiService } from '@/modules/contributor/services/contributor.api.service';

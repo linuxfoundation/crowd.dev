@@ -141,7 +141,7 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { MemberService } from '../member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 const props = defineProps({
   query: {
@@ -268,7 +268,7 @@ const ignoreSuggestion = () => {
   });
 
   sendingIgnore.value = true;
-  MemberService.addToNoMerge(...membersToMerge.value.members)
+  MemberService.addToNoMerge(membersToMerge.value.members[0], membersToMerge.value.members[1])
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
       // shortcut: the call omits the contributor id (same bug on main). revisit: pass the member id

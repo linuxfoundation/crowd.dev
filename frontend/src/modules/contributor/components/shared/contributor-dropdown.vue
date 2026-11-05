@@ -41,7 +41,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useRoute, useRouter } from 'vue-router';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { doManualAction } from '@/shared/helpers/manualAction.helpers';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { computed } from 'vue';

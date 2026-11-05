@@ -81,11 +81,11 @@ import { storeToRefs } from 'pinia';
 import pluralize from 'pluralize';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
+import { showExportDialog } from '@/modules/member/member-export-limit';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
-import { showExportDialog } from '@/modules/member/member-export-limit';
 import AppBulkEditAttributePopover from '@/modules/member/components/bulk/bulk-edit-attribute-popover.vue';
 import useMemberMergeMessage from '@/shared/modules/merge/config/useMemberMergeMessage';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
