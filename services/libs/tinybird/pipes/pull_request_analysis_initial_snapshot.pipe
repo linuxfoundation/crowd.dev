@@ -1,7 +1,8 @@
 DESCRIPTION >
     Full rebuild of `pull_requests_analyzed` from the activity history, with the same rules as
-    `pull_request_analysis_incremental_copy`. Run it bucketed into an empty table (see lambda-architecture.md):
-    tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --mode append
+    `pull_request_analysis_incremental_copy`. Each bucket run replaces its PRs and keeps every other row, so it runs on a
+    populated table and a bucket can be re-run (see lambda-architecture.md):
+    tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --wait
 
 NODE pr_events
 DESCRIPTION >
@@ -175,7 +176,7 @@ SQL >
     WHERE prSourceId != ''
     GROUP BY prSourceId, host
 
-NODE pr_analysis_results
+NODE pr_rebuilt
 DESCRIPTION >
     The PR's lifecycle on each of its rows. Aggregates with no matching event (`minIf` over no rows) come back as epoch
     and are stored as NULL.
@@ -223,7 +224,33 @@ SQL >
     FROM pr_opened AS o
     LEFT JOIN pr_lifecycle AS l ON l.prSourceId = o.prSourceId AND l.host = domain(o.channel)
 
+NODE pr_analysis_results
+DESCRIPTION >
+    Rebuilt rows of this bucket plus the current rows of every other bucket. Rows of this bucket whose PR has no opened
+    event left in the history are dropped.
+
+SQL >
+    %
+    SELECT *
+    FROM pr_rebuilt
+    {% if defined(bucket_id) %}
+        UNION ALL
+        SELECT *
+        FROM pull_requests_analyzed
+        WHERE
+            cityHash64(sourceId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            != {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
+    {% end %}
+
 TYPE COPY
 TARGET_DATASOURCE pull_requests_analyzed
-COPY_MODE append
+COPY_MODE replace
 COPY_SCHEDULE @on-demand
