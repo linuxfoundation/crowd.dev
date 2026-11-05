@@ -4,7 +4,7 @@ import { defineStore, storeToRefs } from 'pinia';
 import { ref } from 'vue';
 import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { MergeActionsService } from '@/shared/modules/merge/services/merge-actions.service';
 import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';

@@ -3,7 +3,7 @@
 import { computed } from 'vue';
 import type { Ref } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { queryKeys } from '@/shared/queries/keys';
 import type { EntityListKeyParams } from '@/shared/queries/keys';
 import type { Organization } from '@/modules/organization/types/Organization';

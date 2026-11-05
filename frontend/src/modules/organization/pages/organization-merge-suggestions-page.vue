@@ -185,7 +185,7 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { onMounted, ref } from 'vue';
 
 import { ToastStore } from '@/shared/message/notification';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
@@ -350,7 +350,7 @@ const ignore = (suggestion: OrganizationMergeSuggestion) => {
   const primaryMember = members[0];
   const secondaryMember = members[1];
   sending.value = `${primaryMember.id}:${secondaryMember.id}`;
-  OrganizationService.addToNoMerge(...members)
+  OrganizationService.addToNoMerge(primaryMember, secondaryMember)
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
       reload();

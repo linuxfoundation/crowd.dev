@@ -433,7 +433,7 @@
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import AppOrganizationMergeDialog from '@/modules/organization/components/organization-merge-dialog.vue';
 import revenueRange from '@/modules/organization/config/enrichment/revenueRange';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfDefaultFilters from '@/shared/modules/default-filters/components/default-filters.vue';
