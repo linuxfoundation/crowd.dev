@@ -63,6 +63,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
   private consumers: Map<string, Consumer>
   private assignedPartitionsByTopic: Map<string, number[]>
   private readonly liveness: IConsumerLiveness | undefined
+  private ownsLiveness = false
   private processingMessages: number
   private started: boolean
   private producer?: Producer | undefined = undefined
@@ -431,6 +432,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
 
       const trackLiveness = this.liveness?.trackTopic(queueConf.name) ?? false
       if (trackLiveness) {
+        this.ownsLiveness = true
         this.liveness.start()
       }
 
@@ -575,7 +577,9 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
 
   public stop() {
     this.started = false
-    this.liveness?.stop()
+    if (this.ownsLiveness) {
+      this.liveness?.stop()
+    }
     this.consumers.forEach((c) => c.disconnect())
     this.log.info('Kafka consumers disconnected')
   }
