@@ -91,7 +91,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ToastStore } from '@/shared/message/notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import type { FakeOrganizationSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
 const props = withDefaults(

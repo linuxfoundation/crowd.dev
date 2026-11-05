@@ -1,26 +1,24 @@
+// Copyright (c) 2026 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+
+import type { RouteRecordRaw } from 'vue-router';
 import Layout from '@/modules/layout/components/layout.vue';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
 
-const OrganizationListPage = () => import(
-  '@/modules/organization/pages/organization-list-page.vue'
-);
+const OrganizationListPage = () =>
+  import('@/modules/organization/pages/organization-list-page.vue');
 
-const OrganizationDetailsPage = () => import(
-  '@/modules/organization/pages/organization-details.page.vue'
-);
+const OrganizationDetailsPage = () =>
+  import('@/modules/organization/pages/organization-details.page.vue');
 
-const OrganizationFormPage = () => import(
-  '@/modules/organization/pages/organization-form-page.vue'
-);
-
-const OrganizationMergeSuggestionsPage = () => import(
-  '@/modules/organization/pages/organization-merge-suggestions-page.vue'
-);
+const OrganizationMergeSuggestionsPage = () =>
+  import('@/modules/organization/pages/organization-merge-suggestions-page.vue');
 
 const OrganizationsMainPage = async () => OrganizationListPage();
-export default [
+
+const routes: RouteRecordRaw[] = [
   {
     name: '',
     path: '',
@@ -44,9 +42,7 @@ export default [
         props: {
           module: 'organizations',
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.organizationRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.organizationRead)],
       },
       {
         name: 'organizationView',
@@ -61,9 +57,7 @@ export default [
           },
         },
         props: true,
-        beforeEnter: [
-          PermissionGuard(LfPermission.organizationRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.organizationRead)],
       },
       {
         name: 'organizationMergeSuggestions',
@@ -77,10 +71,10 @@ export default [
           },
         },
         props: true,
-        beforeEnter: [
-          PermissionGuard(LfPermission.mergeOrganizations),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.mergeOrganizations)],
       },
     ],
   },
 ];
+
+export default routes;

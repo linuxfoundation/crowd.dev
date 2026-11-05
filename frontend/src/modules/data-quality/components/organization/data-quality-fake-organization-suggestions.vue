@@ -55,7 +55,7 @@
 </template>
 
 <script lang="ts" setup>
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import {
   computed, onMounted, ref, watch,
 } from 'vue';

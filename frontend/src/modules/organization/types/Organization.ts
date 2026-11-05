@@ -146,10 +146,10 @@ export interface Organization {
 
 export interface OrganizationQueryBody {
   search?: string;
-  filter?: Record<string, unknown>;
+  filter?: unknown;
   offset?: number;
   limit?: number;
-  orderBy?: string;
+  orderBy?: string | null;
   segments?: string[];
   excludeSegments?: boolean;
 }

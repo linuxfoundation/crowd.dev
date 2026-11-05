@@ -165,7 +165,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { OrganizationService } from '../organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import type { Organization } from '../types/Organization';
 
 // shortcut: undefined HubspotApiService/segments typed; both throw. revisit: refetch or HubSpot fix

@@ -152,7 +152,7 @@ import { FormSchema } from '@/shared/form/form-schema';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { onSelectMouseLeave } from '@/utils/select';
 import { MemberService } from '@/modules/member/services/member.api.service';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import getCustomAttributes from '@/shared/fields/get-custom-attributes';
 import getParsedAttributes from '@/shared/attributes/get-parsed-attributes';
 import AppBulkEditAttributeDropdown from '@/modules/member/components/bulk/bulk-edit-attribute-dropdown.vue';

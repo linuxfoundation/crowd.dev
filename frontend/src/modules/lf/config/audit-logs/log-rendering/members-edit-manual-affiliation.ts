@@ -1,5 +1,8 @@
-import type { LogChanges, LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import type {
+  LogChanges,
+  LogRenderingConfig,
+} from '@/modules/lf/config/audit-logs/log-rendering/index';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
@@ -12,13 +15,13 @@ interface MemberAffiliationStateRow {
 
 const formatDateRange = (dateStart?: string | null, dateEnd?: string | null) => {
   // eslint-disable-next-line no-nested-ternary
-  const dateStartFormat = dateStart
-    ? dateHelper(dateStart).utc().format('MMMM YYYY')
-    : 'Unknown';
+  const dateStartFormat = dateStart ? dateHelper(dateStart).utc().format('MMMM YYYY') : 'Unknown';
   // eslint-disable-next-line no-nested-ternary
   const dateEndFormat = dateEnd
     ? dateHelper(dateEnd).utc().format('MMMM YYYY')
-    : (dateStart ? 'Present' : 'Unknown');
+    : dateStart
+      ? 'Present'
+      : 'Unknown';
   return `${dateStartFormat} -> ${dateEndFormat}`;
 };
 
@@ -51,31 +54,39 @@ const membersEditManualAffiliation: LogRenderingConfig<MemberAffiliationStateRow
     const orgs: { id: string; displayName: string }[] = await OrganizationService.listByIds(orgIds);
     const segments: { id: string; name: string }[] = await LfService.listSegmentsByIds(segmentIds);
 
-    const orgById = orgs.reduce<Record<string, string>>((obj, org) => ({
-      ...obj,
-      [org.id]: org.displayName,
-    }), {});
+    const orgById = orgs.reduce<Record<string, string>>(
+      (obj, org) => ({
+        ...obj,
+        [org.id]: org.displayName,
+      }),
+      {},
+    );
 
-    const segmentById = segments.reduce<Record<string, string>>((obj, org) => ({
-      ...obj,
-      [org.id]: org.name,
-    }), {});
+    const segmentById = segments.reduce<Record<string, string>>(
+      (obj, org) => ({
+        ...obj,
+        [org.id]: org.name,
+      }),
+      {},
+    );
 
     // Check for removals and modifications
     log.oldState.forEach((org) => {
       if (!newStateMap.has(org.organizationId)) {
-        const {
-          organizationId, dateStart, dateEnd, segmentId,
-        } = org;
+        const { organizationId, dateStart, dateEnd, segmentId } = org;
         changes.removals.push(
-          `<span>${organizationId ? (orgById[organizationId]) : 'Individual'}:</span> ${segmentId ? segmentById[segmentId] : 'None'}
+          `<span>${organizationId ? orgById[organizationId] : 'Individual'}:</span> ${segmentId ? segmentById[segmentId] : 'None'}
           <br> (${formatDateRange(dateStart, dateEnd)})`,
         );
       } else {
         const newOrg = newStateMap.get(org.organizationId)!;
-        if (org.dateStart !== newOrg.dateStart || org.dateEnd !== newOrg.dateEnd || org.segmentId !== newOrg.segmentId) {
+        if (
+          org.dateStart !== newOrg.dateStart ||
+          org.dateEnd !== newOrg.dateEnd ||
+          org.segmentId !== newOrg.segmentId
+        ) {
           changes.changes.push(
-            `<span>${org.organizationId ? (orgById[org.organizationId]) : 'Individual'} </span>: 
+            `<span>${org.organizationId ? orgById[org.organizationId] : 'Individual'} </span>: 
             <br><s>${org.segmentId ? segmentById[org.segmentId] : 'None'} (${formatDateRange(org.dateStart, org.dateEnd)})</s>
             <br>${newOrg.segmentId ? segmentById[newOrg.segmentId] : 'None'} (${formatDateRange(newOrg.dateStart, newOrg.dateEnd)})`,
           );
@@ -86,11 +97,9 @@ const membersEditManualAffiliation: LogRenderingConfig<MemberAffiliationStateRow
     // Check for additions
     log.newState.forEach((org) => {
       if (!oldStateMap.has(org.organizationId)) {
-        const {
-          organizationId, dateStart, dateEnd, segmentId,
-        } = org;
+        const { organizationId, dateStart, dateEnd, segmentId } = org;
         changes.additions.push(
-          `<span>${organizationId ? (orgById[organizationId]) : 'Individual'}:</span> ${segmentId ? segmentById[segmentId] : 'None'}
+          `<span>${organizationId ? orgById[organizationId] : 'Individual'}:</span> ${segmentId ? segmentById[segmentId] : 'None'}
           <br> (${formatDateRange(dateStart, dateEnd)})`,
         );
       }
@@ -99,10 +108,12 @@ const membersEditManualAffiliation: LogRenderingConfig<MemberAffiliationStateRow
     return changes;
   },
   description: (log) => `ID: ${log.entityId}`,
-  properties: (log) => [{
-    label: 'Profile',
-    value: `<span>ID: ${log.entityId}</span>`,
-  }],
+  properties: (log) => [
+    {
+      label: 'Profile',
+      value: `<span>ID: ${log.entityId}</span>`,
+    },
+  ],
 };
 
 export default membersEditManualAffiliation;

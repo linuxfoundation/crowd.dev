@@ -83,7 +83,7 @@ import AppOrganizationMergeDialog from '@/modules/organization/components/organi
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfTableBulkActions from '@/ui-kit/table/table-bulk-actions.vue';
-import { OrganizationService } from '../../organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 
 const { trackEvent } = useProductTracking();
 

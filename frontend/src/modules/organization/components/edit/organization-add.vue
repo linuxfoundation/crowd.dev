@@ -120,7 +120,7 @@ import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';
-import { OrganizationApiService } from '@/modules/organization/services/organization.api.service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import Errors from '@/shared/error/errors';
@@ -231,7 +231,7 @@ const createOrganization = () => {
 
   sending.value = true;
 
-  OrganizationApiService.create(data)
+  OrganizationService.create(data)
     .then((newOrg: Organization) => {
       router.push({
         name: 'organizationView',

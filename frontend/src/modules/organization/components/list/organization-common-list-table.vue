@@ -127,7 +127,7 @@ import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import { computed } from 'vue';
 import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';

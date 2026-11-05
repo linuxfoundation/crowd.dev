@@ -145,24 +145,9 @@ import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/me
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '../organization-service';
-
-interface OrganizationMergeSuggestion {
-  organizations: [Organization, Organization];
-  similarity: number;
-}
-
-interface EmptyOrganizationMergeSuggestion {
-  organizations: [];
-  similarity: 0;
-}
-
-interface OrganizationMergeSuggestionsResponse {
-  rows: (OrganizationMergeSuggestion | EmptyOrganizationMergeSuggestion)[];
-  hasMore: boolean;
-  offset: number;
-}
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+import type { SuggestionsPage } from '@/modules/organization/services/organization.api.service';
+import type { OrganizationMergeSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
 defineOptions({
   name: 'AppOrganizationMergeSuggestionsPage',
@@ -226,9 +211,9 @@ const preview = computed(() => {
   return mergedOrganizations;
 });
 
-const updateSuggestionsState = (res: OrganizationMergeSuggestionsResponse) => {
+const updateSuggestionsState = (res: SuggestionsPage<OrganizationMergeSuggestion>) => {
   hasMore.value = Boolean(res.hasMore);
-  const rows = res.rows.filter((suggestion): suggestion is OrganizationMergeSuggestion => suggestion.similarity > 0);
+  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
 
   if (rows.length > 0) {
     hasSuggestion.value = true;
@@ -290,7 +275,7 @@ const ignoreSuggestion = () => {
   });
 
   sendingIgnore.value = true;
-  OrganizationService.addToNoMerge(...organizationsToMerge.value.organizations)
+  OrganizationService.addToNoMerge(organizationsToMerge.value.organizations[0], organizationsToMerge.value.organizations[1])
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
 

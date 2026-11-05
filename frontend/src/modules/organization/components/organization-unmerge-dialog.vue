@@ -248,7 +248,7 @@
 <script setup lang="ts">import { computed, onMounted, ref } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import AppOrganizationMergeSuggestionsDetails from '@/modules/organization/components/suggestions/organization-merge-suggestions-details.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -363,7 +363,7 @@ const fetchPreview = (identity: OrganizationIdentityParsed) => {
   fetchingPreview.value = true;
 
   OrganizationService.unmergePreview(
-    props.modelValue?.id,
+    props.modelValue!.id,
     identity,
     revertPreviousMerge.value,
   )
@@ -386,7 +386,7 @@ const resetRevertPreviousMerge = () => {
 };
 
 const getCanRevertMerge = (identity: OrganizationIdentityParsed) => {
-  OrganizationService.canRevertMerge(props.modelValue?.id, identity)
+  OrganizationService.canRevertMerge(props.modelValue!.id, identity)
     .then((res) => {
       canRevertPreviousMerge.value = res;
     })

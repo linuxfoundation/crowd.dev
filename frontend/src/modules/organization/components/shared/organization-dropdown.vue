@@ -42,7 +42,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { doManualAction } from '@/shared/helpers/manualAction.helpers';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 
 const props = defineProps<{

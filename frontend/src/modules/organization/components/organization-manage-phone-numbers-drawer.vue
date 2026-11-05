@@ -47,7 +47,7 @@ import {
 } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import cloneDeep from 'lodash/cloneDeep';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import useVuelidate from '@vuelidate/core';
 import AppOrganizationFormPhoneNumber from '@/modules/organization/components/form/organization-form-phone-number.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
