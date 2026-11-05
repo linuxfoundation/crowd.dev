@@ -17,7 +17,8 @@
     "script:mirror-nango-repos": "tsx src/bin/mirror-nango-repos-to-shadow-sync-units.ts",
     "script:probe-credly-api": "tsx src/bin/probe-credly-api.ts",
     "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
-    "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts"
+    "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts",
+    "script:migrate-credly-mapped-templates": "tsx src/bin/migrate-credly-mapped-templates.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

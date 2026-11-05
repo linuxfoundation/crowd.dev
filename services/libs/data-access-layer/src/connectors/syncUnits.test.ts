@@ -426,7 +426,7 @@ describe('countShadowRepos and hasSyncUnitsForChannel', () => {
 })
 
 describe('findSyncUnitByChannelId', () => {
-  test('finds the unit of that channel and sync, scoped to the integration and sync name', async ({
+  test('finds the unit of that channel and sync, scoped to the integration, platform and sync name', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
@@ -446,11 +446,22 @@ describe('findSyncUnitByChannelId', () => {
       channelName: 'CKA',
       syncName: 'badgePoll',
     })
+    await createSyncUnit(qx, integrationId, {
+      channelId: 'tpl-cka',
+      channelName: 'CKA',
+      syncName: 'badgePoll',
+      platform: 'credly',
+    })
 
-    const found = await findSyncUnitByChannelId(qx, integrationId, 'tpl-cka', 'badgePoll')
+    const found = await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-cka', 'badgePoll')
 
     expect(found?.id).toBe(unitId)
-    expect(await findSyncUnitByChannelId(qx, integrationId, 'tpl-missing', 'badgePoll')).toBeNull()
+    expect(
+      await findSyncUnitByChannelId(qx, integrationId, 'github', 'tpl-missing', 'badgePoll'),
+    ).toBeNull()
+    expect(
+      await findSyncUnitByChannelId(qx, integrationId, 'credly', 'tpl-cka', 'expirySync'),
+    ).toBeNull()
   })
 })
 

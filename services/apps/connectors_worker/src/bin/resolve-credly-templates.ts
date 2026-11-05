@@ -18,11 +18,13 @@ import {
   listActiveCredlyTemplateMappings,
   listCredlyTemplateMappings,
   listHeldCredlyTemplateMappings,
+  listStaleCredlyTemplateMappings,
 } from '@crowd/data-access-layer/src/credly'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { SnowflakeClient } from '@crowd/snowflake'
+import { PlatformType } from '@crowd/types'
 
 import { activeHeld, buildHeldQueueReport, postHeldQueueReport } from '../credlyHeldQueueReport'
 import {
@@ -111,7 +113,13 @@ async function main(): Promise<void> {
       )
       process.exit(1)
     }
-    const unit = await findSyncUnitByChannelId(qx, mapping.integrationId, release, 'badgePoll')
+    const unit = await findSyncUnitByChannelId(
+      qx,
+      mapping.integrationId,
+      PlatformType.CREDLY,
+      release,
+      'badgePoll',
+    )
     if (!unit) {
       log.error(
         { badgeTemplateId: release, integrationId: mapping.integrationId },
@@ -202,9 +210,8 @@ async function main(): Promise<void> {
         'the credly listing changed while paging: templates not seen are left as they are',
       )
     }
-    // A locked mapping needs a human to move it even when Credly still serves it; one that has also
-    // vanished from Credly gets no such signal anywhere else, so its sync unit would poll forever
-    // with nobody told.
+    // A locked mapping already needs a human to move it; one that has also vanished from Credly gets
+    // no other signal, so flag it here or its sync unit polls forever unnoticed.
     const missingLocked = plan.entries.filter(
       (entry) => entry.kind === 'locked' && entry.after === null,
     )
@@ -212,6 +219,13 @@ async function main(): Promise<void> {
       log.warn(
         { badgeTemplateIds: missingLocked.map((entry) => entry.badgeTemplateId) },
         'credly templates are locked and gone from credly; their sync units need manual review before decommissioning',
+      )
+    }
+    const stale = await listStaleCredlyTemplateMappings(qx)
+    if (stale.length > 0) {
+      log.warn(
+        { badgeTemplateIds: stale.map((row) => row.badgeTemplateId) },
+        'credly template mappings point to a deleted or moved integration; their sync units are no longer polled',
       )
     }
     const result = await applyDecisions(

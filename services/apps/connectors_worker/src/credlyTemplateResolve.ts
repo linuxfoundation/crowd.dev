@@ -311,9 +311,8 @@ export async function applyDecisions(
   for (const badgeTemplateId of missingWithoutIntegration) {
     result.deactivated += await deactivateCredlyTemplateMapping(qx, badgeTemplateId)
   }
-  // Deactivation and decommissioning happen in one transaction: a crash in between must not leave
-  // a mapping deactivated with its sync unit still polling, since a deactivated row never comes
-  // back as 'missing' on a later run, so the unit would then never be decommissioned.
+  // One transaction per integration: a deactivated row never resurfaces as 'missing' later, so a
+  // crash between deactivation and decommissioning would leave that unit polling forever.
   for (const [integrationId, channelIds] of missingChannelIdsByIntegration) {
     await qx.tx(async (txQx) => {
       for (const channelId of channelIds) {
