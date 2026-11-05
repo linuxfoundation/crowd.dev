@@ -1,3 +1,4 @@
+export * from './completenessValidation'
 export * from './shadowDiffSummary'
 export * from './shadowRecords'
 export * from './syncUnits'

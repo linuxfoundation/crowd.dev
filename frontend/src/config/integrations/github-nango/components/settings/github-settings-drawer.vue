@@ -84,7 +84,8 @@ import LfGithubSettingsEmpty from '@/config/integrations/github-nango/components
 import LfGithubSettingsAddRepositoryModal from '@/config/integrations/github-nango/components/settings/github-settings-add-repository-modal.vue';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
 import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
-import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { Integration, IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type {
   GitHubOrganization,
   GitHubSettings,
@@ -94,7 +95,7 @@ import type {
 import LfGithubSettingsMapping from '@/config/integrations/github-nango/components/settings/github-settings-mapping.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import { ToastStore } from '@/shared/message/notification';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import AppDrawer from '@/shared/drawer/drawer.vue';
 import {
@@ -119,7 +120,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
@@ -167,9 +168,9 @@ const fetchSubProjects = () => {
 
 const $v = useVuelidate();
 
-const allOrganizations = computed<any[]>(() => {
+const allOrganizations = computed(() => {
   const owners = new Set();
-  return repositories.value.reduce((acc: any[], r) => {
+  return repositories.value.reduce<GitHubOrganization[]>((acc, r) => {
     if (!owners.has(r.org!.name)) {
       owners.add(r.org!.name);
       acc.push(r.org!);
@@ -212,7 +213,7 @@ const connect = () => {
     props.integration?.id,
   )
     .then((integration) => {
-      doFetch([integration.segmentId]);
+      integrationStore.fetch([integration.segmentId]);
 
       trackEvent({
         key: FeatureEventKey.CONNECT_INTEGRATION,
@@ -242,7 +243,7 @@ const connect = () => {
     });
 };
 
-const errorHandler = (error: any) => {
+const errorHandler = (error: IntegrationApiError) => {
   const errorMessage = error?.response?.data;
   const parsedError = parseDuplicateRepoError(errorMessage, props.integration?.id
     ? 'There was error updating settings'
@@ -285,7 +286,7 @@ const canClose = (done: (value: boolean) => void) => {
 const fetchGithubMappings = () => {
   if (!props.integration) return;
   IntegrationService.fetchGitHubMappings(props.integration).then(
-    (res: any[]) => {
+    (res: IntegrationMapping[]) => {
       const mappings = res.reduce(
         (rm, mapping) => ({
           ...rm,

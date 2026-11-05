@@ -7,13 +7,14 @@ import {
   DEFAULT_TENANT_ID,
   getAttributeValue,
   getCountry,
-  getEarliestValidDate,
   hasAttributeValue,
   isDomainExcluded,
   isObjectEmpty,
   isSameMemberIdentity,
   normalizeDisplayName,
+  normalizeHostname,
   normalizeMemberIdentities,
+  omitUrlValues,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -60,7 +61,11 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { IMemberCreateData, IMemberUpdateData } from './member.data'
+import {
+  ActivityTimestampsByEmailDomain,
+  IMemberCreateData,
+  IMemberUpdateData,
+} from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
 
@@ -72,20 +77,304 @@ type EmailDomainOrganization = {
   created: boolean
 }
 
+// Domains after hostname normalization, like findOrCreateOrganization looks them up. The lock key
+// takes a primary domain on any platform, as the lookup's fallback does
+function verifiedOrgIdentityKey(
+  identity: NonNullable<IOrganization['identities']>[number],
+): { key: string; lockKey: string; value: string } | undefined {
+  if (!identity.verified || !identity.value) {
+    return undefined
+  }
+  const isDomain = [
+    OrganizationIdentityType.PRIMARY_DOMAIN,
+    OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+  ].includes(identity.type)
+  const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
+  if (!value) {
+    return undefined
+  }
+  const key = `${identity.platform}:${identity.type}:${value.toLowerCase()}`
+  return {
+    value,
+    key,
+    lockKey:
+      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
+        ? `${identity.type}:${value.toLowerCase()}`
+        : key,
+  }
+}
+
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
  * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
  * across members in the same batch.
  */
 function orgCacheKey(org: IOrganization): string | null {
-  const verified = (org.identities ?? [])
-    .filter((i) => i.verified)
-    .map((i) => `${i.platform}:${i.type}:${i.value.toLowerCase()}`)
+  const verified = Array.from(
+    new Set((org.identities ?? []).map((i) => verifiedOrgIdentityKey(i)?.key).filter(Boolean)),
+  )
     .sort()
     .join('|')
   if (verified) return verified
   if (org.displayName) return `name:${org.displayName.toLowerCase()}`
   return null
+}
+
+// Per batch (through its org promise cache): the latest find-or-create call for each verified
+// identity. A call waits for the earlier ones that share an identity with it, so it finds the
+// organization they created instead of creating a duplicate when members are updated concurrently.
+const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
+
+// The verified identities, and the name as the fallback. Without a display name, an organization
+// is created under its first verified identity's value.
+function orgLockKeys(org: IOrganization): string[] {
+  const keys: string[] = []
+  let creationName: string | undefined
+  for (const identity of org.identities ?? []) {
+    const verified = verifiedOrgIdentityKey(identity)
+    if (!verified) {
+      continue
+    }
+    creationName ??= verified.value
+    keys.push(verified.lockKey)
+  }
+
+  const name = (org.displayName || creationName)?.trim().toLowerCase()
+  if (name) {
+    keys.push(`name:${name}`)
+  }
+  return keys
+}
+
+// Per batch: the latest update of each existing organization. Calls with different identities can
+// resolve to the same organization (so the identity locks don't order them), and the data sink
+// has no transactions, so they update it one at a time.
+const orgIdLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<void>>>()
+
+function lockOrganizationFor(orgPromiseCache: OrgPromiseCache) {
+  return async (organizationId: string): Promise<() => void> => {
+    const locks = orgIdLocks.get(orgPromiseCache) ?? new Map<string, Promise<void>>()
+    orgIdLocks.set(orgPromiseCache, locks)
+    const previous = locks.get(organizationId) ?? Promise.resolve()
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    locks.set(
+      organizationId,
+      previous.then(() => held),
+    )
+    await previous
+    return release
+  }
+}
+
+const stableJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+
+// Domains are normalized like findOrCreateOrganization normalizes them in place, so the key is the
+// same before and after the payload is applied
+function orgPayloadKey(source: string, org: IOrganization): string {
+  const content: Record<string, unknown> = {
+    ...org,
+    identities: (org.identities ?? [])
+      .map((i) =>
+        [
+          OrganizationIdentityType.PRIMARY_DOMAIN,
+          OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+        ].includes(i.type)
+          ? { ...i, value: i.value ? normalizeHostname(i.value, false) : i.value }
+          : i,
+      )
+      .filter((i) => i.value !== undefined),
+  }
+  // the source of the member's link to the organization, not organization data
+  delete content.source
+  return stableJson({ source, content })
+}
+
+interface IOrgPayloadActivities {
+  newestMs: number
+  count: number
+}
+
+interface IAppliedOrgPayload {
+  organizationId: string
+  source: string
+  payloadKey: string
+  activities: IOrgPayloadActivities
+  apply: () => Promise<unknown>
+}
+
+const orgPayloadsOfBatch = new WeakMap<
+  OrgPromiseCache,
+  { activities: Map<string, IOrgPayloadActivities>; applied: IAppliedOrgPayload[] }
+>()
+
+function batchOrgPayloads(orgPromiseCache: OrgPromiseCache) {
+  let payloads = orgPayloadsOfBatch.get(orgPromiseCache)
+  if (!payloads) {
+    payloads = { activities: new Map(), applied: [] }
+    orgPayloadsOfBatch.set(orgPromiseCache, payloads)
+  }
+  return payloads
+}
+
+export function registerOrgPayloadActivities(
+  orgPromiseCache: OrgPromiseCache,
+  activities: { source: string; timestamp: string; organizations?: IOrganization[] }[],
+): void {
+  const payloads = batchOrgPayloads(orgPromiseCache).activities
+  for (const { source, timestamp, organizations } of activities) {
+    const time = new Date(timestamp).getTime()
+    const ms = Number.isFinite(time) ? time : 0
+    let keys: Set<string>
+    try {
+      // an activity counts once for each payload, however many times it carries it
+      keys = new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))
+    } catch {
+      // runs before the per-member error handling, which reports a malformed organization
+      continue
+    }
+    for (const key of keys) {
+      const known = payloads.get(key)
+      payloads.set(key, {
+        newestMs: Math.max(known?.newestMs ?? ms, ms),
+        count: (known?.count ?? 0) + 1,
+      })
+    }
+  }
+}
+
+const winsOver = (a: IAppliedOrgPayload, b: IAppliedOrgPayload): boolean =>
+  a.activities.newestMs !== b.activities.newestMs
+    ? a.activities.newestMs > b.activities.newestMs
+    : a.activities.count !== b.activities.count
+      ? a.activities.count > b.activities.count
+      : a.payloadKey > b.payloadKey
+
+// The payload applied last sets the defaults of its source, and which one that is depends on timing,
+// so they are applied again from lowest ranked to the winner (newest activity, most activities)
+export async function applyNewestOrgPayloads(
+  orgPromiseCache: OrgPromiseCache,
+  log: Logger,
+): Promise<void> {
+  const byOrganizationAndSource = new Map<string, IAppliedOrgPayload[]>()
+  for (const payload of batchOrgPayloads(orgPromiseCache).applied) {
+    const key = `${payload.organizationId}#${payload.source}`
+    const payloads = byOrganizationAndSource.get(key) ?? []
+    payloads.push(payload)
+    byOrganizationAndSource.set(key, payloads)
+  }
+
+  for (const payloads of byOrganizationAndSource.values()) {
+    const distinct = Array.from(new Map(payloads.map((p) => [p.payloadKey, p])).values())
+    if (distinct.length < 2) {
+      continue
+    }
+    distinct.sort((a, b) => (winsOver(a, b) ? 1 : winsOver(b, a) ? -1 : 0))
+    for (const payload of distinct) {
+      try {
+        await payload.apply()
+      } catch (err) {
+        log.error(
+          err,
+          { organizationId: payload.organizationId, source: payload.source },
+          'Failed to apply an organization payload again!',
+        )
+      }
+    }
+  }
+}
+
+// Per batch: the organization each identity key resolved to. Later payloads with the same identities
+// go there without a lookup: an earlier payload may have unverified their identity
+const orgIdsOfIdentityKeys = new WeakMap<OrgPromiseCache, Map<string, string>>()
+
+// Payloads that share identities wait for each other, so they all land on the same organization
+// and each adds what it carries
+function findOrCreateOrgOnce(
+  orgPromiseCache: OrgPromiseCache | undefined,
+  source: string,
+  org: IOrganization,
+  findOrCreate: (
+    lockOrganization?: (organizationId: string) => Promise<() => void>,
+    organizationId?: string,
+  ) => Promise<IFindOrCreateOrganizationResult | undefined>,
+): Promise<IFindOrCreateOrganizationResult | undefined> {
+  const payloadKey = orgPayloadKey(source, org)
+  const identityKey = orgCacheKey(org)
+  const key = identityKey ? `${identityKey}#${payloadKey}` : null
+  const cached = key ? orgPromiseCache?.get(key) : undefined
+  if (cached) {
+    return cached
+  }
+  if (!orgPromiseCache) {
+    return findOrCreate()
+  }
+
+  const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
+  orgIdentityLocks.set(orgPromiseCache, locks)
+  const lockKeys = orgLockKeys(org)
+  const resolvedIds = orgIdsOfIdentityKeys.get(orgPromiseCache) ?? new Map<string, string>()
+  orgIdsOfIdentityKeys.set(orgPromiseCache, resolvedIds)
+  const promise = Promise.all(lockKeys.map((k) => locks.get(k)))
+    .then(() =>
+      findOrCreate(
+        lockOrganizationFor(orgPromiseCache),
+        identityKey ? resolvedIds.get(identityKey) : undefined,
+      ),
+    )
+    .then((result) => {
+      if (result) {
+        if (identityKey && !resolvedIds.has(identityKey)) {
+          resolvedIds.set(identityKey, result.id)
+        }
+        const payloads = batchOrgPayloads(orgPromiseCache)
+        payloads.applied.push({
+          organizationId: result.id,
+          source,
+          payloadKey,
+          activities: payloads.activities.get(payloadKey) ?? { newestMs: 0, count: 0 },
+          apply: () => findOrCreate(lockOrganizationFor(orgPromiseCache), result.id),
+        })
+      }
+      return result
+    })
+  const settled = promise.catch(() => undefined)
+  for (const k of lockKeys) {
+    locks.set(k, settled)
+  }
+
+  if (key) {
+    orgPromiseCache.set(key, promise)
+    promise.catch(() => orgPromiseCache.delete(key))
+  }
+  return promise
+}
+
+// Integrations stamp activities without a date at 1970-01-01 (e.g. Slack channel members), which is
+// never a real join date, so a date this close to the epoch never wins
+const JOINED_AT_PLACEHOLDER_UNTIL = Date.UTC(1970, 0, 6)
+
+export function getEarliestMemberJoinedAt(current: Date, incoming: Date): Date {
+  const isPlaceholder = (date: Date) =>
+    Number.isNaN(date.getTime()) || date.getTime() < JOINED_AT_PLACEHOLDER_UNTIL
+
+  if (Number.isNaN(incoming.getTime())) {
+    return current
+  }
+  if (isPlaceholder(current)) {
+    return incoming
+  }
+  if (isPlaceholder(incoming)) {
+    return current
+  }
+  return incoming.getTime() < current.getTime() ? incoming : current
 }
 
 /**
@@ -298,17 +587,13 @@ export default class MemberService extends LoggerBase {
           true,
         )
       } catch (err) {
-        // If we've already followed at least one redirect the original member id is stale.
-        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
-        // instead of the already-absorbed original member.
-        if (survivingId !== initialSurvivingId) {
-          throw new ApplicationError(
-            'identity conflict after redirect sync',
-            err instanceof Error ? err : undefined,
-            { survivingId },
-          )
-        }
-        throw err
+        // The updated member was already merged into survivingId, so handleMemberIdentityError
+        // must use survivingId as the merge target instead of the absorbed member.
+        throw new ApplicationError(
+          'identity conflict after redirect sync',
+          err instanceof Error ? err : undefined,
+          { survivingId },
+        )
       }
 
       if (!nextRedirectId) {
@@ -318,7 +603,7 @@ export default class MemberService extends LoggerBase {
       if (mergeCount + 1 >= maxMerges) {
         throw new ApplicationError('identity sync exceeded merge limit', undefined, {
           mergeCount: mergeCount + 1,
-          survivingId,
+          survivingId: nextRedirectId,
           maxMerges,
         })
       }
@@ -364,8 +649,12 @@ export default class MemberService extends LoggerBase {
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
-              'memberService -> create -> validateAttributes',
+              'memberService -> create -> memberAttributeService.validateAttributes',
             )
+
+            if (attributes.location) {
+              attributes.location = omitUrlValues(attributes.location)
+            }
 
             if (!hasAttributeValue(attributes.country)) {
               const location = getAttributeValue(attributes.location)
@@ -378,7 +667,7 @@ export default class MemberService extends LoggerBase {
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(attributes),
               this.log,
-              'memberService -> create -> setAttributesDefaultValues',
+              'memberService -> create -> memberAttributeService.setAttributesDefaultValues',
             )
           }
 
@@ -436,7 +725,7 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               async () => this.memberRepo.destroyMemberAfterError(id, true),
               this.log,
-              'memberService -> create -> destroyMemberAfterError',
+              'memberService -> create -> memberRepo.destroyMemberAfterError',
             )
             throw err
           }
@@ -453,7 +742,7 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(effectiveMemberId, segmentIds),
               this.log,
-              'memberService -> create -> addToSegments (conflict redirect)',
+              'memberService -> create -> memberRepo.addToSegments (conflict redirect)',
             )
           } else {
             effectiveMemberId = id
@@ -461,14 +750,14 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => this.memberRepo.addToSegments(id, segmentIds),
                 this.log,
-                'memberService -> create -> addToSegments',
+                'memberService -> create -> memberRepo.addToSegments',
               )
             } catch (err) {
               this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
               await logExecutionTimeV2(
                 async () => this.memberRepo.destroyMemberAfterError(id, true),
                 this.log,
-                'memberService -> create -> destroyMemberAfterError',
+                'memberService -> create -> memberRepo.destroyMemberAfterError',
               )
               throw err
             }
@@ -502,23 +791,24 @@ export default class MemberService extends LoggerBase {
                 continue
               }
 
-              const key = orgCacheKey(org)
-              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-              if (cachedOrgPromise) {
-                orgIdPromise = cachedOrgPromise
-              } else {
-                orgIdPromise = logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org),
-                  this.log,
-                  'memberService -> create -> findOrCreateOrg',
-                )
-                if (key) {
-                  orgPromiseCache?.set(key, orgIdPromise)
-                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-                }
-              }
-              const result = await orgIdPromise
+              const result = await findOrCreateOrgOnce(
+                orgPromiseCache,
+                platform,
+                org,
+                (lockOrganization, organizationId) =>
+                  logExecutionTimeV2(
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
+                    this.log,
+                    'memberService -> create -> orgService.findOrCreate',
+                  ),
+              )
               if (result) {
                 organizations.push({
                   id: result.id,
@@ -566,7 +856,7 @@ export default class MemberService extends LoggerBase {
                   const existingMemberOrgs = await logExecutionTimeV2(
                     () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
-                    'memberService -> create -> findMemberOrganizations',
+                    'memberService -> create -> orgService.findMemberOrganizations',
                   )
                   return existingMemberOrgs.length > 0 ? null : org
                 }),
@@ -577,7 +867,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
                 this.log,
-                'memberService -> create -> addToMember',
+                'memberService -> create -> orgService.addToMember',
               )
 
               const addedIds = new Set(orgsToAdd.map((org) => org.id))
@@ -609,7 +899,7 @@ export default class MemberService extends LoggerBase {
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
     orgPromiseCache?: OrgPromiseCache,
-    activityTimestamp?: string,
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
   ): Promise<string | void> {
     return logExecutionTimeV2(
       async () => {
@@ -627,8 +917,12 @@ export default class MemberService extends LoggerBase {
             data.attributes = await logExecutionTimeV2(
               () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
-              'memberService -> update -> validateAttributes',
+              'memberService -> update -> memberAttributeService.validateAttributes',
             )
+
+            if (data.attributes.location) {
+              data.attributes.location = omitUrlValues(data.attributes.location)
+            }
           }
 
           data.identities = normalizeMemberIdentities(data.identities, {
@@ -658,7 +952,7 @@ export default class MemberService extends LoggerBase {
             toUpdate.attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(toUpdate.attributes),
               this.log,
-              'memberService -> update -> setAttributesDefaultValues',
+              'memberService -> update -> memberAttributeService.setAttributesDefaultValues',
             )
           }
 
@@ -687,7 +981,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => updateMember(this.pgQx, id, dataToUpdate),
                 this.log,
-                'memberService -> update -> update',
+                'memberService -> update -> updateMember',
               )
             }
 
@@ -695,14 +989,14 @@ export default class MemberService extends LoggerBase {
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(id, [segmentId]),
               this.log,
-              'memberService -> update -> addToSegment',
+              'memberService -> update -> memberRepo.addToSegments',
             )
           } else {
             this.log.debug({ memberId: id }, 'Nothing to update in a member!')
             await logExecutionTimeV2(
               () => this.memberRepo.addToSegments(id, [segmentId]),
               this.log,
-              'memberService -> update -> addToSegment',
+              'memberService -> update -> memberRepo.addToSegments',
             )
           }
 
@@ -731,7 +1025,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => this.memberRepo.updateIdentities(effectiveMemberId, identitiesToUpdate),
                 this.log,
-                'memberService -> update -> updateIdentities',
+                'memberService -> update -> memberRepo.updateIdentities',
               )
             } catch (err) {
               throw new ApplicationError(
@@ -765,23 +1059,24 @@ export default class MemberService extends LoggerBase {
 
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const key = orgCacheKey(org)
-              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-              if (cachedOrgPromise) {
-                orgIdPromise = cachedOrgPromise
-              } else {
-                orgIdPromise = logExecutionTimeV2(
-                  () => orgService.findOrCreate(platform, integrationId, org),
-                  this.log,
-                  'memberService -> update -> findOrCreateOrg',
-                )
-                if (key) {
-                  orgPromiseCache?.set(key, orgIdPromise)
-                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-                }
-              }
-              const result = await orgIdPromise
+              const result = await findOrCreateOrgOnce(
+                orgPromiseCache,
+                platform,
+                org,
+                (lockOrganization, organizationId) =>
+                  logExecutionTimeV2(
+                    () =>
+                      orgService.findOrCreate(
+                        platform,
+                        integrationId,
+                        org,
+                        lockOrganization,
+                        organizationId,
+                      ),
+                    this.log,
+                    'memberService -> update -> orgService.findOrCreate',
+                  ),
+              )
               if (result) {
                 organizations.push({
                   id: result.id,
@@ -827,7 +1122,7 @@ export default class MemberService extends LoggerBase {
                   const existingMemberOrgs = await logExecutionTimeV2(
                     () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
-                    'memberService -> update -> findMemberOrganizations',
+                    'memberService -> update -> orgService.findMemberOrganizations',
                   )
                   return existingMemberOrgs.length > 0 ? null : org
                 }),
@@ -839,7 +1134,7 @@ export default class MemberService extends LoggerBase {
               await logExecutionTimeV2(
                 () => orgService.addToMember([segmentId], effectiveMemberId, orgsToAdd),
                 this.log,
-                'memberService -> update -> addToMember',
+                'memberService -> update -> orgService.addToMember',
               )
 
               const addedIds = new Set(orgsToAdd.map((org) => org.id))
@@ -867,7 +1162,7 @@ export default class MemberService extends LoggerBase {
     emails: string[],
     orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
-    activityTimestamp?: string,
+    activityTimestamp?: string | ActivityTimestampsByEmailDomain,
     isBotMember = false,
   ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
@@ -906,23 +1201,19 @@ export default class MemberService extends LoggerBase {
           },
         ],
       }
-      const key = orgCacheKey(org)
-      const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-      let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
-      if (cachedOrgPromise) {
-        orgIdPromise = cachedOrgPromise
-      } else {
-        orgIdPromise = orgService.findOrCreate(
-          OrganizationAttributeSource.EMAIL,
-          integrationId,
-          org,
-        )
-        if (key) {
-          orgPromiseCache?.set(key, orgIdPromise)
-          orgIdPromise.catch(() => orgPromiseCache?.delete(key))
-        }
-      }
-      const result = await orgIdPromise
+      const result = await findOrCreateOrgOnce(
+        orgPromiseCache,
+        OrganizationAttributeSource.EMAIL,
+        org,
+        (lockOrganization, organizationId) =>
+          orgService.findOrCreate(
+            OrganizationAttributeSource.EMAIL,
+            integrationId,
+            org,
+            lockOrganization,
+            organizationId,
+          ),
+      )
       if (result) {
         organizations.push({
           id: result.id,
@@ -931,7 +1222,13 @@ export default class MemberService extends LoggerBase {
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          await this.bufferMemberOrganizationActivityDates(memberId, result.id, activityTimestamp)
+          await this.bufferMemberOrganizationActivityDates(
+            memberId,
+            result.id,
+            typeof activityTimestamp === 'string'
+              ? [activityTimestamp]
+              : (activityTimestamp.get(domain) ?? []),
+          )
         }
       }
     }
@@ -987,7 +1284,7 @@ export default class MemberService extends LoggerBase {
             return identities.get(dbMember.id)
           },
           this.log,
-          'memberService -> update -> getIdentities',
+          'memberService -> processMemberUpdate -> findIdentitiesForMembers',
         )
 
         await this.update(
@@ -1025,7 +1322,7 @@ export default class MemberService extends LoggerBase {
       const newDate = member.joinedAt
       const oldDate = new Date(dbMember.joinedAt)
 
-      joinedAt = getEarliestValidDate(oldDate, newDate).toISOString()
+      joinedAt = getEarliestMemberJoinedAt(oldDate, new Date(newDate)).toISOString()
 
       if (joinedAt === oldDate.toISOString()) {
         joinedAt = undefined
@@ -1168,20 +1465,28 @@ export default class MemberService extends LoggerBase {
   private async bufferMemberOrganizationActivityDates(
     memberId: string,
     organizationId: string,
-    activityTimestamp: string,
+    activityTimestamps: string[],
   ): Promise<void> {
-    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+    const dates = Array.from(
+      new Set(activityTimestamps.map((t) => new Date(t).toISOString().split('T')[0])),
+    )
+    if (dates.length === 0) {
+      return
+    }
 
     // Each member gets one flat set: values are "orgId|date"
     const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-    const value = `${organizationId}|${date}`
+    const values = dates.map((date) => `${organizationId}|${date}`)
 
     await this.redisClient
       .multi()
-      .sAdd(datesKey, value)
+      .sAdd(datesKey, values)
       .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
       .exec()
 
-    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
+    this.log.debug(
+      { memberId, organizationId, dates },
+      'Buffered activity dates and queued member.',
+    )
   }
 }

@@ -24,11 +24,12 @@
 </template>
 
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const props = defineProps<{
   isCollapsed: boolean;
-  to: any,
+  to: RouteLocationRaw,
   icon: string,
   title: string,
   disabled?: boolean,

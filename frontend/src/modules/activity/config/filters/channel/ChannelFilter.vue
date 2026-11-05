@@ -8,7 +8,7 @@ import {
 } from 'vue';
 import LfMultiSelectFilter from '@/shared/modules/filters/components/filterTypes/MultiSelectFilter.vue';
 import type {
-  MultiSelectFilterConfig, MultiSelectFilterOptionGroup, MultiSelectFilterValue,
+  MultiSelectFilterConfig, MultiSelectFilterOptionGroup, MultiSelectFilterOptions, MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
@@ -21,7 +21,7 @@ interface FilterData { options?: MultiSelectFilterOptionGroup[] }
 
 const props = defineProps<{
   modelValue: MultiSelectFilterValue,
-  config: CustomFilterConfig,
+  config: CustomFilterConfig<MultiSelectFilterValue, MultiSelectFilterOptions>,
   data: FilterData,
 }>();
 

@@ -19,6 +19,14 @@ export interface IMemberEnrichmentCrustdataContact {
   business_emails?: IMemberEnrichmentCrustdataBusinessEmail[]
 }
 
+export interface IMemberEnrichmentCrustdataLocation {
+  raw?: string
+  city?: string
+  state?: string
+  country?: string
+  continent?: string
+}
+
 export interface IMemberEnrichmentCrustdataPersonData {
   basic_profile?: {
     name?: string
@@ -27,6 +35,7 @@ export interface IMemberEnrichmentCrustdataPersonData {
     summary?: string
     languages?: string[]
     profile_picture_permalink?: string
+    location?: IMemberEnrichmentCrustdataLocation
   }
   social_handles?: {
     professional_network_identifier?: {

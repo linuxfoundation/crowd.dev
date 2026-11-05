@@ -27,6 +27,17 @@ export default class MemberIdentityService extends LoggerBase {
     this.options = options
   }
 
+  // CDP UI verifies without naming a verifier, so attribute it to the logged-in user.
+  private withCurrentVerifier<T extends { verified?: boolean; verifiedBy?: string | null }>(
+    data: T,
+  ): T & { stampVerifiedAt?: boolean } {
+    const verifier = this.options.currentUser?.email
+    if (data.verified !== true || data.verifiedBy || !verifier) {
+      return { ...data, stampVerifiedAt: undefined }
+    }
+    return { ...data, verifiedBy: verifier, stampVerifiedAt: true }
+  }
+
   // Member identity list
   async list(memberId: string): Promise<IMemberIdentity[]> {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
@@ -75,7 +86,7 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identity
-          await insertMemberIdentities(qx, [{ ...data, memberId }])
+          await insertMemberIdentities(qx, [{ ...this.withCurrentVerifier(data), memberId }])
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)
@@ -149,7 +160,7 @@ export default class MemberIdentityService extends LoggerBase {
           // Create member identities
           await insertMemberIdentities(
             qx,
-            data.map((identity) => ({ ...identity, memberId })),
+            data.map((identity) => ({ ...this.withCurrentVerifier(identity), memberId })),
           )
 
           // List all member identities
@@ -227,11 +238,21 @@ export default class MemberIdentityService extends LoggerBase {
             )
           }
 
+          const { stampVerifiedAt, ...attributed } = currentIdentity.verified
+            ? { ...data, stampVerifiedAt: undefined }
+            : this.withCurrentVerifier(data)
+
           // Update member identity with new data
-          await updateMemberIdentity(qx, memberId, id, {
-            ...data,
-            ...(data.value !== undefined ? { value } : {}),
-          })
+          await updateMemberIdentity(
+            qx,
+            memberId,
+            id,
+            {
+              ...attributed,
+              ...(data.value !== undefined ? { value } : {}),
+            },
+            { stampVerifiedAt },
+          )
 
           // List all member identities
           const list = await fetchMemberIdentities(qx, memberId)

@@ -168,6 +168,9 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified,
           source: i.source,
+          ...(i.verified && currentUser?.email
+            ? { verifiedBy: currentUser.email, stampVerifiedAt: true }
+            : {}),
         })),
       )
     } else if (data.username) {

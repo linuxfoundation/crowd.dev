@@ -1,4 +1,4 @@
-import { IPccCandidate } from './requestResolver'
+import { IPccCandidate, coreProjectName } from './requestResolver'
 
 const MAX_PCC_CANDIDATES = 5
 const SNOWFLAKE_MAX_SCORE = 100
@@ -9,7 +9,8 @@ export const PCC_CANDIDATES_QUERY = `
     p.NAME,
     p.SLUG,
     GREATEST(
-      JAROWINKLER_SIMILARITY(LOWER(p.NAME), ?),
+      JAROWINKLER_SIMILARITY(REGEXP_REPLACE(LOWER(p.NAME), '^the[[:space:]]+|[[:space:]]+project$', ''), ?),
+      JAROWINKLER_SIMILARITY(LOWER(p.SLUG), ?),
       JAROWINKLER_SIMILARITY(LOWER(p.SLUG), ?)
     ) AS SCORE,
     parents.PARENT_ID IS NULL AS IS_LEAF
@@ -50,8 +51,9 @@ export function createPccCandidatesLookup(
   runQuery: PccQueryRunner,
 ): (projectName: string) => Promise<IPccCandidate[]> {
   return async (projectName) => {
-    const normalized = projectName.trim().toLowerCase()
-    const rows = await runQuery(PCC_CANDIDATES_QUERY, [normalized, normalized])
+    const full = projectName.trim().toLowerCase()
+    const core = coreProjectName(projectName)
+    const rows = await runQuery(PCC_CANDIDATES_QUERY, [core, core, full])
     return rows.map(toCandidate)
   }
 }

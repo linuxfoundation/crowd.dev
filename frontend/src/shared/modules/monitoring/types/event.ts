@@ -1,10 +1,10 @@
 export interface Event {
-  userId: string
-  userEmail: string
-  key: string
-  type: string
-  sessionId: string
-  properties?: Record<string, any>
+  userId: string;
+  userEmail: string;
+  key: string;
+  type: string;
+  sessionId: string;
+  properties?: Record<string, unknown>;
 }
 
 export enum EventType {

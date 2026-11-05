@@ -41,6 +41,7 @@ export {
 } from '../security-contacts/workflows'
 export {
   collectMemberContributors,
+  collectMemberContributorsFromInferredRepo,
   resolveIdentityAffiliations,
   syncGovernanceFileContributors,
   syncRepoContributorsFromGitActivity,

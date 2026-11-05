@@ -1,7 +1,11 @@
 import authAxios from '@/shared/axios/auth-axios';
+import type {
+  GlobalIntegrationsQuery,
+  GlobalIntegrationStatusCountQuery,
+} from '@/modules/admin/modules/users/types/GlobalIntegration';
 
 export class UsersService {
-  static async list(query: any) {
+  static async list(query: Record<string, unknown>) {
     const response = await authAxios.get(
       '/user',
       {
@@ -12,7 +16,7 @@ export class UsersService {
     return response.data;
   }
 
-  static async fetchGlobalIntegrations(query: any) {
+  static async fetchGlobalIntegrations(query: GlobalIntegrationsQuery) {
     const response = await authAxios.get(
       '/integration/global',
       {
@@ -23,7 +27,7 @@ export class UsersService {
     return response.data;
   }
 
-  static async fetchGlobalIntegrationStatusCount(query: any) {
+  static async fetchGlobalIntegrationStatusCount(query: GlobalIntegrationStatusCountQuery) {
     const response = await authAxios.get(
       '/integration/global/status',
       {

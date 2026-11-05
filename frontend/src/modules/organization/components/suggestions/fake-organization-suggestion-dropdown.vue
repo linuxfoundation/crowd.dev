@@ -38,17 +38,18 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
+import type { FakeOrganizationSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
 const props = defineProps<{
-  suggestion: any,
+  suggestion: FakeOrganizationSuggestion,
 }>();
 
-const emit = defineEmits<{(e: 'dismiss', suggestion: any): void;}>();
+const emit = defineEmits<{(e: 'dismiss', suggestion: FakeOrganizationSuggestion): void;}>();
 
 const { trackEvent } = useProductTracking();
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const dismiss = (suggestion: any) => {
+const dismiss = (suggestion: FakeOrganizationSuggestion) => {
   trackEvent({
     key: FeatureEventKey.DISMISS_FAKE_ORGANIZATION_SUGGESTION,
     type: EventType.FEATURE,

@@ -8,7 +8,7 @@ const config: SavedViewsSetting<IncludeEnum> = {
   queryUrlParser(value: string): IncludeEnum {
     return value as IncludeEnum;
   },
-  apiFilterRenderer(value: IncludeEnum): any[] {
+  apiFilterRenderer(value: IncludeEnum) {
     return includeFilterRenderer('isTeamOrganization', value);
   },
 };

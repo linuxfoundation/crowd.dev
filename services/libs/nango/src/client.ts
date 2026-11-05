@@ -408,6 +408,36 @@ export const startNangoSync = async (
   }
 }
 
+export const pauseNangoSync = async (
+  integration: NangoIntegration,
+  connectionId: string,
+  syncs: string[],
+  retries = 1,
+): Promise<void> => {
+  ensureBackendClient()
+  log.info({ connectionId, integration, syncs }, 'Pausing a nango sync...')
+
+  const validSyncs = Object.values(NANGO_INTEGRATION_CONFIG[integration].syncs) as string[]
+  for (const sync of syncs) {
+    if (!validSyncs.includes(sync)) {
+      throw new Error(
+        `Invalid sync: ${sync}! Integration '${integration}' supports these syncs: ${validSyncs.join(', ')}`,
+      )
+    }
+  }
+
+  try {
+    await backendClient.pauseSync(integration, syncs, connectionId)
+  } catch (err) {
+    if (retries <= MAX_RETRIES) {
+      await timeout(100)
+      return await pauseNangoSync(integration, connectionId, syncs, retries + 1)
+    }
+    log.error(err, 'Error pausing nango sync!')
+    throw err
+  }
+}
+
 export const deleteNangoConnection = async (
   integration: NangoIntegration,
   connectionId: string,

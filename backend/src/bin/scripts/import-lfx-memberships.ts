@@ -15,12 +15,21 @@ import moment from 'moment'
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getCountryName } from '@crowd/common'
+import { QueryExecutor } from '@crowd/data-access-layer'
 import { LfxMembership, insertLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
-  findOrgIdByDisplayName,
-  findOrgIdByDomain,
+  deleteOrgAttributes,
+  findOrgAttributes,
+  findOrgIdByUniqueDisplayName,
+  findOrgIdsByVerifiedDomains,
+  recalculateOrgAttributeDefaults,
+  upsertOrgAttributes,
 } from '@crowd/data-access-layer/src/organizations'
 import { findProjectGroupByName } from '@crowd/data-access-layer/src/segments'
+import { getServiceLogger } from '@crowd/logging'
+import { SnowflakeClient } from '@crowd/snowflake'
+import { OrganizationAttributeSource } from '@crowd/types'
 
 const options = [
   {
@@ -45,8 +54,7 @@ const options = [
 const sections = [
   {
     header: `Import LFX Membership `,
-    content:
-      'Merges two members, then unmerges these and cross checks unmerge result with original data.',
+    content: 'Replaces all LFX memberships with the records from a CSV file.',
   },
   {
     header: 'Options',
@@ -57,11 +65,17 @@ const sections = [
 const usage = commandLineUsage(sections)
 const parameters = commandLineArgs(options)
 
+const INDIVIDUAL_ACCOUNT_NAMES = [
+  'Individual - No Account',
+  'Individual ? No  Account',
+  'individual with no account',
+]
+
 function parseDomains(domains: string) {
   return uniq(
     domains
       .split(',')
-      .map((domain) => domain.trim())
+      .map((domain) => domain.trim().toLowerCase())
       .filter((domain) => domain.length > 0)
 
       // the rest if for values that look like this: "andesdigital.cl\n\n--- Merged Data:\n\ andesdigital.cl"
@@ -70,27 +84,77 @@ function parseDomains(domains: string) {
   )
 }
 
-async function findOrgId(qx, record) {
-  let org = await findOrgIdByDomain(qx, [record['Account Domain']])
-  if (org) {
-    return org
+function getDomains(record): string[] {
+  return [...parseDomains(record['Account Domain']), ...record['Domain Alias']]
+}
+
+function toAccountDomainKey(name: string, domain: string) {
+  return `${name}\n${domain}`
+}
+
+async function findOrgId(qx: QueryExecutor, orgIdByAccountDomain: Map<string, string>, record) {
+  const name = record['Account Name']
+  const domain = getDomains(record).find((d) =>
+    orgIdByAccountDomain.has(toAccountDomainKey(name, d)),
+  )
+
+  if (domain) {
+    return orgIdByAccountDomain.get(toAccountDomainKey(name, domain))
   }
 
-  org = await findOrgIdByDomain(qx, record['Domain Alias'])
-  if (org) {
-    return org
-  }
+  return findOrgIdByUniqueDisplayName(qx, name)
+}
 
-  org = await findOrgIdByDisplayName(qx, { orgName: record['Account Name'], exact: true })
-  if (org) {
-    return org
-  }
+interface ISalesforceCountryRow {
+  ASSET_ID: string | null
+  ACCOUNT_ID: string
+  BILLING_COUNTRY_CODE: string
+}
 
-  org = await findOrgIdByDisplayName(qx, {
-    orgName: record['Account Name'],
-    exact: false,
+async function fetchSalesforceCountryCodes(): Promise<Map<string, string>> {
+  const snowflake = SnowflakeClient.fromEnv({ parentLog: getServiceLogger() })
+
+  try {
+    const rows = await snowflake.run<ISalesforceCountryRow>(`
+      SELECT DISTINCT asset_id, account_id, billing_country_code
+      FROM analytics.silver_dim.memberships
+      WHERE billing_country_code IS NOT NULL
+    `)
+
+    const countryCodeBySalesforceId = new Map<string, string>()
+    for (const row of rows) {
+      countryCodeBySalesforceId.set(row.ACCOUNT_ID, row.BILLING_COUNTRY_CODE)
+      if (row.ASSET_ID) {
+        countryCodeBySalesforceId.set(row.ASSET_ID, row.BILLING_COUNTRY_CODE)
+      }
+    }
+
+    return countryCodeBySalesforceId
+  } finally {
+    await snowflake.destroy()
+  }
+}
+
+async function setSalesforceCountry(qx: QueryExecutor, organizationId: string, country: string) {
+  await qx.tx(async (tx) => {
+    const staleCountries = (await findOrgAttributes(tx, organizationId)).filter(
+      (attribute) =>
+        attribute.name === 'country' &&
+        attribute.source === OrganizationAttributeSource.SALESFORCE &&
+        attribute.value !== country,
+    )
+
+    await deleteOrgAttributes(tx, organizationId, staleCountries)
+    await upsertOrgAttributes(tx, organizationId, [
+      {
+        name: 'country',
+        source: OrganizationAttributeSource.SALESFORCE,
+        default: false,
+        value: country,
+      },
+    ])
+    await recalculateOrgAttributeDefaults(tx, organizationId, ['country'])
   })
-  return org
 }
 
 if (parameters.help || !parameters.file || !parameters.tenantId) {
@@ -98,41 +162,50 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
 } else {
   setImmediate(async () => {
     const prodDb = await databaseInit()
-    const qx = SequelizeRepository.getQueryExecutor({
-      database: prodDb,
-    } as IRepositoryOptions)
+    const repoOptions = { database: prodDb } as IRepositoryOptions
 
-    await qx.result(`DELETE FROM "lfxMemberships"`)
-
-    console.log('All records deleted')
-
-    const fileData = fs.readFileSync(path.resolve(parameters.file), 'latin1')
+    const fileData = fs.readFileSync(path.resolve(parameters.file), 'utf8')
 
     const records = parse(fileData, {
       columns: true,
       skip_empty_lines: true,
-    })
+    }).filter((record) => !INDIVIDUAL_ACCOUNT_NAMES.includes(record['Account Name']))
+
+    for (const record of records) {
+      record['Domain Alias'] = parseDomains(record['Domain Alias'])
+    }
 
     console.log('New records:', records.length)
 
-    for (let i = 0; i < records.length; i++) {
-      const record = records[i]
-      const orgName = record['Account Name']
+    const countryCodeBySalesforceId = await fetchSalesforceCountryCodes()
+    console.log('Salesforce country codes:', countryCodeBySalesforceId.size)
 
-      // Exclude individual no account organizations from LF Members
-      if (
-        ![
-          'Individual - No Account',
-          'Individual ? No  Account',
-          'individual with no account',
-        ].includes(orgName)
-      ) {
-        record['Domain Alias'] = parseDomains(record['Domain Alias'])
+    const countryCodesByOrgId = new Map<string, Set<string>>()
+    const recordsWithoutOrg = []
+    let recordsWithoutCountry = 0
+
+    await SequelizeRepository.withTx(repoOptions, async (transaction) => {
+      const qx = SequelizeRepository.getQueryExecutor({ ...repoOptions, transaction })
+
+      const accounts = records.flatMap((record) =>
+        getDomains(record).map((domain) => ({ name: record['Account Name'], domain })),
+      )
+      const domainOrgs = await findOrgIdsByVerifiedDomains(qx, accounts)
+      const orgIdByAccountDomain = new Map(
+        domainOrgs.map((row) => [toAccountDomainKey(row.name, row.domain), row.organizationId]),
+      )
+
+      await qx.result(`DELETE FROM "lfxMemberships"`)
+
+      console.log('All records deleted')
+
+      for (const [i, record] of records.entries()) {
+        const orgName = record['Account Name']
 
         const segment = await findProjectGroupByName(qx, {
           name: record['Project'],
         })
-        const orgId = await findOrgId(qx, record)
+        const orgId = await findOrgId(qx, orgIdByAccountDomain, record)
         const row = {
           organizationId: orgId,
           segmentId: segment?.id,
@@ -154,10 +227,53 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
 
         await insertLfxMembership(qx, row)
 
-        console.log('Inserted record:', i, orgName)
-      } else {
-        console.log('Ignored Individual - No account:', i, orgName)
+        console.log(
+          orgId ? 'Inserted record:' : 'Inserted record without organization:',
+          i,
+          orgName,
+        )
+
+        const countryCode = countryCodeBySalesforceId.get(record['Full ID'])
+        if (!countryCode) {
+          recordsWithoutCountry++
+        }
+
+        if (!orgId) {
+          recordsWithoutOrg.push(record)
+        } else if (countryCode) {
+          countryCodesByOrgId.set(
+            orgId,
+            (countryCodesByOrgId.get(orgId) ?? new Set()).add(countryCode),
+          )
+        }
       }
+    })
+
+    console.log('Records without a Salesforce country:', recordsWithoutCountry)
+
+    const qx = SequelizeRepository.getQueryExecutor(repoOptions)
+    let orgsWithCountry = 0
+
+    for (const [organizationId, countryCodes] of countryCodesByOrgId) {
+      const country = countryCodes.size === 1 ? getCountryName([...countryCodes][0]) : undefined
+      if (!country) {
+        console.log(
+          'Skipped organization with conflicting or invalid Salesforce countries:',
+          organizationId,
+          [...countryCodes].join(', '),
+        )
+        continue
+      }
+
+      await setSalesforceCountry(qx, organizationId, country)
+      orgsWithCountry++
+    }
+
+    console.log('Organizations with a Salesforce country:', orgsWithCountry)
+
+    console.log('Records without organization:', recordsWithoutOrg.length)
+    for (const record of recordsWithoutOrg) {
+      console.log(`${record['Account Name']}\t${record['Full ID']}`)
     }
 
     process.exit(0)

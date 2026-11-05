@@ -57,7 +57,7 @@ const props = defineProps<{
   modelValue: string[]
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string[]), (e: 'open', value: string)}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: string[]): void, (e: 'open', value: string): void}>();
 
 const open = ref<boolean>(false);
 const search = ref<string>('');

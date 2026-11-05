@@ -16,7 +16,7 @@ const noOfActivities: NumberFilterConfig = {
   itemLabelRenderer(value: NumberFilterValue, options: NumberFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.NUMBER]('# of activities', value, options);
   },
-  apiFilterRenderer(value: NumberFilterValue): any[] {
+  apiFilterRenderer(value: NumberFilterValue) {
     return apiFilterRendererByType[FilterConfigType.NUMBER]('activityCount', value);
   },
 };

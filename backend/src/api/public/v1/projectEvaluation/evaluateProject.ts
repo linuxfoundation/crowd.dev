@@ -1,6 +1,8 @@
 import {
+  GithubPublicClientError,
   IPublicRepoMetrics,
   IPublicRepoReadme,
+  ServiceUnavailableError,
   fetchPublicRepoMetrics,
   fetchPublicRepoReadme,
   getErrorMessage,
@@ -83,6 +85,76 @@ function errorResult(err: unknown): IProjectEvaluationResponse {
   }
 }
 
+const TRANSIENT_LLM_ERROR_NAMES = new Set([
+  'ThrottlingException',
+  'ServiceUnavailableException',
+  'ModelNotReadyException',
+  'ModelTimeoutException',
+  'InternalServerException',
+  'TimeoutError',
+])
+
+const NETWORK_ERROR_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'])
+
+interface IAwsLikeError {
+  code?: string
+  $fault?: string
+  $retryable?: unknown
+  $metadata?: { httpStatusCode?: number }
+}
+
+export function isTransientEvaluationError(err: unknown): boolean {
+  if (err instanceof GithubPublicClientError) {
+    return err.kind === 'TRANSIENT' || err.kind === 'RATE_LIMIT'
+  }
+  if (!(err instanceof Error)) {
+    return false
+  }
+  const aws = err as Error & IAwsLikeError
+  const status = aws.$metadata?.httpStatusCode
+  return (
+    TRANSIENT_LLM_ERROR_NAMES.has(aws.name) ||
+    aws.$fault === 'server' ||
+    aws.$retryable !== undefined ||
+    (status !== undefined && (status === 429 || status >= 500)) ||
+    (aws.code !== undefined && NETWORK_ERROR_CODES.has(aws.code))
+  )
+}
+
+function failedResult(err: unknown): IProjectEvaluationResponse {
+  if (isTransientEvaluationError(err)) {
+    throw new ServiceUnavailableError(getErrorMessage(err))
+  }
+  return errorResult(err)
+}
+
+const NOT_ON_GITHUB_REASON: NonOnboardReason = 'project is not mainly run on GitHub'
+const GITHUB_ACTIVITY_CONTRADICTION_CLOSED_PRS = 100
+
+function recordNotOnGithubContradiction(
+  input: IProjectEvaluationRequest,
+  metrics: IPublicRepoMetrics,
+  decision: IProjectEvaluationDecision,
+  log: Logger,
+): void {
+  if (
+    decision.onboard ||
+    decision.non_onboard_reason !== NOT_ON_GITHUB_REASON ||
+    metrics.closedPullRequests < GITHUB_ACTIVITY_CONTRADICTION_CLOSED_PRS
+  ) {
+    return
+  }
+  log.warn(
+    {
+      repoUrl: input.repoUrl,
+      closedPullRequests: metrics.closedPullRequests,
+      closedIssues: metrics.closedIssues,
+      stars: metrics.stars,
+    },
+    'The evaluator says the project is not mainly run on GitHub although the repository has substantial GitHub activity; the verdict is kept.',
+  )
+}
+
 const INSUFFICIENT_ACTIVITY_REASON = 'project has insufficient GitHub activity to evaluate'
 const MIN_CLOSED_ACTIVITY_FOR_EVALUATION = 3
 const MIN_STARS_FOR_EVALUATION = 25
@@ -133,7 +205,7 @@ export async function evaluateProject(
     metrics = results[0]
     readme = results[1]
   } catch (err) {
-    return errorResult(err)
+    return failedResult(err)
   }
 
   if (hasInsufficientActivity(metrics)) {
@@ -154,7 +226,7 @@ export async function evaluateProject(
       input.id,
     )
   } catch (err) {
-    return errorResult(err)
+    return failedResult(err)
   }
 
   if (!response) {
@@ -175,6 +247,7 @@ export async function evaluateProject(
   }
 
   const validatedDecision: IProjectEvaluationDecision = decision
+  recordNotOnGithubContradiction(input, metrics, validatedDecision, log)
 
   return {
     outcome: validatedDecision.onboard ? 'onboard' : 'skip',

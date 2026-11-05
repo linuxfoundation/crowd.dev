@@ -21,7 +21,6 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex';
 import AppResizePage from '@/modules/layout/pages/resize-page.vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
@@ -66,8 +65,6 @@ export default {
   },
 
   async created() {
-    window.addEventListener('resize', this.handleResize);
-    this.handleResize();
     const queryParameters = new URLSearchParams(window.location.search);
     if (queryParameters.get('state') === 'noconnect' && window.location.pathname.includes('/integration')) {
       return;
@@ -80,20 +77,6 @@ export default {
 
   unmounted() {
     this.detachListeners();
-    window.removeEventListener('resize', this.handleResize);
-  },
-
-  methods: {
-    ...mapActions({
-      resize: 'layout/resize',
-    }),
-
-    handleResize() {
-      this.resize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    },
   },
 };
 </script>

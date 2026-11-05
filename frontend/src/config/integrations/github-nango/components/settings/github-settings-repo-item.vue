@@ -53,6 +53,7 @@
 </template>
 
 <script lang="ts" setup>
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 import type { GitHubRepository } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, watch } from 'vue';
 import AppFormItem from '@/shared/form/form-item.vue';
@@ -65,7 +66,7 @@ import { required } from '@vuelidate/validators';
 const props = defineProps<{
   repositories: GitHubRepository[];
   repository: GitHubRepository;
-  subprojects: any[];
+  subprojects: SubProject[];
   modelValue: string;
   orgSyncing: boolean;
   segmentId: string | null;

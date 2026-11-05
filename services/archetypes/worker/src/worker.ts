@@ -53,6 +53,7 @@ Options is used to configure the worker service.
 export interface Options {
   maxTaskQueueActivitiesPerSecond?: number
   maxConcurrentActivityTaskExecutions?: number
+  drainTimeoutMs?: number
   alertChannel?: SlackChannel
   postgres?: {
     enabled: boolean
@@ -65,6 +66,8 @@ export interface Options {
   }
 }
 
+const DEFAULT_DRAIN_TIMEOUT_MS = 25_000
+
 /*
 ServiceWorker holds all details and methods to run a worker services at crowd.dev.
 */
@@ -72,6 +75,9 @@ export class ServiceWorker extends Service {
   readonly options: Options
 
   protected _worker: TemporalWorker
+  protected _workerConnection: NativeConnection
+  protected _workerRun: Promise<void> | null = null
+  protected _stopRequested = false
 
   protected _postgresReader: DbStore
   protected _postgresWriter: DbStore
@@ -222,6 +228,7 @@ export class ServiceWorker extends Service {
     if (initWorker) {
       try {
         Runtime.install({
+          shutdownSignals: [],
           logger: createTemporalLogger(getServiceChildLogger('temporal-worker')),
           telemetryOptions: {
             logging: {
@@ -249,7 +256,7 @@ export class ServiceWorker extends Service {
           'Connecting to Temporal server as a worker!',
         )
 
-        const connection = await NativeConnection.connect({
+        this._workerConnection = await NativeConnection.connect({
           address,
           tls:
             certificate && privateKey
@@ -276,7 +283,7 @@ export class ServiceWorker extends Service {
         const dataConverter = await getDataConverter()
 
         this._worker = await TemporalWorker.create({
-          connection: connection,
+          connection: this._workerConnection,
           identity: this.name,
           namespace,
           taskQueue,
@@ -312,8 +319,13 @@ export class ServiceWorker extends Service {
 
   // Actually start the Temporal worker.
   async start() {
+    if (this._stopRequested) {
+      return
+    }
+
     try {
-      await this._worker.run()
+      this._workerRun = this._worker.run()
+      await this._workerRun
     } catch (err) {
       throw new Error(err)
     }
@@ -322,6 +334,9 @@ export class ServiceWorker extends Service {
   // Stop allows to gracefully stop the service. Order for closing connections
   // matters. We need to stop the Temporal worker before closing other connections.
   protected override async stop() {
+    this._stopRequested = true
+    const drained = await this.drainWorker()
+
     if (this.options.opensearch?.enabled) {
       await this._opensearchService.client.close()
     }
@@ -331,6 +346,50 @@ export class ServiceWorker extends Service {
       this._postgresReader.dbInstance.end()
     }
 
+    if (!drained) {
+      await Promise.allSettled([this._workerRun])
+    }
+
+    await this._workerConnection?.close()
+
     await super.stop()
   }
+
+  protected async drainWorker(): Promise<boolean> {
+    if (!this._worker) {
+      return true
+    }
+
+    if (!this._workerRun) {
+      this._workerRun = this._worker.run()
+    }
+
+    if (this._worker.getState() === 'RUNNING') {
+      this.log.info('Draining Temporal worker before shutdown.')
+      this._worker.shutdown()
+    }
+
+    const timeoutMs = this.options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS
+    const drained = await settlesWithin(this._workerRun, timeoutMs)
+    if (drained) {
+      this.log.info('Temporal worker drained.')
+    } else {
+      this.log.warn(
+        { timeoutMs },
+        'Temporal worker still has activities running after the drain timeout, closing connections so they fail fast.',
+      )
+    }
+    return drained
+  }
+}
+
+function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs)
+    const settled = () => {
+      clearTimeout(timer)
+      resolve(true)
+    }
+    promise.then(settled, settled)
+  })
 }

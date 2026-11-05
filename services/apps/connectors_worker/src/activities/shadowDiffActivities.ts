@@ -2,9 +2,10 @@ import type { ConnectorHttp } from '@crowd/connectors'
 import { createHttpClient, createTokenPool, getCredential, getManifest } from '@crowd/connectors'
 import { parseRepoChannel } from '@crowd/connectors/src/connectors/github/paging'
 import {
+  IShadowDiffChannelCursor,
   IShadowDiffUnit,
   getUnitIdsWithSummary,
-  listShadowDiffUnits,
+  listShadowDiffUnitsPage,
   pruneMatchingShadowRecords,
   upsertSyncDiffSummary,
 } from '@crowd/data-access-layer/src/connectors'
@@ -44,6 +45,11 @@ export interface IShadowDiffChannel {
   units: IShadowDiffUnit[]
 }
 
+export interface IListShadowDiffChannelsInput {
+  after?: IShadowDiffChannelCursor
+  limit: number
+}
+
 export type ShadowDiffChannelStatus = 'ok' | 'mapping_missing' | 'error'
 
 export interface IShadowDiffChannelResult {
@@ -78,8 +84,13 @@ async function createGithubConfirmationHttp(
   })
 }
 
-export async function listShadowDiffChannels(): Promise<IShadowDiffChannel[]> {
-  const units = await listShadowDiffUnits(dbStoreQx(svc.postgres.writer))
+export async function listShadowDiffChannels(
+  input: IListShadowDiffChannelsInput,
+): Promise<IShadowDiffChannel[]> {
+  const units = await listShadowDiffUnitsPage(dbStoreQx(svc.postgres.writer), {
+    channelLimit: input.limit,
+    after: input.after,
+  })
 
   const byChannel = new Map<string, IShadowDiffChannel>()
   for (const unit of units) {
@@ -183,6 +194,17 @@ export async function runShadowDiffForChannel(
   let confirmationHttp: Promise<ConnectorHttp> | null = null
   for (const unit of pendingUnits) {
     let result = await diffUnit(qx, unit, mapping.connectionId, windowStart, windowEnd)
+    if (result.actorKeyPairCount > 0) {
+      svc.log.info(
+        {
+          unitId: unit.id,
+          day,
+          channelName: channel.channelName,
+          actorKeyPairCount: result.actorKeyPairCount,
+        },
+        'skipped actor-key pairs',
+      )
+    }
 
     const needsForcePushCheck = hasForcePushCandidates(unit.syncName, result.mismatches)
     const needsDeletedRecordCheck = hasDeletedRecordCandidates(unit.syncName, result.mismatches)
@@ -212,17 +234,24 @@ export async function runShadowDiffForChannel(
       }
 
       if (needsForcePushCheck) {
-        const { mismatches, skippedCount, failedCount } = await dropConfirmedForcePushedCommits(
-          unit.syncName,
-          result.mismatches,
-          owner,
-          repo,
-          http,
-          svc.log,
-        )
-        if (skippedCount > 0) {
+        const { mismatches, skippedCount, staleParentCount, failedCount } =
+          await dropConfirmedForcePushedCommits(
+            unit.syncName,
+            result.mismatches,
+            owner,
+            repo,
+            http,
+            svc.log,
+          )
+        if (skippedCount > 0 || staleParentCount > 0) {
           svc.log.info(
-            { unitId: unit.id, day, channelName: channel.channelName, skippedCount },
+            {
+              unitId: unit.id,
+              day,
+              channelName: channel.channelName,
+              skippedCount,
+              staleParentCount,
+            },
             'skipped force-pushed commits confirmed missing from github',
           )
         }

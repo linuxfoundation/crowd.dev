@@ -1,3 +1,5 @@
+import type { TenantUser } from '@/modules/auth/types/TenantUser.type';
+
 export interface User {
   acceptedTermsAndPrivacy: boolean;
   createdAt: string;
@@ -19,7 +21,7 @@ export interface User {
   phoneNumber: string;
   provider: string;
   providerId: string;
-  tenants: Array<any>
+  tenants: TenantUser[];
   updatedAt: string;
   updatedById: string;
 }

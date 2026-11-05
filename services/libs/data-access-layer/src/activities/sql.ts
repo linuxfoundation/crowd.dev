@@ -428,6 +428,7 @@ export async function createOrUpdateRelations(
   qe: QueryExecutor,
   relations: IActivityRelationCreateOrUpdateData[],
   skipChecks = false,
+  conflictOn: 'dedupKey' | 'activityId' = 'dedupKey',
 ): Promise<void> {
   if (relations.length === 0) {
     return
@@ -752,7 +753,11 @@ export async function createOrUpdateRelations(
             "updatedAt")
     VALUES ${valueList.join(',')}
 
-    ON CONFLICT ("timestamp", "platform", "type", "sourceId", "channel", "segmentId")
+    ON CONFLICT ${
+      conflictOn === 'activityId'
+        ? '("activityId")'
+        : '("timestamp", "platform", "type", "sourceId", "channel", "segmentId")'
+    }
     DO UPDATE 
     SET 
         "updatedAt" = EXCLUDED."updatedAt",
@@ -768,8 +773,8 @@ export async function createOrUpdateRelations(
         "timestamp" = EXCLUDED."timestamp",
         "channel" = EXCLUDED."channel",
         "sentimentScore" = EXCLUDED."sentimentScore",
-        "gitInsertions" = EXCLUDED."gitInsertions",
-        "gitDeletions" = EXCLUDED."gitDeletions",
+        "gitInsertions" = COALESCE(EXCLUDED."gitInsertions", "activityRelations"."gitInsertions"),
+        "gitDeletions" = COALESCE(EXCLUDED."gitDeletions", "activityRelations"."gitDeletions"),
         "score" = EXCLUDED."score",
         "isContribution" = EXCLUDED."isContribution",
         "pullRequestReviewState" = EXCLUDED."pullRequestReviewState";

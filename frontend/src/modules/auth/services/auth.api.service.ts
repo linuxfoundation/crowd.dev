@@ -2,7 +2,7 @@ import authAxios from '@/shared/axios/auth-axios';
 import type { User } from '@/modules/auth/types/User.type';
 
 class AuthApiServiceClass {
-  ssoGetToken(idToken: string): Promise<any> {
+  ssoGetToken(idToken: string): Promise<string> {
     return authAxios
       .post('/auth/sso/callback', {
         idToken,
@@ -16,7 +16,8 @@ class AuthApiServiceClass {
         params: {
           excludeSegments: true,
         },
-      }).then((response) => response.data);
+      })
+      .then((response) => response.data);
   }
 }
 

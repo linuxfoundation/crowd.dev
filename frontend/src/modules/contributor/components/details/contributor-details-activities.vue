@@ -26,7 +26,7 @@
     :entity="props.contributor"
     entity-type="member"
     show-affiliations
-    :selected-segment="subProjectId || null"
+    :selected-segment="subProjectId || undefined"
     class="max-w-full"
   />
 </template>
@@ -47,10 +47,11 @@ const route = useRoute();
 
 const timeline = ref<InstanceType<typeof AppActivityTimeline> | null>(null);
 
-const { subProjectId } = route.query;
+// shortcut: ignores array query values, as on main. revisit: when route queries are typed.
+const subProjectId = route.query.subProjectId as string | undefined;
 
 const loadMore = () => {
-  timeline.value.fetchActivities();
+  timeline.value?.fetchActivities();
 };
 
 // eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html

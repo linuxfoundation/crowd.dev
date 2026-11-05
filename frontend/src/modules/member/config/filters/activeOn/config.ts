@@ -7,6 +7,7 @@ import type {
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { lfIdentities } from '@/config/identities';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const activeOn: MultiSelectFilterConfig = {
   id: 'activeOn',
@@ -17,10 +18,10 @@ const activeOn: MultiSelectFilterConfig = {
     options: [
       {
         options: [
-          ...(Object.values(lfIdentities).map((identity) => ({
+          ...Object.values(lfIdentities).map((identity) => ({
             label: identity.name,
             value: identity.key,
-          }))),
+          })),
         ],
       },
     ],
@@ -28,7 +29,7 @@ const activeOn: MultiSelectFilterConfig = {
   itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Active on', value, options);
   },
-  apiFilterRenderer(value: MultiSelectFilterValue): any[] {
+  apiFilterRenderer(value: MultiSelectFilterValue): ApiFilter[] {
     return apiFilterRendererByType[FilterConfigType.MULTISELECT]('activeOn', value);
   },
 };

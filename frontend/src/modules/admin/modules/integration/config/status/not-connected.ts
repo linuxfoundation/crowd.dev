@@ -2,7 +2,7 @@ import type { IntegrationStatusConfig } from '@/modules/admin/modules/integratio
 
 const notConnected: IntegrationStatusConfig = {
   key: 'notConnected',
-  show: (integration: any) => !integration || integration.status === 'not-connected',
+  show: (integration) => !integration || integration.status === 'not-connected',
   statuses: ['not-connected'],
   status: {
     text: 'Not-connected',

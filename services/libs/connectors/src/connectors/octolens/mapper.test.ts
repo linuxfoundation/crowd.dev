@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest'
 
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
-import { mapMentionToActivity, octolensActivitySchema, toIsoTimestamp } from './mapper'
+import {
+  mapMentionToActivity,
+  octolensActivitySchema,
+  profileLinkIdentity,
+  toIsoTimestamp,
+} from './mapper'
 import type { OctolensMention } from './mentionsClient'
 
 const BASE_MENTION: OctolensMention = {
-  id: 1,
-  sourceId: 'reddit_t3_1abc234',
-  url: 'https://example.com/post',
+  id: 200162933,
+  sourceId: 'IC_kwDOA1b2c3',
+  url: 'https://github.com/CrowdDotDev/crowd.dev/issues/12#issuecomment-1',
   title: 'Something about crowd.dev',
   body: 'post body',
   source: 'github',
@@ -30,19 +35,20 @@ const BASE_MENTION: OctolensMention = {
 }
 
 describe('mapMentionToActivity', () => {
-  it('maps a supported source to the matching platform and a verified member identity', () => {
+  it('maps a github mention to a verified identity taken from the profile link', () => {
     const mapped = mapMentionToActivity(BASE_MENTION)
 
     expect(mapped?.platform).toBe(PlatformType.GITHUB)
-    expect(mapped?.keywordId).toBe(42)
-    expect(mapped?.activity).toMatchObject({
+    expect(mapped).toMatchObject({
       type: 'mention',
       platform: PlatformType.GITHUB,
-      sourceId: 'reddit_t3_1abc234',
-      score: 6,
+      sourceId: '200162933',
+      score: 0,
+      channel: 'https://github.com/CrowdDotDev/crowd.dev',
       title: 'Something about crowd.dev',
       body: 'post body',
-      url: 'https://example.com/post',
+      url: 'https://github.com/CrowdDotDev/crowd.dev/issues/12#issuecomment-1',
+      timestamp: '2026-10-12T08:30:00.000Z',
       member: {
         displayName: 'The Octocat',
         identities: [
@@ -61,78 +67,196 @@ describe('mapMentionToActivity', () => {
     })
   })
 
-  it('matches source case-insensitively (historical rows can be uppercase)', () => {
-    const mapped = mapMentionToActivity({ ...BASE_MENTION, source: 'GITHUB' })
-
-    expect(mapped?.platform).toBe(PlatformType.GITHUB)
+  it.each([
+    [
+      'reddit',
+      'https://www.reddit.com/r/embedded/comments/1x9xiw3/zephyr_roadmap/',
+      'https://www.reddit.com/user/someone',
+      'embedded',
+    ],
+    ['github', 'https://github.com/settings/profile', 'https://github.com/octocat', 'crowd.dev'],
+    ['twitter', 'https://x.com/someone/status/1', 'https://x.com/someone', 'crowd.dev'],
+  ])('sets the %s mention channel to %s from %s', (source, url, authorUrl, channel) => {
+    expect(mapMentionToActivity({ ...BASE_MENTION, source, url, authorUrl })?.channel).toBe(channel)
   })
 
-  it.each(['twitter', 'linkedin'])('maps %s to its platform too', (source) => {
-    const mapped = mapMentionToActivity({ ...BASE_MENTION, source })
-
-    expect(mapped?.platform).toBe(source)
-  })
-
-  it('skips an unsupported source', () => {
-    expect(mapMentionToActivity({ ...BASE_MENTION, source: 'reddit' })).toBeNull()
-  })
-
-  it('skips a mention with no author identity', () => {
-    expect(mapMentionToActivity({ ...BASE_MENTION, author: null })).toBeNull()
-  })
-
-  it('falls back to the author handle when authorName is missing', () => {
-    const mapped = mapMentionToActivity({ ...BASE_MENTION, authorName: null })
-
-    expect(mapped?.activity.member.displayName).toBe('octocat')
-  })
-
-  it('omits attributes when authorUrl and authorAvatar are both missing', () => {
+  it('caps the channel at 150 characters', () => {
+    const keyword = 'k'.repeat(200)
     const mapped = mapMentionToActivity({
       ...BASE_MENTION,
-      authorUrl: null,
-      authorAvatar: null,
+      source: 'twitter',
+      url: 'https://x.com/someone/status/1',
+      authorUrl: 'https://x.com/someone',
+      keywords: [{ id: 42, keyword }],
     })
 
-    expect(mapped?.activity.member.attributes).toBeUndefined()
+    expect(mapped?.channel).toBe('k'.repeat(150))
   })
 
-  it('converts the UTC-no-suffix timestamp to a proper ISO string', () => {
-    const mapped = mapMentionToActivity(BASE_MENTION)
+  it('caps the channel by code point, never splitting an emoji', () => {
+    const mapped = mapMentionToActivity({
+      ...BASE_MENTION,
+      source: 'twitter',
+      url: 'https://x.com/someone/status/1',
+      authorUrl: 'https://x.com/someone',
+      keywords: [{ id: 42, keyword: `${'k'.repeat(149)}🚀🚀` }],
+    })
 
-    expect(mapped?.activity.timestamp).toBe('2026-10-12T08:30:00.000Z')
+    expect(mapped?.channel).toBe(`${'k'.repeat(149)}🚀`)
   })
 
-  it('passes through an absent keywordId as undefined rather than assuming it is set', () => {
-    const { keywordId, ...withoutKeywordId } = BASE_MENTION
-    void keywordId
+  it('takes the linkedin handle from the profile link, not the display name in author', () => {
+    const mapped = mapMentionToActivity({
+      ...BASE_MENTION,
+      source: 'linkedin',
+      author: 'Daniel Kornaś',
+      authorName: 'Daniel Kornaś',
+      authorUrl: 'https://www.linkedin.com/in/daniel-kornas',
+    })
 
-    const mapped = mapMentionToActivity(withoutKeywordId as OctolensMention)
-
-    expect(mapped?.keywordId).toBeUndefined()
+    expect(mapped?.platform).toBe(PlatformType.LINKEDIN)
+    expect(mapped?.member.identities[0].value).toBe('daniel-kornas')
+    expect(mapped?.member.displayName).toBe('Daniel Kornaś')
+    expect(mapped?.channel).toBe('crowd.dev')
   })
 
-  it('captures every documented Mention field without a dedicated column in activity.attributes', () => {
-    const review = {
-      rating: 4,
-      ratingMax: 5,
-      verified: true,
-      response: null,
-      responseAt: null,
-      targetName: 'crowd.dev',
-    }
+  it.each(['https://twitter.com/DanKornas', 'https://x.com/DanKornas'])(
+    'takes the twitter handle from %s',
+    (authorUrl) => {
+      const mapped = mapMentionToActivity({ ...BASE_MENTION, source: 'twitter', authorUrl })
+
+      expect(mapped?.platform).toBe(PlatformType.TWITTER)
+      expect(mapped?.member.identities[0].value).toBe('DanKornas')
+    },
+  )
+
+  it.each([
+    ['a github app (bot)', 'https://github.com/apps/github-actions'],
+    ['a linkedin company page', 'https://www.linkedin.com/company/crowd-dev'],
+    ['a profile link with no handle', 'https://github.com/'],
+  ])('skips %s', (_name, authorUrl) => {
+    expect(mapMentionToActivity({ ...BASE_MENTION, authorUrl })).toBeNull()
+  })
+
+  it.each([
+    ['reddit', 'https://github.com/octocat'],
+    ['podcasts', 'https://twitter.com/someshow'],
+    ['github', 'https://x.com/octocat'],
+  ])(
+    'skips a %s mention whose profile link points at another platform (%s)',
+    (source, authorUrl) => {
+      expect(mapMentionToActivity({ ...BASE_MENTION, source, authorUrl })).toBeNull()
+    },
+  )
+
+  it.each([undefined, null, ''])('skips a mention without an Octolens id (%s)', (id) => {
+    expect(
+      mapMentionToActivity({ ...BASE_MENTION, id } as unknown as typeof BASE_MENTION),
+    ).toBeNull()
+  })
+
+  it.each(['github', 'twitter', 'linkedin'])(
+    'skips a %s mention without a profile link instead of trusting author',
+    (source) => {
+      expect(mapMentionToActivity({ ...BASE_MENTION, source, authorUrl: null })).toBeNull()
+    },
+  )
+
+  it.each([
+    ['reddit', 'https://www.reddit.com/user/SuperUranus', PlatformType.REDDIT, 'SuperUranus'],
+    ['reddit_comment', 'https://old.reddit.com/u/someone', PlatformType.REDDIT, 'someone'],
+    ['dev', 'https://dev.to/nughes', PlatformType.DEVTO, 'nughes'],
+    [
+      'hackernews',
+      'https://news.ycombinator.com/user?id=AnthonyMouse',
+      PlatformType.HACKERNEWS,
+      'AnthonyMouse',
+    ],
+    [
+      'bluesky',
+      'https://bsky.app/profile/cerestial.bsky.social',
+      PlatformType.BLUESKY,
+      'cerestial.bsky.social',
+    ],
+    [
+      'tiktok',
+      'https://www.tiktok.com/@indahpermata04632',
+      PlatformType.TIKTOK,
+      'indahpermata04632',
+    ],
+    [
+      'instagram',
+      'https://www.instagram.com/techfairyanna/',
+      PlatformType.INSTAGRAM,
+      'techfairyanna',
+    ],
+    [
+      'youtube',
+      'https://www.youtube.com/channel/UC1axavgir413w00rwBHPAtQ',
+      PlatformType.YOUTUBE,
+      'UC1axavgir413w00rwBHPAtQ',
+    ],
+  ])(
+    'emits a %s mention with the handle from its profile link',
+    (source, authorUrl, platform, handle) => {
+      const mapped = mapMentionToActivity({
+        ...BASE_MENTION,
+        source,
+        authorUrl,
+        author: 'Display Name',
+      })
+
+      expect(mapped?.platform).toBe(platform)
+      expect(mapped?.channel).toBe(
+        platform === PlatformType.GITHUB ? 'https://github.com/CrowdDotDev/crowd.dev' : 'crowd.dev',
+      )
+      expect(mapped?.member.identities[0]).toEqual({
+        platform,
+        value: handle,
+        type: MemberIdentityType.USERNAME,
+        verified: true,
+      })
+    },
+  )
+
+  it.each([
+    ['reddit', 'https://www.reddit.com/user/[deleted]'],
+    ['reddit', 'https://www.reddit.com/r/kubernetes'],
+    ['dev', 'https://dev.to/t/kubernetes'],
+    ['hackernews', 'https://news.ycombinator.com/item?id=50101892'],
+    ['bluesky', 'https://bsky.app/search?q=x'],
+    ['tiktok', 'https://www.tiktok.com/tag/kubernetes'],
+    ['instagram', 'https://www.instagram.com/p/DefkRhFsgpL/'],
+    ['youtube', 'https://www.youtube.com/@somehandle'],
+    ['instagram', 'https://www.tiktok.com/@someone'],
+  ])('skips a %s mention whose link %s is not a profile on that platform', (source, authorUrl) => {
+    expect(mapMentionToActivity({ ...BASE_MENTION, source, authorUrl })).toBeNull()
+  })
+
+  it.each([
+    ['stackoverflow', 'https://stackoverflow.com/users/1/someone'],
+    ['podcasts', 'https://www.spreaker.com/show/alacarta'],
+    ['news', null],
+    ['firehose', null],
+  ])('does not emit %s mentions', (source, authorUrl) => {
+    expect(mapMentionToActivity({ ...BASE_MENTION, source, authorUrl })).toBeNull()
+  })
+
+  it('keeps the octolens fields and the mention context in activity.attributes', () => {
     const mapped = mapMentionToActivity({
       ...BASE_MENTION,
       relevanceScore: 0,
       feedbackRelevant: 1,
-      imageUrl: 'https://example.com/preview.png',
       engagementMetrics: { likes: 10, replies: 2 },
-      engagementObservedAt: '2026-10-12 09:00:00.000',
-      review,
     })
 
-    expect(mapped?.activity.attributes).toEqual({
-      octolensMentionId: 1,
+    expect(mapped?.attributes).toEqual({
+      octolensMentionId: 200162933,
+      octolensSource: 'github',
+      postId: 'IC_kwDOA1b2c3',
+      keyword: 'crowd.dev',
+      keywordId: 42,
+      repoUrl: 'https://github.com/CrowdDotDev/crowd.dev',
       authorFollowers: 1200,
       relevance: 'relevant',
       relevanceScore: 0,
@@ -141,61 +265,95 @@ describe('mapMentionToActivity', () => {
       language: 'english',
       tags: ['user_feedback'],
       keywords: [{ id: 42, keyword: 'crowd.dev', keywordTag: 'own_brand' }],
-      keywordId: 42,
       engaged: false,
       isReply: true,
       feedbackRelevant: 1,
-      imageUrl: 'https://example.com/preview.png',
       engagementMetrics: { likes: 10, replies: 2 },
-      engagementObservedAt: '2026-10-12 09:00:00.000',
-      review: { rating: 4, ratingMax: 5, verified: true, targetName: 'crowd.dev' },
     })
   })
 
-  it('omits null and absent optional fields instead of writing them as null', () => {
+  it('records the keyword chosen by keywordId when the mention lists several', () => {
+    const mapped = mapMentionToActivity({
+      ...BASE_MENTION,
+      keywords: [
+        { id: 7, keyword: 'other' },
+        { id: 42, keyword: 'crowd.dev' },
+      ],
+      keywordId: 42,
+    })
+
+    expect(mapped?.attributes).toMatchObject({ keyword: 'crowd.dev', keywordId: 42 })
+  })
+
+  it.each([
+    ['https://github.com/octocat', undefined],
+    ['https://github.com/orgs/CrowdDotDev/discussions/5', undefined],
+    ['https://example.com/post', undefined],
+    ['https://www.github.com/owner/repo.git', 'https://github.com/owner/repo'],
+  ])('sets repoUrl for github url %s only when it names a repo', (url, repoUrl) => {
+    const mapped = mapMentionToActivity({ ...BASE_MENTION, url })
+
+    expect(mapped?.attributes?.repoUrl).toBe(repoUrl)
+  })
+
+  it('omits null optional fields instead of writing them as null', () => {
     const mapped = mapMentionToActivity({
       ...BASE_MENTION,
       authorFollowers: null,
       relevanceComment: null,
       sentiment: null,
       language: null,
-      relevanceScore: null,
     })
 
-    const attributes = mapped?.activity.attributes ?? {}
-    for (const key of [
-      'authorFollowers',
-      'relevanceComment',
-      'sentiment',
-      'language',
-      'relevanceScore',
-      'review',
-      'engagementMetrics',
-      'imageUrl',
-    ]) {
+    const attributes = mapped?.attributes ?? {}
+    for (const key of ['authorFollowers', 'relevanceComment', 'sentiment', 'language', 'review']) {
       expect(attributes).not.toHaveProperty(key)
     }
   })
 
-  it('keeps false booleans and empty arrays in activity.attributes', () => {
-    const mapped = mapMentionToActivity({ ...BASE_MENTION, engaged: false, tags: [] })
-
-    expect(mapped?.activity.attributes).toMatchObject({ engaged: false, tags: [] })
+  it('falls back to author, then the handle, for the display name', () => {
+    expect(mapMentionToActivity({ ...BASE_MENTION, authorName: null })?.member.displayName).toBe(
+      'octocat',
+    )
+    expect(
+      mapMentionToActivity({ ...BASE_MENTION, authorName: '', author: '' })?.member.displayName,
+    ).toBe('octocat')
   })
 
-  it('keeps authorFollowers on the activity only, never on member.reach', () => {
-    const mapped = mapMentionToActivity({ ...BASE_MENTION, source: 'linkedin' })
-
-    expect(mapped?.activity.attributes).toMatchObject({ authorFollowers: 1200 })
-    expect(mapped?.activity.member).not.toHaveProperty('reach')
-  })
-
-  it('keeps the new attributes through octolensActivitySchema instead of stripping them', () => {
+  it('passes through octolensActivitySchema unchanged', () => {
     const mapped = mapMentionToActivity(BASE_MENTION)
 
-    const parsed = octolensActivitySchema.parse(mapped?.activity)
+    expect(octolensActivitySchema.parse(mapped)).toEqual(mapped)
+  })
+})
 
-    expect(parsed.attributes).toMatchObject({ octolensMentionId: 1, sentiment: 'Positive' })
+describe('profileLinkIdentity', () => {
+  it.each([
+    ['https://github.com/octocat', { platform: PlatformType.GITHUB, value: 'octocat' }],
+    ['https://x.com/someone', { platform: PlatformType.TWITTER, value: 'someone' }],
+    ['https://uk.linkedin.com/in/someone', { platform: PlatformType.LINKEDIN, value: 'someone' }],
+    ['https://github.com/apps/dependabot', null],
+    ['https://www.linkedin.com/in/alice%2Fbob', null],
+    ['https://www.linkedin.com/in/alice%5Cbob', null],
+    ['https://mobile.twitter.com/someone', { platform: PlatformType.TWITTER, value: 'someone' }],
+    ['https://x.com/i/user/123', null],
+    ['https://x.com/compose/post', null],
+    ['https://twitter.com/login', null],
+    ['https://x.com/signup', null],
+    ['https://github.com/user-', null],
+    ['https://github.com/user--name', null],
+    ['https://github.com/user-name', { platform: PlatformType.GITHUB, value: 'user-name' }],
+    ['https://twitter.com/intent/user?screen_name=foo', null],
+    ['https://twitter.com/hashtag/kubernetes', null],
+    [
+      'https://www.linkedin.com/in/j%C3%B6rg-x/',
+      { platform: PlatformType.LINKEDIN, value: 'jörg-x' },
+    ],
+    ['https://www.reddit.com/user/someone', { platform: PlatformType.REDDIT, value: 'someone' }],
+    ['https://example.com/someone', undefined],
+    [null, undefined],
+  ])('reads %s', (link, expected) => {
+    expect(profileLinkIdentity(link)).toEqual(expected)
   })
 })
 

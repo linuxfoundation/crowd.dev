@@ -1,4 +1,5 @@
 import { QueryExecutor, formatQuery } from '../queryExecutor'
+import type { AffiliatedMemberIdentityRow } from './memberContributors'
 
 export type IdentityType = 'github-login' | 'email'
 export type AffiliationConfidence = 'cdp' | 'email_domain' | 'github_company'
@@ -152,6 +153,35 @@ export async function findIdentityKeysWithoutAffiliation(
         SELECT 1 FROM identity_affiliations a
         WHERE a.identity_type = k.identity_type AND a.identity_value = k.identity_value
       )
+    `,
+    {
+      types: keys.map((key) => key.identityType),
+      values: keys.map((key) => key.identityValue),
+    },
+  )
+}
+
+export async function findAffiliationsForIdentityKeys(
+  qx: QueryExecutor,
+  keys: IdentityKey[],
+): Promise<AffiliatedMemberIdentityRow[]> {
+  if (keys.length === 0) {
+    return []
+  }
+  return qx.select(
+    `
+      SELECT COALESCE(a.cdp_member_id::text, a.identity_type || ':' || a.identity_value) AS person,
+             'github'::text AS source, NULL::text AS role, 'contributor'::text AS "roleKind",
+             a.identity_type AS "identityType", a.identity_value AS "identityValue",
+             NULL::timestamptz AS "endedAt", NULL::timestamptz AS "lastSeenAt",
+             NULL::text AS "registryUsername", NULL::text AS "registryDisplayName",
+             a.akrites_member AS "akritesMember", a.cdp_organization_id::text AS "cdpOrganizationId",
+             a.confidence, a.confidence_score AS "confidenceScore"
+      FROM unnest($(types)::text[], $(values)::text[]) AS k(identity_type, identity_value)
+      JOIN identity_affiliations a
+        ON a.identity_type = k.identity_type AND a.identity_value = k.identity_value
+      WHERE a.akrites_member IS NOT NULL
+      ORDER BY person, a.identity_type, a.identity_value
     `,
     {
       types: keys.map((key) => key.identityType),

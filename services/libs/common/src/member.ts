@@ -2,12 +2,14 @@ import merge from 'lodash.merge'
 import ldSum from 'lodash.sum'
 
 import {
+  MemberAttributeName,
   MemberIdentityType,
   MemberOrganizationDateInput,
   MemberOrganizationDateRange,
   OrganizationSource,
 } from '@crowd/types'
 
+import { normalizeCountryAttribute } from './country'
 import { isValidEmail } from './email'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -96,6 +98,16 @@ export function hasAttributeValue(attribute: unknown): boolean {
   )
 }
 
+const URL_VALUE_PATTERN = /^\s*https?:\/\//i
+
+export function omitUrlValues(attribute: unknown): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(attribute ?? {}).filter(
+      ([, value]) => !(typeof value === 'string' && URL_VALUE_PATTERN.test(value)),
+    ),
+  )
+}
+
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
   priorities: string[],
@@ -108,6 +120,12 @@ export async function setAttributesDefaultValues(
     if (typeof attributes[attributeName] === 'string') {
       // we try to fix it
       attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
+    }
+
+    if (attributeName === MemberAttributeName.COUNTRY) {
+      attributes[attributeName] = normalizeCountryAttribute(
+        attributes[attributeName] as Record<string, unknown>,
+      )
     }
 
     const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {

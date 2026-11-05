@@ -118,7 +118,7 @@ function toProposal(resolution: OnboardingResolution): IProposal {
         classificationKind: resolution.kind,
         proposedAction: resolution.action,
         pccProjectId: resolution.pccProject.projectId,
-        matchedProjectName: resolution.pccProject.name,
+        matchedProjectName: resolution.segment.name,
         matchedSegmentId: resolution.segment.segmentId,
       }
     case 'lf_owner_in_cdp':
@@ -135,10 +135,16 @@ function toProposal(resolution: OnboardingResolution): IProposal {
         pccProjectId: null,
         ...NO_MATCH,
       }
+    case 'lf_not_in_pcc':
+      return {
+        classificationKind: resolution.kind,
+        proposedAction: 'human_review',
+        pccProjectId: null,
+        ...NO_MATCH,
+      }
     case 'already_tracked':
     case 'ambiguous':
     case 'non_github_source':
-    case 'lf_not_in_pcc':
       return {
         classificationKind: resolution.kind,
         proposedAction: null,
@@ -169,11 +175,13 @@ export async function classifyCatalogRow(
   deps: CatalogRowClassificationDeps,
 ): Promise<ICatalogRowClassification> {
   const trace = createClassificationTrace()
+  const canAsk = isSlackBotProvenance(row.provenance ?? null) && !!row.requestedBy
   const resolution = await resolveParsedRequest(
     parsedRequestSource(row, deps),
     deps.lookups,
     trace,
     row.requestHints ?? {},
+    { canAsk },
   )
 
   return {
@@ -181,10 +189,7 @@ export async function classifyCatalogRow(
     trace,
     classification: {
       projectName: resolvedProjectName(row, trace),
-      ...toCatalogClassification(resolution, {
-        autoApply: deps.autoApply,
-        canAsk: isSlackBotProvenance(row.provenance ?? null) && !!row.requestedBy,
-      }),
+      ...toCatalogClassification(resolution, { autoApply: deps.autoApply, canAsk }),
     },
   }
 }

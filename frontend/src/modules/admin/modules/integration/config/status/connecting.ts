@@ -2,7 +2,7 @@ import type { IntegrationStatusConfig } from '@/modules/admin/modules/integratio
 
 const connecting: IntegrationStatusConfig = {
   key: 'connecting',
-  show: (integration: any) => integration.status === 'in-progress',
+  show: (integration) => integration.status === 'in-progress',
   statuses: ['in-progress'],
   status: {
     text: 'Connecting',

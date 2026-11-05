@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia';
-import state from './shared.state';
-import getters from './shared.getters';
-import actions from './shared.actions';
+import { ref } from 'vue';
+import type { ReportDataModalPayload } from '@/shared/modules/report-issue/config';
 
-export const useSharedStore = defineStore(
-  'shared',
-  {
-    state,
-    getters,
-    actions,
-  },
-);
+export const useSharedStore = defineStore('shared', () => {
+  const reportDataModal = ref<ReportDataModalPayload | null>(null);
+
+  function setReportDataModal(data: ReportDataModalPayload): void {
+    reportDataModal.value = data;
+  }
+
+  return { reportDataModal, setReportDataModal };
+});

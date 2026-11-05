@@ -36,7 +36,7 @@ export async function dispatcher(): Promise<void> {
   }
 
   for (const unit of deferred) {
-    await activity.deferUnit(unit.id)
+    await activity.deferUnit(unit.id, unit.leaseLapsed)
   }
 
   await activity.logDispatchSummary({

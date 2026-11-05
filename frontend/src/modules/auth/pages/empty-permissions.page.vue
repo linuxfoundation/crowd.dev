@@ -7,7 +7,7 @@
       Wait for the admin to grant you privileges.
     </div>
     <div class="pt-10">
-      <lf-button size="large" @click="signout()">
+      <lf-button size="large" @click="logout()">
         Sign out
       </lf-button>
     </div>
@@ -18,7 +18,7 @@
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const { signout } = useAuthStore();
+const { logout } = useAuthStore();
 </script>
 
 <script lang="ts">

@@ -62,6 +62,8 @@ export interface IMemberOrganization {
   source?: string
   verified?: boolean
   verifiedBy?: string
+  verifiedAt?: string | null
+  rowSource?: string
   deletedAt?: string
   deletedBy?: string
   displayName?: string

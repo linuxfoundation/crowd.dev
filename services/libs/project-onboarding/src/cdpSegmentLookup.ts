@@ -1,4 +1,8 @@
-import { fetchIntegrationsForSegment, findSubprojectsBySourceId } from '@crowd/data-access-layer'
+import {
+  countRepositoriesBySegment,
+  fetchIntegrationsForSegment,
+  findSubprojectsBySourceId,
+} from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { CdpSegmentLookupResult, ICdpSegmentMatch, toCdpIntegrationState } from './requestResolver'
@@ -12,6 +16,7 @@ async function toSegmentMatch(
   return {
     segmentId: segment.id,
     name: segment.name ?? segment.slug,
+    slug: segment.slug,
     integration: toCdpIntegrationState(integrations.map((integration) => integration.platform)),
   }
 }
@@ -27,7 +32,19 @@ export function createCdpSegmentLookup(
     }
 
     const matches = await Promise.all(segments.map((segment) => toSegmentMatch(qx, segment)))
+    if (matches.length === 1) {
+      return matches[0]
+    }
 
-    return matches.length === 1 ? matches[0] : { duplicates: matches }
+    const counts = await countRepositoriesBySegment(
+      qx,
+      matches.map((match) => match.segmentId),
+    )
+    return {
+      duplicates: matches.map((match) => ({
+        ...match,
+        repositoryCount: counts.get(match.segmentId) ?? 0,
+      })),
+    }
   }
 }

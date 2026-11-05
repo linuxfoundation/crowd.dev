@@ -17,7 +17,7 @@ const headcount: MultiSelectFilterConfig = {
   itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Headcount', value, options);
   },
-  apiFilterRenderer({ value, include }: MultiSelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: MultiSelectFilterValue) {
     const filter = {
       or: value.map((count) => ({ size: { eq: count } })),
     };

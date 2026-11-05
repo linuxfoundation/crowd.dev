@@ -38,7 +38,7 @@ describe('fetchMentionsPage', () => {
     )
   })
 
-  it('always opts into all mentions and their engagement metrics', async () => {
+  it('asks for relevant mentions only, with their engagement metrics', async () => {
     mockedPost.mockResolvedValue({
       status: 200,
       headers: {},
@@ -49,9 +49,10 @@ describe('fetchMentionsPage', () => {
 
     expect(mockedPost).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ includeAll: true, includeEngagementMetrics: true }),
+      expect.objectContaining({ includeEngagementMetrics: true }),
       expect.anything(),
     )
+    expect(mockedPost.mock.calls[0][1]).not.toHaveProperty('includeAll')
   })
 
   it('omits filters when no startDate is given', async () => {

@@ -16,7 +16,7 @@ const headline: StringFilterConfig = {
   itemLabelRenderer(value: StringFilterValue, options: StringFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.STRING]('Headline', value, options);
   },
-  apiFilterRenderer(value: StringFilterValue): any[] {
+  apiFilterRenderer(value: StringFilterValue) {
     return apiFilterRendererByType[FilterConfigType.STRING]('headline', value);
   },
 };

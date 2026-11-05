@@ -1,3 +1,10 @@
+export class LlmResponseTruncatedError extends Error {
+  constructor(queryType: string, outputTokenCount: number) {
+    super(`LLM response for ${queryType} was truncated at ${outputTokenCount} output tokens`)
+    this.name = 'LlmResponseTruncatedError'
+  }
+}
+
 export function parseLlmJson<T>(answer: string): T {
   const raw = answer.trim()
 

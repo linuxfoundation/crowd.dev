@@ -32,7 +32,6 @@
           v-else
           :identity="props.identity"
         />
-        <lf-verified-identity-badge v-if="props.identity.verified" />
       </div>
       <p
         v-if="props.identity.platforms && getPlatformsLabel(props.identity.platforms).length > 0"
@@ -42,8 +41,10 @@
       </p>
     </div>
 
+    <lf-verification-status :entity="props.identity" kind="identity" class="mt-0.5 mr-1" />
+
     <!-- Dropdown -->
-    <lf-dropdown v-show="hovered" placement="bottom-end" width="232px">
+    <lf-dropdown :class="hovered ? 'visible' : 'invisible'" placement="bottom-end" width="232px">
       <template #trigger>
         <lf-button type="secondary-ghost" size="small" icon-only>
           <lf-icon name="ellipsis" />
@@ -128,7 +129,7 @@ import { useContributorStore } from '@/modules/contributor/store/contributor.sto
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { computed, ref } from 'vue';
-import LfVerifiedIdentityBadge from '@/shared/modules/identities/components/verified-identity-badge.vue';
+import LfVerificationStatus from '@/shared/modules/verification/components/verification-status.vue';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import { lfIdentities } from '@/config/identities';

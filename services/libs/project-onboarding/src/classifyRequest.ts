@@ -15,6 +15,7 @@ import {
 } from './requestParser'
 import {
   IOnboardingRequestLookups,
+  IResolveOptions,
   OnboardingResolution,
   resolveOnboardingRequest,
 } from './requestResolver'
@@ -47,6 +48,7 @@ export async function resolveParsedRequest(
   lookups: IOnboardingRequestLookups,
   trace: IClassificationTrace,
   hints: IRequestHints = {},
+  options: IResolveOptions = {},
 ): Promise<OnboardingResolution> {
   const parsed = await parse()
   if (parsed.ok === false) {
@@ -55,7 +57,7 @@ export async function resolveParsedRequest(
   }
 
   trace.parsed = parsed.request
-  return resolveOnboardingRequest(parsed.request, traceLookups(lookups, trace), hints)
+  return resolveOnboardingRequest(parsed.request, traceLookups(lookups, trace), hints, options)
 }
 
 export async function resolveWithTrace(

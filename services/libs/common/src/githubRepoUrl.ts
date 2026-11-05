@@ -19,6 +19,17 @@ const GITHUB_NON_REPO_OWNERS = new Set([
   'about',
   'features',
   'search',
+  'explore',
+  'pricing',
+  'notifications',
+  'trending',
+  'enterprise',
+  'security',
+  'organizations',
+  'dashboard',
+  'issues',
+  'pulls',
+  'new',
 ])
 
 function toParsableUrl(raw: string): string {
@@ -98,6 +109,91 @@ export function canonicalizeRepoUrl(raw: string | null | undefined): ICanonicalR
     owner: null,
     repo: null,
   }
+}
+
+export function githubOrganizationOwner(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') {
+    return null
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(toParsableUrl(raw))
+  } catch {
+    return null
+  }
+
+  const host = parsed.hostname.toLowerCase()
+  if (host !== GITHUB_HOST && host !== `www.${GITHUB_HOST}`) {
+    return null
+  }
+
+  const segments = stripSlashesAndGitSuffix(parsed.pathname).split('/').filter(Boolean)
+  const owner =
+    segments.length === 1
+      ? segments[0]
+      : segments.length === 2 && segments[0] === 'orgs'
+        ? segments[1]
+        : null
+  return owner && !GITHUB_NON_REPO_OWNERS.has(owner.toLowerCase()) ? owner : null
+}
+
+const FORMATTING_WRAPPERS = new Set(['*', '_', '`', '~'])
+const WRAPPERS_NEVER_IN_GITHUB_NAMES = new Set(['*', '`', '~'])
+const LEADING_WRAPPERS = new Set(['<', '(', '[', '"', "'"])
+
+export function stripPhraseFormatting(text: string): string {
+  const trimmed = text.trim()
+  const phrase = stripTrailingPunctuation(trimmed)
+  const trailing = trimmed.slice(phrase.length)
+  const wrapper = phrase[0]
+  const firstToken = stripTrailingPunctuation(phrase.split(/\s+/, 1)[0])
+  const wrapsWholePhrase =
+    phrase.length > 2 &&
+    FORMATTING_WRAPPERS.has(wrapper) &&
+    phrase.endsWith(wrapper) &&
+    !firstToken.endsWith(wrapper)
+  return wrapsWholePhrase ? phrase.slice(1, -1) + trailing : trimmed
+}
+
+export function stripSlackFormatting(token: string): string {
+  let start = 0
+  let end = token.length
+  while (
+    end - start > 2 &&
+    FORMATTING_WRAPPERS.has(token[start]) &&
+    token[end - 1] === token[start]
+  ) {
+    start++
+    end--
+  }
+  while (end - start > 1 && FORMATTING_WRAPPERS.has(token[start])) {
+    start++
+  }
+  while (end - start > 1 && WRAPPERS_NEVER_IN_GITHUB_NAMES.has(token[end - 1])) {
+    end--
+  }
+  return token.slice(start, end)
+}
+
+function stripWrappers(token: string): string {
+  const unformatted = stripSlackFormatting(stripTrailingPunctuation(token))
+  let start = 0
+  while (start < unformatted.length && LEADING_WRAPPERS.has(unformatted[start])) {
+    start++
+  }
+  return stripSlackFormatting(stripTrailingPunctuation(unformatted.slice(start)))
+}
+
+export function extractGithubOrganizations(text: string): string[] {
+  const owners = stripPhraseFormatting(text)
+    .split(/\s+/)
+    .map((token) => stripWrappers(token))
+    .filter((token) => canonicalizeGithubRepoUrl(token) === null)
+    .map((token) => githubOrganizationOwner(token.replace(/_+$/, '')))
+    .filter((owner): owner is string => owner !== null)
+    .map((owner) => owner.toLowerCase())
+  return [...new Set(owners)]
 }
 
 export function canonicalizeGithubRepoUrl(raw: string | null | undefined): string | null {

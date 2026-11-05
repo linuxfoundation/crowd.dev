@@ -133,9 +133,6 @@ export class QueueEmitter extends QueueBase {
   public async sendMessages<T extends IQueueMessage>(
     messages: IQueueMessageBulk<T>[],
   ): Promise<void> {
-    if (messages.length > 10) {
-      throw new Error('Maximum number of messages to send is 10!')
-    }
     await this.queue.sendBulk(this.getChannel(), messages)
   }
 

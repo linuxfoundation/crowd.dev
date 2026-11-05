@@ -18,7 +18,7 @@ const type: MultiSelectFilterConfig = {
   itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Type', value, options);
   },
-  apiFilterRenderer({ value, include }: MultiSelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: MultiSelectFilterValue) {
     const filter = {
       or: value.map((t) => ({ type: { eq: t } })),
     };

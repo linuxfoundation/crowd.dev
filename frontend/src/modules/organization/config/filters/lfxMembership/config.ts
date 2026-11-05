@@ -15,7 +15,7 @@ const location: BooleanFilterConfig = {
   itemLabelRenderer(value: BooleanFilterValue, options: BooleanFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.BOOLEAN]('Linux Foundation member', value, options);
   },
-  apiFilterRenderer({ value }: BooleanFilterValue): any[] {
+  apiFilterRenderer({ value }: BooleanFilterValue) {
     const filter = {
       lfxMembership: {
         [value ? 'ne' : 'eq']: null,

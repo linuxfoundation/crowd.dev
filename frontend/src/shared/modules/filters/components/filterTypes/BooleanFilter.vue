@@ -25,6 +25,7 @@ import type {
   BooleanFilterConfig,
 } from '@/shared/modules/filters/types/filterTypes/BooleanFilterConfig';
 import { required } from '@vuelidate/validators';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 
 const props = defineProps<{
@@ -43,7 +44,7 @@ const defaultForm: BooleanFilterValue = {
   value: true,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },

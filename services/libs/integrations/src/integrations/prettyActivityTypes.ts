@@ -49,7 +49,7 @@ export const prettyActivityTypes = {
   [PlatformType.TWITTER]: {
     contributed_to_community: 'contributed to community',
     joined_community: 'joined community',
-    mention: 'mentioned you in a tweet',
+    mention: 'mentioned the project on X/Twitter',
     hashtag: 'posted a tweet',
     follow: 'followed you',
   },

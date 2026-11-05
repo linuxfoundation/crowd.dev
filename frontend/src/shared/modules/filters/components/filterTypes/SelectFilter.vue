@@ -49,6 +49,7 @@ import type {
   SelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 import { required } from '@vuelidate/validators';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 import LfFilterSelectOption from '@/shared/modules/filters/components/partials/select/FilterSelectOption.vue';
@@ -82,7 +83,7 @@ const defaultForm: SelectFilterValue = {
   include: true,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },

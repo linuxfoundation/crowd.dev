@@ -53,7 +53,7 @@ const props = defineProps<{
   contributor: Contributor,
 }>();
 
-const emit = defineEmits<{(e: 'reload'): any, (e: 'findGithub'): any, (e: 'unmerge'): any}>();
+const emit = defineEmits<{(e: 'reload'): void, (e: 'findGithub'): void, (e: 'unmerge'): void}>();
 
 const route = useRoute();
 const router = useRouter();

@@ -12,12 +12,13 @@
 </template>
 
 <script setup lang="ts">
+import type { GitlabIntegration } from '@/config/integrations/gitlab/types/GitlabSettings';
 import { computed, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import AppGitlabSettingsDrawer from './gitlab-settings-drawer.vue';
 
 const props = defineProps<{
-  integration: any;
+  integration: GitlabIntegration;
   segmentId: string | null;
   grandparentId: string | null;
 }>();

@@ -5,9 +5,14 @@ import {
   isReviewAlertProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { getServiceLogger } from '@crowd/logging'
-import { ICatalogRowToClassify, OnboardingConfigurationError } from '@crowd/project-onboarding'
+import {
+  ICatalogRowToClassify,
+  OnboardingConfigurationError,
+  organizationGroupKey,
+} from '@crowd/project-onboarding'
 
 import { IClassifyAndRouteResult } from '../types'
+import { organizationMainRepositoriesFirst } from './organizationEvaluation'
 
 const log = getServiceLogger()
 
@@ -19,6 +24,7 @@ export interface IClassifyAndRouteIo {
     classification: IDbProjectCatalogClassification,
   ) => Promise<IDbProjectCatalog | null>
   markFailed: (id: string, reason: string) => Promise<number>
+  findTrackedRepoUrls: (repoUrls: string[]) => Promise<Set<string>>
   onRowStart?: (project: IDbProjectCatalog) => void
 }
 
@@ -53,6 +59,38 @@ function toRowToClassify(project: IDbProjectCatalog): ICatalogRowToClassify {
     provenance: project.provenance,
     requestedBy: project.requestedBy,
     requestHints: project.requestHints,
+  }
+}
+
+async function trackedGroupedRepoUrls(
+  projects: IDbProjectCatalog[],
+  io: Pick<IClassifyAndRouteIo, 'findTrackedRepoUrls'>,
+): Promise<Set<string>> {
+  const grouped = projects.filter((project) => organizationGroupKey(project) !== null)
+  if (grouped.length === 0) {
+    return new Set()
+  }
+  return io.findTrackedRepoUrls(grouped.map((project) => project.repoUrl))
+}
+
+// A question already posted but not answered yet belongs to its message; sharing it would
+// attach late siblings to a message whose count never changes.
+function awaitsAnswer(row: IDbProjectCatalog): boolean {
+  return row.action === 'ask' && !!row.requestQuestion?.messageTs && !row.requestQuestion.answer
+}
+
+function persistedClassification(row: IDbProjectCatalog): IDbProjectCatalogClassification {
+  return {
+    projectName: row.projectName,
+    classificationKind: row.classificationKind ?? 'ambiguous',
+    proposedAction: row.proposedAction,
+    pccProjectId: row.pccProjectId,
+    matchedProjectName: row.matchedProjectName,
+    matchedSegmentId: row.matchedSegmentId,
+    action: routedByPreviousAttempt(row) ?? 'evaluate',
+    skipReason: row.skipReason,
+    reviewReason: row.reviewReason,
+    requestQuestion: row.requestQuestion,
   }
 }
 
@@ -100,10 +138,37 @@ export async function classifyAndRouteProjects(
     }
   }
 
+  // Tracking is the one per-repository fact of a group: a sibling already in LFX Insights
+  // gets its own classification, and a tracked lead never speaks for the others.
+  const tracked = await trackedGroupedRepoUrls(projects, io)
+  const classifiedByOrganization = new Map<string, IDbProjectCatalogClassification>()
+  // Only a persisted classification speaks for the group, so two overlapping runs cannot
+  // give one organization two different proposals.
+  const shareClassified = (row: IDbProjectCatalog) => {
+    const key = organizationGroupKey(row)
+    if (
+      key &&
+      row.classifiedAt &&
+      !awaitsAnswer(row) &&
+      !tracked.has(row.repoUrl) &&
+      !classifiedByOrganization.has(key)
+    ) {
+      classifiedByOrganization.set(key, persistedClassification(row))
+    }
+  }
+  const classifyRow = async (fresh: IDbProjectCatalog) => {
+    const key = organizationGroupKey(fresh)
+    const shared = key ? classifiedByOrganization.get(key) : undefined
+    return shared && !tracked.has(fresh.repoUrl) ? shared : io.classify(toRowToClassify(fresh))
+  }
+
   for (const project of projects) {
     io.onRowStart?.(project)
 
     const fresh = await io.findFresh(project.id)
+    if (fresh) {
+      shareClassified(fresh)
+    }
     const previousRoute = fresh ? routedByPreviousAttempt(fresh) : null
     if (fresh && previousRoute) {
       record(fresh, previousRoute)
@@ -131,7 +196,7 @@ export async function classifyAndRouteProjects(
 
     let classification: IDbProjectCatalogClassification
     try {
-      classification = await io.classify(toRowToClassify(fresh))
+      classification = await classifyRow(fresh)
     } catch (err) {
       if (err instanceof OnboardingConfigurationError) {
         await recordFailure(fresh, err.message)
@@ -140,6 +205,9 @@ export async function classifyAndRouteProjects(
       throw err
     }
     const updated = await io.markClassified(fresh.id, classification)
+    if (updated) {
+      shareClassified(updated)
+    }
 
     if (!updated) {
       result.discarded++
@@ -165,5 +233,6 @@ export async function classifyAndRouteProjects(
     record(updated, classification.action)
   }
 
+  result.remaining = organizationMainRepositoriesFirst(result.remaining)
   return result
 }

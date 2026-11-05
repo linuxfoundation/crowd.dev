@@ -54,7 +54,7 @@ const props = withDefaults(
   },
 );
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): any }>();
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
 const isModalOpened = computed<boolean>({
   get() {
@@ -76,7 +76,7 @@ const clickOutsideClose = () => {
   }
 };
 
-const onEscapeKeyUp = (event: any) => {
+const onEscapeKeyUp = (event: KeyboardEvent) => {
   if (event.which === 27) {
     clickOutsideClose();
   }

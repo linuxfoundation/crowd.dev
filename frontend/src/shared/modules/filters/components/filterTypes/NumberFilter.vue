@@ -62,6 +62,7 @@ import type {
   NumberFilterOptions,
   NumberFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import {
   integer, minValue, numeric, required,
@@ -92,7 +93,7 @@ const defaultForm: NumberFilterValue = {
   operator: FilterNumberOperator.EQ,
 };
 
-const rules: any = computed(() => ({
+const rules = computed<ValidationArgs>(() => ({
   value: props.config.options.validators || {
     required,
     numeric,

@@ -9,4 +9,7 @@ export const STACKOVERFLOW_GRID: Record<StackOverflowActivityType, IActivityScor
   [StackOverflowActivityType.ANSWER]: {
     score: 6,
   },
+  [StackOverflowActivityType.MENTION]: {
+    score: 6,
+  },
 }

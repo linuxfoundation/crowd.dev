@@ -264,9 +264,9 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
-  onMounted, ref,
+  onMounted, ref, type PropType,
 } from 'vue';
 import AppMemberOrganizations from '@/modules/member/components/member-organizations.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
@@ -286,11 +286,13 @@ import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps({
   member: {
-    type: Object,
+    // shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
+    type: Object as PropType<any>,
     default: () => null,
   },
   compareMember: {
-    type: Object,
+    // shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
+    type: Object as PropType<any>,
     required: false,
     default: () => null,
   },
@@ -316,15 +318,15 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['makePrimary', 'bioHeight']);
+const emit = defineEmits<{(e: 'makePrimary'): void; (e: 'bioHeight', height: number): void}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 const { isBot, isTeamMember } = useContributorHelpers();
 
-const bio = ref(null);
-const displayShowMore = ref(null);
-const more = ref(null);
+const bio = ref<HTMLElement | null>(null);
+const displayShowMore = ref<boolean | null>(null);
+const more = ref<boolean | null>(null);
 
 onMounted(() => {
   setTimeout(() => {
@@ -338,7 +340,7 @@ onMounted(() => {
   }, 0);
 });
 
-const formatJoinedDate = (date) => {
+const formatJoinedDate = (date: string) => {
   if (!date || new Date(date).getFullYear() <= 1970) {
     return '-';
   }
@@ -351,7 +353,7 @@ defineExpose({
 });
 </script>
 
-<script>
+<script lang="ts">
 export default {
   name: 'AppMemberMergeSuggestionsDetails',
 };

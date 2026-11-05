@@ -48,7 +48,7 @@ opacity-0 invisible transition group-hover:visible group-hover:opacity-100 z-30 
         <a
           v-for="identity of idents"
           :key="`${platform}-${identity.value}`"
-          :href="identity.url"
+          :href="identity.url ?? undefined"
           class="flex items-center justify-between p-2 transition"
           :class="identity.url ? 'hover:bg-gray-50' : ''"
           target="_blank"
@@ -80,6 +80,7 @@ import useContributorHelpers from '@/modules/contributor/helpers/contributor.hel
 import { contributorDetailsHeaderProfilePlatforms } from '@/modules/contributor/config/details-header-profile-platforms';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { lfIdentities } from '@/config/identities';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
 
 const props = defineProps<{
   contributor: Contributor,
@@ -88,10 +89,10 @@ const props = defineProps<{
 const { identities } = useContributorHelpers();
 
 const platformIdentities = computed(() => {
-  const data = {};
+  const data: Record<string, ReturnType<typeof identities>> = {};
   contributorDetailsHeaderProfilePlatforms.forEach((p) => { data[p] = []; });
   identities(props.contributor).forEach((i) => {
-    if (contributorDetailsHeaderProfilePlatforms.includes(i.platform)) {
+    if (contributorDetailsHeaderProfilePlatforms.includes(i.platform as Platform)) {
       data[i.platform].push(i);
     }
   });

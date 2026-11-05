@@ -8,8 +8,14 @@ import { IShadowDiffMismatch } from './shadowDiff'
 
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger
 
-function missingMismatch(sourceId: string): IShadowDiffMismatch {
-  return { sourceId, type: 'commit', kind: 'missing_in_shadow', severity: 'high' }
+function missingMismatch(sourceId: string, sourceParentId?: string): IShadowDiffMismatch {
+  const mismatch: IShadowDiffMismatch = {
+    sourceId,
+    type: 'commit',
+    kind: 'missing_in_shadow',
+    severity: 'high',
+  }
+  return sourceParentId === undefined ? mismatch : { ...mismatch, sourceParentId }
 }
 
 function shasOf(variables: Record<string, string>): string[] {
@@ -20,30 +26,43 @@ function shasOf(variables: Record<string, string>): string[] {
 }
 
 function httpWithHandler(
-  handler: (shas: string[]) => Promise<unknown>,
+  handler: (shas: string[], query: string) => Promise<unknown>,
   onRequest?: () => void,
 ): ConnectorHttp {
   return {
-    request: async (config: { data: { variables: Record<string, string> } }) => {
+    request: async (config: { data: { query: string; variables: Record<string, string> } }) => {
       onRequest?.()
-      return handler(shasOf(config.data.variables))
+      return handler(shasOf(config.data.variables), config.data.query)
     },
     requestCount: () => 0,
   } as unknown as ConnectorHttp
 }
 
-function repositoryOf(counts: (number | null | undefined)[]) {
+type Association = number | null | undefined | { totalCount: number; ids: (string | null)[] }
+
+function toAssociationNode(association: Association) {
+  if (association === null) {
+    return null
+  }
+  if (association === undefined) {
+    return {}
+  }
+  if (typeof association === 'number') {
+    return { associatedPullRequests: { totalCount: association, nodes: [] } }
+  }
+  return {
+    associatedPullRequests: {
+      totalCount: association.totalCount,
+      nodes: association.ids.map((id) => (id === null ? null : { id })),
+    },
+  }
+}
+
+function repositoryOf(associations: Association[]) {
   return {
     data: {
       repository: Object.fromEntries(
-        counts.map((count, i) => [
-          `c${i}`,
-          count === null
-            ? null
-            : count === undefined
-              ? {}
-              : { associatedPullRequests: { totalCount: count } },
-        ]),
+        associations.map((association, i) => [`c${i}`, toAssociationNode(association)]),
       ),
     },
   }
@@ -60,10 +79,44 @@ describe('hasForcePushCandidates', () => {
 })
 
 describe('dropConfirmedForcePushedCommits', () => {
-  it('drops commits with no associated pull request and keeps commits still on a pull request', async () => {
-    const mismatches = [missingMismatch('orphan'), missingMismatch('live')]
-    const http = httpWithHandler(async (shas) =>
-      repositoryOf(shas.map((sha) => (sha === 'orphan' ? 0 : 1))),
+  it('drops commits with no associated pull request and keeps commits still on their pull request', async () => {
+    const mismatches = [missingMismatch('orphan', 'PR_gone'), missingMismatch('live', 'PR_live')]
+    const queries: string[] = []
+    const http = httpWithHandler(async (shas, query) => {
+      queries.push(query)
+      return repositoryOf(
+        shas.map((sha) => (sha === 'orphan' ? 0 : { totalCount: 1, ids: ['PR_live'] })),
+      )
+    })
+
+    const result = await dropConfirmedForcePushedCommits(
+      'pull-request-commits',
+      mismatches,
+      'o',
+      'r',
+      http,
+      log,
+    )
+
+    expect(result.mismatches).toEqual([missingMismatch('live', 'PR_live')])
+    expect(result.skippedCount).toBe(1)
+    expect(result.staleParentCount).toBe(0)
+    expect(result.failedCount).toBe(0)
+    expect(queries[0]).toContain('associatedPullRequests(first: 5) { totalCount nodes { id } }')
+  })
+
+  it('drops commits whose pull request no longer lists them and keeps commits without a known parent', async () => {
+    const mismatches = [
+      missingMismatch('rebased', 'PR_old'),
+      missingMismatch('live', 'PR_live'),
+      missingMismatch('unknown'),
+    ]
+    const http = httpWithHandler(async () =>
+      repositoryOf([
+        { totalCount: 1, ids: ['PR_other'] },
+        { totalCount: 2, ids: ['PR_other', 'PR_live'] },
+        { totalCount: 1, ids: ['PR_other'] },
+      ]),
     )
 
     const result = await dropConfirmedForcePushedCommits(
@@ -75,9 +128,37 @@ describe('dropConfirmedForcePushedCommits', () => {
       log,
     )
 
-    expect(result.mismatches).toEqual([missingMismatch('live')])
-    expect(result.skippedCount).toBe(1)
+    expect(result.mismatches).toEqual([
+      missingMismatch('live', 'PR_live'),
+      missingMismatch('unknown'),
+    ])
+    expect(result.skippedCount).toBe(0)
+    expect(result.staleParentCount).toBe(1)
     expect(result.failedCount).toBe(0)
+  })
+
+  it('leaves commits unconfirmed when not every association could be read', async () => {
+    const mismatches = [missingMismatch('busy', 'PR_old'), missingMismatch('hidden', 'PR_old')]
+    const http = httpWithHandler(async () =>
+      repositoryOf([
+        { totalCount: 6, ids: ['PR_1', 'PR_2', 'PR_3', 'PR_4', 'PR_5'] },
+        { totalCount: 2, ids: ['PR_other', null] },
+      ]),
+    )
+
+    const result = await dropConfirmedForcePushedCommits(
+      'pull-request-commits',
+      mismatches,
+      'o',
+      'r',
+      http,
+      log,
+    )
+
+    expect(result.mismatches).toEqual([])
+    expect(result.skippedCount).toBe(0)
+    expect(result.staleParentCount).toBe(0)
+    expect(result.failedCount).toBe(2)
   })
 
   it('excludes commits GitHub cannot resolve and counts them as unconfirmed', async () => {
@@ -95,6 +176,7 @@ describe('dropConfirmedForcePushedCommits', () => {
 
     expect(result.mismatches).toEqual([missingMismatch('live')])
     expect(result.skippedCount).toBe(0)
+    expect(result.staleParentCount).toBe(0)
     expect(result.failedCount).toBe(2)
   })
 
@@ -115,6 +197,7 @@ describe('dropConfirmedForcePushedCommits', () => {
 
     expect(result.mismatches).toEqual([])
     expect(result.skippedCount).toBe(0)
+    expect(result.staleParentCount).toBe(0)
     expect(result.failedCount).toBe(2)
   })
 
@@ -125,7 +208,7 @@ describe('dropConfirmedForcePushedCommits', () => {
 
     const result = await dropConfirmedForcePushedCommits(
       'pull-request-commits',
-      shas.map(missingMismatch),
+      shas.map((sha) => missingMismatch(sha)),
       'o',
       'r',
       http,
@@ -135,6 +218,7 @@ describe('dropConfirmedForcePushedCommits', () => {
     expect(requests).toHaveBeenCalledTimes(3)
     expect(result.mismatches).toEqual([])
     expect(result.skippedCount).toBe(120)
+    expect(result.staleParentCount).toBe(0)
     expect(result.failedCount).toBe(0)
   })
 

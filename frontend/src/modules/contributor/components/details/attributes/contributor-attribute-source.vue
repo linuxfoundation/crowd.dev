@@ -7,9 +7,10 @@
 <script setup lang="ts">
 import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';
 import { computed } from 'vue';
+import type { AttributeValue } from '@/modules/contributor/types/Contributor';
 
 const props = defineProps<{
-  values: Record<string, any>,
+  values: Record<string, AttributeValue>,
 }>();
 
 const source = computed(() => getAttributeSourceName(props.values));

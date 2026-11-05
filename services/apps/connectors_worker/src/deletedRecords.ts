@@ -6,6 +6,14 @@ import { IShadowDiffMismatch } from './shadowDiff'
 
 const COMMIT_SYNC_NAME = 'pull-request-commits'
 const SYNTHETIC_SOURCE_ID_PREFIX = 'gen-'
+const NANGO_RECORD_ID_SUFFIXES = [
+  '-review-requested',
+  '-reviewed',
+  '-merged',
+  '-closed',
+  '-assigned',
+  '-opened',
+]
 const NODES_QUERY_BATCH_SIZE = 100
 const CONFIRM_CONCURRENCY = 3
 const CONFIRM_BUDGET_MS = 60_000
@@ -23,15 +31,23 @@ interface NodesQueryResult {
   nodes: ({ id: string } | null)[]
 }
 
-function isNodeIdCandidate(mismatch: IShadowDiffMismatch): boolean {
-  return !mismatch.sourceId.startsWith(SYNTHETIC_SOURCE_ID_PREFIX)
+function nodeIdFromNangoRecordId(nangoRecordId: string): string | null {
+  const suffix = NANGO_RECORD_ID_SUFFIXES.find((s) => nangoRecordId.endsWith(s))
+  return suffix ? nangoRecordId.slice(0, -suffix.length) : null
+}
+
+function nodeIdToConfirm(mismatch: IShadowDiffMismatch): string | null {
+  if (!mismatch.sourceId.startsWith(SYNTHETIC_SOURCE_ID_PREFIX)) {
+    return mismatch.sourceId
+  }
+  return mismatch.nangoRecordId ? nodeIdFromNangoRecordId(mismatch.nangoRecordId) : null
 }
 
 export function isDeletedRecordCandidate(syncName: string, mismatch: IShadowDiffMismatch): boolean {
   return (
     syncName !== COMMIT_SYNC_NAME &&
     mismatch.kind === 'missing_in_shadow' &&
-    isNodeIdCandidate(mismatch)
+    nodeIdToConfirm(mismatch) !== null
   )
 }
 
@@ -114,10 +130,14 @@ export async function dropConfirmedDeletedRecords(
     return { mismatches, confirmedDeletedCount: 0, unconfirmedCount: 0 }
   }
 
-  const candidates = mismatches.filter(
-    (m) => m.kind === 'missing_in_shadow' && isNodeIdCandidate(m),
-  )
-  const candidateIds = [...new Set(candidates.map((m) => m.sourceId))]
+  const nodeIdByCandidate = new Map<IShadowDiffMismatch, string>()
+  for (const mismatch of mismatches) {
+    const nodeId = isDeletedRecordCandidate(syncName, mismatch) ? nodeIdToConfirm(mismatch) : null
+    if (nodeId !== null) {
+      nodeIdByCandidate.set(mismatch, nodeId)
+    }
+  }
+  const candidateIds = [...new Set(nodeIdByCandidate.values())]
   const batches = toBatches(candidateIds, NODES_QUERY_BATCH_SIZE)
   const deadline = Date.now() + CONFIRM_BUDGET_MS
 
@@ -139,14 +159,10 @@ export async function dropConfirmedDeletedRecords(
   })
 
   return {
-    mismatches: mismatches.filter(
-      (m) =>
-        !(
-          m.kind === 'missing_in_shadow' &&
-          isNodeIdCandidate(m) &&
-          (confirmedDeletedIds.has(m.sourceId) || uncheckedIds.has(m.sourceId))
-        ),
-    ),
+    mismatches: mismatches.filter((m) => {
+      const nodeId = nodeIdByCandidate.get(m)
+      return nodeId === undefined || !(confirmedDeletedIds.has(nodeId) || uncheckedIds.has(nodeId))
+    }),
     confirmedDeletedCount: confirmedDeletedIds.size,
     unconfirmedCount: uncheckedIds.size,
   }

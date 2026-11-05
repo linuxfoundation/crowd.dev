@@ -38,17 +38,18 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
+import type { MemberBotSuggestionRef } from '@/modules/member/types/MemberSuggestion';
 
 const props = defineProps<{
-  suggestion: any,
+  suggestion: MemberBotSuggestionRef,
 }>();
 
-const emit = defineEmits<{(e: 'reload'): void; (e: 'ignoreSuggestion', suggestion: any): void;}>();
+const emit = defineEmits<{(e: 'reload'): void; (e: 'ignoreSuggestion', suggestion: MemberBotSuggestionRef): void;}>();
 
 const { trackEvent } = useProductTracking();
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const ignore = (suggestion: any) => {
+const ignore = (suggestion: MemberBotSuggestionRef) => {
   trackEvent({
     key: FeatureEventKey.IGNORE_MEMBER_BOT_SUGGESTION,
     type: EventType.FEATURE,

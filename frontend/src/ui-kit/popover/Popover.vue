@@ -52,8 +52,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{(e: 'update:visibility', value: boolean): void }>();
 
-const trigger = ref<any>(null);
-const popover = ref<any>(null);
+const trigger = ref<HTMLElement | null>(null);
+const popover = ref<HTMLElement | null>(null);
 const isVisible = ref(props.visibility);
 
 watch(() => props.visibility, (newValue) => {
@@ -80,10 +80,10 @@ const hidePopover = () => {
   removeOutsideClickListener();
 };
 
-const handleClickOutside = (event: any) => {
+const handleClickOutside = (event: MouseEvent) => {
   if (
-    !trigger.value?.contains(event.target)
-      && !popover.value?.contains(event.target)
+    !trigger.value?.contains(event.target as Node)
+      && !popover.value?.contains(event.target as Node)
   ) {
     isVisible.value = false;
     removeOutsideClickListener();

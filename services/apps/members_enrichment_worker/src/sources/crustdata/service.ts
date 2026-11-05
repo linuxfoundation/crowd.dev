@@ -68,6 +68,12 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     [MemberAttributeName.JOB_TITLE]: {
       fields: ['basic_profile.current_title'],
     },
+    [MemberAttributeName.LOCATION]: {
+      fields: ['basic_profile.location.raw'],
+    },
+    [MemberAttributeName.COUNTRY]: {
+      fields: ['basic_profile.location.country'],
+    },
     [MemberAttributeName.BIO]: {
       fields: ['basic_profile.summary', 'basic_profile.headline'],
     },

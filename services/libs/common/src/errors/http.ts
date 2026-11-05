@@ -94,6 +94,15 @@ export class RateLimitError extends HttpError {
   }
 }
 
+export class ServiceUnavailableError extends HttpError {
+  readonly code = 'SERVICE_UNAVAILABLE'
+  readonly status = 503
+
+  constructor(message = 'Service temporarily unavailable', context?: Record<string, unknown>) {
+    super(message, context)
+  }
+}
+
 export class InternalError extends HttpError {
   readonly code = 'INTERNAL_ERROR'
   readonly status = 500

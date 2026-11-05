@@ -53,6 +53,7 @@ function row(overrides: Partial<RequestStatusRow> & { repoUrl: string }): Reques
     reviewedBy: null,
     decisionReason: null,
     decisionNote: null,
+    requestHints: null,
     ...overrides,
   }
 }
@@ -170,6 +171,74 @@ describe('buildRequestStatusContent', () => {
       '_1 added, 1 already there, 1 checking_',
     ])
     expect(JSON.stringify(content.blocks)).toContain('"action_id":"view_insights_project:0"')
+  })
+
+  it('keeps a single repository of an organization as a repository line', () => {
+    const content = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [row({ repoUrl: ONE, requestHints: { organization: 'acme' } })],
+    })
+
+    expect(content.text).toBe('⏳ *<https://github.com/acme/one|acme/one>* · checking…')
+  })
+
+  it('folds the repositories of an organization request into one line', () => {
+    const org = (repoUrl: string, overrides: Partial<RequestStatusRow> = {}) =>
+      row({ repoUrl, requestHints: { organization: 'acme' }, ...overrides })
+    const waiting = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [
+        org(ONE, { action: 'review', reviewReason: 'Acme is in LFX Insights, but needs a check' }),
+        row({ repoUrl: 'https://github.com/other/solo' }),
+        org(TWO, { action: 'review', reviewReason: 'Acme is in LFX Insights, but needs a check' }),
+      ],
+    })
+    expect(waiting.text.split('\n')).toEqual([
+      '👀 *github.com/acme* · 2 repositories · with the CDP team: Acme is in LFX Insights, but needs a check',
+      '⏳ *<https://github.com/other/solo|other/solo>* · checking…',
+      '_2 with the CDP team, 1 checking_',
+    ])
+
+    const mixed = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [
+        org(ONE, { action: 'onboarded', matchedProjectName: 'Acme' }),
+        org(TWO, { action: 'skip' }),
+      ],
+    })
+    expect(mixed.text.split('\n')).toEqual([
+      '✅ *github.com/acme* · 2 repositories: 1 added, 1 not added',
+      '_1 added, 1 not added_',
+    ])
+
+    const nothingAdded = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [
+        org(ONE, { action: 'skip', classificationKind: 'already_tracked' }),
+        org(TWO, { action: 'skip' }),
+      ],
+    })
+    expect(nothingAdded.text.split('\n')[0]).toBe(
+      '📘 *github.com/acme* · 2 repositories: 1 already there, 1 not added',
+    )
+
+    const rejected = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [
+        org(ONE, {
+          action: 'skip',
+          skipReason: 'rejected in review by U1',
+          decisionNote: 'Use the mirror',
+        }),
+        org(TWO, {
+          action: 'skip',
+          skipReason: 'rejected in review by U1',
+          decisionNote: 'Use the mirror',
+        }),
+      ],
+    })
+    expect(rejected.text).toContain('🚫 *github.com/acme* · 2 repositories · not added: ')
+    expect(rejected.text).toContain('\n> Use the mirror')
   })
 
   it('keeps the whole message under the Slack block limit', () => {

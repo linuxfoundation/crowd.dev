@@ -206,6 +206,8 @@
 </template>
 
 <script lang="ts" setup>
+import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
+import type { GithubMappingIntegration } from '@/config/integrations/github/types/GithubMappingSettings';
 import {
   computed, onMounted, ref,
 } from 'vue';
@@ -218,7 +220,7 @@ import useVuelidate from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -237,7 +239,7 @@ import ChangesConfirmationModal from '@/modules/admin/modules/integration/compon
 
 const props = defineProps<{
   modelValue: boolean;
-  integration: any;
+  integration: GithubMappingIntegration;
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
@@ -249,7 +251,7 @@ const route = useRoute();
 const router = useRouter();
 
 // Store
-const { doFetch } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 // Drawer visibility
 const isDrawerVisible = computed({
@@ -264,7 +266,7 @@ const isDrawerVisible = computed({
 // Search
 const search = ref('');
 
-const filteredRepos = computed(() => repos.value.filter((r: any) => r.name.toLowerCase().includes(search.value.toLowerCase())));
+const filteredRepos = computed(() => repos.value.filter((r) => r.name.toLowerCase().includes(search.value.toLowerCase())));
 
 // Bulk select
 const isBulkSelectOpened = ref<boolean>(false);
@@ -292,8 +294,8 @@ const githubDetails = computed(() => github);
 // Form
 const form = ref<Record<string, string>>(
   // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-  repos.value.reduce(
-    (a: Record<string, any>, b: any) => ({
+  repos.value.reduce<Record<string, string>>(
+    (a, b) => ({
       ...a,
       [b.url]: props.integration.segmentId,
     }),
@@ -301,8 +303,8 @@ const form = ref<Record<string, string>>(
   ),
 );
 
-const rules = computed(() => repos.value.reduce(
-  (a: Record<string, any>, b: any) => ({
+const rules = computed(() => repos.value.reduce<Record<string, { required: typeof required }>>(
+  (a, b) => ({
     ...a,
     [b.url]: {
       required,
@@ -314,8 +316,8 @@ const rules = computed(() => repos.value.reduce(
 const $v = useVuelidate(rules, form);
 
 const hasFormChanged = computed(() => {
-  const original = repos.value.reduce(
-    (a: Record<string, any>, b: any) => ({
+  const original = repos.value.reduce<Record<string, string>>(
+    (a, b) => ({
       ...a,
       [b.url]: props.integration.segmentId,
     }),
@@ -339,14 +341,14 @@ const connect = () => {
     confirmButtonText: 'Connect GitHub',
     cancelButtonText: 'Cancel',
     icon: 'fa-triangle-exclamation fa-light',
-  } as any).then(() => {
+  }).then(() => {
     IntegrationService.githubMapRepos(props.integration.id, data, [
       props.integration.segmentId,
     ])
       .then(() => {
         isDrawerVisible.value = false;
 
-        doFetch([props.integration.segmentId]);
+        integrationStore.fetch([props.integration.segmentId]);
 
         trackEvent({
           key: FeatureEventKey.CONNECT_INTEGRATION,
@@ -374,7 +376,7 @@ const connect = () => {
   });
 };
 
-const errorHandler = (error: any) => {
+const errorHandler = (error: IntegrationApiError) => {
   const errorMessage = error?.response?.data;
   const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping github repositories');
 
@@ -399,7 +401,7 @@ const fetchSubProjects = () => {
   loading.value = true;
   LfService.findSegment(route.params.grandparentId)
     .then((segment: ProjectGroup) => {
-      subprojects.value = segment.projects!
+      subprojects.value = (segment.projects ?? [])
         .map((p) => p.subprojects)
         .flat()
         .filter((s) => s !== undefined);
@@ -413,8 +415,8 @@ const fetchSubProjects = () => {
 };
 
 const revertChanges = () => {
-  form.value = repos.value.reduce(
-    (a: Record<string, any>, b: any) => ({
+  form.value = repos.value.reduce<Record<string, string>>(
+    (a, b) => ({
       ...a,
       [b.url]: props.integration.segmentId,
     }),

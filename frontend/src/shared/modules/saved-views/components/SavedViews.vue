@@ -171,7 +171,7 @@ const props = defineProps<{
   staticViews?: SavedView[],
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: Filter): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: Filter): void}>();
 
 const { hasPermission } = usePermissions();
 
@@ -315,7 +315,7 @@ const update = () => {
     confirmButtonText: 'Update shared view',
     showCancelButton: true,
     cancelButtonText: 'Cancel',
-  } as any) : Promise.resolve())
+  }) : Promise.resolve())
     .then(() => {
       SavedViewsService.update(view.id, {
         name: view.name,

@@ -27,7 +27,7 @@ const annualEmployeeGrowthRate: NumberFilterConfig = {
   itemLabelRenderer(value: NumberFilterValue, options: NumberFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.NUMBER]('Annual Employee Growth Rate', value, options);
   },
-  apiFilterRenderer(value: NumberFilterValue): any[] {
+  apiFilterRenderer(value: NumberFilterValue) {
     return numberApiFilterRenderer('employeeGrowthRate12Month', value, valueParser);
   },
 };

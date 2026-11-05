@@ -19,13 +19,15 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { GerritSettings } from '@/config/integrations/gerrit/types/GerritSettings';
 import { defineProps, ref } from 'vue';
 import LfGerritSettingsDrawer from '@/config/integrations/gerrit/components/gerrit-settings-drawer.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<GerritSettings> | undefined,
   segmentId: string | null;
   grandparentId: string | null;
 }>();

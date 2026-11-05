@@ -40,6 +40,7 @@ import { computed } from 'vue';
 import { contributorDetailsHeaderProfilePlatforms } from '@/modules/contributor/config/details-header-profile-platforms';
 import LfContributorEditName from '@/modules/contributor/components/edit/contributor-edit-name.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import LfContributorWorkPosition from '@/modules/contributor/components/shared/contributor-work-position.vue';
 import LfContributorDetailsHeaderProfiles
@@ -52,14 +53,14 @@ const props = defineProps<{
 }>();
 
 const {
-  isBot, isTeamMember, activeOrganization,
+  isBot, isTeamMember, activeProfileOrganization,
 } = useContributorHelpers();
 
 const hasHeaderIdentities = computed(
-  () => (props.contributor.identities || []).some((i) => contributorDetailsHeaderProfilePlatforms.includes(i.platform)),
+  () => (props.contributor.identities || []).some((i) => contributorDetailsHeaderProfilePlatforms.includes(i.platform as Platform)),
 );
 
-const organization = computed(() => activeOrganization(props.contributor));
+const organization = computed(() => activeProfileOrganization(props.contributor));
 const jobTitle = computed(() => props.contributor.attributes?.jobTitle?.default
     || organization.value?.memberOrganizations?.title);
 </script>

@@ -14,12 +14,13 @@
 </template>
 
 <script setup lang="ts">
+import type { ReportDataAttribute } from '@/shared/modules/report-issue/config';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 
 const props = defineProps<{
-  attribute: any,
+  attribute?: ReportDataAttribute,
   entity: Contributor,
 }>();
 

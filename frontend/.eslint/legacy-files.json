@@ -61,13 +61,11 @@
     "src/modules/member/components/member-last-activity.vue",
     "src/modules/member/components/member-manage-attributes-drawer.vue",
     "src/modules/member/components/member-merge-dialog.vue",
-    "src/modules/member/components/member-merge-suggestions.vue",
     "src/modules/member/components/member-organizations-vertical.vue",
     "src/modules/member/components/member-organizations.vue",
     "src/modules/member/components/member-reach.vue",
     "src/modules/member/components/member-selection-dropdown.vue",
     "src/modules/member/components/member-sentiment.vue",
-    "src/modules/member/components/suggestions/member-merge-suggestions-details.vue",
     "src/modules/organization/components/form/organization-form-attributes.vue",
     "src/modules/organization/components/form/organization-form-details.vue",
     "src/modules/organization/components/form/organization-form-identities.vue",
@@ -532,5 +530,9 @@
     "src/ui-kit/textarea/Textarea.vue",
     "src/ui-kit/timeline/Timeline.vue",
     "src/ui-kit/tooltip/Tooltip.vue"
+  ],
+  "@typescript-eslint/no-explicit-any": [
+    "src/modules/member/components/member-merge-suggestions.vue",
+    "src/modules/member/components/suggestions/member-merge-suggestions-details.vue"
   ]
 }

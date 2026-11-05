@@ -149,7 +149,7 @@ const editOrganization = ref<Organization | null>(null);
 
 const orgGrouped = computed(() => {
   const grouped = groupBy(props.contributor.organizations, 'id');
-  return Object.keys(grouped).map((id, index): TimelineGroup => ({
+  return Object.keys(grouped).map((id, index): TimelineGroup<Organization> => ({
     id: index,
     label: grouped[id][0].displayName,
     labelLink: {

@@ -10,12 +10,13 @@
 </template>
 
 <script setup lang="ts">
+import type { GithubMappingIntegration } from '@/config/integrations/github/types/GithubMappingSettings';
 import { computed, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import AppGithubSettingsDrawer from '@/config/integrations/github/components/settings/github-settings-drawer.vue';
 
 const props = withDefaults(defineProps<{
-  integration: any;
+  integration: GithubMappingIntegration;
   preventAutoOpen?: boolean;
 }>(), {
   preventAutoOpen: false,

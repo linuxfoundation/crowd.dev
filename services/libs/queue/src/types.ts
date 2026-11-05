@@ -47,6 +47,7 @@ export interface IQueue {
     options?: unknown,
   ): Promise<void>
   stop(): void
+  disconnectProducer(): Promise<void>
   send(
     channel: IQueueChannel,
     message: IQueueMessage,

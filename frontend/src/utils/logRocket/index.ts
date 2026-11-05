@@ -4,7 +4,7 @@ import type { User } from '@/modules/user/types/User';
 
 const APP_ID = 'nm6fil/crowddev';
 
-const isLogRocketEnabled: () => void = () => config.env === 'production';
+const isLogRocketEnabled: () => boolean = () => config.env === 'production';
 
 const init = () => {
   if (isLogRocketEnabled()) {

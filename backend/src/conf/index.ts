@@ -5,7 +5,7 @@ import { ISearchSyncApiConfig } from '@crowd/opensearch'
 import { IQueueClientConfig } from '@crowd/queue'
 import { IRedisConfiguration } from '@crowd/redis'
 import { ITemporalConfig } from '@crowd/temporal'
-import { IGithubIssueReporterConfiguration, IJiraIssueReporterConfiguration } from '@crowd/types'
+import { IGithubIssueReporterConfiguration } from '@crowd/types'
 
 import {
   ApiConfiguration,
@@ -93,6 +93,12 @@ export const PACKAGES_TEMPORAL_CONFIG: ITemporalConfig | undefined = config.has(
   ? config.get<ITemporalConfig>('packagesTemporal')
   : undefined
 
+export const CONNECTORS_TEMPORAL_CONFIG: ITemporalConfig | undefined = config.has(
+  'connectorsTemporal.namespace',
+)
+  ? config.get<ITemporalConfig>('connectorsTemporal')
+  : undefined
+
 export const SEGMENT_CONFIG: SegmentConfiguration = config.get<SegmentConfiguration>('segment')
 
 export const COMPREHEND_CONFIG: ComprehendConfiguration =
@@ -116,9 +122,6 @@ export const GITHUB_CONFIG: GithubConfiguration = config.get<GithubConfiguration
 
 export const GITHUB_ISSUE_REPORTER_CONFIG: IGithubIssueReporterConfiguration =
   config.get<IGithubIssueReporterConfiguration>('githubIssueReporter')
-
-export const JIRA_ISSUE_REPORTER_CONFIG: IJiraIssueReporterConfiguration =
-  config.get<IJiraIssueReporterConfiguration>('jiraIssueReporter')
 
 export const NANGO_CONFIG: NangoConfiguration = config.get<NangoConfiguration>('nango')
 

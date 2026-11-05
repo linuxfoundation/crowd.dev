@@ -1,8 +1,11 @@
 DESCRIPTION >
     - `cncf_collection_activities_ds` contains activity relations pre-filtered to the CNCF collection (slug `cncf`, `cityHash64('cncf') % 10 = 8`, so all its rows live in bucket 8).
     - Populated daily by `cncf_collection_activities_copy.pipe`, which reads from `activityRelations_collection_deduplicated_cleaned_bucket_8_ds` filtered to `collectionSlug = 'cncf'`.
-    - Exists so the CNCF geo-distribution report pipes (`collection_contributors_geo_distribution*`) don't have to scan/filter the full bucket on every request.
-    - Stores only the fields those report pipes need: organizationId, memberId, timestamp, platform, type.
+    - Exists so the CNCF report pipes (`collection_contributors_geo_distribution*`, `cncf_country_*`) don't have to scan/filter the full bucket on every request.
+    - Stores only the fields those report pipes need: organizationId, memberId, timestamp, platform, type, segmentId.
+    - `segmentId` is the project's segment, used by the country report to break contributions down by project.
+    - `memberPlace` and `organizationPlace` are the upper-cased country, else location, of the contributor and the organization, copied in so the country report pipes match countries without joining `members_sorted` and `organizations` on every request.
+    - `organizationListed` is 1 when the organization can appear in reports: not blocked from affiliations and not the "Individual - No Account" placeholder.
 
 TAGS "Report"
 
@@ -11,7 +14,11 @@ SCHEMA >
     `memberId` String DEFAULT '',
     `timestamp` DateTime64(3),
     `platform` LowCardinality(String),
-    `type` LowCardinality(String)
+    `type` LowCardinality(String),
+    `segmentId` String DEFAULT '',
+    `memberPlace` LowCardinality(String) DEFAULT '',
+    `organizationPlace` LowCardinality(String) DEFAULT '',
+    `organizationListed` UInt8 DEFAULT 0
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(timestamp)

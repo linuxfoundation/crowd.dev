@@ -1,5 +1,7 @@
 import { proxyActivities } from '@temporalio/workflow'
 
+import { MergeSuggestionSource } from '@crowd/types'
+
 import type * as activities from '../activities'
 import { scoreSubprojectMemberMergePairs } from '../subprojectMemberSimilarity'
 import { IProcessGenerateSubprojectMemberMergeSuggestionsArgs } from '../types'
@@ -19,7 +21,7 @@ export async function generateSubprojectMemberMergeSuggestions(
   const suggestions = scoreSubprojectMemberMergePairs(pairs)
 
   if (suggestions.length > 0) {
-    await addMemberToMerge(suggestions)
+    await addMemberToMerge(suggestions, MergeSuggestionSource.SUBPROJECT_SIMILARITY)
   }
 
   // mark even with zero suggestions so we don't retry daily for the whole window

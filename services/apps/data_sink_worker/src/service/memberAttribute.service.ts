@@ -4,10 +4,15 @@ import {
   getMemberAttributeSettings,
   getPlatformPriorityArray,
 } from '@crowd/data-access-layer/src/members/attributeSettings'
+import { IDbMemberAttributeSetting } from '@crowd/data-access-layer/src/members/types'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { RedisClient } from '@crowd/redis'
 import { MemberAttributeType, PlatformType } from '@crowd/types'
+
+export function isEmptyAttributeValue(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+}
 
 export default class MemberAttributeService extends LoggerBase {
   constructor(
@@ -28,8 +33,10 @@ export default class MemberAttributeService extends LoggerBase {
   public async validateAttributes(
     platform: PlatformType,
     attributes: Record<string, unknown>,
+    attributeSettings?: IDbMemberAttributeSetting[],
   ): Promise<Record<string, unknown>> {
-    const settings = await getMemberAttributeSettings(dbStoreQx(this.store), this.redis)
+    const settings =
+      attributeSettings ?? (await getMemberAttributeSettings(dbStoreQx(this.store), this.redis))
     const memberAttributeSettings = settings.reduce((acc, attribute) => {
       acc[attribute.name] = attribute
       return acc
@@ -44,12 +51,30 @@ export default class MemberAttributeService extends LoggerBase {
         delete attributes[attributeName]
         continue
       }
+      // must precede the typeof check: typeof null === 'object'
+      if (isEmptyAttributeValue(attributes[attributeName])) {
+        delete attributes[attributeName]
+        continue
+      }
       // Convert primitive to platform-specific format: { [platform]: value }
       if (typeof attributes[attributeName] !== 'object') {
         const value = attributes[attributeName]
 
         attributes[attributeName] = {
           [platform]: value,
+        }
+      }
+
+      // an empty value per platform is no value either, so it never replaces a stored one
+      if (!Array.isArray(attributes[attributeName])) {
+        for (const platformKey of Object.keys(attributes[attributeName])) {
+          if (isEmptyAttributeValue(attributes[attributeName][platformKey])) {
+            delete attributes[attributeName][platformKey]
+          }
+        }
+        if (Object.keys(attributes[attributeName]).length === 0) {
+          delete attributes[attributeName]
+          continue
         }
       }
 

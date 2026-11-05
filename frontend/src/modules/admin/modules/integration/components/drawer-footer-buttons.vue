@@ -83,7 +83,7 @@
   </div>
 
   <integration-confirmation-modal
-    v-if="props.integration"
+    v-if="props.integration?.id && props.integration?.platform"
     v-model="isDisconnectIntegrationModalOpen"
     :platform="props.integration.platform"
     :integration-id="props.integration.id"
@@ -95,10 +95,11 @@ import { ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import IntegrationConfirmationModal from '@/modules/admin/modules/integration/components/integration-confirmation-modal.vue';
 
 const props = defineProps<{
-  integration: any;
+  integration?: Partial<Pick<Integration<unknown>, 'id' | 'platform'>>;
   isEditMode: boolean;
   hasFormChanged: boolean;
   isLoading: boolean;

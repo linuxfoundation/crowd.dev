@@ -98,13 +98,14 @@
 </template>
 
 <script setup lang="ts">
+import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import useVuelidate from '@vuelidate/core';
 import {
   computed, onMounted, reactive, ref,
 } from 'vue';
 import git from '@/config/integrations/git/config';
 import AppArrayInput from '@/shared/form/array-input.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -119,6 +120,7 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import { lfIntegrations } from '@/config/integrations';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps({
   integration: {
@@ -150,8 +152,8 @@ const form = reactive({
 const showEmptyState = ref(!props.integration?.settings?.remotes?.length);
 
 // Track mirrored repos (sourceIntegrationId != gitIntegrationId)
-const mirroredRepos = ref<any[]>([]);
-const mirroredRepoUrls = computed(() => new Set(mirroredRepos.value.map((r: any) => r.url)));
+const mirroredRepos = ref<IntegrationMapping[]>([]);
+const mirroredRepoUrls = computed(() => new Set(mirroredRepos.value.map((r) => r.url)));
 
 // Track original form state for change detection
 const originalRemotes = ref<string[]>([]);
@@ -167,7 +169,7 @@ const formSnapshot = () => {
 
 const $v = useVuelidate({}, form, { $stopPropagation: true });
 
-const { doGitConnect } = mapActions('integration');
+const { connectGit } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -186,7 +188,7 @@ const fetchRepoMappings = () => {
   if (!props.integration?.id) return;
 
   IntegrationService.fetchGitMappings(props.integration)
-    .then((repos: any[]) => {
+    .then((repos: IntegrationMapping[]) => {
       // Find repos where sourceIntegrationId != gitIntegrationId (mirrored from other platforms)
       mirroredRepos.value = repos
         .filter((r) => r.sourceIntegrationId !== r.gitIntegrationId);
@@ -251,7 +253,7 @@ const connect = async () => {
   const isUpdate = !!props.integration?.settings?.remotes?.length;
 
   // Send all remotes including mirrored ones to preserve them in settings
-  doGitConnect({
+  connectGit({
     remotes: form.remotes,
     isUpdate,
     segmentId: props.segmentId,
@@ -274,7 +276,7 @@ const connect = async () => {
     });
 };
 
-const errorHandler = (error: any) => {
+const errorHandler = (error: IntegrationApiError) => {
   const errorMessage = error?.response?.data;
   const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping git repositories');
 

@@ -39,7 +39,7 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const props = defineProps<{
-  progress: IntegrationProgress | null,
+  progress: IntegrationProgress | null | undefined,
   barOnly?: boolean,
   hideBar?: boolean,
   textClass?: string,

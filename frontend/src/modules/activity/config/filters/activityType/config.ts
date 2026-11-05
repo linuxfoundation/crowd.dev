@@ -7,6 +7,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const activityType: CustomFilterConfig = {
   id: 'activityType',
@@ -19,19 +20,20 @@ const activityType: CustomFilterConfig = {
   itemLabelRenderer(
     value: MultiSelectFilterValue,
     options: MultiSelectFilterOptions,
-    data: any,
+    data: unknown,
   ): string {
+    // shortcut: passes data where options are expected, as on main. revisit: when custom label renderers take data separately
     return itemLabelRendererByType[FilterConfigType.MULTISELECT](
       'Activity type',
       value,
-      data,
+      data as MultiSelectFilterOptions,
       null,
       {
         addGroupLabel: true,
       },
     );
   },
-  apiFilterRenderer({ value, include }: MultiSelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: MultiSelectFilterValue): ApiFilter[] {
     const filter = {
       or: value.map((type) => {
         const [platform, activityType] = type.split(':');

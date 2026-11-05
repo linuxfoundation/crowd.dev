@@ -164,7 +164,7 @@ const contributors = ref<Member[]>([]);
 const totalContacts = ref<number>(0);
 const loading = ref<boolean>(false);
 
-const savedBody = ref<any>({});
+const savedBody = ref<Record<string, unknown>>({});
 const searchStr = ref<string>('');
 
 const {

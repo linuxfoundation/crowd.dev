@@ -7,7 +7,7 @@
         </div>
         <div class="flex items-center gap-3">
           <lf-avatar
-            :src="organization.logo"
+            :src="organization.logo ?? undefined"
             :name="organization.displayName"
             :size="32"
             img-class="!object-contain"

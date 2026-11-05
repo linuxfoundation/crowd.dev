@@ -13,6 +13,7 @@ export enum DevToRootStream {
 
 export enum DevToActivityType {
   COMMENT = 'comment',
+  MENTION = 'mention',
 }
 
 export interface IDevToRootOrganizationStreamData {

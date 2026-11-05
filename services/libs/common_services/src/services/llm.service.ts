@@ -6,7 +6,7 @@ import {
   InvokeModelCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime'
 
-import { IS_LLM_ENABLED, parseLlmJson } from '@crowd/common'
+import { IS_LLM_ENABLED, LlmResponseTruncatedError, parseLlmJson } from '@crowd/common'
 import { insertPromptHistoryEntry } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { Logger, LoggerBase } from '@crowd/logging'
@@ -24,6 +24,10 @@ import {
 export interface IBedrockClientCredentials {
   accessKeyId: string
   secretAccessKey: string
+}
+
+function firstTextBlock(content: Array<{ type?: string; text?: string }>): string {
+  return content.find((block) => block.type === 'text')?.text ?? content[0]?.text ?? ''
 }
 
 export class LlmService extends LoggerBase {
@@ -134,7 +138,7 @@ export class LlmService extends LoggerBase {
 
     const inputTokenCount = body.usage.input_tokens
     const outputTokenCount = body.usage.output_tokens
-    const answer = body.content[0].text
+    const answer = firstTextBlock(body.content)
 
     const pricing = LLM_MODEL_PRICING_MAP[settings.modelId]
 
@@ -160,6 +164,10 @@ export class LlmService extends LoggerBase {
         this.log.error(err, 'Failed to save LLM prompt history entry!')
         throw err
       }
+    }
+
+    if (body.stop_reason === 'max_tokens') {
+      throw new LlmResponseTruncatedError(type, outputTokenCount)
     }
 
     return result

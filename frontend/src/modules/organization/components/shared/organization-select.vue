@@ -71,7 +71,7 @@ const props = defineProps<{
   modelValue: Organization | null,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: Organization | null): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization | null): void}>();
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 

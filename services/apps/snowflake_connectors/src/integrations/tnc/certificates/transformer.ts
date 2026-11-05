@@ -2,14 +2,15 @@ import { TNC_GRID, TncActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
 import { IActivityData, MemberAttributeName, PlatformType } from '@crowd/types'
 
-import { TransformedActivity } from '../../../core/transformerBase'
+import { cleanPersonalEmail } from '../../../core/personalEmail'
+import { TransformedActivity, cleanIdentityValue } from '../../../core/transformerBase'
 import { TncTransformerBase } from '../tncTransformerBase'
 
 const log = getServiceChildLogger('tncCertificatesTransformer')
 
 export class TncCertificatesTransformer extends TncTransformerBase {
   transformRow(row: Record<string, unknown>): TransformedActivity | null {
-    const email = (row.USER_EMAIL as string | null)?.trim() || null
+    const email = cleanPersonalEmail(row.USER_EMAIL)
     if (!email) {
       log.debug({ certificateId: row.CERTIFICATE_ID }, 'Skipping row: missing email')
       return null
@@ -17,8 +18,8 @@ export class TncCertificatesTransformer extends TncTransformerBase {
 
     const certificateId = (row.CERTIFICATE_ID as string)?.trim()
     const learnerName = (row.LEARNER_NAME as string | null)?.trim() || null
-    const lfUsername = (row.LFID as string | null)?.trim() || null
-    const sourceId = (row.USER_ID as string | null) || undefined
+    const lfUsername = cleanIdentityValue(row.LFID)
+    const sourceId = cleanIdentityValue(row.USER_ID) ?? undefined
 
     const identities = this.buildMemberIdentities({
       email,

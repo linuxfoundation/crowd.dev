@@ -47,7 +47,7 @@ export const buildForm = (
 ): InsightsProjectAddFormModel => ({
   ...result,
   organizationId: result.organization.id,
-  collectionsIds: result.collections.map((collection: any) => collection.id),
+  collectionsIds: result.collections.map((collection) => collection.id),
   collections: result.collections,
   keywords: result.keywords || [],
   searchKeywords: result.searchKeywords || [],

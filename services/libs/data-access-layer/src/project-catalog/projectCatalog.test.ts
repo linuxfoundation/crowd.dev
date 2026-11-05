@@ -9,6 +9,7 @@ import {
   claimProjectCatalogForOnboarding,
   claimProjectCatalogForSlackEvaluation,
   finalizeProjectCatalogEvaluation,
+  deferProjectCatalogEvaluation,
   markProjectCatalogEvaluationFailed,
   requeueProjectCatalogEvaluation,
   findProjectCatalogById,
@@ -19,6 +20,7 @@ import {
   findProjectCatalogPendingReview,
   findProjectCatalogReviewWithoutMessage,
   insertProjectCatalog,
+  isProjectCatalogOnboardingPending,
   markProjectCatalogClassified,
   markProjectCatalogOnboardingFailed,
   markProjectCatalogOnboardingSkipped,
@@ -27,6 +29,7 @@ import {
   promoteProjectCatalogProvenance,
   releaseProjectCatalogOnboardingClaim,
   lockProjectCatalogReviewRequest,
+  reopenRejectedProjectCatalog,
   resolveProjectCatalogReview,
   setProjectCatalogReviewMessageTs,
   setProjectCatalogSourceUrl,
@@ -756,6 +759,29 @@ describe('evaluation failures and retries', () => {
     expect(requeued?.evaluatedAt).toBeNull()
   })
 
+  test('defers a transient failure to the next run until the last allowed run', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+
+    const defer = (expectedAttempts: number, reason: string) =>
+      deferProjectCatalogEvaluation(qx, inserted.id, { reason, expectedAttempts, maxRuns: 3 })
+
+    expect(await defer(0, 'API returned HTTP 503')).toMatchObject({
+      action: 'evaluate',
+      evaluationAttempts: 1,
+      evaluationReason: 'API returned HTTP 503',
+      evaluatedAt: null,
+    })
+    expect(await defer(0, 'redelivered')).toBeNull()
+    expect(await defer(1, 'again')).toMatchObject({ evaluationAttempts: 2 })
+    expect(await defer(2, 'and again')).toBeNull()
+
+    expect(await markProjectCatalogEvaluationFailed(qx, inserted.id, 'stale delivery', 1)).toBe(0)
+    expect(await markProjectCatalogEvaluationFailed(qx, inserted.id, 'and again', 2)).toBe(1)
+
+    const requeued = await requeueProjectCatalogEvaluation(qx, inserted.id)
+    expect(requeued?.evaluationAttempts).toBe(0)
+  })
+
   test('never touches rows outside evaluate or outside an evaluation error', async ({ qx }) => {
     const onboarded = await insertProjectCatalog(qx, catalogRow({ action: 'onboarded' }))
     const onboardingError = await insertProjectCatalog(
@@ -861,8 +887,24 @@ describe('resolveProjectCatalogReview', () => {
     expect((await findProjectCatalogById(qx, automatic.id))?.action).toBe('review')
   })
 
-  test('approve moves the row to onboard and records the reviewer', async ({ qx }) => {
+  test('a row without a proposed action can only be marked done', async ({ qx }) => {
     const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'review' }))
+
+    expect(
+      await resolveProjectCatalogReview(qx, inserted.id, { decision: 'approve', reviewedBy: 'U1' }),
+    ).toBeNull()
+    const row = await resolveProjectCatalogReview(qx, inserted.id, {
+      decision: 'done',
+      reviewedBy: 'U1',
+    })
+
+    expect(row?.action).toBe('onboarded')
+    expect(row?.onboardedAt).not.toBeNull()
+  })
+
+  test('approve moves the row to onboard and records the reviewer', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+    await markProjectCatalogClassified(qx, inserted.id, reviewClassification('update_integration'))
 
     const row = await resolveProjectCatalogReview(qx, inserted.id, {
       decision: 'approve',
@@ -890,7 +932,8 @@ describe('resolveProjectCatalogReview', () => {
   })
 
   test('does not resolve a row a second time', async ({ qx }) => {
-    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'review' }))
+    const inserted = await insertProjectCatalog(qx, catalogRow({ action: 'evaluate' }))
+    await markProjectCatalogClassified(qx, inserted.id, reviewClassification('update_integration'))
 
     await resolveProjectCatalogReview(qx, inserted.id, { decision: 'approve', reviewedBy: 'U1' })
     const second = await resolveProjectCatalogReview(qx, inserted.id, {
@@ -1466,6 +1509,97 @@ describe('promoteProjectCatalogProvenance', () => {
     expect(row?.provenance).toBe('github-discussion')
   })
 
+  test('adopts a pending row into an organization request with its context, to be classified again', async ({
+    qx,
+  }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'evaluate',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+    await markProjectCatalogClassified(qx, inserted.id, {
+      projectName: 'Old name',
+      classificationKind: 'non_lf_new_project',
+      proposedAction: 'create_segment',
+      pccProjectId: null,
+      matchedProjectName: null,
+      matchedSegmentId: null,
+      action: 'evaluate',
+      skipReason: null,
+      reviewReason: null,
+    })
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'slack-bot', [
+      {
+        repoUrl: inserted.repoUrl,
+        sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+        organization: 'acme',
+        requestText: 'onboard Acme, LF project, https://github.com/acme/',
+        projectName: 'Acme',
+        requestedBy: 'U1',
+      },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(affected).toBe(1)
+    expect(row).toMatchObject({
+      provenance: 'slack-bot',
+      sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+      requestHints: { organization: 'acme' },
+      requestText: 'onboard Acme, LF project, https://github.com/acme/',
+      projectName: 'Acme',
+      requestedBy: 'U1',
+      classifiedAt: null,
+      evaluationAttempts: 0,
+    })
+  })
+
+  test('keeps the classification of an adopted row that already left evaluate', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'evaluate',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+    const classified = await markProjectCatalogClassified(qx, inserted.id, {
+      projectName: 'Old name',
+      classificationKind: 'lf_not_in_pcc',
+      proposedAction: 'create_segment',
+      pccProjectId: null,
+      matchedProjectName: null,
+      matchedSegmentId: null,
+      action: 'review',
+      skipReason: null,
+      reviewReason: 'needs a look',
+    })
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'slack-bot', [
+      {
+        repoUrl: inserted.repoUrl,
+        sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+        organization: 'acme',
+        requestText: 'onboard Acme, https://github.com/acme/',
+        projectName: 'Acme',
+        requestedBy: 'U1',
+      },
+    ])
+
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(affected).toBe(1)
+    expect(row).toMatchObject({
+      provenance: 'slack-bot',
+      sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+      requestHints: { organization: 'acme' },
+      action: 'review',
+      classifiedAt: classified?.classifiedAt,
+    })
+  })
+
   test('promotes a row with an existing bulk provenance', async ({ qx }) => {
     const inserted = await insertProjectCatalog(
       qx,
@@ -1591,5 +1725,171 @@ describe('findProjectCatalogByRepoUrls', () => {
 
     expect(rows.map((row) => row.id).sort()).toEqual([one.id, two.id].sort())
     expect(await findProjectCatalogByRepoUrls(qx, [])).toEqual([])
+  })
+})
+
+describe('isProjectCatalogOnboardingPending', () => {
+  const now = Date.parse('2026-10-19T12:00:00Z')
+
+  test('counts unclaimed and stale-claimed onboard rows, nothing else', () => {
+    expect(isProjectCatalogOnboardingPending({ action: 'onboard', onboardedAt: null }, now)).toBe(
+      true,
+    )
+    expect(
+      isProjectCatalogOnboardingPending(
+        { action: 'onboard', onboardedAt: '2026-10-19T11:00:00Z' },
+        now,
+      ),
+    ).toBe(true)
+    expect(
+      isProjectCatalogOnboardingPending(
+        { action: 'onboard', onboardedAt: '2026-10-19T11:50:00Z' },
+        now,
+      ),
+    ).toBe(false)
+    expect(isProjectCatalogOnboardingPending({ action: 'onboarded', onboardedAt: null }, now)).toBe(
+      false,
+    )
+  })
+})
+
+describe('reopenRejectedProjectCatalog', () => {
+  const reopenRequest = {
+    repoUrl: 'https://github.com/gerritcodereview/gerrit',
+    sourceUrl: 'https://slack.test/archives/C1/p2',
+    requestText: 'onboard Gerrit https://github.com/gerritcodereview/gerrit',
+    projectName: 'Gerrit',
+    requestedBy: 'U2',
+    organization: 'gerritcodereview',
+  }
+
+  async function rejectedRow(
+    qx: Parameters<typeof insertProjectCatalog>[0],
+    decisionReason: string,
+  ) {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'evaluate',
+        sourceUrl: 'https://slack.test/archives/C1/p1',
+        requestText: 'onboard Gerrit project https://github.com/gerritcodereview/gerrit',
+        projectName: 'Gerrit project',
+      }),
+    )
+    await markProjectCatalogClassified(qx, inserted.id, {
+      projectName: 'Gerrit project',
+      classificationKind: 'ambiguous',
+      proposedAction: 'human_review',
+      pccProjectId: null,
+      matchedProjectName: null,
+      matchedSegmentId: null,
+      action: 'review',
+      skipReason: null,
+      reviewReason: 'no match',
+    })
+    await setProjectCatalogReviewMessageTs(qx, inserted.id, '1700000000.000100')
+    await resolveProjectCatalogReview(qx, inserted.id, {
+      decision: 'reject',
+      reviewedBy: 'U1',
+      decisionReason,
+      decisionNote: 'typo',
+    })
+    return inserted
+  }
+
+  test('reopens a row rejected for a requester error and returns the earlier thread and reason', async ({
+    qx,
+  }) => {
+    const inserted = await rejectedRow(qx, 'other')
+
+    const reopened = await reopenRejectedProjectCatalog(
+      qx,
+      [reopenRequest],
+      ['wrong_project', 'other'],
+    )
+
+    expect(reopened).toEqual([
+      {
+        id: inserted.id,
+        repoUrl: inserted.repoUrl,
+        previousSourceUrl: 'https://slack.test/archives/C1/p1',
+        previousDecisionReason: 'other',
+      },
+    ])
+    const row = await findProjectCatalogById(qx, inserted.id)
+    expect(row).toMatchObject({
+      action: 'auto',
+      source: 'slack-bot',
+      provenance: 'slack-bot',
+      sourceUrl: 'https://slack.test/archives/C1/p2',
+      requestText: reopenRequest.requestText,
+      projectName: 'Gerrit',
+      requestedBy: 'U2',
+      requestHints: { organization: 'gerritcodereview' },
+      skipReason: null,
+      classificationKind: null,
+      proposedAction: null,
+      classifiedAt: null,
+      reviewedAt: null,
+      reviewedBy: null,
+      reviewMessageTs: null,
+      reviewReason: null,
+      decisionReason: null,
+      decisionNote: null,
+      evaluationAttempts: 0,
+    })
+  })
+
+  test('leaves a row rejected for another reason untouched', async ({ qx }) => {
+    const inserted = await rejectedRow(qx, 'not_lf_project')
+
+    const reopened = await reopenRejectedProjectCatalog(
+      qx,
+      [reopenRequest],
+      ['wrong_project', 'other'],
+    )
+
+    expect(reopened).toEqual([])
+    expect(await findProjectCatalogById(qx, inserted.id)).toMatchObject({
+      action: 'skip',
+      reviewedBy: 'U1',
+      decisionReason: 'not_lf_project',
+      sourceUrl: 'https://slack.test/archives/C1/p1',
+    })
+  })
+
+  test('clears the organization hint and the requester when the new request has none', async ({
+    qx,
+  }) => {
+    const inserted = await rejectedRow(qx, 'wrong_project')
+
+    const reopened = await reopenRejectedProjectCatalog(
+      qx,
+      [{ ...reopenRequest, requestedBy: null, organization: null }],
+      ['wrong_project', 'other'],
+    )
+
+    expect(reopened).toHaveLength(1)
+    expect(await findProjectCatalogById(qx, inserted.id)).toMatchObject({
+      action: 'auto',
+      requestedBy: null,
+      requestHints: null,
+    })
+  })
+
+  test('leaves a row skipped without a review untouched', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({ action: 'skip', skipReason: 'repository already tracked in CDP' }),
+    )
+
+    const reopened = await reopenRejectedProjectCatalog(
+      qx,
+      [reopenRequest],
+      ['wrong_project', 'other'],
+    )
+
+    expect(reopened).toEqual([])
+    expect((await findProjectCatalogById(qx, inserted.id))?.action).toBe('skip')
   })
 })

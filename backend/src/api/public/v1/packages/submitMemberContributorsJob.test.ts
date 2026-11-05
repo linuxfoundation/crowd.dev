@@ -15,6 +15,8 @@ const {
   findMemberContributorsPackage,
   findActiveMemberContributorJobByPurl,
   findLatestMemberContributorJobStatusByPurl,
+  findLatestMemberContributorJobByPurl,
+  incrementMemberContributorJobSubmissions,
   createMemberContributorJob,
   failMemberContributorJob,
 } = vi.hoisted(() => ({
@@ -24,6 +26,8 @@ const {
   findMemberContributorsPackage: vi.fn(),
   findActiveMemberContributorJobByPurl: vi.fn(),
   findLatestMemberContributorJobStatusByPurl: vi.fn(),
+  findLatestMemberContributorJobByPurl: vi.fn(),
+  incrementMemberContributorJobSubmissions: vi.fn(),
   createMemberContributorJob: vi.fn(),
   failMemberContributorJob: vi.fn(),
 }))
@@ -50,6 +54,8 @@ vi.mock('@crowd/data-access-layer', () => ({
   findMemberContributorsPackage,
   findActiveMemberContributorJobByPurl,
   findLatestMemberContributorJobStatusByPurl,
+  findLatestMemberContributorJobByPurl,
+  incrementMemberContributorJobSubmissions,
   createMemberContributorJob,
   failMemberContributorJob,
 }))
@@ -102,6 +108,8 @@ beforeEach(() => {
   findMemberContributorsPackage.mockResolvedValue(packageRow())
   findActiveMemberContributorJobByPurl.mockResolvedValue(null)
   findLatestMemberContributorJobStatusByPurl.mockResolvedValue(null)
+  findLatestMemberContributorJobByPurl.mockResolvedValue(null)
+  incrementMemberContributorJobSubmissions.mockResolvedValue(undefined)
   createMemberContributorJob.mockImplementation(async (_qx, input) => input.id)
   failMemberContributorJob.mockResolvedValue(undefined)
 })
@@ -168,16 +176,6 @@ describe('submitMemberContributorsJob', () => {
       collectionPath: 'github',
     })
     expect(status).toHaveBeenCalledWith(202)
-  })
-
-  it('rejects an ecosystem we do not collect with 400 before any database read', async () => {
-    const { req, res } = mockReqRes({ purl: 'pkg:hackage/aeson' })
-    const error = await submitMemberContributorsJob(req, res).catch((e: unknown) => e)
-    expect(error).toBeInstanceOf(BadRequestError)
-    expect((error as BadRequestError).message).toBe('Unsupported ecosystem: hackage')
-    expect(findMemberContributorsPackage).not.toHaveBeenCalled()
-    expect(createMemberContributorJob).not.toHaveBeenCalled()
-    expect(start).not.toHaveBeenCalled()
   })
 
   it('rejects an unknown purl with 404', async () => {
@@ -262,6 +260,7 @@ describe('submitMemberContributorsJob', () => {
     await submitMemberContributorsJob(req, res)
 
     expect(createMemberContributorJob).not.toHaveBeenCalled()
+    expect(incrementMemberContributorJobSubmissions).toHaveBeenCalledWith({}, 'existing-job')
     expectRedispatched('existing-job')
     expect(status).toHaveBeenCalledWith(202)
     expect(json).toHaveBeenCalledWith({ jobId: 'existing-job', status: 'pending' })
@@ -364,4 +363,143 @@ describe('submitMemberContributorsJob', () => {
     expect(getHandle).not.toHaveBeenCalled()
     expect(status).not.toHaveBeenCalled()
   })
+})
+
+describe('submitMemberContributorsJob, unknown ecosystem', () => {
+  const INFERRED_WORKFLOW = 'collectMemberContributorsFromInferredRepo'
+
+  function inferredStart(jobId: string) {
+    return [
+      INFERRED_WORKFLOW,
+      {
+        taskQueue: 'security-contacts-worker',
+        workflowId: `member-contributors-job/${jobId}`,
+        workflowIdConflictPolicy: 'USE_EXISTING',
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
+        retry: { maximumAttempts: 1 },
+        args: [{ jobId }],
+      },
+    ]
+  }
+
+  function latestJob(id: string, latestStatus: 'done' | 'failed' | 'unresolvable') {
+    findLatestMemberContributorJobByPurl.mockResolvedValue({
+      id,
+      status: latestStatus,
+      collectionPath: 'llm_repo_resolution',
+    })
+  }
+
+  it.each(['pkg:hackage/aeson', 'pkg:Hackage/aeson'])(
+    'creates an llm repo resolution job for %s without a package lookup and starts the inferred-repo workflow',
+    async (requestedPurl) => {
+      const purl = 'pkg:hackage/aeson'
+      const { req, res, status, json } = mockReqRes({ purl: requestedPurl })
+
+      await submitMemberContributorsJob(req, res)
+
+      expect(findActiveMemberContributorJobByPurl.mock.calls).toEqual([[{}, purl]])
+      expect(findLatestMemberContributorJobByPurl.mock.calls).toEqual([[{}, purl]])
+
+      const [, input] = createMemberContributorJob.mock.calls[0]
+      expect(createMemberContributorJob.mock.calls).toEqual([
+        [
+          {},
+          {
+            id: expect.stringMatching(UUID),
+            purl,
+            ecosystem: 'hackage',
+            collectionPath: 'llm_repo_resolution',
+            packageId: null,
+            repoId: null,
+          },
+        ],
+      ])
+      expect(start.mock.calls).toEqual([inferredStart(input.id)])
+      expect(findMemberContributorsPackage).not.toHaveBeenCalled()
+      expect(status).toHaveBeenCalledWith(202)
+      expect(json).toHaveBeenCalledWith({ jobId: input.id, status: 'pending' })
+    },
+  )
+
+  it.each(['pkg:', 'pkg:hackage', 'pkg:/x', 'pkg:hackage/aeson%ZZ'])(
+    'rejects the malformed purl %s with 400 before any database call',
+    async (purl) => {
+      const { req, res } = mockReqRes({ purl })
+      const error = await submitMemberContributorsJob(req, res).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(BadRequestError)
+      expect((error as BadRequestError).message).toBe('Malformed purl')
+      expect(
+        [
+          findActiveMemberContributorJobByPurl,
+          findLatestMemberContributorJobByPurl,
+          createMemberContributorJob,
+          start,
+        ].map((fn) => fn.mock.calls.length),
+      ).toEqual([0, 0, 0, 0])
+    },
+  )
+
+  it('returns the active job, counts the submission and re-dispatches the inferred-repo workflow', async () => {
+    findActiveMemberContributorJobByPurl.mockResolvedValue({ id: 'active-1' })
+    const { req, res, status, json } = mockReqRes({ purl: 'pkg:hackage/aeson' })
+
+    await submitMemberContributorsJob(req, res)
+
+    expect(incrementMemberContributorJobSubmissions.mock.calls).toEqual([[{}, 'active-1']])
+    expect(start.mock.calls).toEqual([inferredStart('active-1')])
+    expect(createMemberContributorJob).not.toHaveBeenCalled()
+    expect(status).toHaveBeenCalledWith(202)
+    expect(json).toHaveBeenCalledWith({ jobId: 'active-1', status: 'pending' })
+  })
+
+  it.each(['COMPLETED', 'RUNNING'])(
+    'refuses with 409 carrying the previous done jobId while its workflow is %s',
+    async (workflowStatus) => {
+      latestJob('done-1', 'done')
+      describeWorkflow.mockResolvedValue({ status: { name: workflowStatus } })
+      const { req, res } = mockReqRes({ purl: 'pkg:hackage/aeson' })
+
+      const error = await submitMemberContributorsJob(req, res).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ConflictError)
+      expect((error as ConflictError).context).toEqual({ jobId: 'done-1' })
+      expect(getHandle.mock.calls).toEqual([['member-contributors-job/done-1']])
+      expect(incrementMemberContributorJobSubmissions.mock.calls).toEqual([[{}, 'done-1']])
+      expect(createMemberContributorJob).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    {
+      latestStatus: 'done' as const,
+      workflowStatus: 'not found',
+      describedWorkflows: [['member-contributors-job/old-1']],
+    },
+    {
+      latestStatus: 'done' as const,
+      workflowStatus: 'FAILED',
+      describedWorkflows: [['member-contributors-job/old-1']],
+    },
+    { latestStatus: 'failed' as const, workflowStatus: 'not found', describedWorkflows: [] },
+    { latestStatus: 'unresolvable' as const, workflowStatus: 'not found', describedWorkflows: [] },
+  ])(
+    'accepts a new job when the latest job is $latestStatus with its workflow $workflowStatus',
+    async ({ latestStatus, workflowStatus, describedWorkflows }) => {
+      latestJob('old-1', latestStatus)
+      if (workflowStatus !== 'not found') {
+        describeWorkflow.mockResolvedValue({ status: { name: workflowStatus } })
+      }
+      const { req, res, status } = mockReqRes({ purl: 'pkg:hackage/aeson' })
+
+      await submitMemberContributorsJob(req, res)
+
+      expect({
+        describedWorkflows: getHandle.mock.calls,
+        created: createMemberContributorJob.mock.calls.length,
+        submissionsCounted: incrementMemberContributorJobSubmissions.mock.calls,
+        statuses: status.mock.calls,
+      }).toEqual({ describedWorkflows, created: 1, submissionsCounted: [], statuses: [[202]] })
+    },
+  )
 })

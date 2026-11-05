@@ -16,7 +16,7 @@ const industry: StringFilterConfig = {
   itemLabelRenderer(value: StringFilterValue, options: StringFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.STRING]('Industry', value, options);
   },
-  apiFilterRenderer(value: StringFilterValue): any[] {
+  apiFilterRenderer(value: StringFilterValue) {
     return apiFilterRendererByType[FilterConfigType.STRING]('industry', value);
   },
 };

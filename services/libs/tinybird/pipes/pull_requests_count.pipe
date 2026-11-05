@@ -1,0 +1,97 @@
+DESCRIPTION >
+    - `pull_requests_count.pipe` serves the opened, merged and closed counts of the "Development - Pull requests" widget.
+    - Counts pull requests (GitHub PRs, GitLab MRs and Gerrit changesets) from `pull_requests_filtered`. `pull_requests_analyzed` holds one row per PR, so each PR is counted once per state.
+    - Includes PRs opened, merged or closed by bots. A PR merged by a bot account (e.g. Prow or a merge queue) counts as merged, since `pull_requests_analyzed` takes `mergedAt` from the merge event whoever performed it.
+    - `state` picks the lifecycle timestamp the count is based on: `openedAt`, `mergedAt` or `closedAt`. PRs without that timestamp are not counted.
+    - **When `granularity` is NOT provided, returns a single total count** across the entire time range.
+    - **When `granularity` is provided, returns time-series data** aggregated by period (daily, weekly, monthly, quarterly, yearly), using `generate_timeseries` so periods without PRs return 0.
+    - Parameters:
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
+    - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes'])
+    - `state`: Optional string, one of 'opened' (default), 'merged' or 'closed'
+    - `startDate`: Optional DateTime filter for the `state` timestamp after this value (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for the `state` timestamp before this value (e.g., '2024-12-31 23:59:59')
+    - `platform`: Optional string filter for source platform (e.g., 'github', 'gitlab', 'gerrit')
+    - `granularity`: Optional string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
+    - Response:
+    - Without granularity: `pullRequestCount` (total count)
+    - With granularity: `startDate`, `endDate`, and `pullRequestCount` for each time period
+
+TOKEN "insights-app-token" READ
+
+TAGS "Development metrics", "Widget", "Pull requests"
+
+NODE pull_requests_by_state
+SQL >
+    %
+    SELECT
+        prf.id,
+        {% if String(
+            state,
+            'opened',
+            description="One of 'opened', 'merged' or 'closed'",
+            required=False,
+        ) == 'merged' %} prf.mergedAt
+        {% elif String(
+            state,
+            'opened',
+            description="One of 'opened', 'merged' or 'closed'",
+            required=False,
+        ) == 'closed' %} prf.closedAt
+        {% else %} prf.openedAt
+        {% end %} AS eventAt
+    FROM pull_requests_filtered prf
+    WHERE
+        isNotNull(eventAt)
+        {% if defined(platform) %}
+            AND prf.platform
+            = {{
+                String(
+                    platform,
+                    description="Filter by platform (e.g., 'gerrit', 'github', 'gitlab')",
+                    required=False,
+                )
+            }}
+        {% end %}
+        {% if defined(startDate) %}
+            AND eventAt
+            > {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND eventAt
+            < {{ DateTime(endDate, description="Filter state timestamp before", required=False) }}
+        {% end %}
+
+NODE timeseries_generation_for_pull_requests_count
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT ds."startDate", ds."endDate", countIf(prs.id != '') AS "pullRequestCount"
+        FROM generate_timeseries ds
+        LEFT JOIN
+            pull_requests_by_state prs
+            ON CASE
+                WHEN {{ granularity }} = 'daily'
+                THEN toDate(prs.eventAt)
+                WHEN {{ granularity }} = 'weekly'
+                THEN toStartOfWeek(prs.eventAt)
+                WHEN {{ granularity }} = 'monthly'
+                THEN toStartOfMonth(prs.eventAt)
+                WHEN {{ granularity }} = 'quarterly'
+                THEN toStartOfQuarter(prs.eventAt)
+                WHEN {{ granularity }} = 'yearly'
+                THEN toStartOfYear(prs.eventAt)
+            END
+            = ds."startDate"
+        GROUP BY ds."startDate", ds."endDate"
+        ORDER BY ds."startDate"
+    {% else %} SELECT 1
+    {% end %}
+
+NODE pull_requests_count_merged
+SQL >
+    %
+    {% if not defined(granularity) %} SELECT count() AS "pullRequestCount" FROM pull_requests_by_state
+    {% else %} SELECT * FROM timeseries_generation_for_pull_requests_count
+    {% end %}

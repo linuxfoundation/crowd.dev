@@ -1,6 +1,8 @@
 export interface Integration<Settings> {
   id: string
+  platform: string
   status: string
+  isNango?: boolean
   settings: Settings
 }
 

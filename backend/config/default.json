@@ -47,7 +47,12 @@
   "encryption": {},
   "openStatusApi": {},
   "gitlab": {},
-  "jiraIssueReporter": {},
+  "githubIssueReporter": {
+    "repo": "linuxfoundation/lfx-cdp-insights-ops",
+    "projectNumber": "30",
+    "projectTeam": "Data Quality / Support",
+    "projectStatus": "Backlog"
+  },
   "snowflake": {},
   "nango": {},
   "linuxFoundation": {}

@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
   indeterminate: false,
 });
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string | boolean | string[]): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: string | boolean | string[]): void}>();
 
 const checked = computed<string | boolean | string[]>({
   get() {

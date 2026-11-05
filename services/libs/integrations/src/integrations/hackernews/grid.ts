@@ -9,4 +9,7 @@ export const HACKERNEWS_GRID: Record<HackerNewsActivityType, IActivityScoringGri
   [HackerNewsActivityType.COMMENT]: {
     score: 6,
   },
+  [HackerNewsActivityType.MENTION]: {
+    score: 6,
+  },
 }

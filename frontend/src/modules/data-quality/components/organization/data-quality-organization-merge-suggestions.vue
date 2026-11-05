@@ -50,6 +50,7 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue';
+import type { DataQualityOrganizationMergeSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -68,7 +69,7 @@ const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
 const hasMore = ref(false);
-const mergeSuggestions = ref<any[]>([]);
+const mergeSuggestions = ref<DataQualityOrganizationMergeSuggestion[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
@@ -85,7 +86,7 @@ const loadMergeSuggestions = () => {
   })
     .then((res) => {
       hasMore.value = Boolean(res.hasMore);
-      const rows = res.rows.filter((s: any) => s.similarity > 0);
+      const rows = res.rows.filter((s: DataQualityOrganizationMergeSuggestion) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];
       } else {

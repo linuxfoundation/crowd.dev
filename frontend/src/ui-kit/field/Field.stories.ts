@@ -54,7 +54,7 @@ export const Primary = {
     for: '',
     default: '',
   },
-  render: (args: any) => ({
+  render: (args: Record<string, unknown>) => ({
     components: { LfField, LfInput },
     setup() {
       return { args };

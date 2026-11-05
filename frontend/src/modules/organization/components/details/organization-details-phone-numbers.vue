@@ -75,7 +75,7 @@ const props = defineProps<{
   organization: Organization,
 }>();
 
-const emit = defineEmits<{(e: 'reload'): any}>();
+const emit = defineEmits<{(e: 'reload'): void}>();
 
 const { hasPermission } = usePermissions();
 

@@ -16,7 +16,7 @@ const noOfMembers: NumberFilterConfig = {
   itemLabelRenderer(value: NumberFilterValue, options: NumberFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.NUMBER]('# of people', value, options);
   },
-  apiFilterRenderer(value: NumberFilterValue): any[] {
+  apiFilterRenderer(value: NumberFilterValue) {
     return apiFilterRendererByType[FilterConfigType.NUMBER]('memberCount', value);
   },
 };

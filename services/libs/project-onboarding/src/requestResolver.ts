@@ -5,6 +5,7 @@ import {
   IRequestQuestionOption,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 
+import { MAX_BUTTON_TEXT_LENGTH } from './botCopy'
 import { OnboardingConfigurationError } from './errors'
 import { IParsedOnboardingRequest } from './requestParser'
 
@@ -26,7 +27,9 @@ export type CdpIntegrationState = 'none' | 'github-nango' | 'github-v1'
 export interface ICdpSegmentMatch {
   segmentId: string
   name: string
+  slug: string
   integration: CdpIntegrationState
+  repositoryCount?: number
 }
 
 export interface IDuplicateCdpSegments {
@@ -40,6 +43,10 @@ export interface IOnboardingRequestLookups {
   findCdpSegmentByPccProject: (pccProjectId: string) => Promise<CdpSegmentLookupResult>
   findTrackedRepoUrls?: (canonicalGithubRepoUrls: string[]) => Promise<Set<string>>
   findExclusivelyLfOwners?: (owners: string[]) => Promise<Set<string>>
+}
+
+export interface IResolveOptions {
+  canAsk?: boolean
 }
 
 export type CdpIntegrationAction = 'create_integration' | 'update_integration' | 'human_review'
@@ -96,14 +103,44 @@ export function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}+#]/gu, '')
 }
 
+const LEADING_WRAPPER_WORD = 'the'
+const TRAILING_WRAPPER_WORD = 'project'
+
+export function coreProjectName(value: string): string {
+  const lowered = value.trim().toLowerCase()
+  const words = lowered.split(/\s+/)
+  const core = words
+    .filter(
+      (word, index) =>
+        !(index === 0 && word === LEADING_WRAPPER_WORD) &&
+        !(index === words.length - 1 && word === TRAILING_WRAPPER_WORD),
+    )
+    .join(' ')
+  return core || lowered
+}
+
+export function sameProjectName(requested: string, candidateName: string): boolean {
+  const candidateNames = new Set([
+    normalizeName(candidateName),
+    normalizeName(coreProjectName(candidateName)),
+  ])
+  return (
+    candidateNames.has(normalizeName(requested)) ||
+    candidateNames.has(normalizeName(coreProjectName(requested)))
+  )
+}
+
 function isExactMatch(projectName: string, candidate: IPccCandidate): boolean {
-  const normalized = normalizeName(projectName)
-  if (!normalized) {
+  const requested = normalizeName(projectName)
+  if (!requested) {
     return false
   }
 
+  const slug = normalizeName(candidate.slug)
   return (
-    normalized === normalizeName(candidate.name) || normalized === normalizeName(candidate.slug)
+    sameProjectName(projectName, candidate.name) ||
+    requested === slug ||
+    normalizeName(coreProjectName(projectName)) === slug
   )
 }
 
@@ -212,7 +249,12 @@ function didYouMean(projectName: string, best: IPccCandidate): OnboardingResolut
       kind: 'did_you_mean',
       text: `I couldn't find a project called "${projectName}". Did you mean ${best.name}?`,
       options: [
-        { id: 'yes', label: `Yes, ${best.name}`, hints: { pccProject: toHintProject(best) } },
+        {
+          id: 'yes',
+          label: `Yes, ${best.name}`,
+          hints: { pccProject: toHintProject(best) },
+          suggested: true,
+        },
         { id: 'no', label: 'No, ask the CDP team', handOff: true },
       ],
     },
@@ -263,10 +305,58 @@ function lfConflict(
   )
 }
 
+function lfConfirm(projectName: string): OnboardingResolution {
+  return needsInput(
+    {
+      kind: 'lf_confirm',
+      text: `I couldn't find ${projectName} in the foundation project list. Is it a Linux Foundation project?`,
+      options: [
+        { id: 'lf', label: "Yes, it's an LF project", hints: { declaredLf: true } },
+        { id: 'not_lf', label: "No, it's not LF", hints: { treatAsNew: true } },
+        NOT_SURE_OPTION,
+      ],
+    },
+    `${projectName} isn't in the foundation project list and the request doesn't say whether it is an LF project`,
+  )
+}
+
+function repositoriesLabel(count: number | undefined): string {
+  if (count === undefined) {
+    return ''
+  }
+  return count === 0 ? ' · no repos yet' : ` · ${count} repo${count === 1 ? '' : 's'}`
+}
+
+const SEGMENT_LABEL_SUFFIXES: Array<(segment: ICdpSegmentMatch) => string> = [
+  () => '',
+  (segment) => repositoriesLabel(segment.repositoryCount),
+  (segment) => ` (${segment.slug})${repositoriesLabel(segment.repositoryCount)}`,
+]
+
+function fitButtonLabel(name: string, suffix: string): string {
+  const label = `${name}${suffix}`
+  if (label.length <= MAX_BUTTON_TEXT_LENGTH) {
+    return label
+  }
+  const room = Math.max(MAX_BUTTON_TEXT_LENGTH - suffix.length - 1, 1)
+  return `${name.slice(0, room)}…${suffix}`
+}
+
+function segmentLabels(segments: ICdpSegmentMatch[]): Map<string, string> {
+  const candidates = SEGMENT_LABEL_SUFFIXES.map((suffix) =>
+    segments.map((segment) => fitButtonLabel(segment.name, suffix(segment))),
+  )
+  const labels =
+    candidates.find((level) => new Set(level).size === level.length) ??
+    candidates[candidates.length - 1]
+  return new Map(segments.map((segment, index) => [segment.segmentId, labels[index]]))
+}
+
 function pickAmongSegments(
   pccProject: IPccCandidate,
   segments: ICdpSegmentMatch[],
 ): OnboardingResolution {
+  const labels = segmentLabels(segments)
   return needsInput(
     {
       kind: 'pick_project',
@@ -274,7 +364,7 @@ function pickAmongSegments(
       options: [
         ...segments.map((segment) => ({
           id: segment.segmentId,
-          label: segment.name,
+          label: labels.get(segment.segmentId) ?? segment.name,
           hints: { segmentId: segment.segmentId, pccProject: toHintProject(pccProject) },
         })),
         NOT_SURE_OPTION,
@@ -303,7 +393,8 @@ async function resolveStrongMatch(
     return pickAmongProjects(request.projectName ?? pccProject.name, assessment.tiedCandidates)
   }
 
-  if (!pccProject.isLeaf) {
+  const segment = await lookups.findCdpSegmentByPccProject(pccProject.projectId)
+  if (!pccProject.isLeaf && !segment) {
     return ambiguous(
       `${pccProject.name} groups several projects, I need the name of the project itself`,
       [pccProject],
@@ -314,7 +405,6 @@ async function resolveStrongMatch(
     return lfConflict(request, pccProject)
   }
 
-  const segment = await lookups.findCdpSegmentByPccProject(pccProject.projectId)
   if (!segment) {
     return { kind: 'lf_not_in_cdp', pccProject }
   }
@@ -385,6 +475,7 @@ async function resolveWithoutPccMatch(
   request: IParsedOnboardingRequest,
   lookups: IOnboardingRequestLookups,
   pccConfigured: boolean,
+  canAsk: boolean,
 ): Promise<OnboardingResolution> {
   const byOwner = await resolveByOwnerHeuristic(request, lookups)
   if (byOwner) {
@@ -403,6 +494,10 @@ async function resolveWithoutPccMatch(
       : ambiguous("I couldn't tell which project this repository belongs to")
   }
 
+  if (request.declaredLf === null && request.projectName && canAsk) {
+    return lfConfirm(request.projectName)
+  }
+
   return { kind: 'non_lf_new_project', projectName: request.projectName }
 }
 
@@ -410,6 +505,7 @@ export async function resolveOnboardingRequest(
   original: IParsedOnboardingRequest,
   lookups: IOnboardingRequestLookups,
   hints: IRequestHints = {},
+  { canAsk = false }: IResolveOptions = {},
 ): Promise<OnboardingResolution> {
   const request = withHints(original, hints)
   if (hasNoRepositories(request)) {
@@ -447,7 +543,7 @@ export async function resolveOnboardingRequest(
   const { projectName } = request
   const pccConfigured = lookups.findPccCandidates !== undefined
   if (!projectName || !lookups.findPccCandidates) {
-    return resolveWithoutPccMatch(request, lookups, pccConfigured)
+    return resolveWithoutPccMatch(request, lookups, pccConfigured, canAsk)
   }
 
   const assessment = assessPccCandidates(projectName, await lookups.findPccCandidates(projectName))
@@ -460,5 +556,5 @@ export async function resolveOnboardingRequest(
     return didYouMean(projectName, assessment.best)
   }
 
-  return resolveWithoutPccMatch(request, lookups, pccConfigured)
+  return resolveWithoutPccMatch(request, lookups, pccConfigured, canAsk)
 }

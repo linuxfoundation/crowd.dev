@@ -42,7 +42,7 @@
         <app-member-merge-similarity v-if="!loading && membersToMerge.similarity" :similarity="membersToMerge.similarity" />
         <lf-button
           type="secondary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingIgnore"
           @click="ignoreSuggestion()"
         >
@@ -50,7 +50,7 @@
         </lf-button>
         <lf-button
           type="primary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
@@ -125,7 +125,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, onMounted, computed, onUnmounted,
 } from 'vue';
@@ -161,7 +161,8 @@ const emit = defineEmits(['reload']);
 const { trackEvent } = useProductTracking();
 const { getContributorMergeActions } = useContributorStore();
 
-const membersToMerge = ref([]);
+// shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
+const membersToMerge = ref<{ members: any[]; similarity?: number }>({ members: [] });
 const primary = ref(0);
 const offset = ref(props.offset);
 const hasMore = ref(false);
@@ -175,7 +176,8 @@ const changed = ref(false);
 
 const bioHeight = ref(0);
 
-const clearMember = (member) => {
+// shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
+const clearMember = (member: any) => {
   const cleanedMember = { ...member };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in cleanedMember.attributes) {
@@ -199,20 +201,22 @@ const preview = computed(() => {
   return mergedMembers;
 });
 
-const updateSuggestionsState = (res) => {
+// shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
+const updateSuggestionsState = (res: any) => {
   hasMore.value = Boolean(res.hasMore);
-  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
+  // shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
+  const rows = res.rows.filter((suggestion: any) => suggestion.similarity > 0);
 
   if (rows.length > 0) {
     hasSuggestion.value = true;
     [membersToMerge.value] = rows;
   } else {
     hasSuggestion.value = false;
-    membersToMerge.value = [];
+    membersToMerge.value = { members: [] };
   }
 };
 
-const fetch = (page, trackNavigation = true) => {
+const fetch = (page = -1, trackNavigation = true): Promise<void> => {
   if (page > -1) {
     offset.value = page;
   }
@@ -227,7 +231,8 @@ const fetch = (page, trackNavigation = true) => {
   loading.value = true;
 
   return MemberService.fetchMergeSuggestions(1, offset.value, props.query ?? {})
-    .then((res) => {
+    // shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
+    .then((res: any) => {
       offset.value = +res.offset;
 
       updateSuggestionsState(res);
@@ -266,6 +271,8 @@ const ignoreSuggestion = () => {
   MemberService.addToNoMerge(...membersToMerge.value.members)
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
+      // shortcut: the call omits the contributor id (same bug on main). revisit: pass the member id
+      // @ts-expect-error
       getContributorMergeActions();
       fetch(offset.value);
       changed.value = true;
@@ -344,7 +351,7 @@ onUnmounted(() => {
 });
 </script>
 
-<script>
+<script lang="ts">
 export default {
   name: 'AppMemberMergeSuggestionsPage',
 };

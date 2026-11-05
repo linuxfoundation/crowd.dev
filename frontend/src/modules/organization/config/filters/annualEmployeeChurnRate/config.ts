@@ -27,7 +27,7 @@ const annualEmployeeChurnRate: NumberFilterConfig = {
   itemLabelRenderer(value: NumberFilterValue, options: NumberFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.NUMBER]('Annual Employee Churn Rate', value, options);
   },
-  apiFilterRenderer(value: NumberFilterValue): any[] {
+  apiFilterRenderer(value: NumberFilterValue) {
     return numberApiFilterRenderer('employeeChurnRate12Month', value, valueParser);
   },
 };

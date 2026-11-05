@@ -53,6 +53,7 @@
 import { onMounted, ref, watch } from 'vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import type { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
 import { DataQualityApiService } from '@/modules/data-quality/services/data-quality.api.service';
 import LfDataQualityMemberIssuesItem
@@ -73,7 +74,7 @@ const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
 const total = ref(0);
-const members = ref<any[]>([]);
+const members = ref<Contributor[]>([]);
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 const { trackEvent } = useProductTracking();

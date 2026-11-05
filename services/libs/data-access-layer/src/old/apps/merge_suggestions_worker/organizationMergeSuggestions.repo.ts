@@ -3,10 +3,14 @@ import { Logger } from '@crowd/logging'
 import {
   IOrganizationMergeSuggestion,
   LLMSuggestionVerdictType,
+  MergeActionType,
+  MergeSuggestionSource,
   OrganizationMergeSuggestionTable,
   SuggestionType,
 } from '@crowd/types'
 
+import { insertMergeSuggestionSources } from '../../../merge-suggestion-sources'
+import { pgpQx } from '../../../queryExecutor'
 import {
   IFindRawOrganizationMergeSuggestionsReplacement,
   IOrganizationId,
@@ -82,6 +86,7 @@ class OrganizationMergeSuggestionsRepository {
 
   async addToMerge(
     suggestions: IOrganizationMergeSuggestion[],
+    source: MergeSuggestionSource,
     similarityThreshold = 0.75,
   ): Promise<void> {
     // Remove possible duplicates
@@ -235,6 +240,13 @@ class OrganizationMergeSuggestionsRepository {
               and v.similarity <= $(similarityThreshold);
           `,
           replacements,
+        )
+
+        await insertMergeSuggestionSources(
+          pgpQx(this.connection),
+          MergeActionType.ORG,
+          source,
+          suggestionChunk.map((suggestion) => suggestion.organizations),
         )
       } catch (error) {
         this.log.error('Error adding organizations to merge', error)

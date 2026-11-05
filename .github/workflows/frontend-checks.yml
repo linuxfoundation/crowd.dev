@@ -92,4 +92,4 @@ jobs:
         run: pnpm install --frozen-lockfile --filter "frontend..."
 
       - name: Type check
-        run: pnpm --filter frontend run typecheck:ci
+        run: pnpm --filter frontend run typecheck

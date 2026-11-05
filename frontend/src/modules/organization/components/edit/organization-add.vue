@@ -100,6 +100,7 @@
 <script setup lang="ts">
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import { computed, reactive, ref } from 'vue';
+import type { AxiosError } from 'axios';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
@@ -244,8 +245,8 @@ const createOrganization = () => {
       isModalOpen.value = false;
       resetForm();
     })
-    .catch((error: any) => {
-      if (error.response.status === 409) {
+    .catch((error: AxiosError) => {
+      if (error.response?.status === 409) {
         ToastStore.error('Organization was not created because the identity already exists in another profile');
       } else {
         Errors.handle(error);

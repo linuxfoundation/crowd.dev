@@ -14,6 +14,7 @@ import {
   HttpError,
   InsufficientScopeError,
   InternalError,
+  ServiceUnavailableError,
   NotFoundError,
   RateLimitError,
   UnauthorizedError,
@@ -27,6 +28,7 @@ export * from './env'
 export * from './timing'
 export * from './utils'
 export * from './array'
+export * from './concurrency'
 export * from './object'
 export * from './uuidUtils'
 export * from './validations'
@@ -44,7 +46,6 @@ export * from './github/errors'
 export * from './displayName'
 export * from './organization'
 export * from './country'
-export * from './jira'
 export * from './email'
 export * from './bot'
 export * from './llm'
@@ -74,6 +75,7 @@ export {
   ConflictError,
   RateLimitError,
   InternalError,
+  ServiceUnavailableError,
 
   // Application errors
   ApplicationError,

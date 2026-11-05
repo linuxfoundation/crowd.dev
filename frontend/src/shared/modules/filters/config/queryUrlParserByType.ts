@@ -6,7 +6,7 @@ import { selectQueryUrlParser } from '@/shared/modules/filters/config/queryUrlPa
 import { multiSelectQueryUrlParser } from '@/shared/modules/filters/config/queryUrlParser/multiselect.parser';
 import { stringQueryUrlParser } from '@/shared/modules/filters/config/queryUrlParser/string.parser';
 
-export const queryUrlParserByType: Record<FilterConfigType, (query: any) => any> = {
+export const queryUrlParserByType = {
   [FilterConfigType.BOOLEAN]: booleanQueryUrlParser,
   [FilterConfigType.NUMBER]: numberQueryUrlParser,
   [FilterConfigType.DATE]: dateQueryUrlParser,
@@ -16,4 +16,4 @@ export const queryUrlParserByType: Record<FilterConfigType, (query: any) => any>
   [FilterConfigType.MULTISELECT_ASYNC]: multiSelectQueryUrlParser,
   [FilterConfigType.STRING]: stringQueryUrlParser,
   [FilterConfigType.CUSTOM]: () => null,
-};
+} satisfies Record<FilterConfigType, unknown>;

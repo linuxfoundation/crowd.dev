@@ -16,7 +16,7 @@ const parent = computed(() => {
   return instance?.parent;
 });
 
-const isActive = computed<boolean>(() => parent.value.props.modelValue === props.name);
+const isActive = computed<boolean>(() => parent.value?.props.modelValue === props.name);
 
 const selectTab = () => {
   parent.value?.emit('update:modelValue', props.name);

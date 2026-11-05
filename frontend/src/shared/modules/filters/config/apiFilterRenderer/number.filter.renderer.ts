@@ -1,20 +1,23 @@
 import type { NumberFilterValue } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
 import { FilterNumberOperator } from '@/shared/modules/filters/config/constants/number.constants';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 export const numberApiFilterRenderer = (
   property: string,
-  {
-    value, valueTo, operator,
-  }: NumberFilterValue,
-  parse: (value: number) => number,
-): any[] => {
-  const includeFilter = ![FilterNumberOperator.NE, FilterNumberOperator.NOT_BETWEEN].includes(operator);
+  { value, valueTo, operator }: NumberFilterValue,
+  parse?: (value: number) => number,
+): ApiFilter[] => {
+  const includeFilter = ![FilterNumberOperator.NE, FilterNumberOperator.NOT_BETWEEN].includes(
+    operator,
+  );
   let filterOperator = operator;
-  const parsedValue = parse ? parse(value) : +value;
-  const parsedValueTo = parse ? parse(valueTo) : +valueTo;
+  const parsedValue = parse ? parse(Number(value)) : Number(value);
+  const parsedValueTo = parse ? parse(Number(valueTo)) : Number(valueTo);
 
-  const filterValue = [FilterNumberOperator.BETWEEN, FilterNumberOperator.NOT_BETWEEN].includes(operator)
-    ? [parsedValue, parsedValueTo!]
+  const filterValue = [FilterNumberOperator.BETWEEN, FilterNumberOperator.NOT_BETWEEN].includes(
+    operator,
+  )
+    ? [parsedValue, parsedValueTo]
     : parsedValue;
 
   if (operator === FilterNumberOperator.NE) {
@@ -30,8 +33,10 @@ export const numberApiFilterRenderer = (
   };
 
   return [
-    (includeFilter ? filter : {
-      not: filter,
-    }),
+    includeFilter
+      ? filter
+      : {
+        not: filter,
+      },
   ];
 };

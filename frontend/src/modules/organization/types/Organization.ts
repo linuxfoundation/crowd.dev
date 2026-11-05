@@ -1,8 +1,8 @@
 import type { Platform } from '@/shared/modules/platform/types/Platform';
 import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 
-// shortcut: any — revisit: when the organization attributes API type is generated
-export interface OrganizationAttribute extends Record<string, any> {
+export interface OrganizationAttribute extends Record<string, unknown[] | string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped attribute value. revisit: per-attribute value types
   default: any;
 }
 
@@ -12,6 +12,12 @@ export enum OrganizationSource {
   HUBSPOT = 'hubspot',
   GITHUB = 'github',
   UI = 'ui',
+  PROJECT_REGISTRY = 'project-registry',
+  LFX_ONE = 'lfxOne',
+  CVENT = 'cvent',
+  TNC = 'tnc',
+  MEETINGS = 'meetings',
+  COMMITTEES = 'committees',
 }
 
 export enum OrganizationIdentityType {
@@ -31,6 +37,9 @@ export interface OrganizationIdentity {
   source: string;
   sourceId?: string | null;
   integrationId?: string | null;
+}
+export interface OrganizationIdentityWithPlatforms extends OrganizationIdentity {
+  platforms: Platform[];
 }
 export interface OrganizationIdentityParsed {
   id: string;
@@ -59,6 +68,11 @@ export interface MemberOrganization {
   dateStart?: string;
   dateEnd?: string;
   source: OrganizationSource;
+  rowSource?: OrganizationSource | null;
+  verified?: boolean;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
+  updatedAt?: string;
   affiliationOverride: MemberOrganizationAffiliationOverride;
 }
 
@@ -91,7 +105,7 @@ export interface Organization {
   logo: string;
   manuallyCreated?: boolean;
   memberCount: number;
-  naics: any[];
+  naics: Record<string, unknown>[];
   name: string;
   phoneNumbers: string[] | null;
   profiles: string[];
@@ -128,4 +142,14 @@ export interface Organization {
     usageEndDate: string;
   };
   activitySycning: MergeAction | null;
+}
+
+export interface OrganizationQueryBody {
+  search?: string;
+  filter?: Record<string, unknown>;
+  offset?: number;
+  limit?: number;
+  orderBy?: string;
+  segments?: string[];
+  excludeSegments?: boolean;
 }

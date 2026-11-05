@@ -1,11 +1,22 @@
 import { getServiceChildLogger } from '@crowd/logging'
-import { IIntegration, PlatformType } from '@crowd/types'
+import {
+  AUTO_MANAGED_INTEGRATION_PLATFORMS,
+  IGithubIntegrationSettings,
+  IIntegration,
+  PlatformType,
+} from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { getReposForGithubIntegration } from '../repositories'
 import { getReposBySegmentGroupedByPlatform } from '../segments'
 
 const log = getServiceChildLogger('db.integrations')
+
+const ADMIN_NOT_CONNECTABLE_PLATFORMS: PlatformType[] = [
+  ...AUTO_MANAGED_INTEGRATION_PLATFORMS,
+  PlatformType.TWITTER,
+  PlatformType.MAILINGLIST,
+]
 
 export function normalizeRepoUrl(url: string): string {
   try {
@@ -80,6 +91,7 @@ export async function fetchGlobalIntegrations(
   limit: number,
   offset: number,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<IIntegration[]> {
   return qx.select(
     `
@@ -99,13 +111,16 @@ export async function fetchGlobalIntegrations(
           AND i."deletedAt" IS NULL
           AND ($(platform) IS NULL OR i."platform" = $(platform))
           AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+          AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
           AND s.name ILIKE $(query)
+        ORDER BY s."grandparentName", s."parentName", s.name, i.platform, i.id
         LIMIT $(limit) OFFSET $(offset)
       `,
     {
       status,
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
       limit,
       offset,
@@ -128,6 +143,7 @@ export async function fetchGlobalIntegrationsCount(
   platform: string | null,
   query: string,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<{ count: number }[]> {
   return qx.select(
     `
@@ -138,12 +154,14 @@ export async function fetchGlobalIntegrationsCount(
           AND i."deletedAt" IS NULL
           AND ($(platform) IS NULL OR i."platform" = $(platform))
           AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+          AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
           AND s.name ILIKE $(query)
       `,
     {
       status,
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
     },
   )
@@ -167,12 +185,23 @@ export async function fetchGlobalNotConnectedIntegrations(
   limit: number,
   offset: number,
   segmentId?: string | null,
+  isLF?: boolean | null,
+  platforms?: string[] | null,
 ): Promise<IIntegration[]> {
   return qx.select(
     `
       WITH unique_platforms AS (SELECT DISTINCT platform
-                                FROM public.integrations),
-           connected_platforms AS (SELECT i.platform, s.id as "segmentId"
+                                FROM (SELECT $(platform)::text AS platform
+                                      UNION
+                                      SELECT unnest(COALESCE($(platforms)::text[], '{}'::text[]))
+                                      UNION
+                                      SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
+                                      FROM public.integrations) known
+                                WHERE platform IS NOT NULL
+                                  AND NOT platform = ANY ($(notConnectable)::text[])
+                                  AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
+           connected_platforms AS (SELECT CASE WHEN i.platform = 'github-nango' THEN 'github' ELSE i.platform END AS platform,
+                                          s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
                                    WHERE i."deletedAt" IS NULL)
@@ -192,15 +221,20 @@ export async function fetchGlobalNotConnectedIntegrations(
         AND s."grandparentId" IS NOT NULL
         AND ($(platform) IS NULL OR up."platform" = $(platform))
         AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+        AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
         AND s.name ILIKE $(query)
+      ORDER BY s."grandparentName", s."parentName", s.name, up.platform, s.id
       LIMIT $(limit) OFFSET $(offset)
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
       limit,
       offset,
+      notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
+      platforms: platforms?.length ? platforms : null,
     },
   )
 }
@@ -218,12 +252,23 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
   platform: string | null,
   query: string,
   segmentId?: string | null,
+  isLF?: boolean | null,
+  platforms?: string[] | null,
 ): Promise<{ count: number }[]> {
   return qx.select(
     `
       WITH unique_platforms AS (SELECT DISTINCT platform
-                                FROM public.integrations),
-           connected_platforms AS (SELECT i.platform, s.id as "segmentId"
+                                FROM (SELECT $(platform)::text AS platform
+                                      UNION
+                                      SELECT unnest(COALESCE($(platforms)::text[], '{}'::text[]))
+                                      UNION
+                                      SELECT CASE WHEN platform = 'github-nango' THEN 'github' ELSE platform END
+                                      FROM public.integrations) known
+                                WHERE platform IS NOT NULL
+                                  AND NOT platform = ANY ($(notConnectable)::text[])
+                                  AND ($(platforms)::text[] IS NULL OR platform = ANY ($(platforms)::text[]))),
+           connected_platforms AS (SELECT CASE WHEN i.platform = 'github-nango' THEN 'github' ELSE i.platform END AS platform,
+                                          s.id as "segmentId"
                                    FROM integrations i
                                           JOIN "segments" s ON i."segmentId" = s.id
                                    WHERE i."deletedAt" IS NULL)
@@ -237,12 +282,16 @@ export async function fetchGlobalNotConnectedIntegrationsCount(
         AND s."grandparentId" IS NOT NULL
         AND ($(platform) IS NULL OR up."platform" = $(platform))
         AND ($(segmentId) IS NULL OR s.id = $(segmentId) OR s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))
+        AND ($(isLF)::boolean IS NULL OR s."isLF" = $(isLF))
         AND s.name ILIKE $(query)
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
       query: `%${query}%`,
+      notConnectable: ADMIN_NOT_CONNECTABLE_PLATFORMS,
+      platforms: platforms?.length ? platforms : null,
     },
   )
 }
@@ -258,6 +307,7 @@ export async function fetchGlobalIntegrationsStatusCount(
   qx: QueryExecutor,
   platform: string | null,
   segmentId?: string | null,
+  isLF?: boolean | null,
 ): Promise<{ status: string; count: number }[]> {
   return qx.select(
     `
@@ -266,13 +316,18 @@ export async function fetchGlobalIntegrationsStatusCount(
         FROM "integrations" i
         WHERE i."deletedAt" IS NULL
           AND ($(platform) IS NULL OR i."platform" = $(platform))
-          AND ($(segmentId) IS NULL OR i."segmentId" = $(segmentId) OR 
+          AND ($(segmentId) IS NULL OR i."segmentId" = $(segmentId) OR
                EXISTS (SELECT 1 FROM segments s WHERE s.id = i."segmentId" AND (s."parentId" = $(segmentId) OR s."grandparentId" = $(segmentId))))
+          AND ($(isLF)::boolean IS NULL OR
+               EXISTS (SELECT 1 FROM segments s WHERE s.id = i."segmentId" AND s."isLF" = $(isLF)))
+          AND NOT (COALESCE(i.platform = ANY ($(autoManaged)::text[]), false) AND i."segmentId" IS NULL)
         GROUP BY i.status
     `,
     {
       platform,
       segmentId,
+      isLF: isLF ?? null,
+      autoManaged: AUTO_MANAGED_INTEGRATION_PLATFORMS,
     },
   )
 }
@@ -283,6 +338,21 @@ export interface INangoIntegrationData {
   platform: string
   settings: any
   createdAt: string
+}
+
+export async function findIntegrationPlatformsByIds(
+  qx: QueryExecutor,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) {
+    return []
+  }
+
+  const rows: { platform: string }[] = await qx.select(
+    `SELECT DISTINCT platform FROM integrations WHERE id = ANY ($(ids)::uuid[])`,
+    { ids },
+  )
+  return rows.map((r) => r.platform)
 }
 
 export async function fetchIntegrationById(
@@ -474,11 +544,29 @@ export async function updateNangoCursorLastCheckedAt(
   qx: QueryExecutor,
   integrationId: string,
   connectionId: string,
+  model: string,
 ): Promise<void> {
   await qx.result(
-    `UPDATE integration.nango_cursors SET "lastCheckedAt" = now() WHERE "integrationId" = $(integrationId) AND "connectionId" = $(connectionId)`,
-    { integrationId, connectionId },
+    `UPDATE integration.nango_cursors
+     SET "lastCheckedAt" = now()
+     WHERE "integrationId" = $(integrationId) AND "connectionId" = $(connectionId) AND model = $(model)`,
+    { integrationId, connectionId, model },
   )
+}
+
+export async function getNangoModelLastCheckedAt(
+  qx: QueryExecutor,
+  integrationId: string,
+  connectionId: string,
+  model: string,
+): Promise<string | null> {
+  const row = await qx.selectOneOrNone(
+    `SELECT to_char("lastCheckedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastCheckedAt"
+     FROM integration.nango_cursors
+     WHERE "integrationId" = $(integrationId) AND "connectionId" = $(connectionId) AND model = $(model)`,
+    { integrationId, connectionId, model },
+  )
+  return row?.lastCheckedAt ?? null
 }
 
 export async function fetchNangoLastCheckedAt(
@@ -492,6 +580,7 @@ export async function fetchNangoLastCheckedAt(
       JOIN integrations i ON i.id = nc."integrationId"
       WHERE i.platform IN ($(platforms:csv))
         AND i."deletedAt" IS NULL
+        AND nc.model <> 'GithubStar'
       GROUP BY nc."integrationId", nc."connectionId"
     `,
     { platforms },
@@ -560,6 +649,66 @@ export async function addGithubNangoConnection(
   )
 }
 
+export async function findActiveNangoMappingForRepo(
+  qx: QueryExecutor,
+  owner: string,
+  repoName: string,
+): Promise<INangoMappingRow | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT nm.*
+    FROM integration.nango_mapping nm
+    JOIN integrations i ON i.id = nm."integrationId"
+    WHERE lower(nm.owner) = lower($(owner))
+      AND lower(nm."repoName") = lower($(repoName))
+      AND i.platform = $(nangoPlatform)
+      AND i."deletedAt" IS NULL
+    ORDER BY nm."updatedAt" DESC
+    LIMIT 1
+    `,
+    { owner, repoName, nangoPlatform: PlatformType.GITHUB_NANGO },
+  )
+}
+
+export interface IUnmirroredNangoRepo {
+  integrationId: string
+  connectionId: string
+  owner: string
+  repoName: string
+  enabled: boolean
+  archived: boolean
+  excluded: boolean
+}
+
+export async function listUnmirroredNangoRepos(qx: QueryExecutor): Promise<IUnmirroredNangoRepo[]> {
+  return qx.select(
+    `
+    SELECT
+      nm."integrationId",
+      nm."connectionId",
+      nm.owner,
+      nm."repoName",
+      COALESCE(r.enabled, true) AS enabled,
+      COALESCE(r.archived, false) AS archived,
+      COALESCE(r.excluded, false) AS excluded
+    FROM integration.nango_mapping nm
+    JOIN integrations i ON i.id = nm."integrationId"
+    LEFT JOIN repositories r ON r.id = nm."repositoryId"
+    WHERE i.platform = $(nangoPlatform)
+      AND i."deletedAt" IS NULL
+      AND i.status = 'done'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM integration.sync_units su
+        WHERE su."integrationId" = nm."integrationId"
+          AND lower(su."channelName") = lower('https://github.com/' || nm.owner || '/' || nm."repoName")
+      )
+    ORDER BY nm."createdAt", nm.owner, nm."repoName"
+    `,
+    { nangoPlatform: PlatformType.GITHUB_NANGO },
+  )
+}
+
 export async function getNangoMappingForRepo(
   qx: QueryExecutor,
   integrationId: string,
@@ -620,31 +769,25 @@ export async function addRepoToGitIntegration(
     return
   }
 
-  // Get existing remotes
-  const existingRemotes = gitIntegration.settings?.remotes || []
+  const added = await qx.result(
+    `
+    update integrations
+    set settings = jsonb_set(
+          coalesce(settings, '{}'::jsonb),
+          '{remotes}',
+          coalesce(settings->'remotes', '[]'::jsonb) || to_jsonb($(repoUrl)::text)
+        ),
+        "updatedAt" = now()
+    where id = $(id)
+      and not (coalesce(settings->'remotes', '[]'::jsonb) ? $(repoUrl))
+    `,
+    { id: gitIntegration.id, repoUrl },
+  )
 
-  // Check if repo already exists
-  if (existingRemotes.includes(repoUrl)) {
+  if (added === 0) {
     log.debug({ repoUrl }, 'Repo already exists in git integration, skipping!')
     return
   }
-
-  // Add new repo to remotes array
-  const updatedRemotes = [...existingRemotes, repoUrl]
-
-  // Update git integration settings
-  await qx.result(
-    `
-    update integrations
-    set settings = jsonb_set(settings, '{remotes}', $(remotes)::jsonb),
-        "updatedAt" = now()
-    where id = $(id)
-    `,
-    {
-      id: gitIntegration.id,
-      remotes: JSON.stringify(updatedRemotes),
-    },
-  )
 
   log.info({ integrationId: gitIntegration.id, repoUrl }, 'Added repo to git integration settings!')
 }
@@ -763,4 +906,195 @@ export async function findRepositoriesForSegment(
   }
 
   return result
+}
+
+export interface IGithubLifecycleIntegration {
+  id: string
+  platform: string
+  segmentId: string | null
+  settings: IGithubIntegrationSettings | null
+  deletedAt: string | null
+}
+
+export async function fetchGithubLifecycleIntegration(
+  qx: QueryExecutor,
+  id: string,
+): Promise<IGithubLifecycleIntegration | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT id, platform, "segmentId", settings, "deletedAt"
+    FROM integrations
+    WHERE id = $(id)
+    `,
+    { id },
+  )
+}
+
+export async function tryLockGithubRenames(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<boolean> {
+  const row = await qx.selectOne(
+    `SELECT pg_try_advisory_xact_lock(hashtextextended('githubRenames:' || $(integrationId), 0)) AS locked`,
+    { integrationId },
+  )
+  return row.locked
+}
+
+const NANGO_MAPPING_CHANNEL_KEY = `lower('https://github.com/' || nm.owner || '/' || nm."repoName")`
+
+export async function listGithubChannelsOwnedElsewhere(
+  qx: QueryExecutor,
+  integrationId: string,
+  channelKeys: string[],
+): Promise<string[]> {
+  if (channelKeys.length === 0) {
+    return []
+  }
+
+  const rows: { channelKey: string }[] = await qx.select(
+    `
+    SELECT DISTINCT k.key AS "channelKey"
+    FROM unnest($(channelKeys)::text[]) AS k(key)
+    JOIN integration.sync_units su ON lower(su."channelName") = lower(k.key)
+    JOIN integrations i
+      ON i.id = su."integrationId"
+     AND i.platform = $(nangoPlatform)
+     AND i."deletedAt" IS NULL
+    WHERE su."integrationId" <> $(integrationId)
+    UNION
+    SELECT DISTINCT k.key AS "channelKey"
+    FROM unnest($(channelKeys)::text[]) AS k(key)
+    JOIN integration.nango_mapping nm ON ${NANGO_MAPPING_CHANNEL_KEY} = lower(k.key)
+    JOIN integrations i
+      ON i.id = nm."integrationId"
+     AND i.platform = $(nangoPlatform)
+     AND i."deletedAt" IS NULL
+    WHERE nm."integrationId" <> $(integrationId)
+    `,
+    { channelKeys, integrationId, nangoPlatform: PlatformType.GITHUB_NANGO },
+  )
+  return rows.map((row) => row.channelKey)
+}
+
+export async function listGithubRepoKeysUnderOwners(
+  qx: QueryExecutor,
+  owners: string[],
+): Promise<string[]> {
+  if (owners.length === 0) {
+    return []
+  }
+
+  const rows: { key: string }[] = await qx.select(
+    `
+    WITH live_integrations AS (
+      SELECT id
+      FROM integrations
+      WHERE platform = $(nangoPlatform)
+        AND "deletedAt" IS NULL
+    )
+    SELECT lower(r.url) AS key
+    FROM live_integrations li
+    JOIN public.repositories r
+      ON r."sourceIntegrationId" = li.id
+     AND r."deletedAt" IS NULL
+    WHERE r.url LIKE 'https://github.com/%'
+      AND lower(split_part(r.url, '/', 4)) = ANY($(owners)::text[])
+    UNION
+    SELECT ${NANGO_MAPPING_CHANNEL_KEY} AS key
+    FROM live_integrations li
+    JOIN integration.nango_mapping nm ON nm."integrationId" = li.id
+    WHERE lower(nm.owner) = ANY($(owners)::text[])
+    `,
+    { owners, nangoPlatform: PlatformType.GITHUB_NANGO },
+  )
+  return rows.map((row) => row.key)
+}
+
+export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor): Promise<string[]> {
+  const rows: { id: string }[] = await qx.select(
+    `
+    WITH nango_integrations AS (
+      SELECT id, settings, "deletedAt"
+      FROM integrations
+      WHERE platform = $(nangoPlatform)
+    ),
+    live_integrations AS (
+      SELECT id, settings
+      FROM nango_integrations
+      WHERE "deletedAt" IS NULL
+    ),
+    unit_keys AS (
+      SELECT DISTINCT su."integrationId", lower(su."channelName") AS key
+      FROM integration.sync_units su
+      JOIN nango_integrations ni ON ni.id = su."integrationId"
+    ),
+    mapping_keys AS (
+      SELECT DISTINCT nm."integrationId", ${NANGO_MAPPING_CHANNEL_KEY} AS key
+      FROM integration.nango_mapping nm
+      JOIN nango_integrations ni ON ni.id = nm."integrationId"
+    ),
+    repo_keys AS (
+      SELECT DISTINCT r."sourceIntegrationId" AS "integrationId", lower(r.url) AS key
+      FROM public.repositories r
+      JOIN live_integrations li ON li.id = r."sourceIntegrationId"
+      WHERE r."deletedAt" IS NULL
+    ),
+    unsynced_repos AS (
+      SELECT rk."integrationId"
+      FROM repo_keys rk
+      LEFT JOIN unit_keys uk ON uk."integrationId" = rk."integrationId" AND uk.key = rk.key
+      LEFT JOIN mapping_keys mk ON mk."integrationId" = rk."integrationId" AND mk.key = rk.key
+      WHERE uk.key IS NULL AND mk.key IS NULL
+    ),
+    orphaned_units AS (
+      SELECT uk."integrationId"
+      FROM unit_keys uk
+      JOIN live_integrations li ON li.id = uk."integrationId"
+      LEFT JOIN repo_keys rk ON rk."integrationId" = uk."integrationId" AND rk.key = uk.key
+      WHERE rk.key IS NULL
+    ),
+    deleted_with_units AS (
+      SELECT ni.id AS "integrationId"
+      FROM nango_integrations ni
+      WHERE ni."deletedAt" IS NOT NULL
+        AND ni.id IN (SELECT "integrationId" FROM unit_keys)
+    ),
+    deleted_with_repos AS (
+      SELECT ni.id AS "integrationId"
+      FROM nango_integrations ni
+      WHERE ni."deletedAt" IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM public.repositories r
+          WHERE r."sourceIntegrationId" = ni.id
+            AND r."deletedAt" IS NULL
+        )
+    ),
+    full_sync AS (
+      SELECT li.id AS "integrationId"
+      FROM live_integrations li
+      WHERE jsonb_path_exists(li.settings, '$.orgs[*] ? (@.fullSync == true)')
+    ),
+    decommissioned_units AS (
+      SELECT DISTINCT su."integrationId"
+      FROM integration.sync_units su
+      JOIN nango_integrations ni ON ni.id = su."integrationId"
+      WHERE su.status = 'decommissioned'
+    )
+    SELECT "integrationId" AS id FROM unsynced_repos
+    UNION
+    SELECT "integrationId" FROM orphaned_units
+    UNION
+    SELECT "integrationId" FROM deleted_with_units
+    UNION
+    SELECT "integrationId" FROM deleted_with_repos
+    UNION
+    SELECT "integrationId" FROM full_sync
+    UNION
+    SELECT "integrationId" FROM decommissioned_units
+    `,
+    { nangoPlatform: PlatformType.GITHUB_NANGO },
+  )
+  return rows.map((row) => row.id)
 }

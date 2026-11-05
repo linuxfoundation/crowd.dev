@@ -76,9 +76,8 @@ export async function fetchMentionsPage(
               limit: MENTIONS_PAGE_SIZE,
               cursor: params.cursor,
               filters: buildFilters(params),
-              // Defaults to false (relevance-filtered); since the watermark advances over whatever
-              // this returns, a filtered-out mention would be permanently skipped, not just delayed.
-              includeAll: true,
+              // includeAll is left at its default (false): only relevant mentions (score 0 or 1)
+              // come back, so low-relevance ones never reach CDP or cost a page of the budget.
               includeEngagementMetrics: true,
             },
             octolensRequestConfig(token),

@@ -15,6 +15,9 @@ import {
   ProjectCatalogProvenance,
   IDbProjectCatalogReviewResolution,
   ProjectCatalogReviewDecision,
+  IDbProjectCatalogReopened,
+  IProjectCatalogReopenRequest,
+  REVIEW_REJECTION_SKIP_REASON_PREFIX,
   reviewRejectionSkipReason,
 } from './types'
 
@@ -30,6 +33,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'lfCriticalityScore',
   'evaluationResult',
   'evaluationReason',
+  'evaluationAttempts',
   'evaluatedAt',
   'onboardedAt',
   'onboardingError',
@@ -58,8 +62,22 @@ const PROJECT_CATALOG_COLUMNS = [
 
 // A claim stamps onboardedAt while action stays 'onboard'; success always moves action to
 // 'onboarded', so a claim older than the longest onboarding attempt belongs to a dead run.
-const ONBOARDING_CLAIM_STALE_AFTER = '30 minutes'
+const ONBOARDING_CLAIM_STALE_AFTER_MINUTES = 30
+const ONBOARDING_CLAIM_STALE_AFTER = `${ONBOARDING_CLAIM_STALE_AFTER_MINUTES} minutes`
 const ONBOARDING_CLAIM_OPEN = `("onboardedAt" IS NULL OR "onboardedAt" < NOW() - INTERVAL '${ONBOARDING_CLAIM_STALE_AFTER}')`
+
+export function isProjectCatalogOnboardingPending(
+  row: Pick<IDbProjectCatalog, 'action' | 'onboardedAt'>,
+  now = Date.now(),
+): boolean {
+  if (row.action !== 'onboard') {
+    return false
+  }
+  return (
+    !row.onboardedAt ||
+    Date.parse(row.onboardedAt) < now - ONBOARDING_CLAIM_STALE_AFTER_MINUTES * 60 * 1000
+  )
+}
 
 export async function findProjectCatalogById(
   qx: QueryExecutor,
@@ -294,7 +312,14 @@ export async function findExistingProjectCatalogRepoUrls(
 export async function promoteProjectCatalogProvenance(
   qx: QueryExecutor,
   provenance: ProjectCatalogHumanProvenance,
-  refs: { repoUrl: string; sourceUrl?: string | null }[],
+  refs: {
+    repoUrl: string
+    sourceUrl?: string | null
+    organization?: string | null
+    requestText?: string | null
+    projectName?: string | null
+    requestedBy?: string | null
+  }[],
 ): Promise<number> {
   if (refs.length === 0) {
     return 0
@@ -303,6 +328,10 @@ export async function promoteProjectCatalogProvenance(
   const values = refs.map((ref) => ({
     repoUrl: ref.repoUrl,
     sourceUrl: ref.sourceUrl ?? null,
+    organization: ref.organization ?? null,
+    requestText: ref.requestText ?? null,
+    projectName: ref.projectName ?? null,
+    requestedBy: ref.requestedBy ?? null,
   }))
 
   return qx.result(
@@ -310,8 +339,40 @@ export async function promoteProjectCatalogProvenance(
     UPDATE "projectCatalog" pc
     SET "provenance" = $(provenance),
         "sourceUrl" = COALESCE(pc."sourceUrl", v."sourceUrl"),
+        "requestHints" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL
+            THEN COALESCE(pc."requestHints", '{}'::jsonb) || jsonb_build_object('organization', v."organization")
+          ELSE pc."requestHints"
+        END,
+        "requestText" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestText", pc."requestText")
+          ELSE pc."requestText"
+        END,
+        "projectName" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."projectName", pc."projectName")
+          ELSE pc."projectName"
+        END,
+        "requestedBy" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestedBy", pc."requestedBy")
+          ELSE pc."requestedBy"
+        END,
+        "classifiedAt" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN NULL
+          ELSE pc."classifiedAt"
+        END,
+        "evaluationAttempts" = CASE
+          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN 0
+          ELSE pc."evaluationAttempts"
+        END,
         "updatedAt" = NOW()
-    FROM jsonb_to_recordset($(values)::jsonb) AS v("repoUrl" text, "sourceUrl" text)
+    FROM jsonb_to_recordset($(values)::jsonb) AS v(
+      "repoUrl" text,
+      "sourceUrl" text,
+      "organization" text,
+      "requestText" text,
+      "projectName" text,
+      "requestedBy" text
+    )
     WHERE pc."repoUrl" = v."repoUrl"
       AND (pc."provenance" IS NULL OR pc."provenance" = ANY($(overridable)::text[]))
     `,
@@ -319,6 +380,88 @@ export async function promoteProjectCatalogProvenance(
       provenance,
       values: JSON.stringify(values),
       overridable: PROJECT_CATALOG_BULK_PROVENANCES,
+    },
+  )
+}
+
+export async function reopenRejectedProjectCatalog(
+  qx: QueryExecutor,
+  requests: IProjectCatalogReopenRequest[],
+  decisionReasons: readonly string[],
+): Promise<IDbProjectCatalogReopened[]> {
+  if (requests.length === 0 || decisionReasons.length === 0) {
+    return []
+  }
+
+  return qx.select(
+    `
+    WITH requested AS (
+      SELECT *
+      FROM jsonb_to_recordset($(values)::jsonb) AS v(
+        "repoUrl" text,
+        "sourceUrl" text,
+        "requestText" text,
+        "projectName" text,
+        "requestedBy" text,
+        "organization" text
+      )
+    ),
+    rejected AS (
+      SELECT pc.id, pc."repoUrl", pc."sourceUrl", pc."decisionReason"
+      FROM "projectCatalog" pc
+      JOIN requested v ON v."repoUrl" = pc."repoUrl"
+      WHERE pc."action" = 'skip'
+        AND pc."reviewedBy" IS NOT NULL
+        AND pc."skipReason" LIKE $(rejectionPrefix) || '%'
+        AND pc."decisionReason" = ANY($(decisionReasons)::text[])
+      FOR UPDATE OF pc
+    )
+    UPDATE "projectCatalog" pc
+    SET "action" = 'auto',
+        "source" = 'slack-bot',
+        "sourceUrl" = v."sourceUrl",
+        "provenance" = 'slack-bot',
+        "skipReason" = NULL,
+        "requestText" = v."requestText",
+        "projectName" = v."projectName",
+        "requestedBy" = v."requestedBy",
+        "requestHints" = CASE
+          WHEN v."organization" IS NOT NULL THEN jsonb_build_object('organization', v."organization")
+          ELSE NULL
+        END,
+        "classificationKind" = NULL,
+        "proposedAction" = NULL,
+        "pccProjectId" = NULL,
+        "classifiedAt" = NULL,
+        "reviewedAt" = NULL,
+        "reviewedBy" = NULL,
+        "reviewMessageTs" = NULL,
+        "reviewReason" = NULL,
+        "matchedProjectName" = NULL,
+        "matchedSegmentId" = NULL,
+        "decisionReason" = NULL,
+        "decisionNote" = NULL,
+        "requestQuestion" = NULL,
+        "evaluationResult" = NULL,
+        "evaluationReason" = NULL,
+        "evaluationAttempts" = 0,
+        "evaluatedAt" = NULL,
+        "onboardingError" = NULL,
+        "updatedAt" = NOW(),
+        "syncedAt" = NOW()
+    FROM rejected r
+    JOIN requested v ON v."repoUrl" = r."repoUrl"
+    WHERE pc.id = r.id
+    RETURNING
+      pc.id,
+      pc."repoUrl",
+      r."sourceUrl" AS "previousSourceUrl",
+      r."decisionReason" AS "previousDecisionReason"
+    `,
+    {
+      values: JSON.stringify(requests),
+      rejectionPrefix: REVIEW_REJECTION_SKIP_REASON_PREFIX,
+      decisionReasons,
     },
   )
 }
@@ -523,6 +666,7 @@ export async function bulkInsertProjectCatalog(
     requestText: item.requestText ?? null,
     projectName: item.projectName ?? null,
     requestedBy: item.requestedBy ?? null,
+    requestHints: item.requestHints ?? null,
   }))
 
   return qx.select(
@@ -540,6 +684,7 @@ export async function bulkInsertProjectCatalog(
       "requestText",
       "projectName",
       "requestedBy",
+      "requestHints",
       "createdAt",
       "updatedAt",
       "syncedAt"
@@ -557,6 +702,7 @@ export async function bulkInsertProjectCatalog(
       v."requestText",
       v."projectName",
       v."requestedBy",
+      v."requestHints",
       NOW(),
       NOW(),
       NOW()
@@ -572,7 +718,8 @@ export async function bulkInsertProjectCatalog(
       "skipReason" text,
       "requestText" text,
       "projectName" text,
-      "requestedBy" text
+      "requestedBy" text,
+      "requestHints" jsonb
     )
     ON CONFLICT ("repoUrl") DO NOTHING
     RETURNING id, "repoUrl"
@@ -702,6 +849,10 @@ export async function upsertProjectCatalogManualAction(
         WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
         ELSE "projectCatalog"."evaluatedAt"
       END,
+      "evaluationAttempts" = CASE
+        WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN 0
+        ELSE "projectCatalog"."evaluationAttempts"
+      END,
       "classifiedAt" = CASE
         WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
         ELSE "projectCatalog"."classifiedAt"
@@ -790,11 +941,11 @@ export async function claimProjectCatalogForSlackEvaluation(
 // integration across the scheduled and the bot-started onboarding workflows.
 export async function lockProjectCatalogOnboardingTarget(
   qx: QueryExecutor,
-  pccProjectId: string,
+  target: string,
 ): Promise<void> {
   await qx.result(
-    `SELECT pg_advisory_xact_lock(hashtextextended('projectCatalogOnboarding:' || $(pccProjectId)::text, 0))`,
-    { pccProjectId },
+    `SELECT pg_advisory_xact_lock(hashtextextended('projectCatalogOnboarding:' || $(target)::text, 0))`,
+    { target },
   )
 }
 
@@ -1008,6 +1159,7 @@ export async function markProjectCatalogEvaluationFailed(
   qx: QueryExecutor,
   id: string,
   reason: string,
+  expectedAttempts?: number,
 ): Promise<number> {
   return qx.result(
     `
@@ -1015,8 +1167,9 @@ export async function markProjectCatalogEvaluationFailed(
     SET "action" = 'error', "evaluationResult" = 'error', "evaluationReason" = $(reason),
         "evaluatedAt" = NOW(), "updatedAt" = NOW()
     WHERE id = $(id) AND "action" = 'evaluate'
+      AND ($(expectedAttempts) IS NULL OR "evaluationAttempts" = $(expectedAttempts))
     `,
-    { id, reason },
+    { id, reason, expectedAttempts: expectedAttempts ?? null },
   )
 }
 
@@ -1028,12 +1181,37 @@ export async function requeueProjectCatalogEvaluation(
     `
     UPDATE "projectCatalog"
     SET "action" = 'evaluate', "evaluationResult" = NULL, "evaluationReason" = NULL,
-        "evaluatedAt" = NULL, "updatedAt" = NOW()
+        "evaluationAttempts" = 0, "evaluatedAt" = NULL, "updatedAt" = NOW()
     WHERE id = $(id) AND "action" = 'error' AND "evaluationResult" = 'error'
       AND "onboardingError" IS NULL
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     { id },
+  )
+}
+
+export interface IDbProjectCatalogDeferral {
+  reason: string
+  expectedAttempts: number
+  maxRuns: number
+}
+
+// The expected counter makes a redelivered deferral a no-op instead of a second attempt.
+export async function deferProjectCatalogEvaluation(
+  qx: QueryExecutor,
+  id: string,
+  { reason, expectedAttempts, maxRuns }: IDbProjectCatalogDeferral,
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET "evaluationAttempts" = $(expectedAttempts) + 1, "evaluationReason" = $(reason),
+        "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+      AND "evaluationAttempts" = $(expectedAttempts) AND $(expectedAttempts) + 1 < $(maxRuns)
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id, reason, expectedAttempts, maxRuns },
   )
 }
 
@@ -1155,6 +1333,7 @@ export async function answerProjectCatalogQuestion(
     SET
       "action" = $(action),
       "reviewReason" = $(reviewReason),
+      "proposedAction" = COALESCE($(proposedAction), "proposedAction"),
       "requestHints" = COALESCE("requestHints", '{}'::jsonb) || COALESCE($(hints)::jsonb, '{}'::jsonb),
       "requestQuestion" = "requestQuestion" || jsonb_build_object(
         'answer', $(answer)::text, 'answeredBy', $(answeredBy)::text, 'answeredAt', NOW()
@@ -1171,6 +1350,7 @@ export async function answerProjectCatalogQuestion(
       id,
       action: data.action,
       reviewReason: data.reviewReason,
+      proposedAction: data.proposedAction,
       hints: data.hints ? JSON.stringify(data.hints) : null,
       answer: data.answer,
       answeredBy: data.answeredBy,
@@ -1185,7 +1365,8 @@ interface IReviewOutcome {
   guard: string
 }
 
-// Rows that need a person (human_review) can only be marked done; the others can only be approved.
+// Rows that need a person (human_review, or no proposed action at all) can only be marked done;
+// the others can only be approved.
 function reviewOutcome(decision: ProjectCatalogReviewDecision, reviewedBy: string): IReviewOutcome {
   switch (decision) {
     case 'approve':
@@ -1193,14 +1374,14 @@ function reviewOutcome(decision: ProjectCatalogReviewDecision, reviewedBy: strin
         action: 'onboard',
         skipReason: null,
         markOnboarded: false,
-        guard: `"proposedAction" IS DISTINCT FROM 'human_review'`,
+        guard: `"proposedAction" IS NOT NULL AND "proposedAction" <> 'human_review'`,
       }
     case 'done':
       return {
         action: 'onboarded',
         skipReason: null,
         markOnboarded: true,
-        guard: `"proposedAction" = 'human_review'`,
+        guard: `("proposedAction" IS NULL OR "proposedAction" = 'human_review')`,
       }
     case 'reject':
       return {

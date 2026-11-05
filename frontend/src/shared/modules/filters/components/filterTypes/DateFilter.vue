@@ -69,6 +69,7 @@ import type {
   DateFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
 import { required } from '@vuelidate/validators';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import {
   dateFilterOperators,
@@ -94,7 +95,7 @@ const defaultForm: DateFilterValue = {
   value: '',
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },
@@ -137,13 +138,13 @@ const timePicker = computed({
 
 const isCustom = computed(() => !(typeof form.value.value === 'string' && timePickerOptionValues.includes(form.value.value)));
 
-const checkIfBetween = (operator: string) => [FilterDateOperator.BETWEEN, FilterDateOperator.NOT_BETWEEN].includes(operator);
+const checkIfBetween = (operator: FilterDateOperator) => [FilterDateOperator.BETWEEN, FilterDateOperator.NOT_BETWEEN].includes(operator);
 
 const isBetween = computed(() => checkIfBetween(form.value.operator));
 
 const operators = computed(() => {
   if (props.datepickerType === 'year') {
-    return dateFilterOperators.filter((o) => !checkIfBetween(o.value));
+    return dateFilterOperators.filter((o) => !checkIfBetween(o.value as FilterDateOperator));
   }
   return dateFilterOperators;
 });

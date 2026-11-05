@@ -6,6 +6,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const jobTitle: StringFilterConfig = {
   id: 'jobTitle',
@@ -16,7 +17,7 @@ const jobTitle: StringFilterConfig = {
   itemLabelRenderer(value: StringFilterValue, options: StringFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.STRING]('Job title', value, options);
   },
-  apiFilterRenderer(value: StringFilterValue): any[] {
+  apiFilterRenderer(value: StringFilterValue): ApiFilter[] {
     return apiFilterRendererByType[FilterConfigType.STRING]('attributes.jobTitle.default', value);
   },
 };

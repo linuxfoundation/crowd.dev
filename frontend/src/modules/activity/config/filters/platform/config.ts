@@ -6,6 +6,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { lfIdentities } from '@/config/identities';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const platform: MultiSelectFilterConfig = {
   id: 'platform',
@@ -16,10 +17,10 @@ const platform: MultiSelectFilterConfig = {
     options: [
       {
         options: [
-          ...(Object.values(lfIdentities).map((identity) => ({
+          ...Object.values(lfIdentities).map((identity) => ({
             label: identity.name,
             value: identity.key,
-          }))),
+          })),
           {
             label: 'Other',
             value: 'other',
@@ -28,17 +29,19 @@ const platform: MultiSelectFilterConfig = {
       },
     ],
   },
-  itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions, data: any): string {
+  itemLabelRenderer(
+    value: MultiSelectFilterValue,
+    options: MultiSelectFilterOptions,
+    data: unknown,
+  ): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Platform', value, options, data);
   },
-  apiFilterRenderer({ value, include }: MultiSelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: MultiSelectFilterValue): ApiFilter[] {
     const filter = {
       platform: { in: value },
     };
 
-    return [
-      (include ? filter : { not: filter }),
-    ];
+    return [include ? filter : { not: filter }];
   },
 };
 

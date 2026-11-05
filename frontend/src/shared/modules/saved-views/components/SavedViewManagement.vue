@@ -75,10 +75,10 @@ const props = defineProps<{
   views: SavedView[]
 }>();
 
-const emit = defineEmits<{(e: 'update:views', value: SavedView[]): any,
-  (e: 'edit', value: SavedView): any,
-  (e: 'duplicate', value: SavedView): any,
-  (e: 'reload'): any,
+const emit = defineEmits<{(e: 'update:views', value: SavedView[]): void,
+  (e: 'edit', value: SavedView): void,
+  (e: 'duplicate', value: SavedView): void,
+  (e: 'reload'): void,
 }>();
 
 const { trackEvent } = useProductTracking();
@@ -109,7 +109,7 @@ const onListChange = () => {
       }),
     ),
   ).then(() => {
-    (window as any).analytics.track('Custom views rearanged');
+    window.analytics.track('Custom views rearanged');
     emit('reload');
   });
 };
@@ -131,7 +131,7 @@ const remove = (view: SavedView) => {
     icon: 'fa-trash-can fa-light',
     cancelButtonText: 'Cancel',
     confirmButtonText: isShared ? 'Delete shared view' : 'Delete view',
-  } as any)
+  })
     .then(() => {
       trackEvent({
         key: FeatureEventKey.DELETE_CUSTOM_VIEW,
@@ -140,7 +140,7 @@ const remove = (view: SavedView) => {
 
       SavedViewsService.delete(view.id)
         .then(() => {
-          (window as any).analytics.track('Custom view deleted', {
+          window.analytics.track('Custom view deleted', {
             placement: view.placement,
             name: view.name,
           });

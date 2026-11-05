@@ -57,6 +57,7 @@ import LfDataQualityMemberBotSuggestionItem
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { DataQualityMemberBotSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import { ToastStore } from '@/shared/message/notification';
 import LfMemberBotSuggestionDropdown
   from '@/modules/member/components/suggestions/member-bot-suggestion-dropdown.vue';
@@ -72,8 +73,8 @@ const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
 const total = ref(0);
-const botSuggestions = ref<any[]>([]);
-const itemsLoading = ref<any>({});
+const botSuggestions = ref<DataQualityMemberBotSuggestion[]>([]);
+const itemsLoading = ref<Record<string, boolean>>({});
 const isModalOpen = ref(false);
 const detailsOffset = ref(0);
 
@@ -99,7 +100,7 @@ const loadBotSuggestions = () => {
     });
 };
 
-const ignoreSuggestion = (suggestion: any) => {
+const ignoreSuggestion = (suggestion: DataQualityMemberBotSuggestion) => {
   itemsLoading.value[suggestion.memberId] = true;
 
   MemberService.updateAttributes(suggestion.memberId, {

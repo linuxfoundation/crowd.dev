@@ -7,6 +7,7 @@ export interface MemberAttribute {
   custom: string;
   github?: string;
   twitter?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped HubSpot payload. revisit: when it is typed
   hubspot?: any;
 }
 
@@ -43,13 +44,13 @@ export interface Member {
   activeDaysCount: string;
   activeOn: string[] | null;
   activityCount: string;
-  activityTypes:string[] | null;
-  attributes: Record<string, MemberAttribute>
+  activityTypes: string[] | null;
+  attributes: Record<string, MemberAttribute>;
   averageSentiment: number | null;
-  contributions: MemberContribution[]
+  contributions: MemberContribution[];
   createdAt: string;
   displayName: string;
-  emails: string[]
+  emails: string[];
   id: string;
   identities: MemberIdentity[] | null;
   importHash: string | null;
@@ -59,17 +60,17 @@ export interface Member {
   noMergeIds: string[] | null;
   numberOfOpenSourceContributions: number | null;
   organizations: Organization[];
-  reach:MemberReach;
+  reach: MemberReach;
   score: number;
   tags: MemberTag[];
   toMergeIds: string[] | null;
   updatedAt: string;
-  username: Record<string, string[]>
+  username: Record<string, string[]>;
   verifiedEmails: string[];
   unverifiedEmails: string[];
   segments: {
     id: string;
     name: string;
-  }[],
+  }[];
   maintainerRoles: ContributorMaintainerRole[];
 }

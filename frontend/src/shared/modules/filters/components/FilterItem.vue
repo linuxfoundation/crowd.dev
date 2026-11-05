@@ -20,7 +20,7 @@
             class="text-xs text-gray-600 filter-item-text leading-6"
             v-html="
               $sanitize(
-                (props.modelValue && config.itemLabelRenderer(props.modelValue, props.config.options, data))
+                (props.modelValue && renderItemLabel())
                   || `<span class='!text-gray-500'>${config.label}...</span>`,
               )
             "
@@ -35,7 +35,7 @@
           v-model="form"
           v-model:data="data"
           :config="props.config"
-          v-bind="props.config.options"
+          v-bind="(props.config.options as Record<string, unknown>)"
         />
       </div>
       <div class="flex justify-end items-center border-t py-3 px-4">
@@ -70,14 +70,14 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps<{
-  modelValue: string,
+  modelValue: Record<string, unknown>,
   open: string,
   config: FilterConfig,
   hideRemove?: boolean,
   chipClasses?: string,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: any): void;
+const emit = defineEmits<{(e: 'update:modelValue', value: Record<string, unknown>): void;
   (e: 'remove'): void;
   (e: 'update:open', value: string): void;
 }>();
@@ -98,10 +98,16 @@ const isOpen = computed({
   },
 });
 
+// Value type varies per filter type, so the union of renderers is called through a common signature
+const renderItemLabel = () => (props.config.itemLabelRenderer as (value: unknown, options: unknown, data: unknown) => string)(
+  props.modelValue,
+  props.config.options,
+  data.value,
+);
+
 const getComponent = computed(() => {
-  const { type, component } = props.config;
-  if (type === FilterConfigType.CUSTOM) {
-    return component;
+  if (props.config.type === FilterConfigType.CUSTOM) {
+    return props.config.component;
   }
   return filterComponentByType[props.config.type];
 });

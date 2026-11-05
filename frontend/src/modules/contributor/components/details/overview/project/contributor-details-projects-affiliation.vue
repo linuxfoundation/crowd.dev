@@ -113,7 +113,7 @@ import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 const props = defineProps<{
-  project: any,
+  project: { affiliations: Record<string, ContributorAffiliation[]> },
 }>();
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());

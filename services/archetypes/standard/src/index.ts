@@ -2,7 +2,7 @@ import { DataSinkWorkerEmitter } from '@crowd/common_services'
 import { IIntegrationDescriptor, INTEGRATION_SERVICES } from '@crowd/integrations'
 import { Logger, getServiceLogger } from '@crowd/logging'
 import { IQueue, QUEUE_CONFIG, QueueFactory } from '@crowd/queue'
-import { RedisClient, acquireLock, getRedisClient, releaseLock } from '@crowd/redis'
+import { RedisClient, acquireLock, getRedisClient, releaseLock, stopClient } from '@crowd/redis'
 import { Client as TemporalClient, getTemporalClient } from '@crowd/temporal'
 
 // Retrieve automatically configured tracer and logger.
@@ -204,8 +204,16 @@ export class Service {
 
   // Stop allows to gracefully stop the service.
   protected async stop() {
-    if (this.config.temporal.enabled) {
-      await this.temporal.connection.close()
+    if (this.config.temporal.enabled && this._temporal) {
+      await this._temporal.connection.close()
+    }
+
+    if (this.config.redis.enabled && this._redisClient) {
+      await stopClient(this._redisClient)
+    }
+
+    if (this.config.producer.enabled) {
+      await this._queue.disconnectProducer()
     }
   }
 }

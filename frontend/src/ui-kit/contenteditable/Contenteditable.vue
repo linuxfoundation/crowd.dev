@@ -15,18 +15,21 @@ const props = defineProps<{
   modelValue: string,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string): any }>();
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 
-const editable = ref<any>(null);
+const editable = ref<HTMLElement | null>(null);
 const proxy = ref<string>(props.modelValue);
-const onInput = (e: InputEvent) => {
-  const value = e.target?.innerText;
+const onInput = (e: Event) => {
+  // shortcut: cast hides a null target; input events always have one. revisit: if onInput is reused
+  const value = (e.target as HTMLElement).innerText;
   proxy.value = value;
   emit('update:modelValue', value);
 };
 
 const setDefualtValue = () => {
-  editable.value.innerText = props.modelValue;
+  if (editable.value) {
+    editable.value.innerText = props.modelValue;
+  }
 };
 
 watch(() => props.modelValue, () => {

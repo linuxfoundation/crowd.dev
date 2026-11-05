@@ -103,7 +103,9 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
 
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)
 
-        newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData)
+        newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData, {
+          stampVerifiedAt: data.verified,
+        })
 
         if (!newMemberOrgId) {
           throw new ConflictError('A work experience with the same dates already exists')

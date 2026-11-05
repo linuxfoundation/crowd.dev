@@ -6,4 +6,12 @@ export { syncGovernanceContributors } from './governance/syncGovernanceContribut
 export { startMemberContributorsJob } from './job/start'
 export { collectGithubRepoContributors } from './job/collectGithubRepoContributors'
 export { resolveNewIdentityAffiliations } from './job/resolveNewIdentityAffiliations'
-export { completeMemberContributorsJob, failMemberContributorsJob } from './job/finish'
+export {
+  completeMemberContributorsJob,
+  failMemberContributorsJob,
+  markMemberContributorsJobUnresolvable,
+} from './job/finish'
+export { startInferredRepoMemberContributorsJob } from './job/startInferredRepo'
+export { resolveRepoViaLlm } from './job/resolveRepoViaLlm'
+export { fetchGithubRepoContributors } from './job/fetchGithubRepoContributors'
+export { buildInferredRepoMemberContributors } from './job/buildInferredRepoBody'

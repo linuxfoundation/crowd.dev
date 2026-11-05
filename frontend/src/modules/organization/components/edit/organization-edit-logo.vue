@@ -88,7 +88,7 @@ const props = defineProps<{
   organization: Organization,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
 const { updateOrganization } = useOrganizationStore();
 

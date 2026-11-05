@@ -34,7 +34,7 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatNumber } from '@/utils/number';
-import type { OverviewTrends } from '@/modules/admin/modules/overview/types/overview.types';
+import type { OverviewTrends } from '../../types/overview.types';
 
 const props = withDefaults(
   defineProps<{

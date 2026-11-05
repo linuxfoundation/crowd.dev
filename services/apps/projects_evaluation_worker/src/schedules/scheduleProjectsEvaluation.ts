@@ -2,6 +2,7 @@ import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/clien
 
 import { DISCOVERY_NEW_PROJECTS_LIMIT } from '@crowd/common'
 
+import { evaluationWorstCaseMinutesPerProject } from '../evaluator/retry'
 import { svc } from '../main'
 import { IEvaluateProjectsInput, evaluateProjects } from '../workflows'
 
@@ -12,9 +13,7 @@ const SOURCE_PRIORITY = ['manual', 'insights-discussions', 'lf-criticality-score
 // DISCOVERY_NEW_PROJECTS_LIMIT per source per run, so evaluation must drain that much.
 const EVALUATION_LIMIT = DISCOVERY_NEW_PROJECTS_LIMIT * SOURCE_PRIORITY.length
 
-// Worst case per project: evaluateActivities allows 2 attempts × 3 min startToCloseTimeout.
-const WORST_CASE_MINUTES_PER_PROJECT = 6
-const WORKFLOW_EXECUTION_TIMEOUT = `${EVALUATION_LIMIT * WORST_CASE_MINUTES_PER_PROJECT} minutes`
+const WORKFLOW_EXECUTION_TIMEOUT = `${EVALUATION_LIMIT * evaluationWorstCaseMinutesPerProject()} minutes`
 
 function scheduleAction() {
   const args: IEvaluateProjectsInput = {

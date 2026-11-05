@@ -4,7 +4,14 @@ import { ENABLE_LF_COLLECTION_MANAGEMENT, LINUX_FOUNDATION_CONFIG } from '@/conf
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { IGithubInsights } from '@/types/githubTypes'
 import { getCleanString } from '@crowd/common'
-import { GithubIntegrationService } from '@crowd/common_services'
+import {
+  GithubIntegrationService,
+  chooseProjectDescription,
+  findGithubOrgProfileReadme,
+  findGithubRepoReadme,
+  hasOrganizationContent,
+  IOrganizationContent,
+} from '@crowd/common_services'
 import {
   OrganizationField,
   QueryExecutor,
@@ -55,6 +62,53 @@ import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import { DEFAULT_WIDGET_VALUES, PlatformType, Widgets } from '@crowd/types'
 
 import { IServiceOptions } from './IServiceOptions'
+
+const MAX_ORGANIZATIONS_WITH_CONTENT = 3
+
+type GithubOrgDetails = Awaited<ReturnType<typeof GithubIntegrationService.findOrgDetails>>
+
+interface IDescribedOrganizations {
+  detailsByName: Map<string, GithubOrgDetails>
+  content: IOrganizationContent[]
+}
+
+async function findDescribedOrganizations(
+  orgs: GithubIntegrationSettings['orgs'],
+): Promise<IDescribedOrganizations> {
+  const described = await Promise.all(
+    orgs.slice(0, MAX_ORGANIZATIONS_WITH_CONTENT).map(async (org) => {
+      try {
+        const [details, profileReadme] = await Promise.all([
+          GithubIntegrationService.findOrgDetails(org.name),
+          findGithubOrgProfileReadme(org.name),
+        ])
+        return { name: org.name, details, profileReadme }
+      } catch {
+        return { name: org.name, details: null, profileReadme: null }
+      }
+    }),
+  )
+
+  return {
+    detailsByName: new Map(described.map((org) => [org.name, org.details])),
+    content: described
+      .map((org) => ({
+        name: org.name,
+        description: org.details?.description ?? null,
+        profileReadme: org.profileReadme,
+      }))
+      .filter(hasOrganizationContent),
+  }
+}
+
+async function findMainOrgDetails(
+  mainOrg: { name: string; topics: string[] },
+  detailsByName: Map<string, GithubOrgDetails>,
+) {
+  const orgDetails =
+    detailsByName.get(mainOrg.name) ?? (await GithubIntegrationService.findOrgDetails(mainOrg.name))
+  return { ...orgDetails, topics: mainOrg.topics }
+}
 
 export class CollectionService extends LoggerBase {
   options: IServiceOptions
@@ -680,29 +734,50 @@ export class CollectionService extends LoggerBase {
         return null
       }
 
+      const isSingleRepo = CollectionService.isSingleRepoOrg(settings.orgs, repos.length)
+
+      const repoDetails = isSingleRepo
+        ? await GithubIntegrationService.findRepoDetails(settings.orgs[0].name, repos[0].name)
+        : null
+
+      if (isSingleRepo && !repoDetails) {
+        return null
+      }
+
+      const repoContent = repoDetails
+        ? {
+            description: repoDetails.description,
+            topics: repoDetails.topics,
+            readme: await findGithubRepoReadme(settings.orgs[0].name, repos[0].name),
+          }
+        : undefined
+
+      const describedOrganizations = await findDescribedOrganizations(
+        isSingleRepo ? [] : settings.orgs,
+      )
+
       const mainOrg = await GithubIntegrationService.findMainGithubOrganizationWithLLM(
         qx,
         segment.name,
         settings.orgs,
+        repoContent,
+        describedOrganizations.content,
       )
 
       if (!mainOrg) {
         return null
       }
 
-      const details = CollectionService.isSingleRepoOrg(settings.orgs, repos.length)
-        ? await GithubIntegrationService.findRepoDetails(mainOrg.name, repos[0].name)
-        : {
-            ...(await GithubIntegrationService.findOrgDetails(mainOrg.name)),
-            topics: mainOrg.topics,
-          }
+      const details = isSingleRepo
+        ? repoDetails
+        : await findMainOrgDetails(mainOrg, describedOrganizations.detailsByName)
 
       if (!details) {
         return null
       }
 
       return {
-        description: mainOrg.description,
+        description: chooseProjectDescription(mainOrg.description, details.description),
         github: details.github,
         logoUrl: details.logoUrl,
         name: segment.name,

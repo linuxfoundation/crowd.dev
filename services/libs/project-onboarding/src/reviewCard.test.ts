@@ -29,6 +29,7 @@ describe('toReviewRequestCard', () => {
       repoName: 'kops',
       repoUrl: 'https://github.com/kubernetes/kops',
       sourceUrl: 'https://lfx.slack.com/archives/C123/p1700000000000100',
+      organization: null,
       repoContext: null,
       requestedName: 'Kubernetes',
       matchedName: 'Kubernetes',
@@ -40,6 +41,16 @@ describe('toReviewRequestCard', () => {
       autoApplyHold: true,
       cdpUrl: null,
       details: 'Details: lf_in_cdp · update_integration',
+    })
+  })
+
+  it('carries the organization under review when the row leads one', () => {
+    const organization = { owner: 'kubernetes', repositories: 12 }
+
+    expect(toReviewRequestCard(row, NO_REVIEW_CARD_EXTRAS, organization)).toMatchObject({
+      organization,
+      action: 'add_to_connection',
+      whatsNeeded: "Add these 12 repos to Kubernetes's GitHub connection",
     })
   })
 
@@ -62,7 +73,7 @@ describe('toReviewRequestCard', () => {
       matchedName: null,
       mismatch: false,
       insightsState: 'Not in LFX Insights yet',
-      whatsNeeded: 'Create a new LFX Insights project and add this repo',
+      whatsNeeded: 'Create a new non-LF project in LFX Insights and add this repo',
       action: 'create_project',
       autoApplyHold: true,
     })
@@ -97,6 +108,16 @@ describe('toReviewRequestCard', () => {
   it('ignores case and punctuation when comparing names and skips missing ones', () => {
     expect(
       toReviewRequestCard({ ...row, projectName: 'kubernetes!' }, NO_REVIEW_CARD_EXTRAS).mismatch,
+    ).toBe(false)
+    expect(
+      toReviewRequestCard({ ...row, projectName: 'The Kubernetes project' }, NO_REVIEW_CARD_EXTRAS)
+        .mismatch,
+    ).toBe(false)
+    expect(
+      toReviewRequestCard(
+        { ...row, projectName: 'Kubernetes-Project', matchedProjectName: 'Kubernetes Project' },
+        NO_REVIEW_CARD_EXTRAS,
+      ).mismatch,
     ).toBe(false)
     expect(toReviewRequestCard({ ...row, projectName: null }, NO_REVIEW_CARD_EXTRAS).mismatch).toBe(
       false,
@@ -172,8 +193,32 @@ describe('resolveReviewCase', () => {
       }),
     ).toBe('project_not_set_up')
     expect(
+      resolveReviewCase({
+        ...row,
+        classificationKind: 'lf_not_in_pcc',
+        proposedAction: 'human_review',
+        matchedSegmentId: null,
+      }),
+    ).toBe('not_in_pcc')
+    expect(
+      resolveReviewCase({
+        ...row,
+        classificationKind: 'non_lf_new_project',
+        proposedAction: 'human_review',
+        matchedSegmentId: null,
+      }),
+    ).toBe('new_project_by_hand')
+    expect(
       resolveReviewCase({ ...row, proposedAction: 'human_review', matchedSegmentId: null }),
     ).toBe('owner_only_match')
+    expect(
+      resolveReviewCase({
+        ...row,
+        classificationKind: 'ambiguous',
+        proposedAction: 'human_review',
+        matchedSegmentId: null,
+      }),
+    ).toBe('handed_off')
     expect(resolveReviewCase({ ...row, proposedAction: null })).toBe('unknown')
   })
 })

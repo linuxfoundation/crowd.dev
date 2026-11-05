@@ -137,6 +137,8 @@ const en = {
       badEndpoint: 'Bad endpoint: {0}',
       repoAlreadyMapped:
         'Trying to update repo {0} mapping with integrationId {1} but it is already mapped to integration {2}!',
+      autoManaged:
+        "Octolens integrations are managed automatically and can't be connected, changed or disconnected manually",
     },
     sentiment: {
       mood: 'Invalid sentiment data. The {1} property must exist and be a number.',

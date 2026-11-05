@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 
-const scrollContainer = ref<any>(null);
+const scrollContainer = ref<HTMLElement | null>(null);
 const showTopShadow = ref<boolean>(true);
 const showBottomShadow = ref<boolean>(true);
 

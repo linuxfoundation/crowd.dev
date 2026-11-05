@@ -18,6 +18,31 @@ function rawAnswer(overrides: Record<string, unknown> = {}) {
 }
 
 describe('parseOnboardingRequest', () => {
+  it('follows an organization page the model filed as a repository', async () => {
+    const llm = llmAnswering(
+      rawAnswer({ repoUrls: ['https://github.com/alacritty/'], projectName: 'Alacritty' }),
+    )
+
+    await expect(
+      parseOnboardingRequest('onboard Alacritty, https://github.com/alacritty/', llm),
+    ).resolves.toMatchObject({
+      ok: true,
+      request: {
+        githubRepoUrls: [],
+        linksToFollow: ['https://github.com/alacritty/'],
+        projectName: 'Alacritty',
+      },
+    })
+  })
+
+  it('drops an organization page filed as a repository that is not in the request', async () => {
+    const llm = llmAnswering(rawAnswer({ repoUrls: ['https://github.com/other/'] }))
+
+    await expect(
+      parseOnboardingRequest('onboard https://github.com/acme/', llm),
+    ).resolves.toMatchObject({ ok: true, request: { githubRepoUrls: [], linksToFollow: [] } })
+  })
+
   it('extracts and canonicalizes multiple GitHub repositories', async () => {
     const text = 'Please onboard https://github.com/acme/one and acme/two for project Acme'
     const llm = llmAnswering(
@@ -64,6 +89,79 @@ describe('parseOnboardingRequest', () => {
     expect(result).toMatchObject({
       ok: true,
       request: { linksToFollow: ['https://acme.org/projects'] },
+    })
+  })
+
+  it('matches links the requester wrapped in Slack formatting', async () => {
+    const text = 'onboard Acme *https://github.com/acme/* and `https://github.com/acme/one`'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://github.com/acme/one'],
+        linkUrls: ['https://github.com/acme/'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: {
+        githubRepoUrls: ['https://github.com/acme/one'],
+        linksToFollow: ['https://github.com/acme/'],
+      },
+    })
+  })
+
+  it('keeps a trailing underscore that is part of the repository name', async () => {
+    const text = 'onboard https://github.com/acme/my_repo_ and acme/other_'
+    const llm = llmAnswering(
+      rawAnswer({
+        repoUrls: ['https://github.com/acme/my_repo_', 'https://github.com/acme/other_'],
+      }),
+    )
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: {
+        githubRepoUrls: ['https://github.com/acme/my_repo_', 'https://github.com/acme/other_'],
+      },
+    })
+  })
+
+  it('matches repositories in a request written as one italic phrase or as italic tokens', async () => {
+    const llm = () =>
+      llmAnswering(
+        rawAnswer({ repoUrls: ['https://github.com/acme/one', 'https://github.com/acme/two'] }),
+      )
+    const expected = {
+      ok: true,
+      request: { githubRepoUrls: ['https://github.com/acme/one', 'https://github.com/acme/two'] },
+    }
+
+    await expect(
+      parseOnboardingRequest('_onboard github.com/acme/one and github.com/acme/two_.', llm()),
+    ).resolves.toMatchObject(expected)
+    await expect(
+      parseOnboardingRequest('_github.com/acme/one_ and _github.com/acme/two_', llm()),
+    ).resolves.toMatchObject(expected)
+    await expect(
+      parseOnboardingRequest('_github.com/acme/one_, and _github.com/acme/two_', llm()),
+    ).resolves.toMatchObject(expected)
+  })
+
+  it('caps the web pages to follow but keeps every GitHub organization link', async () => {
+    const organizations = Array.from({ length: 6 }, (_, i) => `https://github.com/org-${i + 1}`)
+    const pages = Array.from({ length: 7 }, (_, i) => `https://acme.org/page-${i + 1}`)
+    const text = `onboard ${[...pages, ...organizations].join(' ')}`
+    const llm = llmAnswering(rawAnswer({ linkUrls: [...pages, ...organizations] }))
+
+    const result = await parseOnboardingRequest(text, llm)
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: { linksToFollow: [...organizations, ...pages.slice(0, 5)] },
     })
   })
 

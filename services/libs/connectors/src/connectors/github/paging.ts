@@ -8,6 +8,7 @@ export interface GithubWatermark {
   since: string | null
   cursor: string | null
   coveredWindows: CoveredWindow[]
+  processed: Record<string, string>
 }
 
 export const PAGE_SIZE = 100
@@ -32,6 +33,17 @@ function readCoveredWindows(raw: Record<string, unknown>): CoveredWindow[] {
   return []
 }
 
+function readProcessed(raw: Record<string, unknown>): Record<string, string> {
+  if (typeof raw.processed !== 'object' || raw.processed === null || Array.isArray(raw.processed)) {
+    return {}
+  }
+  return Object.fromEntries(
+    Object.entries(raw.processed).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  )
+}
+
 export function readWatermark(raw: Record<string, unknown> | null): GithubWatermark {
   if (raw && (raw.phase === 'backfill' || raw.phase === 'incremental')) {
     return {
@@ -39,6 +51,7 @@ export function readWatermark(raw: Record<string, unknown> | null): GithubWaterm
       since: typeof raw.since === 'string' ? raw.since : null,
       cursor: typeof raw.cursor === 'string' ? raw.cursor : null,
       coveredWindows: readCoveredWindows(raw),
+      processed: readProcessed(raw),
     }
   }
   return {
@@ -46,6 +59,7 @@ export function readWatermark(raw: Record<string, unknown> | null): GithubWaterm
     since: null,
     cursor: null,
     coveredWindows: [],
+    processed: {},
   }
 }
 

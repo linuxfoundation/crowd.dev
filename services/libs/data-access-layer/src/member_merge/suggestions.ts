@@ -4,14 +4,18 @@ import {
   IMemberMergeSuggestion,
   LLMSuggestionVerdictType,
   MemberMergeSuggestionTable,
+  MergeActionType,
+  MergeSuggestionSource,
 } from '@crowd/types'
 
+import { insertMergeSuggestionSources } from '../merge-suggestion-sources'
 import { QueryExecutor } from '../queryExecutor'
 import { removeMemberNoMerge } from './noMerge'
 
 export async function upsertMemberMergeSuggestions(
   qx: QueryExecutor,
   suggestions: IMemberMergeSuggestion[],
+  source: MergeSuggestionSource,
   similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length === 0) {
@@ -57,63 +61,76 @@ export async function upsertMemberMergeSuggestions(
       similarityThreshold,
     }
 
-    const upsertTable = async (table: MemberMergeSuggestionTable, onlyAboveThreshold: boolean) => {
-      const thresholdFilter = onlyAboveThreshold ? 'AND v.similarity > $(similarityThreshold)' : ''
+    await qx.tx(async (tx) => {
+      const upsertTable = async (
+        table: MemberMergeSuggestionTable,
+        onlyAboveThreshold: boolean,
+      ): Promise<[string, string][]> => {
+        const thresholdFilter = onlyAboveThreshold
+          ? 'AND v.similarity > $(similarityThreshold)'
+          : ''
 
-      await qx.result(
+        const updated: { memberId: string; toMergeId: string }[] = await tx.select(
+          `
+            UPDATE "${table}" t
+            SET
+              similarity = v.similarity,
+              "activityEstimate" = v."activityEstimate",
+              "updatedAt" = now()
+            FROM (${values}) v
+            WHERE
+              (${pairMatch})
+              ${thresholdFilter}
+            RETURNING t."memberId", t."toMergeId"
+          `,
+          params,
+        )
+
+        const inserted: { memberId: string; toMergeId: string }[] = await tx.select(
+          `
+            INSERT INTO "${table}"
+              ("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
+            SELECT
+              v."memberId",
+              v."toMergeId",
+              v.similarity,
+              v."activityEstimate",
+              NOW(),
+              NOW()
+            FROM (${values}) v
+            WHERE EXISTS (SELECT 1 FROM members m WHERE m.id = v."memberId")
+              AND EXISTS (SELECT 1 FROM members m WHERE m.id = v."toMergeId")
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "${table}" t
+                WHERE ${pairMatch}
+              )
+              ${thresholdFilter}
+            ON CONFLICT ("memberId", "toMergeId") DO NOTHING
+            RETURNING "memberId", "toMergeId"
+          `,
+          params,
+        )
+
+        return [...updated, ...inserted].map(({ memberId, toMergeId }) => [memberId, toMergeId])
+      }
+
+      const storedPairs = await upsertTable(MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW, false)
+      await upsertTable(MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED, true)
+
+      await insertMergeSuggestionSources(tx, MergeActionType.MEMBER, source, storedPairs)
+
+      await tx.result(
         `
-          UPDATE "${table}" t
-          SET
-            similarity = v.similarity,
-            "activityEstimate" = v."activityEstimate",
-            "updatedAt" = now()
-          FROM (${values}) v
+          DELETE FROM "memberToMerge" t
+          USING (${values}) v
           WHERE
             (${pairMatch})
-            ${thresholdFilter}
+            AND v.similarity <= $(similarityThreshold)
         `,
         params,
       )
-
-      await qx.result(
-        `
-          INSERT INTO "${table}"
-            ("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
-          SELECT
-            v."memberId",
-            v."toMergeId",
-            v.similarity,
-            v."activityEstimate",
-            NOW(),
-            NOW()
-          FROM (${values}) v
-          WHERE EXISTS (SELECT 1 FROM members m WHERE m.id = v."memberId")
-            AND EXISTS (SELECT 1 FROM members m WHERE m.id = v."toMergeId")
-            AND NOT EXISTS (
-              SELECT 1
-              FROM "${table}" t
-              WHERE ${pairMatch}
-            )
-            ${thresholdFilter}
-          ON CONFLICT ("memberId", "toMergeId") DO NOTHING
-        `,
-        params,
-      )
-    }
-
-    await upsertTable(MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW, false)
-    await upsertTable(MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED, true)
-
-    await qx.result(
-      `
-        DELETE FROM "memberToMerge" t
-        USING (${values}) v
-        WHERE
-          (${pairMatch})
-          AND v.similarity <= $(similarityThreshold)
-      `,
-      params,
-    )
+    })
   }
 }
 
@@ -273,6 +290,7 @@ export async function touchMemberMergeSuggestionsLastGeneratedAt(
 export async function suggestMemberMerge(
   qx: QueryExecutor,
   pairs: { members: [string, string]; similarity: number }[],
+  source: MergeSuggestionSource,
 ): Promise<void> {
   if (pairs.length === 0) {
     return
@@ -290,6 +308,7 @@ export async function suggestMemberMerge(
         members,
         activityEstimate: 0,
       })),
+      source,
     )
   })
 }

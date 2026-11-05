@@ -72,6 +72,20 @@ export async function insertActivities(
   const toInsert = activities
     .map((activity) => {
       const id = activity.id || generateUUIDv4()
+      const attributes = serializeAttributes(tryToUnwrapAttributes(activity.attributes))
+      if (attributes.pruned) {
+        logger.warn(
+          {
+            activityId: id,
+            platform: activity.platform,
+            type: activity.type,
+            sourceId: activity.sourceId,
+            originalBytes: attributes.originalBytes,
+            maxBytes: ATTRIBUTES_MAX_BYTES,
+          },
+          'Activity attributes exceeded the size cap and were pruned!',
+        )
+      }
 
       return {
         // we keep these ones in front of `...activity` because these fields might exist in the activity object
@@ -92,7 +106,7 @@ export async function insertActivities(
         updatedAt: now,
         createdAt: activity.createdAt ? moment(activity.createdAt).toISOString() : now,
         timestamp: activity.timestamp ? moment(activity.timestamp).toISOString() : now,
-        attributes: objectToBytes(tryToUnwrapAttributes(activity.attributes)),
+        attributes: attributes.json,
         body: truncateWithDots(activity.body, 2000),
 
         // This is being added here temporarily, just to ensure we keep sending isContribution to Kafka
@@ -129,11 +143,7 @@ export async function insertActivities(
     }
   })
 
-  const chunks: (typeof bulk)[] = []
-  for (let i = 0; i < bulk.length; i += 10) {
-    chunks.push(bulk.slice(i, i + 10))
-  }
-  await Promise.all(chunks.map((chunk) => emitter.sendMessages(chunk)))
+  await emitter.sendMessages(bulk)
   telemetry.increment('tinybird.insert_activity', activities.length)
 
   return toInsert.map((activity) => activity.id)
@@ -141,12 +151,26 @@ export async function insertActivities(
 
 const ATTRIBUTE_STRING_MAX_LENGTH = 500
 
-function objectToBytes(input: object): string {
-  if (typeof input !== 'object') {
-    return input
+// keeps a single activity record far below the 1 MB OCI Streaming request limit
+const ATTRIBUTES_MAX_BYTES = 16 * 1024
+
+export function serializeAttributes(input: object): {
+  json: string
+  pruned: boolean
+  originalBytes: number
+} {
+  const trimmed = trimAttributeStrings(input ?? {}) as object
+  const json = JSON.stringify(trimmed)
+  const originalBytes = Buffer.byteLength(json)
+  if (originalBytes <= ATTRIBUTES_MAX_BYTES) {
+    return { json, pruned: false, originalBytes }
   }
 
-  return JSON.stringify(trimAttributeStrings(input ?? {}))
+  return {
+    json: JSON.stringify(pruneToFit(trimmed, ATTRIBUTES_MAX_BYTES)),
+    pruned: true,
+    originalBytes,
+  }
 }
 
 export function trimAttributeStrings(value: unknown): unknown {
@@ -162,12 +186,56 @@ export function trimAttributeStrings(value: unknown): unknown {
   return value
 }
 
-function tryToUnwrapAttributes(attributes: string | object): object {
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    if (typeof attributes === 'object') {
-      return attributes
+// Largest entries go first (ties: object keys alphabetically, array items from the end); containers shrink from the
+// inside, anything else is dropped.
+function pruneToFit(value: object, maxBytes: number): object {
+  const isArray = Array.isArray(value)
+  const entries = Object.entries(value).map(([key, v]) => {
+    const valueJson = JSON.stringify(v)
+    const valueBytes = valueJson === undefined ? (isArray ? 4 : 0) : Buffer.byteLength(valueJson)
+    const size =
+      isArray || valueJson === undefined
+        ? valueBytes
+        : Buffer.byteLength(JSON.stringify(key)) + 1 + valueBytes
+    return { key, value: v as unknown, valueBytes, size, keep: true }
+  })
+
+  const present = entries.filter((e) => e.size > 0)
+  let total = 2 + present.reduce((sum, e) => sum + e.size, 0) + Math.max(present.length - 1, 0)
+  let count = present.length
+
+  const tieBreak = isArray
+    ? (a: { key: string }, b: { key: string }) => Number(b.key) - Number(a.key)
+    : (a: { key: string }, b: { key: string }) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+  const bySizeDesc = [...present].sort((a, b) => b.size - a.size || tieBreak(a, b))
+
+  for (const entry of bySizeDesc) {
+    if (total <= maxBytes) {
+      break
     }
-    attributes = JSON.parse(attributes)
+
+    const excess = total - maxBytes
+    if (entry.value && typeof entry.value === 'object' && entry.valueBytes - excess >= 2) {
+      entry.value = pruneToFit(entry.value, entry.valueBytes - excess)
+      const newBytes = Buffer.byteLength(JSON.stringify(entry.value))
+      total -= entry.valueBytes - newBytes
+      entry.valueBytes = newBytes
+      continue
+    }
+
+    entry.keep = false
+    total -= entry.size + (count > 1 ? 1 : 0)
+    count -= 1
   }
+
+  const kept = entries.filter((e) => e.keep)
+  return isArray ? kept.map((e) => e.value) : Object.fromEntries(kept.map((e) => [e.key, e.value]))
+}
+
+export function tryToUnwrapAttributes(attributes: unknown): object {
+  let value = attributes
+  while (typeof value === 'string') {
+    value = JSON.parse(value)
+  }
+  return value !== null && typeof value === 'object' ? value : {}
 }

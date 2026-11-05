@@ -10,7 +10,7 @@ import {
 } from '../../http/errors'
 
 export const OCTOLENS_API_BASE_URL = 'https://app.octolens.com/api/v2'
-export const OCTOLENS_REQUEST_TIMEOUT_MS = 30_000
+const OCTOLENS_REQUEST_TIMEOUT_MS = 30_000
 // Only retries provider.unavailable (5xx/network); rate-limit and auth errors bubble up
 // immediately so the dispatcher parks the whole sync_unit instead of retrying in-process.
 const MAX_ATTEMPTS = 4

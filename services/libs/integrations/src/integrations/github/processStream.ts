@@ -3,7 +3,7 @@
 import { createAppAuth } from '@octokit/auth-app'
 import { AuthInterface } from '@octokit/auth-app/dist-types/types'
 
-import { singleOrDefault, timeout } from '@crowd/common'
+import { isPlaceholderEmployerName, singleOrDefault, timeout } from '@crowd/common'
 import { GraphQlQueryResponse, IConcurrentRequestLimiter } from '@crowd/types'
 
 import {
@@ -223,9 +223,13 @@ export const prepareMember = async (
       orgs = [{ name: 'crowd.dev' }]
     } else {
       const companyHTML = memberFromApi?.companyHTML
+      const company = memberFromApi.company.replace('@', '').trim()
       // if company is matched againts github org it's html will contain href attribute
-      if (companyHTML && containsHrefAttribute(companyHTML)) {
-        const company = memberFromApi.company.replace('@', '').trim()
+      if (
+        companyHTML &&
+        containsHrefAttribute(companyHTML) &&
+        !isPlaceholderEmployerName(company)
+      ) {
         const fromAPI = await getOrganizationData(ctx, company)
         orgs = fromAPI
       } else {

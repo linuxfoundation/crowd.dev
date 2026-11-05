@@ -93,6 +93,17 @@ describe('botThreadReply', () => {
     )
   })
 
+  it('speaks for the whole organization when its evaluation skipped it', () => {
+    expect(
+      buildBotSkippedReply(project, 'it looks like a personal sandbox', {
+        owner: 'acme',
+        repositories: 3,
+      }),
+    ).toContain(
+      "🚫 *github.com/acme* (3 repositories) weren't added: it looks like a personal sandbox.",
+    )
+  })
+
   it('truncates long reasons, drops trailing periods and escapes mrkdwn control characters', () => {
     const reply = buildBotSkippedReply(
       { repoUrl: 'https://gitlab.com/acme/<widget>', classificationKind: 'ambiguous' },
@@ -106,6 +117,46 @@ describe('botThreadReply', () => {
     expect(reply.length).toBeLessThan(750)
   })
 
+  it('tells the requester a new organization project is created by hand', () => {
+    expect(
+      buildBotReviewReply(
+        {
+          ...project,
+          classificationKind: 'non_lf_new_project',
+          proposedAction: 'human_review',
+          reviewReason:
+            "Acme isn't in LFX Insights yet; a new non-LF project with the 2 repositories of github.com/acme is created by the CDP team",
+        },
+        { owner: 'acme', repositories: 2 },
+      ),
+    ).toContain(
+      "I've asked the CDP team to create it and add the repositories; they'll let you know here.",
+    )
+  })
+
+  it('speaks of the whole organization when the row leads one', () => {
+    const organization = { owner: 'acme', repositories: 12 }
+    const org = '*github.com/acme* (12 repositories)'
+
+    expect(
+      buildBotReviewReply(
+        { ...project, proposedAction: 'update_integration', reviewReason: null },
+        organization,
+      ),
+    ).toBe(
+      `👀 ${org} need a quick check before I add them. The CDP team will approve or reject it here, and I'll post the result.`,
+    )
+    expect(
+      buildBotRejectedReply(
+        { ...project, reviewedBy: 'U123', decisionReason: null, decisionNote: null },
+        organization,
+      ),
+    ).toContain(`🚫 ${org} weren't added. <@U123> reviewed it and rejected the request.`)
+    expect(buildBotDoneReply({ ...project, reviewedBy: 'U123' }, organization)).toContain(
+      `✅ ${org} were added to LFX Insights by hand by <@U123>.`,
+    )
+  })
+
   it('reports an already tracked repository as a success without a next step', () => {
     expect(
       buildBotSkippedReply(
@@ -117,7 +168,17 @@ describe('botThreadReply', () => {
 
   it('tells the requester the CDP team has the request, in one human sentence per case', () => {
     expect(buildBotReviewReply({ ...project, reviewReason: null })).toBe(
-      `👀 ${REPO_LABEL} needs a quick check before I add it. The CDP team will approve or reject it here, and I'll post the result.`,
+      `👀 ${REPO_LABEL} needs a quick check before I add it. I've asked the CDP team to pick the right project and add it by hand; they'll confirm here.`,
+    )
+    expect(
+      buildBotReviewReply({
+        ...project,
+        classificationKind: 'ambiguous',
+        proposedAction: 'human_review',
+        reviewReason: "the requester said Acme Widgets isn't Acme",
+      }),
+    ).toBe(
+      `👀 ${REPO_LABEL}: the requester said Acme Widgets isn't Acme. I've asked the CDP team to pick the right project and add it by hand; they'll confirm here.`,
     )
     expect(
       buildBotReviewReply({
@@ -151,6 +212,18 @@ describe('botThreadReply', () => {
     expect(
       buildBotReviewReply({
         ...project,
+        classificationKind: 'lf_not_in_pcc',
+        proposedAction: 'human_review',
+        matchedSegmentId: null,
+        reviewReason:
+          "Acme is described as an LF project, but it isn't in the foundation project list yet",
+      }),
+    ).toBe(
+      `👀 ${REPO_LABEL}: Acme is described as an LF project, but it isn't in the foundation project list yet. I've asked the CDP team to check it with PCC and add it; they'll let you know here.`,
+    )
+    expect(
+      buildBotReviewReply({
+        ...project,
         classificationKind: 'lf_in_cdp',
         proposedAction: 'human_review',
         reviewReason:
@@ -175,10 +248,11 @@ describe('botThreadReply', () => {
       buildBotReviewReply({
         ...project,
         proposedAction: 'create_segment',
-        reviewReason: "Acme isn't in LFX Insights yet, and new projects are added by the CDP team",
+        reviewReason:
+          "Acme isn't in LFX Insights yet; it would be created as a non-LF project, and new projects are added by the CDP team",
       }),
     ).toBe(
-      `👀 ${REPO_LABEL}: Acme isn't in LFX Insights yet, and new projects are added by the CDP team. I've sent your request to the CDP team; they'll approve or reject it here.`,
+      `👀 ${REPO_LABEL}: Acme isn't in LFX Insights yet; it would be created as a non-LF project, and new projects are added by the CDP team. I've sent your request to the CDP team; they'll approve or reject it here.`,
     )
   })
 

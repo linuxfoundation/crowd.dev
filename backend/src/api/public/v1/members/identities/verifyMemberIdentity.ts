@@ -33,6 +33,7 @@ import {
   IMemberUnmergePreviewResult,
   IUnmergePreviewResult,
   MemberUnmergeResult,
+  MergeSuggestionSource,
 } from '@crowd/types'
 
 const paramsSchema = z.object({
@@ -90,10 +91,13 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       try {
         await qx.tx(async (tx) => {
           try {
-            updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
-              verified,
-              verifiedBy,
-            })
+            updatedIdentity = await updateMemberIdentity(
+              tx,
+              memberId,
+              identityId,
+              { verified, verifiedBy },
+              { stampVerifiedAt: true },
+            )
           } catch (error) {
             if (verified && isMemberIdentityDbConflict(error)) {
               const conflictMemberId = await findMemberIdByVerifiedIdentity(
@@ -149,9 +153,11 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
         if (error instanceof ConflictError) {
           const conflictMemberId = error.context?.conflictMemberId
           if (typeof conflictMemberId === 'string') {
-            await suggestMemberMerge(qx, [
-              { members: [memberId, conflictMemberId], similarity: 0.95 },
-            ])
+            await suggestMemberMerge(
+              qx,
+              [{ members: [memberId, conflictMemberId], similarity: 0.95 }],
+              MergeSuggestionSource.IDENTITY_CONFLICT,
+            )
           }
         }
         throw error

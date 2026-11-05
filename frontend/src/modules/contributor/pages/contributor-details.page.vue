@@ -142,7 +142,7 @@ const route = useRoute();
 
 const tabs = ref('overview');
 
-const activities = ref<any>(null);
+const activities = ref<InstanceType<typeof LfContributorDetailsActivities> | null>(null);
 
 const { id } = route.params;
 
@@ -161,15 +161,15 @@ const fetchContributor = () => {
   });
 };
 
-const controlScroll = (e: {
-  target: { scrollTop: any; clientHeight: any; scrollHeight: number };
-}) => {
+const controlScroll = (e: Event) => {
+  // shortcut: cast hides a null target. revisit: if this handler listens to non-element targets
+  const target = e.target as HTMLElement;
   if (
-    e.target.scrollTop + e.target.clientHeight
-    >= e.target.scrollHeight - 10
+    target.scrollTop + target.clientHeight
+    >= target.scrollHeight - 10
   ) {
     if (tabs.value === 'activities') {
-      activities.value.loadMore();
+      activities.value?.loadMore();
     }
   }
 };

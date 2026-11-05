@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
 import type {
@@ -48,7 +49,7 @@ const defaultForm: StringFilterValue = {
   operator: props.config?.options?.fixedOperator || FilterStringOperator.LIKE,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },

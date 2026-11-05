@@ -167,15 +167,17 @@ const isAffilationEditOpen = ref<boolean>(false);
 const getAffiliations = (projectId: string) => (props.contributor.affiliations || [])
   .filter((affiliation) => affiliation.segmentId === projectId)
   .reduce((obj: Record<string, ContributorAffiliation[]>, aff: ContributorAffiliation) => {
-    if (!obj[aff.organizationId]) {
+    // shortcut: a null organizationId keys as "null", as on main. revisit: when affiliations carry no null orgs.
+    const orgId = aff.organizationId as string;
+    if (!obj[orgId]) {
       return {
         ...obj,
-        [aff.organizationId]: [aff],
+        [orgId]: [aff],
       };
     }
     return {
       ...obj,
-      [aff.organizationId]: [...obj[aff.organizationId], aff],
+      [orgId]: [...obj[orgId], aff],
     };
   }, {});
 
@@ -184,7 +186,7 @@ const projects = computed(() => props.contributor.segments.map((p) => ({
   affiliations: getAffiliations(p.id),
 })));
 
-const getMaintainerRoles = (project: any) => props.contributor.maintainerRoles.filter((role) => role.segmentId === project.id);
+const getMaintainerRoles = (project: { id: string }) => props.contributor.maintainerRoles.filter((role) => role.segmentId === project.id);
 
 const viewActivity = (projectId: string) => {
   router.replace({

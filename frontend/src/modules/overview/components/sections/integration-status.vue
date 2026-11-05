@@ -85,7 +85,7 @@ const navigateTo = (path: string, key: string) => {
 
 watch(data, () => {
   if (data.value) {
-    const statusCount: Record<string, number> = Object.keys(lfIntegrationStatusesTabs).reduce((acc: any, key) => {
+    const statusCount: Record<string, number> = Object.keys(lfIntegrationStatusesTabs).reduce((acc: Record<string, number>, key) => {
       acc[key] = 0;
       return acc;
     }, {});

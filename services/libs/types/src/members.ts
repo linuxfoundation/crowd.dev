@@ -25,6 +25,7 @@ export interface IMemberIdentity {
   memberId?: string
   verified: boolean
   verifiedBy?: string
+  verifiedAt?: string | null
 
   source?: string
   sourceId?: string

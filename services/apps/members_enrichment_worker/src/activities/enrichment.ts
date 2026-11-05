@@ -7,6 +7,8 @@ import {
   getCountry,
   hasAttributeValue,
   hasIntersection,
+  isPlaceholderEmployerName,
+  omitUrlValues,
   replaceDoubleQuotes,
   sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
@@ -39,6 +41,7 @@ import {
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
 import {
+  findIndividualNoAccountOrganizationId,
   findOrCreateOrganization,
   findOrgByVerifiedIdentity,
   insertOrganizationIdentities,
@@ -57,6 +60,7 @@ import {
   IMemberReach,
   MemberEnrichmentSource,
   MemberIdentityType,
+  MergeSuggestionSource,
   OrganizationAttributeSource,
   OrganizationIdentityType,
   PlatformType,
@@ -373,7 +377,12 @@ export async function updateMemberUsingSquashedPayload(
     if (squashedPayload.attributes) {
       svc.log.debug({ memberId }, 'Updating member attributes!')
 
-      attributes = _.merge({}, attributes, squashedPayload.attributes)
+      const incomingAttributes = { ...squashedPayload.attributes }
+      if (incomingAttributes.location) {
+        incomingAttributes.location = omitUrlValues(incomingAttributes.location)
+      }
+
+      attributes = _.merge({}, attributes, incomingAttributes)
 
       if (Object.keys(attributes).length > 0) {
         // Infer country from location when no country source is set.
@@ -423,6 +432,16 @@ export async function updateMemberUsingSquashedPayload(
     )
 
     if (squashedPayload.memberOrganizations.length > 0) {
+      if (squashedPayload.memberOrganizations.some((org) => isPlaceholderEmployerName(org.name))) {
+        const individualNoAccountOrgId = await findIndividualNoAccountOrganizationId(qx)
+
+        squashedPayload.memberOrganizations = squashedPayload.memberOrganizations.flatMap((org) => {
+          if (!isPlaceholderEmployerName(org.name)) return [org]
+          if (!individualNoAccountOrgId) return []
+          return [{ ...org, organizationId: individualNoAccountOrgId, identities: [] }]
+        })
+      }
+
       // try matching member's existing organizations with the new ones
       // we'll be using displayName, title, dates
       for (const org of squashedPayload.memberOrganizations) {
@@ -587,7 +606,10 @@ export async function updateMemberUsingSquashedPayload(
             if (mergeSuggestions.length > 0) {
               // A shared verified identity is a strong merge signal, unless the pair was
               // explicitly marked as no-merge by a reviewer.
-              await mergeSuggestionsRepo.addToMerge(mergeSuggestions)
+              await mergeSuggestionsRepo.addToMerge(
+                mergeSuggestions,
+                MergeSuggestionSource.ENRICHMENT_CONFLICT,
+              )
             }
           }
         }

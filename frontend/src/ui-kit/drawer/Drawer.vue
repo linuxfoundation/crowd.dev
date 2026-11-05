@@ -44,7 +44,7 @@ const clickOutsideClose = () => {
   }
 };
 
-const onEscapeKeyUp = (event: any) => {
+const onEscapeKeyUp = (event: KeyboardEvent) => {
   if (event.which === 27) {
     clickOutsideClose();
   }

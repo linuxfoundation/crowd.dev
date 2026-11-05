@@ -20,6 +20,13 @@ import {
   IOrganizationEnrichmentDataInternalAPIResponse,
 } from './types'
 
+// Never stored before these PlatformType values existed; storing them needs its own decision.
+const IGNORED_IDENTITY_PLATFORMS = new Set<PlatformType>([
+  PlatformType.BLUESKY,
+  PlatformType.TIKTOK,
+  PlatformType.INSTAGRAM,
+])
+
 export default class EnrichmentServiceLFXInternalAPI
   extends LoggerBase
   implements IOrganizationEnrichmentService
@@ -124,6 +131,10 @@ export default class EnrichmentServiceLFXInternalAPI
           const platform = PlatformType[key.toUpperCase() as keyof typeof PlatformType]
           if (!platform) {
             this.log.warn({ key }, 'Unknown platform in identities, skipping')
+            return []
+          }
+          if (IGNORED_IDENTITY_PLATFORMS.has(platform)) {
+            this.log.warn({ key }, 'Ignored platform in identities, skipping')
             return []
           }
 

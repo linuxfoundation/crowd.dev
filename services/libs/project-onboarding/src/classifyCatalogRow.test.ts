@@ -21,7 +21,12 @@ const pccProject: IPccCandidate = {
   isLeaf: true,
 }
 
-const segment: ICdpSegmentMatch = { segmentId: 'seg-1', name: 'Acme', integration: 'none' }
+const segment: ICdpSegmentMatch = {
+  segmentId: 'seg-1',
+  name: 'Acme',
+  slug: 'acme',
+  integration: 'none',
+}
 
 interface IDepsState {
   candidates?: IPccCandidate[]
@@ -151,9 +156,50 @@ describe('classifyCatalogRow', () => {
     expect(result.trace.parsed).toMatchObject({ declaredLf: true })
     expect(result.classification).toMatchObject({
       classificationKind: 'lf_not_in_pcc',
-      proposedAction: null,
-      action: 'skip',
+      proposedAction: 'human_review',
+      action: 'review',
+      reviewReason:
+        "Acme is described as an LF project, but it isn't in the foundation project list yet",
       requestQuestion: null,
+    })
+  })
+
+  it('asks a bot requester whether an unknown project is LF before evaluating it', async () => {
+    const bot = { provenance: 'slack-bot' as const, requestedBy: 'U1' }
+
+    const asked = await classifyCatalogRow(row(bot), deps())
+    expect(asked.classification).toMatchObject({
+      classificationKind: 'ambiguous',
+      proposedAction: null,
+      action: 'ask',
+      requestQuestion: { kind: 'lf_confirm' },
+    })
+
+    const discovered = await classifyCatalogRow(row(), deps())
+    expect(discovered.classification).toMatchObject({
+      classificationKind: 'non_lf_new_project',
+      proposedAction: 'create_segment',
+      action: 'evaluate',
+      requestQuestion: null,
+    })
+
+    const confirmedLf = await classifyCatalogRow(
+      row({ ...bot, requestHints: { declaredLf: true } }),
+      deps(),
+    )
+    expect(confirmedLf.classification).toMatchObject({
+      classificationKind: 'lf_not_in_pcc',
+      proposedAction: 'human_review',
+      action: 'review',
+    })
+
+    const notLf = await classifyCatalogRow(
+      row({ ...bot, requestHints: { treatAsNew: true } }),
+      deps(),
+    )
+    expect(notLf.classification).toMatchObject({
+      classificationKind: 'non_lf_new_project',
+      action: 'evaluate',
     })
   })
 
@@ -273,6 +319,21 @@ describe('classifyCatalogRow', () => {
     })
   })
 
+  it('names the LFX Insights project when it differs from the PCC node that owns it', async () => {
+    const parent = { ...pccProject, name: 'Software Supply Chain Security Project', isLeaf: false }
+    const result = await classifyCatalogRow(
+      row({ projectName: 'Uptane' }),
+      deps({ candidates: [parent], cdpSegment: { ...segment, name: 'Uptane' } }),
+    )
+
+    expect(result.classification).toMatchObject({
+      classificationKind: 'lf_in_cdp',
+      pccProjectId: 'pcc-1',
+      matchedProjectName: 'Uptane',
+      matchedSegmentId: 'seg-1',
+    })
+  })
+
   it('routes an LF project in CDP to review when auto apply is off', async () => {
     const result = await classifyCatalogRow(
       row(),
@@ -323,10 +384,26 @@ describe('toCatalogClassification', () => {
     })
   })
 
+  it('asks for human review of an LF project missing from the foundation project list', () => {
+    expect(
+      toCatalogClassification({ kind: 'lf_not_in_pcc', projectName: 'Acme' }, { autoApply: true }),
+    ).toEqual({
+      classificationKind: 'lf_not_in_pcc',
+      proposedAction: 'human_review',
+      pccProjectId: null,
+      matchedProjectName: null,
+      matchedSegmentId: null,
+      action: 'review',
+      requestQuestion: null,
+      skipReason: null,
+      reviewReason:
+        "Acme is described as an LF project, but it isn't in the foundation project list yet",
+    })
+  })
+
   it.each<OnboardingResolution>([
     { kind: 'already_tracked', repoUrls: ['https://github.com/acme/one'] },
     { kind: 'non_github_source', nonGithubRepoUrls: ['https://gitlab.com/acme/one'] },
-    { kind: 'lf_not_in_pcc', projectName: 'Acme' },
     { kind: 'ambiguous', reason: 'x', candidates: [] },
   ])('proposes no action for $kind', (resolution) => {
     expect(toCatalogClassification(resolution, { autoApply: true })).toMatchObject({

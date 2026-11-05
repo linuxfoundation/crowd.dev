@@ -44,7 +44,7 @@ const props = defineProps<{
   type?: DropdownItemType;
 }>();
 
-const emit = defineEmits<{(e: 'click', value: { value?: string; label?: string; [key: string]: any }): void;
+const emit = defineEmits<{(e: 'click', value: { value?: string; label?: string; [key: string]: unknown }): void;
 }>();
 
 const attrs = useAttrs();

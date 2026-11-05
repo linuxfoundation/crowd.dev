@@ -37,7 +37,7 @@ export default {
   },
 };
 
-const render = (args: any) => ({
+const render = (args: Record<string, unknown>) => ({
   components: { LfField, LfInput, LfFieldMessage },
   setup() {
     return { args };

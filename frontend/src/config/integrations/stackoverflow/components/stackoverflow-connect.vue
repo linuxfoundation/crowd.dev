@@ -19,6 +19,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { StackoverflowSettings } from '@/config/integrations/stackoverflow/types/StackoverflowSettings';
 import { defineProps, ref } from 'vue';
 import LfStackoverflowSettingsDrawer
   from '@/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue';
@@ -26,7 +28,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<StackoverflowSettings> | undefined,
   segmentId?: string,
   grandparentId?: string,
 }>();

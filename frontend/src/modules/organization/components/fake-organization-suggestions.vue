@@ -92,6 +92,7 @@ import { ToastStore } from '@/shared/message/notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { OrganizationService } from '@/modules/organization/organization-service';
+import type { FakeOrganizationSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
 const props = withDefaults(
   defineProps<{
@@ -108,7 +109,7 @@ const emit = defineEmits<{(e: 'reload'): void}>();
 
 const { trackEvent } = useProductTracking();
 
-const suggestion = ref<any>({});
+const suggestion = ref<Partial<FakeOrganizationSuggestion>>({});
 const currentOffset = ref(props.offset);
 const hasMore = ref(false);
 const hasSuggestion = ref(false);
@@ -127,7 +128,7 @@ const fetch = (page: number): Promise<void> => {
   loading.value = true;
 
   return OrganizationService.fetchFakeOrganizationSuggestions(1, currentOffset.value, suggestionQuery())
-    .then((res: any) => {
+    .then((res: { offset: string | number, hasMore: boolean, rows?: FakeOrganizationSuggestion[] }) => {
       currentOffset.value = +res.offset;
       hasMore.value = Boolean(res.hasMore);
       const [row] = res.rows || [];
@@ -139,7 +140,7 @@ const fetch = (page: number): Promise<void> => {
           organization: row.organization ?? {
             id: row.organizationId,
             displayName: row.displayName,
-            logo: row.logo,
+            logo: row.logo ?? undefined,
             activityCount: row.activityCount,
           },
         };

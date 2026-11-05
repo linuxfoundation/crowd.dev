@@ -20,6 +20,8 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
       return githubAppCredential()
     case 'octolens':
       return octolensTokenCredential()
+    case 'credly':
+      return credlyOAuthClientCredential()
     default:
       throw new Error(`unsupported platform ${integration.platform}`)
   }
@@ -46,6 +48,11 @@ function githubAppCredential(): Credential {
   }
 }
 
+// Lets scheduled Octolens work skip environments that never got a token, instead of failing hourly.
+export function isOctolensCredentialConfigured(): boolean {
+  return Boolean(process.env.CROWD_OCTOLENS_API_TOKEN)
+}
+
 // Octolens is one shared org-wide bearer token, not per-integration like GitHub's app
 // installations — every octolens integration resolves to the same env-provided token.
 function octolensTokenCredential(): Credential {
@@ -59,5 +66,24 @@ function octolensTokenCredential(): Credential {
     platform: 'octolens',
     kind: 'octolens-token',
     data: { token },
+  }
+}
+
+// One OAuth client for the whole Linux Foundation organization, not per-integration like GitHub.
+function credlyOAuthClientCredential(): Credential {
+  const clientId = process.env.CROWD_CREDLY_CLIENT_ID
+  const clientSecret = process.env.CROWD_CREDLY_CLIENT_SECRET
+  const organizationId = process.env.CROWD_CREDLY_ORGANIZATION_ID
+
+  if (!clientId || !clientSecret || !organizationId) {
+    throw new Error(
+      'missing CROWD_CREDLY_CLIENT_ID, CROWD_CREDLY_CLIENT_SECRET or CROWD_CREDLY_ORGANIZATION_ID environment variables',
+    )
+  }
+
+  return {
+    platform: 'credly',
+    kind: 'credly-oauth-client',
+    data: { clientId, clientSecret, organizationId },
   }
 }

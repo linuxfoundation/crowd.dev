@@ -6,6 +6,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/DateFilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const lastActivityDate: DateFilterConfig = {
   id: 'lastActivityDate',
@@ -16,7 +17,7 @@ const lastActivityDate: DateFilterConfig = {
   itemLabelRenderer(value: DateFilterValue, options: DateFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.DATE]('Last activity date', value, options);
   },
-  apiFilterRenderer(value: DateFilterValue): any[] {
+  apiFilterRenderer(value: DateFilterValue): ApiFilter[] {
     return apiFilterRendererByType[FilterConfigType.DATE]('lastActive', value);
   },
 };

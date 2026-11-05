@@ -9,6 +9,7 @@ import {
   initNangoCloudClient,
 } from '@crowd/nango'
 
+import { dropActorKeyPairs } from './actorKeyPairs'
 import { getNangoModelForSync } from './nangoModelMapping'
 import { fetchNangoRecordsInWindow } from './nangoWindowFetch'
 import { IDiffableRecord, IShadowDiffMismatch, diffShadowAgainstNango } from './shadowDiff'
@@ -61,10 +62,33 @@ function toDiffableNangoRecord(record: INangoRecord): IDiffableRecord | null {
   return { sourceId: activity.sourceId, type: activity.type, data: activity }
 }
 
+function withNangoRecordDetails(
+  mismatch: IShadowDiffMismatch,
+  nangoRecordsByKey: Map<string, INangoRecord>,
+): IShadowDiffMismatch {
+  if (mismatch.kind !== 'missing_in_shadow') {
+    return mismatch
+  }
+  const record = nangoRecordsByKey.get(diffableRecordKey(mismatch))
+  if (!record) {
+    return mismatch
+  }
+  const sourceParentId = (record.activity as Record<string, unknown>).sourceParentId
+  const details: Pick<IShadowDiffMismatch, 'nangoRecordId' | 'sourceParentId'> = {}
+  if (typeof record.id === 'string') {
+    details.nangoRecordId = record.id
+  }
+  if (typeof sourceParentId === 'string') {
+    details.sourceParentId = sourceParentId
+  }
+  return { ...mismatch, ...details }
+}
+
 export interface IShadowDiffUnitResult {
   mismatches: IShadowDiffMismatch[]
   shadowKeys: { type: string; sourceId: string }[]
   nangoRecordsByKey: Map<string, INangoRecord>
+  actorKeyPairCount: number
 }
 
 export async function diffUnit(
@@ -88,6 +112,7 @@ export async function diffUnit(
       ],
       shadowKeys: [],
       nangoRecordsByKey: new Map(),
+      actorKeyPairCount: 0,
     }
   }
 
@@ -124,9 +149,11 @@ export async function diffUnit(
     .map(toDiffableShadowRecord)
     .filter((r) => !deletedNangoKeys.has(diffableRecordKey(r)))
 
-  const mismatches = diffShadowAgainstNango(
-    diffableShadowRecords,
-    diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
+  const { mismatches, pairedCount } = dropActorKeyPairs(
+    diffShadowAgainstNango(
+      diffableShadowRecords,
+      diffableNangoRecords.filter((r) => !deletedNangoKeys.has(diffableRecordKey(r))),
+    ),
   )
 
   const nangoRecordsByKey = new Map<string, INangoRecord>()
@@ -138,9 +165,13 @@ export async function diffUnit(
   }
 
   return {
-    mismatches: mismatches.map((mismatch) => ({ ...mismatch, syncName: unit.syncName })),
+    mismatches: mismatches.map((mismatch) => ({
+      ...withNangoRecordDetails(mismatch, nangoRecordsByKey),
+      syncName: unit.syncName,
+    })),
     shadowKeys: shadowRecords.map((r) => ({ type: r.type, sourceId: r.sourceId })),
     nangoRecordsByKey,
+    actorKeyPairCount: pairedCount,
   }
 }
 

@@ -2,10 +2,16 @@
 /* eslint-disable no-use-before-define */
 import config from '@/config';
 
+interface IntercomStub {
+  (...args: unknown[]): void;
+  q?: unknown[][];
+  c?: (args: unknown[]) => void;
+}
+
 declare global {
   interface Window {
-    Intercom?: any;
-    intercomSettings?: any;
+    Intercom?: IntercomStub;
+    intercomSettings?: Record<string, unknown>;
   }
 }
 
@@ -27,16 +33,16 @@ const loadScript = (): void => {
   isLoading = true;
 
   // Create stub so queued commands work before script loads
-  const w = window as any;
-  const ic = w.Intercom;
+  const ic = window.Intercom;
   if (typeof ic === 'function') {
     ic('reattach_activator');
-    ic('update', w.intercomSettings);
+    ic('update', window.intercomSettings);
   } else {
-    const i: any = (...args: any[]) => { i.c(args); };
-    i.q = [];
-    i.c = (args: any) => { i.q.push(args); };
-    w.Intercom = i;
+    const queue: unknown[][] = [];
+    const i: IntercomStub = (...args: unknown[]) => { i.c?.(args); };
+    i.q = queue;
+    i.c = (args: unknown[]) => { queue.push(args); };
+    window.Intercom = i;
   }
 
   // Pre-set app settings

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { IPublicRepoMetrics, IPublicRepoReadme } from '@crowd/common'
+import {
+  GithubPublicClientError,
+  IPublicRepoMetrics,
+  IPublicRepoReadme,
+  ServiceUnavailableError,
+} from '@crowd/common'
 import { IProjectEvaluationRequest } from '@crowd/data-access-layer/src/project-catalog/types'
 import { Logger } from '@crowd/logging'
 
@@ -12,7 +17,8 @@ const getGithubToken = vi.fn()
 const parseLlmJson = vi.fn()
 const queryLlm = vi.fn()
 
-vi.mock('@crowd/common', () => ({
+vi.mock('@crowd/common', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@crowd/common')>()),
   fetchPublicRepoMetrics: (...args: unknown[]) => fetchPublicRepoMetrics(...args),
   fetchPublicRepoReadme: (...args: unknown[]) => fetchPublicRepoReadme(...args),
   getGithubToken: (...args: unknown[]) => getGithubToken(...args),
@@ -174,6 +180,82 @@ describe('evaluateProject', () => {
 
     expect(result.outcome).toBe('unsure')
     expect(result.evaluationReason).toBe('rate limited')
+  })
+
+  it('answers 503 instead of a verdict when GitHub or Bedrock fail transiently', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockRejectedValue(
+      new GithubPublicClientError('TRANSIENT', 'Network error calling GitHub'),
+    )
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+
+    await expect(evaluateProject(input, qx, bedrockCredentials, log)).rejects.toBeInstanceOf(
+      ServiceUnavailableError,
+    )
+
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    const throttled = Object.assign(new Error('Too many requests'), {
+      name: 'ThrottlingException',
+      $fault: 'client',
+      $retryable: { throttling: true },
+    })
+    queryLlm.mockRejectedValue(throttled)
+
+    await expect(evaluateProject(input, qx, bedrockCredentials, log)).rejects.toMatchObject({
+      status: 503,
+      message: 'Too many requests',
+    })
+  })
+
+  it('keeps a retired model or a bad GitHub token as a verdict-level error', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue(metrics)
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockRejectedValue(
+      Object.assign(new Error('This model version has reached the end of its life.'), {
+        name: 'ValidationException',
+        $fault: 'client',
+      }),
+    )
+
+    expect(await evaluateProject(input, qx, bedrockCredentials, log)).toMatchObject({
+      evaluationResult: 'error',
+      evaluationReason: 'This model version has reached the end of its life.',
+    })
+
+    fetchPublicRepoMetrics.mockRejectedValue(
+      new GithubPublicClientError('AUTH', '401 Unauthorized'),
+    )
+    expect(await evaluateProject(input, qx, bedrockCredentials, log)).toMatchObject({
+      evaluationResult: 'error',
+      evaluationReason: '401 Unauthorized',
+    })
+  })
+
+  it('records, without overriding, a not-on-GitHub verdict on a busy GitHub repository', async () => {
+    getGithubToken.mockReturnValue('token')
+    fetchPublicRepoMetrics.mockResolvedValue({ ...metrics, closedPullRequests: 1200 })
+    fetchPublicRepoReadme.mockResolvedValue(readme)
+    queryLlm.mockResolvedValue({
+      answer: '{"onboard": false, "non_onboard_reason": "project is not mainly run on GitHub"}',
+      model: 'test-model',
+      inputTokenCount: 10,
+      outputTokenCount: 5,
+      responseTimeSeconds: 1,
+    })
+    parseLlmJson.mockReturnValue({
+      onboard: false,
+      non_onboard_reason: 'project is not mainly run on GitHub',
+    })
+
+    const result = await evaluateProject(input, qx, bedrockCredentials, log)
+
+    expect(result.outcome).toBe('skip')
+    expect(result.evaluationReason).toBe('project is not mainly run on GitHub')
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ repoUrl: input.repoUrl, closedPullRequests: 1200 }),
+      expect.stringContaining('the verdict is kept'),
+    )
   })
 
   it('returns an unsure/error result when the LLM query throws', async () => {

@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/guard-protected-files.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-protected-files.sh"
           }
         ]
       }
@@ -22,6 +22,10 @@
           {
             "type": "command",
             "command": "file=$(jq -r '.tool_input.file_path'); pnpm exec oxlint --fix --no-error-on-unmatched-pattern \"$file\"; pnpm exec oxfmt --no-error-on-unmatched-pattern \"$file\""
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/knowledge-doc-check.sh"
           }
         ]
       }

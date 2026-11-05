@@ -113,13 +113,11 @@
   "githubIssueReporter": {
     "appId": "CROWD_GITHUB_ISSUE_REPORTER_APP_ID",
     "privateKey": "CROWD_GITHUB_ISSUE_REPORTER_PRIVATE_KEY",
-    "installationId": "CROWD_GITHUB_ISSUE_REPORTER_INSTALLATION_ID"
-  },
-  "jiraIssueReporter": {
-    "apiUrl": "CROWD_JIRA_ISSUE_REPORTER_API_URL",
-    "apiTokenEmail": "CROWD_JIRA_ISSUE_REPORTER_API_TOKEN_EMAIL",
-    "token": "CROWD_JIRA_ISSUE_REPORTER_API_TOKEN",
-    "projectKey": "CROWD_JIRA_ISSUE_REPORTER_PROJECT_KEY"
+    "installationId": "CROWD_GITHUB_ISSUE_REPORTER_INSTALLATION_ID",
+    "repo": "CROWD_GITHUB_ISSUE_REPORTER_REPO",
+    "projectNumber": "CROWD_GITHUB_ISSUE_REPORTER_PROJECT_NUMBER",
+    "projectTeam": "CROWD_GITHUB_ISSUE_REPORTER_PROJECT_TEAM",
+    "projectStatus": "CROWD_GITHUB_ISSUE_REPORTER_PROJECT_STATUS"
   },
   "stackexchange": {
     "key": "CROWD_STACKEXCHANGE_KEY"
@@ -183,6 +181,12 @@
   "packagesTemporal": {
     "serverUrl": "CROWD_PACKAGES_TEMPORAL_SERVER_URL",
     "namespace": "CROWD_PACKAGES_TEMPORAL_NAMESPACE",
+    "certificate": "CROWD_TEMPORAL_CERTIFICATE",
+    "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
+  },
+  "connectorsTemporal": {
+    "serverUrl": "CROWD_CONNECTORS_TEMPORAL_SERVER_URL",
+    "namespace": "CROWD_CONNECTORS_TEMPORAL_NAMESPACE",
     "certificate": "CROWD_TEMPORAL_CERTIFICATE",
     "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
   },

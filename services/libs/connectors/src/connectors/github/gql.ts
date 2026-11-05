@@ -3,7 +3,12 @@ import type { Logger } from '@crowd/logging'
 
 import { summarizeBody } from '../../http/client'
 import type { ConnectorHttp } from '../../http/client'
-import { ProviderContractError } from '../../http/errors'
+import {
+  ProviderAccessDeniedError,
+  ProviderContractError,
+  RepositoryRenamedError,
+} from '../../http/errors'
+import { isOrgPolicyRefusalMessage } from './interpret'
 
 interface GraphqlEnvelope<T> {
   data?: T
@@ -12,6 +17,24 @@ interface GraphqlEnvelope<T> {
 
 const NO_DATA_MAX_ATTEMPTS = 5
 const NO_DATA_BACKOFF_MS = 2000
+
+function hasResolvedRootField(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Object.values(data).some((value) => value !== null && value !== undefined)
+  )
+}
+
+function renamedRepositoryUrl(variables: Record<string, unknown>, data: unknown): string | null {
+  const { owner, repo } = variables
+  const url = (data as { repository?: { url?: unknown } | null }).repository?.url
+  if (typeof owner !== 'string' || typeof repo !== 'string' || typeof url !== 'string') {
+    return null
+  }
+  const queried = `https://github.com/${owner}/${repo}`.toLowerCase()
+  return url.toLowerCase() === queried ? null : url
+}
 
 export async function githubGraphql<T>(
   http: ConnectorHttp,
@@ -39,18 +62,31 @@ export async function githubGraphql<T>(
         log.error({ errors: body.errors }, `github graphql errors: ${details}`)
       }
     }
-    if (body.data) {
+    if (body.data && (!body.errors?.length || hasResolvedRootField(body.data))) {
+      const renamedTo = renamedRepositoryUrl(variables, body.data)
+      if (renamedTo) {
+        throw new RepositoryRenamedError(renamedTo)
+      }
       return body.data
     }
+    const context = {
+      request: {
+        method: 'POST',
+        url: 'https://api.github.com/graphql',
+        body: summarizeBody(variables),
+      },
+      response: { status: 200, body: summarizeBody(body.errors) },
+    }
+    const policyRefusal = body.errors?.find(
+      (e) => e.type?.includes('FORBIDDEN') && isOrgPolicyRefusalMessage(e.message),
+    )
+    if (policyRefusal) {
+      throw new ProviderAccessDeniedError(
+        `github access denied: ${policyRefusal.message}`,
+      ).withContext(context)
+    }
     if (isForbidden || attempt >= NO_DATA_MAX_ATTEMPTS) {
-      throw new ProviderContractError('github graphql response has no data').withContext({
-        request: {
-          method: 'POST',
-          url: 'https://api.github.com/graphql',
-          body: summarizeBody(variables),
-        },
-        response: { status: 200, body: summarizeBody(body.errors) },
-      })
+      throw new ProviderContractError('github graphql response has no data').withContext(context)
     }
     log.warn({ attempt }, 'github graphql empty data response, retrying')
     await timeout(NO_DATA_BACKOFF_MS)

@@ -62,7 +62,7 @@
               Syncing
               {{ lfIntegrations()[integration.platform]?.name }}
               data since this sub-project is mapped with
-              <b>{{ (integration as any).mappedWith }}</b> sub-project
+              <b>{{ integration.mappedWith }}</b> sub-project
             </p>
           </template>
           <template v-else>
@@ -110,13 +110,13 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import AppIntegrationProgress from '@/modules/integration/components/integration-progress.vue';
 import { lfIntegrations } from '@/config/integrations';
 
-type Integrations = SubProject & IntegrationProgress;
+type Integrations = SubProject & IntegrationProgress & { mappedWith?: string };
 
 const props = withDefaults(
   defineProps<{
     segmentId: string;
     integrations: Integrations[];
-    progress?: any[];
+    progress?: IntegrationProgress[];
     progressError?: boolean;
   }>(),
   {
@@ -126,7 +126,7 @@ const props = withDefaults(
 );
 
 const getProgress = (segmentId: string, platform: string) => (props.progress || []).find(
-  (p: any) => p.segmentId === segmentId && p.platform === platform,
+  (p) => p.segmentId === segmentId && p.platform === platform,
 ) || null;
 </script>
 

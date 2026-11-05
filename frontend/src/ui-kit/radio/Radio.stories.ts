@@ -68,7 +68,7 @@ export const Multiple = {
     default: 'Primary',
     modelValue: true,
   },
-  render: (args: any) => ({
+  render: (args: Record<string, unknown>) => ({
     components: { LfRadio },
     setup() {
       const form = reactive({

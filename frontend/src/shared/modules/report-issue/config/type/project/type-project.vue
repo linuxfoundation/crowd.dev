@@ -5,7 +5,9 @@
 </template>
 
 <script setup lang="ts">
+import type { ReportDataProject } from '@/shared/modules/report-issue/config';
+
 const props = defineProps<{
-  attribute: any
+  attribute: ReportDataProject
 }>();
 </script>

@@ -38,7 +38,7 @@ export const Regular = {
   args: {
     errorMessages: { required: 'This field is required', email: 'Invalid email' },
   },
-  render: (args: any) => ({
+  render: (args: Record<string, unknown>) => ({
     components: { LfField, LfInput, LfFieldMessages },
     setup() {
       const form = reactive({

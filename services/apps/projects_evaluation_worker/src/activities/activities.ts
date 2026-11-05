@@ -3,6 +3,7 @@ import { Context } from '@temporalio/activity'
 import { ONBOARDING_AUTO_APPLY, fetchPublicRepoMetrics, getGithubToken } from '@crowd/common'
 import {
   finalizeProjectCatalogEvaluation,
+  deferProjectCatalogEvaluation,
   findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
   findProjectCatalogPendingOnboarding,
@@ -25,22 +26,29 @@ import {
   isGithubDiscussionProvenance,
   isSlackBotProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
-import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import {
   BotStatus,
+  IOrganizationReview,
   applyRequestStatus,
   buildBotEvaluationErrorContent,
   buildBotQuestionContent,
   buildBotReviewReply,
   buildBotSkippedReply,
   classifyCatalogRow,
+  findOrganizationSiblings,
+  organizationOf,
+  organizationReviewOf,
   refreshRequestStatusMessage,
   reportRequestOutcome,
   resolveReviewCdpUrl,
   routeEvaluationOutcome,
+  sameQuestion,
+  sameReviewProposal,
   toReviewRepoContext,
   toReviewRequestCard,
+  organizationGroupKey,
 } from '@crowd/project-onboarding'
 import {
   loadBatchRepoLookups,
@@ -59,6 +67,8 @@ import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import { estimateLlmCostUsd } from '@crowd/types'
 
 import { evaluateProject } from '../evaluator/evaluator'
+import { MAX_EVALUATION_RUNS } from '../evaluator/retry'
+import { IEvaluationResult } from '../evaluator/types'
 import { svc } from '../main'
 import {
   IClassifyAndRouteResult,
@@ -68,7 +78,13 @@ import {
   IPriorityConfig,
 } from '../types'
 import { classifyAndRouteProjects } from './classifyAndRoute'
+import { canDeferEvaluation } from './evaluationRetry'
 import { buildImmediateOnboardingPlan } from './immediateOnboarding'
+import {
+  ISharedEvaluation,
+  sharedEvaluationOutcome,
+  sharedOrganizationEvaluation,
+} from './organizationEvaluation'
 import { buildRequestAlert, buildSkippedDiscussionAlert } from './skippedRequestAlert'
 
 const log = getServiceLogger()
@@ -105,10 +121,11 @@ export async function fetchPendingProjects(
   const pool = catalogIds ? svc.postgres.writer : svc.postgres.reader
   const qx = pgpQx(pool.connection())
 
-  const projects = await findProjectCatalogPendingEvaluation(qx, {
+  const batch = await findProjectCatalogPendingEvaluation(qx, {
     limit: catalogIds ? undefined : batchSize,
     ids: catalogIds,
   })
+  const projects = await withWholeOrganizations(qx, batch)
 
   log.info(
     { count: projects.length, batchSize, catalogIds },
@@ -116,6 +133,44 @@ export async function fetchPendingProjects(
   )
 
   return projects
+}
+
+function awaitsEvaluation(row: IDbProjectCatalog): boolean {
+  return row.action === 'evaluate' || row.action === 'auto'
+}
+
+// A row limit or a capped promotion must not split an organization across runs, or it gets
+// two questions or cards.
+async function withWholeOrganizations(
+  qx: QueryExecutor,
+  batch: IDbProjectCatalog[],
+): Promise<IDbProjectCatalog[]> {
+  const included = new Set(batch.map((row) => row.id))
+  const leads = new Map<string, IDbProjectCatalog>()
+  for (const row of batch) {
+    const key = organizationGroupKey(row)
+    if (key && !leads.has(key)) {
+      leads.set(key, row)
+    }
+  }
+  const completed = [...batch]
+  const notPromoted: string[] = []
+  for (const lead of leads.values()) {
+    const siblings = await findOrganizationSiblings(
+      qx,
+      lead,
+      (row) => awaitsEvaluation(row) && !included.has(row.id),
+    )
+    for (const sibling of siblings) {
+      included.add(sibling.id)
+      completed.push(sibling)
+      if (sibling.action === 'auto') {
+        notPromoted.push(sibling.id)
+      }
+    }
+  }
+  await promoteProjectCatalogIdsToEvaluate(pgpQx(svc.postgres.writer.connection()), notPromoted)
+  return completed
 }
 
 export async function classifyAndRoutePendingProjects(
@@ -139,6 +194,7 @@ export async function classifyAndRoutePendingProjects(
         markClassified: (id, classification) =>
           markProjectCatalogClassified(writeQx, id, classification),
         markFailed: (id, reason) => markProjectCatalogEvaluationFailed(writeQx, id, reason),
+        findTrackedRepoUrls: (repoUrls) => repoLookups.findTrackedRepoUrls(repoUrls),
         onRowStart: (project) =>
           Context.current().heartbeat({ stage: 'classification', id: project.id }),
       }),
@@ -179,6 +235,102 @@ function recordedErrorResult(row: IDbProjectCatalog): IEvaluationActivityResult 
   }
 }
 
+interface IEvaluationGroup {
+  organization: IOrganizationReview | null
+  siblings: IDbProjectCatalog[]
+}
+
+const NO_EVALUATOR_USAGE = {
+  model: null,
+  inputTokens: null,
+  outputTokens: null,
+  costUsd: null,
+  seconds: null,
+}
+
+async function findEvaluationGroup(
+  qx: QueryExecutor,
+  project: IDbProjectCatalog,
+): Promise<IEvaluationGroup> {
+  if (!organizationGroupKey(project)) {
+    return { organization: null, siblings: [] }
+  }
+  const siblings = await findOrganizationSiblings(qx, project, (row) =>
+    sameReviewProposal(row, project),
+  )
+  return { organization: organizationReviewOf(project, siblings.length), siblings }
+}
+
+type EvaluatorUsage = Pick<
+  IEvaluationActivityResult,
+  'model' | 'inputTokens' | 'outputTokens' | 'costUsd' | 'seconds'
+>
+
+function evaluatorUsageOf(result: IEvaluationResult): EvaluatorUsage {
+  if (!result.metrics) {
+    return NO_EVALUATOR_USAGE
+  }
+  const { model, inputTokens, outputTokens, seconds } = result.metrics
+  return {
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: estimateLlmCostUsd(model, inputTokens, outputTokens),
+    seconds,
+  }
+}
+
+// The skip reply of the organization went out with the first row; the status line and the
+// reactions still have to see this row settle.
+async function refreshSkippedRequestStatus(
+  qx: QueryExecutor,
+  project: IDbProjectCatalog,
+): Promise<void> {
+  try {
+    await refreshRequestStatusMessage(qx, project)
+    await applyRequestStatus(qx, project, skippedStatus(project))
+  } catch (err) {
+    log.warn(
+      { id: project.id, repoUrl: project.repoUrl, err },
+      'Request status was not refreshed after a shared skip.',
+    )
+  }
+}
+
+// One evaluator call per organization: the rows after the first take its verdict.
+async function applySharedEvaluation(
+  qx: QueryExecutor,
+  project: IDbProjectCatalog,
+  shared: ISharedEvaluation,
+  organization: IOrganizationReview | null,
+  usage: EvaluatorUsage = NO_EVALUATOR_USAGE,
+): Promise<IEvaluationActivityResult> {
+  const updated = await finalizeProjectCatalogEvaluation(qx, project.id, shared)
+  if (updated && shared.action === 'skip' && isSlackBotProvenance(project.provenance)) {
+    await refreshSkippedRequestStatus(qx, project)
+  }
+  log.info(
+    {
+      id: project.id,
+      repoUrl: project.repoUrl,
+      organization: organization?.owner,
+      action: shared.action,
+      evaluationResult: shared.evaluationResult,
+      applied: Boolean(updated),
+    },
+    'Evaluation taken from the organization.',
+  )
+  return {
+    applied: Boolean(updated),
+    outcome: sharedEvaluationOutcome(shared),
+    action: shared.action,
+    evaluationReason: shared.evaluationReason,
+    ...usage,
+    shared: true,
+    organization,
+  }
+}
+
 export async function evaluateAndUpdateProject(
   project: IDbProjectCatalog,
 ): Promise<IEvaluationActivityResult | null> {
@@ -203,6 +355,12 @@ export async function evaluateAndUpdateProject(
     return null
   }
 
+  const { organization, siblings } = await findEvaluationGroup(qx, project)
+  const shared = sharedOrganizationEvaluation(project, siblings)
+  if (shared) {
+    return applySharedEvaluation(qx, project, shared, organization)
+  }
+
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting evaluation.')
 
   const result = await evaluateProject({
@@ -214,7 +372,24 @@ export async function evaluateAndUpdateProject(
     source: project.source,
   })
 
-  const route = routeEvaluationOutcome(project, result, { autoApply: ONBOARDING_AUTO_APPLY })
+  // Two workflows can evaluate siblings of one organization at once; the verdict written first
+  // wins, so the organization never carries two.
+  const late =
+    siblings.length > 0
+      ? sharedOrganizationEvaluation(project, (await findEvaluationGroup(qx, project)).siblings)
+      : null
+  if (late) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl },
+      'A sibling was evaluated meanwhile, taking its verdict.',
+    )
+    return applySharedEvaluation(qx, project, late, organization, evaluatorUsageOf(result))
+  }
+
+  const route = routeEvaluationOutcome(project, result, {
+    autoApply: ONBOARDING_AUTO_APPLY,
+    organization,
+  })
   const updated = await finalizeProjectCatalogEvaluation(qx, project.id, {
     action: route.action,
     evaluationResult: result.evaluationResult,
@@ -244,37 +419,18 @@ export async function evaluateAndUpdateProject(
     )
   }
 
-  if (!result.metrics) {
-    return {
-      applied: Boolean(updated),
-      outcome: result.outcome,
-      action: route.action,
-      evaluationReason: result.evaluationReason,
-      model: null,
-      inputTokens: null,
-      outputTokens: null,
-      costUsd: null,
-      seconds: null,
-    }
-  }
-
-  const { model, inputTokens, outputTokens, seconds } = result.metrics
-
   return {
     applied: Boolean(updated),
     outcome: result.outcome,
     action: route.action,
     evaluationReason: result.evaluationReason,
-    model,
-    inputTokens,
-    outputTokens,
-    costUsd: estimateLlmCostUsd(model, inputTokens, outputTokens),
-    seconds,
+    organization,
+    ...evaluatorUsageOf(result),
   }
 }
 
 async function replyInBotThread(
-  project: Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>,
+  project: Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl' | 'requestHints'>,
   content: string | ISlackMessageContent,
   status: BotStatus,
 ): Promise<void> {
@@ -303,9 +459,14 @@ function skippedStatus(project: Pick<IDbProjectCatalog, 'classificationKind'>): 
 export async function notifySkippedHumanRequest(
   project: IDbProjectCatalog,
   reason: string,
+  organization: IOrganizationReview | null = null,
 ): Promise<void> {
   if (isSlackBotProvenance(project.provenance)) {
-    await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(project))
+    await replyInBotThread(
+      project,
+      buildBotSkippedReply(project, reason, organization),
+      skippedStatus(project),
+    )
     return
   }
 
@@ -340,21 +501,91 @@ export async function fetchPendingQuestions(catalogIds?: string[]): Promise<IDbP
   return projects
 }
 
+// A scheduled sweep may reach a group while another run still classifies it; the card or the
+// question waits for the whole organization, or part of it would get a message of its own.
+async function findSiblingsOnceClassified(
+  qx: QueryExecutor,
+  lead: IDbProjectCatalog,
+  keep: (row: IDbProjectCatalog) => boolean,
+): Promise<IDbProjectCatalog[] | null> {
+  const siblings = await findOrganizationSiblings(qx, lead, () => true)
+  const classifying = siblings.filter(awaitsEvaluation)
+  if (classifying.length === 0) {
+    return siblings.filter(keep)
+  }
+  const notPromoted = classifying.filter((row) => row.action === 'auto').map((row) => row.id)
+  await promoteProjectCatalogIdsToEvaluate(qx, notPromoted)
+  log.info(
+    {
+      id: lead.id,
+      organization: organizationOf(lead),
+      classifying: classifying.length,
+      promoted: notPromoted.length,
+    },
+    'Organization still being classified, the message waits for the next run.',
+  )
+  return null
+}
+
+function awaitsSameQuestion(lead: IDbProjectCatalog): (row: IDbProjectCatalog) => boolean {
+  return (row) =>
+    row.action === 'ask' &&
+    !row.requestQuestion?.messageTs &&
+    sameQuestion(row.requestQuestion, lead.requestQuestion)
+}
+
+// Rows are locked in id order so two runs sharing a group never wait on each other in a cycle.
+async function lockGroup(
+  rows: IDbProjectCatalog[],
+  lock: (id: string) => Promise<boolean>,
+): Promise<Set<string>> {
+  const locked = new Set<string>()
+  for (const row of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (await lock(row.id)) {
+      locked.add(row.id)
+    }
+  }
+  return locked
+}
+
+async function hasPendingQuestion(qx: QueryExecutor, id: string): Promise<boolean> {
+  const fresh = await findProjectCatalogById(qx, id)
+  return fresh?.action === 'ask' && !!fresh.requestQuestion && !fresh.requestQuestion.messageTs
+}
+
 // The question is a new message on purpose: the requester must act. The row lock keeps two
 // runs from asking twice; the status line and the ❓ reaction follow a successful post.
 export async function askRequester(project: IDbProjectCatalog): Promise<void> {
+  if (!project.requestQuestion) {
+    return
+  }
   const qx = pgpQx(svc.postgres.writer.connection())
-  const content = buildBotQuestionContent(project)
-  if (!content) {
+  if (!(await hasPendingQuestion(qx, project.id))) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl },
+      'Question already posted or row moved on.',
+    )
+    return
+  }
+  const candidates = await findSiblingsOnceClassified(qx, project, awaitsSameQuestion(project))
+  if (!candidates) {
     return
   }
 
   const posted = await qx.tx(async (tx): Promise<boolean> => {
-    if (!(await lockProjectCatalogQuestion(tx, project.id))) {
+    const locked = await lockGroup([project, ...candidates], (id) =>
+      lockProjectCatalogQuestion(tx, id),
+    )
+    if (!locked.has(project.id)) {
       log.info(
         { id: project.id, repoUrl: project.repoUrl },
         'Question already posted or row moved on.',
       )
+      return false
+    }
+    const siblings = candidates.filter((row) => locked.has(row.id))
+    const content = buildBotQuestionContent(project, organizationReviewOf(project, siblings.length))
+    if (!content) {
       return false
     }
     const result = await postSlackContentInThread(project.sourceUrl, content)
@@ -365,7 +596,9 @@ export async function askRequester(project: IDbProjectCatalog): Promise<void> {
       )
       return false
     }
-    await setProjectCatalogQuestionMessageTs(tx, project.id, result.ts)
+    for (const row of [project, ...siblings]) {
+      await setProjectCatalogQuestionMessageTs(tx, row.id, result.ts)
+    }
     return true
   })
 
@@ -375,20 +608,72 @@ export async function askRequester(project: IDbProjectCatalog): Promise<void> {
   }
 }
 
-export async function markEvaluationFailed(projectId: string, reason: string): Promise<boolean> {
+export type EvaluationFailureRecord = 'failed' | 'deferred' | 'moved'
+
+type FailedEvaluationRow = Pick<IDbProjectCatalog, 'id' | 'provenance' | 'evaluationAttempts'>
+
+async function isAlreadyDeferred(
+  qx: QueryExecutor,
+  project: FailedEvaluationRow,
+): Promise<boolean> {
+  const current = await findProjectCatalogById(qx, project.id)
+  return (
+    current?.action === 'evaluate' &&
+    current.evaluatedAt === null &&
+    current.evaluationAttempts === project.evaluationAttempts + 1
+  )
+}
+
+async function deferEvaluation(
+  qx: QueryExecutor,
+  project: FailedEvaluationRow,
+  reason: string,
+): Promise<boolean> {
+  if (!canDeferEvaluation(project)) {
+    return false
+  }
+  const deferred = await deferProjectCatalogEvaluation(qx, project.id, {
+    reason,
+    expectedAttempts: project.evaluationAttempts,
+    maxRuns: MAX_EVALUATION_RUNS,
+  })
+  if (!deferred) {
+    return isAlreadyDeferred(qx, project)
+  }
+  log.warn(
+    { id: project.id, reason, attempts: deferred.evaluationAttempts },
+    'Evaluation hit a transient error, the row waits for the next run.',
+  )
+  return true
+}
+
+export async function markEvaluationFailed(
+  project: FailedEvaluationRow,
+  reason: string,
+  transient = false,
+): Promise<EvaluationFailureRecord> {
   const qx = pgpQx(svc.postgres.writer.connection())
-  const marked = await markProjectCatalogEvaluationFailed(qx, projectId, reason)
+  const projectId = project.id
+  if (transient && (await deferEvaluation(qx, project, reason))) {
+    return 'deferred'
+  }
+  const marked = await markProjectCatalogEvaluationFailed(
+    qx,
+    projectId,
+    reason,
+    transient ? project.evaluationAttempts : undefined,
+  )
   if (marked > 0) {
     log.error({ id: projectId, reason }, 'Evaluation failed, marked as error.')
-    return true
+    return 'failed'
   }
   const current = await findProjectCatalogById(qx, projectId)
   if (current && isRecordedCheckError(current)) {
     log.info({ id: projectId }, 'Check error already recorded by an earlier attempt.')
-    return true
+    return 'failed'
   }
   log.info({ id: projectId }, 'Row left evaluate before the failure could be recorded.')
-  return false
+  return 'moved'
 }
 
 // The requester must act, so the Try again notice is always a new message; the status
@@ -445,44 +730,90 @@ export async function fetchReviewRequests(catalogIds?: string[]): Promise<IDbPro
   return projects
 }
 
+function awaitsSameReviewCard(lead: IDbProjectCatalog): (row: IDbProjectCatalog) => boolean {
+  return (row) => row.action === 'review' && !row.reviewMessageTs && sameReviewProposal(row, lead)
+}
+
+interface IPostedReviewRequest {
+  organization: IOrganizationReview | null
+}
+
+// The lock below is authoritative; this read spares the siblings of a posted organization card
+// the repo metrics fetch, which they would otherwise pay before the lock turns them away.
+async function hasPendingReviewCard(qx: QueryExecutor, id: string): Promise<boolean> {
+  const fresh = await findProjectCatalogById(qx, id)
+  return fresh?.action === 'review' && !fresh.reviewMessageTs
+}
+
 export async function notifyReviewRequest(project: IDbProjectCatalog): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
-  const extras = {
-    cdpUrl: await resolveReviewCdpUrl(qx, project, process.env.CROWD_API_FRONTEND_URL),
-    repoContext: await loadReviewRepoContext(project),
+  if (!(await hasPendingReviewCard(qx, project.id))) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl },
+      'Review request already posted or the row left review.',
+    )
+    return
   }
+  const candidates = await findSiblingsOnceClassified(qx, project, awaitsSameReviewCard(project))
+  if (!candidates) {
+    return
+  }
+  const cdpUrl = await resolveReviewCdpUrl(qx, project, process.env.CROWD_API_FRONTEND_URL)
+  const preloadedRepoContext =
+    candidates.length > 0 ? undefined : await loadReviewRepoContext(project)
 
-  const posted = await qx.tx(async (tx): Promise<boolean> => {
-    const locked = await lockProjectCatalogReviewRequest(tx, project.id)
-    if (!locked) {
+  const posted = await qx.tx(async (tx): Promise<IPostedReviewRequest | null> => {
+    const locked = await lockGroup([project, ...candidates], (id) =>
+      lockProjectCatalogReviewRequest(tx, id),
+    )
+    if (!locked.has(project.id)) {
       log.info(
         { id: project.id, repoUrl: project.repoUrl },
         'Review request already posted by another run or the row left review.',
       )
-      return false
+      return null
     }
+    const siblings = candidates.filter((row) => locked.has(row.id))
+    const organization = organizationReviewOf(project, siblings.length)
+    const repoContext = organization ? null : await singleRepoContext(project, preloadedRepoContext)
+    const extras = { cdpUrl, repoContext }
 
-    const result = await postReviewRequest(toReviewRequestCard(project, extras), project.sourceUrl)
+    const result = await postReviewRequest(
+      toReviewRequestCard(project, extras, organization),
+      project.sourceUrl,
+    )
     if (!result.ok || !result.ts) {
       log.warn(
         { id: project.id, repoUrl: project.repoUrl, error: result.error },
         'Review request Slack message was not sent.',
       )
-      return false
+      return null
     }
 
-    await setProjectCatalogReviewMessageTs(tx, project.id, result.ts)
-    log.info({ id: project.id, repoUrl: project.repoUrl, ts: result.ts }, 'Review request posted.')
-    return true
+    for (const row of [project, ...siblings]) {
+      await setProjectCatalogReviewMessageTs(tx, row.id, result.ts)
+    }
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, ts: result.ts, siblings: siblings.length },
+      'Review request posted.',
+    )
+    return { organization }
   })
 
   if (posted && isSlackBotProvenance(project.provenance)) {
-    await replyInBotThread(project, buildBotReviewReply(project), 'withTeam')
+    await replyInBotThread(project, buildBotReviewReply(project, posted.organization), 'withTeam')
   }
 }
 
 // Well under the notify activity's one-minute, no-retry deadline so the card is still posted.
 const REPO_CONTEXT_TIMEOUT_MS = 10_000
+
+async function singleRepoContext(
+  project: Pick<IDbProjectCatalog, 'id' | 'repoUrl'>,
+  preloaded: IReviewRepoContext | null | undefined,
+): Promise<IReviewRepoContext | null> {
+  return preloaded === undefined ? loadReviewRepoContext(project) : preloaded
+}
 
 async function loadReviewRepoContext(
   project: Pick<IDbProjectCatalog, 'id' | 'repoUrl'>,

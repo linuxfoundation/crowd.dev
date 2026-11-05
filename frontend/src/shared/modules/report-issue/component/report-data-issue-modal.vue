@@ -128,7 +128,7 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import { ReportDataEntity } from '@/shared/modules/report-issue/constants/report-data-entity.enum';
-import type { ReportDataConfig } from '@/shared/modules/report-issue/config';
+import type { ReportDataAttribute, ReportDataConfig } from '@/shared/modules/report-issue/config';
 import { reportDataConfig, reportDataTypeDisplay } from '@/shared/modules/report-issue/config';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import type { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
@@ -140,7 +140,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 const props = defineProps<{
   modelValue: boolean,
   type?: ReportDataType,
-  attribute?: any,
+  attribute?: ReportDataAttribute,
   contributor?: Contributor,
   organization?: Organization,
 }>();
@@ -203,8 +203,9 @@ const submit = () => {
   };
 
   loading.value = true;
+  // shortcut: the modal only submits with an entity set, as on main. revisit: when the entity prop is required.
   return authAxios.post(
-    `${getConfig.value.url(entity.value.id)}`,
+    `${getConfig.value.url(entity.value!.id)}`,
     data,
   )
     .then(() => {

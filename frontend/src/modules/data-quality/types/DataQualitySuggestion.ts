@@ -4,13 +4,13 @@
 export interface DataQualityMemberRef {
   id: string;
   displayName: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 }
 
 export interface DataQualityOrganizationRef {
   id: string;
   displayName: string;
-  logo?: string;
+  logo?: string | null;
 }
 
 export interface DataQualityMemberMergeSuggestion {
@@ -28,7 +28,7 @@ export interface DataQualityOrganizationMergeSuggestion {
 export interface DataQualityMemberBotSuggestion {
   memberId: string;
   displayName: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   confidence: number;
   attributes: Record<string, unknown>;
 }

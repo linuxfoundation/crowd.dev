@@ -50,4 +50,28 @@ describe('getCredential', () => {
       'missing CROWD_OCTOLENS_API_TOKEN environment variable',
     )
   })
+
+  it('returns a credly-oauth-client credential from the shared env vars', async () => {
+    process.env.CROWD_CREDLY_CLIENT_ID = 'client-id'
+    process.env.CROWD_CREDLY_CLIENT_SECRET = 'client-secret'
+    process.env.CROWD_CREDLY_ORGANIZATION_ID = 'org-id'
+
+    const credential = await getCredential(qxReturning({ platform: 'credly' }), 'id')
+
+    expect(credential).toEqual({
+      platform: 'credly',
+      kind: 'credly-oauth-client',
+      data: { clientId: 'client-id', clientSecret: 'client-secret', organizationId: 'org-id' },
+    })
+  })
+
+  it('throws when any credly env var is missing', async () => {
+    process.env.CROWD_CREDLY_CLIENT_ID = 'client-id'
+    delete process.env.CROWD_CREDLY_CLIENT_SECRET
+    process.env.CROWD_CREDLY_ORGANIZATION_ID = 'org-id'
+
+    await expect(getCredential(qxReturning({ platform: 'credly' }), 'id')).rejects.toThrow(
+      'missing CROWD_CREDLY_CLIENT_ID, CROWD_CREDLY_CLIENT_SECRET or CROWD_CREDLY_ORGANIZATION_ID',
+    )
+  })
 })

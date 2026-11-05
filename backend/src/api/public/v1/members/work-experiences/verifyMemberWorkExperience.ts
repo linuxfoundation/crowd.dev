@@ -85,10 +85,13 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             memberId,
             workExperienceId,
             verifiedUpdate,
+            { stampVerifiedAt: true },
           )
 
           for (const overlappingRow of overlappingRowsWithIds) {
-            await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
+            await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate, {
+              stampVerifiedAt: true,
+            })
           }
         } else {
           // Unverifying removes the grouped work experience from both visible and hidden rows.

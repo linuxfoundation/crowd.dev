@@ -9,10 +9,11 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import LfSvg from '@/shared/svg/svg.vue';
 
 const props = defineProps<{
-  integration: any;
+  integration: Integration<unknown>;
 }>();
 </script>
 

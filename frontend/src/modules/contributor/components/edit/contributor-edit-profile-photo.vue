@@ -80,7 +80,7 @@ const props = defineProps<{
   contributor: Contributor,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: boolean): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
 const { avatar } = useContributorHelpers();
 const { updateContributorAttributes } = useContributorStore();

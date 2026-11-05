@@ -31,11 +31,11 @@ export async function mergeMembersWithLLM(
 ): Promise<void> {
   const SUGGESTIONS_PER_RUN = 10
   const REGION = 'us-east-1'
-  const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+  const MODEL_ID = 'us.anthropic.claude-sonnet-5'
   const MODEL_ARGS = {
     max_tokens: 2000,
     anthropic_version: 'bedrock-2023-05-31',
-    temperature: 0,
+    thinking: { type: 'disabled' },
   }
   const PROMPT = `Please compare and decide if these two members are the same person or not. 
                   Only compare data from first member and second member. Never compare data from only one member with itself. 

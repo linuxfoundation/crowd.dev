@@ -13,24 +13,32 @@ const eslintBin = path.join(frontendDir, 'node_modules', '.bin', 'eslint');
 const outputFile = path.join(frontendDir, '.eslint', 'legacy-files.json');
 const ESLINT_EXIT_CODE_LINT_ERRORS = 1;
 
+const VUE = { glob: 'src/**/*.vue', ext: '.vue', plugin: 'vue' };
+
 const RULES = {
-  'vue/component-api-style': ['error', ['script-setup']],
-  'vue/block-lang': ['error', { script: { lang: 'ts' } }],
-  'vue/prefer-define-options': 'error',
+  'vue/component-api-style': { ...VUE, config: ['error', ['script-setup']] },
+  'vue/block-lang': { ...VUE, config: ['error', { script: { lang: 'ts' } }] },
+  'vue/prefer-define-options': { ...VUE, config: 'error' },
+  '@typescript-eslint/no-explicit-any': {
+    glob: 'src/**/*.{ts,vue}',
+    ext: '.ts,.vue',
+    plugin: '@typescript-eslint',
+    config: 'error',
+  },
 };
 
-function findViolatingFiles(ruleName, ruleConfig) {
+function findViolatingFiles(ruleName, { glob, ext, plugin, config: ruleConfig }) {
   const args = [
-    'src/**/*.vue',
+    glob,
     '--no-config-lookup',
     '--ext',
-    '.vue',
+    ext,
     '--parser',
     'vue-eslint-parser',
     '--parser-options',
     JSON.stringify({ parser: '@typescript-eslint/parser', ecmaVersion: 2022, sourceType: 'module' }),
     '--plugin',
-    'vue',
+    plugin,
     '--rule',
     JSON.stringify({ [ruleName]: ruleConfig }),
     '--format',
@@ -61,8 +69,8 @@ function findViolatingFiles(ruleName, ruleConfig) {
 }
 
 const legacy = {};
-for (const [rule, config] of Object.entries(RULES)) {
-  legacy[rule] = findViolatingFiles(rule, config);
+for (const [rule, spec] of Object.entries(RULES)) {
+  legacy[rule] = findViolatingFiles(rule, spec);
 }
 
 fs.writeFileSync(outputFile, `${JSON.stringify(legacy, null, 2)}\n`);

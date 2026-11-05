@@ -55,7 +55,7 @@ export const Default = {
     spacing: 4,
     triggerEvent: 'click',
   },
-  render: (args: any) => ({
+  render: (args: Record<string, unknown>) => ({
     components: { LfPopover, LfButton },
     setup() {
       return { args };

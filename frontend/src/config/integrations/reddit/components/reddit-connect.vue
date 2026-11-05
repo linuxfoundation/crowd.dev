@@ -19,13 +19,15 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { RedditSettings } from '@/config/integrations/reddit/types/RedditSettings';
 import { defineProps, ref } from 'vue';
 import LfRedditSettingsDrawer from '@/config/integrations/reddit/components/reddit-settings-drawer.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<RedditSettings> | undefined,
   segmentId: string,
   grandparentId: string,
 }>();

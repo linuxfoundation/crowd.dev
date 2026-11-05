@@ -11,7 +11,12 @@ const pccProject: IPccCandidate = {
   isLeaf: true,
 }
 
-const segment: ICdpSegmentMatch = { segmentId: 'seg-1', name: 'Acme', integration: 'none' }
+const segment: ICdpSegmentMatch = {
+  segmentId: 'seg-1',
+  name: 'Acme',
+  slug: 'acme',
+  integration: 'none',
+}
 
 function lfInCdp(action: 'create_integration' | 'update_integration' | 'human_review') {
   return { kind: 'lf_in_cdp', pccProject, segment, action } as const
@@ -64,6 +69,10 @@ describe('routeResolution', () => {
       { kind: 'lf_owner_in_cdp', owners: ['acme', 'acme-labs'] },
       "the GitHub owners acme, acme-labs only have LF projects in LFX Insights, so I couldn't tell which one this repo belongs to",
     ],
+    [
+      { kind: 'lf_not_in_pcc', projectName: 'Acme' },
+      "Acme is described as an LF project, but it isn't in the foundation project list yet",
+    ],
   ])('routes %j to review regardless of auto apply', (resolution, reviewReason) => {
     expect(routeResolution(resolution, { autoApply: false })).toMatchObject({
       action: 'review',
@@ -85,10 +94,6 @@ describe('routeResolution', () => {
     [
       { kind: 'non_github_source', nonGithubRepoUrls: ['https://gitlab.com/acme/one'] },
       'only GitHub repositories can be added',
-    ],
-    [
-      { kind: 'lf_not_in_pcc', projectName: 'Acme' },
-      "it is described as an LF project, but I couldn't find it in the foundation project list",
     ],
     [
       { kind: 'ambiguous', reason: "that's a question I can't decide", candidates: [] },
@@ -119,12 +124,32 @@ describe('routeEvaluationOutcome', () => {
   it('sends a new project from the bot to review while auto apply is off', () => {
     expect(routeEvaluationOutcome(botRow, verdict, { autoApply: false })).toEqual({
       action: 'review',
-      reviewReason: "Acme isn't in LFX Insights yet, and new projects are added by the CDP team",
+      reviewReason:
+        "Acme isn't in LFX Insights yet; it would be created as a non-LF project, and new projects are added by the CDP team",
     })
     expect(
       routeEvaluationOutcome({ ...botRow, projectName: null }, verdict, { autoApply: false })
         .reviewReason,
     ).toContain("widget isn't in LFX Insights yet")
+  })
+
+  it('names the project an organization would become and counts its repositories', () => {
+    expect(
+      routeEvaluationOutcome(botRow, verdict, {
+        autoApply: false,
+        organization: { owner: 'acme', repositories: 12 },
+      }).reviewReason,
+    ).toBe(
+      "Acme isn't in LFX Insights yet; it would be created as a non-LF project with the 12 repositories of github.com/acme, and new projects are added by the CDP team",
+    )
+    expect(
+      routeEvaluationOutcome({ ...botRow, projectName: null }, verdict, {
+        autoApply: false,
+        organization: { owner: 'ai-dynamo', repositories: 1 },
+      }).reviewReason,
+    ).toContain(
+      "Ai Dynamo isn't in LFX Insights yet; it would be created as a non-LF project with the 1 repository of github.com/ai-dynamo",
+    )
   })
 
   it('lets the row onboard when auto apply is on or the request did not come from the bot', () => {

@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars */
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 import type {
   BaseFilterConfig,
   FilterConfigType,
@@ -23,13 +23,17 @@ export interface MultiSelectAsyncFilterValue {
   include: boolean;
 }
 
+export interface MultiSelectAsyncFilterData {
+  selected: MultiSelectAsyncFilterOption[];
+}
+
 export interface MultiSelectAsyncFilterConfig extends BaseFilterConfig {
   type: FilterConfigType.MULTISELECT_ASYNC;
   options: MultiSelectAsyncFilterOptions;
   itemLabelRenderer: (
     value: MultiSelectAsyncFilterValue,
     options: MultiSelectAsyncFilterOptions,
-    data: any,
+    data: MultiSelectAsyncFilterData,
   ) => string;
-  apiFilterRenderer: (value: MultiSelectAsyncFilterValue) => any[];
+  apiFilterRenderer: (value: MultiSelectAsyncFilterValue) => ApiFilter[];
 }

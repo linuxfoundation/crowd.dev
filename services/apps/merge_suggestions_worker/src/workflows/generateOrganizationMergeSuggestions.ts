@@ -1,6 +1,10 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { IOrganizationBaseForMergeSuggestions, IOrganizationMergeSuggestion } from '@crowd/types'
+import {
+  IOrganizationBaseForMergeSuggestions,
+  IOrganizationMergeSuggestion,
+  MergeSuggestionSource,
+} from '@crowd/types'
 
 import * as activities from '../activities/organizationMergeSuggestions'
 import { IProcessGenerateOrganizationMergeSuggestionsArgs } from '../types'
@@ -54,6 +58,7 @@ export async function generateOrganizationMergeSuggestions(
   if (allMergeSuggestions.length > 0) {
     await activity.addOrganizationToMerge(
       allMergeSuggestions,
+      MergeSuggestionSource.GLOBAL_SIMILARITY,
       SIMILARITY_CONFIDENCE_SCORE_THRESHOLD,
     )
   }

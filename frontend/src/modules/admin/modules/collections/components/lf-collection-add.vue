@@ -228,14 +228,15 @@ import { ToastStore } from '@/shared/message/notification';
 import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useMutation } from '@tanstack/vue-query';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import LfCollectionAddProjectsTab from './lf-collection-add-projects-tab.vue';
 import type {
   CollectionFormModel,
   CollectionModel,
   CollectionRequest,
 } from '../models/collection.model';
+import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 import { COLLECTIONS_SERVICE } from '../services/collections.service';
 
 const props = defineProps<{
@@ -270,7 +271,7 @@ const rules = {
   description: { required: (value: string) => value.trim().length },
   imageUrl: { url },
   logoUrl: { url },
-  projects: { required: (value: any) => value.length > 0 },
+  projects: { required: (value: InsightsProjectModel[]) => value.length > 0 },
 };
 
 const $v = useVuelidate(rules, form);
@@ -322,7 +323,7 @@ const onSubmit = () => {
     logoUrl: form.logoUrl || undefined,
     imageUrl: form.imageUrl || undefined,
     color: form.color || undefined,
-    projects: form.projects.map((project: any) => ({
+    projects: form.projects.map((project) => ({
       id: project.id,
       starred: project?.starred || false,
     })),
@@ -340,11 +341,9 @@ const onSubmit = () => {
   }
 };
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = () => {
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_COLLECTIONS],
-  });
+  invalidate.collections();
   ToastStore.closeAll();
   ToastStore.success(
     `Collection ${isEditForm.value ? 'updated' : 'created'} successfully`,

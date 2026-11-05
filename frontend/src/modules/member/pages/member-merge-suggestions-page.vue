@@ -151,10 +151,11 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfMemberMergeSuggestionDropdown
   from '@/modules/member/components/suggestions/member-merge-suggestion-dropdown.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { MemberMergeSuggestion, MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const mergeSuggestions = ref<any[]>([]);
+const mergeSuggestions = ref<MemberMergeSuggestion[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 
@@ -165,7 +166,7 @@ const loading = ref<boolean>(false);
 const sorting = ref<string>('similarity_DESC');
 const totalCount = ref<number>(0);
 
-const filter = ref<any>(undefined);
+const filter = ref<MemberMergeSuggestionsQuery | undefined>(undefined);
 
 const { trackEvent } = useProductTracking();
 
@@ -188,7 +189,7 @@ const loadMergeSuggestions = (sort: boolean = false) => {
   })
     .then((res) => {
       hasMore.value = Boolean(res.hasMore);
-      const rows = res.rows.filter((s: any) => s.similarity > 0);
+      const rows = res.rows.filter((s: MemberMergeSuggestion) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];
       } else {
@@ -224,7 +225,7 @@ const openDetails = (index: number) => {
   isModalOpen.value = true;
 };
 
-const search = (query: any) => {
+const search = (query: MemberMergeSuggestionsQuery) => {
   page.value = 1;
   filter.value = query;
   loadMergeSuggestions();

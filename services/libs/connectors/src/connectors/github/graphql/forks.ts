@@ -18,6 +18,7 @@ export interface ForkNode {
 
 export interface ForksPage {
   repository: {
+    url: string
     forks: {
       pageInfo: {
         endCursor: string | null
@@ -31,6 +32,7 @@ export interface ForksPage {
 export const FORKS_QUERY = `
   query ($owner: String!, $repo: String!, $first: Int!, $cursor: String) {
     repository(owner: $owner, name: $repo) {
+      url
       forks(first: $first, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
         pageInfo {
           endCursor

@@ -1,3 +1,4 @@
+import type { Component } from 'vue';
 import shared from '@/shared/shared-module';
 import layout from '@/modules/layout/layout-module';
 import settings from '@/modules/settings/settings-module';
@@ -10,7 +11,13 @@ import organization from '@/modules/organization/organization-module';
 import admin from '@/modules/admin/admin.module';
 import dataQuality from '@/modules/data-quality/data-quality.module';
 
-const modules: Record<string, any> = {
+interface AppModule {
+  routes?: Record<string, unknown>[];
+  components?: Record<string, Component>;
+  store?: unknown;
+}
+
+const modules: Record<string, AppModule> = {
   shared,
   settings,
   layout,

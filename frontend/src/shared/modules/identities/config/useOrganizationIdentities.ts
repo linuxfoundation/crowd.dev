@@ -1,10 +1,5 @@
-import type {
-  Organization,
-  OrganizationIdentity,
-} from '@/modules/organization/types/Organization';
-import {
-  OrganizationIdentityType,
-} from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
+import { OrganizationIdentityType } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { withHttp } from '@/utils/string';
 import { lfIdentities } from '@/config/identities';
@@ -26,8 +21,9 @@ export default ({
 
       return (identities || [])
         .filter(
-          (i) => !mainPlatforms.includes(i.platform)
-            && [OrganizationIdentityType.USERNAME].includes(i.type),
+          (i) =>
+            !mainPlatforms.includes(i.platform) &&
+            [OrganizationIdentityType.USERNAME].includes(i.type),
         )
         .map((i) => ({
           ...i,
@@ -39,8 +35,7 @@ export default ({
 
     return (identities || [])
       .filter(
-        (i) => i.platform === platform
-          && [OrganizationIdentityType.USERNAME].includes(i.type),
+        (i) => i.platform === platform && [OrganizationIdentityType.USERNAME].includes(i.type),
       )
       .map((i) => ({
         ...i,
@@ -50,10 +45,7 @@ export default ({
       }));
   };
 
-  const getIdentityLink = (
-    identity: OrganizationIdentity,
-    platform: string,
-  ) => {
+  const getIdentityLink = (identity: OrganizationIdentity, platform: string) => {
     if (!lfIdentities[platform]?.organization?.url) {
       return null;
     }
@@ -67,52 +59,56 @@ export default ({
       link: string | null;
       verified: boolean;
     }[];
-  } => order.reduce((acc, platform) => {
-    const handles = getIdentityHandles(platform);
+  } =>
+    order.reduce(
+      (acc, platform) => {
+        const handles = getIdentityHandles(platform);
 
-    if ([Platform.CUSTOM, Platform.ENRICHMENT].includes(platform) && handles.length) {
-      const sortedCustomIdentities = handles.sort((a, b) => {
-        const platformComparison = a.platform.localeCompare(b.platform);
+        if ([Platform.CUSTOM, Platform.ENRICHMENT].includes(platform) && handles.length) {
+          const sortedCustomIdentities = handles.sort((a, b) => {
+            const platformComparison = a.platform.localeCompare(b.platform);
 
-        if (platformComparison === 0) {
-          // If platforms are equal, sort by name
-          return a.value.localeCompare(b.value);
-        }
+            if (platformComparison === 0) {
+              // If platforms are equal, sort by name
+              return a.value.localeCompare(b.value);
+            }
 
-        return platformComparison; // Otherwise, sort by platform
-      });
+            return platformComparison; // Otherwise, sort by platform
+          });
 
-      sortedCustomIdentities.forEach((identity) => {
-        if (acc[identity.platform]?.length) {
-          acc[identity.platform].push({
+          sortedCustomIdentities.forEach((identity) => {
+            if (acc[identity.platform]?.length) {
+              acc[identity.platform].push({
+                handle: identity.value,
+                link: getIdentityLink(identity, platform),
+                verified: identity.verified,
+              });
+            } else {
+              acc[identity.platform] = [
+                {
+                  handle: identity.value,
+                  link: getIdentityLink(identity, platform),
+                  verified: identity.verified,
+                },
+              ];
+            }
+          });
+        } else {
+          const platformHandlesValues = handles.map((identity) => ({
             handle: identity.value,
             link: getIdentityLink(identity, platform),
             verified: identity.verified,
-          });
-        } else {
-          acc[identity.platform] = [
-            {
-              handle: identity.value,
-              link: getIdentityLink(identity, platform),
-              verified: identity.verified,
-            },
-          ];
+          }));
+
+          if (platformHandlesValues.length) {
+            acc[platform] = platformHandlesValues;
+          }
         }
-      });
-    } else {
-      const platformHandlesValues = handles.map((identity) => ({
-        handle: identity.value,
-        link: getIdentityLink(identity, platform),
-        verified: identity.verified,
-      }));
 
-      if (platformHandlesValues.length) {
-        acc[platform] = platformHandlesValues;
-      }
-    }
-
-    return acc;
-  }, {} as Record<Platform, { handle: string; link: string; verified: boolean }[]>);
+        return acc;
+      },
+      {} as Record<string, { handle: string; link: string | null; verified: boolean }[]>,
+    );
 
   const getAffiliatedProfiles = (): {
     handle: string;
@@ -122,9 +118,7 @@ export default ({
     const parsedIdentities = identities?.length ? identities : [];
 
     const identitiesDomains = parsedIdentities
-      .filter((identity) => [
-        OrganizationIdentityType.AFFILIATED_PROFILE,
-      ].includes(identity.type))
+      .filter((identity) => [OrganizationIdentityType.AFFILIATED_PROFILE].includes(identity.type))
       .map((identity) => ({
         link: null,
         handle: identity.value,
@@ -142,10 +136,12 @@ export default ({
     const parsedIdentities = identities?.length ? identities : [];
 
     const identitiesDomains = parsedIdentities
-      .filter((identity) => [
-        OrganizationIdentityType.PRIMARY_DOMAIN,
-        OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-      ].includes(identity.type))
+      .filter((identity) =>
+        [
+          OrganizationIdentityType.PRIMARY_DOMAIN,
+          OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+        ].includes(identity.type),
+      )
       .map((identity) => ({
         link: withHttp(identity.value) as string | null,
         handle: identity.value,
@@ -163,9 +159,7 @@ export default ({
     const parsedIdentities = identities?.length ? identities : [];
 
     const identitiesDomains = parsedIdentities
-      .filter((identity) => [
-        OrganizationIdentityType.EMAIL,
-      ].includes(identity.type))
+      .filter((identity) => [OrganizationIdentityType.EMAIL].includes(identity.type))
       .map((identity) => ({
         link: `mailto:${identity.value}`,
         handle: identity.value,
@@ -179,11 +173,12 @@ export default ({
     handle: string;
     link: string | null;
     verified: boolean;
-  }[] => (phoneNumbers || []).map((p) => ({
-    link: `tel:${p}`,
-    handle: p,
-    verified: false,
-  }));
+  }[] =>
+    (phoneNumbers || []).map((p) => ({
+      link: `tel:${p}`,
+      handle: p,
+      verified: false,
+    }));
 
   return {
     getIdentities,

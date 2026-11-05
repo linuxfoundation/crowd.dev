@@ -53,7 +53,7 @@
         :custom-filters="customAttributesFilter"
         :static-views="memberStaticViews"
         placement="member"
-        @update:model-value="memberFilter.alignFilterList($event)"
+        @update:model-value="memberFilter?.alignFilterList($event)"
       />
       <lf-filter
         v-if="customAttributesFilter"
@@ -69,6 +69,9 @@
         v-model:pagination="pagination"
         :has-integrations="hasIntegrations"
         :has-members="membersCount > 0"
+        :members="membersData?.rows ?? []"
+        :total-members="membersCount"
+        :saved-filter-body="savedFilterBody"
         :is-page-loading="loading"
         :is-table-loading="tableLoading"
         @update:pagination="onPaginationChange"
@@ -86,6 +89,8 @@ import AppLfPageHeader from '@/modules/lf/layout/components/lf-page-header.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import AppMemberListTable from '@/modules/member/components/list/member-list-table.vue';
 import { MemberService } from '@/modules/member/member-service';
+import { useMembersQuery } from '@/modules/member/queries/useMembersQuery';
+import type { MembersListParams } from '@/modules/member/queries/useMembersQuery';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import AppPageWrapper from '@/shared/layout/page-wrapper.vue';
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
@@ -93,8 +98,8 @@ import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue';
-import { TanstackKey } from '@/shared/types/tanstack';
-import { mapGetters } from '@/shared/vuex/vuex.helpers';
+import { queryKeys } from '@/shared/queries/keys';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useQuery } from '@tanstack/vue-query';
@@ -119,7 +124,7 @@ const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const memberCreate = ref(false);
 
-const { listByPlatform } = mapGetters('integration');
+const { listByPlatform } = storeToRefs(useIntegrationStore());
 
 const { hasPermission } = usePermissions();
 
@@ -140,7 +145,7 @@ const { search: initialSearch, filter: initialFilter, orderBy: initialOrderBy } 
   memberSavedViews,
 );
 
-const queryParams = ref({
+const queryParams = ref<MembersListParams>({
   search: initialSearch || '',
   filter: initialFilter,
   offset: 0,
@@ -149,41 +154,19 @@ const queryParams = ref({
   segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
 });
 
-// Create a computed query key for members
-const membersQueryKey = computed(() => [
-  TanstackKey.MEMBERS_LIST,
-  selectedProjectGroup.value?.id,
-  queryParams.value.search,
-  queryParams.value.filter,
-  queryParams.value.offset,
-  queryParams.value.limit,
-  queryParams.value.orderBy,
-  queryParams.value.segments,
-]);
-
-// Query for members list with caching
 const {
   data: membersData,
   isLoading: membersLoading,
   isFetching: membersFetching,
-} = useQuery({
-  queryKey: membersQueryKey,
-  queryFn: () => MemberService.listMembers({
-    search: queryParams.value.search,
-    filter: queryParams.value.filter,
-    offset: queryParams.value.offset,
-    limit: queryParams.value.limit,
-    orderBy: queryParams.value.orderBy,
-    segments: queryParams.value.segments,
-  }),
-  enabled: !!selectedProjectGroup.value?.id,
-});
+  isPlaceholderData: membersIsPlaceholder,
+} = useMembersQuery(
+  queryParams,
+  computed(() => selectedProjectGroup.value?.id),
+  !!selectedProjectGroup.value?.id,
+);
 
 // Create a computed query key for merge suggestions
-const mergeSuggestionsQueryKey = computed(() => [
-  TanstackKey.MEMBER_MERGE_SUGGESTIONS_COUNT,
-  selectedProjectGroup.value?.id,
-]);
+const mergeSuggestionsQueryKey = computed(() => queryKeys.members.mergeSuggestionsCount(selectedProjectGroup.value?.id));
 
 // Query for merge suggestions count with caching
 const {
@@ -194,12 +177,11 @@ const {
   enabled: !!selectedProjectGroup.value?.id,
 });
 
-// Watch for members data changes and update the store
+const savedFilterBody = ref<Omit<MembersListParams, 'segments'> | Record<string, never>>({});
+
 watch(membersData, (newData) => {
-  if (newData) {
-    memberStore.members = newData.rows || [];
-    memberStore.totalMembers = newData.count || 0;
-    memberStore.savedFilterBody = {
+  if (newData && !membersIsPlaceholder.value) {
+    savedFilterBody.value = {
       search: queryParams.value.search,
       filter: queryParams.value.filter,
       offset: queryParams.value.offset,
@@ -274,6 +256,7 @@ watch(
 
 onMounted(() => {
   memberStore.getMemberCustomAttributes();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped window.analytics. revisit: when it gets a global type
   (window as any).analytics.page('Members');
 });
 </script>

@@ -2,7 +2,7 @@ import type { IntegrationStatusConfig } from '@/modules/admin/modules/integratio
 
 const done: IntegrationStatusConfig = {
   key: 'done',
-  show: (integration: any) => integration.status === 'done',
+  show: (integration) => integration.status === 'done',
   statuses: ['done'],
   status: {
     text: 'Connected',

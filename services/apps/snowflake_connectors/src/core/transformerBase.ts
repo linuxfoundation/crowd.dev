@@ -9,6 +9,16 @@ import { IActivityData, IMemberData, MemberIdentityType, PlatformType } from '@c
 
 const log = getServiceChildLogger('transformer')
 
+const PLACEHOLDER_IDENTITY_VALUES = new Set(['none', 'null', 'undefined', 'na', 'n/a', '-'])
+
+export function cleanIdentityValue(raw: unknown): string | null {
+  const value = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : ''
+  if (!value || PLACEHOLDER_IDENTITY_VALUES.has(value.toLowerCase())) {
+    return null
+  }
+  return value
+}
+
 export interface SegmentRef {
   slug: string
   sourceId: string

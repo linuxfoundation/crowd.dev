@@ -9,7 +9,12 @@ import {
   PlatformType,
 } from '@crowd/types'
 
-import { TransformedActivity, TransformerBase } from '../../../core/transformerBase'
+import { cleanPersonalEmail } from '../../../core/personalEmail'
+import {
+  TransformedActivity,
+  TransformerBase,
+  cleanIdentityValue,
+} from '../../../core/transformerBase'
 
 const log = getServiceChildLogger('cventTransformer')
 
@@ -17,12 +22,12 @@ export class CventTransformer extends TransformerBase {
   readonly platform = PlatformType.CVENT
 
   transformRow(row: Record<string, unknown>): TransformedActivity | null {
-    const userName = (row.USER_NAME as string | null)?.trim() || null
-    const lfUsername = (row.LFID as string | null)?.trim() || null
+    const userName = cleanIdentityValue(row.USER_NAME)
+    const lfUsername = cleanIdentityValue(row.LFID)
     const fullName = (row.FULL_NAME as string | null)?.trim() || null
     const firstName = (row.FIRST_NAME as string | null)?.trim() || null
     const lastName = (row.LAST_NAME as string | null)?.trim() || null
-    const email = (row.EMAIL as string).trim()
+    const email = cleanPersonalEmail(row.EMAIL)
     if (!email) {
       log.warn(
         { registrationId: row.REGISTRATION_ID, userName, lfUsername },
@@ -32,7 +37,7 @@ export class CventTransformer extends TransformerBase {
     }
 
     const registrationId = (row.REGISTRATION_ID as string)?.trim()
-    const sourceId = (row.USER_ID as string | null) || undefined
+    const sourceId = cleanIdentityValue(row.USER_ID) ?? undefined
 
     const displayName =
       fullName ||

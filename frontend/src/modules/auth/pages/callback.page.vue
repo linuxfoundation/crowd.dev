@@ -13,7 +13,7 @@ import { router } from '@/router';
 
 const { authCallback, logout } = useAuthStore();
 
-const auth0State = ref<any>(null);
+const auth0State = ref<{ returnTo?: string } | null>(null);
 
 onMounted(() => {
   Auth0Service.handleAuth()

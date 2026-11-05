@@ -6,11 +6,11 @@
 
 ## Context
 
-Octolens exposes one org-wide REST API with a 500 requests/hour budget shared across thousands of LFX projects, so its connector has to run a single global poll rather than one sync unit per project. A polled mention carries an Octolens `keywordId`, not a project, so mentions from one poll belong to many different CDP segments. The connector framework's `emit()` fixed `segmentId` and `integrationId` for the whole sync run, which only fits connectors with one segment per sync unit.
+Octolens exposes one org-wide REST API with a 500 requests/hour budget shared across thousands of LFX projects, so its connector has to run a single global poll rather than one sync unit per project. A polled mention lists the Octolens keywords it matched (`keywords[]`), not a project, so mentions from one poll belong to many different CDP segments. The connector framework's `emit()` fixed `segmentId` and `integrationId` for the whole sync run, which only fits connectors with one segment per sync unit.
 
 ## Decision
 
-`createEmit()` accepts optional `segmentId` and `integrationId` overrides on each `emit()` call (both or neither); without them it falls back to the sync unit's integration segment, as before.
+`createEmit()` accepts optional `segmentId` and `integrationId` overrides on each `emit()` call (both or neither); without them it falls back to the sync unit's integration segment, as before. A connector whose Manifest sets `emitsOwnSegment` must pass both overrides on every call; its sync unit can then live on an integration with no segment, which is how Octolens runs one global poll on a segment-less anchor integration and emits each mention under its subproject's own integration.
 
 ## Alternatives Considered
 

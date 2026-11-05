@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Organization } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationAttribute } from '@/modules/organization/types/Organization';
 import LfOrganizationAttributeString
   from '@/modules/organization/components/details/overview/attributes/organization-attribute-string.vue';
 import type { OrganizationEnrichmentConfig } from '@/modules/organization/config/enrichment';
@@ -101,7 +101,7 @@ const camelCaseToLabel = (attribute: string) => attribute
   ?.replace(/([A-Z])/g, ' $1')
   ?.replace(/^./, (str) => str.toUpperCase()) || attribute;
 
-const getAttributeType = (attribute: Record<string, any>) => {
+const getAttributeType = (attribute: OrganizationAttribute) => {
   if (attribute.default?.constructor === Array || (!attribute.default && Object.values(attribute)?.[0].constructor === Array)) {
     return AttributeType.ARRAY;
   }
@@ -114,7 +114,7 @@ const getAttributeType = (attribute: Record<string, any>) => {
   return AttributeType.STRING;
 };
 
-const getAttributeValue = (attribute: Record<string, any>, type: AttributeType) => {
+const getAttributeValue = (attribute: OrganizationAttribute, type: AttributeType) => {
   if (type === AttributeType.ARRAY) {
     return attribute.default || [...new Set(Object.values(attribute).reduce((arr, val) => [...arr, ...val], []))];
   }

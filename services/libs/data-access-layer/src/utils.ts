@@ -6,6 +6,8 @@ import { DbConnOrTx } from '@crowd/database'
 import { QueryFilter } from './query'
 import { QueryExecutor } from './queryExecutor'
 
+export const SQL_NOW = { rawType: true, toPostgres: () => 'now()' }
+
 export function prepareBulkInsert(
   table: string,
   columns: string[],

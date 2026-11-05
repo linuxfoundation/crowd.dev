@@ -56,6 +56,7 @@ import { MemberService } from '@/modules/member/member-service';
 import {
   computed, onMounted, ref, watch,
 } from 'vue';
+import type { DataQualityMemberMergeSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import LfDataQualityMemberMergeSuggestionsItem
   from '@/modules/data-quality/components/member/data-quality-member-merge-suggestions-item.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -74,7 +75,7 @@ const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
 const hasMore = ref(false);
-const mergeSuggestions = ref<any[]>([]);
+const mergeSuggestions = ref<DataQualityMemberMergeSuggestion[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
@@ -92,7 +93,7 @@ const loadMergeSuggestions = () => {
   })
     .then((res) => {
       hasMore.value = Boolean(res.hasMore);
-      const rows = res.rows.filter((s: any) => s.similarity > 0);
+      const rows = res.rows.filter((s: DataQualityMemberMergeSuggestion) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];
       } else {

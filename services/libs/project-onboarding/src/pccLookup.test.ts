@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { PCC_CANDIDATES_QUERY, createPccCandidatesLookup } from './pccLookup'
 
 describe('createPccCandidatesLookup', () => {
-  it('binds the lowercased trimmed name for both the name and slug comparison', async () => {
+  it('binds the lowercased trimmed name for the name and slug comparisons', async () => {
     const runQuery = vi.fn().mockResolvedValue([])
 
     await createPccCandidatesLookup(runQuery)('  Open Telemetry ')
@@ -11,7 +11,16 @@ describe('createPccCandidatesLookup', () => {
     expect(runQuery).toHaveBeenCalledWith(PCC_CANDIDATES_QUERY, [
       'open telemetry',
       'open telemetry',
+      'open telemetry',
     ])
+  })
+
+  it('binds the core name for the name and slug scores and the full name for the slug', async () => {
+    const runQuery = vi.fn().mockResolvedValue([])
+
+    await createPccCandidatesLookup(runQuery)('The K2s project')
+
+    expect(runQuery).toHaveBeenCalledWith(PCC_CANDIDATES_QUERY, ['k2s', 'k2s', 'the k2s project'])
   })
 
   it('maps rows to candidates and normalizes the score to the 0-1 range', async () => {

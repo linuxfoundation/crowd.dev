@@ -1,12 +1,16 @@
 import { createTokenPool, findManifest, mapWithConcurrency } from '@crowd/connectors'
-import { claimDueUnits, rescheduleUnit } from '@crowd/data-access-layer/src/connectors'
+import {
+  claimDueUnits,
+  renewRunningUnitLease,
+  rescheduleUnit,
+} from '@crowd/data-access-layer/src/connectors'
 import type { IClaimedUnit } from '@crowd/data-access-layer/src/connectors'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { RedisCache } from '@crowd/redis'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { svc } from '../main'
-import { runningProbeRunAt, shortDeferRunAt } from '../scheduling'
+import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
 
 const TASK_QUEUE = 'connectors'
@@ -25,7 +29,7 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     const pool = createTokenPool(svc.redis, unit.platform, {
       probeBudget: manifest?.probeBudget,
     })
-    return pool.hasHeadroom(DEFAULT_RUN_ESTIMATE)
+    return pool.hasHeadroom(manifest?.runCostEstimate ?? DEFAULT_RUN_ESTIMATE)
   })
   const result = {
     admitted: units.filter((_, index) => headrooms[index]),
@@ -40,8 +44,14 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
   return result
 }
 
-export async function deferUnit(unitId: string): Promise<void> {
-  await rescheduleUnit(dbStoreQx(svc.postgres.writer), unitId, shortDeferRunAt())
+// A lapsed lease may belong to a run still in flight, so that claim is kept instead of released.
+export async function deferUnit(unitId: string, leaseLapsed = false): Promise<void> {
+  const qx = dbStoreQx(svc.postgres.writer)
+  if (leaseLapsed) {
+    await renewRunningUnitLease(qx, unitId)
+  } else {
+    await rescheduleUnit(qx, unitId, shortDeferRunAt())
+  }
 }
 
 function channelLabel(channelName: string): string {
@@ -86,18 +96,11 @@ export async function startRun(unit: IClaimedUnit): Promise<StartRunResult> {
 }
 
 async function backOffRunningUnit(unit: IClaimedUnit): Promise<void> {
-  const nextRunAt = await runningSince(unit)
-    .then(runningProbeRunAt)
-    .catch(() => shortDeferRunAt())
-
-  await rescheduleUnit(dbStoreQx(svc.postgres.writer), unit.id, nextRunAt)
-  svc.log.info({ unitId: unit.id, nextRunAt }, 'unit already running, rescheduled probe')
-}
-
-async function runningSince(unit: IClaimedUnit): Promise<Date> {
-  const description = await svc.temporal.workflow.getHandle(syncRunWorkflowId(unit)).describe()
-
-  return description.startTime
+  const renewed = await renewRunningUnitLease(dbStoreQx(svc.postgres.writer), unit.id)
+  svc.log.info(
+    { unitId: unit.id, renewed: renewed > 0 },
+    'unit already running, lease renewed until it lapses',
+  )
 }
 
 export async function logDispatchSummary(counts: IDispatchCounts): Promise<void> {

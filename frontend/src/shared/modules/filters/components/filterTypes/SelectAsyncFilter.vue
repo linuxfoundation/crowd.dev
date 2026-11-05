@@ -51,11 +51,12 @@ import {
   computed, onMounted, ref, watch,
 } from 'vue';
 import { required } from '@vuelidate/validators';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 import LfFilterSelectOption from '@/shared/modules/filters/components/partials/select/FilterSelectOption.vue';
 import type {
-  SelectAsyncFilterConfig, SelectAsyncFilterOption, SelectAsyncFilterOptions,
+  SelectAsyncFilterConfig, SelectAsyncFilterData, SelectAsyncFilterOption, SelectAsyncFilterOptions,
   SelectAsyncFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';
 import type { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
@@ -63,11 +64,11 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 const props = defineProps<{
   modelValue: SelectAsyncFilterValue,
-  data: any,
+  data: SelectAsyncFilterData,
   config: SelectAsyncFilterConfig
 } & SelectAsyncFilterOptions>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: SelectAsyncFilterValue): void, (e: 'update:data', value: any): void}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: SelectAsyncFilterValue): void, (e: 'update:data', value: SelectAsyncFilterData): void}>();
 
 const form = computed({
   get: () => props.modelValue,
@@ -76,7 +77,7 @@ const form = computed({
 
 const data = computed({
   get: () => props.data,
-  set: (value: any) => emit('update:data', value),
+  set: (value: SelectAsyncFilterData) => emit('update:data', value),
 });
 
 const defaultForm: SelectAsyncFilterValue = {
@@ -84,7 +85,7 @@ const defaultForm: SelectAsyncFilterValue = {
   include: true,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },
@@ -93,7 +94,7 @@ const rules: any = {
 useVuelidate(rules, form);
 
 watch(() => props.modelValue.value, (value?: string) => {
-  if (!!value && value !== data.value.selected?.value) {
+  if (!!value && value !== (data.value.selected && data.value.selected.value)) {
     props.remotePopulateItems(value)
       .then((populated) => {
         data.value.selected = populated;
@@ -115,7 +116,7 @@ const searchOptions = (query: string) => {
     });
 };
 
-const selectItem = (value: any) => {
+const selectItem = (value: SelectAsyncFilterOption) => {
   data.value.selected = value;
   emit('update:modelValue', {
     ...props.modelValue,

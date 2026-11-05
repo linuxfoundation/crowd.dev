@@ -23,9 +23,11 @@ import { defineProps, ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDevtoConnectDrawer from '@/config/integrations/devto/components/devto-connect-drawer.vue';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { DevtoSettings } from '@/config/integrations/devto/types/DevtoSettings';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<DevtoSettings> | undefined,
   segmentId: string | null;
   grandparentId: string | null;
 }>();

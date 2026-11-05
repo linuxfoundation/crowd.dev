@@ -16,7 +16,7 @@ const tags: StringFilterConfig = {
   itemLabelRenderer(value: StringFilterValue, options: StringFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.STRING]('Tags', value, options);
   },
-  apiFilterRenderer(value: StringFilterValue): any[] {
+  apiFilterRenderer(value: StringFilterValue) {
     return apiFilterRendererByType[FilterConfigType.STRING]('tags', value);
   },
 };

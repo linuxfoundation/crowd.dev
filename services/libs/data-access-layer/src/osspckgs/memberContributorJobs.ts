@@ -1,24 +1,51 @@
 import { QueryExecutor } from '../queryExecutor'
 
-export type MemberContributorCollectionPath = 'github'
-export type MemberContributorJobStatus = 'pending' | 'running' | 'done' | 'failed'
+export type MemberContributorCollectionPath = 'github' | 'llm_repo_resolution'
+export type MemberContributorJobStatus = 'pending' | 'running' | 'done' | 'failed' | 'unresolvable'
+export type MemberContributorRepoUrlSource = 'llm_inferred'
 
 export interface MemberContributorJobInput {
   id: string
   purl: string
   ecosystem: string
   collectionPath: MemberContributorCollectionPath
-  packageId: string
-  repoId: string
+  packageId: string | null
+  repoId: string | null
 }
 
 export interface MemberContributorJobRow {
   id: string
   purl: string
+  ecosystem: string
+  collectionPath: MemberContributorCollectionPath
   status: MemberContributorJobStatus
   error: string | null
   packageId: string | null
   repoId: string | null
+  repoUrl: string | null
+  repoUrlSource: MemberContributorRepoUrlSource | null
+}
+
+export interface MemberContributorJobPurl {
+  purl: string
+  ecosystem: string
+}
+
+export interface LatestMemberContributorJob {
+  id: string
+  status: MemberContributorJobStatus
+  collectionPath: MemberContributorCollectionPath
+}
+
+export interface LlmUsage {
+  inputTokens: number
+  outputTokens: number
+  costUsd: number | null
+}
+
+export interface InferredRepoRecord {
+  repoUrl: string
+  confidence: number
 }
 
 export interface MemberContributorJobRepo {
@@ -82,8 +109,10 @@ export async function findMemberContributorJob(
 ): Promise<MemberContributorJobRow | null> {
   return qx.selectOneOrNone(
     `
-    SELECT id, purl, status, error,
-           package_id::text AS "packageId", repo_id::text AS "repoId"
+    SELECT id, purl, ecosystem, status, error,
+           collection_path AS "collectionPath",
+           package_id::text AS "packageId", repo_id::text AS "repoId",
+           repo_url AS "repoUrl", repo_url_source AS "repoUrlSource"
     FROM member_contributor_jobs
     WHERE id = $(id)
     `,
@@ -143,5 +172,94 @@ export async function failMemberContributorJob(
     WHERE id = $(id) AND status <> 'done'
     `,
     { id, error },
+  )
+}
+
+export async function findMemberContributorJobPurl(
+  qx: QueryExecutor,
+  id: string,
+): Promise<MemberContributorJobPurl | null> {
+  return qx.selectOneOrNone(
+    `SELECT purl, ecosystem FROM member_contributor_jobs WHERE id = $(id)`,
+    {
+      id,
+    },
+  )
+}
+
+export async function findLatestMemberContributorJobByPurl(
+  qx: QueryExecutor,
+  purl: string,
+): Promise<LatestMemberContributorJob | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT id, status, collection_path AS "collectionPath"
+    FROM member_contributor_jobs
+    WHERE purl = $(purl)
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+    `,
+    { purl },
+  )
+}
+
+export async function recordMemberContributorJobInferredRepo(
+  qx: QueryExecutor,
+  id: string,
+  record: InferredRepoRecord,
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE member_contributor_jobs
+    SET repo_url = $(repoUrl), repo_url_source = 'llm_inferred', llm_confidence = $(confidence),
+        updated_at = NOW()
+    WHERE id = $(id) AND status = 'running'
+    `,
+    { id, ...record },
+  )
+}
+
+export async function recordMemberContributorJobLlmUsage(
+  qx: QueryExecutor,
+  id: string,
+  usage: LlmUsage,
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE member_contributor_jobs
+    SET llm_input_tokens = COALESCE(llm_input_tokens, 0) + $(inputTokens),
+        llm_output_tokens = COALESCE(llm_output_tokens, 0) + $(outputTokens),
+        llm_cost_usd = CASE WHEN $(costUsd) IS NULL THEN llm_cost_usd ELSE COALESCE(llm_cost_usd, 0) + $(costUsd) END,
+        updated_at = NOW()
+    WHERE id = $(id) AND status = 'running'
+    `,
+    { id, ...usage },
+  )
+}
+
+export async function markMemberContributorJobUnresolvable(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+  repoUrl: string | null,
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE member_contributor_jobs
+    SET status = 'unresolvable', error = $(reason), repo_url = COALESCE($(repoUrl), repo_url),
+        completed_at = NOW(), updated_at = NOW()
+    WHERE id = $(id) AND status <> 'done'
+    `,
+    { id, reason, repoUrl },
+  )
+}
+
+export async function incrementMemberContributorJobSubmissions(
+  qx: QueryExecutor,
+  id: string,
+): Promise<void> {
+  await qx.result(
+    `UPDATE member_contributor_jobs SET submission_count = submission_count + 1, updated_at = NOW() WHERE id = $(id)`,
+    { id },
   )
 }

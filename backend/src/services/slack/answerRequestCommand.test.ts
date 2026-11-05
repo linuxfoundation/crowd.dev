@@ -2,13 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@crowd/data-access-layer', () => ({
   findProjectCatalogById: vi.fn(),
+  findProjectCatalogBySourceUrl: vi.fn(async () => []),
   answerProjectCatalogQuestion: vi.fn(),
 }))
 vi.mock('./onboardProjectCommand', () => ({
   postToResponseUrl: vi.fn(async () => undefined),
   textMessage: vi.fn((text: string) => ({ text })),
 }))
-vi.mock('./slackBackground', () => ({ getBgQx: vi.fn(async () => ({})) }))
+vi.mock('./slackBackground', () => ({
+  getBgQx: vi.fn(async () => ({ tx: (run: (tx: unknown) => Promise<unknown>) => run({}) })),
+}))
 vi.mock('@crowd/project-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@crowd/project-onboarding')>()),
   applyRequestStatus: vi.fn(async () => undefined),
@@ -19,7 +22,11 @@ vi.mock('@crowd/slack', async (importOriginal) => ({
   getSlackBotConfig: vi.fn(() => ({ reviewerUserIds: ['U-REVIEWER'] })),
 }))
 
-import { answerProjectCatalogQuestion, findProjectCatalogById } from '@crowd/data-access-layer'
+import {
+  answerProjectCatalogQuestion,
+  findProjectCatalogById,
+  findProjectCatalogBySourceUrl,
+} from '@crowd/data-access-layer'
 import { applyRequestStatus, refreshRequestStatusMessage } from '@crowd/project-onboarding'
 
 import { runAnswerRequestCommand } from './answerRequestCommand'
@@ -49,6 +56,7 @@ const row = {
   sourceUrl: 'https://acme.slack.com/archives/C1/p1',
   action: 'ask',
   requestedBy: 'U-REQUESTER',
+  projectName: 'Acme Widgets',
   requestQuestion: question,
 } as any
 
@@ -75,6 +83,41 @@ describe('runAnswerRequestCommand', () => {
     vi.mocked(answerProjectCatalogQuestion).mockResolvedValue({ ...row, action: 'evaluate' })
   })
 
+  it('answers the shared question of an organization for every repository at once', async () => {
+    const lead = {
+      ...row,
+      requestHints: { organization: 'acme' },
+      requestQuestion: { ...question, messageTs: '1760000000.300000' },
+    }
+    const sibling = (id: string, messageTs = '1760000000.300000') => ({
+      ...lead,
+      id,
+      repoUrl: `https://github.com/acme/${id}`,
+      requestQuestion: { ...question, messageTs },
+    })
+    vi.mocked(findProjectCatalogById).mockResolvedValue(lead)
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      lead,
+      sibling('sib-1'),
+      sibling('sib-2'),
+      sibling('sib-3', 'other-question'),
+    ] as never)
+    vi.mocked(answerProjectCatalogQuestion).mockImplementation(async (_qx, id) => ({
+      ...lead,
+      id,
+      action: 'evaluate',
+    }))
+
+    await run()
+
+    expect(answerProjectCatalogQuestion).toHaveBeenCalledTimes(3)
+    expect(JSON.stringify(lastMessage())).toContain('*github.com/acme* (3 repositories):')
+    expect(startWorkflow).toHaveBeenCalledWith(
+      'evaluateProjects',
+      expect.objectContaining({ args: [{ catalogIds: [CATALOG_ID, 'sib-1', 'sib-2'] }] }),
+    )
+  })
+
   it('stores the answer, replaces the question and re-runs the check', async () => {
     await run()
 
@@ -84,6 +127,7 @@ describe('runAnswerRequestCommand', () => {
       hints: { pccProject: { projectId: 'p', name: 'Acme', slug: 'a', isLeaf: true } },
       action: 'evaluate',
       reviewReason: null,
+      proposedAction: null,
     })
     expect(lastMessage()).toMatchObject({ replace_original: true })
     expect(JSON.stringify(lastMessage())).toContain('<@U-REQUESTER> answered: *Yes, Acme*')
@@ -109,7 +153,8 @@ describe('runAnswerRequestCommand', () => {
       CATALOG_ID,
       expect.objectContaining({
         action: 'review',
-        reviewReason: 'the requester couldn\'t answer "Did you mean Acme?" (No, ask the CDP team)',
+        reviewReason: "the requester said Acme Widgets isn't Acme",
+        proposedAction: 'human_review',
       }),
     )
     expect(applyRequestStatus).toHaveBeenCalledWith(

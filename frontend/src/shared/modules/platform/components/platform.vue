@@ -46,7 +46,7 @@ const props = withDefaults(
     size?: string;
     identities?: {
       handle: string;
-      link: string;
+      link: string | null;
     }[];
     asLink?: boolean;
     asSvg?: boolean;

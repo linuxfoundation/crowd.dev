@@ -383,13 +383,12 @@ export class RawQueryParser {
     )
   }
 
+  // A name is taken once it's a key in params, even if its value is undefined.
   private static getParamName(column: string, params: any): string {
     let index = 1
-    let value = params[`${column}_${index}`]
 
-    while (value !== undefined) {
+    while (`${column}_${index}` in params) {
       index++
-      value = params[`${column}_${index}`]
     }
 
     return `${column}_${index}`
@@ -405,10 +404,8 @@ export class RawQueryParser {
       key = column
     }
 
-    let value = params[`${key}_${index}`]
-    while (value !== undefined) {
+    while (`${key}_${index}` in params) {
       index++
-      value = params[`${key}_${index}`]
     }
 
     return `${key}_${index}`

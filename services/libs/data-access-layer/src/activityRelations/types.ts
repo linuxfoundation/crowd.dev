@@ -39,3 +39,12 @@ export interface IQueryActivityRelationsParameters {
   groupBy?: string
   noLimit?: boolean
 }
+
+export interface IActivityRelationDedupKey {
+  timestamp: string
+  platform: string
+  type: string
+  sourceId: string
+  channel: string | null
+  segmentId: string
+}

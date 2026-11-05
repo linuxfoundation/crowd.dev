@@ -5,12 +5,12 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { ISlackMessageContent, escapeSlackText, mrkdwnSections } from '@crowd/slack'
 
-import { ANSWER_REQUEST_ACTION_ID, STATUS, repoLabel } from './botCopy'
+import { ANSWER_REQUEST_ACTION_ID, MAX_BUTTON_TEXT_LENGTH, STATUS, repoLabel } from './botCopy'
+import { IOrganizationReview, organizationSubject } from './organizationGroup'
 
 type QuestionRow = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'requestQuestion'>
 type KnownBlock = NonNullable<ISlackMessageContent['blocks']>[number]
 
-const MAX_BUTTON_TEXT_LENGTH = 75
 const BUTTONS_PER_BLOCK = 5
 export const ANSWER_VALUE_SEPARATOR = '|'
 
@@ -46,23 +46,37 @@ function optionButtons(catalogId: string, options: IRequestQuestionOption[]): Kn
         action_id: answerActionId(start + offset),
         value: encodeAnswerValue(catalogId, option.id),
         text: { type: 'plain_text', text: buttonText(option.label) },
-        ...(start + offset === 0 && !option.handOff ? { style: 'primary' as const } : {}),
+        ...(option.suggested ? { style: 'primary' as const } : {}),
       })),
     })
   }
   return blocks
 }
 
-export function questionText(row: Pick<IDbProjectCatalog, 'repoUrl'>, question: IRequestQuestion) {
-  return `${STATUS.needsInput} ${repoLabel(row.repoUrl)}: ${escapeSlackText(question.text)}`
+function questionSubject(
+  row: Pick<IDbProjectCatalog, 'repoUrl'>,
+  organization: IOrganizationReview | null,
+): string {
+  return organization ? organizationSubject(organization) : repoLabel(row.repoUrl)
 }
 
-export function buildBotQuestionContent(row: QuestionRow): ISlackMessageContent | null {
+export function questionText(
+  row: Pick<IDbProjectCatalog, 'repoUrl'>,
+  question: IRequestQuestion,
+  organization: IOrganizationReview | null = null,
+) {
+  return `${STATUS.needsInput} ${questionSubject(row, organization)}: ${escapeSlackText(question.text)}`
+}
+
+export function buildBotQuestionContent(
+  row: QuestionRow,
+  organization: IOrganizationReview | null = null,
+): ISlackMessageContent | null {
   const question = row.requestQuestion
   if (!question) {
     return null
   }
-  const text = questionText(row, question)
+  const text = questionText(row, question, organization)
   return { text, blocks: [...mrkdwnSections(text), ...optionButtons(row.id, question.options)] }
 }
 
@@ -78,12 +92,41 @@ export function buildBotAnsweredContent(
   question: IRequestQuestion,
   option: IRequestQuestionOption,
   answeredBy: string,
+  organization: IOrganizationReview | null = null,
 ): ISlackMessageContent {
   const next = option.handOff
     ? "I've handed it to the CDP team; they'll decide here."
     : "Checking again with that, I'll update the status above."
-  const text = `${questionText(row, question)}\n<@${answeredBy}> answered: *${escapeSlackText(option.label)}*. ${next}`
+  const text = `${questionText(row, question, organization)}\n<@${answeredBy}> answered: *${escapeSlackText(option.label)}*. ${next}`
   return { text, blocks: mrkdwnSections(text) }
+}
+
+function suggestedProjectName(question: IRequestQuestion): string | null {
+  return (
+    question.options.find((option) => option.hints?.pccProject)?.hints?.pccProject?.name ?? null
+  )
+}
+
+export function handOffReason(
+  row: Pick<IDbProjectCatalog, 'projectName'>,
+  question: IRequestQuestion,
+): string {
+  const name = row.projectName
+  const suggested = suggestedProjectName(question)
+  switch (question.kind) {
+    case 'did_you_mean':
+      return name && suggested
+        ? `the requester said ${name} isn't ${suggested}`
+        : "the requester didn't recognise the project I suggested"
+    case 'pick_project':
+      return `the requester couldn't tell which ${name ? `${name} ` : ''}project this repo belongs to`
+    case 'lf_conflict':
+      return suggested
+        ? `the requester isn't sure whether ${name ?? 'this repo'} is the LF project ${suggested}`
+        : `the requester isn't sure whether ${name ?? 'this repo'} is an LF project`
+    case 'lf_confirm':
+      return `the requester isn't sure whether ${name ?? 'this project'} is an LF project`
+  }
 }
 
 export function describeAnsweredQuestion(question: IRequestQuestion): string | null {

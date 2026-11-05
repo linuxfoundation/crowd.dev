@@ -118,6 +118,9 @@
 </template>
 
 <script setup lang="ts">
+import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { GerritSettings } from '@/config/integrations/gerrit/types/GerritSettings';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
 import {
@@ -125,7 +128,6 @@ import {
 } from 'vue';
 import gerrit from '@/config/integrations/gerrit/config';
 import formChangeDetector from '@/shared/form/form-change';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import AppArrayInput from '@/shared/form/array-input.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -143,9 +145,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import LfGerritSettingsEmpty from '@/config/integrations/gerrit/components/gerrit-settings-empty.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
-  integration: any;
+  integration: Integration<GerritSettings> | undefined;
   modelValue: boolean;
   segmentId: string | null;
   grandparentId: string | null;
@@ -172,7 +175,7 @@ const $v = useVuelidate({
   },
 }, form, { $stopPropagation: true });
 
-const { doGerritConnect } = mapActions('integration');
+const { connectGerrit } = useIntegrationStore();
 const isVisible = computed({
   get() {
     return props.modelValue;
@@ -198,7 +201,7 @@ const syncData = () => {
   if (props.integration?.settings?.remote) {
     form.orgURL = props.integration?.settings.remote.orgURL;
     form.repoNames = [...(props.integration?.settings.remote.repoNames || [])];
-    form.enableAllRepos = props.integration?.settings.remote.enableAllRepos;
+    form.enableAllRepos = props.integration?.settings.remote.enableAllRepos as boolean;
   }
   formSnapshot();
 };
@@ -243,7 +246,7 @@ const connect = async () => {
 
   const isUpdate = !!props.integration?.settings;
 
-  doGerritConnect({
+  connectGerrit({
     orgURL: form.orgURL,
     // user: form.user,
     // pass: form.pass,
@@ -272,7 +275,7 @@ const connect = async () => {
     });
 };
 
-const errorHandler = (error: any) => {
+const errorHandler = (error: IntegrationApiError) => {
   const errorMessage = error?.response?.data;
   const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping gerrit repositories');
 

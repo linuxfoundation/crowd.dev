@@ -33,7 +33,12 @@ describe('buildRequestClassificationAlert', () => {
       alert({
         kind: 'lf_in_cdp',
         pccProject,
-        segment: { segmentId: 'seg-1', name: 'Acme CDP', integration: 'github-nango' },
+        segment: {
+          segmentId: 'seg-1',
+          name: 'Acme CDP',
+          slug: 'acme-cdp',
+          integration: 'github-nango',
+        },
         action: 'update_integration',
       }),
     )

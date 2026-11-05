@@ -59,7 +59,7 @@ describe('toClassificationNode', () => {
     ['update_integration', 'lf_in_cdp_github_nango_update'],
     ['human_review', 'lf_in_cdp_github_v1_human_review'],
   ] as const)('maps the %s action to %s', (action, node) => {
-    const segment = { segmentId: 'seg-1', name: 'Acme', integration: 'none' as const }
+    const segment = { segmentId: 'seg-1', name: 'Acme', slug: 'acme', integration: 'none' as const }
 
     expect(toClassificationNode({ kind: 'lf_in_cdp', pccProject, segment, action })).toBe(node)
   })

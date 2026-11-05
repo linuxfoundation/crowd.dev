@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { SHARED_MEETING_ACCOUNT_EMAILS } from '../../../core/personalEmail'
+
 const CDP_MATCHED_SEGMENTS = `
   cdp_matched_segments AS (
     SELECT DISTINCT
@@ -22,12 +24,18 @@ const ORG_ACCOUNTS = `
     WHERE website IS NOT NULL
   )`
 
+const PLACEHOLDER_VALUES = `('', 'NONE', 'NULL', 'UNDEFINED', 'NA', 'N/A', '-')`
+
+const SHARED_MEETING_ACCOUNT_EMAIL_VALUES = `(${[...SHARED_MEETING_ACCOUNT_EMAILS].map((email) => `'${email}'`).join(', ')})`
+
 const LF_SSO_LOOKUP = `
   lf_sso_lookup AS (
     SELECT INVITEE_LF_USER_ID AS LF_USER_ID, MAX(INVITEE_LF_SSO) AS LF_SSO
     FROM ANALYTICS.SILVER_FACT.MEETING_ATTENDANCE
     WHERE INVITEE_LF_SSO IS NOT NULL
       AND INVITEE_LF_USER_ID IS NOT NULL
+      AND UPPER(TRIM(INVITEE_LF_SSO)) NOT IN ${PLACEHOLDER_VALUES}
+      AND UPPER(TRIM(INVITEE_LF_USER_ID)) NOT IN ${PLACEHOLDER_VALUES}
     GROUP BY INVITEE_LF_USER_ID
   )`
 
@@ -45,7 +53,10 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     t.MEETING_DATE,
     t.MEETING_TIME,
     t.INVITEE_FULL_NAME,
-    COALESCE(t.INVITEE_LF_SSO, sso.LF_SSO) AS INVITEE_LF_SSO,
+    COALESCE(
+      CASE WHEN UPPER(TRIM(t.INVITEE_LF_SSO)) NOT IN ${PLACEHOLDER_VALUES} THEN t.INVITEE_LF_SSO END,
+      sso.LF_SSO
+    ) AS INVITEE_LF_SSO,
     t.INVITEE_LF_USER_ID,
     t.INVITEE_EMAIL,
     t.INVITEE_ATTENDED,
@@ -66,7 +77,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   LEFT JOIN org_accounts org
     ON t.ACCOUNT_ID = org.account_id
   WHERE (t.WAS_INVITED = TRUE OR t.INVITEE_ATTENDED = TRUE)
-    AND NULLIF(TRIM(t.INVITEE_EMAIL), '') IS NOT NULL`
+    AND NULLIF(TRIM(t.INVITEE_EMAIL), '') IS NOT NULL
+    AND LOWER(TRIM(t.INVITEE_EMAIL)) NOT IN ${SHARED_MEETING_ACCOUNT_EMAIL_VALUES}`
 
   if (!IS_PROD_ENV) {
     select += ` AND t.PROJECT_SLUG = 'cncf'`

@@ -11,7 +11,7 @@ import {
 import { MEMBER_SELECT_COLUMNS } from '../members/base'
 import { IDbMember } from '../old/apps/data_sink_worker/repo/member.data'
 import { QueryExecutor } from '../queryExecutor'
-import { prepareBulkInsert } from '../utils'
+import { SQL_NOW, prepareBulkInsert } from '../utils'
 import { touchMembersUpdatedAt } from './others'
 
 export async function fetchMemberIdentities(
@@ -134,6 +134,7 @@ export async function updateMemberIdentity(
   memberId: string,
   id: string,
   data: Partial<UpdateMemberIdentity>,
+  options: { stampVerifiedAt?: boolean } = {},
 ): Promise<IMemberIdentity | null> {
   const filtered = Object.fromEntries(
     Object.entries(data).filter(
@@ -149,6 +150,12 @@ export async function updateMemberIdentity(
 
   const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
+
+  if (filtered.verified === false) {
+    setClause.push('"verifiedAt" = NULL')
+  } else if (options.stampVerifiedAt && filtered.verified === true) {
+    setClause.push('"verifiedAt" = now()')
+  }
 
   const params = { memberId, id, ...filtered }
 
@@ -285,12 +292,14 @@ export async function insertMemberIdentities(
       'type',
       'verified',
       'verifiedBy',
+      'verifiedAt',
     ],
     identities.map((i) => ({
       ...i,
       id: i.id || generateUUIDv1(),
       tenantId: DEFAULT_TENANT_ID,
       value: normalizeMemberIdentityValue(i.value),
+      verifiedAt: i.stampVerifiedAt ? SQL_NOW : null,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
@@ -403,7 +412,8 @@ export async function updateVerifiedFlag(
   const count = await qx.result(
     `
       update "memberIdentities"
-      set verified = $(verified)
+      set verified = $(verified),
+        "verifiedAt" = case when $(verified) then "verifiedAt" else null end
       where
         "memberId" = $(memberId) and
         platform = $(platform) and

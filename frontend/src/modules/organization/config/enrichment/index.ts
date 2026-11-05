@@ -1,3 +1,4 @@
+import type { Component } from 'vue';
 import type { AttributeType } from '@/modules/organization/types/Attributes';
 import naics from '@/modules/organization/config/enrichment/naics';
 import allSubsidiaries from './allSubsidiaries';
@@ -30,10 +31,10 @@ export interface OrganizationEnrichmentConfig {
   type: AttributeType; // Type of the attribute
   showInForm: boolean; // Display in Organization Form
   showInAttributes: boolean; // Display in Organization Profile
-  component?: any; // Component that will render attribute in organization profile
-  // shortcut: any — revisit: when enrichment attribute value types are generated
+  component?: Component; // Component that will render attribute in organization profile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped formatter input. revisit: per-attribute value types
   formatValue: (value: any) => unknown; // Formatter for values
-  attributes?: any, // Custom attributes passed into displaying components
+  attributes?: Record<string, unknown>, // Custom attributes passed into displaying components
 }
 
 const enrichmentConfig: OrganizationEnrichmentConfig[] = [

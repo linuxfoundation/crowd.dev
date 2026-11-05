@@ -14,7 +14,7 @@ const enrichedOrganization: BooleanFilterConfig = {
   itemLabelRenderer(value: BooleanFilterValue, options: BooleanFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.BOOLEAN]('Enriched organization', value, options);
   },
-  apiFilterRenderer({ value }: BooleanFilterValue): any[] {
+  apiFilterRenderer({ value }: BooleanFilterValue) {
     const filter = {
       lastEnrichedAt: {
         [value ? 'eq' : 'ne']: null,

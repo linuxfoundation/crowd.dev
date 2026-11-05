@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  fetchPublicOrgRepos,
   fetchPublicRepoMetrics,
   fetchPublicRepoReadme,
   getGithubToken,
+  isPublicGithubRepo,
   parseGithubUrl,
 } from './publicRepoClient'
 import { GithubPublicClientError } from './types'
@@ -39,6 +41,81 @@ describe('getGithubToken', () => {
   it('returns the token when set', () => {
     vi.stubEnv('CROWD_PROJECT_EVALUATION_GITHUB_TOKEN', 'test-token')
     expect(getGithubToken()).toBe('test-token')
+  })
+})
+
+describe('fetchPublicOrgRepos', () => {
+  const page = (names: string[], extra: Partial<{ archived: boolean; fork: boolean }> = {}) =>
+    names.map((name) => ({ name, archived: false, fork: false, ...extra }))
+
+  it('pages through the organization and leaves archived repositories and forks out', async () => {
+    const firstPage = page(Array.from({ length: 100 }, (_, index) => `repo-${index + 1}`))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, firstPage))
+      .mockResolvedValueOnce(
+        jsonResponse(200, [
+          ...page(['Extra']),
+          ...page(['old'], { archived: true }),
+          ...page(['mirror'], { fork: true }),
+        ]),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchPublicOrgRepos('openbmc', 'token', 500)
+
+    expect(result.exceededLimit).toBe(false)
+    expect(result.repoUrls).toHaveLength(101)
+    expect(result.repoUrls[100]).toBe('https://github.com/openbmc/extra')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://api.github.com/orgs/openbmc/repos?type=public&per_page=100&page=1',
+    )
+  })
+
+  it('stops at the limit and reports that the organization is larger', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, page(['a', 'b', 'c']))))
+
+    expect(await fetchPublicOrgRepos('openbmc', 'token', 2)).toEqual({
+      repoUrls: ['https://github.com/openbmc/a', 'https://github.com/openbmc/b'],
+      exceededLimit: true,
+    })
+  })
+
+  it('throws NOT_FOUND for an unknown organization and RATE_LIMIT on 429', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
+    await expect(fetchPublicOrgRepos('nobody', 'token', 20)).rejects.toMatchObject({
+      kind: 'NOT_FOUND',
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })))
+    await expect(fetchPublicOrgRepos('openbmc', 'token', 20)).rejects.toMatchObject({
+      kind: 'RATE_LIMIT',
+    })
+  })
+})
+
+describe('isPublicGithubRepo', () => {
+  it('is true for a public repository and false for a private one', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { private: false }))
+      .mockResolvedValueOnce(jsonResponse(200, { private: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await isPublicGithubRepo('https://github.com/openbmc/bmcweb', 'token')).toBe(true)
+    expect(await isPublicGithubRepo('https://github.com/openbmc/secret', 'token')).toBe(false)
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.github.com/repos/openbmc/bmcweb')
+  })
+
+  it('is false on 404 and throws RATE_LIMIT on 429', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
+    expect(await isPublicGithubRepo('https://github.com/org/repo', 'token')).toBe(false)
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })))
+    await expect(isPublicGithubRepo('https://github.com/org/repo', 'token')).rejects.toMatchObject({
+      kind: 'RATE_LIMIT',
+    })
   })
 })
 

@@ -139,3 +139,17 @@ export function getReportingProtocolConfig() {
     llmSecretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
   }
 }
+
+export interface BedrockCredentials {
+  accessKeyId: string
+  secretAccessKey: string
+}
+
+export function getBedrockCredentials(): BedrockCredentials | null {
+  const accessKeyId = process.env.CROWD_AWS_BEDROCK_ACCESS_KEY_ID
+  const secretAccessKey = process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY
+  if (!accessKeyId || !secretAccessKey) {
+    return null
+  }
+  return { accessKeyId, secretAccessKey }
+}

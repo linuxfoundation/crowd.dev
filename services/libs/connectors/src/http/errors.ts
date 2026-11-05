@@ -2,9 +2,12 @@ export type ErrorClass =
   | 'provider.unavailable'
   | 'provider.rate_limit'
   | 'provider.auth'
+  | 'provider.access_denied'
   | 'provider.contract'
+  | 'provider.repository_renamed'
   | 'connector.code'
   | 'sink.rejected'
+  | 'worker.timeout'
   | 'unknown'
 
 export interface ConnectorErrorOptions {
@@ -55,10 +58,27 @@ export class ProviderAuthError extends ConnectorError {
   }
 }
 
+export class ProviderAccessDeniedError extends ConnectorError {
+  constructor(message = 'provider refused access', options?: ConnectorErrorOptions) {
+    super('provider.access_denied', message, options)
+    this.name = 'ProviderAccessDeniedError'
+  }
+}
+
 export class ProviderContractError extends ConnectorError {
   constructor(message = 'unexpected provider response', options?: ConnectorErrorOptions) {
     super('provider.contract', message, options)
     this.name = 'ProviderContractError'
+  }
+}
+
+export class RepositoryRenamedError extends ConnectorError {
+  constructor(
+    readonly currentUrl: string,
+    options?: ConnectorErrorOptions,
+  ) {
+    super('provider.repository_renamed', `repository renamed to ${currentUrl}`, options)
+    this.name = 'RepositoryRenamedError'
   }
 }
 

@@ -68,6 +68,8 @@ export interface IShadowDiffMismatch {
   severity: ShadowDiffSeverity
   fields?: IFieldMismatch[]
   syncName?: string
+  nangoRecordId?: string
+  sourceParentId?: string
 }
 
 function severityForType(type: string): ShadowDiffSeverity {

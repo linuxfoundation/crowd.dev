@@ -7,10 +7,12 @@ import {
 import { ITrackedRepoProject } from '@crowd/data-access-layer'
 import {
   IDbProjectCatalog,
+  IDbProjectCatalogReopened,
   isSlackPermalink,
   isReviewRejectionSkipReason,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import {
+  DecisionReason,
   ISlackMessageContent,
   MAX_BLOCKS_PER_MESSAGE,
   escapeSlackText,
@@ -27,12 +29,13 @@ import {
   repoLabel,
 } from './botCopy'
 import { formatReason } from './botThreadReply'
+import { IExpandedOrganization, organizationNote } from './organizationRequest'
 import { IParsedOnboardingRequest } from './requestParser'
 
 const BOT_MENTION = '@LFX Onboarding'
 const EXAMPLE_REQUEST = `${BOT_MENTION} onboard Envoy, LF project, github.com/envoyproxy/xds github.com/envoyproxy/go-control-plane`
 const PROJECT_PLACEHOLDER = escapeSlackText('<project>')
-const REPO_PLACEHOLDER = 'github.com/org/repo'
+const REPO_PLACEHOLDER = 'github.com/<org>/<repo>'
 
 export type IngestReplyRequest = Pick<
   IParsedOnboardingRequest,
@@ -43,6 +46,13 @@ export type IAlreadyRequestedRow = Pick<
   IDbProjectCatalog,
   'repoUrl' | 'action' | 'skipReason' | 'sourceUrl' | 'reviewedBy' | 'decisionReason'
 >
+
+export const REQUESTER_ERROR_DECISION_REASONS: readonly DecisionReason[] = [
+  'wrong_project',
+  'other',
+]
+
+export type IReopenedRequest = Omit<IDbProjectCatalogReopened, 'id'>
 
 export interface IIngestOutcome {
   queued: string[]
@@ -56,6 +66,7 @@ export interface IIngestNotesInput {
   repoUrls: string[]
   nonGithubRepoUrls: string[] | null
   truncated: boolean
+  organizations?: IExpandedOrganization[]
 }
 
 const BUTTONS_PER_BLOCK = 5
@@ -203,9 +214,10 @@ export function collectIngestNotes({
   repoUrls,
   nonGithubRepoUrls,
   truncated,
+  organizations = [],
 }: IIngestNotesInput): string[] {
   const refs = extractGithubRepoRefs(requestText)
-  const notes: string[] = []
+  const notes: string[] = organizations.map(organizationNote)
 
   for (const repoUrl of repoUrls) {
     const mentions = refs.filter((ref) => ref.url === repoUrl)
@@ -290,6 +302,17 @@ function alreadyRequestedLine(row: IAlreadyRequestedRow): string {
     default:
       return `${STATUS.checking} ${repo} was already requested ${where} and is still being checked. ${resultLine}`
   }
+}
+
+export function missingRepositoryLine(repoUrl: string): string {
+  return `${STATUS.notAdded} ${repoLabel(repoUrl)} · not added: I couldn't find it on GitHub. Check the link (it may be private or a typo) and send it again.`
+}
+
+export function reopenedRequestNote(row: IReopenedRequest): string {
+  const where = row.previousSourceUrl ? `<${row.previousSourceUrl}|here>` : 'earlier'
+  const reason = describeDecisionReason(row.previousDecisionReason)
+  const outcome = reason ? `wasn't added (${reason})` : "wasn't added"
+  return `${repoLabel(row.repoUrl)} was already requested ${where} and ${outcome}, so I'm checking it again.`
 }
 
 function alreadyTrackedLine(project: ITrackedRepoProject): string {

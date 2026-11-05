@@ -13,7 +13,7 @@ const lastEnrichedAt: OrganizationEnrichmentConfig = {
     subtractDays: null,
     subtractMonths: null,
     format: 'D MMMM, YYYY',
-  } as any)),
+  } as unknown as Parameters<typeof formatDate>[0])),
 };
 
 export default lastEnrichedAt;

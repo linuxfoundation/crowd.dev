@@ -9,7 +9,7 @@
               <span class="text-sm font-medium">In progress</span>
             </div>
             <app-integration-progress-bar
-              :progress="progress.find((p) => p.platform === integrationStatus.platform)"
+              :progress="progress?.find((p) => p.platform === integrationStatus.platform)"
               hide-bar
               text-class="!text-tiny"
             />

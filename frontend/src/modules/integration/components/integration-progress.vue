@@ -45,7 +45,7 @@ const props = defineProps<{
   showParts?: boolean,
 }>();
 
-const statusPriority = {
+const statusPriority: Record<string, number> = {
   ok: 1,
   'in-progress': 2,
 };

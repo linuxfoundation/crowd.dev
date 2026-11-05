@@ -83,6 +83,7 @@
 </template>
 
 <script setup lang="ts">
+import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 import {
   ref, onMounted, watch, computed,
 } from 'vue';
@@ -112,7 +113,7 @@ const fetchRepositories = () => {
   if (!props.integration?.id) return;
 
   IntegrationService.fetchGitMappings(props.integration)
-    .then((res: any[]) => {
+    .then((res: IntegrationMapping[]) => {
       const reposFromMappings = res.map((r) => r.url);
       repositories.value = reposFromMappings.length > 0 ? reposFromMappings : [...(props.integration.settings?.remotes || [])];
       groupedMirroredRepos.value = res.filter((r) => r.sourcePlatform !== Platform.GIT).reduce((acc, r) => {

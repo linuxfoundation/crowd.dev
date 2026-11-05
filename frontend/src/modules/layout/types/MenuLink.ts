@@ -1,5 +1,8 @@
+import type { RouteLocationRaw } from 'vue-router';
+import type { User } from '@/modules/user/types/User';
+
 interface MenuLinkParams {
-  user: any,
+  user: User,
 }
 
 export interface MenuLink {
@@ -7,7 +10,7 @@ export interface MenuLink {
   label: string;
   icon?: string;
   routeName?: string;
-  routeOptions?: any;
+  routeOptions?: RouteLocationRaw;
   href?: string;
   click?: () => void;
   display: (params: MenuLinkParams) => boolean;

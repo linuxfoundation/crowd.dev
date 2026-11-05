@@ -1,8 +1,5 @@
-import type { Logger } from '@crowd/logging'
-
 import { mapWithConcurrency } from '../../../concurrency'
 import type { SyncContext, SyncDefinition, SyncOutcome } from '../../../types'
-import { githubGraphql } from '../gql'
 import type {
   ReviewThreadNode,
   ReviewThreadsBatchPage,
@@ -17,27 +14,11 @@ import { toReviewThreadComment } from '../mappers/reviewThreadComment'
 import { ITEM_FETCH_CONCURRENCY } from '../paging'
 import { runDualPhasePrSync } from '../prWalk'
 import { githubActivitySchema } from '../schemas'
+import type { ConnectionPage, ConnectionSpec } from './connectionPage'
+import { fetchConnectionPage } from './connectionPage'
 
 const THREADS_PAGE_SIZE = 50
 const COMMENTS_PAGE_SIZE = 50
-const CONNECTION_MAX_ATTEMPTS = 2
-
-interface ConnectionPage<TNode> {
-  totalCount: number
-  pageInfo: {
-    endCursor: string | null
-    hasNextPage: boolean
-  }
-  edges: ({ node: TNode | null } | null)[]
-}
-
-interface ConnectionSpec<TPage, TNode> {
-  query: string
-  select: (page: TPage) => ConnectionPage<TNode> | null | undefined
-  missingNode: string
-  missingConnection: string
-  stillMissingConnection: string
-}
 
 const THREADS_CONNECTION: ConnectionSpec<ReviewThreadsBatchPage, ReviewThreadNode> = {
   query: REVIEW_THREADS_FOR_PRS_QUERY,
@@ -55,29 +36,6 @@ const COMMENTS_CONNECTION: ConnectionSpec<ThreadCommentsBatchPage, ThreadComment
   missingConnection: 'github returned no comments connection for review thread, retrying',
   stillMissingConnection:
     'github still returned no comments connection for review thread after retry',
-}
-
-async function fetchConnectionPage<TPage extends { nodes: unknown[] }, TNode>(
-  ctx: SyncContext,
-  spec: ConnectionSpec<TPage, TNode>,
-  variables: Record<string, unknown>,
-  log: Logger,
-): Promise<ConnectionPage<TNode> | null> {
-  for (let attempt = 1; attempt <= CONNECTION_MAX_ATTEMPTS; attempt++) {
-    const page = await githubGraphql<TPage>(ctx.http, spec.query, variables, log)
-    if (!page.nodes[0]) {
-      log.warn(spec.missingNode)
-      return null
-    }
-    const connection = spec.select(page)
-    if (connection?.edges) {
-      return connection
-    }
-    log.warn(
-      attempt < CONNECTION_MAX_ATTEMPTS ? spec.missingConnection : spec.stillMissingConnection,
-    )
-  }
-  return null
 }
 
 async function fetchThreads(

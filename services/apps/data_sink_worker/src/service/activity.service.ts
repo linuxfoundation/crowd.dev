@@ -5,33 +5,40 @@ import mergeWith from 'lodash.mergewith'
 import {
   ApplicationError,
   UnrepeatableError,
-  distinct,
   distinctBy,
   escapeNullByte,
   generateUUIDv1,
   isDomainExcluded,
   isValidEmail,
+  mapWithConcurrency,
   normalizeMemberIdentities,
   normalizeMemberIdentityValue,
+  omitUrlValues,
   parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
   trimUtf8ToMaxByteLength,
 } from '@crowd/common'
-import { CommonMemberService, SearchSyncWorkerEmitter } from '@crowd/common_services'
+import {
+  CommonMemberService,
+  IAffiliationRequest,
+  SearchSyncWorkerEmitter,
+} from '@crowd/common_services'
 import {
   IFindOrCreateOrganizationResult,
   createOrUpdateRelations,
+  findActivityRelationsByDedupKeys,
   findIdentitiesForMembers,
   findMembersByIdentities,
   findMembersByVerifiedEmails,
   findMembersByVerifiedUsernames,
   findSegmentsForRepos,
   insertActivities,
-  queryActivityRelations,
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
+import { getMemberAttributeSettings } from '@crowd/data-access-layer/src/members/attributeSettings'
+import { IDbMemberAttributeSetting } from '@crowd/data-access-layer/src/members/types'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -59,10 +66,334 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
-import MemberService, { mergeIfAllowed } from './member.service'
+import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
+import MemberService, {
+  applyNewestOrgPayloads,
+  getEarliestMemberJoinedAt,
+  mergeIfAllowed,
+  registerOrgPayloadActivities,
+} from './member.service'
+import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// How many groups of linked members a batch updates at once; matches the worker's DB pool size
+const MEMBER_UPDATE_CONCURRENCY = Number(process.env.MEMBER_UPDATE_CONCURRENCY || 5)
+
+function toLineCount(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value : undefined
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10)
+    return isNaN(parsed) ? undefined : parsed
+  }
+
+  return undefined
+}
+
+// The GitHub connector sends 0/0 when the counts are unavailable, so 0/0 counts as no line counts.
+function lineCountsFromAttributes(attributes: Record<string, unknown> | undefined): {
+  insertions?: number
+  deletions?: number
+} {
+  const insertions = toLineCount(attributes?.insertions ?? attributes?.additions)
+  const deletions = toLineCount(attributes?.deletions)
+
+  if (!insertions && !deletions) {
+    return {}
+  }
+
+  return { insertions, deletions }
+}
+
+function isSameActor(payload: IActivityProcessData): boolean {
+  return (
+    !!payload.dbMember &&
+    !!payload.dbObjectMember &&
+    payload.activity.username === payload.activity.objectMemberUsername
+  )
+}
+
+type MemberRole = 'member' | 'objectMember'
+
+interface ITimedMemberUpdate {
+  member: IMemberData
+  timestamp: string
+}
+
+interface IPayloadMemberUpdate extends ITimedMemberUpdate {
+  payload: IActivityProcessData
+  role: MemberRole
+  dbMember: IDbMember
+}
+
+interface IMemberUpdateGroup {
+  dbMember: IDbMember
+  updates: IPayloadMemberUpdate[]
+}
+
+interface IMemberUpdateFailure {
+  err: Error
+  metadata?: Record<string, unknown>
+}
+
+interface IMemberUpdateResults {
+  memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
+  failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
+}
+
+function timestampMs(timestamp: string): number {
+  const ms = new Date(timestamp).getTime()
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function updateRunKey(payload: IActivityProcessData): string {
+  return `${payload.segmentId}:${payload.integrationId}:${payload.platform}`
+}
+
+function groupUpdatesByMember(payloads: IActivityProcessData[]): Map<string, IMemberUpdateGroup> {
+  const updatesByMember = new Map<string, IMemberUpdateGroup>()
+  const addUpdate = (
+    payload: IActivityProcessData,
+    role: MemberRole,
+    dbMember: IDbMember,
+    member: IMemberData,
+  ) => {
+    const entry = updatesByMember.get(dbMember.id) ?? { dbMember, updates: [] }
+    entry.updates.push({ payload, role, dbMember, member, timestamp: payload.activity.timestamp })
+    updatesByMember.set(dbMember.id, entry)
+  }
+
+  for (const payload of payloads) {
+    if (payload.dbMember) {
+      addUpdate(payload, 'member', payload.dbMember, payload.activity.member)
+    }
+
+    if (payload.dbObjectMember && !isSameActor(payload)) {
+      addUpdate(payload, 'objectMember', payload.dbObjectMember, payload.activity.objectMember)
+    }
+  }
+
+  return updatesByMember
+}
+
+function identityKey(identity: IMemberIdentity): string {
+  return `${identity.platform}:${identity.type}:${normalizeMemberIdentityValue(identity.value)}`.toLowerCase()
+}
+
+// Members whose updates in this batch depend on each other: they send an identity another one sends,
+// or a verified one another owns. Their activities have to be applied in timestamp order.
+function linkedMembers(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  dbMemberIdentities: Map<string, IMemberIdentity[]>,
+  identityOwners: Map<string, string>,
+): string[][] {
+  const parent = new Map<string, string>()
+  const root = (memberId: string): string => {
+    let id = memberId
+    while (parent.get(id) !== id) {
+      id = parent.get(id)
+    }
+    return id
+  }
+
+  const memberByIdentity = new Map<string, string>()
+  const link = (identity: IMemberIdentity, memberId: string) => {
+    if (!identity.value) {
+      return
+    }
+    const key = identityKey(identity)
+    const other = memberByIdentity.get(key)
+    if (other === undefined) {
+      memberByIdentity.set(key, memberId)
+    } else {
+      parent.set(root(other), root(memberId))
+    }
+  }
+
+  for (const memberId of updatesByMember.keys()) {
+    parent.set(memberId, memberId)
+  }
+  for (const memberId of updatesByMember.keys()) {
+    for (const identity of dbMemberIdentities.get(memberId) ?? []) {
+      if (identity.verified) {
+        link(identity, memberId)
+      }
+    }
+  }
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const { member } of updates) {
+      for (const identity of member.identities ?? []) {
+        link(identity, memberId)
+
+        const owner =
+          identity.verified && identity.value && identityOwners.get(identityKey(identity))
+        if (owner && owner !== memberId) {
+          if (!parent.has(owner)) {
+            parent.set(owner, owner)
+          }
+          parent.set(root(owner), root(memberId))
+        }
+      }
+    }
+  }
+
+  const groups = new Map<string, string[]>()
+  for (const memberId of updatesByMember.keys()) {
+    const group = groups.get(root(memberId)) ?? []
+    group.push(memberId)
+    groups.set(root(memberId), group)
+  }
+  return Array.from(groups.values())
+}
+
+// Members that send a verified identity owned by another member, or sent by another member of
+// the batch, can be merged by their update.
+function membersThatCanMerge(
+  updatesByMember: Map<string, IMemberUpdateGroup>,
+  identityOwners: Map<string, string>,
+): Set<string> {
+  const sendersByIdentity = new Map<string, Set<string>>()
+  for (const [memberId, { updates }] of updatesByMember) {
+    for (const identity of updates.flatMap((u) => u.member.identities ?? [])) {
+      if (identity.verified && identity.value) {
+        const key = identityKey(identity)
+        sendersByIdentity.set(key, (sendersByIdentity.get(key) ?? new Set<string>()).add(memberId))
+      }
+    }
+  }
+
+  const memberIds = new Set<string>()
+  for (const [key, senders] of sendersByIdentity) {
+    const owner = identityOwners.get(key)
+    for (const memberId of senders) {
+      if (senders.size > 1 || (owner && owner !== memberId)) {
+        memberIds.add(memberId)
+      }
+    }
+  }
+  return memberIds
+}
+
+function oldestFirstUpdateRuns(updates: IPayloadMemberUpdate[]): IPayloadMemberUpdate[][] {
+  const runs: IPayloadMemberUpdate[][] = []
+  const sorted = [...updates].sort((a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp))
+  for (const update of sorted) {
+    const run = runs[runs.length - 1]
+    if (
+      run &&
+      run[0].dbMember.id === update.dbMember.id &&
+      updateRunKey(run[0].payload) === updateRunKey(update.payload)
+    ) {
+      run.push(update)
+    } else {
+      runs.push([update])
+    }
+  }
+  return runs
+}
+
+function followRedirects(redirects: Map<string, string>, memberId: string): string {
+  const seen = new Set<string>()
+  let id = memberId
+  while (redirects.has(id) && !seen.has(id)) {
+    seen.add(id)
+    id = redirects.get(id)
+  }
+  return id
+}
+
+// Takes attributes in validateAttributes' { [platform]: value } form, as mergeData checks them
+function hasGithubBotFlag(attributes: Record<string, unknown> | undefined): boolean {
+  const isBot = attributes?.[MemberAttributeName.IS_BOT]
+  return (
+    !!isBot &&
+    typeof isBot === 'object' &&
+    !!(isBot as Record<string, unknown>)[PlatformType.GITHUB]
+  )
+}
+
+function combineMemberUpdates(
+  updatesOldestFirst: ITimedMemberUpdate[],
+  dbMember: IDbMember,
+  platform: PlatformType,
+): IMemberUpdateData {
+  // mergeData drops a bot-flagged activity's attributes after validating them. A combined update
+  // must do it per activity (each is validated before combining); a single one is left to mergeData.
+  const dropBotFlagged =
+    updatesOldestFirst.length > 1 &&
+    !hasGithubBotFlag(dbMember.attributes as Record<string, unknown>)
+
+  const joinedAt = updatesOldestFirst
+    .map((u) => (u.member.joinedAt ? new Date(u.member.joinedAt) : new Date(u.timestamp)))
+    .reduce(getEarliestMemberJoinedAt)
+
+  // Like validateAttributes, per activity: drop empty values and wrap plain ones as
+  // { [platform]: value }, so a newer empty or plain value never replaces an older value.
+  const asPlatformValues = (attributes: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(attributes)
+        .filter(([, value]) => !isEmptyAttributeValue(value))
+        .map(([name, value]): [string, unknown] => {
+          if (typeof value !== 'object') {
+            return [name, { [platform]: value }]
+          }
+          if (Array.isArray(value)) {
+            return [name, value]
+          }
+          const byPlatform = Object.entries(value).filter(([, v]) => !isEmptyAttributeValue(v))
+          return [name, byPlatform.length > 0 ? Object.fromEntries(byPlatform) : undefined]
+        })
+        .filter(([, value]) => value !== undefined),
+    )
+
+  // update() drops URL locations after merging; dropping them per activity keeps an older valid one
+  const withoutUrlLocation = (attributes: Record<string, unknown>) => {
+    const location = attributes[MemberAttributeName.LOCATION]
+    if (location === undefined || location === null) {
+      return attributes
+    }
+    return { ...attributes, [MemberAttributeName.LOCATION]: omitUrlValues(location) }
+  }
+
+  const attributes = updatesOldestFirst
+    .filter((u) => u.member.attributes)
+    .map((u) => asPlatformValues(u.member.attributes))
+    .filter((attributes) => !(dropBotFlagged && hasGithubBotFlag(attributes)))
+    .map(withoutUrlLocation)
+  const reach = updatesOldestFirst.filter((u) => u.member.reach).map((u) => u.member.reach)
+  const organizations = updatesOldestFirst.flatMap((u) => u.member.organizations ?? [])
+
+  return {
+    attributes: attributes.length > 0 ? mergeWith({}, ...attributes) : undefined,
+    joinedAt,
+    identities: updatesOldestFirst.flatMap((u) => u.member.identities ?? []),
+    organizations: organizations.length > 0 ? organizations : undefined,
+    reach: reach.length > 0 ? Object.assign({}, ...reach) : undefined,
+  }
+}
+
+function emailDomainTimestamps(updates: ITimedMemberUpdate[]): ActivityTimestampsByEmailDomain {
+  const timestamps: ActivityTimestampsByEmailDomain = new Map()
+  for (const { member, timestamp } of updates) {
+    for (const identity of member.identities ?? []) {
+      if (identity.verified && identity.type === MemberIdentityType.EMAIL && identity.value) {
+        // update() drops invalid emails, so they must not add dates to a domain either
+        const email = normalizeMemberIdentityValue(identity.value)
+        const domain = isValidEmail(email) ? email.split('@')[1] : undefined
+        if (domain) {
+          const domainTimestamps = timestamps.get(domain) ?? []
+          domainTimestamps.push(timestamp)
+          timestamps.set(domain, domainTimestamps)
+        }
+      }
+    }
+  }
+  return timestamps
+}
 
 export default class ActivityService extends LoggerBase {
   private readonly settingsRepo: SettingsRepository
@@ -285,6 +616,18 @@ export default class ActivityService extends LoggerBase {
         results.set(resultId, {
           success: false,
           err: new UnrepeatableError('Activity does not have a username or member.'),
+        })
+        continue
+      }
+
+      if (Number.isNaN(new Date(activity.timestamp).getTime())) {
+        this.log.error(
+          { platform, timestamp: activity.timestamp },
+          'Activity has an invalid timestamp.',
+        )
+        results.set(resultId, {
+          success: false,
+          err: new UnrepeatableError('Activity has an invalid timestamp.'),
         })
         continue
       }
@@ -536,7 +879,7 @@ export default class ActivityService extends LoggerBase {
           allMemberIdentities,
         ),
       this.log,
-      'processActivities -> someIdentitiesWereErasedByUserRequest',
+      'activityService -> processActivities -> requestedForErasureMemberIdentitiesRepo.someIdentitiesWereErasedByUserRequest',
     )
 
     const handleErasure = (member: IMemberData, resultId: string): boolean => {
@@ -619,7 +962,10 @@ export default class ActivityService extends LoggerBase {
         continue
       }
 
-      if (payload.platform === PlatformType.GITLAB || payload.platform === PlatformType.GITHUB) {
+      if (
+        !payload.skipRepositorySegmentLookup &&
+        (payload.platform === PlatformType.GITLAB || payload.platform === PlatformType.GITHUB)
+      ) {
         repoPayloads.push(payload)
       } else if (!payload.segmentId) {
         resultMap.set(payload.resultId, {
@@ -645,14 +991,19 @@ export default class ActivityService extends LoggerBase {
       )
 
       promises.push(
-        findSegmentsForRepos(
-          this.pgQx,
-          this.redisClient,
+        logExecutionTimeV2(
+          async () =>
+            findSegmentsForRepos(
+              this.pgQx,
+              this.redisClient,
+              this.log,
+              distinctChannels.map((c) => ({
+                integrationId: c.integrationId,
+                url: c.activity.channel,
+              })),
+            ),
           this.log,
-          distinctChannels.map((c) => ({
-            integrationId: c.integrationId,
-            url: c.activity.channel,
-          })),
+          'activityService -> processActivities -> findSegmentsForRepos',
         ).then((results) => {
           for (const result of results) {
             if (result.segmentId) {
@@ -674,26 +1025,9 @@ export default class ActivityService extends LoggerBase {
       `[ACTIVITY] We still have ${relevantPayloads.length} activities left to process after finding segments!`,
     )
 
-    // relevantPayloads can be drained to zero by the erasure/segment loop above (e.g. all
-    // members flagged for erasure). Calling queryActivityRelations with an empty array would
-    // produce invalid SQL: `timestamp in ()` and a bare `()` group.
     if (relevantPayloads.length === 0) {
       return resultMap
     }
-
-    const orConditions = relevantPayloads.map((r) => {
-      return {
-        and: [
-          { timestamp: { eq: r.activity.timestamp } },
-          { sourceId: { eq: r.activity.sourceId } },
-          { platform: { eq: r.activity.platform } },
-          { type: { eq: r.activity.type } },
-          { channel: { eq: r.activity.channel } },
-        ],
-      }
-    })
-
-    const segmentIds = distinct(relevantPayloads.map((r) => r.segmentId))
 
     // Check activityRelations to find existence
     // If found, we reuse the activityId and let tinybird handle the upsert via DEDUP keys.
@@ -701,56 +1035,27 @@ export default class ActivityService extends LoggerBase {
     // more resilient to data replication delays.
     const existingActivityRelations = await logExecutionTimeV2(
       async () =>
-        queryActivityRelations(
+        findActivityRelationsByDedupKeys(
           this.pgQx,
-          {
-            segmentIds,
-            filter: {
-              and: [
-                {
-                  timestamp: {
-                    in: distinct(relevantPayloads.map((r) => r.activity.timestamp)),
-                  },
-                },
-                {
-                  or: orConditions,
-                },
-              ],
-            },
-            limit: relevantPayloads.length,
-            noCount: true,
-          },
-          [
-            'activityId',
-            'timestamp',
-            'memberId',
-            'objectMemberId',
-            'organizationId',
-            'conversationId',
-            'parentId',
-            'type',
-            'sourceId',
-            'sourceParentId',
-            'channel',
-            'segmentId',
-            'platform',
-            'username',
-            'objectMemberUsername',
-            'sentimentScore',
-            'gitInsertions',
-            'gitDeletions',
-            'score',
-            'pullRequestReviewState',
-          ],
+          relevantPayloads.map((r) => ({
+            timestamp: r.activity.timestamp,
+            // activity.platform is optional and most integrations leave it unset
+            platform: r.platform,
+            type: r.activity.type,
+            sourceId: r.activity.sourceId,
+            channel: r.activity.channel ?? null,
+            segmentId: r.segmentId,
+          })),
         ),
       this.log,
-      'processActivities -> queryActivityRelations',
+      'activityService -> processActivities -> findActivityRelationsByDedupKeys',
     )
+    const existingActivityIds = new Set(existingActivityRelations.map((r) => r.activityId))
 
     // map existing activities to payloads for further processing
     const payloadsNotInDb: IActivityProcessData[] = []
     for (const payload of relevantPayloads) {
-      const existingRelation = singleOrDefault(existingActivityRelations.rows, (a) => {
+      const existingRelation = singleOrDefault(existingActivityRelations, (a) => {
         if (a.segmentId !== payload.segmentId) {
           return false
         }
@@ -767,10 +1072,8 @@ export default class ActivityService extends LoggerBase {
           return false
         }
 
-        if (payload.activity.channel) {
-          if (a.channel !== payload.activity.channel) {
-            return false
-          }
+        if ((a.channel ?? null) !== (payload.activity.channel ?? null)) {
+          return false
         }
 
         const aTimestamp = new Date(a.timestamp).toISOString()
@@ -829,7 +1132,7 @@ export default class ActivityService extends LoggerBase {
         const dbMembersByUsername = await logExecutionTimeV2(
           async () => findMembersByVerifiedUsernames(this.pgQx, usernameFilter),
           this.log,
-          'processActivities -> memberRepo.findMembersByUsernames',
+          'activityService -> processActivities -> findMembersByVerifiedUsernames',
         )
 
         mapResultsToPayloads(
@@ -880,7 +1183,7 @@ export default class ActivityService extends LoggerBase {
         const dbMembersByEmail = await logExecutionTimeV2(
           () => findMembersByVerifiedEmails(this.pgQx, Array.from(emails)),
           this.log,
-          'processActivities -> memberRepo.findMembersByEmails',
+          'activityService -> processActivities -> findMembersByVerifiedEmails',
         )
 
         mapResultsToPayloads(
@@ -966,7 +1269,7 @@ export default class ActivityService extends LoggerBase {
           async () =>
             findMembersByVerifiedUsernames(this.pgQx, Array.from(noreplyEmailFilterMap.values())),
           this.log,
-          'processActivities -> memberRepo.findMembersByVerifiedUsernames (noreply-email)',
+          'activityService -> processActivities -> findMembersByVerifiedUsernames (noreply-email)',
         )
 
         mapResultsToPayloads(
@@ -1053,7 +1356,7 @@ export default class ActivityService extends LoggerBase {
         const dbMembersByEmailAsUsername = await logExecutionTimeV2(
           async () => findMembersByVerifiedUsernames(this.pgQx, emailAsUsernameFilter),
           this.log,
-          'processActivities -> memberRepo.findMembersByVerifiedUsernames (email-as-username)',
+          'activityService -> processActivities -> findMembersByVerifiedUsernames (email-as-username)',
         )
 
         mapResultsToPayloads(
@@ -1113,7 +1416,7 @@ export default class ActivityService extends LoggerBase {
         const dbMembersByEmailLikeUsername = await logExecutionTimeV2(
           async () => findMembersByVerifiedEmails(this.pgQx, Array.from(emailLikeUsernames)),
           this.log,
-          'processActivities -> memberRepo.findMembersByVerifiedEmails (email-like username)',
+          'activityService -> processActivities -> findMembersByVerifiedEmails (email-like username)',
         )
 
         mapResultsToPayloads(
@@ -1160,10 +1463,19 @@ export default class ActivityService extends LoggerBase {
     const preparedActivities: IActivityPrepareForUpsertResult[] = []
 
     const memberService = new MemberService(this.pgStore, this.redisClient, this.temporal, this.log)
-    // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
-    // unique org per batch. Concurrent member creates that reference the same org await the
-    // same promise instead of firing redundant DB round trips.
+    // One findOrCreateOrganization per distinct organization payload per batch: members that carry
+    // the same payload await the same promise
     const orgPromiseCache = new Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>()
+    registerOrgPayloadActivities(
+      orgPromiseCache,
+      relevantPayloads.map((p) => ({
+        source: p.platform,
+        timestamp: p.activity.timestamp,
+        organizations: [p.activity.member, p.activity.objectMember].flatMap((member) =>
+          Array.isArray(member?.organizations) ? member.organizations : [],
+        ),
+      })),
+    )
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -1185,8 +1497,15 @@ export default class ActivityService extends LoggerBase {
         platform: PlatformType
         username: string
         timestamp: string
+        joinedAt: Date
       }
     >()
+    const joinedAtOf = (member: IMemberData | undefined, timestamp: string) =>
+      member?.joinedAt ? new Date(member.joinedAt) : new Date(timestamp)
+    const keepEarliestJoinedAt = (key: string, joinedAt: Date) => {
+      const value = membersToCreateMap.get(key)
+      value.joinedAt = getEarliestMemberJoinedAt(value.joinedAt, joinedAt)
+    }
 
     // find members to create
     for (const payload of payloadsWithoutDbMembers) {
@@ -1204,6 +1523,7 @@ export default class ActivityService extends LoggerBase {
           platform: payload.platform,
           username: payload.activity.username,
           timestamp: payload.activity.timestamp,
+          joinedAt: joinedAtOf(payload.activity.member, payload.activity.timestamp),
           segmentIds,
           resultIds,
         })
@@ -1211,6 +1531,7 @@ export default class ActivityService extends LoggerBase {
         const value = membersToCreateMap.get(key)
         value.segmentIds.add(payload.segmentId)
         value.resultIds.add(payload.resultId)
+        keepEarliestJoinedAt(key, joinedAtOf(payload.activity.member, payload.activity.timestamp))
       }
     }
 
@@ -1225,11 +1546,12 @@ export default class ActivityService extends LoggerBase {
         resultIds.add(payload.resultId)
 
         membersToCreateMap.set(key, {
-          member: payload.activity.member,
+          member: payload.activity.objectMember,
           integrationId: payload.integrationId,
           platform: payload.platform,
           username: payload.activity.objectMemberUsername,
           timestamp: payload.activity.timestamp,
+          joinedAt: joinedAtOf(payload.activity.objectMember, payload.activity.timestamp),
           segmentIds,
           resultIds,
         })
@@ -1237,11 +1559,16 @@ export default class ActivityService extends LoggerBase {
         const value = membersToCreateMap.get(key)
         value.segmentIds.add(payload.segmentId)
         value.resultIds.add(payload.resultId)
+        keepEarliestJoinedAt(
+          key,
+          joinedAtOf(payload.activity.objectMember, payload.activity.timestamp),
+        )
       }
     }
 
     // clear the promises array - should be all completed by now
     promises = []
+    const createdMemberIds = new Set<string>()
     for (const value of membersToCreateMap.values()) {
       promises.push(
         memberService
@@ -1251,9 +1578,7 @@ export default class ActivityService extends LoggerBase {
             {
               displayName: value.member.displayName || value.username,
               attributes: value.member.attributes,
-              joinedAt: value.member.joinedAt
-                ? new Date(value.member.joinedAt)
-                : new Date(value.timestamp),
+              joinedAt: value.joinedAt,
               identities: value.member.identities,
               organizations: value.member.organizations,
               reach: value.member.reach,
@@ -1263,6 +1588,8 @@ export default class ActivityService extends LoggerBase {
             value.timestamp,
           )
           .then((memberId) => {
+            createdMemberIds.add(memberId)
+
             // map ids for members
             for (const payload of relevantPayloads.filter(
               (p) =>
@@ -1357,7 +1684,34 @@ export default class ActivityService extends LoggerBase {
           }),
       )
     }
-    await Promise.all(promises)
+    await logExecutionTimeV2(
+      async () => Promise.all(promises),
+      this.log,
+      'activityService -> processActivities -> Promise.all (memberService.create)',
+    )
+
+    // create() can return an existing member without applying its payload (identity owned by another
+    // member), so every payload of a created or resolved member also goes through update() below
+    if (createdMemberIds.size > 0) {
+      const createdDbMembers = new Map(
+        (await this.memberRepo.findByIds(Array.from(createdMemberIds))).map((m) => [m.id, m]),
+      )
+
+      for (const payload of relevantPayloads) {
+        if (!payload.dbMember && createdDbMembers.has(payload.memberId)) {
+          payload.dbMember = createdDbMembers.get(payload.memberId)
+          payload.dbMemberSource = 'created'
+        }
+        if (
+          payload.activity.objectMember &&
+          !payload.dbObjectMember &&
+          createdDbMembers.has(payload.objectMemberId)
+        ) {
+          payload.dbObjectMember = createdDbMembers.get(payload.objectMemberId)
+          payload.dbObjectMemberSource = 'created'
+        }
+      }
+    }
 
     const memberIds = new Set<string>()
     for (const payload of relevantPayloads) {
@@ -1372,160 +1726,69 @@ export default class ActivityService extends LoggerBase {
 
     let dbMemberIdentities: Map<string, IMemberIdentity[]> = new Map()
     if (memberIds.size > 0) {
-      dbMemberIdentities = await findIdentitiesForMembers(this.pgQx, Array.from(memberIds))
+      dbMemberIdentities = await logExecutionTimeV2(
+        async () => findIdentitiesForMembers(this.pgQx, Array.from(memberIds)),
+        this.log,
+        'activityService -> processActivities -> findIdentitiesForMembers',
+      )
     }
 
-    // Tracks merge redirects across payloads in this batch. When a member update redirects
-    // X→Y (merge), subsequent payloads for the same platform:username skip the update and
-    // reuse Y — avoids calling update() on an already-absorbed member row.
-    const memberMap = new Map<string, string>()
+    const memberUpdates = await logExecutionTimeV2(
+      async () =>
+        this.updateMembers(relevantPayloads, memberService, dbMemberIdentities, orgPromiseCache),
+      this.log,
+      'activityService -> processActivities -> updateMembers',
+    )
 
-    for (const payload of relevantPayloads) {
-      const memberKey = `${payload.platform}:${payload.activity.username}`
-      const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
-      // When actor and objectActor are the same person, skip the objectMember update and
-      // copy memberId after Promise.all resolves.
-      const sameActorKey = !!(
-        payload.dbMember &&
-        payload.dbObjectMember &&
-        memberKey === objectMemberKey
+    // Only decides which organization values are the defaults, so a failure here doesn't fail the
+    // activities whose members were already updated
+    try {
+      await logExecutionTimeV2(
+        async () => applyNewestOrgPayloads(orgPromiseCache, this.log),
+        this.log,
+        'activityService -> processActivities -> applyNewestOrgPayloads',
       )
+    } catch (err) {
+      this.log.error(err, 'Failed to apply the newest organization payloads of the batch!')
+    }
 
-      const promises = []
-      // update members and orgs with them
-      if (payload.dbMember) {
-        if (memberMap.has(memberKey)) {
-          payload.memberId = memberMap.get(memberKey)
-          payload.dbMember = undefined
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.member.attributes,
-                  joinedAt: payload.activity.member.joinedAt
-                    ? new Date(payload.activity.member.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.member.identities,
-                  organizations: payload.activity.member.organizations,
-                  reach: payload.activity.member.reach,
-                },
-                payload.dbMember,
-                dbMemberIdentities.get(payload.dbMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.memberId = redirectId ?? payload.dbMember.id
-                if (redirectId) {
-                  memberMap.set(memberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'member',
-                  payload.dbMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.memberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbMember.id) {
-                      memberMap.set(memberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating member!', err),
-                  })
-                }
-              }),
-          )
-        }
+    const isBotOf = new Map<(typeof relevantPayloads)[number], boolean>()
+    const affiliationRequests: {
+      payload: (typeof relevantPayloads)[number]
+      request: IAffiliationRequest
+    }[] = []
+    for (const payload of relevantPayloads) {
+      const memberFailure = memberUpdates.failures.member.get(payload)
+      if (memberFailure) {
+        resultMap.set(payload.resultId, {
+          success: false,
+          err: new ApplicationError('Error while updating member!', memberFailure.err),
+          metadata: memberFailure.metadata,
+        })
       }
 
-      if (payload.dbObjectMember && !sameActorKey) {
-        if (memberMap.has(objectMemberKey)) {
-          payload.objectMemberId = memberMap.get(objectMemberKey)
-          payload.dbObjectMember = undefined
-        } else {
-          promises.push(
-            memberService
-              .update(
-                payload.dbObjectMember.id,
-                payload.segmentId,
-                payload.integrationId,
-                {
-                  attributes: payload.activity.objectMember.attributes,
-                  joinedAt: payload.activity.objectMember.joinedAt
-                    ? new Date(payload.activity.objectMember.joinedAt)
-                    : new Date(payload.activity.timestamp),
-                  identities: payload.activity.objectMember.identities,
-                  organizations: payload.activity.objectMember.organizations,
-                  reach: payload.activity.objectMember.reach,
-                },
-                payload.dbObjectMember,
-                dbMemberIdentities.get(payload.dbObjectMember.id),
-                payload.platform,
-                orgPromiseCache,
-                payload.activity.timestamp,
-              )
-              .then((redirectId?: string) => {
-                payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
-                if (redirectId) {
-                  memberMap.set(objectMemberKey, redirectId)
-                }
-              })
-              .catch(async (err) => {
-                const result = await this.handleMemberIdentityError(
-                  err,
-                  payload,
-                  'objectMember',
-                  payload.dbObjectMember,
-                )
-                if (result) {
-                  if (typeof result === 'string') {
-                    payload.objectMemberId = result
-                    // Only cache real redirects — stale-prefetch returns the member's own ID
-                    // and the member still exists, so subsequent payloads must still call update().
-                    if (result !== payload.dbObjectMember.id) {
-                      memberMap.set(objectMemberKey, result)
-                    }
-                  } else {
-                    resultMap.set(payload.resultId, {
-                      success: false,
-                      err: new ApplicationError('Error while updating object member!', err),
-                      metadata: result,
-                    })
-                  }
-                } else {
-                  resultMap.set(payload.resultId, {
-                    success: false,
-                    err: new ApplicationError('Error while updating object member!', err),
-                  })
-                }
-              }),
-          )
-        }
+      const objectMemberFailure = memberUpdates.failures.objectMember.get(payload)
+      if (objectMemberFailure) {
+        resultMap.set(payload.resultId, {
+          success: false,
+          err: new ApplicationError('Error while updating object member!', objectMemberFailure.err),
+          metadata: objectMemberFailure.metadata,
+        })
       }
 
-      await Promise.all(promises)
+      // dbMember stays the row from before the batch: an activity's isBot and isTeamMember fall
+      // back to it, so a later activity in the batch can't change an earlier activity's flags
+      const memberId = memberUpdates.memberIds.member.get(payload)
+      if (memberId) {
+        payload.memberId = memberId
+      }
 
-      if (sameActorKey) {
+      const objectMemberId = memberUpdates.memberIds.objectMember.get(payload)
+      if (objectMemberId) {
+        payload.objectMemberId = objectMemberId
+      }
+
+      if (isSameActor(payload)) {
         payload.objectMemberId = payload.memberId
       }
 
@@ -1539,6 +1802,7 @@ export default class ActivityService extends LoggerBase {
         payload.platform,
         payload.dbMember,
       ) as boolean
+      isBotOf.set(payload, isBot)
 
       if (!isBot) {
         // Trust the email the activity arrived with (username only).
@@ -1547,15 +1811,15 @@ export default class ActivityService extends LoggerBase {
           ? payload.activity.username.split('@')[1]?.toLowerCase()
           : undefined
 
-        const affiliationEmailDomain = domain && !isDomainExcluded(domain) ? domain : undefined
-
-        // associate activity with organization
-        payload.organizationId = await this.commonMemberService.findAffiliation(
-          payload.memberId,
-          payload.segmentId,
-          payload.activity.timestamp,
-          affiliationEmailDomain,
-        )
+        affiliationRequests.push({
+          payload,
+          request: {
+            memberId: payload.memberId,
+            segmentId: payload.segmentId,
+            timestamp: payload.activity.timestamp,
+            affiliationEmailDomain: domain && !isDomainExcluded(domain) ? domain : undefined,
+          },
+        })
       } else {
         // for bot members, we don't want to affiliate the activity with an organization
         payload.organizationId = null
@@ -1564,6 +1828,24 @@ export default class ActivityService extends LoggerBase {
           'Skipping organization affiliation for bot member!',
         )
       }
+    }
+
+    // associate activities with organizations, after updateMembers added any new ones
+    const organizationIds = await logExecutionTimeV2(
+      async () =>
+        this.commonMemberService.findAffiliations(affiliationRequests.map((a) => a.request)),
+      this.log,
+      'activityService -> processActivities -> commonMemberService.findAffiliations',
+    )
+    affiliationRequests.forEach(({ payload }, i) => {
+      payload.organizationId = organizationIds[i]
+    })
+
+    for (const payload of relevantPayloads) {
+      if (resultMap.has(payload.resultId)) {
+        continue
+      }
+      const isBot = isBotOf.get(payload)
 
       if (!payload.memberId) {
         this.log.error(`Member id not set - can't continue!`)
@@ -1575,45 +1857,51 @@ export default class ActivityService extends LoggerBase {
         throw new Error(`Object member id not set - can't continue!`)
       }
 
-      preparedActivities.push(
-        await this.prepareForUpsert(
-          payload.resultId,
-          payload.segmentId,
-          new Date(payload.activity.timestamp),
-          {
-            type: payload.activity.type,
-            platform: payload.platform,
-            sourceId: payload.activity.sourceId,
-            score: payload.activity.score,
-            sourceParentId:
-              payload.platform === PlatformType.GITHUB &&
-              payload.activity.type === GithubActivityType.AUTHORED_COMMIT &&
-              payload.activity.sourceParentId
-                ? undefined
-                : payload.activity.sourceParentId,
-            memberId: payload.memberId,
-            username: payload.activity.username,
-            objectMemberId: payload.objectMemberId,
-            objectMemberUsername: payload.activity.objectMemberUsername,
-            attributes: payload.activity.attributes || {},
-            body: payload.activity.body,
-            title: payload.activity.title,
-            channel: payload.activity.channel,
-            url: payload.activity.url,
-            organizationId: payload.organizationId,
-          },
-          {
-            isBot,
-            isTeamMember: this.memberAttValue(
-              MemberAttributeName.IS_TEAM_MEMBER,
-              payload.activity.member,
-              payload.platform,
-              payload.dbMember,
-            ) as boolean,
-          },
-          payload.activityId,
-        ),
-      )
+      preparedActivities.push({
+        ...(await logExecutionTimeV2(
+          async () =>
+            this.prepareForUpsert(
+              payload.resultId,
+              payload.segmentId,
+              new Date(payload.activity.timestamp),
+              {
+                type: payload.activity.type,
+                platform: payload.platform,
+                sourceId: payload.activity.sourceId,
+                score: payload.activity.score,
+                sourceParentId:
+                  payload.platform === PlatformType.GITHUB &&
+                  payload.activity.type === GithubActivityType.AUTHORED_COMMIT &&
+                  payload.activity.sourceParentId
+                    ? undefined
+                    : payload.activity.sourceParentId,
+                memberId: payload.memberId,
+                username: payload.activity.username,
+                objectMemberId: payload.objectMemberId,
+                objectMemberUsername: payload.activity.objectMemberUsername,
+                attributes: payload.activity.attributes || {},
+                body: payload.activity.body,
+                title: payload.activity.title,
+                channel: payload.activity.channel,
+                url: payload.activity.url,
+                organizationId: payload.organizationId,
+              },
+              {
+                isBot,
+                isTeamMember: this.memberAttValue(
+                  MemberAttributeName.IS_TEAM_MEMBER,
+                  payload.activity.member,
+                  payload.platform,
+                  payload.dbMember,
+                ) as boolean,
+              },
+              payload.activityId,
+            ),
+          this.log,
+          'activityService -> processActivities -> prepareForUpsert',
+        )),
+        dbActivityRelation: payload.dbActivityRelation,
+      })
     }
 
     this.log.trace(`[ACTIVITY] We have ${preparedActivities.length} intermediate results!`)
@@ -1621,7 +1909,7 @@ export default class ActivityService extends LoggerBase {
     const activitiesWithPayload = preparedActivities.filter((a) => a.payload)
 
     const uniqueConstraintKeys = new Set<string>()
-    const preparedForUpsert = []
+    const preparedForUpsert: IActivityPrepareForUpsertResult[] = []
 
     for (const item of activitiesWithPayload) {
       // deduplication key with placeholders for empty values
@@ -1645,13 +1933,18 @@ export default class ActivityService extends LoggerBase {
     const toUpsert = preparedForUpsert.map((a) => a.payload)
     if (toUpsert.length > 0) {
       this.log.trace(`[ACTIVITY] Upserting ${toUpsert.length} activities!`)
-      await insertActivities(this.client, toUpsert)
+      await logExecutionTimeV2(
+        async () => insertActivities(this.client, toUpsert),
+        this.log,
+        'activityService -> processActivities -> insertActivities',
+      )
     }
 
     // Filter out relations that don't need updates to avoid unnecessary database writes
     let skippedCount = 0
     const relationsToUpsert = preparedForUpsert
       .map((a) => {
+        const lineCounts = lineCountsFromAttributes(a.payload.attributes)
         const relationData: IActivityRelationCreateOrUpdateData = {
           activityId: a.payload.id,
           segmentId: a.payload.segmentId,
@@ -1669,8 +1962,8 @@ export default class ActivityService extends LoggerBase {
           timestamp: a.payload.timestamp,
           channel: a.payload.channel,
           sentimentScore: a.payload.sentimentScore,
-          gitInsertions: a.payload.gitInsertions,
-          gitDeletions: a.payload.gitDeletions,
+          gitInsertions: a.payload.gitInsertions ?? lineCounts.insertions,
+          gitDeletions: a.payload.gitDeletions ?? lineCounts.deletions,
           score: a.payload.score,
           pullRequestReviewState: a.payload.attributes?.reviewState as string,
         }
@@ -1697,7 +1990,28 @@ export default class ActivityService extends LoggerBase {
       this.log.trace(
         `[ACTIVITY] Upserting ${relationsToUpsert.length} activity relations (filtered from ${preparedForUpsert.length}, skipped ${skippedCount})`,
       )
-      await createOrUpdateRelations(this.pgQx, relationsToUpsert, true)
+      // A NULL channel never hits ON CONFLICT on the dedup key, so found rows are updated by id.
+      await logExecutionTimeV2(
+        async () =>
+          createOrUpdateRelations(
+            this.pgQx,
+            relationsToUpsert.filter((r) => existingActivityIds.has(r.activityId)),
+            true,
+            'activityId',
+          ),
+        this.log,
+        'activityService -> processActivities -> createOrUpdateRelations (existing)',
+      )
+      await logExecutionTimeV2(
+        async () =>
+          createOrUpdateRelations(
+            this.pgQx,
+            relationsToUpsert.filter((r) => !existingActivityIds.has(r.activityId)),
+            true,
+          ),
+        this.log,
+        'activityService -> processActivities -> createOrUpdateRelations (new)',
+      )
     } else {
       this.log.trace(
         `[ACTIVITY] No activity relations need updating (all ${preparedForUpsert.length} would only update updatedAt)`,
@@ -1713,10 +2027,15 @@ export default class ActivityService extends LoggerBase {
           `${prepared.typeToCreate}:${prepared.payload.platform}:${prepared.payload.segmentId}`,
         )
       ) {
-        await this.settingsRepo.createActivityType(
-          prepared.payload.platform as PlatformType,
-          prepared.typeToCreate,
-          prepared.payload.segmentId,
+        await logExecutionTimeV2(
+          async () =>
+            this.settingsRepo.createActivityType(
+              prepared.payload.platform as PlatformType,
+              prepared.typeToCreate,
+              prepared.payload.segmentId,
+            ),
+          this.log,
+          'activityService -> processActivities -> settingsRepo.createActivityType',
         )
 
         createdTypes.add(
@@ -1729,10 +2048,15 @@ export default class ActivityService extends LoggerBase {
           `${prepared.payload.platform}:${prepared.payload.channel}:${prepared.payload.segmentId}`,
         )
       ) {
-        await this.settingsRepo.createActivityChannel(
-          prepared.payload.segmentId,
-          prepared.payload.platform,
-          prepared.channelToCreate,
+        await logExecutionTimeV2(
+          async () =>
+            this.settingsRepo.createActivityChannel(
+              prepared.payload.segmentId,
+              prepared.payload.platform,
+              prepared.channelToCreate,
+            ),
+          this.log,
+          'activityService -> processActivities -> settingsRepo.createActivityChannel',
         )
 
         createdChannels.add(
@@ -1745,30 +2069,34 @@ export default class ActivityService extends LoggerBase {
       .map((p) => p.payload.organizationId)
       .filter((id): id is string => !!id)
     if (orgIds.length > 0) {
-      await this.redisClient.sAdd('organizationIdsForAggComputation', orgIds)
+      await logExecutionTimeV2(
+        async () => this.redisClient.sAdd('organizationIdsForAggComputation', orgIds),
+        this.log,
+        'activityService -> processActivities -> redisClient.sAdd (organizationIdsForAggComputation)',
+      )
     }
 
     // Deduplicate member sync triggers — a member may appear in many activities in the
     // same batch. Emit once per unique (memberId, segmentId) pair.
     const memberSyncKeys = new Set<string>()
-    const memberSyncPromises: Promise<void>[] = []
+    const membersToSync: { memberId: string; segmentId: string }[] = []
     for (const prepared of preparedForUpsert) {
       for (const memberId of [prepared.payload.memberId, prepared.payload.objectMemberId]) {
         if (!memberId) continue
         const key = `${memberId}:${prepared.payload.segmentId}`
         if (!memberSyncKeys.has(key)) {
           memberSyncKeys.add(key)
-          memberSyncPromises.push(
-            this.searchSyncWorkerEmitter.triggerMemberSync(
-              memberId,
-              onboarding,
-              prepared.payload.segmentId,
-            ),
-          )
+          membersToSync.push({ memberId, segmentId: prepared.payload.segmentId })
         }
       }
     }
-    await Promise.all(memberSyncPromises)
+    if (membersToSync.length > 0) {
+      await logExecutionTimeV2(
+        async () => this.searchSyncWorkerEmitter.triggerMembersSync(membersToSync, onboarding),
+        this.log,
+        'activityService -> processActivities -> searchSyncWorkerEmitter.triggerMembersSync',
+      )
+    }
 
     for (const prepared of preparedActivities) {
       resultMap.set(prepared.resultId, { success: true })
@@ -1778,10 +2106,278 @@ export default class ActivityService extends LoggerBase {
     return resultMap
   }
 
+  private async updateMembers(
+    payloads: IActivityProcessData[],
+    memberService: MemberService,
+    dbMemberIdentities: Map<string, IMemberIdentity[]>,
+    orgPromiseCache: Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>,
+  ): Promise<IMemberUpdateResults> {
+    const staleMemberIds = new Set<string>()
+    const freshMembers = new Map<string, IDbMember>()
+    const refreshMembers = async (memberIds: string[]) => {
+      const [identities, members] = await logExecutionTimeV2(
+        () =>
+          Promise.all([
+            findIdentitiesForMembers(this.pgQx, memberIds),
+            this.memberRepo.findByIds(memberIds),
+          ]),
+        this.log,
+        'activityService -> updateMembers -> refreshMembers',
+      )
+      for (const memberId of memberIds) {
+        dbMemberIdentities.set(memberId, identities.get(memberId) ?? [])
+      }
+      for (const member of members) {
+        freshMembers.set(member.id, member)
+      }
+    }
+
+    const redirects = new Map<string, string>()
+    const redirect = (memberId: string, redirectId: string) => {
+      if (redirectId !== memberId) {
+        redirects.set(memberId, redirectId)
+        staleMemberIds.add(redirectId)
+      }
+    }
+
+    const currentRow = (dbMember: IDbMember): IDbMember | undefined => {
+      const memberId = followRedirects(redirects, dbMember.id)
+      return freshMembers.get(memberId) ?? (memberId === dbMember.id ? dbMember : undefined)
+    }
+
+    const updateMember = async (
+      dbMember: IDbMember,
+      updates: IPayloadMemberUpdate[],
+    ): Promise<string> => {
+      const memberId = followRedirects(redirects, dbMember.id)
+      if (staleMemberIds.has(memberId)) {
+        await refreshMembers([memberId])
+      }
+      staleMemberIds.add(memberId)
+
+      const original = currentRow(dbMember)
+      if (!original) {
+        throw new Error(`Member ${memberId} not found!`)
+      }
+
+      const { payload } = updates[0]
+      const redirectId = await memberService.update(
+        memberId,
+        payload.segmentId,
+        payload.integrationId,
+        combineMemberUpdates(updates, original, payload.platform),
+        original,
+        dbMemberIdentities.get(memberId),
+        payload.platform,
+        orgPromiseCache,
+        emailDomainTimestamps(updates),
+      )
+      if (redirectId) {
+        redirect(memberId, redirectId)
+      }
+      return redirectId || memberId
+    }
+
+    const results: IMemberUpdateResults = {
+      memberIds: { member: new Map(), objectMember: new Map() },
+      failures: { member: new Map(), objectMember: new Map() },
+    }
+    const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
+      for (const update of updates) {
+        results.memberIds[update.role].set(update.payload, memberId)
+      }
+    }
+
+    const redirectToSurvivor = (dbMember: IDbMember, err: unknown) => {
+      const survivingId = err instanceof ApplicationError ? err.metadata?.survivingId : undefined
+      if (typeof survivingId === 'string') {
+        redirect(followRedirects(redirects, dbMember.id), survivingId)
+      }
+    }
+
+    // A failed activity is not retried by the per-activity updates: they run after newer
+    // activities and would write its older data over theirs.
+    const updateSingleActivity = async (dbMember: IDbMember, update: IPayloadMemberUpdate) => {
+      try {
+        setMemberId([update], await updateMember(dbMember, [update]))
+      } catch (err) {
+        redirectToSurvivor(dbMember, err)
+        const target = currentRow(dbMember) ?? dbMember
+        const result = await this.handleMemberIdentityError(
+          err,
+          update.payload,
+          update.role,
+          target,
+        )
+        if (typeof result === 'string') {
+          redirect(followRedirects(redirects, target.id), result)
+          setMemberId([update], result)
+        } else {
+          results.failures[update.role].set(update.payload, { err, metadata: result })
+        }
+      }
+    }
+
+    const updatesByMember = groupUpdatesByMember(payloads)
+    const sentIdentities = distinctBy(
+      Array.from(updatesByMember.values())
+        .flatMap(({ updates }) => updates.flatMap((u) => u.member.identities ?? []))
+        .filter((identity) => identity.verified && identity.value),
+      identityKey,
+    )
+    const owners =
+      sentIdentities.length > 0
+        ? await logExecutionTimeV2(
+            () => findMembersByIdentities(this.pgQx, sentIdentities, undefined, true),
+            this.log,
+            'activityService -> updateMembers -> findMembersByIdentities',
+          )
+        : new Map<string, string>()
+    const identityOwners = new Map(
+      Array.from(owners, ([key, memberId]) => [key.toLowerCase(), memberId]),
+    )
+
+    // A combined update that merges its member halfway can't be undone before its activities are
+    // retried, so a member that can merge in this batch gets its activities applied one by one.
+    const mergeableMemberIds = membersThatCanMerge(updatesByMember, identityOwners)
+
+    // Linked members' runs never overlap in time, so ordering runs by their newest activity applies
+    // their activities in timestamp order. Members that can't merge don't affect each other, so
+    // each group of linked members is updated in order and the groups are updated concurrently.
+    const groups = linkedMembers(updatesByMember, dbMemberIdentities, identityOwners).map(
+      (memberIds) =>
+        oldestFirstUpdateRuns(memberIds.flatMap((id) => updatesByMember.get(id).updates))
+          .map((run) => {
+            const memberId = run[0].dbMember.id
+            return {
+              dbMember: run[0].dbMember,
+              run,
+              combine:
+                updatesByMember.get(memberId).updates.length > 1 &&
+                !mergeableMemberIds.has(memberId),
+            }
+          })
+          .sort(
+            (a, b) =>
+              timestampMs(a.run[a.run.length - 1].timestamp) -
+              timestampMs(b.run[b.run.length - 1].timestamp),
+          ),
+    )
+
+    const memberAttributeService = new MemberAttributeService(
+      this.redisClient,
+      this.pgStore,
+      this.log,
+    )
+    // read once per batch, outside the try: a failed read must fail the batch, not mark activities
+    // as invalid
+    let attributeSettings: Promise<IDbMemberAttributeSetting[]> | undefined
+    const hasValidAttributes = async ({ member, payload }: IPayloadMemberUpdate) => {
+      if (!member.attributes) {
+        return true
+      }
+      attributeSettings ??= logExecutionTimeV2(
+        () => getMemberAttributeSettings(this.pgQx, this.redisClient),
+        this.log,
+        'activityService -> updateMembers -> getMemberAttributeSettings',
+      )
+      const settings = await attributeSettings
+      try {
+        await logExecutionTimeV2(
+          () =>
+            memberAttributeService.validateAttributes(
+              payload.platform,
+              structuredClone(member.attributes),
+              settings,
+            ),
+          this.log,
+          'activityService -> updateMembers -> validateAttributes',
+        )
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const updateCombined = async (dbMember: IDbMember, updates: IPayloadMemberUpdate[]) => {
+      if (updates.length <= 1) {
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+        return
+      }
+
+      try {
+        setMemberId(updates, await updateMember(dbMember, updates))
+      } catch (runErr) {
+        this.log.warn(
+          { err: runErr, memberId: dbMember.id, activities: updates.length },
+          'Member update failed, retrying per activity!',
+        )
+        redirectToSurvivor(dbMember, runErr)
+        for (const update of updates) {
+          await updateSingleActivity(dbMember, update)
+        }
+      }
+    }
+
+    // A failure stops the other groups between runs, but the batch only fails once their
+    // in-flight updates are done, so a retry of the batch can't overlap them.
+    let failure: { err: unknown } | undefined
+    const updateGroup = async (runs: (typeof groups)[number]) => {
+      for (const { dbMember, run, combine } of runs) {
+        if (failure) {
+          return
+        }
+
+        if (!combine) {
+          for (const update of run) {
+            await updateSingleActivity(dbMember, update)
+          }
+          continue
+        }
+
+        // An activity that fails validation is updated alone, in its place in timestamp order, so
+        // it fails on its own as without combining and a wrong verdict can't reorder the updates.
+        let combinable: IPayloadMemberUpdate[] = []
+        for (const update of run) {
+          if (await hasValidAttributes(update)) {
+            combinable.push(update)
+          } else {
+            await updateCombined(dbMember, combinable)
+            combinable = []
+            await updateSingleActivity(dbMember, update)
+          }
+        }
+        await updateCombined(dbMember, combinable)
+      }
+    }
+
+    await mapWithConcurrency(groups, MEMBER_UPDATE_CONCURRENCY, async (runs) => {
+      try {
+        await updateGroup(runs)
+      } catch (err) {
+        failure ??= { err }
+      }
+    })
+    if (failure) {
+      throw failure.err
+    }
+
+    // Updates that ran before a later one merged their member away must follow that redirect too.
+    for (const memberIds of Object.values(results.memberIds)) {
+      for (const [payload, memberId] of memberIds) {
+        memberIds.set(payload, followRedirects(redirects, memberId))
+      }
+    }
+
+    return results
+  }
+
   private async handleMemberIdentityError(
     error: any,
     payload: IActivityProcessData,
-    memberType: 'member' | 'objectMember',
+    memberType: MemberRole,
     dbMember?: IDbMember,
   ): Promise<string | Record<string, unknown> | undefined> {
     const checkForIdentityConstraint = (error: any): boolean => {
@@ -1998,24 +2594,31 @@ export default class ActivityService extends LoggerBase {
     existing: IDbActivityRelation,
     newData: IActivityRelationCreateOrUpdateData,
   ): boolean {
-    // Compare all fields that would be updated in the ON CONFLICT clause
+    // Must cover every column in createOrUpdateRelations' ON CONFLICT SET list, compared as stored.
+    const differs = (a: unknown, b: unknown) => (a ?? null) !== (b ?? null)
+    // The upsert keeps stored line counts when the new data has none.
+    const differsWhenSet = (a: unknown, b: unknown) =>
+      b !== undefined && b !== null && differs(a, b)
+    const username = (value: string | null | undefined) =>
+      value === undefined || value === null ? null : normalizeMemberIdentityValue(value)
+
     return (
-      existing.memberId !== newData.memberId ||
-      existing.objectMemberId !== (newData.objectMemberId ?? null) ||
-      existing.organizationId !== (newData.organizationId ?? null) ||
-      existing.platform !== newData.platform ||
-      existing.username !== newData.username ||
-      existing.objectMemberUsername !== (newData.objectMemberUsername ?? null) ||
-      existing.sourceId !== newData.sourceId ||
-      existing.sourceParentId !== (newData.sourceParentId ?? null) ||
-      existing.type !== newData.type ||
-      existing.timestamp !== newData.timestamp ||
-      existing.channel !== newData.channel ||
-      existing.sentimentScore !== newData.sentimentScore ||
-      existing.gitInsertions !== newData.gitInsertions ||
-      existing.gitDeletions !== newData.gitDeletions ||
-      existing.score !== newData.score ||
-      existing.pullRequestReviewState !== (newData.pullRequestReviewState ?? null)
+      differs(existing.memberId, newData.memberId) ||
+      differs(existing.objectMemberId, newData.objectMemberId) ||
+      differs(existing.organizationId, newData.organizationId) ||
+      differs(existing.platform, newData.platform) ||
+      differs(existing.username, username(newData.username)) ||
+      differs(existing.objectMemberUsername, username(newData.objectMemberUsername)) ||
+      differs(existing.sourceId, newData.sourceId) ||
+      differs(existing.sourceParentId, newData.sourceParentId) ||
+      differs(existing.type, newData.type) ||
+      new Date(existing.timestamp).getTime() !== new Date(newData.timestamp).getTime() ||
+      differs(existing.channel, newData.channel) ||
+      differs(existing.sentimentScore, newData.sentimentScore) ||
+      differsWhenSet(existing.gitInsertions, newData.gitInsertions) ||
+      differsWhenSet(existing.gitDeletions, newData.gitDeletions) ||
+      differs(existing.score, newData.score) ||
+      differs(existing.pullRequestReviewState, newData.pullRequestReviewState)
     )
   }
 
@@ -2051,6 +2654,14 @@ export default class ActivityService extends LoggerBase {
     platform: PlatformType,
     dbMember?: IDbMember,
   ): unknown {
+    // validateAttributes stores a plain value as { [platform]: value } and drops empty values
+    const incoming = member.attributes[attName]
+    const platformValue =
+      incoming && typeof incoming === 'object'
+        ? (incoming as Record<string, unknown>)[platform]
+        : incoming
+    const incomingValue = isEmptyAttributeValue(platformValue) ? undefined : platformValue
+
     let result: unknown
     if (dbMember && dbMember.attributes[attName]) {
       // db member already has this attribute
@@ -2065,15 +2676,15 @@ export default class ActivityService extends LoggerBase {
         result = att.system
       } else {
         // if it's not manually set we check if incoming member data has the attribute set for the platform
-        if (member.attributes[attName] && member.attributes[attName][platform]) {
-          result = member.attributes[attName][platform]
+        if (incomingValue) {
+          result = incomingValue
         } else {
           // if none of those work we just use db member attribute default value
           result = att.default
         }
       }
-    } else if (member.attributes[attName] && member.attributes[attName][platform]) {
-      result = member.attributes[attName][platform]
+    } else if (incomingValue) {
+      result = incomingValue
     }
 
     return result
@@ -2144,12 +2755,13 @@ interface IActivityProcessData {
   platform: PlatformType
   activity: IActivityData
   segmentId: string
+  skipRepositorySegmentLookup?: boolean
 
   dbMember?: IDbMember
   dbObjectMember?: IDbMember
   dbActivityRelation?: IDbActivityRelation
-  dbMemberSource?: 'activity' | 'username' | 'email'
-  dbObjectMemberSource?: 'activity' | 'username' | 'email'
+  dbMemberSource?: 'activity' | 'username' | 'email' | 'created'
+  dbObjectMemberSource?: 'activity' | 'username' | 'email' | 'created'
 
   organizationId?: string
   memberId?: string
@@ -2164,4 +2776,5 @@ interface IActivityPrepareForUpsertResult {
   channelToCreate?: string
 
   payload?: IDbActivityCreateData
+  dbActivityRelation?: IDbActivityRelation
 }

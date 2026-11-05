@@ -25,7 +25,7 @@ const props = defineProps<{
   modelValue: IncludeEnum,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: IncludeEnum): any }>();
+const emit = defineEmits<{(e: 'update:modelValue', value: IncludeEnum): void }>();
 
 const value = computed<IncludeEnum>({
   get() {

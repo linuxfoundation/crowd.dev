@@ -6,6 +6,11 @@ The ingested data is often messy. A big part of what CDP does is improve data qu
 
 The codebase started as crowd.dev, an open-source startup later acquired by the Linux Foundation. Speed was prioritized over standards, but the platform is now stable. The focus has shifted to maintainable patterns, scalability, and good developer experience. Performance matters at this scale, even small inefficiencies compound across millions of data points.
 
+Deeper notes on the services, how data flows and the member identity model are in
+[`docs/knowledge/`](docs/knowledge/README.md). Architecture diagrams are in
+[`docs/design/`](docs/design/README.md), and decisions in [`docs/adr/`](docs/adr/README.md).
+`docs/design/README.md` explains which of the three a new doc belongs in.
+
 ## Tech stack
 
 TypeScript, Node.js, Express, PostgreSQL (pg-promise), Temporal, Kafka, Redis, OpenSearch, Zod, Bunyan, AWS S3.
@@ -43,6 +48,7 @@ Old and new patterns coexist. Always use the new pattern.
 - **Multi-tenancy -> single tenant**: Multi-tenancy is being phased out. The tenant table still exists. Code uses `DEFAULT_TENANT_ID` from `@crowd/common`. Don't add new multi-tenant logic.
 - **Legacy auth -> Auth0**: Auth0 is the current auth system. Ignore old JWT patterns.
 - **Zod for validation**: Public API endpoints use Zod schemas with `validateOrThrow`. Follow this pattern for all new endpoints.
+- **Connector routing -> the channel is the mapping**: a connector record goes to the integration and segment of the sync unit that fetched it. Don't add mapping tables or routing in `integration.settings`. Read [`services/libs/connectors/README.md`](services/libs/connectors/README.md) before touching connectors or `sync_units`.
 
 ## Working with the database
 
@@ -51,6 +57,36 @@ Millions of rows. Every query matters.
 - Look up the table schema and indexes before writing any query. Don't select or touch columns blindly.
 - Check existing functions in `data-access-layer` before writing new ones. Weigh the blast radius of modifying a shared function — sometimes a new function is safer.
 - Write queries with performance in mind. Think about what indexes exist, what the query plan looks like, and whether you're scanning more rows than needed.
+
+## Downstream consumer: LFX Insights
+
+`linuxfoundation/insights` depends on this repository at four points, none of them a versioned
+API. Changing any of them can break Insights production with no compile-time signal on this
+side.
+
+- **Libraries.** Insights vendors a sparse subset of `services/libs/*` and
+  `services/archetypes/*` as a git submodule and links them as `@crowd/*` packages. Its deploys
+  resolve that submodule to this repo's `main` at build time, so a merge here can reach Insights
+  production without an Insights commit.
+- **Postgres.** Insights connects to this product's database directly. It reads `repositories`
+  and `insightsProjects`, and reads and writes `collections`, `collectionsInsightsProjects`,
+  `collectionsRepositories`, `collectionLikes` and `insightsSsoUsers`. Community collections,
+  collection likes and SSO user records are created by Insights and stored here.
+- **Temporal.** Insights starts two workflows that run on workers in this repo:
+  `upsertOSPSBaselineSecurityInsights` on the `security-best-practices` queue
+  (`security_best_practices_worker`) and `processProjectDocsReadiness` on the `docs-readiness`
+  queue (`docs_readiness_worker`). Insights keeps its own copies of their names, task queues and
+  argument types, and its own implementation of the payload encryption codec.
+- **Tinybird.** Insights appends community mentions to the `mentions` datasource defined in
+  `services/libs/tinybird/datasources/mentions.datasource`, alongside the Octolens connector here,
+  using a hand-copied list of its fields. Rows that stop matching the schema are quarantined
+  rather than rejected, so a break there is silent.
+
+Treat these as an external API: the exports of the vendored libraries, the schema of those
+tables and of `mentions`, and the names, queues, arguments and codec of those two workflows.
+What exactly is shared, and what counts as a breaking change, is recorded in
+https://github.com/linuxfoundation/insights/blob/main/docs/knowledge/cross-repo-contract.md —
+check it before changing any of these, and tell the Insights team.
 
 ## Code quality
 

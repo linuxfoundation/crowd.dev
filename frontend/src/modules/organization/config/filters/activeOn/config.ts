@@ -18,7 +18,7 @@ const activeOn: MultiSelectFilterConfig = {
   itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Active on', value, options);
   },
-  apiFilterRenderer(value: MultiSelectFilterValue): any[] {
+  apiFilterRenderer(value: MultiSelectFilterValue) {
     return apiFilterRendererByType[FilterConfigType.MULTISELECT]('activeOn', value);
   },
 };

@@ -16,7 +16,7 @@ const employeeCount: NumberFilterConfig = {
   itemLabelRenderer(value: NumberFilterValue, options: NumberFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.NUMBER]('Employee Count', value, options);
   },
-  apiFilterRenderer(value: NumberFilterValue): any[] {
+  apiFilterRenderer(value: NumberFilterValue) {
     return apiFilterRendererByType[FilterConfigType.NUMBER]('employees', value);
   },
 };

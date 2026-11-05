@@ -17,7 +17,7 @@ const useProductTracking = () => {
   }: {
     key: string;
     type: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, unknown>;
   }) => {
     if (!shouldTrack) {
       return;

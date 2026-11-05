@@ -45,7 +45,7 @@ export const Regular = {
   args: {
     size: 'medium',
   },
-  render: (args: any) => ({
+  render: (args: Record<string, unknown>) => ({
     components: { LfTabs, LfTab },
     setup() {
       const activeTab = ref('primary');

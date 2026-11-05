@@ -17,13 +17,15 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { ConfluenceSettings } from '@/config/integrations/confluence/types/ConfluenceSettings';
 import { defineProps, ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfConfluenceSettingsDrawer from '@/config/integrations/confluence/components/confluence-settings-drawer.vue';
 
 const props = defineProps<{
-  integration: any;
+  integration: Integration<ConfluenceSettings> | undefined;
   segmentId: string;
   grandparentId: string;
 }>();

@@ -1,0 +1,50 @@
+DESCRIPTION >
+    - `cncf_country_top_organizations.pipe` serves the top organizations table of the CNCF country report: organizations ranked by the country's contributors.
+    - Lists every organization the country's contributors contributed through, headquartered in the country or not, and flags the ones that are.
+    - Skips organizations blocked from affiliations (`isAffiliationBlocked`), as `leaderboards_organizations.pipe` does, and the "Individual - No Account" placeholder records, which stand for contributors without an employer and are not blocked.
+    - Parameters:
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR') - inherited from `cncf_country_activities`
+    - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
+    - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
+    - `limit`: Optional integer for the number of organizations returned, defaults to 10
+    - Response: `id`, `displayName`, `logo`, `slug`, `headquarteredInCountry`, `contributorCount`, `contributorInCountryCount`, `contributionCount`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE cncf_country_top_organizations_ranked
+SQL >
+    %
+    SELECT
+        organizationId AS id,
+        max(organizationInCountry) AS headquarteredInCountry,
+        uniq(memberId) AS contributorCount,
+        uniqIf(memberId, memberInCountry) AS contributorInCountryCount,
+        count() AS contributionCount
+    FROM cncf_country_activities
+    WHERE organizationListed = 1
+    GROUP BY id
+    ORDER BY contributorCount DESC, contributionCount DESC, id
+    LIMIT {{ Int32(limit, 10, description="Number of organizations returned", required=False) }}
+
+NODE cncf_country_top_organizations_result
+SQL >
+    -- The ranking is the right side of the join so it is evaluated once, as the small hash table.
+    SELECT
+        r.id AS id,
+        o.displayName AS displayName,
+        o.logo AS logo,
+        ops.slug AS slug,
+        r.headquarteredInCountry AS headquarteredInCountry,
+        r.contributorCount AS contributorCount,
+        r.contributorInCountryCount AS contributorInCountryCount,
+        r.contributionCount AS contributionCount
+    FROM organizations o FINAL
+    INNER JOIN cncf_country_top_organizations_ranked r ON r.id = o.id
+    LEFT JOIN organizations_populated_slug ops ON ops.id = r.id
+    -- Re-checks the live flag: organizationListed is copied daily, a block applies on the next
+    -- request.
+    WHERE o.isAffiliationBlocked = 0
+    ORDER BY contributorCount DESC, contributionCount DESC, id

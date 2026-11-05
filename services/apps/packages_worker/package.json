@@ -107,7 +107,8 @@
     "tar": "^7.5.20",
     "tsx": "catalog:",
     "undici": "^7.29.1",
-    "unzipper": "^0.12.3"
+    "unzipper": "^0.12.3",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

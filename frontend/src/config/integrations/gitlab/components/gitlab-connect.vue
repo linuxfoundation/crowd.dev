@@ -12,6 +12,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 import {
   defineProps, computed, onMounted, ref,
 } from 'vue';
@@ -21,17 +23,17 @@ import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<unknown> | undefined,
   segmentId: string | null,
   grandparentId: string | null,
 }>();
 
 const route = useRoute();
 
-const { doGitlabConnect } = mapActions('integration');
+const { connectGitlab } = useIntegrationStore();
 
 const isFinishingModalOpen = ref(false);
 
@@ -39,10 +41,7 @@ const connectUrl = computed(() => `${config.backendUrl}/gitlab/connect?crowdToke
 
 const connect = async () => {
   try {
-    if (props.grandparentId && props.segmentId) {
-      localStorage.setItem('segmentId', props.segmentId);
-      localStorage.setItem('segmentGrandparentId', props.grandparentId);
-    }
+    rememberConnectSegment(props.segmentId, props.grandparentId);
     const result = await ConfirmDialog({
       type: 'notification',
       title: 'Are you the admin of your GitLab organization?',
@@ -76,7 +75,7 @@ const finallizeGitlabConnect = () => {
 
   if (code && source === 'gitlab') {
     isFinishingModalOpen.value = true;
-    doGitlabConnect({
+    connectGitlab({
       code,
       state,
       segmentId: props.segmentId,

@@ -26,6 +26,7 @@ export interface DiscussionNode {
 
 export interface DiscussionsPage {
   repository: {
+    url: string
     discussions: {
       pageInfo: {
         endCursor: string | null
@@ -99,6 +100,7 @@ const REPLY_FIELDS = `
 export const DISCUSSIONS_QUERY = `
   query ($owner: String!, $repo: String!, $first: Int!, $cursor: String) {
     repository(owner: $owner, name: $repo) {
+      url
       discussions(
         first: $first
         after: $cursor

@@ -9,6 +9,7 @@ export interface MemberIdentityDbRow {
   type: MemberIdentityType
   verified: boolean
   verifiedBy: string | null
+  verifiedAt: string | null
   source: string | null
   sourceId: string | null
   integrationId: string | null
@@ -33,5 +34,8 @@ export type MemberIdentityDbInsert = Pick<
       | 'createdAt'
       | 'updatedAt'
       | 'deletedAt'
+      | 'verifiedAt'
     >
-  >
+  > & {
+    stampVerifiedAt?: boolean
+  }

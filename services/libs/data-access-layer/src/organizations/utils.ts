@@ -1,10 +1,11 @@
-import { getCountry, groupBy } from '@crowd/common'
+import { getCountry, groupBy, normalizeCountryName } from '@crowd/common'
 import { OrganizationAttributeSource, OrganizationAttributeType } from '@crowd/types'
 
 import {
   ORG_DB_ATTRIBUTES,
   ORG_DB_ATTRIBUTE_SOURCE_PRIORITY,
   ORG_DB_FIELDS,
+  OrgAttributeDef,
 } from './attributesConfig'
 import {
   IDbOrgAttribute,
@@ -15,17 +16,38 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export function toDefaultColumnValue(definition: OrgAttributeDef, value: string): unknown {
+  if (definition.type === OrganizationAttributeType.OBJECT) {
+    return JSON.parse(value)
+  }
+
+  if (
+    definition.type === OrganizationAttributeType.DECIMAL ||
+    definition.type === OrganizationAttributeType.INTEGER
+  ) {
+    return Number(value)
+  }
+
+  if (definition.type === OrganizationAttributeType.BOOLEAN) {
+    return value === 'true'
+  }
+
+  return value
+}
+
 export interface IPrepareOrgResult {
   organization: IDbOrganizationInput
   attributes: IDbOrgAttributeInput[]
 }
 
 export function prepareOrganizationData(
-  incoming: any,
+  rawIncoming: any,
   source: string,
   existingOrg?: IDbOrganization,
   existingAttributes?: IDbOrgAttribute[],
 ): IPrepareOrgResult {
+  const incoming = { ...rawIncoming, country: normalizeCountryName(rawIncoming.country) }
+
   // validate source
   if (!ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.includes(source as OrganizationAttributeSource)) {
     throw new Error(
@@ -177,38 +199,23 @@ export function prepareOrganizationData(
       }
     }
 
-    // we set default values now
-    let set = false
-    for (const att of attributesBySource.get(defaultSource) || []) {
-      // if attribute has multiple values (is an array) we just pick the first one for the default value
-      if (!set) {
-        att.default = true
-        set = true
+    const defaultSourceAttributes = attributesBySource.get(defaultSource) || []
+    const defaultAttribute =
+      defaultSourceAttributes.find((att) => att.default) ?? defaultSourceAttributes[0]
 
-        // we also set the org field if it's a default column
-        if (
-          attDef.defaultColumn &&
-          existingOrg &&
-          (existingOrg[attDef.defaultColumn] === undefined ||
-            existingOrg[attDef.defaultColumn] === null ||
-            existingOrg[attDef.defaultColumn] !== att.value)
-        ) {
-          if (attDef.type === OrganizationAttributeType.OBJECT) {
-            orgRes[attDef.defaultColumn] = JSON.parse(att.value)
-          } else if (
-            attDef.type === OrganizationAttributeType.DECIMAL ||
-            attDef.type === OrganizationAttributeType.INTEGER
-          ) {
-            orgRes[attDef.defaultColumn] = Number(att.value)
-          } else if (attDef.type === OrganizationAttributeType.BOOLEAN) {
-            orgRes[attDef.defaultColumn] = att.value === 'true'
-          } else {
-            orgRes[attDef.defaultColumn] = att.value
-          }
-        }
-      } else {
-        att.default = false
-      }
+    for (const att of defaultSourceAttributes) {
+      att.default = att === defaultAttribute
+    }
+
+    if (
+      defaultAttribute &&
+      attDef.defaultColumn &&
+      existingOrg &&
+      (existingOrg[attDef.defaultColumn] === undefined ||
+        existingOrg[attDef.defaultColumn] === null ||
+        existingOrg[attDef.defaultColumn] !== defaultAttribute.value)
+    ) {
+      orgRes[attDef.defaultColumn] = toDefaultColumnValue(attDef, defaultAttribute.value)
     }
 
     for (const atts of Array.from(attributesBySource.values())) {

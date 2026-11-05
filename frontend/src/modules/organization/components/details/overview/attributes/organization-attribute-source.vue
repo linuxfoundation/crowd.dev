@@ -9,9 +9,10 @@ import { computed } from 'vue';
 import { isEqual } from 'lodash';
 import { lfIdentities } from '@/config/identities';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
+import type { OrganizationAttribute } from '@/modules/organization/types/Organization';
 
 const props = defineProps<{
-  values: Record<string, any>,
+  values: OrganizationAttribute,
 }>();
 
 const { getPlatformsLabel } = useIdentitiesHelpers();
@@ -20,9 +21,9 @@ const source = computed(() => {
   if (!props.values) {
     return null;
   }
-  const defaultValue: string | undefined = props.values.default;
+  const defaultValue = props.values.default;
   let sources = Object.keys(props.values)
-    .filter((key) => !['default'].includes(key) && props.values[key].some((value: any) => isEqual(value, defaultValue)));
+    .filter((key) => !['default'].includes(key) && (props.values[key] as unknown[]).some((value) => isEqual(value, defaultValue)));
   if (!props.values.default) {
     sources = Object.keys(props.values);
   }

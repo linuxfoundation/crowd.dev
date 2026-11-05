@@ -4,6 +4,7 @@ export const STACKOVERFLOW_LAST_MAX_PAGES = 20
 export enum StackOverflowActivityType {
   QUESTION = 'question',
   ANSWER = 'answer',
+  MENTION = 'mention',
 }
 
 export interface StackOverflowPlatformSettings {

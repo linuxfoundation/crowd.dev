@@ -1,5 +1,10 @@
-import { githubRepoPath } from '../githubRepoUrl'
-import { GithubPublicClientError, IPublicRepoMetrics, IPublicRepoReadme } from './types'
+import { canonicalizeGithubRepoUrl, githubRepoPath } from '../githubRepoUrl'
+import {
+  GithubPublicClientError,
+  IPublicOrgRepos,
+  IPublicRepoMetrics,
+  IPublicRepoReadme,
+} from './types'
 
 const GITHUB_API_URL = 'https://api.github.com'
 const DEFAULT_README_MAX_CHARS = 8_000
@@ -197,6 +202,93 @@ export async function fetchPublicRepoMetrics(
     isArchived: repo.isArchived,
     isFork: repo.isFork,
     parentFullName: repo.parent?.nameWithOwner ?? null,
+  }
+}
+
+interface IRepoItem {
+  private: boolean
+}
+
+async function getGithubJson<T>(
+  url: string,
+  token: string,
+  what: string,
+  signal?: AbortSignal,
+): Promise<T | null> {
+  const response = await doFetch(url, {
+    headers: { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' },
+    signal,
+  })
+
+  assertAuthenticated(response, url)
+  await assertNotRateLimited(response, what)
+
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new GithubPublicClientError(
+      'TRANSIENT',
+      `GitHub returned HTTP ${response.status} ${what}`,
+    )
+  }
+
+  return readJson<T>(response, url)
+}
+
+export async function isPublicGithubRepo(
+  repoUrl: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const { owner, name } = parseGithubUrl(repoUrl)
+  const url = `${GITHUB_API_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`
+  const item = await getGithubJson<IRepoItem>(url, token, `checking ${repoUrl}`, signal)
+  return item !== null && !item.private
+}
+
+interface IOrgRepoListItem {
+  name: string
+  archived: boolean
+  fork: boolean
+}
+
+const ORG_REPOS_PAGE_SIZE = 100
+
+export async function fetchPublicOrgRepos(
+  owner: string,
+  token: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<IPublicOrgRepos> {
+  const repoUrls: string[] = []
+  for (let page = 1; ; page++) {
+    const url = `${GITHUB_API_URL}/orgs/${encodeURIComponent(owner)}/repos?type=public&per_page=${ORG_REPOS_PAGE_SIZE}&page=${page}`
+    const items = await getGithubJson<IOrgRepoListItem[]>(
+      url,
+      token,
+      `listing repositories of ${owner}`,
+      signal,
+    )
+    if (items === null) {
+      throw new GithubPublicClientError('NOT_FOUND', `GitHub organization not found: ${owner}`)
+    }
+    for (const item of items) {
+      if (item.archived || item.fork) {
+        continue
+      }
+      const repoUrl = canonicalizeGithubRepoUrl(`https://github.com/${owner}/${item.name}`)
+      if (!repoUrl) {
+        continue
+      }
+      if (repoUrls.length === limit) {
+        return { repoUrls, exceededLimit: true }
+      }
+      repoUrls.push(repoUrl)
+    }
+    if (items.length < ORG_REPOS_PAGE_SIZE) {
+      return { repoUrls, exceededLimit: false }
+    }
   }
 }
 

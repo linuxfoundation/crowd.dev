@@ -147,7 +147,7 @@ const isEdit = computed(() => !!props.organization);
 const sending = ref<boolean>(false);
 
 interface ConrtibutorWorkHistoryForm {
-  organization: Organization | null,
+  organization: (Organization & { label?: string }) | null,
   title: string;
   dateStart: string | null;
   dateEnd: string | null;
@@ -208,21 +208,6 @@ const updateWorkExperience = () => {
         organization: data,
       },
     });
-  }
-
-  let orgs: Organization[] = [...(props.contributor.organizations || [])];
-  if (isEdit.value) {
-    orgs = orgs.map((o: Organization) => {
-      if (o.id === props.organization?.id
-          && o.memberOrganizations?.title === props.organization?.memberOrganizations?.title
-          && o.memberOrganizations?.dateStart === props.organization?.memberOrganizations?.dateStart
-          && o.memberOrganizations?.dateEnd === props.organization?.memberOrganizations?.dateEnd) {
-        return data;
-      }
-      return o;
-    });
-  } else {
-    orgs.push(data);
   }
 
   sending.value = true;

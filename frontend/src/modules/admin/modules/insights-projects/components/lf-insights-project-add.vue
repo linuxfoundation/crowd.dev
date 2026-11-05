@@ -141,8 +141,10 @@ import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import cloneDeep from 'lodash/cloneDeep';
 import { ToastStore } from '@/shared/message/notification';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useMutation, useQuery } from '@tanstack/vue-query';
+import { queryKeys } from '@/shared/queries/keys';
+import { useInvalidate } from '@/shared/queries/invalidate';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 import LfInsightsProjectAddRepositoryGroups
   from '@/modules/admin/modules/insights-projects/components/lf-insights-project-add-repository-groups.vue';
 import LfInsightsProjectAddDetailsTab from './lf-insights-project-add-details-tab.vue';
@@ -224,7 +226,7 @@ const rules = {
   description: { required: (value: string) => value.trim().length },
   logoUrl: { required: (value: string) => value.trim().length },
   widgets: {
-    required: (widgets: any) => Object.keys(widgets).some((key: any) => widgets[key].enabled),
+    required: (widgets: InsightsProjectAddFormModel['widgets']) => Object.keys(widgets).some((key) => widgets[key].enabled),
   },
 };
 
@@ -260,7 +262,7 @@ onMounted(() => {
 });
 
 const { isLoading, isSuccess, data } = useQuery({
-  queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS, props.insightsProjectId],
+  queryKey: queryKeys.insightsProjects.detail(props.insightsProjectId),
   queryFn: () => {
     if (props.insightsProjectId === undefined) {
       return Promise.resolve(null);
@@ -270,7 +272,7 @@ const { isLoading, isSuccess, data } = useQuery({
   enabled: !!props.insightsProjectId,
 });
 
-const onProjectSelection = ({ project }: any) => {
+const onProjectSelection = ({ project }: { project: Project }) => {
   if (!isEditForm.value) {
     Object.assign(form, initialFormState);
   }
@@ -305,11 +307,9 @@ const onSubmit = () => {
   }
 };
 
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 const onSuccess = (res: InsightsProjectModel) => {
-  queryClient.invalidateQueries({
-    queryKey: [TanstackKey.ADMIN_INSIGHTS_PROJECTS],
-  });
+  invalidate.insightsProjects();
   ToastStore.closeAll();
   ToastStore.success(
     `Insights project ${isEditForm.value ? 'updated' : 'created'} successfully`,
@@ -349,7 +349,7 @@ const fetchRepositories = async (segmentId: string, callback?: () => void) => {
   });
 };
 
-const fetchProjectDetails = async (project: any) => {
+const fetchProjectDetails = async (project: Project) => {
   isLoadingProject.value = true;
   InsightsProjectsService.getInsightsProjectDetails(project.id)
     .then((res) => {

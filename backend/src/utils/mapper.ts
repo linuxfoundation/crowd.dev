@@ -164,6 +164,7 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
 
       return {
         ...row,
+        rowSource: row.source,
         source: [...sources]
           .sort((a, b) => getMemberOrganizationSourceRank(a) - getMemberOrganizationSourceRank(b))
           .join(','),

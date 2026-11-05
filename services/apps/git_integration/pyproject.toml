@@ -20,7 +20,7 @@ dependencies = [
     "boto3>=1.35.18",
     "python-json-logger",
     "python-dotenv>=1.0.1",
-    "gitpython",
+    "gitpython>=3.2.1",
     "fastapi[standard]",
     "uvicorn",
     "asyncio",

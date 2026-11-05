@@ -2,10 +2,13 @@ import {
   MAX_REQUEST_TEXT_LENGTH,
   canonicalizeRepoUrl,
   getErrorMessage,
+  githubOrganizationOwner,
   parseLlmJson,
+  stripPhraseFormatting,
+  stripSlackFormatting,
 } from '@crowd/common'
 
-const MAX_LINKS_TO_FOLLOW = 5
+const MAX_PAGE_LINKS_TO_FOLLOW = 5
 
 export interface IParsedOnboardingRequest {
   githubRepoUrls: string[]
@@ -58,8 +61,8 @@ ${requestText}
 Extract only what is literally present in the request. Never invent URLs or names.
 
 Fields:
-- repoUrls: every repository the requester asks to onboard, as written (any forge: GitHub, GitLab, Bitbucket, ...). A bare "owner/repo" counts as a GitHub repository and must be written as https://github.com/owner/repo. If the requester names a whole GitHub organization without listing repositories, return an empty list.
-- linkUrls: links in the request that are not themselves a requested repository but may contain the list of repositories (a project page, a document, a wiki).
+- repoUrls: every repository the requester asks to onboard, as written (any forge: GitHub, GitLab, Bitbucket, ...). A bare "owner/repo" counts as a GitHub repository and must be written as https://github.com/owner/repo. If the requester names a whole GitHub organization without listing repositories, return an empty list and put the organization link in linkUrls.
+- linkUrls: links in the request that are not themselves a requested repository but may contain the list of repositories (a project page, a document, a wiki). A GitHub organization or user page (https://github.com/owner, no repository name) always goes here.
 - projectName: the name of the project the repositories belong to, as stated or clearly implied by the requester, or null if unclear.
 - declaredLf: true only if the requester explicitly says the project belongs to the Linux Foundation or an LF foundation, false only if they explicitly say it does not, otherwise null.
 - asksAboutHierarchy: true if the requester asks about project structure, parent projects, project groups or where the project should be placed, otherwise false.
@@ -122,7 +125,19 @@ function toRepositoryLink(raw: string): string | null {
   return `${host}${path}${url.search}${url.hash}`.toLowerCase()
 }
 
-function collectRequestEvidence(requestText: string): IRequestEvidence {
+function withoutSlackFormatting(requestText: string): string {
+  return stripPhraseFormatting(requestText)
+    .split(/(\s+)/)
+    .map((part) => {
+      const trailing = part.match(TRAILING_PUNCTUATION_PATTERN)?.[0] ?? ''
+      const core = part.slice(0, part.length - trailing.length)
+      return stripSlackFormatting(core) + trailing
+    })
+    .join('')
+}
+
+function collectRequestEvidence(rawText: string): IRequestEvidence {
+  const requestText = withoutSlackFormatting(rawText)
   const urlTokens = matchTokens(requestText, URL_TOKEN_PATTERN)
   const bareRepoTokens = matchTokens(requestText, BARE_REPO_PATTERN)
 
@@ -180,6 +195,10 @@ function toLinkToFollow(
   return repositoryLink && requestedRepoLinks.has(repositoryLink) ? [] : [requestToken]
 }
 
+function isGithubOrganizationLink(raw: string): boolean {
+  return githubOrganizationOwner(raw) !== null
+}
+
 function extractLinksToFollow(
   linkUrls: string[],
   evidence: IRequestEvidence,
@@ -188,8 +207,12 @@ function extractLinksToFollow(
   const requestedRepoLinks = new Set(
     requestedRepoUrls.map(toRepositoryLink).filter((link): link is string => !!link),
   )
-  const links = linkUrls.flatMap((raw) => toLinkToFollow(raw, evidence, requestedRepoLinks))
-  return uniqueInOrder(links).slice(0, MAX_LINKS_TO_FOLLOW)
+  const links = uniqueInOrder(
+    linkUrls.flatMap((raw) => toLinkToFollow(raw, evidence, requestedRepoLinks)),
+  )
+  const organizations = links.filter(isGithubOrganizationLink)
+  const pages = links.filter((link) => !isGithubOrganizationLink(link))
+  return [...organizations, ...pages.slice(0, MAX_PAGE_LINKS_TO_FOLLOW)]
 }
 
 function normalizeProjectName(projectName: string | null): string | null {
@@ -237,10 +260,12 @@ export async function parseOnboardingRequest(
 
   const evidence = collectRequestEvidence(requestText)
   const { githubRepoUrls, nonGithubRepoUrls } = splitRepoUrls(parsed.repoUrls, evidence)
-  const linksToFollow = extractLinksToFollow(parsed.linkUrls, evidence, [
-    ...githubRepoUrls,
-    ...nonGithubRepoUrls,
-  ])
+  const organizationLinksFiledAsRepositories = parsed.repoUrls.filter(isGithubOrganizationLink)
+  const linksToFollow = extractLinksToFollow(
+    [...parsed.linkUrls, ...organizationLinksFiledAsRepositories],
+    evidence,
+    [...githubRepoUrls, ...nonGithubRepoUrls],
+  )
 
   return {
     ok: true,

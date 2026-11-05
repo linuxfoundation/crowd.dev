@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { PlatformType } from '@crowd/types'
 
-import { resolveActivityResultPlatform } from './resolveActivityResultPlatform'
+import {
+  resolveActivityResultPlatform,
+  skipsRepositorySegmentLookup,
+} from './resolveActivityResultPlatform'
 
 describe('resolveActivityResultPlatform', () => {
   it('prefers the activity platform over the integration platform when both are set', () => {
@@ -28,4 +31,17 @@ describe('resolveActivityResultPlatform', () => {
   it('returns null when neither the integration nor the activity has a platform', () => {
     expect(resolveActivityResultPlatform(null, undefined)).toBeNull()
   })
+})
+
+describe('skipsRepositorySegmentLookup', () => {
+  it('skips the repositories lookup for activities from an Octolens integration', () => {
+    expect(skipsRepositorySegmentLookup(PlatformType.OCTOLENS)).toBe(true)
+  })
+
+  it.each([PlatformType.GITHUB, PlatformType.GITHUB_NANGO, PlatformType.GITLAB, null])(
+    'keeps the lookup for %s integrations',
+    (platform) => {
+      expect(skipsRepositorySegmentLookup(platform)).toBe(false)
+    },
+  )
 })

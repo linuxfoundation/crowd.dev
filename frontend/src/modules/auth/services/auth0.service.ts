@@ -1,4 +1,5 @@
 import config from '@/config';
+import type { RedirectLoginOptions } from '@auth0/auth0-spa-js';
 import { Auth0Client } from '@auth0/auth0-spa-js';
 
 const baseUrl = `${config.frontendUrl.protocol}://${config.frontendUrl.host}`;
@@ -22,7 +23,7 @@ class Auth0ServiceClass {
     });
   }
 
-  loginWithRedirect(params?: any) {
+  loginWithRedirect(params?: RedirectLoginOptions) {
     return this.webAuth.loginWithRedirect({
       ...params,
       authorizationParams: {
@@ -44,15 +45,14 @@ class Auth0ServiceClass {
   }
 
   authData() {
-    return this.webAuth.getIdTokenClaims()
-      .then((idToken) => {
-        if (idToken) {
+    return this.webAuth.getIdTokenClaims().then((idToken) => {
+      if (idToken) {
         // eslint-disable-next-line no-underscore-dangle
-          return idToken.__raw;
-        }
+        return idToken.__raw;
+      }
 
-        return null;
-      });
+      return null;
+    });
   }
 
   public logout() {

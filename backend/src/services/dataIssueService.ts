@@ -1,8 +1,4 @@
-import axios from 'axios'
-
-import { JIRA_ISSUE_REPORTER_CONFIG } from '@/conf'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { createHeading, createParagraph } from '@crowd/common'
 import { OrganizationField, findOrgById } from '@crowd/data-access-layer'
 import { createDataIssue } from '@crowd/data-access-layer/src/data_issues'
 import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members'
@@ -10,7 +6,10 @@ import { PgPromiseQueryExecutor } from '@crowd/data-access-layer/src/queryExecut
 import { LoggerBase } from '@crowd/logging'
 import { DataIssueEntity } from '@crowd/types'
 
+import { createInternalIssue } from './helpers/githubIssueReporter'
 import { IServiceOptions } from './IServiceOptions'
+
+const DATA_ISSUE_LABELS = ['product-support', 'needs-triage', 'data-issue']
 
 export interface IDataIssueCreatePayload {
   entity: DataIssueEntity
@@ -20,19 +19,6 @@ export interface IDataIssueCreatePayload {
   description: string
   githubIssueUrl: string
   createdById: string
-}
-
-interface IJiraCreateIssueResponse {
-  id: string
-  key: string
-  self: string
-  transitions: {
-    status: string
-    errorCollection: {
-      errorMessages: string[]
-      errors: object
-    }
-  }
 }
 
 export default class DataIssueService extends LoggerBase {
@@ -71,58 +57,30 @@ export default class DataIssueService extends LoggerBase {
       reportedBy = `${user.email}`
     }
 
+    const title = `[Data Issue] ${entityName} (${data.entity[0].toUpperCase()}${data.entity
+      .slice(1)
+      .toLowerCase()})`
+    const body = [
+      `### Entity\n${entityName}`,
+      `### Profile\n${data.profileUrl}`,
+      `### Data Issue\n${data.dataIssue}`,
+      `### Description\n${data.description}`,
+      `### Reported by\n${reportedBy}`,
+    ].join('\n\n')
+
+    let issueUrl: string
     try {
-      const result = await axios.post<IJiraCreateIssueResponse>(
-        `${JIRA_ISSUE_REPORTER_CONFIG.apiUrl}/issue`,
-        {
-          fields: {
-            project: {
-              key: JIRA_ISSUE_REPORTER_CONFIG.projectKey,
-            },
-            summary: `[Data Issue] ${entityName} (${data.entity[0].toUpperCase()}${data.entity
-              .slice(1)
-              .toLowerCase()})`,
-            description: {
-              version: 1,
-              type: 'doc',
-              content: [
-                createHeading('Entity'),
-                createParagraph(entityName),
-                createHeading('Profile'),
-                createParagraph(data.profileUrl, true),
-                createHeading('Data Issue'),
-                createParagraph(data.dataIssue),
-                createHeading('Description'),
-                createParagraph(data.description),
-                createHeading('Reported by'),
-                createParagraph(reportedBy),
-              ],
-            },
-            issuetype: {
-              name: 'Task',
-            },
-            labels: ['data-issue'],
-          },
-        },
-        {
-          headers: {
-            Authorization: `Basic ${Buffer.from(
-              `${JIRA_ISSUE_REPORTER_CONFIG.apiTokenEmail}:${JIRA_ISSUE_REPORTER_CONFIG.token}`,
-            ).toString('base64')}`,
-          },
-        },
-      )
-
-      const res = await createDataIssue(qx, {
-        ...data,
-        issueUrl: result.data.self,
-        createdById: user.id,
-      })
-
-      return res
+      const issue = await createInternalIssue(this.log, title, body, DATA_ISSUE_LABELS)
+      issueUrl = issue.html_url
     } catch (error) {
-      this.log.info(error)
-      throw new Error('Error during session create!')
+      this.log.error(error, 'Failed to create GitHub issue for data issue report!')
+      throw new Error('Failed to report the data issue!')
     }
+
+    return createDataIssue(qx, {
+      ...data,
+      issueUrl,
+      createdById: user.id,
+    })
   }
 }

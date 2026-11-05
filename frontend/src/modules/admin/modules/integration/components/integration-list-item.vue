@@ -90,7 +90,7 @@
             :segment-id="route.params.id"
             :grandparent-id="route.params.grandparentId"
           />
-          <lf-dropdown placement="bottom-end" width="14.5rem">
+          <lf-dropdown v-if="isDropdownVisible" placement="bottom-end" width="14.5rem">
             <template #trigger>
               <lf-button type="secondary-ghost" icon-only>
                 <lf-icon name="ellipsis" type="light" class="!font-light" />
@@ -105,6 +105,7 @@
               @open-setting="isSettingsOpen = true"
             />
             <lf-tooltip
+              v-if="!props.config.autoManaged"
               content="Git can’t be disconnected while it’s mirroring repositories from GitHub, GitLab, or Gerrit integrations."
               :disabled="!isDisconnectDisabled"
               placement="top"
@@ -147,8 +148,10 @@
 <script lang="ts" setup>
 import type { IntegrationConfig } from '@/config/integrations';
 import { computed, onMounted, ref } from 'vue';
-import { mapGetters } from '@/shared/vuex/vuex.helpers';
+import { storeToRefs } from 'pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfIntegrationStatus from '@/modules/admin/modules/integration/components/integration-status.vue';
+import type { IntegrationStatusSource } from '@/modules/admin/modules/integration/config/status';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -165,37 +168,40 @@ import { IntegrationService } from '@/modules/integration/integration-service';
 
 const props = defineProps<{
   config: IntegrationConfig,
-  progress: IntegrationProgress | null,
+  progress: IntegrationProgress[] | null,
   progressError: boolean
 }>();
 
 const route = useRoute();
 
-const { findByPlatform } = mapGetters('integration');
+const { findByPlatform } = storeToRefs(useIntegrationStore());
 
 const isModalOpen = ref(false);
 const isDisconnectDisabled = ref(false);
 
 const integration = computed(() => findByPlatform.value(props.config.key));
 
-const status = computed(() => getIntegrationStatus(integration.value));
+// shortcut: an unconnected platform passes undefined, as before. revisit: when the status config accepts a missing integration.
+const status = computed(() => getIntegrationStatus(integration.value as IntegrationStatusSource));
 const isV2 = computed(() => integration.value?.isNango && integration.value?.status);
 
 const lastDataCheckCompleted = computed(() => {
-  if (['github', 'gerrit', 'jira', 'confluence'].includes(integration.value.platform)) {
+  if (['github', 'gerrit', 'jira', 'confluence'].includes(integration.value?.platform ?? '')) {
     return '1 hour ago';
   }
 
-  if (integration.value.platform === 'git') {
+  if (integration.value?.platform === 'git') {
     return '5 hours ago';
   }
 
-  return dateHelper(integration.value.lastProcessedAt).fromNow();
+  return dateHelper(integration.value?.lastProcessedAt).fromNow();
 });
 
-const isInProgress = computed(() => integration.value.status === 'in-progress');
-const hasError = computed(() => integration.value.status === 'error');
-const isComplete = computed(() => integration.value.status === 'done');
+const isDropdownVisible = computed(() => !props.config.autoManaged || !!props.config.dropdownComponent);
+
+const isInProgress = computed(() => integration.value?.status === 'in-progress');
+const hasError = computed(() => integration.value?.status === 'error');
+const isComplete = computed(() => integration.value?.status === 'done');
 
 const selectedProgress = computed(() => (props.progress || []).find((p) => p.platform === props.config.key));
 

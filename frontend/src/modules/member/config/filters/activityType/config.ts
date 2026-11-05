@@ -6,6 +6,7 @@ import type {
   MultiSelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 
 const activityType: CustomFilterConfig = {
@@ -19,7 +20,7 @@ const activityType: CustomFilterConfig = {
   itemLabelRenderer(
     value: MultiSelectFilterValue,
     options: MultiSelectFilterOptions,
-    data: any,
+    data: MultiSelectFilterOptions,
   ): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT](
       'Activity type',
@@ -31,7 +32,7 @@ const activityType: CustomFilterConfig = {
       },
     );
   },
-  apiFilterRenderer({ value, include }: MultiSelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: MultiSelectFilterValue): ApiFilter[] {
     const filter = {
       or: value.map((type) => ({ activityTypes: { eq: type } })),
     };

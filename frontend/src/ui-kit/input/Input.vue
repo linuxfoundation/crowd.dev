@@ -38,7 +38,7 @@ const props = withDefaults(defineProps<{
   type: 'text',
 });
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string | number): any}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: string | number): void}>();
 
 const value = computed<string | number>({
   get() {

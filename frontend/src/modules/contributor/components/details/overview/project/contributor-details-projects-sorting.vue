@@ -28,7 +28,7 @@ const props = defineProps<{
   sorting: string,
 }>();
 
-const emit = defineEmits<{(e: 'update:sorting', value: string)}>();
+const emit = defineEmits<{(e: 'update:sorting', value: string): void}>();
 
 const sortBy = computed({
   get: () => props.sorting,

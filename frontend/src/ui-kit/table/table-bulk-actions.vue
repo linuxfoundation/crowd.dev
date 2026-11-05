@@ -12,7 +12,7 @@
 import pluralize from 'pluralize';
 
 defineProps<{
-  selectedItems: any[];
+  selectedItems: unknown[];
 }>();
 </script>
 

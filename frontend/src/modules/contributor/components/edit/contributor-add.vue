@@ -125,7 +125,7 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfField from '@/ui-kit/field/Field.vue';
-import type { Contributor, ContributorIdentity } from '@/modules/contributor/types/Contributor';
+import type { CreateContributorIdentity, CreateContributorPayload } from '@/modules/contributor/types/Contributor';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
@@ -161,11 +161,7 @@ const { memberIdentities } = useIdentitiesHelpers();
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-type ContributorAddIdentity = ContributorIdentity & {
-  // image: string,
-  // prefix: string,
-  // placeholder: string,
-}
+type ContributorAddIdentity = CreateContributorIdentity;
 
 const platformList: ContributorAddIdentity[] = memberIdentities
   .map((config: IdentityConfig) => ({
@@ -199,7 +195,7 @@ const rules = {
     required,
   },
   email: {
-    required: (value: ContributorAddIdentity[]) => value.some((i) => i.length),
+    required: (value: string[]) => value.some((i) => i.length),
   },
   identities: {
     required: (value: ContributorAddIdentity[]) => value.some((i) => i.value.length),
@@ -222,7 +218,7 @@ const createContributor = () => {
     return;
   }
 
-  const data: Partial<Contributor> = {
+  const data: CreateContributorPayload = {
     displayName: form.name,
     identities: [
       ...form.identities

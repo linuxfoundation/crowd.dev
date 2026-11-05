@@ -18,8 +18,12 @@
         </p>
       </div>
 
-      <div>
-        <lf-dropdown v-show="hovered" placement="bottom-end" width="14.5rem">
+      <div class="flex items-center gap-1">
+        <lf-verification-status
+          :entity="props.organization.memberOrganizations"
+          kind="work-experience"
+        />
+        <lf-dropdown :class="hovered ? 'visible' : 'invisible'" placement="bottom-end" width="14.5rem">
           <template #trigger>
             <lf-button type="secondary-ghost" size="small" icon-only>
               <lf-icon name="ellipsis" />
@@ -136,6 +140,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import { ContributorAffiliationsApiService } from '@/modules/contributor/services/contributor.affiliations.api.service';
+import LfVerificationStatus from '@/shared/modules/verification/components/verification-status.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 

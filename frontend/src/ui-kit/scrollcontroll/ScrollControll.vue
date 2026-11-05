@@ -7,8 +7,9 @@
 <script setup lang="ts">
 const emit = defineEmits<{(e: 'bottom'): void}>();
 
-const controlScroll = (e: any) => {
-  if (e.target.scrollTop + e.target.clientHeight >= e.target.scrollHeight - 10) {
+const controlScroll = (e: Event) => {
+  const target = e.target as HTMLElement;
+  if (target.scrollTop + target.clientHeight >= target.scrollHeight - 10) {
     emit('bottom');
   }
 };

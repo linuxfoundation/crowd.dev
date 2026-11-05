@@ -16,31 +16,32 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration, IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, onMounted, ref } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
 import LfGithubMappingsDisplay from '@/config/integrations/github/components/github-mappings-display.vue';
-import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 
 const props = defineProps<{
-  integration: any;
+  integration: Integration<GitHubSettings>;
 }>();
 
 const mappings = ref<IntegrationMapping[]
 >([]);
 
-const repoNameFromUrl = (url: string) => url.split('/').at(-1);
+const repoNameFromUrl = (url: string) => url.split('/').at(-1) as string;
 
 const mappedRepositories = computed(() => {
   const reposObj = props.integration.settings.nangoMapping;
   const mapped = reposObj
-    ? Object.values(reposObj).map((repo: any) => repo.repoName) || []
+    ? Object.values(reposObj).map((repo) => repo.repoName) || []
     : [];
 
   return mappings.value.filter((mapping) => mapped.includes(repoNameFromUrl(mapping.url)));
 });
 
 const allRepositoriesNames = computed(() => props.integration.settings.orgs
-  .map((org: any) => org.repos.map((repo: any) => repo.name))
+  .map((org) => (org.repos ?? []).map((repo) => repo.name))
   .flat());
 
 const isInProgress = computed(() => mappedRepositories.value.length < allRepositoriesNames.value.length);

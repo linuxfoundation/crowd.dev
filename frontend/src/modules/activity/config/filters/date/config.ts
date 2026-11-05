@@ -5,6 +5,7 @@ import type {
   SelectFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 import options from './options';
 
 const date: SelectFilterConfig = {
@@ -15,16 +16,14 @@ const date: SelectFilterConfig = {
   options: {
     options,
   },
-  itemLabelRenderer(value: SelectFilterValue, options: SelectFilterOptions, data: any): string {
+  itemLabelRenderer(value: SelectFilterValue, options: SelectFilterOptions, data: unknown): string {
     return itemLabelRendererByType[FilterConfigType.SELECT]('Date', value, options, data);
   },
-  apiFilterRenderer({ value, include }: SelectFilterValue): any[] {
+  apiFilterRenderer({ value, include }: SelectFilterValue): ApiFilter[] {
     const filter = {
       timestamp: { gte: value },
     };
-    return [
-      (include ? filter : { not: filter }),
-    ];
+    return [include ? filter : { not: filter }];
   },
 };
 

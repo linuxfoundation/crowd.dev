@@ -2,6 +2,7 @@ import {
   CancellationScope,
   isCancellation,
   log,
+  patched,
   proxyActivities,
   rootCause,
   workflowInfo,
@@ -10,6 +11,7 @@ import {
 import type { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 
 import type * as activities from '../activities'
+import { OnboardingUnit, groupOnboardingUnits } from '../onboardingUnits'
 import type { IOnboardProjectsInput } from '../types'
 
 // Short timeout: just a DB read.
@@ -66,29 +68,93 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
     if (projects.length > 0) {
       log.info(`Onboarding ${projects.length} project(s) (batch size: ${batchSize}).`)
 
-      for (let i = 0; i < projects.length; i++) {
-        const project = projects[i]
-        log.info(`[${i + 1}/${projects.length}] Onboarding: ${project.repoUrl}`)
+      const units: OnboardingUnit[] = patched('issue-817-organization-onboarding')
+        ? groupOnboardingUnits(projects)
+        : projects.map((project) => ({ kind: 'single', project }))
+
+      const notifySkipped = async (project: IDbProjectCatalog) => {
+        try {
+          await notifyActivities.notifySkippedBotRequest(project)
+        } catch (notifyErr) {
+          // A failed reply must never turn a recorded skip into a batch failure.
+          log.error(
+            `Failed to send the skipped reply for project id=${project.id}: ${String(notifyErr)}`,
+          )
+        }
+      }
+
+      const markFailed = async (project: IDbProjectCatalog, reason: string): Promise<boolean> => {
+        try {
+          return await failureActivities.markProjectOnboardingFailed(project.id, reason)
+        } catch (markErr) {
+          // Don't let a failure to record the error state abort the rest of the batch.
+          log.error(`Failed to mark project id=${project.id} as errored: ${String(markErr)}`)
+          return false
+        }
+      }
+
+      const notifyErrored = async (project: IDbProjectCatalog, reason: string) => {
+        try {
+          await notifyActivities.notifyErroredHumanRequest(project, reason)
+        } catch (notifyErr) {
+          // A failed alert must never turn a recorded error into a batch failure.
+          log.error(
+            `Failed to send errored-request alert for project id=${project.id}: ${String(notifyErr)}`,
+          )
+        }
+      }
+
+      // The organization card closes only once every member has left 'onboard', so all rows
+      // are marked before the one alert goes out.
+      const recordFailures = async (members: IDbProjectCatalog[], reason: string) => {
+        const marked: IDbProjectCatalog[] = []
+        for (const project of members) {
+          if (await markFailed(project, reason)) {
+            marked.push(project)
+          }
+        }
+        if (marked.length > 0) {
+          await notifyErrored(marked[0], reason)
+        }
+      }
+
+      for (let i = 0; i < units.length; i++) {
+        const unit = units[i]
+        let pending = unit.kind === 'single' ? [unit.project] : unit.projects
+        log.info(
+          `[${i + 1}/${units.length}] Onboarding: ${pending.map((project) => project.repoUrl).join(', ')}`,
+        )
 
         try {
-          const outcome = await onboardActivities.onboardAndUpdateProject(project)
+          if (unit.kind === 'organization') {
+            const skips = await onboardActivities.skipRowsOfDeletedProjects(unit.projects)
+            pending = skips.remaining
+            skipped += skips.skipped.length
+            for (const project of skips.skipped) {
+              await notifySkipped(project)
+            }
+            if (pending.length === 0) {
+              continue
+            }
+            const outcome = await onboardActivities.onboardAndUpdateOrganization(pending)
+            succeeded += outcome.onboarded.length
+            onboardedProjects.push(...outcome.onboarded)
+            skipped += outcome.alreadyHandled + outcome.racedOut
+            racedOut += outcome.racedOut
+            continue
+          }
+
+          const outcome = await onboardActivities.onboardAndUpdateProject(unit.project)
           if (outcome === 'onboarded') {
             succeeded++
-            onboardedProjects.push(project)
+            onboardedProjects.push(unit.project)
           } else {
             skipped++
             if (outcome === 'catalog-changed') {
               racedOut++
             }
             if (outcome === 'skipped') {
-              try {
-                await notifyActivities.notifySkippedBotRequest(project)
-              } catch (notifyErr) {
-                // A failed reply must never turn a recorded skip into a batch failure.
-                log.error(
-                  `Failed to send the skipped reply for project id=${project.id}: ${String(notifyErr)}`,
-                )
-              }
+              await notifySkipped(unit.project)
             }
           }
         } catch (err) {
@@ -98,28 +164,12 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
 
           // Activity-level retries are already exhausted at this point — mark as a
           // terminal error so the daily schedule stops retrying this project forever.
-          failed++
+          failed += pending.length
           const reason = rootCause(err) ?? String(err)
           log.error(
-            `Onboarding failed for project id=${project.id} repoUrl=${project.repoUrl}: ${reason}`,
+            `Onboarding failed for ${pending.map((project) => `id=${project.id} repoUrl=${project.repoUrl}`).join(', ')}: ${reason}`,
           )
-
-          try {
-            const marked = await failureActivities.markProjectOnboardingFailed(project.id, reason)
-            if (marked) {
-              try {
-                await notifyActivities.notifyErroredHumanRequest(project, reason)
-              } catch (notifyErr) {
-                // A failed alert must never turn a recorded error into a batch failure.
-                log.error(
-                  `Failed to send errored-request alert for project id=${project.id}: ${String(notifyErr)}`,
-                )
-              }
-            }
-          } catch (markErr) {
-            // Don't let a failure to record the error state abort the rest of the batch.
-            log.error(`Failed to mark project id=${project.id} as errored: ${String(markErr)}`)
-          }
+          await recordFailures(pending, reason)
         }
       }
 

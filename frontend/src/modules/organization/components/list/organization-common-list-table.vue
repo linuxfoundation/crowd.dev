@@ -31,11 +31,11 @@
           </lf-table-cell>
           <lf-table-cell>
             <div class="flex py-0.5">
-              <el-popover v-if="getSegments(org.segments).length > 0" placement="top-start" width="264px">
+              <el-popover v-if="getSegments(org.segments ?? []).length > 0" placement="top-start" width="264px">
                 <template #reference>
                   <div class="border border-gray-200 h-6 px-1.5 rounded-md bg-white text-small gap-1 flex items-center whitespace-nowrap text-black">
                     <lf-icon name="folders" :size="14" />
-                    {{ pluralize('project group', getSegments(org.segments).length, true) }}
+                    {{ pluralize('project group', getSegments(org.segments ?? []).length, true) }}
                   </div>
                 </template>
                 <div class="max-h-72 overflow-auto pb-1">
@@ -44,7 +44,7 @@
                   </div>
                   <div class="flex flex-col gap-4 min-h-min ">
                     <div
-                      v-for="segment in getSegments(org.segments)"
+                      v-for="segment in getSegments(org.segments ?? [])"
                       :key="segment.id"
                       class="flex items-center gap-2"
                     >
@@ -126,8 +126,8 @@ import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import { computed } from 'vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
 import type { Organization } from '@/modules/organization/types/Organization';
+import { OrganizationService } from '@/modules/organization/organization-service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
@@ -136,9 +136,11 @@ import { getSegmentName } from '@/utils/segments';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+type OrganizationRow = Organization & { segments?: string[] };
+
 const props = defineProps<{
   sorting: string,
-  organizations: any[]
+  organizations: OrganizationRow[]
 }>();
 
 const emit = defineEmits<{(e: 'reload'): void, (e: 'update:sorting', value: string): void}>();

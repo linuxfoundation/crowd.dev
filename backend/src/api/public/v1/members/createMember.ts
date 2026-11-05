@@ -79,6 +79,7 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         identities.map((identity) => ({
           ...identity,
           memberId: dbMember.id,
+          stampVerifiedAt: identity.verified,
         })),
         true,
         true,

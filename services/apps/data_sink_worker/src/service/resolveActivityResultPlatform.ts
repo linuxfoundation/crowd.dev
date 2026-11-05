@@ -9,3 +9,8 @@ export function resolveActivityResultPlatform(
   const platform = activityPlatform ?? integrationPlatform
   return platform === PlatformType.GITHUB_NANGO ? PlatformType.GITHUB : platform
 }
+
+// Octolens routes each mention to its keyword's project, never through public.repositories.
+export function skipsRepositorySegmentLookup(integrationPlatform: PlatformType | null): boolean {
+  return integrationPlatform === PlatformType.OCTOLENS
+}

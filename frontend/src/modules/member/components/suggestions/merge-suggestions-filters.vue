@@ -19,6 +19,7 @@ import { reactive, watch } from 'vue';
 import AppMergeSuggestionsConfidenceFilter
   from '@/modules/member/components/suggestions/filters/merge-suggestions-confidence-filter.vue';
 import AppMergeSuggestionsSearch from '@/modules/member/components/suggestions/filters/merge-suggestions-search.vue';
+import type { MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
 import AppMergeSuggestionsProjectsFilter
   from '@/modules/member/components/suggestions/filters/merge-suggestions-projects-filter.vue';
 
@@ -26,7 +27,7 @@ const props = defineProps<{
   placeholder?: string;
 }>();
 
-const emit = defineEmits<{(e: 'search', value: any): void}>();
+const emit = defineEmits<{(e: 'search', value: MemberMergeSuggestionsQuery): void}>();
 
 const form = reactive<{
   search: string;

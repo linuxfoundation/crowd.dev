@@ -32,11 +32,11 @@ export async function mergeOrganizationsWithLLM(
 ): Promise<void> {
   const SUGGESTIONS_PER_RUN = 5
   const REGION = 'us-east-1'
-  const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+  const MODEL_ID = 'us.anthropic.claude-sonnet-5'
   const MODEL_ARGS = {
     max_tokens: 2000,
     anthropic_version: 'bedrock-2023-05-31',
-    temperature: 0,
+    thinking: { type: 'disabled' },
   }
   const PROMPT = `Please compare and decide if these two organizations are the same organization or not. Submit your answer with the submit_merge_decision tool: set decision to true if they are the same organization, false otherwise, and give the reason in one short sentence.`
 

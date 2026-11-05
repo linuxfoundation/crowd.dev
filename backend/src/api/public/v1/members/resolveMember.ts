@@ -11,7 +11,12 @@ import {
   findMemberProjectGroupId,
   suggestMemberMerge,
 } from '@crowd/data-access-layer'
-import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
+import {
+  IMemberIdentity,
+  MemberIdentityType,
+  MergeSuggestionSource,
+  PlatformType,
+} from '@crowd/types'
 
 const bodySchema = z.object({
   lfids: z.array(z.string().trim()).min(1, 'At least one lfid is required'),
@@ -61,6 +66,7 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
           members: [primaryMemberId, otherMemberId],
           similarity: 0.95,
         })),
+        MergeSuggestionSource.IDENTITY_CONFLICT,
       )
     }
 

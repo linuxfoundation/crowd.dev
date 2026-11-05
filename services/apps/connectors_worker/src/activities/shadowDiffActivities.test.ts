@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getNangoCloudRecords } from '@crowd/nango'
 
+import { svc } from '../main'
 import { listShadowDiffChannels, runShadowDiffForChannel } from './shadowDiffActivities'
 
 const mocks = vi.hoisted(() => ({
-  listShadowDiffUnits: vi.fn(),
+  listShadowDiffUnitsPage: vi.fn(),
   getNangoMappingForRepo: vi.fn(),
   getShadowRecordsInWindow: vi.fn(),
   getUnitIdsWithSummary: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock('@crowd/data-access-layer/src/queryExecutor', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
-  listShadowDiffUnits: mocks.listShadowDiffUnits,
+  listShadowDiffUnitsPage: mocks.listShadowDiffUnitsPage,
   getShadowRecordsInWindow: mocks.getShadowRecordsInWindow,
   getUnitIdsWithSummary: mocks.getUnitIdsWithSummary,
   pruneMatchingShadowRecords: mocks.pruneMatchingShadowRecords,
@@ -40,7 +41,8 @@ vi.mock('@crowd/data-access-layer/src/integrations', () => ({
   getNangoMappingForRepo: mocks.getNangoMappingForRepo,
 }))
 
-vi.mock('@crowd/nango', () => ({
+vi.mock('@crowd/nango', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@crowd/nango')>()),
   NangoIntegration: { GITHUB: 'github' },
   NangoMetadataLastAction: { ADDED: 'ADDED', UPDATED: 'UPDATED', DELETED: 'DELETED' },
   initNangoCloudClient: mocks.initNangoCloudClient,
@@ -65,7 +67,7 @@ describe('listShadowDiffChannels', () => {
   })
 
   it('groups shadow-diff units by channelName', async () => {
-    mocks.listShadowDiffUnits.mockResolvedValue([
+    mocks.listShadowDiffUnitsPage.mockResolvedValue([
       UNIT,
       { ...UNIT, id: 'unit-2', syncName: 'issue-comments' },
       {
@@ -76,8 +78,12 @@ describe('listShadowDiffChannels', () => {
       },
     ])
 
-    const channels = await listShadowDiffChannels()
+    const channels = await listShadowDiffChannels({ limit: 50 })
 
+    expect(mocks.listShadowDiffUnitsPage).toHaveBeenCalledWith(expect.anything(), {
+      channelLimit: 50,
+      after: undefined,
+    })
     expect(channels).toEqual([
       {
         channelName: 'https://github.com/kubernetes/kubernetes',
@@ -100,13 +106,18 @@ describe('listShadowDiffChannels', () => {
   })
 
   it('keeps units with the same channelName but different integrationId as separate channels', async () => {
-    mocks.listShadowDiffUnits.mockResolvedValue([
+    mocks.listShadowDiffUnitsPage.mockResolvedValue([
       UNIT,
       { ...UNIT, id: 'unit-2', integrationId: 'integration-2' },
     ])
 
-    const channels = await listShadowDiffChannels()
+    const after = { channelName: 'https://github.com/a/a', integrationId: 'integration-0' }
+    const channels = await listShadowDiffChannels({ after, limit: 50 })
 
+    expect(mocks.listShadowDiffUnitsPage).toHaveBeenCalledWith(expect.anything(), {
+      channelLimit: 50,
+      after,
+    })
     expect(channels).toEqual([
       {
         channelName: UNIT.channelName,
@@ -361,6 +372,58 @@ describe('runShadowDiffForChannel', () => {
     expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
       qx,
       expect.objectContaining({ missingInNangoCount: 0 }),
+    )
+  })
+
+  it('drops synthetic event pairs that differ only by actor and logs the pair count', async () => {
+    const nangoKey = 'gen-CE_I_kwDOABC_undefined_2026-09-13T12:00:00.000Z'
+    const shadowKey = 'gen-CE_I_kwDOABC_octocat_2026-09-13T12:00:00.000Z'
+    mocks.getNangoMappingForRepo.mockResolvedValue({ connectionId: 'conn-1' })
+    mocks.getShadowRecordsInWindow.mockResolvedValue([
+      {
+        type: 'issues-closed',
+        sourceId: shadowKey,
+        occurredAt: '2026-09-13T12:00:00.000Z',
+        data: { type: 'issues-closed', sourceId: shadowKey },
+      },
+    ])
+    mocks.getNangoCloudRecords.mockResolvedValue({
+      records: [
+        {
+          id: 'I_kwDOABC-closed',
+          timestamp: new Date('2026-09-13T12:00:00.000Z').getTime(),
+          activity: { type: 'issues-closed', sourceId: nangoKey },
+          metadata: { lastModifiedAt: '2026-09-13T12:00:00.000Z' },
+        },
+      ],
+      nextCursor: undefined,
+    })
+
+    const result = await runShadowDiffForChannel({
+      channelName: UNIT.channelName,
+      integrationId: UNIT.integrationId,
+      units: [UNIT],
+    })
+
+    expect(result.status).toBe('ok')
+    expect(mocks.upsertSyncDiffSummary).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({
+        missingInNangoCount: 0,
+        missingInShadowCount: 0,
+        fieldMismatchCount: 0,
+      }),
+    )
+    expect(mocks.pruneMatchingShadowRecords).toHaveBeenCalledWith(
+      qx,
+      UNIT.id,
+      new Date('2026-09-13T00:00:00.000Z'),
+      new Date('2026-09-14T00:00:00.000Z'),
+      [{ type: 'issues-closed', sourceId: shadowKey }],
+    )
+    expect(svc.log.info).toHaveBeenCalledWith(
+      { unitId: UNIT.id, day: '2026-09-13', channelName: UNIT.channelName, actorKeyPairCount: 1 },
+      'skipped actor-key pairs',
     )
   })
 

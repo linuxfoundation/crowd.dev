@@ -27,7 +27,8 @@ export interface BaseFilterConfig {
   inBody?: boolean;
 }
 
-export type FilterConfig = NumberFilterConfig
+export type FilterConfig =
+  | NumberFilterConfig
   | MultiSelectFilterConfig
   | MultiSelectAsyncFilterConfig
   | SelectFilterConfig
@@ -35,16 +36,17 @@ export type FilterConfig = NumberFilterConfig
   | BooleanFilterConfig
   | DateFilterConfig
   | StringFilterConfig
-  | CustomFilterConfig
+  | CustomFilterConfig;
 
 export interface FilterStatic {
   search: string;
-  relation: 'and' | 'or',
+  relation: 'and' | 'or';
   order: {
-    prop: string,
-    order: 'descending' | 'ascending'
-  },
-  settings?: Record<string, any>
+    prop: string;
+    order: 'descending' | 'ascending';
+  };
+  settings?: Record<string, unknown>;
 }
 
-export type Filter = FilterStatic & Record<string, any>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped filter value map. revisit: when each filter key gets a typed value map
+export type Filter = FilterStatic & Record<string, any>;

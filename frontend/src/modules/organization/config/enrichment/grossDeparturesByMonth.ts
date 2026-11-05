@@ -13,7 +13,7 @@ const grossDeparturesByMonth: OrganizationEnrichmentConfig = {
     [formatDate({
       timestamp: key,
       format: 'MMMM YYYY',
-    } as any)]: value,
+    } as unknown as Parameters<typeof formatDate>[0])]: value,
   }), {}),
 };
 

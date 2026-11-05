@@ -7,6 +7,7 @@ import {
   describeAnsweredQuestion,
   encodeAnswerValue,
   findQuestionOption,
+  handOffReason,
 } from './requestQuestion'
 
 const question = {
@@ -17,8 +18,40 @@ const question = {
       id: 'yes',
       label: 'Yes, Acme',
       hints: { pccProject: { projectId: 'p', name: 'Acme', slug: 'a', isLeaf: true } },
+      suggested: true,
     },
     { id: 'no', label: 'No, ask the CDP team', handOff: true },
+  ],
+}
+const pickQuestion = {
+  kind: 'pick_project' as const,
+  text: 'There are 2 Acme projects in LFX Insights. Which one should this repo go in?',
+  options: [
+    { id: 'seg-1', label: 'Acme · 28 repos', hints: { segmentId: 'seg-1' } },
+    { id: 'seg-2', label: 'Acme · no repos yet', hints: { segmentId: 'seg-2' } },
+    { id: 'not_sure', label: 'Not sure, ask the CDP team', handOff: true },
+  ],
+}
+const conflictQuestion = {
+  kind: 'lf_conflict' as const,
+  text: "You said Acme isn't an LF project, but I found an LF project called Acme Labs. Which is right?",
+  options: [
+    {
+      id: 'use_lf',
+      label: 'Use the LF project Acme Labs',
+      hints: { pccProject: { projectId: 'p', name: 'Acme Labs', slug: 'a', isLeaf: true } },
+    },
+    { id: 'not_lf', label: "It's not LF, treat it as new", hints: { treatAsNew: true } },
+    { id: 'not_sure', label: 'Not sure, ask the CDP team', handOff: true },
+  ],
+}
+const confirmQuestion = {
+  kind: 'lf_confirm' as const,
+  text: "I couldn't find Acme in the foundation project list. Is it a Linux Foundation project?",
+  options: [
+    { id: 'lf', label: "Yes, it's an LF project", hints: { declaredLf: true } },
+    { id: 'not_lf', label: "No, it's not LF", hints: { treatAsNew: true } },
+    { id: 'not_sure', label: 'Not sure, ask the CDP team', handOff: true },
   ],
 }
 const row = {
@@ -28,7 +61,7 @@ const row = {
 }
 
 describe('buildBotQuestionContent', () => {
-  it('posts the question with one button per option, the first one primary', () => {
+  it('posts the question with one button per option, the suggested one primary', () => {
     const content = buildBotQuestionContent(row)
 
     expect(content?.text).toBe(
@@ -56,6 +89,28 @@ describe('buildBotQuestionContent', () => {
     expect(buildBotQuestionContent({ ...row, requestQuestion: null })).toBeNull()
   })
 
+  it('asks once for a whole organization', () => {
+    const content = buildBotQuestionContent(row, { owner: 'acme', repositories: 5 })
+
+    expect(content?.text).toBe(
+      '❓ *github.com/acme* (5 repositories): I couldn\'t find a project called "Acme &lt;Labs&gt;". Did you mean Acme?',
+    )
+    expect(
+      buildBotAnsweredContent(row, question, question.options[0], 'U1', {
+        owner: 'acme',
+        repositories: 5,
+      }).text,
+    ).toContain('❓ *github.com/acme* (5 repositories):')
+  })
+
+  it('leaves every button plain when the bot has no suggestion', () => {
+    const content = buildBotQuestionContent({ ...row, requestQuestion: pickQuestion })
+
+    const buttons = content?.blocks?.[1] as { elements: Array<{ style?: string }> }
+    expect(buttons.elements).toHaveLength(3)
+    expect(buttons.elements.every((button) => button.style === undefined)).toBe(true)
+  })
+
   it('replaces the question with the answer and what happens next, buttons gone', () => {
     const answered = buildBotAnsweredContent(row, question, question.options[0], 'U1')
     expect(answered.text).toContain(
@@ -76,6 +131,26 @@ describe('answer values', () => {
     })
     expect(decodeAnswerValue('nonsense')).toBeNull()
     expect(decodeAnswerValue('abc|')).toBeNull()
+  })
+
+  it('describes a hand-off in a few words per question kind', () => {
+    const named = { projectName: 'Acme Widgets' }
+    expect(handOffReason(named, question)).toBe("the requester said Acme Widgets isn't Acme")
+    expect(handOffReason({ projectName: null }, question)).toBe(
+      "the requester didn't recognise the project I suggested",
+    )
+    expect(handOffReason(named, pickQuestion)).toBe(
+      "the requester couldn't tell which Acme Widgets project this repo belongs to",
+    )
+    expect(handOffReason({ projectName: null }, pickQuestion)).toBe(
+      "the requester couldn't tell which project this repo belongs to",
+    )
+    expect(handOffReason(named, conflictQuestion)).toBe(
+      "the requester isn't sure whether Acme Widgets is the LF project Acme Labs",
+    )
+    expect(handOffReason(named, confirmQuestion)).toBe(
+      "the requester isn't sure whether Acme Widgets is an LF project",
+    )
   })
 
   it('finds options and describes an answered question', () => {

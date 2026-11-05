@@ -117,6 +117,27 @@ components:
             message:
               type: string
 
+    ConflictError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: CONFLICT
+            message:
+              type: string
+            context:
+              type: object
+              properties:
+                jobId:
+                  type: string
+                  format: uuid
+                  description: The job whose result is still readable; poll it.
+
     Ecosystem:
       type: string
       example: npm
@@ -955,7 +976,29 @@ components:
           enum: [failed]
         reason:
           type: string
+          description: >
+            Why the job failed. Inferred-repo jobs whose result has left
+            Temporal retention answer "Job result expired, resubmit the job";
+            a new submission for the same purl is then accepted.
           example: Repository not found on GitHub
+
+    MemberContributorsJobUnresolvable:
+      type: object
+      required: [jobId, status, reason, repoUrl]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [unresolvable]
+        reason:
+          type: string
+          example: LLM confidence 0.4 below threshold 0.7
+        repoUrl:
+          type: string
+          nullable: true
+          description: Repository the job attempted before giving up, when there was one.
 
     MemberContributorsJobDone:
       allOf:
@@ -970,17 +1013,29 @@ components:
               type: string
               enum: [done]
               description: Job status; the collected/not_collected status of the sync endpoint is not included in this body.
+            repoUrlSource:
+              type: string
+              enum: [llm_inferred]
+              description: >
+                Present only for jobs on ecosystems CDP does not track: the
+                repository was inferred by a language model and verified to
+                exist on GitHub. repoMappingConfidence is null on such jobs,
+                maintainers.registry is empty, and the body is available for a
+                limited time after completion; afterwards the poll answers
+                failed with a resubmit reason.
 
     MemberContributorsJob:
       oneOf:
         - $ref: "#/components/schemas/MemberContributorsJobPending"
         - $ref: "#/components/schemas/MemberContributorsJobFailed"
+        - $ref: "#/components/schemas/MemberContributorsJobUnresolvable"
         - $ref: "#/components/schemas/MemberContributorsJobDone"
       discriminator:
         propertyName: status
         mapping:
           pending: "#/components/schemas/MemberContributorsJobPending"
           failed: "#/components/schemas/MemberContributorsJobFailed"
+          unresolvable: "#/components/schemas/MemberContributorsJobUnresolvable"
           done: "#/components/schemas/MemberContributorsJobDone"
 
     MemberContributorEntry:
@@ -1281,8 +1336,12 @@ paths:
         submission also makes sure the job's workflow is running. Packages that already have
         collected data are refused with 409, unless the purl's most recent job
         failed, in which case a new job is accepted and re-collects the
-        repository; ecosystems CDP does not collect
-        are refused with 400. Rate-limited independently of the read endpoints.
+        repository. Purls from ecosystems CDP does not collect are accepted and
+        routed to a workflow that infers the repository with a language model;
+        those jobs end done with repoUrlSource llm_inferred or unresolvable,
+        store no contributor data, and a resubmission while the previous result
+        is still readable is refused with 409 whose error.context.jobId names
+        the job to poll. Rate-limited independently of the read endpoints.
         Requires read:akrites-maintainers, or read:maintainer-roles from the old
         Self Serve client as a fallback. A done job whose repository reports no
         human contributors on GitHub leaves the package not_collected;
@@ -1307,7 +1366,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberContributorsJobPending"
         "400":
-          description: Malformed purl, or an ecosystem CDP does not collect.
+          description: Malformed purl.
           content:
             application/json:
               schema:
@@ -1331,11 +1390,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Member contributors are already collected for this purl and its most recent job did not fail; use the sync endpoint.
+          description: Member contributors already collected for this purl (stored data on tracked ecosystems, or a still-readable result on inferred-repo jobs; error.context.jobId names it); use the sync endpoint or poll that job.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ConflictError"
         "429":
           description: Too many requests — rate-limited independently of the other endpoints.
           content:
@@ -1348,9 +1407,10 @@ paths:
       operationId: getMemberContributorsJob
       summary: Poll an on-demand member-contributors collection job
       description: >
-        Returns pending until the job finishes, failed with a reason, or done
-        with the same body the sync endpoint returns for the purl plus jobId
-        and status.
+        Returns pending until the job finishes, failed with a reason,
+        unresolvable with a reason when no repository could be inferred, or
+        done with the same body the sync endpoint returns for the purl plus
+        jobId and status.
       tags: [Contacts]
       security:
         - M2MBearer:

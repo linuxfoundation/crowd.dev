@@ -33,6 +33,10 @@ export enum PlatformType {
   FACEBOOK = 'facebook',
   OTHER = 'other',
   OCTOLENS = 'octolens',
+  BLUESKY = 'bluesky',
+  TIKTOK = 'tiktok',
+  INSTAGRAM = 'instagram',
+  CREDLY = 'credly',
 }
 
 export type CodePlatform =
@@ -43,6 +47,11 @@ export type CodePlatform =
   | PlatformType.GERRIT
 
 export const ALL_PLATFORM_TYPES = Object.keys(PlatformType) as PlatformType[]
+
+export const AUTO_MANAGED_INTEGRATION_PLATFORMS: PlatformType[] = [
+  PlatformType.OCTOLENS,
+  PlatformType.CREDLY,
+]
 
 export enum IntegrationType {
   DEVTO = 'devto',
@@ -59,6 +68,7 @@ export enum IntegrationType {
   DISCOURSE = 'discourse',
   GIT = 'git',
   OCTOLENS = 'octolens',
+  CREDLY = 'credly',
 }
 
 export const integrationLabel: Record<IntegrationType, string> = {
@@ -76,6 +86,7 @@ export const integrationLabel: Record<IntegrationType, string> = {
   [IntegrationType.DISCOURSE]: 'Discourse',
   [IntegrationType.GIT]: 'Git',
   [IntegrationType.OCTOLENS]: 'Octolens',
+  [IntegrationType.CREDLY]: 'Credly',
 }
 
 // Backup url from username if profile url not present in member.attributes.url
@@ -95,4 +106,5 @@ export const integrationProfileUrl: Record<IntegrationType, (username: string) =
   [IntegrationType.DISCOURSE]: () => null,
   [IntegrationType.GIT]: () => null,
   [IntegrationType.OCTOLENS]: () => null,
+  [IntegrationType.CREDLY]: () => null,
 }

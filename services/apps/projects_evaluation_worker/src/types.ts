@@ -3,6 +3,7 @@ import {
   ProjectCatalogAction,
   ProjectCatalogRoutedAction,
 } from '@crowd/data-access-layer/src/project-catalog/types'
+import type { IOrganizationReview } from '@crowd/project-onboarding'
 
 import { EvaluationOutcome } from './evaluator/types'
 
@@ -59,4 +60,6 @@ export interface IEvaluationActivityResult {
   outputTokens: number | null
   costUsd: number | null
   seconds: number | null
+  shared?: boolean
+  organization?: IOrganizationReview | null
 }

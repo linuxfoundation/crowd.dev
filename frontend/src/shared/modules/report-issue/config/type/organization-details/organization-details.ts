@@ -6,7 +6,7 @@ import OrganizationDetails from './type-organization-details.vue';
 const { displayName } = useOrganizationHelpers();
 
 export const organizationDetails: ReportDataTypeConfig = {
-  description: (attribute: any, entity: Organization) => `Organization: ${displayName(entity)}`,
+  description: (_attribute, entity: Organization) => `Organization: ${displayName(entity)}`,
   display: OrganizationDetails,
 };
 

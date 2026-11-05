@@ -7,12 +7,10 @@ import { NotFoundError } from '@crowd/common'
 import {
   findAffiliatedMemberIdentities,
   findMemberContributorsPackage,
-} from '@crowd/data-access-layer'
-
-import {
   groupAffiliatedMemberIdentities,
   toAkritesExternalMemberContributors,
-} from './akritesExternalMemberContributors'
+} from '@crowd/data-access-layer'
+
 import { purlQuerySchema } from './purl'
 
 export async function getAkritesExternalMemberContributors(

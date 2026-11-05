@@ -18,11 +18,8 @@ export interface IGithubIssueReporterConfiguration {
   privateKey: string
   installationId: string
   webhookSecret: string
-}
-
-export interface IJiraIssueReporterConfiguration {
-  apiUrl: string
-  token: string
-  apiTokenEmail: string
-  projectKey: string
+  repo: string
+  projectNumber: string
+  projectTeam: string
+  projectStatus: string
 }

@@ -17,6 +17,7 @@ vi.mock('@crowd/data-access-layer', () => ({
   }),
   findExistingProjectCatalogRepoUrls: vi.fn(async () => new Set<string>()),
   promoteProjectCatalogProvenance: vi.fn(async () => 0),
+  reopenRejectedProjectCatalog: vi.fn(async () => []),
 }))
 vi.mock('./slackBackground', () => ({ getBgQx: vi.fn() }))
 
@@ -24,6 +25,7 @@ import {
   bulkInsertProjectCatalog,
   findExistingProjectCatalogRepoUrls,
   promoteProjectCatalogProvenance,
+  reopenRejectedProjectCatalog,
 } from '@crowd/data-access-layer'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
@@ -63,6 +65,7 @@ describe('ingestOnboardingRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(findExistingProjectCatalogRepoUrls).mockResolvedValue(new Set())
+    vi.mocked(reopenRejectedProjectCatalog).mockResolvedValue([])
   })
 
   it('inserts auto rows carrying the request text and the Slack permalink', async () => {
@@ -85,6 +88,7 @@ describe('ingestOnboardingRequest', () => {
         requestText: 'please onboard Acme',
         projectName: 'Acme',
         requestedBy: null,
+        requestHints: null,
       },
       expect.objectContaining({ repoUrl: 'https://github.com/acme/two' }),
     ])
@@ -93,6 +97,7 @@ describe('ingestOnboardingRequest', () => {
       queued: ['https://github.com/acme/one', 'https://github.com/acme/two'],
       queuedIds: ['id-1', 'id-2'],
       alreadyCatalogued: [],
+      reopened: [],
     })
   })
 
@@ -116,6 +121,7 @@ describe('ingestOnboardingRequest', () => {
       queued: [],
       queuedIds: [],
       alreadyCatalogued: ['https://github.com/acme/one'],
+      reopened: [],
     })
   })
 
@@ -144,6 +150,51 @@ describe('ingestOnboardingRequest', () => {
       queued: ['https://github.com/acme/two'],
       queuedIds: ['id-1'],
       alreadyCatalogued: ['https://github.com/acme/one'],
+      reopened: [],
+    })
+  })
+
+  it('queues a repository whose earlier request the requester could fix, in request order', async () => {
+    vi.mocked(findExistingProjectCatalogRepoUrls).mockResolvedValue(
+      new Set(['https://github.com/acme/one']),
+    )
+    const reopened = {
+      id: 'id-old',
+      repoUrl: 'https://github.com/acme/one',
+      previousSourceUrl: 'https://acme.slack.com/archives/C1/p0',
+      previousDecisionReason: 'other',
+    }
+    vi.mocked(reopenRejectedProjectCatalog).mockResolvedValue([reopened])
+
+    const result = await ingestOnboardingRequest(qx, {
+      requestText: 'please onboard Acme',
+      repoUrls: ['https://github.com/acme/one', 'https://github.com/acme/two'],
+      sourceUrl: 'https://acme.slack.com/archives/C1/p1',
+      projectName: 'Acme',
+      requestedBy: 'U1',
+      organizations: [{ owner: 'acme', repoUrls: ['https://github.com/acme/one'] }],
+    })
+
+    expect(reopenRejectedProjectCatalog).toHaveBeenCalledWith(
+      qx,
+      [
+        {
+          repoUrl: 'https://github.com/acme/one',
+          sourceUrl: 'https://acme.slack.com/archives/C1/p1',
+          requestText: 'please onboard Acme',
+          projectName: 'Acme',
+          requestedBy: 'U1',
+          organization: 'acme',
+        },
+      ],
+      ['wrong_project', 'other'],
+    )
+    expect(promoteProjectCatalogProvenance).toHaveBeenCalledWith(qx, 'slack-bot', [])
+    expect(result).toEqual({
+      queued: ['https://github.com/acme/one', 'https://github.com/acme/two'],
+      queuedIds: ['id-old', 'id-1'],
+      alreadyCatalogued: [],
+      reopened: [reopened],
     })
   })
 })

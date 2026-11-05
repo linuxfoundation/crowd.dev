@@ -263,6 +263,20 @@ export async function insertSegments(
   return qx.result(query)
 }
 
+export async function listActiveSubprojectSegments(
+  qx: QueryExecutor,
+): Promise<{ id: string; slug: string }[]> {
+  return qx.select(
+    `
+      SELECT id, slug
+      FROM segments
+      WHERE "grandparentSlug" IS NOT NULL AND status = $(status)
+      ORDER BY slug
+    `,
+    { status: SegmentStatus.ACTIVE },
+  )
+}
+
 export async function getSegmentSubprojects(
   qx: QueryExecutor,
   segmentIds: string[],

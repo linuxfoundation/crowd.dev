@@ -1,6 +1,8 @@
 import { QueryExecutor } from '../queryExecutor'
 import { SystemSettingKey, SystemSettingTypes } from './types'
 
+export * from './types'
+
 export async function getSystemSettingValue<K extends SystemSettingKey>(
   qx: QueryExecutor,
   key: K,

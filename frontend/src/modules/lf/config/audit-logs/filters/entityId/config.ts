@@ -6,6 +6,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/StringFilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { FilterStringOperator } from '@/shared/modules/filters/config/constants/string.constants';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const entityId: StringFilterConfig = {
   id: 'entityId',
@@ -18,10 +19,12 @@ const entityId: StringFilterConfig = {
   itemLabelRenderer(value: StringFilterValue, options: StringFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.STRING]('Entity Id', value, options);
   },
-  apiFilterRenderer(value: StringFilterValue): any[] {
-    return [{
-      entityId: value.value,
-    }];
+  apiFilterRenderer(value: StringFilterValue): ApiFilter[] {
+    return [
+      {
+        entityId: value.value,
+      },
+    ];
   },
 };
 

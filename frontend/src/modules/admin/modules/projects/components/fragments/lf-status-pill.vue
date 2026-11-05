@@ -6,12 +6,13 @@
 
 <script lang="ts" setup>
 import LfPill from '@/ui-kit/pill/Pill.vue';
+import type { PillType } from '@/ui-kit/pill/types/PillType';
 
 const props = defineProps<{
   status: string;
 }>();
 
-const statusDisplay: Record<string, any> = {
+const statusDisplay: Record<string, { type: PillType, label: string }> = {
   active: {
     type: 'success',
     label: 'Active',

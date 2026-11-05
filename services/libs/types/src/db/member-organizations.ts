@@ -8,6 +8,7 @@ export interface MemberOrganizationDbRow {
   source: string | null
   verified: boolean
   verifiedBy: string | null
+  verifiedAt: string | null
   createdAt: string
   updatedAt: string
   deletedAt: string | null
@@ -20,6 +21,8 @@ export type MemberOrganizationDbInsert = Pick<
   Partial<
     Omit<
       MemberOrganizationDbRow,
-      'memberId' | 'organizationId' | 'createdAt' | 'updatedAt' | 'deletedAt'
+      'memberId' | 'organizationId' | 'verifiedAt' | 'createdAt' | 'updatedAt' | 'deletedAt'
     >
-  >
+  > & {
+    stampVerifiedAt?: boolean
+  }

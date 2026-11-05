@@ -4,6 +4,7 @@
       <span class="max-w-42 inline-block truncate">{{ jobTitle }}</span><span v-if="organization && jobTitle">&nbsp;at</span>
     </p>
     <lf-avatar
+      v-if="organization"
       :src="organization.logo"
       :name="organization.displayName"
       :size="18"
@@ -50,9 +51,9 @@ const props = defineProps<{
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-const { activeOrganization } = useContributorHelpers();
+const { activeProfileOrganization } = useContributorHelpers();
 
-const organization = computed(() => activeOrganization(props.contributor));
+const organization = computed(() => activeProfileOrganization(props.contributor));
 const jobTitle = computed(() => organization.value?.memberOrganizations?.title
     || props.contributor.attributes?.jobTitle?.default);
 </script>

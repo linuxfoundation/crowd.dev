@@ -313,4 +313,78 @@ describe('createEmit', () => {
     ])
     expect(deps.publishResult).not.toHaveBeenCalled()
   })
+
+  describe('channel', () => {
+    const SCHEMA_WITH_CHANNEL = SCHEMA.extend({ channel: z.string().optional() })
+
+    function emitterWith(schema: z.ZodType<Record<string, unknown>>, emitEnabled = true) {
+      const deps = makeDeps()
+      const emitter = createEmit({
+        publishResult: deps.publishResult,
+        sinkEmitter: deps.sinkEmitter,
+        recordShadow: deps.recordShadow,
+        unit: { ...UNIT, emitEnabled },
+        segmentId: 'segment-default',
+        schema,
+        log: LOG,
+      })
+      const publishedChannels = () =>
+        deps.publishResult.mock.calls.map(
+          ([, result]) => (result as unknown as { data: { channel: unknown } }).data.channel,
+        )
+      return { deps, emitter, publishedChannels }
+    }
+
+    it('uses the sync unit channel for a record without one (GitHub-style schema)', async () => {
+      const { emitter, publishedChannels } = emitterWith(SCHEMA)
+
+      await emitter.emit([record('a')])
+
+      expect(publishedChannels()).toEqual(['octolens-global'])
+    })
+
+    it('overwrites a stray channel when the schema does not declare one', async () => {
+      const { emitter, publishedChannels } = emitterWith(SCHEMA)
+
+      await emitter.emit([{ ...record('a'), channel: 'r/elsewhere' }])
+
+      expect(publishedChannels()).toEqual(['octolens-global'])
+    })
+
+    it('uses the sync unit channel for a passthrough schema record without one (dummy-style)', async () => {
+      const { emitter, publishedChannels } = emitterWith(z.record(z.unknown()))
+
+      await emitter.emit([record('a')])
+
+      expect(publishedChannels()).toEqual(['octolens-global'])
+    })
+
+    it("keeps a record's own channel when the schema declares one", async () => {
+      const { emitter, publishedChannels } = emitterWith(SCHEMA_WITH_CHANNEL)
+
+      await emitter.emit([
+        { ...record('a'), channel: 'https://github.com/owner/repo' },
+        { ...record('b'), channel: 'kubernetes' },
+        record('c'),
+        { ...record('d'), channel: '' },
+      ])
+
+      expect(publishedChannels()).toEqual([
+        'https://github.com/owner/repo',
+        'kubernetes',
+        'octolens-global',
+        'octolens-global',
+      ])
+    })
+
+    it("keeps a record's own channel on shadow records too", async () => {
+      const { deps, emitter } = emitterWith(SCHEMA_WITH_CHANNEL, false)
+
+      await emitter.emit([{ ...record('a'), channel: 'kubernetes' }])
+
+      expect(deps.recordShadow).toHaveBeenCalledWith([
+        expect.objectContaining({ data: expect.objectContaining({ channel: 'kubernetes' }) }),
+      ])
+    })
+  })
 })

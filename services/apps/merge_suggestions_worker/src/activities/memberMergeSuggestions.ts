@@ -21,6 +21,7 @@ import {
   IMemberIdentity,
   IMemberMergeSuggestion,
   MemberIdentityType,
+  MergeSuggestionSource,
   OpenSearchIndex,
   PlatformType,
 } from '@crowd/types'
@@ -383,11 +384,12 @@ export async function getMemberMergeSuggestions(
 
 export async function addMemberToMerge(
   suggestions: IMemberMergeSuggestion[],
+  source: MergeSuggestionSource,
   similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length > 0) {
     const qx = pgpQx(svc.postgres.writer.connection())
-    await upsertMemberMergeSuggestions(qx, suggestions, similarityThreshold)
+    await upsertMemberMergeSuggestions(qx, suggestions, source, similarityThreshold)
   }
 }
 

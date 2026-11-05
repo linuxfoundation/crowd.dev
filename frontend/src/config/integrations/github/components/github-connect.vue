@@ -26,7 +26,7 @@
           </div>
         </div>
       </lfx-dropdown-item>
-      <lfx-dropdown-item @click="isV1SettingsDrawerOpen = true">
+      <lfx-dropdown-item @click="openV1Connect">
         <div class="flex items-start gap-2">
           <lf-github-version-tag version="v1" />
           <div>
@@ -60,6 +60,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
 import { onMounted, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -68,12 +70,13 @@ import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfGithubNangoSettingsDrawer from '@/config/integrations/github-nango/components/settings/github-settings-drawer.vue';
 import LfGithubConnectModal from '@/config/integrations/github/components/connect/github-connect-modal.vue';
 import LfGithubConnectFinishingModal from '@/config/integrations/github/components/connect/github-connect-finishing-modal.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { useRoute } from 'vue-router';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
+import { rememberConnectSegment } from '@/config/integrations/connect-segment';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
 const props = defineProps<{
-  integration: any,
+  integration: Integration<GitHubSettings> | undefined,
   segmentId: string | null;
   grandparentId: string | null;
 }>();
@@ -83,7 +86,12 @@ const isV1SettingsDrawerOpen = ref(false);
 const isDropdownVisible = ref(false);
 const isFinishingModalOpen = ref(false);
 
-const { doGithubConnect } = mapActions('integration');
+const { connectGithub } = useIntegrationStore();
+
+const openV1Connect = () => {
+  rememberConnectSegment(props.segmentId, props.grandparentId);
+  isV1SettingsDrawerOpen.value = true;
+};
 
 const finalizeGithubConnect = () => {
   const {
@@ -94,7 +102,7 @@ const finalizeGithubConnect = () => {
 
   if (code && !source && state !== 'noconnect') {
     isFinishingModalOpen.value = true;
-    doGithubConnect({
+    connectGithub({
       code,
       installId,
       setupAction,

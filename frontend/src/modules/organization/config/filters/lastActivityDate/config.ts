@@ -16,7 +16,7 @@ const lastActivityDate: DateFilterConfig = {
   itemLabelRenderer(value: DateFilterValue, options: DateFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.DATE]('Last activity date', value, options);
   },
-  apiFilterRenderer(value: DateFilterValue): any[] {
+  apiFilterRenderer(value: DateFilterValue) {
     return apiFilterRendererByType[FilterConfigType.DATE]('lastActive', value);
   },
 };

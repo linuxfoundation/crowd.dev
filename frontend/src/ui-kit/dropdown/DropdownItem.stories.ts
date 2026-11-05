@@ -25,7 +25,7 @@ export const Regular = {
     disabled: false,
     type: 'regular',
   },
-  render: (args) => ({
+  render: (args: Record<string, unknown>) => ({
     components: {
       LfDropdownItem,
     },

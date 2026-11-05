@@ -1,6 +1,7 @@
 export enum HackerNewsActivityType {
   POST = 'post',
   COMMENT = 'comment',
+  MENTION = 'mention',
 }
 
 export enum HackerNewsStreamType {

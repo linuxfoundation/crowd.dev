@@ -34,6 +34,8 @@ export const LLM_MODEL_REGION_MAP: Record<LlmModelType, string> = {
   [LlmModelType.CLAUDE_3_5_SONNET]: 'us-east-1',
   [LlmModelType.CLAUDE_3_5_SONNET_V2]: 'us-west-2',
   [LlmModelType.CLAUDE_SONNET_4]: 'us-east-1',
+  [LlmModelType.CLAUDE_SONNET_5]: 'us-east-1',
+  [LlmModelType.CLAUDE_SONNET_5_5]: 'us-east-1',
   [LlmModelType.CLAUDE_HAIKU_4_5]: 'us-east-1',
 }
 
@@ -54,6 +56,14 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
   [LlmModelType.CLAUDE_SONNET_4]: {
     costPer1000InputTokens: 0.003,
     costPer1000OutputTokens: 0.015,
+  },
+  [LlmModelType.CLAUDE_SONNET_5]: {
+    costPer1000InputTokens: 0.002,
+    costPer1000OutputTokens: 0.01,
+  },
+  [LlmModelType.CLAUDE_SONNET_5_5]: {
+    costPer1000InputTokens: 0.002,
+    costPer1000OutputTokens: 0.01,
   },
   [LlmModelType.CLAUDE_HAIKU_4_5]: {
     costPer1000InputTokens: 0.001,
@@ -79,11 +89,11 @@ export function estimateLlmCostUsd(
 
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 65536,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_FIND_RELATED_LINKEDIN_PROFILES]: {
@@ -95,19 +105,19 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_MULTIPLE_VALUE_ATTRIBUTES]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
-    arguments: {
-      max_tokens: 2000,
-      anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
-    },
-  },
-  [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 8000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
+    },
+  },
+  [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
+    arguments: {
+      max_tokens: 10000,
+      anthropic_version: 'bedrock-2023-05-31',
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.MATCH_MAIN_GITHUB_ORGANIZATION_AND_DESCRIPTION]: {
@@ -119,19 +129,19 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.REPO_CATEGORIES]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.REPO_COLLECTIONS]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.MEMBER_BOT_VALIDATION]: {
@@ -143,27 +153,27 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.SELECT_MOST_RELEVANT_DOMAIN]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.FAKE_ORGANIZATION_ANALYSIS]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.PROJECT_EVALUATION]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
-      temperature: 0,
+      thinking: { type: 'between_tools' },
     },
   },
   [LlmQueryType.ONBOARDING_REQUEST_PARSING]: {
@@ -172,6 +182,14 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
+    },
+  },
+  [LlmQueryType.LOCATION_COUNTRY]: {
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
+    arguments: {
+      max_tokens: 8000,
+      anthropic_version: 'bedrock-2023-05-31',
+      thinking: { type: 'between_tools' },
     },
   },
 }

@@ -19,17 +19,21 @@ function contributorLogin(contributor: GithubContributor): string | null {
   return login.toLowerCase()
 }
 
-export function toGithubContributorRows(
-  contributors: GithubContributor[],
-  repoId: string,
-  observedAt: Date,
-): RepoContributorRow[] {
+export function toGithubContributorLogins(contributors: GithubContributor[]): string[] {
   const logins = new Set<string>()
   for (const contributor of contributors) {
     const login = contributorLogin(contributor)
     if (login !== null) logins.add(login)
   }
-  return [...logins].map((login) => ({
+  return [...logins]
+}
+
+export function toGithubContributorRows(
+  contributors: GithubContributor[],
+  repoId: string,
+  observedAt: Date,
+): RepoContributorRow[] {
+  return toGithubContributorLogins(contributors).map((login) => ({
     repoId,
     source: GITHUB_SOURCE,
     role: GIT_ACTIVITY_ROLE,

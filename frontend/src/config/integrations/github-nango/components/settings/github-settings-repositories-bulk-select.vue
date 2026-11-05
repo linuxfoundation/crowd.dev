@@ -79,6 +79,8 @@
 </template>
 
 <script lang="ts" setup>
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { GitHubSettingsRepository } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, reactive } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
@@ -87,8 +89,8 @@ import useVuelidate from '@vuelidate/core';
 
 const props = defineProps<{
   modelValue: boolean;
-  repositories: any[];
-  subprojects: any[];
+  repositories: GitHubSettingsRepository[];
+  subprojects: SubProject[];
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;

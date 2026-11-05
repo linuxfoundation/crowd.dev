@@ -315,14 +315,14 @@ const addOrganizations = (org: GitHubOrganization) => {
     });
 };
 
-const removeRepository = (repo: any) => {
+const removeRepository = (repo: GitHubSettingsRepository) => {
   repositories.value = repositories.value.filter(
-    (r: any) => r.url !== repo.url,
+    (r) => r.url !== repo.url,
   );
 };
-const removeOrganizations = (org: any) => {
+const removeOrganizations = (org: GitHubOrganization) => {
   organizations.value = organizations.value.filter(
-    (o: any) => o.url !== org.url,
+    (o) => o.url !== org.url,
   );
 };
 

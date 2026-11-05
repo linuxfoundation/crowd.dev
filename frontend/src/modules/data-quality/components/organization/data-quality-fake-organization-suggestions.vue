@@ -61,6 +61,7 @@ import {
 } from 'vue';
 import LfDataQualityFakeOrganizationSuggestionItem
   from '@/modules/data-quality/components/organization/data-quality-fake-organization-suggestion-item.vue';
+import type { DataQualityFakeOrganizationSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -79,7 +80,7 @@ const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
 const total = ref(0);
-const suggestions = ref<any[]>([]);
+const suggestions = ref<DataQualityFakeOrganizationSuggestion[]>([]);
 const itemsLoading = ref<Record<string, boolean>>({});
 const isModalOpen = ref(false);
 const detailsOffset = ref(0);
@@ -111,7 +112,7 @@ const reload = () => {
   loadSuggestions();
 };
 
-const dismiss = (suggestion: any) => {
+const dismiss = (suggestion: DataQualityFakeOrganizationSuggestion) => {
   itemsLoading.value[suggestion.organizationId] = true;
 
   OrganizationService.dismissFakeOrganizationSuggestion(suggestion.organizationId)

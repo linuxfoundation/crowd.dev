@@ -7,6 +7,7 @@ import type {
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
 import { apiFilterRendererByType } from '@/shared/modules/filters/config/apiFilterRendererByType';
 import { lfIdentities } from '@/config/identities';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 
 const identities: MultiSelectFilterConfig = {
   id: 'identities',
@@ -28,7 +29,7 @@ const identities: MultiSelectFilterConfig = {
   itemLabelRenderer(value: MultiSelectFilterValue, options: MultiSelectFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT]('Identities', value, options);
   },
-  apiFilterRenderer(value: MultiSelectFilterValue): any[] {
+  apiFilterRenderer(value: MultiSelectFilterValue): ApiFilter[] {
     return apiFilterRendererByType[FilterConfigType.MULTISELECT]('identityPlatforms', value);
   },
 };

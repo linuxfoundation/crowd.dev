@@ -2,7 +2,7 @@ import { IPublicRepoMetrics } from '@crowd/common'
 import { fetchManySegments } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import { IReviewRepoContext, IReviewRequestCard } from '@crowd/slack'
+import { IReviewOrganization, IReviewRepoContext, IReviewRequestCard } from '@crowd/slack'
 
 import {
   ReviewCase,
@@ -11,7 +11,7 @@ import {
   describeReviewCase,
   technicalDetails,
 } from './botCopy'
-import { normalizeName } from './requestResolver'
+import { sameProjectName } from './requestResolver'
 
 export type ReviewCardRow = Pick<
   IDbProjectCatalog,
@@ -50,6 +50,10 @@ function isAutoApplyHold(row: Pick<ReviewCardRow, 'proposedAction' | 'evaluation
   }
 }
 
+export function needsPerson(row: Pick<ReviewCardRow, 'proposedAction'>): boolean {
+  return row.proposedAction === 'human_review' || row.proposedAction === null
+}
+
 export function resolveReviewCase(row: ReviewCaseRow): ReviewCase {
   switch (row.proposedAction) {
     case 'create_segment':
@@ -62,6 +66,15 @@ export function resolveReviewCase(row: ReviewCaseRow): ReviewCase {
       if (row.classificationKind === 'lf_not_in_cdp') {
         return 'project_not_set_up'
       }
+      if (row.classificationKind === 'lf_not_in_pcc') {
+        return 'not_in_pcc'
+      }
+      if (row.classificationKind === 'non_lf_new_project') {
+        return 'new_project_by_hand'
+      }
+      if (row.classificationKind === 'ambiguous') {
+        return 'handed_off'
+      }
       return row.matchedSegmentId ? 'legacy_connection' : 'owner_only_match'
     default:
       return 'unknown'
@@ -72,7 +85,7 @@ function namesDiffer(requested: string | null, matched: string | null): boolean 
   if (!requested || !matched) {
     return false
   }
-  return normalizeName(requested) !== normalizeName(matched)
+  return !sameProjectName(requested, matched)
 }
 
 export interface IReviewCardExtras {
@@ -93,9 +106,21 @@ export function toReviewRepoContext(metrics: IPublicRepoMetrics): IReviewRepoCon
   }
 }
 
+function reviewCaseProjectName(
+  reviewCase: ReviewCase,
+  row: Pick<ReviewCardRow, 'projectName' | 'matchedProjectName'>,
+): string | null {
+  return reviewCase === 'new_project' ||
+    reviewCase === 'new_project_by_hand' ||
+    reviewCase === 'not_in_pcc'
+    ? row.projectName
+    : row.matchedProjectName
+}
+
 export function toReviewRequestCard(
   row: ReviewCardRow,
   { cdpUrl, repoContext }: IReviewCardExtras,
+  organization: IReviewOrganization | null = null,
 ): IReviewRequestCard {
   const reviewCase = resolveReviewCase(row)
   return {
@@ -103,13 +128,15 @@ export function toReviewRequestCard(
     repoName: row.repoName,
     repoUrl: row.repoUrl,
     sourceUrl: row.sourceUrl,
+    organization,
     repoContext,
     requestedName: row.projectName,
     matchedName: row.matchedProjectName,
     mismatch: namesDiffer(row.projectName, row.matchedProjectName),
     ...describeReviewCase(
       reviewCase,
-      reviewCase === 'new_project' ? row.projectName : row.matchedProjectName,
+      reviewCaseProjectName(reviewCase, row),
+      organization?.repositories ?? 1,
     ),
     evaluationNote: reviewCase === 'new_project' ? row.evaluationReason : null,
     autoApplyHold: isAutoApplyHold(row),
@@ -123,7 +150,7 @@ export async function resolveReviewCdpUrl(
   row: ReviewCdpRow,
   frontendUrl: string | undefined,
 ): Promise<string | null> {
-  if (!frontendUrl || row.proposedAction !== 'human_review') {
+  if (!frontendUrl || !needsPerson(row)) {
     return null
   }
   if (!row.matchedSegmentId) {

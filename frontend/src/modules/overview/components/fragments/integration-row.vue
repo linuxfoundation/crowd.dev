@@ -40,6 +40,7 @@
       <!-- Actions Column -->
       <div class="w-10">
         <lfx-dropdown
+          v-if="!integration.autoManaged || (status.key === 'done' && integration.dropdownComponent)"
           placement="bottom-end"
           width="14.5rem"
         >
@@ -57,7 +58,11 @@
             :grandparent-id="integrationStatus.grandparentId"
             @open-setting="openSettings"
           />
-          <lfx-dropdown-item type="danger" @click="disconnectIntegration(integrationStatus)">
+          <lfx-dropdown-item
+            v-if="!integration.autoManaged"
+            type="danger"
+            @click="disconnectIntegration(integrationStatus)"
+          >
             <lf-icon name="link-simple-slash" type="regular" />
             Disconnect integration
           </lfx-dropdown-item>
@@ -79,14 +84,13 @@
 import {
   computed, nextTick, ref, watch,
 } from 'vue';
-import { useQueryClient } from '@tanstack/vue-query';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import { lfIntegrations } from '@/config/integrations';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfxDropdown from '@/ui-kit/lfx/dropdown/dropdown.vue';
 import LfxDropdownItem from '@/ui-kit/lfx/dropdown/dropdown-item.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -100,11 +104,11 @@ const props = defineProps<{
 
 const { trackEvent } = useProductTracking();
 
-const { doDestroy } = mapActions('integration');
+const integrationStore = useIntegrationStore();
 
 const isSettingsOpen = ref(false);
 const hasOpenedSettings = ref(false);
-const queryClient = useQueryClient();
+const invalidate = useInvalidate();
 
 const openSettings = async () => {
   hasOpenedSettings.value = true;
@@ -114,7 +118,7 @@ const openSettings = async () => {
 
 watch(isSettingsOpen, (open) => {
   if (!open) {
-    queryClient.invalidateQueries({ queryKey: [TanstackKey.GLOBAL_INTEGRATIONS] });
+    invalidate.globalIntegrations();
   }
 });
 
@@ -123,7 +127,7 @@ const status = computed(() => getIntegrationStatus(props.integrationStatus));
 const integration = computed(() => (props.integrationStatus.platform === 'github-nango'
   ? lfIntegrations(true).github : lfIntegrations()[props.integrationStatus.platform]));
 
-const disconnectIntegration = async (integration: any) => {
+const disconnectIntegration = async (integration: IntegrationStatus) => {
   trackEvent({
     key: FeatureEventKey.DISCONNECT_INTEGRATION,
     type: EventType.FEATURE,
@@ -131,7 +135,7 @@ const disconnectIntegration = async (integration: any) => {
       platform: integration.platform,
     },
   });
-  await doDestroy(integration.id);
+  await integrationStore.destroy(integration.id);
 
   // TODO: Fetch integrations
 };

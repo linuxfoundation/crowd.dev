@@ -19,6 +19,7 @@ import {
   buildReviewClosedMessage,
   buildReviewDecisionMessage,
   buildReviewRequestBlocks,
+  buildReviewRequestText,
   formatRepoContext,
   postReviewRequest,
 } from './reviewRequest'
@@ -113,6 +114,51 @@ describe('buildReviewRequestBlocks', () => {
       },
       { action_id: REJECT_REVIEW_ACTION_ID, value: 'catalog-1' },
     ])
+  })
+
+  it('renders one card for a whole organization with the count in the heading and the buttons', () => {
+    const organization = { owner: 'kubernetes', repositories: 12 }
+    const blocks = buildReviewRequestBlocks({ ...card, organization, repoContext })
+    const rendered = JSON.stringify(blocks)
+
+    expect(rendered).toContain(
+      '*github.com/kubernetes* · 12 repositories\\nhttps://github.com/kubernetes',
+    )
+    expect(rendered).not.toContain('*kops*')
+    expect(rendered).not.toContain(formatRepoContext(repoContext))
+    expect(actionElements(blocks)).toMatchObject([
+      {
+        action_id: APPROVE_REVIEW_ACTION_ID,
+        text: { text: 'Add 12 repos to Kubernetes & co' },
+        confirm: {
+          text: {
+            text: "the 12 repositories of `https://github.com/kubernetes` will be added to Kubernetes &amp; co's GitHub connection.",
+          },
+        },
+      },
+      { action_id: REJECT_REVIEW_ACTION_ID },
+    ])
+    expect(buildReviewRequestText({ ...card, organization })).toBe(
+      'Review needed — github.com/kubernetes (12 repositories)',
+    )
+  })
+
+  it('speaks in the singular when only one repository of the organization is on the card', () => {
+    const organization = { owner: 'kubernetes', repositories: 1 }
+    const blocks = buildReviewRequestBlocks({ ...card, organization })
+
+    expect(JSON.stringify(blocks)).toContain('*github.com/kubernetes* · 1 repository')
+    expect(actionElements(blocks)[0]).toMatchObject({
+      text: { text: 'Add 1 repo to Kubernetes & co' },
+      confirm: {
+        text: {
+          text: "the 1 repository of `https://github.com/kubernetes` will be added to Kubernetes &amp; co's GitHub connection.",
+        },
+      },
+    })
+    expect(buildReviewRequestText({ ...card, organization })).toBe(
+      'Review needed — github.com/kubernetes (1 repository)',
+    )
   })
 
   it('shows the GitHub context under the header when it is known', () => {
@@ -339,6 +385,46 @@ describe('buildReviewClosedMessage', () => {
     expect(JSON.stringify(message.blocks)).toContain(
       ':white_check_mark: Added to *SLSA &amp; co* by <@U123> at <!date^1792075260^{time}|14:41 UTC>',
     )
+  })
+
+  it('counts the repositories of an organization that were added, and says when none were', () => {
+    const organization = { owner: 'kubernetes', repositories: 12 }
+    const partial = buildReviewClosedMessage(
+      { ...card, organization },
+      {
+        projectName: 'SLSA',
+        reviewedBy: 'U123',
+        reviewedAt: null,
+        repositories: { onboarded: 11, total: 12 },
+      },
+    )
+    expect(partial.text).toBe('Added — github.com/kubernetes (12 repositories)')
+    expect(JSON.stringify(partial.blocks)).toContain(
+      ':white_check_mark: Added 11 of 12 repositories to *SLSA* by <@U123> · 1 not added',
+    )
+
+    const none = buildReviewClosedMessage(
+      { ...card, organization },
+      {
+        projectName: 'SLSA',
+        reviewedBy: null,
+        reviewedAt: null,
+        repositories: { onboarded: 0, total: 12 },
+      },
+    )
+    expect(none.text).toBe('Failed — github.com/kubernetes (12 repositories)')
+    expect(JSON.stringify(none.blocks)).toContain(
+      ':warning: None of the 12 repositories could be added to *SLSA*',
+    )
+
+    const single = buildReviewClosedMessage(card, {
+      projectName: 'SLSA',
+      reviewedBy: null,
+      reviewedAt: null,
+      repositories: { onboarded: 0, total: 1 },
+    })
+    expect(single.text).toBe('Failed — kops')
+    expect(JSON.stringify(single.blocks)).toContain(':warning: Could not be added to *SLSA*')
   })
 
   it('leaves out the reviewer when nobody reviewed the row', () => {

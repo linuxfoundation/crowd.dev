@@ -10,6 +10,7 @@ import { PR_PAGE_SIZE, runDualPhasePrSync } from './prWalk'
 
 interface FakePr {
   id: string
+  number: number
   updatedAt: string
 }
 
@@ -21,7 +22,15 @@ function iso(minutesAgo: number): string {
 }
 
 function makePrs(count: number): FakePr[] {
-  return Array.from({ length: count }, (_, i) => ({ id: `pr-${i}`, updatedAt: iso(i * 10) }))
+  return Array.from({ length: count }, (_, i) => ({
+    id: `pr-${i}`,
+    number: i,
+    updatedAt: iso(i * 10),
+  }))
+}
+
+function processedMap(prs: FakePr[]): Record<string, string> {
+  return Object.fromEntries(prs.map((pr) => [String(pr.number), pr.updatedAt]))
 }
 
 interface HarnessOptions {
@@ -88,6 +97,7 @@ function makeHarness(
     handler,
     processed,
     commits,
+    pagesServed: () => pagesServed,
     lastCommit: () => commits[commits.length - 1],
   }
 }
@@ -166,7 +176,56 @@ describe('runDualPhasePrSync', () => {
   })
 
   describe('incremental phase', () => {
-    it('processes only PRs updated since the watermark and advances since on completion', async () => {
+    it('walks to since minus the lag, skips mapped PR states, re-processes stale or unmapped ones, and prunes the map on completion', async () => {
+      const prs = makePrs(500)
+      const since = prs[99].updatedAt
+      const lagWindow = prs.slice(100, 388)
+      const processed = {
+        ...processedMap(lagWindow),
+        [String(prs[150].number)]: iso(1510),
+      }
+      delete processed[String(prs[200].number)]
+      const harness = makeHarness(prs, { phase: 'incremental', since, processed })
+
+      const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
+
+      expect(outcome).toEqual({ complete: true })
+      expect(harness.pagesServed()).toBe(8)
+      expect(harness.processed).toHaveLength(102)
+      expect(harness.processed).toContain('pr-0')
+      expect(harness.processed).toContain('pr-99')
+      expect(harness.processed).toContain('pr-150')
+      expect(harness.processed).toContain('pr-200')
+      expect(harness.processed).not.toContain('pr-100')
+      expect(harness.processed).not.toContain('pr-388')
+      expect(harness.lastCommit()).toEqual({
+        phase: 'incremental',
+        since: iso(0),
+        cursor: null,
+        processed: processedMap(prs.slice(1, 289)),
+      })
+    })
+
+    it('processes a PR listed below the stop page when its updatedAt is fresh', async () => {
+      const prs = makePrs(500)
+      const since = prs[99].updatedAt
+      const lagging = { id: 'lagging', number: 9000, updatedAt: iso(5) }
+      const listed = [...prs.slice(0, 150), lagging, ...prs.slice(150)]
+      const harness = makeHarness(listed, {
+        phase: 'incremental',
+        since,
+        processed: processedMap(prs.slice(100, 388)),
+      })
+
+      await runDualPhasePrSync(harness.ctx, harness.handler)
+
+      expect(harness.processed).toContain('lagging')
+      expect(harness.processed).toHaveLength(101)
+      const commit = harness.lastCommit() as { processed: Record<string, string> }
+      expect(commit.processed['9000']).toBe(iso(5))
+    })
+
+    it('processes every unmapped PR inside the lag window on the first run after a legacy watermark', async () => {
       const prs = makePrs(500)
       const since = prs[99].updatedAt
       const harness = makeHarness(prs, { phase: 'incremental', since })
@@ -174,15 +233,31 @@ describe('runDualPhasePrSync', () => {
       const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
 
       expect(outcome).toEqual({ complete: true })
-      expect(harness.processed).toHaveLength(100)
-      expect(harness.processed).toContain('pr-0')
-      expect(harness.processed).toContain('pr-99')
-      expect(harness.processed).not.toContain('pr-100')
-      expect(harness.lastCommit()).toEqual({
-        phase: 'incremental',
-        since: iso(0),
-        cursor: null,
-      })
+      expect(harness.processed).toHaveLength(388)
+      expect(harness.processed).toContain('pr-387')
+      expect(harness.processed).not.toContain('pr-388')
+    })
+
+    it('replays a PR updated in the same second the run started instead of recording it as processed', async () => {
+      const prs = makePrs(120)
+      const since = iso(6000)
+      const firstRun = makeHarness(prs, { phase: 'incremental', since })
+
+      await runDualPhasePrSync(firstRun.ctx, firstRun.handler)
+
+      const committed = firstRun.lastCommit() as { processed: Record<string, string> }
+      expect(committed.processed['0']).toBeUndefined()
+      expect(committed.processed['1']).toBe(prs[1].updatedAt)
+
+      vi.setSystemTime(ANCHOR + 60_000)
+      const secondRun = makeHarness(prs, committed)
+
+      await runDualPhasePrSync(secondRun.ctx, secondRun.handler)
+
+      expect(secondRun.processed).toEqual(['pr-0'])
+      expect((secondRun.lastCommit() as { processed: Record<string, string> }).processed['0']).toBe(
+        prs[0].updatedAt,
+      )
     })
   })
 
@@ -202,13 +277,18 @@ describe('runDualPhasePrSync', () => {
         since,
         cursor: null,
         coveredWindows: [{ confirmedThrough: prs[199].updatedAt, coveredUntil: prs[0].updatedAt }],
+        processed: processedMap(prs.slice(1, 200)),
       })
     })
 
-    it('commits the confirmed window when the run budget expires mid-walk', async () => {
+    it('commits the confirmed window and the pruned map when the run budget expires mid-walk', async () => {
       const prs = makePrs(500)
       const since = iso(6000)
-      const harness = makeHarness(prs, { phase: 'incremental', since }, { budgetPages: 3 })
+      const harness = makeHarness(
+        prs,
+        { phase: 'incremental', since, processed: { '7001': iso(8000), '7002': iso(9000) } },
+        { budgetPages: 3 },
+      )
 
       const outcome = await runDualPhasePrSync(harness.ctx, harness.handler)
 
@@ -218,6 +298,7 @@ describe('runDualPhasePrSync', () => {
         since,
         cursor: null,
         coveredWindows: [{ confirmedThrough: prs[149].updatedAt, coveredUntil: prs[0].updatedAt }],
+        processed: { ...processedMap(prs.slice(1, 150)), '7001': iso(8000) },
       })
     })
 
@@ -246,6 +327,7 @@ describe('runDualPhasePrSync', () => {
           { confirmedThrough: prs[99].updatedAt, coveredUntil: prs[0].updatedAt },
           staleWindow,
         ],
+        processed: expect.any(Object),
       })
     })
 
@@ -259,8 +341,8 @@ describe('runDualPhasePrSync', () => {
       }
       const tiedPrs = [
         ...prs.slice(0, 99),
-        { id: 'ceil-tie-a', updatedAt: tieTimestamp },
-        { id: 'ceil-tie-b', updatedAt: tieTimestamp },
+        { id: 'ceil-tie-a', number: 9001, updatedAt: tieTimestamp },
+        { id: 'ceil-tie-b', number: 9002, updatedAt: tieTimestamp },
         ...prs.slice(100),
       ]
 
@@ -283,6 +365,7 @@ describe('runDualPhasePrSync', () => {
           { confirmedThrough: tieTimestamp, coveredUntil: tiedPrs[0].updatedAt },
           priorWindow,
         ],
+        processed: expect.any(Object),
       })
 
       const secondResume = makeHarness(tiedPrs, {
@@ -321,6 +404,7 @@ describe('runDualPhasePrSync', () => {
         since,
         cursor: null,
         coveredWindows: [{ confirmedThrough: prs[199].updatedAt, coveredUntil: prs[0].updatedAt }],
+        processed: expect.any(Object),
       })
     })
 
@@ -354,7 +438,7 @@ describe('runDualPhasePrSync', () => {
         confirmedThrough: prs[199].updatedAt,
         coveredUntil: prs[0].updatedAt,
       }
-      const updatedPr = { id: 'pr-50-v2', updatedAt: iso(-5) }
+      const updatedPr = { id: 'pr-50-v2', number: 50, updatedAt: iso(-5) }
       const prsAfter = [updatedPr, ...prs.filter((pr) => pr.id !== 'pr-50')]
       const harness = makeHarness(prsAfter, {
         phase: 'incremental',
@@ -376,6 +460,7 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since: iso(0),
         cursor: null,
+        processed: expect.any(Object),
       })
     })
 
@@ -384,8 +469,8 @@ describe('runDualPhasePrSync', () => {
       const since = iso(6000)
       const tiedPrs = [
         ...prs.slice(0, 49),
-        { id: 'tie-a', updatedAt: iso(490) },
-        { id: 'tie-b', updatedAt: iso(490) },
+        { id: 'tie-a', number: 9003, updatedAt: iso(490) },
+        { id: 'tie-b', number: 9004, updatedAt: iso(490) },
         ...prs.slice(51),
       ]
       const window = {
@@ -482,6 +567,7 @@ describe('runDualPhasePrSync', () => {
         since,
         cursor: null,
         coveredWindows: [{ confirmedThrough: prs[29].updatedAt, coveredUntil: prs[0].updatedAt }],
+        processed: processedMap(prs.slice(1, 30)),
       })
     })
 
@@ -510,6 +596,7 @@ describe('runDualPhasePrSync', () => {
         phase: 'incremental',
         since: iso(0),
         cursor: null,
+        processed: processedMap(prs.slice(1)),
       })
     })
   })

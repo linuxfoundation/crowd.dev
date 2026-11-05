@@ -18,13 +18,22 @@
       "path": "../../libs/data-access-layer"
     },
     {
+      "path": "../../libs/database"
+    },
+    {
       "path": "../../libs/logging"
     },
     {
       "path": "../../libs/nango"
     },
     {
+      "path": "../../libs/project-onboarding"
+    },
+    {
       "path": "../../libs/redis"
+    },
+    {
+      "path": "../../libs/snowflake"
     },
     {
       "path": "../../libs/temporal"

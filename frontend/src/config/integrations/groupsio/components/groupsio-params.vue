@@ -42,7 +42,7 @@ const props = defineProps({
   },
 });
 
-const groups = computed<any[]>(() => props.integration.settings.groups);
+const groups = computed<{ id: string; name: string }[]>(() => props.integration.settings.groups);
 </script>
 
 <script lang="ts">

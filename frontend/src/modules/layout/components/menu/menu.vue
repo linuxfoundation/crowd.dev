@@ -87,8 +87,7 @@ import { useActivityTypeStore } from '@/modules/activity/store/type';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import AppLfMenuProjectGroupSelection from '@/modules/lf/layout/components/lf-menu-project-group-selection.vue';
-import { mapGetters } from '@/shared/vuex/vuex.helpers';
-import { useStore } from 'vuex';
+import { useLayoutStore } from '@/modules/layout/pinia/layout.store';
 import { useActivityStore } from '@/modules/activity/store/pinia';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import allMembers from '@/modules/member/config/saved-views/views/all-members';
@@ -99,9 +98,9 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfMenuLink from '@/modules/layout/components/menu/menu-link.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const store = useStore();
-
-const { menuCollapsed: isCollapsed } = mapGetters('layout');
+const layoutStore = useLayoutStore();
+const { menuCollapsed: isCollapsed } = storeToRefs(layoutStore);
+const { toggleMenu } = layoutStore;
 
 const { fetchActivityTypes } = useActivityTypeStore();
 const { fetchActivityChannels } = useActivityStore();
@@ -135,10 +134,6 @@ watch(
   },
   { immediate: true, deep: true },
 );
-
-function toggleMenu() {
-  store.dispatch('layout/toggleMenu');
-}
 
 </script>
 

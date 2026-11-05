@@ -24,7 +24,7 @@
       <app-organization-common-list-table
         v-model:sorting="sorting"
         :organizations="organizations"
-        @update:sorting="getOrganizations"
+        @update:sorting="getOrganizations()"
         @reload="getOrganizations()"
       >
         <template #pagination>
@@ -54,7 +54,7 @@ import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import AppOrganizationCommonListTable from '@/modules/organization/components/list/organization-common-list-table.vue';
 import { OrganizationService } from '@/modules/organization/organization-service';
 import type { Pagination } from '@/shared/types/Pagination';
-import type { Organization } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationQueryBody } from '@/modules/organization/types/Organization';
 import AppPagination from '@/shared/pagination/pagination.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import pluralize from 'pluralize';
@@ -77,10 +77,10 @@ const pagination = ref({
 
 const sorting = ref('activityCount_DESC');
 
-const organizations = ref<any[]>([]);
+const organizations = ref<Organization[]>([]);
 const totalOrganizations = ref<number>(0);
 
-const getOrganizations = (body?: any) => {
+const getOrganizations = (body?: OrganizationQueryBody) => {
   savedBody.value = {
     ...savedBody.value,
     ...body,
@@ -115,7 +115,7 @@ const fetch = ({
   });
 };
 
-const onPaginationChange = (paginationData: any) => {
+const onPaginationChange = (paginationData: Partial<typeof pagination.value>) => {
   pagination.value = {
     ...pagination.value,
     ...paginationData,
@@ -131,7 +131,7 @@ onMounted(() => {
   listProjectGroups({
     limit: null,
     reset: true,
-  } as any);
+  } as Parameters<typeof listProjectGroups>[0]);
 });
 </script>
 

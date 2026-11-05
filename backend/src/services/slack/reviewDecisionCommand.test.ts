@@ -5,13 +5,16 @@ import { WorkflowIdReusePolicy } from '@crowd/temporal'
 vi.mock('@crowd/data-access-layer', () => ({
   resolveProjectCatalogReview: vi.fn(),
   findProjectCatalogById: vi.fn(async () => null),
+  findProjectCatalogBySourceUrl: vi.fn(async () => []),
 }))
 vi.mock('../../conf', () => ({ API_CONFIG: { frontendUrl: 'https://cdp.test' } }))
 vi.mock('./onboardProjectCommand', () => ({
   postToResponseUrl: vi.fn(async () => undefined),
   textMessage: vi.fn((text: string) => ({ text })),
 }))
-vi.mock('./slackBackground', () => ({ getBgQx: vi.fn(async () => ({})) }))
+vi.mock('./slackBackground', () => ({
+  getBgQx: vi.fn(async () => ({ tx: (run: (tx: unknown) => Promise<unknown>) => run({}) })),
+}))
 vi.mock('@crowd/slack', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@crowd/slack')>()),
   openSlackView: vi.fn(async () => ({ ok: true })),
@@ -24,7 +27,11 @@ vi.mock('@crowd/project-onboarding', async (importOriginal) => ({
   refreshRequestStatusMessage: vi.fn(async () => false),
 }))
 
-import { findProjectCatalogById, resolveProjectCatalogReview } from '@crowd/data-access-layer'
+import {
+  findProjectCatalogById,
+  findProjectCatalogBySourceUrl,
+  resolveProjectCatalogReview,
+} from '@crowd/data-access-layer'
 import { applyRequestStatus, reportRequestOutcome } from '@crowd/project-onboarding'
 import { getSlackBotConfig, openSlackView } from '@crowd/slack'
 
@@ -97,6 +104,43 @@ describe('runReviewDecisionCommand', () => {
     })
     expect(replacedMessage()).toMatchObject({ text: 'Approved — kops', replace_original: true })
     expect(JSON.stringify(replacedMessage())).toContain('onboarding started.')
+  })
+
+  it('decides every repository of an organization card together and onboards them in one run', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const lead = {
+      ...reviewedRow,
+      sourceUrl: source,
+      reviewMessageTs: '1760000000.100000',
+      requestHints: { organization: 'kubernetes' },
+    }
+    const sibling = (id: string) => ({
+      ...lead,
+      id,
+      action: 'review',
+      repoUrl: `https://github.com/kubernetes/${id}`,
+    })
+    vi.mocked(resolveProjectCatalogReview).mockImplementation(async (_qx, id) =>
+      id === CATALOG_ID ? lead : sibling(id),
+    )
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...lead, action: 'review' },
+      sibling('sib-1'),
+      sibling('sib-2'),
+      { ...sibling('sib-3'), reviewMessageTs: 'other-card' },
+      { ...sibling('sib-4'), requestHints: null },
+    ] as never)
+
+    await run()
+
+    expect(resolveProjectCatalogReview).toHaveBeenCalledTimes(3)
+    expect(startWorkflow).toHaveBeenCalledWith(
+      'onboardProjects',
+      expect.objectContaining({ args: [{ catalogIds: [CATALOG_ID, 'sib-1', 'sib-2'] }] }),
+    )
+    expect(replacedMessage()).toMatchObject({
+      text: 'Approved — github.com/kubernetes (3 repositories)',
+    })
   })
 
   it('rejects the row without starting any workflow', async () => {

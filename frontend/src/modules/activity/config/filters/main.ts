@@ -1,6 +1,7 @@
 import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import type { SearchFilterConfig } from '@/shared/modules/filters/types/filterTypes/SearchFilterConfig';
 import { trimAndReduceSpaces } from '@/utils/string';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 import activityType from './activityType/config';
 import channel from './channel/config';
 import date from './date/config';
@@ -22,15 +23,12 @@ export const activityFilters: Record<string, FilterConfig> = {
 };
 export const activitySearchFilter: SearchFilterConfig = {
   placeholder: 'Search activities',
-  apiFilterRenderer(value: string): any[] {
+  apiFilterRenderer(value: string): ApiFilter[] {
     const trimmedValue = trimAndReduceSpaces(value);
 
     return [
       {
-        or: [
-          { channel: { textContains: trimmedValue } },
-          { type: { textContains: trimmedValue } },
-        ],
+        or: [{ channel: { textContains: trimmedValue } }, { type: { textContains: trimmedValue } }],
       },
     ];
   },

@@ -6,12 +6,14 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { JiraSettings } from '@/config/integrations/jira/types/JiraSettings';
 import { defineProps } from 'vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
 defineProps<{
-  integration: any,
+  integration: Integration<JiraSettings> | undefined,
   segmentId: string | null;
   grandparentId: string | null;
 }>();

@@ -1,12 +1,15 @@
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import done from './done';
 import error from './error';
 import waitingForAction from './waiting-for-action';
 import connecting from './connecting';
 import notConnected from './not-connected';
 
+export type IntegrationStatusSource = Pick<Integration<unknown>, 'status'>;
+
 export interface IntegrationStatusConfig {
   key: string
-  show: (integration: any) => boolean
+  show: (integration: IntegrationStatusSource) => boolean
   statuses: string[]
   status: {
     text: string
@@ -45,7 +48,7 @@ export const lfIntegrationStatusesTabs: Record<string, IntegrationStatusConfig> 
   notConnected,
 };
 
-export const getIntegrationStatus = (integration: any): IntegrationStatusConfig => {
+export const getIntegrationStatus = (integration: IntegrationStatusSource): IntegrationStatusConfig => {
   // eslint-disable-next-line no-restricted-syntax
   for (const key in lfIntegrationStatuses) {
     if (lfIntegrationStatuses[key].show(integration)) {

@@ -9,6 +9,7 @@ import { getServiceLogger } from '@crowd/logging'
 import { setSlackRequestReactions } from '@crowd/slack'
 
 import { BotStatus, STATUS_REACTION } from './botCopy'
+import { organizationOf } from './organizationGroup'
 
 const log = getServiceLogger()
 
@@ -19,10 +20,17 @@ const FINAL_STATUSES: ReadonlySet<BotStatus> = new Set([
   'problem',
 ])
 
-type RequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
+type RequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl' | 'requestHints'>
 
-export function reactionsToRemove(status: BotStatus, open: IProjectCatalogOpenCounts): string[] {
+export function reactionsToRemove(
+  status: BotStatus,
+  open: IProjectCatalogOpenCounts,
+  organizationRequest = false,
+): string[] {
   const remove: string[] = []
+  if (status === 'added' && organizationRequest) {
+    remove.push(STATUS_REACTION.notAdded)
+  }
   if (status !== 'checking' && open.pending === 0) {
     remove.push(STATUS_REACTION.checking)
   }
@@ -54,7 +62,7 @@ export async function applyRequestStatus(
     const open = await countProjectCatalogOpenBySourceUrl(qx, project.sourceUrl)
     const result = await setSlackRequestReactions(project.sourceUrl, {
       add: [STATUS_REACTION[status]],
-      remove: reactionsToRemove(status, open),
+      remove: reactionsToRemove(status, open, Boolean(organizationOf(project))),
     })
     if (!result.ok) {
       log.warn(

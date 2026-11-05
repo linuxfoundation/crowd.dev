@@ -1,6 +1,7 @@
 import type { SavedViewsSetting } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
 import { includeFilterRenderer } from '@/modules/member/config/saved-views/settings/common/includeFilterRenderer';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
 import MemberBotSetting from './MemberBotSetting.vue';
 
 const bot: SavedViewsSetting<IncludeEnum> = {
@@ -10,7 +11,7 @@ const bot: SavedViewsSetting<IncludeEnum> = {
   queryUrlParser(value: string): IncludeEnum {
     return value as IncludeEnum;
   },
-  apiFilterRenderer(value: IncludeEnum): any[] {
+  apiFilterRenderer(value: IncludeEnum): ApiFilter[] {
     return includeFilterRenderer('isBot', value);
   },
 };

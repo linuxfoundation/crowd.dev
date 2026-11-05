@@ -1,5 +1,6 @@
 import type { ZodType } from 'zod'
 
+import type { CountWindow } from '@crowd/data-access-layer/src/connectors/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import type { Logger } from '@crowd/logging'
 
@@ -21,9 +22,16 @@ export interface OctolensTokenCredentialData {
   token: string
 }
 
+export interface CredlyOAuthClientCredentialData {
+  clientId: string
+  clientSecret: string
+  organizationId: string
+}
+
 export type Credential =
   | { platform: 'github'; kind: 'github-app'; data: GithubAppCredentialData }
   | { platform: 'octolens'; kind: 'octolens-token'; data: OctolensTokenCredentialData }
+  | { platform: 'credly'; kind: 'credly-oauth-client'; data: CredlyOAuthClientCredentialData }
 
 export function assertCredentialKind<K extends Credential['kind']>(
   credential: Credential,
@@ -38,6 +46,8 @@ export interface SyncContext<TDeps = undefined> {
   channel: Channel
   integrationId: string
   watermark: Record<string, unknown> | null
+  // False while the unit runs in shadow mode: emit writes shadow records, nothing reaches the sink.
+  emitEnabled?: boolean
   emit: (records: unknown[], overrides?: EmitOverrides) => Promise<void>
   commitWatermark: (watermark: Record<string, unknown>) => Promise<void>
   hasRunBudget: () => boolean
@@ -51,6 +61,8 @@ export interface SyncContext<TDeps = undefined> {
 
 export interface SyncOutcome {
   complete: boolean
+  // Only meaningful with complete: false; the next run then waits for the sync's normal cadence.
+  resumeAtCadence?: boolean
 }
 
 export interface SyncDefinition<TDeps = undefined> {
@@ -71,13 +83,35 @@ export interface DepsFactoryInput {
 
 export type DepsFactory<TDeps> = (input: DepsFactoryInput) => TDeps
 
+export type CountCost = 'cheap' | 'expensive'
+
+export interface CountContext<TDeps = undefined> {
+  channel: Channel
+  integrationId: string
+  http: ConnectorHttp
+  log: Logger
+  progress: unknown
+  saveProgress: (progress: unknown) => void
+  deps: TDeps
+}
+
+export interface SourceCounter<TDeps = undefined> {
+  key: string
+  syncName: string
+  activityTypes: string[]
+  cost: Record<CountWindow['kind'], CountCost | null>
+  count: (ctx: CountContext<TDeps>, window: CountWindow) => Promise<number>
+}
+
 interface ManifestBase<TDeps> {
   platform: string
   syncs: SyncDefinition<TDeps>[]
+  counters?: SourceCounter<TDeps>[]
   discover: (credential: Credential) => Promise<Channel[]>
   preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
+  runCostEstimate?: number
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may
   // belong to an integration with no segment (e.g. one org-wide poller fanning out to subprojects).

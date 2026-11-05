@@ -11,18 +11,20 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { ErrorObject } from '@vuelidate/core';
 import LfFieldMessage from '@/ui-kit/field-message/FieldMessage.vue';
 
 const props = withDefaults(defineProps<{
-  validation: any,
-  errorMessages?: Record<string, string>
+  validation: { $errors: ErrorObject[] },
+  errorMessages?: Record<string, string>,
+  hideDefault?: boolean,
 }>(), {
   errorMessages: () => ({}),
 });
 
 const errors = computed(() => (props.validation?.$errors || []));
 
-const errorMessage = (error) => {
+const errorMessage = (error: ErrorObject) => {
   const prop = error.$validator;
   if (
     props.errorMessages

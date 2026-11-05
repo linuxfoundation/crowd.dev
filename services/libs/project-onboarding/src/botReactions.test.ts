@@ -16,6 +16,7 @@ const project = {
   id: 'row-1',
   repoUrl: 'https://github.com/acme/one',
   sourceUrl: 'https://acme.slack.com/archives/C1/p1760000000123456',
+  requestHints: null,
 }
 
 describe('reactionsToRemove', () => {
@@ -59,6 +60,14 @@ describe('reactionsToRemove', () => {
     ])
   })
 
+  it('drops the not-added mark when a repo of an organization request gets added', () => {
+    const open = { pending: 0, inReview: 0, failed: 0, asked: 0 }
+
+    expect(reactionsToRemove('added', open, true)).toContain('no_entry_sign')
+    expect(reactionsToRemove('added', open)).not.toContain('no_entry_sign')
+    expect(reactionsToRemove('notAdded', open, true)).not.toContain('no_entry_sign')
+  })
+
   it('keeps the question mark while a sibling row still waits for the requester', () => {
     expect(
       reactionsToRemove('needsInput', { pending: 0, inReview: 0, failed: 0, asked: 1 }),
@@ -89,6 +98,26 @@ describe('applyRequestStatus', () => {
     expect(setSlackRequestReactions).toHaveBeenCalledWith(project.sourceUrl, {
       add: ['no_entry_sign'],
       remove: ['hourglass_flowing_sand', 'eyes', 'question'],
+    })
+  })
+
+  it('removes the not-added mark on the mention when an organization repo is added', async () => {
+    countProjectCatalogOpenBySourceUrl.mockResolvedValue({
+      pending: 0,
+      inReview: 0,
+      failed: 0,
+      asked: 0,
+    })
+
+    await applyRequestStatus(
+      {} as never,
+      { ...project, requestHints: { organization: 'acme' } },
+      'added',
+    )
+
+    expect(setSlackRequestReactions).toHaveBeenCalledWith(project.sourceUrl, {
+      add: ['white_check_mark'],
+      remove: ['no_entry_sign', 'hourglass_flowing_sand', 'eyes', 'question'],
     })
   })
 

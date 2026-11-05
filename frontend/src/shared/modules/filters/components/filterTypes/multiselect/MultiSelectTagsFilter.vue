@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type {
   MultiSelectFilterOptions,
   MultiSelectFilterConfig, MultiSelectFilterOptionGroup,
@@ -58,17 +58,17 @@ const form = computed<string[]>({
 });
 
 const filteredOptions = ref<MultiSelectFilterOptionGroup[]>(props.options);
+const searchQuery = ref('');
 
 const searchOptions = (query: string) => {
+  searchQuery.value = query;
   filteredOptions.value = props.options.map((g) => ({
     ...g,
     options: g.options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
   }));
 };
 
-onMounted(() => {
-  searchOptions('');
-});
+watch(() => props.options, () => searchOptions(searchQuery.value), { immediate: true, deep: true });
 </script>
 
 <script lang="ts">

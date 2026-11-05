@@ -66,6 +66,37 @@ export async function deleteMemberSegmentAffiliations(
   return qx.result(query, params)
 }
 
+// Returns only members with no active memberOrganizations row for the org; those with one are
+// already refreshed by the organization's affiliation recalculation.
+export async function deleteOrganizationSegmentAffiliations(
+  qx: QueryExecutor,
+  organizationId: string,
+): Promise<string[]> {
+  const rows: { memberId: string }[] = await qx.select(
+    `
+      WITH deleted AS (
+        UPDATE "memberSegmentAffiliations"
+        SET "deletedAt" = NOW()
+        WHERE "organizationId" = $(organizationId)
+          AND "deletedAt" IS NULL
+        RETURNING "memberId"
+      )
+      SELECT DISTINCT d."memberId"
+      FROM deleted d
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM "memberOrganizations" mo
+        WHERE mo."memberId" = d."memberId"
+          AND mo."organizationId" = $(organizationId)
+          AND mo."deletedAt" IS NULL
+      )
+    `,
+    { organizationId },
+  )
+
+  return rows.map((row) => row.memberId)
+}
+
 export async function findMemberAffiliations(
   qx: QueryExecutor,
   memberId: string,
@@ -76,6 +107,7 @@ export async function findMemberAffiliations(
       FROM "memberSegmentAffiliations"
       WHERE "memberId" = $(memberId)
         AND "deletedAt" IS NULL
+      ORDER BY "dateStart" DESC NULLS LAST, "organizationId", id
     `,
     { memberId },
   )

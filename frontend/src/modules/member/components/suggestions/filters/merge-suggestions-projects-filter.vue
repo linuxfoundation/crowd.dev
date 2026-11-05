@@ -82,6 +82,7 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { useRouter } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
 
 const props = defineProps<{
   segments: string[]
@@ -130,7 +131,7 @@ const label = computed(() => {
 
 const loadProjects = (search: string) => {
   listProjects({
-    parentSlug: selectedProjectGroup.value.slug, search, reset: true, limit: 40,
+    parentSlug: selectedProjectGroup.value?.slug, search, reset: true, limit: 40,
   });
 };
 
@@ -146,11 +147,11 @@ const onSearchQueryChange = (value: string) => {
 
 const empty = computed(() => (segments.value.length + childSegments.value.length) === 0);
 
-const onProjectSelect = (project: any) => {
+const onProjectSelect = (project: Project) => {
   labelData[project.id] = {
     name: project.name,
   };
-  const subprojectIds = project.subprojects.map((sp: any) => sp.id);
+  const subprojectIds = project.subprojects.map((sp) => sp.id);
   if (segments.value.includes(project.id)) {
     childSegments.value = [...new Set([
       ...childSegments.value,
@@ -168,7 +169,7 @@ const onProjectSelect = (project: any) => {
   });
 };
 
-const onSubprojectSelect = (project: any, subproject: any) => {
+const onSubprojectSelect = (project: Project, subproject: SubProject) => {
   labelData[subproject.id] = {
     name: subproject.name,
     parentId: project.id,
@@ -177,7 +178,7 @@ const onSubprojectSelect = (project: any, subproject: any) => {
   labelData[project.id] = {
     name: project.name,
   };
-  const subprojectIds = project.subprojects.map((sp: any) => sp.id);
+  const subprojectIds = project.subprojects.map((sp) => sp.id);
   const allSubsChecked = subprojectIds.every((spi) => childSegments.value.includes(spi));
   if (allSubsChecked) {
     segments.value = [...new Set([

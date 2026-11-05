@@ -1,3 +1,22 @@
+export const INDIVIDUAL_NO_ACCOUNT_ORGANIZATION_NAME = 'Individual - No Account'
+
+const PLACEHOLDER_EMPLOYER_NAMES = new Set([
+  'freelance',
+  'freelancer',
+  'independent',
+  'na',
+  'none',
+  'personal',
+  'self',
+  'selfemployed',
+  'student',
+  'unemployed',
+])
+
+export function isPlaceholderEmployerName(name: string | null | undefined): boolean {
+  return !!name && PLACEHOLDER_EMPLOYER_NAMES.has(name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))
+}
+
 export function generateOrganizationNameVariants(name: string): string[] {
   const exact = name.trim().toLowerCase().replace(/\s+/g, ' ')
   if (!exact) {

@@ -21,6 +21,7 @@ function project(overrides: Partial<IDbProjectCatalog> = {}): IDbProjectCatalog 
     lfCriticalityScore: null,
     evaluationResult: null,
     evaluationReason: null,
+    evaluationAttempts: 0,
     evaluatedAt: null,
     onboardedAt: null,
     onboardingError: null,
@@ -74,6 +75,7 @@ function createIo(overrides: Partial<IClassifyAndRouteIo> = {}) {
       project({ ...data, id, classifiedAt: '2026-10-12T04:00:00Z' }),
     ),
     markFailed: vi.fn(async () => 1),
+    findTrackedRepoUrls: vi.fn(async () => new Set<string>()),
     onRowStart: vi.fn(),
     ...overrides,
   }
@@ -100,6 +102,192 @@ describe('classifyAndRouteProjects', () => {
     expect(result.routed).toEqual({ evaluate: 1, ask: 0, review: 0, onboard: 0, skip: 0 })
     expect(result.breakdown).toEqual({ non_lf_new_project: 1 })
     expect(result.discarded).toBe(0)
+  })
+
+  it('classifies the repositories of one organization request once', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const rows = ['id-1', 'id-2', 'id-3'].map((id) =>
+      project({ id, sourceUrl: source, requestHints: { organization: 'acme' } }),
+    )
+    const io = createIo({
+      findFresh: vi.fn(async (id: string) => rows.find((row) => row.id === id)!),
+      markClassified: vi.fn(async (id: string, data: IDbProjectCatalogClassification) =>
+        project({
+          ...rows.find((row) => row.id === id)!,
+          ...data,
+          classifiedAt: '2026-10-12T04:00:00Z',
+        }),
+      ),
+    })
+
+    const result = await classifyAndRouteProjects(rows, io)
+
+    expect(io.classify).toHaveBeenCalledTimes(1)
+    expect(io.markClassified).toHaveBeenCalledTimes(3)
+    expect(result.routed).toEqual({ evaluate: 3, ask: 0, review: 0, onboard: 0, skip: 0 })
+  })
+
+  it('classifies a tracked repository of an organization on its own and never shares a tracked lead', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const rows = ['id-1', 'id-2', 'id-3'].map((id) =>
+      project({
+        id,
+        repoUrl: `https://github.com/acme/${id}`,
+        sourceUrl: source,
+        requestHints: { organization: 'acme' },
+      }),
+    )
+    const tracked = new Set(['https://github.com/acme/id-1', 'https://github.com/acme/id-3'])
+    const io = createIo({
+      findFresh: vi.fn(async (id: string) => rows.find((row) => row.id === id)!),
+      markClassified: vi.fn(async (id: string, data: IDbProjectCatalogClassification) =>
+        project({
+          ...rows.find((row) => row.id === id)!,
+          ...data,
+          classifiedAt: '2026-10-12T04:00:00Z',
+        }),
+      ),
+      findTrackedRepoUrls: vi.fn(
+        async (urls: string[]) => new Set(urls.filter((url) => tracked.has(url))),
+      ),
+      classify: vi.fn(async (row) =>
+        tracked.has(row.repoUrl)
+          ? classification({
+              classificationKind: 'already_tracked',
+              proposedAction: null,
+              action: 'skip',
+              skipReason: 'it is already in LFX Insights',
+            })
+          : classification({
+              classificationKind: 'lf_in_cdp',
+              proposedAction: 'create_integration',
+              action: 'review',
+              reviewReason: 'needs a check',
+            }),
+      ),
+    })
+
+    const result = await classifyAndRouteProjects(rows, io)
+
+    expect(io.classify).toHaveBeenCalledTimes(3)
+    expect(result.routed).toEqual({ evaluate: 0, ask: 0, review: 1, onboard: 0, skip: 2 })
+  })
+
+  it('reuses the classification another run already persisted for the organization', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const question = { kind: 'did_you_mean' as const, text: 'Did you mean Acme?', options: [] }
+    const lead = project({
+      id: 'id-1',
+      sourceUrl: source,
+      requestHints: { organization: 'acme' },
+      action: 'ask',
+      classifiedAt: '2026-10-19T04:00:00Z',
+      classificationKind: 'ambiguous',
+      requestQuestion: question,
+    })
+    const sibling = project({
+      id: 'id-2',
+      sourceUrl: source,
+      requestHints: { organization: 'acme' },
+    })
+    const io = createIo({
+      findFresh: vi.fn(async (id: string) => (id === 'id-1' ? lead : sibling)),
+    })
+
+    const result = await classifyAndRouteProjects([lead, sibling], io)
+
+    expect(io.classify).not.toHaveBeenCalled()
+    expect(io.markClassified).toHaveBeenCalledWith(
+      'id-2',
+      expect.objectContaining({
+        action: 'ask',
+        classificationKind: 'ambiguous',
+        requestQuestion: question,
+      }),
+    )
+    expect(result.routed.ask).toBe(2)
+  })
+
+  it('shares the classification of an answered organization but not a question still waiting', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const question = { kind: 'did_you_mean' as const, text: 'Did you mean Acme?', options: [] }
+    const base = { sourceUrl: source, requestHints: { organization: 'acme' } }
+    const waiting = project({
+      ...base,
+      id: 'id-1',
+      action: 'ask',
+      classifiedAt: '2026-10-19T04:00:00Z',
+      requestQuestion: { ...question, messageTs: '1760000000.300000' },
+    })
+    const answered = project({
+      ...base,
+      id: 'id-2',
+      action: 'review',
+      proposedAction: 'create_integration',
+      classifiedAt: '2026-10-19T05:00:00Z',
+      requestQuestion: { ...question, messageTs: '1760000000.300000', answer: 'yes' },
+    })
+    const sibling = project({ ...base, id: 'id-3' })
+    const io = createIo({
+      findFresh: vi.fn(async (id: string) =>
+        [waiting, answered, sibling].find((row) => row.id === id)!,
+      ),
+    })
+
+    await classifyAndRouteProjects([waiting, answered, sibling], io)
+
+    expect(io.classify).not.toHaveBeenCalled()
+    expect(io.markClassified).toHaveBeenCalledWith(
+      'id-3',
+      expect.objectContaining({ action: 'review', proposedAction: 'create_integration' }),
+    )
+  })
+
+  it('treats an organization with a single repository like a plain repository', async () => {
+    const row = project({
+      id: 'id-1',
+      sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+      requestHints: { organization: 'acme' },
+    })
+    const io = createIo({ findFresh: vi.fn(async () => row) })
+
+    const result = await classifyAndRouteProjects([row], io)
+
+    expect(io.markClassified).toHaveBeenCalledWith('id-1', classification())
+    expect(result.routed.evaluate).toBe(1)
+  })
+
+  it('sends a new non-LF organization to evaluation with its main repository first', async () => {
+    const source = 'https://lfx.slack.com/archives/C1/p1'
+    const rows = ['tools', 'acme', 'cli'].map((name) =>
+      project({
+        id: `id-${name}`,
+        repoUrl: `https://github.com/acme/${name}`,
+        sourceUrl: source,
+        requestHints: { organization: 'acme' },
+      }),
+    )
+    const io = createIo({
+      findFresh: vi.fn(async (id: string) => rows.find((row) => row.id === id)!),
+      markClassified: vi.fn(async (id: string, data: IDbProjectCatalogClassification) =>
+        project({
+          ...rows.find((row) => row.id === id)!,
+          ...data,
+          classifiedAt: '2026-10-12T04:00:00Z',
+        }),
+      ),
+      classify: vi.fn(async () => classification({ projectName: 'Acme' })),
+    })
+
+    const result = await classifyAndRouteProjects(rows, io)
+
+    expect(io.classify).toHaveBeenCalledTimes(1)
+    expect(io.markClassified).toHaveBeenCalledWith(
+      'id-cli',
+      classification({ projectName: 'Acme', requestQuestion: null }),
+    )
+    expect(result.remaining.map((row) => row.id)).toEqual(['id-acme', 'id-tools', 'id-cli'])
+    expect(result.routed.evaluate).toBe(3)
   })
 
   it('classifies from the fresh row rather than the workflow snapshot', async () => {

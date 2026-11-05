@@ -26,7 +26,7 @@ export const PROJECT_CATALOG_CLASSIFICATION_KINDS = [
 
 export type ProjectCatalogClassificationKind = (typeof PROJECT_CATALOG_CLASSIFICATION_KINDS)[number]
 
-const REVIEW_REJECTION_SKIP_REASON_PREFIX = 'rejected in review by '
+export const REVIEW_REJECTION_SKIP_REASON_PREFIX = 'rejected in review by '
 
 export function reviewRejectionSkipReason(reviewedBy: string): string {
   return `${REVIEW_REJECTION_SKIP_REASON_PREFIX}${reviewedBy}`
@@ -62,15 +62,17 @@ export interface IRequestHints {
   treatAsNew?: boolean
   pccProject?: IRequestHintProject
   segmentId?: string
+  organization?: string
 }
 
-export type RequestQuestionKind = 'did_you_mean' | 'lf_conflict' | 'pick_project'
+export type RequestQuestionKind = 'did_you_mean' | 'lf_conflict' | 'lf_confirm' | 'pick_project'
 
 export interface IRequestQuestionOption {
   id: string
   label: string
   hints?: IRequestHints
   handOff?: boolean
+  suggested?: boolean
 }
 
 export interface IRequestQuestion {
@@ -147,6 +149,7 @@ export interface IDbProjectCatalog {
   lfCriticalityScore: number | null
   evaluationResult: string | null
   evaluationReason: string | null
+  evaluationAttempts: number
   evaluatedAt: string | null
   onboardedAt: string | null
   onboardingError: string | null
@@ -191,6 +194,20 @@ type ProjectCatalogWritable = Pick<
 
 export type IDbProjectCatalogRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl'>
 
+export interface IDbProjectCatalogReopened extends IDbProjectCatalogRef {
+  previousSourceUrl: string | null
+  previousDecisionReason: string | null
+}
+
+export interface IProjectCatalogReopenRequest {
+  repoUrl: string
+  sourceUrl: string
+  requestText: string
+  projectName: string | null
+  requestedBy: string | null
+  organization: string | null
+}
+
 export type IDbProjectCatalogCreate = Omit<
   ProjectCatalogWritable,
   | 'source'
@@ -215,6 +232,7 @@ export type IDbProjectCatalogCreate = Omit<
   requestText?: string | null
   projectName?: string | null
   requestedBy?: string | null
+  requestHints?: IRequestHints | null
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
@@ -243,6 +261,7 @@ export interface IDbProjectCatalogAnswer {
   hints: IRequestHints | null
   action: Extract<ProjectCatalogAction, 'evaluate' | 'review'>
   reviewReason: string | null
+  proposedAction: Extract<ProjectCatalogProposedAction, 'human_review'> | null
 }
 
 // Shared contract between the projects evaluation worker and the /project-evaluation

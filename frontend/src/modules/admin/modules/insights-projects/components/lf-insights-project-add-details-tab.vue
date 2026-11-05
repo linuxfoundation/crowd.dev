@@ -258,6 +258,7 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import LfTextarea from '@/ui-kit/textarea/Textarea.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import { reactive, ref } from 'vue';
 import AppKeywordsInput from '@/shared/form/keywords-input.vue';
@@ -269,7 +270,7 @@ const props = defineProps<{
   form: InsightsProjectAddFormModel;
   oldForm?: InsightsProjectAddFormModel;
   newForm?: InsightsProjectAddFormModel;
-  rules: any;
+  rules: ValidationArgs;
 }>();
 const cForm = reactive(props.form);
 const $v = useVuelidate(props.rules, cForm);
@@ -287,9 +288,9 @@ const useNewData = (fields: string[]) => {
   fields.forEach((field) => {
     useOldData.value[field] = false;
     if (props.newForm) {
-      cForm[field as keyof InsightsProjectAddFormModel] = props.newForm[
-        field as keyof InsightsProjectAddFormModel
-      ] as any;
+      Object.assign(cForm, {
+        [field]: props.newForm[field as keyof InsightsProjectAddFormModel],
+      });
     }
   });
 };
@@ -298,9 +299,9 @@ const onUseOldData = (fields: string[]) => {
   fields.forEach((field) => {
     useOldData.value[field] = true;
     if (props.oldForm) {
-      cForm[field as keyof InsightsProjectAddFormModel] = props.oldForm[
-        field as keyof InsightsProjectAddFormModel
-      ] as any;
+      Object.assign(cForm, {
+        [field]: props.oldForm[field as keyof InsightsProjectAddFormModel],
+      });
     }
   });
 };

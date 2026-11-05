@@ -1,13 +1,20 @@
+import type { LocationQueryRaw, LocationQueryValueRaw } from 'vue-router';
 import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
 import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import type { SavedViewsConfig } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 
+type UrlParser = (query: unknown) => unknown;
+
 export const filterQueryService = () => {
   // Parses url query params and puts them in nested object format
-  function parseQuery(query: Record<string, any>, config: Record<string, FilterConfig>, savedViewsConfig?: SavedViewsConfig) {
-    const object: Record<string, any> = {};
+  function parseQuery(
+    query: Record<string, unknown>,
+    config: Record<string, FilterConfig>,
+    savedViewsConfig?: SavedViewsConfig,
+  ) {
+    const object: Record<string, unknown> = {};
     Object.entries(query).forEach(([key, value]) => {
       const [mainKey, subKey] = key.split('.');
       if (subKey) {
@@ -15,7 +22,7 @@ export const filterQueryService = () => {
         if (!(mainKey in object)) {
           object[mainKey] = {};
         }
-        object[mainKey][subKey] = value;
+        (object[mainKey] as Record<string, unknown>)[subKey] = value;
       } else {
         // If value not nested something=123 --> {something: 123}
         object[mainKey] = value;
@@ -24,12 +31,19 @@ export const filterQueryService = () => {
     // Url params come out as strings so we need to transform them to boolean, number or array
     Object.keys(object).forEach((key) => {
       if (key === 'settings' && savedViewsConfig) {
-        Object.keys(object[key]).forEach((setting) => {
-          object[key][setting] = savedViewsConfig.settings[setting]?.queryUrlParser(object[key][setting]);
+        const settings = object[key] as Record<string, unknown>;
+        Object.keys(settings).forEach((setting) => {
+          settings[setting] = savedViewsConfig.settings[setting]?.queryUrlParser(
+            settings[setting] as string,
+          );
         });
       } else if (key in config) {
         const { type } = config[key];
-        const queryUrlParser = type === FilterConfigType.CUSTOM ? (config[key] as CustomFilterConfig).queryUrlParser : queryUrlParserByType[type];
+        const queryUrlParser = (
+          type === FilterConfigType.CUSTOM
+            ? (config[key] as CustomFilterConfig).queryUrlParser
+            : queryUrlParserByType[type]
+        ) as UrlParser | null;
         if (queryUrlParser) {
           object[key] = queryUrlParser(object[key]);
         }
@@ -39,16 +53,16 @@ export const filterQueryService = () => {
   }
 
   // Transforms value to be used in url query. Transforms array to string
-  function setQueryValue(value: any) {
+  function setQueryValue(value: unknown): LocationQueryValueRaw {
     if (Array.isArray(value)) {
       return value.join(',');
     }
-    return value;
+    return value as LocationQueryValueRaw;
   }
 
   // Prepares query object to be only one level nested for query params to be more readable
   function setQuery(filter: Filter) {
-    const query: Record<string, any> = {};
+    const query: LocationQueryRaw = {};
     if (filter) {
       const mappedFilter = {
         ...filter,

@@ -18,19 +18,14 @@ const props = withDefaults(defineProps<{
   segments: () => ([]),
 });
 
-const progress = ref<IntegrationProgress | null>(null);
+const progress = ref<IntegrationProgress[] | null>(null);
 const progressError = ref(false);
 
 const fetchUpdates = () => {
   IntegrationService.fetchIntegrationsProgress(props.segments)
-    .then((data: IntegrationProgress) => {
-      const parsedData = data.platform === 'github-nango' ? {
-        ...data,
-        platform: 'github',
-      } : data;
-
-      progress.value = parsedData;
-      if (parsedData.length === 0) {
+    .then((data: IntegrationProgress[]) => {
+      progress.value = data;
+      if (data.length === 0) {
         pause();
       }
     })

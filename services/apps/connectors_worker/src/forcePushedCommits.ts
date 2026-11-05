@@ -6,6 +6,7 @@ import { IShadowDiffMismatch } from './shadowDiff'
 
 const PULL_REQUEST_COMMITS_SYNC_NAME = 'pull-request-commits'
 const COMMITS_QUERY_BATCH_SIZE = 50
+const ASSOCIATED_PULL_REQUESTS_PAGE_SIZE = 5
 const CONFIRM_CONCURRENCY = 3
 const CONFIRM_BUDGET_MS = 60_000
 const CONFIRM_REQUEST_TIMEOUT_MS = 10_000
@@ -15,13 +16,27 @@ interface GraphqlEnvelope<T> {
   data?: T
 }
 
+interface AssociatedPullRequestNode {
+  id: string
+}
+
 interface CommitAssociationNode {
-  associatedPullRequests?: { totalCount: number }
+  associatedPullRequests?: {
+    totalCount: number
+    nodes?: (AssociatedPullRequestNode | null)[] | null
+  }
 }
 
 interface CommitAssociationsResult {
   repository: Record<string, CommitAssociationNode | null> | null
 }
+
+interface CommitCandidate {
+  sha: string
+  parentId?: string
+}
+
+type CommitAssociationOutcome = 'kept' | 'orphaned' | 'stale_parent' | 'unconfirmed'
 
 export function isForcePushCandidate(syncName: string, mismatch: IShadowDiffMismatch): boolean {
   return syncName === PULL_REQUEST_COMMITS_SYNC_NAME && mismatch.kind === 'missing_in_shadow'
@@ -37,11 +52,13 @@ export function hasForcePushCandidates(
 export interface ForcePushedCommitFilterResult {
   mismatches: IShadowDiffMismatch[]
   skippedCount: number
+  staleParentCount: number
   failedCount: number
 }
 
 interface BatchConfirmation {
   orphanedShas: Set<string>
+  staleParentShas: Set<string>
   unconfirmedShas: Set<string>
 }
 
@@ -58,26 +75,49 @@ function buildAssociationsQuery(size: number): string {
   const aliases = Array.from(
     { length: size },
     (_, i) =>
-      `c${i}: object(oid: $oid${i}) { ... on Commit { associatedPullRequests(first: 1) { totalCount } } }`,
+      `c${i}: object(oid: $oid${i}) { ... on Commit { associatedPullRequests(first: ${ASSOCIATED_PULL_REQUESTS_PAGE_SIZE}) { totalCount nodes { id } } } }`,
   ).join(' ')
   return `query($owner: String!, $repo: String!, ${variables}) { repository(owner: $owner, name: $repo) { ${aliases} } }`
 }
 
-async function confirmOrphanedCommits(
+function classifyAssociation(
+  node: CommitAssociationNode | null | undefined,
+  parentId: string | undefined,
+): CommitAssociationOutcome {
+  const associations = node?.associatedPullRequests
+  if (!associations) {
+    return 'unconfirmed'
+  }
+  if (associations.totalCount === 0) {
+    return 'orphaned'
+  }
+  if (parentId === undefined) {
+    return 'kept'
+  }
+  const associatedIds = (associations.nodes ?? [])
+    .filter((n): n is AssociatedPullRequestNode => n !== null)
+    .map((n) => n.id)
+  if (associatedIds.includes(parentId)) {
+    return 'kept'
+  }
+  return associatedIds.length < associations.totalCount ? 'unconfirmed' : 'stale_parent'
+}
+
+async function confirmCommitAssociations(
   http: ConnectorHttp,
   owner: string,
   repo: string,
-  shas: string[],
+  candidates: CommitCandidate[],
   log: Logger,
 ): Promise<BatchConfirmation | null> {
   try {
-    const oidVariables = Object.fromEntries(shas.map((sha, i) => [`oid${i}`, sha]))
+    const oidVariables = Object.fromEntries(candidates.map((c, i) => [`oid${i}`, c.sha]))
     const body = await http.request<GraphqlEnvelope<CommitAssociationsResult>>(
       {
         method: 'post',
         url: 'https://api.github.com/graphql',
         data: {
-          query: buildAssociationsQuery(shas.length),
+          query: buildAssociationsQuery(candidates.length),
           variables: { owner, repo, ...oidVariables },
         },
         timeout: CONFIRM_REQUEST_TIMEOUT_MS,
@@ -89,20 +129,35 @@ async function confirmOrphanedCommits(
     if (!repository) {
       return null
     }
-    const orphanedShas = new Set<string>()
-    const unconfirmedShas = new Set<string>()
-    shas.forEach((sha, i) => {
-      const totalCount = repository[`c${i}`]?.associatedPullRequests?.totalCount
-      if (totalCount === 0) {
-        orphanedShas.add(sha)
-      } else if (totalCount === undefined) {
-        unconfirmedShas.add(sha)
+    const confirmation: BatchConfirmation = {
+      orphanedShas: new Set<string>(),
+      staleParentShas: new Set<string>(),
+      unconfirmedShas: new Set<string>(),
+    }
+    candidates.forEach((candidate, i) => {
+      const outcome = classifyAssociation(repository[`c${i}`], candidate.parentId)
+      if (outcome === 'orphaned') {
+        confirmation.orphanedShas.add(candidate.sha)
+      } else if (outcome === 'stale_parent') {
+        confirmation.staleParentShas.add(candidate.sha)
+      } else if (outcome === 'unconfirmed') {
+        confirmation.unconfirmedShas.add(candidate.sha)
       }
     })
-    return { orphanedShas, unconfirmedShas }
+    return confirmation
   } catch {
     return null
   }
+}
+
+function toCommitCandidates(mismatches: IShadowDiffMismatch[]): CommitCandidate[] {
+  const candidatesBySha = new Map<string, CommitCandidate>()
+  for (const m of mismatches) {
+    if (m.kind === 'missing_in_shadow' && !candidatesBySha.has(m.sourceId)) {
+      candidatesBySha.set(m.sourceId, { sha: m.sourceId, parentId: m.sourceParentId })
+    }
+  }
+  return [...candidatesBySha.values()]
 }
 
 export async function dropConfirmedForcePushedCommits(
@@ -114,27 +169,28 @@ export async function dropConfirmedForcePushedCommits(
   log: Logger,
 ): Promise<ForcePushedCommitFilterResult> {
   if (!hasForcePushCandidates(syncName, mismatches)) {
-    return { mismatches, skippedCount: 0, failedCount: 0 }
+    return { mismatches, skippedCount: 0, staleParentCount: 0, failedCount: 0 }
   }
 
-  const candidateShas = [
-    ...new Set(mismatches.filter((m) => m.kind === 'missing_in_shadow').map((m) => m.sourceId)),
-  ]
   const deadline = Date.now() + CONFIRM_BUDGET_MS
   const orphanedShas = new Set<string>()
+  const staleParentShas = new Set<string>()
   const unconfirmedShas = new Set<string>()
 
   await mapWithConcurrency(
-    toBatches(candidateShas, COMMITS_QUERY_BATCH_SIZE),
+    toBatches(toCommitCandidates(mismatches), COMMITS_QUERY_BATCH_SIZE),
     CONFIRM_CONCURRENCY,
     async (batch) => {
       const confirmation =
-        Date.now() >= deadline ? null : await confirmOrphanedCommits(http, owner, repo, batch, log)
+        Date.now() >= deadline
+          ? null
+          : await confirmCommitAssociations(http, owner, repo, batch, log)
       if (confirmation === null) {
-        for (const sha of batch) unconfirmedShas.add(sha)
+        for (const { sha } of batch) unconfirmedShas.add(sha)
         return
       }
       for (const sha of confirmation.orphanedShas) orphanedShas.add(sha)
+      for (const sha of confirmation.staleParentShas) staleParentShas.add(sha)
       for (const sha of confirmation.unconfirmedShas) unconfirmedShas.add(sha)
     },
   )
@@ -144,10 +200,13 @@ export async function dropConfirmedForcePushedCommits(
       (m) =>
         !(
           m.kind === 'missing_in_shadow' &&
-          (orphanedShas.has(m.sourceId) || unconfirmedShas.has(m.sourceId))
+          (orphanedShas.has(m.sourceId) ||
+            staleParentShas.has(m.sourceId) ||
+            unconfirmedShas.has(m.sourceId))
         ),
     ),
     skippedCount: orphanedShas.size,
+    staleParentCount: staleParentShas.size,
     failedCount: unconfirmedShas.size,
   }
 }

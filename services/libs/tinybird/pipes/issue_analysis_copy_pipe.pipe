@@ -1,72 +1,205 @@
 DESCRIPTION >
     Compacts activities from same issue into one, keeping necessary information in a single row. Helps to serve issue-wide widgets in the development tab.
+    Opened and closed events are unfiltered, so issues opened or closed by bots (e.g. stale bots) are included, the same way
+    `pull_requests_analyzed` includes bot activity. Issues are still limited to enabled repositories, matching the cleaned buckets.
+    The unfiltered buckets are refreshed once a day, so the opened and closed events also include the realtime MV
+    (`activityRelations_enrich_snapshot_MV_ds`), which holds the last few days of activity changes, including the ones the daily
+    bucket merge has not taken in yet. This keeps issues as fresh as the hourly cleaned buckets. The MV is read whole: looking up
+    each bucket's latest snapshot scans the bucket datasources and is too slow for the push-time check.
+    The first non-author response still comes from the bot-filtered `activityRelations_deduplicated_cleaned_bucket_union`, so an
+    automated bot comment does not count as a response.
+    The unfiltered buckets are read once per run: `issue_events` reads both event types together, and `issues` is referenced
+    only by the final node. A node referenced twice is computed twice, and reading the buckets takes most of the run.
 
-NODE issues_opened
+NODE issue_events_delta
+DESCRIPTION >
+    Issue opened and closed events from the realtime MV, keeping the most recently updated version of each activity.
+
 SQL >
     SELECT
-        activityId as id,
+        activityId,
         sourceId,
-        timestamp AS openedAt,
+        sourceParentId,
+        timestamp,
         segmentId,
-        lower(channel) AS channel,
+        channel,
         platform,
         memberId,
-        organizationId
-    FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-opened' AND toYear(timestamp) >= 1971
+        organizationId,
+        type
+    FROM activityRelations_enrich_snapshot_MV_ds
+    WHERE type IN ('issues-opened', 'issues-closed')
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY segmentId, timestamp, type, platform, channel, sourceId
 
-NODE issues_closed
-SQL >
-    SELECT sourceParentId, MIN(timestamp) AS closedAt
-    FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-closed' AND sourceParentId != '' AND toYear(timestamp) >= 1971
-    GROUP BY sourceParentId
+NODE issue_events
+DESCRIPTION >
+    Issue opened and closed events from the daily unfiltered buckets and the MV, in one read of the buckets. An opened event
+    that also appears in the MV is replaced by its MV version. A close keeps both versions, since only the earliest close per
+    issue is used.
 
-NODE issues_comment_non_author
-SQL >
-    SELECT c.sourceParentId, MIN(c.timestamp) AS respondedAt
-    FROM activityRelations_deduplicated_cleaned_bucket_union c
-    INNER JOIN issues_opened opened ON c.sourceParentId = opened.sourceId
-    WHERE
-        c.type = 'issue-comment'
-        AND c.sourceParentId != ''
-        AND c.memberId != ''
-        AND opened.memberId != ''
-        AND c.memberId != opened.memberId
-        AND toYear(c.timestamp) >= 1971
-    GROUP BY c.sourceParentId
-
-NODE issue_analysis_results_merged
 SQL >
     SELECT
-        opened.id,
-        opened.sourceId,
-        opened.segmentId as segmentId,
-        opened.channel,
-        opened.platform,
-        opened.memberId,
-        opened.organizationId,
-        opened.openedAt,
-        IF(
-            comment_non_author.respondedAt = toDateTime(0), NULL, comment_non_author.respondedAt
+        activityId,
+        sourceId,
+        sourceParentId,
+        timestamp,
+        segmentId,
+        channel,
+        platform,
+        memberId,
+        organizationId,
+        type
+    FROM activityRelations_enriched_deduplicated_bucket_union
+    WHERE
+        type IN ('issues-opened', 'issues-closed')
+        AND (
+            type = 'issues-closed'
+            OR activityId
+            NOT IN (SELECT activityId FROM issue_events_delta WHERE type = 'issues-opened')
+        )
+    UNION ALL
+    SELECT
+        activityId,
+        sourceId,
+        sourceParentId,
+        timestamp,
+        segmentId,
+        channel,
+        platform,
+        memberId,
+        organizationId,
+        type
+    FROM issue_events_delta
+
+NODE issues
+DESCRIPTION >
+    One row per issue opened in an enabled repository, with the issue's first close from any repository. Opened events key
+    on `sourceId` and closes on `sourceParentId`, so grouping by that key pairs them without a join. `openerCount` is the
+    number of distinct non-empty openers per issue and `soleOpener` is the opener when there is one, for the response rule in
+    the final node.
+
+SQL >
+    SELECT
+        tupleElement(opened, 1) AS id,
+        tupleElement(opened, 2) AS sourceId,
+        tupleElement(opened, 3) AS openedAt,
+        tupleElement(opened, 4) AS segmentId,
+        tupleElement(opened, 5) AS channel,
+        tupleElement(opened, 6) AS platform,
+        tupleElement(opened, 7) AS memberId,
+        tupleElement(opened, 8) AS organizationId,
+        firstClosedAt,
+        openerCount,
+        soleOpener
+    FROM
+        (
+            SELECT arrayJoin(openedRows) AS opened, firstClosedAt, openerCount, soleOpener
+            FROM
+                (
+                    SELECT
+                        if(type = 'issues-opened', sourceId, sourceParentId) AS issueKey,
+                        minIf(
+                            timestamp, type = 'issues-closed' AND sourceParentId != ''
+                        ) AS firstClosedAt,
+                        uniqExactIf(memberId, isOpened AND memberId != '') AS openerCount,
+                        anyIf(memberId, isOpened AND memberId != '') AS soleOpener,
+                        groupArrayIf(
+                            (
+                                activityId,
+                                sourceId,
+                                timestamp,
+                                segmentId,
+                                lower(channel),
+                                platform,
+                                memberId,
+                                organizationId
+                            ),
+                            isOpened
+                        ) AS openedRows
+                    FROM
+                        (
+                            SELECT
+                                *,
+                                type = 'issues-opened'
+                                AND (
+                                    (
+                                        platform IN ('git', 'gerrit', 'github', 'gitlab')
+                                        AND (lower(channel), segmentId)
+                                        IN (SELECT lower(channel), segmentId FROM repos_to_channels)
+                                    )
+                                    OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')
+                                ) AS isOpened
+                            FROM issue_events
+                            WHERE toYear(timestamp) >= 1971
+                        )
+                    GROUP BY issueKey
+                )
+        )
+
+NODE issue_first_commenters
+DESCRIPTION >
+    The first two distinct commenters per issue from the bot-filtered buckets, sorted by each one's first comment. The first
+    non-author response is the first commenter's comment, or the second's when the first is the opener.
+
+SQL >
+    SELECT
+        sourceParentId,
+        tupleElement(firstTwo[1], 1) AS firstCommentAt,
+        tupleElement(firstTwo[1], 2) AS firstCommenterId,
+        if(length(firstTwo) > 1, tupleElement(firstTwo[2], 1), NULL) AS secondCommentAt
+    FROM
+        (
+            SELECT sourceParentId, groupArraySorted(2)((firstCommentAt, memberId)) AS firstTwo
+            FROM
+                (
+                    SELECT sourceParentId, memberId, MIN(timestamp) AS firstCommentAt
+                    FROM activityRelations_deduplicated_cleaned_bucket_union
+                    WHERE
+                        type = 'issue-comment'
+                        AND sourceParentId != ''
+                        AND memberId != ''
+                        AND toYear(timestamp) >= 1971
+                    GROUP BY sourceParentId, memberId
+                )
+            GROUP BY sourceParentId
+        )
+
+NODE issue_analysis_results_merged
+DESCRIPTION >
+    A response comes from someone other than the opener. When an issue has two or more distinct openers, every commenter
+    differs from one of them, so the first comment counts.
+
+SQL >
+    SELECT
+        i.id,
+        i.sourceId,
+        i.segmentId as segmentId,
+        i.channel,
+        i.platform,
+        i.memberId,
+        i.organizationId,
+        i.openedAt,
+        multiIf(
+            i.openerCount = 0 OR c.sourceParentId = '',
+            NULL,
+            i.openerCount > 1 OR c.firstCommenterId != i.soleOpener,
+            c.firstCommentAt,
+            c.secondCommentAt
         ) AS commentedAt,
-        IF(closed.closedAt = toDateTime(0), NULL, closed.closedAt) AS closedAt,
+        IF(i.firstClosedAt = toDateTime(0), NULL, i.firstClosedAt) AS closedAt,
         IF(
             closedAt IS NULL,
             NULL,
-            toUnixTimestamp(toDateTime(closed.closedAt)) - toUnixTimestamp(toDateTime(opened.openedAt))
+            toUnixTimestamp(toDateTime(i.firstClosedAt)) - toUnixTimestamp(toDateTime(i.openedAt))
         ) AS closedInSeconds,
         IF(
             commentedAt IS NULL,
             NULL,
-            toUnixTimestamp(toDateTime(comment_non_author.respondedAt))
-            - toUnixTimestamp(toDateTime(opened.openedAt))
+            toUnixTimestamp(toDateTime(commentedAt)) - toUnixTimestamp(toDateTime(i.openedAt))
         ) AS respondedInSeconds
-    FROM issues_opened opened
-    LEFT JOIN issues_closed AS closed ON opened.sourceId = closed.sourceParentId
-    LEFT JOIN
-        issues_comment_non_author AS comment_non_author
-        ON opened.sourceId = comment_non_author.sourceParentId
+    FROM issues i
+    LEFT JOIN issue_first_commenters c ON i.sourceId = c.sourceParentId
 
 TYPE COPY
 TARGET_DATASOURCE issues_analyzed

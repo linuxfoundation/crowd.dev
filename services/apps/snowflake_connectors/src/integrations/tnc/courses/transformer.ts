@@ -2,14 +2,15 @@ import { TNC_GRID, TncActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
 import { IActivityData, MemberAttributeName, PlatformType } from '@crowd/types'
 
-import { TransformedActivity } from '../../../core/transformerBase'
+import { cleanPersonalEmail } from '../../../core/personalEmail'
+import { TransformedActivity, cleanIdentityValue } from '../../../core/transformerBase'
 import { TncTransformerBase } from '../tncTransformerBase'
 
 const log = getServiceChildLogger('tncCoursesTransformer')
 
 export class TncCoursesTransformer extends TncTransformerBase {
   transformRow(row: Record<string, unknown>): TransformedActivity | null {
-    const email = (row.USER_EMAIL as string | null)?.trim() || null
+    const email = cleanPersonalEmail(row.USER_EMAIL)
     if (!email) {
       log.warn(
         { courseActionId: row.COURSE_ACTION_ID, rawUserEmail: row.USER_EMAIL },
@@ -25,8 +26,8 @@ export class TncCoursesTransformer extends TncTransformerBase {
     }
 
     const learnerName = (row.LEARNER_NAME as string | null)?.trim() || null
-    const lfUsername = (row.LFID as string | null)?.trim() || null
-    const sourceId = (row.INTERNAL_TI_USER_ID as string | null) || undefined
+    const lfUsername = cleanIdentityValue(row.LFID)
+    const sourceId = cleanIdentityValue(row.INTERNAL_TI_USER_ID) ?? undefined
 
     const identities = this.buildMemberIdentities({
       email,

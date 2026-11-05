@@ -165,9 +165,9 @@ const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 const route = useRoute();
 
 const tabs = ref('overview');
-const contributors = ref<any>(null);
-const activities = ref<any>(null);
-const scrollContainer = ref<any>(null);
+const contributors = ref<InstanceType<typeof LfOrganizationDetailsContributors> | null>(null);
+const activities = ref<InstanceType<typeof LfOrganizationDetailsActivities> | null>(null);
+const scrollContainer = ref<HTMLElement | null>(null);
 
 const { id } = route.params;
 
@@ -187,15 +187,17 @@ const getOrganization = () => {
   });
 };
 
-const controlScroll = (e: any) => {
+const controlScroll = (e: Event) => {
+  // shortcut: cast hides a null target, which a scroll event never has. revisit: if reused for other events
+  const target = e.target as HTMLElement;
   if (
-    e.target.scrollTop + e.target.clientHeight
-    >= e.target.scrollHeight - 10
+    target.scrollTop + target.clientHeight
+    >= target.scrollHeight - 10
   ) {
     if (tabs.value === 'people') {
-      contributors.value.loadMore();
+      contributors.value?.loadMore();
     } else if (tabs.value === 'activities') {
-      activities.value.loadMore();
+      activities.value?.loadMore();
     }
   }
 };

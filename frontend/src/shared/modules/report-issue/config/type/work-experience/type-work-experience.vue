@@ -20,12 +20,13 @@
 </template>
 
 <script setup lang="ts">
+import type { Organization } from '@/modules/organization/types/Organization';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 
 const props = defineProps<{
-  attribute: any,
+  attribute: Organization,
 }>();
 
 const { displayName, logo } = useOrganizationHelpers();

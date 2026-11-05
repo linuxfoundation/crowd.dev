@@ -195,6 +195,7 @@ import LfContributorAttributeUrl
   from '@/modules/contributor/components/details/attributes/contributor-attribute-url.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { dateHelper } from '@/shared/date-helper/date-helper';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 
 const props = defineProps<{
   contributor: Contributor,
@@ -213,7 +214,7 @@ const certifications = computed(() => props.contributor.attributes?.certificatio
 const education = computed(() => props.contributor.attributes?.education);
 const awards = computed(() => props.contributor.attributes?.awards);
 
-const attrInfo = computed<Record<string, any>>(() => customAttributes.value.reduce((info, attr) => ({
+const attrInfo = computed<Record<string, FilterCustomAttribute>>(() => customAttributes.value.reduce((info, attr) => ({
   ...info,
   [attr.name]: attr,
 }), {}));

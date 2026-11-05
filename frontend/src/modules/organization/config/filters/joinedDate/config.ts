@@ -16,7 +16,7 @@ const joinedDate: DateFilterConfig = {
   itemLabelRenderer(value: DateFilterValue, options: DateFilterOptions): string {
     return itemLabelRendererByType[FilterConfigType.DATE]('Joined date', value, options);
   },
-  apiFilterRenderer(value: DateFilterValue): any[] {
+  apiFilterRenderer(value: DateFilterValue) {
     return apiFilterRendererByType[FilterConfigType.DATE]('joinedAt', value);
   },
 };

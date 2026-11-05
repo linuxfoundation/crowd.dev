@@ -106,7 +106,7 @@ const props = defineProps<{
   contributor: Contributor,
 }>();
 
-const emit = defineEmits<{(e: 'reload'): any}>();
+const emit = defineEmits<{(e: 'reload'): void}>();
 
 const { hasPermission } = usePermissions();
 

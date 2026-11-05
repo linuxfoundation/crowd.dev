@@ -6,6 +6,7 @@ import type {
 } from '../git-activity/syncGitActivityContributors'
 import {
   collectMemberContributors,
+  collectMemberContributorsFromInferredRepo,
   resolveIdentityAffiliations,
   syncRepoContributorsFromGitActivity,
 } from '../workflows'
@@ -36,6 +37,11 @@ const h = vi.hoisted(() => {
     resolveNewIdentityAffiliations: vi.fn(),
     completeMemberContributorsJob: vi.fn(),
     failMemberContributorsJob: vi.fn(),
+    startInferredRepoMemberContributorsJob: vi.fn(),
+    resolveRepoViaLlm: vi.fn(),
+    fetchGithubRepoContributors: vi.fn(),
+    buildInferredRepoMemberContributors: vi.fn(),
+    markMemberContributorsJobUnresolvable: vi.fn(),
   }
   const proxyCalls: Array<{ options: Record<string, unknown>; activities: string[] }> = []
   return {
@@ -274,5 +280,114 @@ describe('activity proxy options', () => {
       startToCloseTimeout: '5 minutes',
       retry: { initialInterval: '30 seconds', backoffCoefficient: 2, maximumAttempts: 3 },
     })
+  })
+
+  it('bounds the llm resolution to two attempts and retries the inferred repo finisher forever', () => {
+    const retry = { initialInterval: '30 seconds', backoffCoefficient: 2, maximumAttempts: 3 }
+    expect({
+      start: optionsFor('startInferredRepoMemberContributorsJob'),
+      resolve: optionsFor('resolveRepoViaLlm'),
+      fetch: optionsFor('fetchGithubRepoContributors'),
+      build: optionsFor('buildInferredRepoMemberContributors'),
+      unresolvable: optionsFor('markMemberContributorsJobUnresolvable'),
+    }).toEqual({
+      start: { startToCloseTimeout: '5 minutes', retry },
+      resolve: { startToCloseTimeout: '3 minutes', retry: { ...retry, maximumAttempts: 2 } },
+      fetch: { startToCloseTimeout: '1 hour', heartbeatTimeout: '5 minutes', retry },
+      build: { startToCloseTimeout: '5 minutes', retry },
+      unresolvable: {
+        startToCloseTimeout: '1 minute',
+        retry: {
+          initialInterval: '30 seconds',
+          backoffCoefficient: 2,
+          maximumInterval: '5 minutes',
+        },
+      },
+    })
+  })
+})
+
+describe('collectMemberContributorsFromInferredRepo', () => {
+  const job = { jobId: 'job-1' }
+  const repoUrl = 'https://github.com/haskell/aeson'
+  const body = {
+    purl: 'pkg:hackage/aeson',
+    name: 'aeson',
+    ecosystem: 'hackage',
+    repoUrl,
+    repoUrlSource: 'llm_inferred',
+    repoMappingConfidence: null,
+    contributors: [],
+    maintainers: { registry: [], governanceFiles: [] },
+  }
+
+  beforeEach(() => {
+    h.acts.startInferredRepoMemberContributorsJob.mockResolvedValue({
+      purl: 'pkg:hackage/aeson',
+      ecosystem: 'hackage',
+    })
+    h.acts.resolveRepoViaLlm.mockResolvedValue({ outcome: 'resolved', repoUrl, confidence: 0.95 })
+    h.acts.fetchGithubRepoContributors.mockResolvedValue({ status: 'fetched', logins: ['octo'] })
+    h.acts.resolveNewIdentityAffiliations.mockResolvedValue({
+      identities: 1,
+      inserted: 1,
+      counts: {},
+    })
+    h.acts.buildInferredRepoMemberContributors.mockResolvedValue(body)
+  })
+
+  it('resolves the repo, collects and affiliates its contributors, then completes with the body', async () => {
+    await expect(collectMemberContributorsFromInferredRepo(job)).resolves.toEqual(body)
+
+    const sequence = [
+      h.acts.startInferredRepoMemberContributorsJob,
+      h.acts.resolveRepoViaLlm,
+      h.acts.fetchGithubRepoContributors,
+      h.acts.resolveNewIdentityAffiliations,
+      h.acts.buildInferredRepoMemberContributors,
+      h.acts.completeMemberContributorsJob,
+    ]
+    expect(sequence.map((fn) => fn.mock.calls)).toEqual([
+      [[job]],
+      [[{ jobId: 'job-1', purl: 'pkg:hackage/aeson' }]],
+      [[{ repoUrl }]],
+      [[{ logins: ['octo'] }]],
+      [[{ purl: 'pkg:hackage/aeson', ecosystem: 'hackage', repoUrl, logins: ['octo'] }]],
+      [[job]],
+    ])
+    const order = sequence.map((fn) => fn.mock.invocationCallOrder[0])
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(h.acts.failMemberContributorsJob).not.toHaveBeenCalled()
+    expect(h.acts.markMemberContributorsJobUnresolvable).not.toHaveBeenCalled()
+  })
+
+  it('marks the job unresolvable with the reason and attempted url, returning nothing', async () => {
+    h.acts.resolveRepoViaLlm.mockResolvedValue({
+      outcome: 'unresolvable',
+      reason: 'LLM returned no repository',
+      repoUrl: null,
+    })
+
+    await expect(collectMemberContributorsFromInferredRepo(job)).resolves.toBeUndefined()
+
+    expect(h.acts.markMemberContributorsJobUnresolvable.mock.calls).toEqual([
+      [{ jobId: 'job-1', reason: 'LLM returned no repository', repoUrl: null }],
+    ])
+    expect(h.acts.fetchGithubRepoContributors).not.toHaveBeenCalled()
+    expect(h.acts.completeMemberContributorsJob).not.toHaveBeenCalled()
+    expect(h.acts.failMemberContributorsJob).not.toHaveBeenCalled()
+  })
+
+  it('fails the job non-cancellably with the activity cause and rethrows', async () => {
+    const cause = new Error('Bedrock credentials are not configured')
+    h.acts.resolveRepoViaLlm.mockRejectedValue(new h.ActivityFailure('Activity failed', cause))
+
+    await expect(collectMemberContributorsFromInferredRepo(job)).rejects.toThrow('Activity failed')
+
+    expect(h.acts.failMemberContributorsJob.mock.calls).toEqual([
+      [{ jobId: 'job-1', reason: 'Bedrock credentials are not configured' }],
+    ])
+    expect(h.nonCancellable).toHaveBeenCalledTimes(1)
+    expect(h.acts.completeMemberContributorsJob).not.toHaveBeenCalled()
   })
 })

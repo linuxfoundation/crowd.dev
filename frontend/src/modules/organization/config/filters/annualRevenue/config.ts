@@ -36,7 +36,7 @@ const annualRevenue: CustomFilterConfig = {
   },
   apiFilterRenderer({
     value, valueTo, operator, include,
-  }: NumberFilterValue): any[] {
+  }: NumberFilterValue) {
     let filter;
 
     if ([FilterNumberOperator.BETWEEN].includes(operator)) {

@@ -406,6 +406,7 @@ import AppMemberMergeDialog from '@/modules/member/components/member-merge-dialo
 import AppMemberOrganizationsVertical from '@/modules/member/components/member-organizations-vertical.vue';
 import { MemberService } from '@/modules/member/member-service';
 import { useMemberStore } from '@/modules/member/store/pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfDefaultFilters from '@/shared/modules/default-filters/components/default-filters.vue';
 import AppIdentitiesHorizontalListMembers from '@/shared/modules/identities/components/identities-horizontal-list-members.vue';
@@ -430,9 +431,9 @@ import {
   computed,
   defineProps,
   onMounted, onUnmounted, ref,
+  toRefs,
   watch,
 } from 'vue';
-import { useStore } from 'vuex';
 import { memberSavedViews } from '../../config/saved-views/main';
 import AppMemberBadge from '../member-badge.vue';
 import AppMemberDropdownContent from '../member-dropdown-content.vue';
@@ -455,6 +456,18 @@ const props = defineProps({
     type: Boolean,
     default: () => false,
   },
+  members: {
+    type: Array,
+    default: () => [],
+  },
+  totalMembers: {
+    type: Number,
+    default: () => 0,
+  },
+  savedFilterBody: {
+    type: Object,
+    default: () => ({}),
+  },
   pagination: {
     type: Object,
     default: () => ({
@@ -465,7 +478,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['onAddMember', 'update:pagination']);
 const { trackEvent } = useProductTracking();
-const store = useStore();
+const integrationStore = useIntegrationStore();
 const table = ref(null);
 const scrollbarRef = ref();
 const tableBodyRef = ref();
@@ -483,9 +496,8 @@ const selectedActionMember = ref(null);
 const isFindGithubDrawerOpen = ref(null);
 
 const memberStore = useMemberStore();
-const {
-  members, totalMembers, filters, selectedMembers, savedFilterBody,
-} = storeToRefs(memberStore);
+const { filters, selectedMembers } = storeToRefs(memberStore);
+const { members, totalMembers, savedFilterBody } = toRefs(props);
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
@@ -674,10 +686,7 @@ const doExport = () => MemberService.export({
 });
 
 onMounted(async () => {
-  await store.dispatch(
-    'integration/doFetch',
-    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
-  );
+  await integrationStore.fetch(selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : []);
 });
 
 // Remove listeners on unmount

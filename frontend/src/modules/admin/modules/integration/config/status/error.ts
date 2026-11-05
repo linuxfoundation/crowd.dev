@@ -2,7 +2,7 @@ import type { IntegrationStatusConfig } from '@/modules/admin/modules/integratio
 
 const error: IntegrationStatusConfig = {
   key: 'error',
-  show: (integration: any) => integration.status === 'error',
+  show: (integration) => integration.status === 'error',
   statuses: ['error'],
   status: {
     text: 'Connection failed',

@@ -2,6 +2,7 @@ import {
   IAttributes,
   IMemberContribution,
   IMemberIdentity,
+  IMemberOriginalData,
   IMemberReach,
   IOrganizationIdentity,
   MemberAttributeName,
@@ -119,6 +120,13 @@ export interface IProcessMemberSourcesArgs {
   memberId: string
   activityCount: number
   sources: MemberEnrichmentSource[]
+}
+
+export interface ISquashedMemberSources {
+  existingMemberData: IMemberOriginalData
+  payload: IMemberEnrichmentDataNormalized
+  hasContributions: boolean
+  isHighConfidenceSourceSelectedForWorkExperiences: boolean
 }
 
 type MemberIdentityConsumableBase = Omit<

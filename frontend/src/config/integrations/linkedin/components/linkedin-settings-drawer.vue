@@ -52,7 +52,7 @@
           </el-select>
           <div
             v-if="
-              integration.status === 'pending-action'
+              integration?.status === 'pending-action'
                 && model === null
             "
             class="text-yellow-600 flex items-start"
@@ -71,7 +71,7 @@
     <template #footer>
       <drawer-footer-buttons
         :integration="integration"
-        :is-edit-mode="integration.settings?.organizations.length > 0"
+        :is-edit-mode="(integration?.settings?.organizations.length ?? 0) > 0"
         :has-form-changed="hasFormChanged"
         :is-loading="loading"
         :is-submit-disabled="!hasFormChanged || loading"
@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
 import {
   defineEmits,
   defineProps,
@@ -104,7 +106,7 @@ import ChangesConfirmationModal from '@/modules/admin/modules/integration/compon
 
 const props = defineProps<{
   modelValue: boolean;
-  integration: any;
+  integration: Integration<LinkedinSettings> | undefined;
   segmentId: string;
   grandparentId: string;
 }>();
@@ -117,9 +119,9 @@ const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const organizations = computed(
-  () => props.integration.settings?.organizations,
+  () => props.integration?.settings?.organizations,
 );
-const selectedOrg = computed(() => organizations.value.find((o: any) => o.inUse === true));
+const selectedOrg = computed(() => organizations.value?.find((o) => o.inUse === true));
 
 const model = ref(
   // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
@@ -178,7 +180,7 @@ const connect = async () => {
     },
   );
 
-  const isUpdate = props.integration?.settings?.organizations.length > 0;
+  const isUpdate = (props.integration?.settings?.organizations.length ?? 0) > 0;
 
   trackEvent({
     key: isUpdate ? FeatureEventKey.EDIT_INTEGRATION_SETTINGS : FeatureEventKey.CONNECT_INTEGRATION,
@@ -192,10 +194,12 @@ const connect = async () => {
 
 watch(isVisible, (newValue, oldValue) => {
   if (newValue) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
     (window as any).analytics.track('LinkedIn: settings drawer', {
       action: 'open',
     });
   } else if (newValue === false && oldValue) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
     (window as any).analytics.track('LinkedIn: settings drawer', {
       action: 'close',
     });

@@ -3,11 +3,12 @@ import AppIntegrationProgress from '@/modules/integration/components/integration
 import AppIntegrationProgressWrapper from '@/modules/integration/components/integration-progress-wrapper.vue';
 import { lfIntegrations } from '@/config/integrations';
 import { ToastStore } from '@/shared/message/notification';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 
-export const showIntegrationProgressNotification = (platform, segmentId) => {
+export const showIntegrationProgressNotification = (platform: string, segmentId: string) => {
   const label = lfIntegrations()[platform]?.name;
-  const defaultSlot = ({ progress }) => {
-    const integrationProgress = (progress || []).find((p) => p.platform === platform);
+  const defaultSlot = ({ progress }: { progress: IntegrationProgress[] | null }) => {
+    const integrationProgress = (progress || []).find((p: IntegrationProgress) => p.platform === platform);
     const text = h('p', {
       class: 'text-2xs text-black leading-4.5 pb-4',
     }, 'Sit back and relax. We will send you an email when the entire process is completed.');

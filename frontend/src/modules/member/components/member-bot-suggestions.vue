@@ -97,6 +97,7 @@ import { ToastStore } from '@/shared/message/notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { MemberService } from '@/modules/member/member-service';
+import type { MemberBotSuggestion } from '@/modules/member/types/MemberSuggestion';
 
 const props = withDefaults(
   defineProps<{
@@ -113,7 +114,7 @@ const emit = defineEmits<{(e: 'reload'): void}>();
 
 const { trackEvent } = useProductTracking();
 
-const suggestion = ref<any>({});
+const suggestion = ref<Partial<MemberBotSuggestion>>({});
 const currentOffset = ref(props.offset);
 const hasMore = ref(false);
 const hasSuggestion = ref(false);
@@ -124,7 +125,7 @@ const changed = ref(false);
 
 const suggestionQuery = () => (props.segments?.length ? { segments: props.segments } : {});
 
-const fetch = (page: number) => {
+const fetch = (page: number): Promise<void> => {
   if (page > -1) {
     currentOffset.value = page;
   }
@@ -132,7 +133,7 @@ const fetch = (page: number) => {
   loading.value = true;
 
   return MemberService.fetchBotSuggestions(1, currentOffset.value, suggestionQuery())
-    .then((res: any) => {
+    .then((res: { offset: number | string; hasMore?: boolean; rows?: MemberBotSuggestion[] }) => {
       currentOffset.value = +res.offset;
       hasMore.value = Boolean(res.hasMore);
       const [row] = res.rows || [];

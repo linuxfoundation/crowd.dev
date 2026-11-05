@@ -8,7 +8,12 @@ import {
   PlatformType,
 } from '@crowd/types'
 
-import { TransformedActivity, TransformerBase } from '../../../core/transformerBase'
+import { cleanPersonalEmail } from '../../../core/personalEmail'
+import {
+  TransformedActivity,
+  TransformerBase,
+  cleanIdentityValue,
+} from '../../../core/transformerBase'
 
 const log = getServiceChildLogger('committeesCommitteesTransformer')
 
@@ -16,7 +21,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
   readonly platform = PlatformType.COMMITTEES
 
   transformRow(row: Record<string, unknown>): TransformedActivity | null {
-    const email = (row.CONTACTEMAIL__C as string | null)?.trim() || null
+    const email = cleanPersonalEmail(row.CONTACTEMAIL__C)
     if (!email) {
       log.warn(
         { sfid: row.SFID, committeeId: row.COMMITTEE_ID, rawEmail: row.CONTACTEMAIL__C },
@@ -27,7 +32,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
 
     const committeeId = (row.COMMITTEE_ID as string).trim()
     const fivetranDeleted = row.FIVETRAN_DELETED as boolean
-    const lfUsername = (row.LF_USERNAME as string | null)?.trim() || null
+    const lfUsername = cleanIdentityValue(row.LF_USERNAME)
     const suFullName = (row.SU_FULL_NAME as string | null)?.trim() || null
     const suFirstName = (row.SU_FIRST_NAME as string | null)?.trim() || null
     const suLastName = (row.SU_LAST_NAME as string | null)?.trim() || null
@@ -41,7 +46,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
       ? CommitteesActivityType.REMOVED_FROM_COMMITTEE
       : CommitteesActivityType.ADDED_TO_COMMITTEE
 
-    const sourceId = (row.PRIMARY_SOURCE_USER_ID as string | null)?.trim() || undefined
+    const sourceId = cleanIdentityValue(row.PRIMARY_SOURCE_USER_ID) ?? undefined
     const identities = this.buildMemberIdentities({
       email,
       platformUsername: null,

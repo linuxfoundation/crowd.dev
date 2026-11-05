@@ -1,0 +1,93 @@
+DESCRIPTION >
+    - `issues_count.pipe` serves the opened and closed counts of the "Development - Issues resolution" widget.
+    - Counts issues from `issues_analyzed`, which holds one row per issue, so each issue is counted once per state.
+    - Includes issues opened or closed by bots (e.g. stale bots), since `issues_analyzed` is built from the unfiltered activity source.
+    - `state` picks the lifecycle timestamp the count is based on: `openedAt` or `closedAt`. Issues without that timestamp are not counted.
+    - **When `granularity` is NOT provided, returns a single total count** across the entire time range.
+    - **When `granularity` is provided, returns time-series data** aggregated by period (daily, weekly, monthly, quarterly, yearly), using `generate_timeseries` so periods without issues return 0.
+    - The pipe scopes data either to a single project (via `segments_filtered`) or to every project in a
+    collection (via `segments_filtered_by_collection`). Exactly one of `project`/`collectionSlug` must be given.
+    - Parameters:
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
+    - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes'])
+    - `state`: Optional string, one of 'opened' (default) or 'closed'
+    - `startDate`: Optional DateTime filter for the `state` timestamp after this value (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for the `state` timestamp before this value (e.g., '2024-12-31 23:59:59')
+    - `platform`: Optional string filter for source platform (e.g., 'github', 'gitlab')
+    - `granularity`: Optional string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
+    - Response:
+    - Without granularity: `issueCount` (total count)
+    - With granularity: `startDate`, `endDate`, and `issueCount` for each time period
+
+TOKEN "insights-app-token" READ
+
+TAGS "Development metrics", "Widget", "Issues"
+
+NODE issues_by_state
+SQL >
+    %
+    SELECT
+        id,
+        {% if String(
+            state, 'opened', description="One of 'opened' or 'closed'", required=False
+        ) == 'closed' %} closedAt
+        {% else %} openedAt
+        {% end %} AS eventAt
+    FROM issues_analyzed
+    WHERE
+        {% if defined(collectionSlug) %}
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %} AND channel IN (SELECT channel FROM repos_to_channels) AND isNotNull(eventAt)
+        {% if defined(platform) %}
+            AND platform
+            = {{
+                String(
+                    platform,
+                    description="Filter by platform (e.g., 'github', 'gitlab')",
+                    required=False,
+                )
+            }}
+        {% end %}
+        {% if defined(startDate) %}
+            AND eventAt
+            > {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND eventAt
+            < {{ DateTime(endDate, description="Filter state timestamp before", required=False) }}
+        {% end %}
+
+NODE timeseries_generation_for_issues_count
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT ds."startDate", ds."endDate", countIf(iss.id != '') AS "issueCount"
+        FROM generate_timeseries ds
+        LEFT JOIN
+            issues_by_state iss
+            ON CASE
+                WHEN {{ granularity }} = 'daily'
+                THEN toDate(iss.eventAt)
+                WHEN {{ granularity }} = 'weekly'
+                THEN toStartOfWeek(iss.eventAt)
+                WHEN {{ granularity }} = 'monthly'
+                THEN toStartOfMonth(iss.eventAt)
+                WHEN {{ granularity }} = 'quarterly'
+                THEN toStartOfQuarter(iss.eventAt)
+                WHEN {{ granularity }} = 'yearly'
+                THEN toStartOfYear(iss.eventAt)
+            END
+            = ds."startDate"
+        GROUP BY ds."startDate", ds."endDate"
+        ORDER BY ds."startDate"
+    {% else %} SELECT 1
+    {% end %}
+
+NODE issues_count_merged
+SQL >
+    %
+    {% if not defined(granularity) %} SELECT count() AS "issueCount" FROM issues_by_state
+    {% else %} SELECT * FROM timeseries_generation_for_issues_count
+    {% end %}

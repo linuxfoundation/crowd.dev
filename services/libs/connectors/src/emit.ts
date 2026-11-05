@@ -73,7 +73,7 @@ export function createEmit(deps: EmitterDeps): Emitter {
         throw err
       }
 
-      const payload = { ...parsed, channel: deps.unit.channelName }
+      const payload = { ...parsed, channel: recordChannel(parsed) ?? deps.unit.channelName }
 
       if (!deps.unit.emitEnabled) {
         const { type, sourceId, timestamp } = payload as Record<string, unknown>
@@ -119,4 +119,9 @@ export function createEmit(deps: EmitterDeps): Emitter {
   }
 
   return { emit, emittedCount: () => emitted }
+}
+
+function recordChannel(parsed: Record<string, unknown>): string | undefined {
+  const { channel } = parsed
+  return typeof channel === 'string' && channel.length > 0 ? channel : undefined
 }

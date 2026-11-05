@@ -202,10 +202,13 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
+import type { OrganizationMergeSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
+import type { MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const mergeSuggestions = ref<any[]>([]);
+const mergeSuggestions = ref<OrganizationMergeSuggestion[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 
@@ -216,7 +219,7 @@ const loading = ref<boolean>(false);
 const sorting = ref<string>('similarity_DESC');
 const totalCount = ref<number>(0);
 
-const filter = ref<any>(undefined);
+const filter = ref<Record<string, unknown> | undefined>(undefined);
 
 const { trackEvent } = useProductTracking();
 
@@ -239,7 +242,7 @@ const loadMergeSuggestions = (sort: boolean = false) => {
   })
     .then((res) => {
       hasMore.value = Boolean(res.hasMore);
-      const rows = res.rows.filter((s: any) => s.similarity > 0);
+      const rows = res.rows.filter((s: OrganizationMergeSuggestion) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];
       } else {
@@ -275,9 +278,10 @@ const openDetails = (index: number) => {
   isModalOpen.value = true;
 };
 
-const search = (query: any) => {
+const search = (query: MemberMergeSuggestionsQuery) => {
   page.value = 1;
-  filter.value = query;
+  // shortcut: the shared suggestions filter emits a member-typed query. revisit: when it takes a generic query
+  filter.value = query as Record<string, unknown>;
   loadMergeSuggestions();
 };
 
@@ -294,7 +298,7 @@ const loadMore = () => {
 
 const sending = ref<string>('');
 
-const merge = (suggestion: any) => {
+const merge = (suggestion: OrganizationMergeSuggestion) => {
   if (sending.value.length) {
     return;
   }
@@ -328,7 +332,7 @@ const merge = (suggestion: any) => {
     });
 };
 
-const ignore = (suggestion: any) => {
+const ignore = (suggestion: OrganizationMergeSuggestion) => {
   if (sending.value.length) {
     return;
   }
@@ -341,10 +345,12 @@ const ignore = (suggestion: any) => {
     },
   });
 
-  const primaryMember = suggestion.members[0];
-  const secondaryMember = suggestion.members[1];
+  // shortcut: the payload has no members, so this throws as on main. revisit: read suggestion.organizations
+  const { members } = suggestion as OrganizationMergeSuggestion & { members: Organization[] };
+  const primaryMember = members[0];
+  const secondaryMember = members[1];
   sending.value = `${primaryMember.id}:${secondaryMember.id}`;
-  OrganizationService.addToNoMerge(...suggestion.members)
+  OrganizationService.addToNoMerge(...members)
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
       reload();

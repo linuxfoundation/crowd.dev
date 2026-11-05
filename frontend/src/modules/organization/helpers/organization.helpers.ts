@@ -1,4 +1,4 @@
-import type { Organization } from '@/modules/organization/types/Organization';
+import type { Organization, OrganizationIdentityWithPlatforms } from '@/modules/organization/types/Organization';
 import { OrganizationIdentityType } from '@/modules/organization/types/Organization';
 import organizationOrder from '@/shared/modules/identities/config/identitiesOrder/organization';
 import { lfIdentities } from '@/config/identities';
@@ -33,10 +33,10 @@ const useOrganizationHelpers = () => {
     }));
 
   const emails = (organization: Organization) => {
-    const emailData: Record<string, any> = organization.identities
+    const emailData: Record<string, OrganizationIdentityWithPlatforms> = organization.identities
       .filter((i) => OrganizationIdentityType.EMAIL === i.type)
       .reduce((obj, identity) => {
-        const emailObject: Record<string, any> = { ...obj };
+        const emailObject: Record<string, OrganizationIdentityWithPlatforms> = { ...obj };
         if (!(identity.value in emailObject)) {
           emailObject[identity.value] = {
             ...identity,
@@ -49,7 +49,6 @@ const useOrganizationHelpers = () => {
         return emailObject;
       }, {});
     return Object.keys(emailData).map((email) => ({
-      value: email,
       ...emailData[email],
     }));
   };

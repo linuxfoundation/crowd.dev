@@ -1,5 +1,6 @@
-/* eslint-disable no-unused-vars */
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
+
 export interface SearchFilterConfig {
   placeholder?: string;
-  apiFilterRenderer: (value: string) => any[];
+  apiFilterRenderer: (value: string) => ApiFilter[];
 }

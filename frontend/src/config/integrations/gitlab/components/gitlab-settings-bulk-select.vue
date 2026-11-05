@@ -71,6 +71,8 @@
 </template>
 
 <script setup lang="ts">
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { GitlabMappedProject } from '@/config/integrations/gitlab/types/GitlabSettings';
 import { computed, reactive } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
@@ -79,8 +81,8 @@ import useVuelidate from '@vuelidate/core';
 
 const props = defineProps<{
   modelValue: boolean;
-  repositories: Record<string, any[]>;
-  subprojects: any[];
+  repositories: Record<string, GitlabMappedProject[]>;
+  subprojects: SubProject[];
   mappedRepos: Record<string, string>;
 }>();
 

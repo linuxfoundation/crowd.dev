@@ -1,9 +1,13 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ActivityFailure, ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import { MemberEnrichmentSource, PlatformType } from '@crowd/types'
 
 import * as activities from '../activities'
-import { IMemberEnrichmentDataNormalized, IProcessMemberSourcesArgs } from '../types'
+import {
+  IMemberEnrichmentDataNormalized,
+  IProcessMemberSourcesArgs,
+  ISquashedMemberSources,
+} from '../types'
 import { SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES } from '../utils/config'
 
 const {
@@ -21,6 +25,7 @@ const {
     backoffCoefficient: 2.0,
     maximumInterval: '60s',
     maximumAttempts: 4,
+    nonRetryableErrorTypes: ['LlmResponseTruncatedError'],
   },
 })
 
@@ -33,6 +38,7 @@ const { squashMultipleValueAttributesWithLLM, squashWorkExperiencesWithLLM } = p
     backoffCoefficient: 2.0,
     maximumInterval: '5 minutes',
     maximumAttempts: 6,
+    nonRetryableErrorTypes: ['LlmResponseTruncatedError'],
   },
 })
 
@@ -50,6 +56,34 @@ function getEnrichmentAttributeValue(
 }
 
 export async function processMemberSources(args: IProcessMemberSourcesArgs): Promise<boolean> {
+  try {
+    const squashed = await squashMemberSources(args)
+
+    if (!squashed) {
+      await touchMemberEnrichmentLastTriedAt(args.memberId)
+      return false
+    }
+
+    return await updateMemberUsingSquashedPayload(
+      args.memberId,
+      squashed.existingMemberData,
+      squashed.payload,
+      squashed.hasContributions,
+      squashed.isHighConfidenceSourceSelectedForWorkExperiences,
+    )
+  } catch (err) {
+    // workflow retries only honor non-retryable failures thrown by the workflow itself
+    if (err instanceof ActivityFailure && err.retryState === 'NON_RETRYABLE_FAILURE') {
+      const cause = err.cause instanceof ApplicationFailure ? err.cause : undefined
+      throw ApplicationFailure.nonRetryable(cause?.message ?? err.message, cause?.type)
+    }
+    throw err
+  }
+}
+
+async function squashMemberSources(
+  args: IProcessMemberSourcesArgs,
+): Promise<ISquashedMemberSources | null> {
   // without contributions since they take a lot of space
   const toBeSquashed: Record<
     string,
@@ -195,18 +229,17 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
           existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
         }
 
-        return updateMemberUsingSquashedPayload(
-          args.memberId,
+        return {
           existingMemberData,
-          {
+          payload: {
             identities: [],
             attributes,
             memberOrganizations: [],
             reach: {},
           },
-          false,
-          false,
-        )
+          hasContributions: false,
+          isHighConfidenceSourceSelectedForWorkExperiences: false,
+        }
       }
     }
   }
@@ -356,18 +389,13 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
       squashedPayload.reach = crustDataProfileSelected.reach
     }
 
-    const memberUpdated = await updateMemberUsingSquashedPayload(
-      args.memberId,
+    return {
       existingMemberData,
-      squashedPayload,
-      !!progaiLinkedinScraperProfileSelected && hasContributions,
-      !!crustDataProfileSelected,
-    )
-
-    return memberUpdated
+      payload: squashedPayload,
+      hasContributions: !!progaiLinkedinScraperProfileSelected && hasContributions,
+      isHighConfidenceSourceSelectedForWorkExperiences: !!crustDataProfileSelected,
+    }
   }
 
-  await touchMemberEnrichmentLastTriedAt(args.memberId)
-
-  return false
+  return null
 }

@@ -63,7 +63,8 @@ const props = defineProps<{
   identities: {
     [key: string]: {
       handle: string;
-      link: string;
+      link: string | null;
+      verified: boolean;
     }[];
   };
   limit?: number;
@@ -82,7 +83,8 @@ const parsedIdentities = computed(() => {
       acc: {
         [key: string]: {
           handle: string;
-          link: string;
+          link: string | null;
+          verified: boolean;
         }[];
       },
       k,

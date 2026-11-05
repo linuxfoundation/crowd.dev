@@ -121,6 +121,26 @@ export async function insertOrganizationIdentities(
   return qx.result(query)
 }
 
+function findStoredOrgIdentity(
+  stored: IOrganizationIdentity[],
+  identity: Partial<IOrganizationIdentity>,
+): IOrganizationIdentity | undefined {
+  return stored.find(
+    (s) =>
+      s.value === identity.value && s.platform === identity.platform && s.type === identity.type,
+  )
+}
+
+export function hasAllOrgIdentities(
+  stored: IOrganizationIdentity[],
+  identities: Partial<IOrganizationIdentity>[],
+): boolean {
+  return identities.every((identity) => {
+    const existing = findStoredOrgIdentity(stored, identity)
+    return existing && (identity.verified === undefined || existing.verified === identity.verified)
+  })
+}
+
 export async function upsertOrgIdentities(
   qe: QueryExecutor,
   organizationId: string,
@@ -132,9 +152,7 @@ export async function upsertOrgIdentities(
   const toUpdate: Partial<IOrganizationIdentity>[] = []
 
   for (const i of identities) {
-    const existing = existingIdentities.find(
-      (ei) => ei.value === i.value && ei.platform === i.platform && ei.type === i.type,
-    )
+    const existing = findStoredOrgIdentity(existingIdentities, i)
     if (!existing) {
       toCreate.push({
         organizationId,
@@ -240,33 +258,58 @@ export function preferCompanyOverUniversityWhenOverlapping<T extends { organizat
   return companies.length > 0 && universities.length > 0 ? companies : candidates
 }
 
-export async function findOrgIdByDomain(
+export async function findOrgIdsByVerifiedDomains(
   qx: QueryExecutor,
-  domains: string[],
-): Promise<string | null> {
-  const domainIdentityTypes = [
-    OrganizationIdentityType.PRIMARY_DOMAIN,
-    OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-  ]
-  const result = await qx.selectOneOrNone(
+  accounts: { name: string; domain: string }[],
+): Promise<{ name: string; domain: string; organizationId: string }[]> {
+  return qx.select(
     `
-      SELECT "organizationId"
-      FROM "organizationIdentities"
-      WHERE "value" = ANY($(domains))
-        AND "type" = ANY($(domainIdentityTypes))
-      LIMIT 1;
+      WITH input AS MATERIALIZED (
+        SELECT DISTINCT name, domain
+        FROM unnest($(names)::text[], $(domains)::text[]) AS input(name, domain)
+      ),
+      owners AS MATERIALIZED (
+        SELECT
+          lower(oi.value) AS domain,
+          oi."organizationId",
+          o."displayName",
+          count(DISTINCT oi.platform) FILTER (WHERE oi.type = $(primaryDomain)) AS "primaryDomainPlatforms",
+          count(DISTINCT oi.platform) AS platforms
+        FROM "organizationIdentities" oi
+        JOIN (SELECT DISTINCT domain FROM input) d ON d.domain = lower(oi.value)
+        JOIN organizations o ON o.id = oi."organizationId" AND o."deletedAt" IS NULL
+        WHERE oi.verified
+          AND oi.type IN ($(primaryDomain), $(alternativeDomain))
+        GROUP BY 1, 2, 3
+      ),
+      ranked AS (
+        SELECT
+          input.name,
+          input.domain,
+          owners."organizationId",
+          rank() OVER (
+            PARTITION BY input.name, input.domain
+            ORDER BY
+              similarity(owners."displayName", input.name) DESC NULLS LAST,
+              owners."primaryDomainPlatforms" DESC,
+              owners.platforms DESC
+          ) AS rank
+        FROM input
+        JOIN owners USING (domain)
+      )
+      SELECT name, domain, (array_agg("organizationId"))[1] AS "organizationId"
+      FROM ranked
+      WHERE rank = 1
+      GROUP BY name, domain
+      HAVING count(*) = 1
     `,
     {
-      domains,
-      domainIdentityTypes,
+      names: accounts.map((account) => account.name),
+      domains: accounts.map((account) => account.domain),
+      primaryDomain: OrganizationIdentityType.PRIMARY_DOMAIN,
+      alternativeDomain: OrganizationIdentityType.ALTERNATIVE_DOMAIN,
     },
   )
-
-  if (result) {
-    return result.organizationId
-  }
-
-  return null
 }
 
 export enum OrgIdentityField {

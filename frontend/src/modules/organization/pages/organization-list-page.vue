@@ -101,7 +101,7 @@ import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue';
-import { TanstackKey } from '@/shared/types/tanstack';
+import { queryKeys } from '@/shared/queries/keys';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useQuery } from '@tanstack/vue-query';
@@ -147,16 +147,15 @@ const queryParams = ref({
 });
 
 // Create a computed query key for organizations
-const organizationsQueryKey = computed(() => [
-  TanstackKey.ORGANIZATIONS_LIST,
-  selectedProjectGroup.value?.id,
-  queryParams.value.search,
-  queryParams.value.filter,
-  queryParams.value.offset,
-  queryParams.value.limit,
-  queryParams.value.orderBy,
-  queryParams.value.segments,
-]);
+const organizationsQueryKey = computed(() => queryKeys.organizations.list({
+  projectGroupId: selectedProjectGroup.value?.id,
+  search: queryParams.value.search,
+  filter: queryParams.value.filter,
+  offset: queryParams.value.offset,
+  limit: queryParams.value.limit,
+  orderBy: queryParams.value.orderBy,
+  segments: queryParams.value.segments,
+}));
 
 // Query for organizations list with caching
 const {
@@ -177,10 +176,7 @@ const {
 });
 
 // Create a computed query key for merge suggestions
-const mergeSuggestionsQueryKey = computed(() => [
-  TanstackKey.ORGANIZATION_MERGE_SUGGESTIONS_COUNT,
-  selectedProjectGroup.value?.id,
-]);
+const mergeSuggestionsQueryKey = computed(() => queryKeys.organizations.mergeSuggestionsCount(selectedProjectGroup.value?.id));
 
 // Query for merge suggestions count with caching
 const {
@@ -269,6 +265,6 @@ watch(
 );
 
 onMounted(() => {
-  (window as any).analytics.page('Organization');
+  (window as unknown as Window & { analytics: { page: (name: string) => void } }).analytics.page('Organization');
 });
 </script>

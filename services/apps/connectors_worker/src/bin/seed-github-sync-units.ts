@@ -143,9 +143,9 @@ setImmediate(async () => {
         syncName,
       })),
     )
-    const unitsUpserted = await upsertSyncUnits(qx, units)
+    const unitsInserted = await upsertSyncUnits(qx, units)
 
-    log.info({ repos: channels.length, syncNames, unitsUpserted }, 'seeding complete')
+    log.info({ repos: channels.length, syncNames, unitsInserted }, 'seeding complete')
     process.exit(0)
   } catch (err) {
     log.error(err, 'seeding failed')

@@ -14,7 +14,7 @@
 import { computed, ref } from 'vue';
 
 const props = defineProps<{
-  entities: any[];
+  entities: unknown[];
   limit: number
 }>();
 

@@ -29,7 +29,7 @@ export const Regular = {
     placement: 'bottom-start',
     width: 'auto',
   },
-  render: (args) => ({
+  render: (args: Record<string, unknown>) => ({
     components: {
       LfDropdown,
       LfDropdownItem,

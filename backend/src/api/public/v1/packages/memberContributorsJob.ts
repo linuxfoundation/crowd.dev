@@ -1,9 +1,14 @@
+import type {
+  AkritesExternalMemberContributors,
+  InferredRepoMemberContributorsBody,
+} from '@crowd/data-access-layer'
 import { TemporalWorkflowId } from '@crowd/types'
-
-import type { AkritesExternalMemberContributors } from './akritesExternalMemberContributors'
 
 export const MEMBER_CONTRIBUTORS_JOB_TASK_QUEUE = 'security-contacts-worker'
 export const MEMBER_CONTRIBUTORS_JOB_WORKFLOW = 'collectMemberContributors'
+export const MEMBER_CONTRIBUTORS_INFERRED_REPO_WORKFLOW =
+  'collectMemberContributorsFromInferredRepo'
+export const RESULT_EXPIRED_REASON = 'Job result expired, resubmit the job'
 
 export interface AkritesExternalMemberContributorsJobPending {
   jobId: string
@@ -16,10 +21,18 @@ export interface AkritesExternalMemberContributorsJobFailed {
   reason: string
 }
 
-export type AkritesExternalMemberContributorsJobDone = Omit<
-  AkritesExternalMemberContributors,
-  'status'
-> & {
+export interface AkritesExternalMemberContributorsJobUnresolvable {
+  jobId: string
+  status: 'unresolvable'
+  reason: string
+  repoUrl: string | null
+}
+
+export type MemberContributorsDoneBody =
+  | Omit<AkritesExternalMemberContributors, 'status'>
+  | InferredRepoMemberContributorsBody
+
+export type AkritesExternalMemberContributorsJobDone = MemberContributorsDoneBody & {
   jobId: string
   status: 'done'
 }
@@ -27,6 +40,7 @@ export type AkritesExternalMemberContributorsJobDone = Omit<
 export type AkritesExternalMemberContributorsJob =
   | AkritesExternalMemberContributorsJobPending
   | AkritesExternalMemberContributorsJobFailed
+  | AkritesExternalMemberContributorsJobUnresolvable
   | AkritesExternalMemberContributorsJobDone
 
 export function memberContributorsJobWorkflowId(jobId: string): string {
@@ -46,9 +60,22 @@ export function toFailedMemberContributorsJob(
   return { jobId, status: 'failed', reason: reason ?? 'Job failed' }
 }
 
+export function toUnresolvableMemberContributorsJob(
+  jobId: string,
+  reason: string | null,
+  repoUrl: string | null,
+): AkritesExternalMemberContributorsJobUnresolvable {
+  return {
+    jobId,
+    status: 'unresolvable',
+    reason: reason ?? 'Repository could not be resolved',
+    repoUrl,
+  }
+}
+
 export function toDoneMemberContributorsJob(
   jobId: string,
-  body: AkritesExternalMemberContributors,
+  body: MemberContributorsDoneBody,
 ): AkritesExternalMemberContributorsJobDone {
   return { ...body, jobId, status: 'done' }
 }

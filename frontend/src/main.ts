@@ -66,14 +66,14 @@ declare module 'vue' {
   app.use(marked);
   app.use(VueLazyLoad, {});
 
-  app.config.errorHandler = (err: any) => {
+  app.config.errorHandler = (err: unknown) => {
     console.error(err);
     if (config.env !== 'local') {
-      captureException(err);
+      captureException(err as Error);
     }
   };
 
-  const exists = (el: any) => Boolean(el);
+  const exists = <T>(el: T | undefined): el is T => Boolean(el);
   Object.keys(modules)
     .map((key) => modules[key].components)
     .filter(exists)

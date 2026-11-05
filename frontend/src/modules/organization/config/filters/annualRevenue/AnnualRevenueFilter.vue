@@ -66,6 +66,7 @@ import type {
   NumberFilterValue,
 } from '@/shared/modules/filters/types/filterTypes/NumberFilterConfig';
 import useVuelidate from '@vuelidate/core';
+import type { ValidationArgs } from '@vuelidate/core';
 import {
   integer, minValue, numeric, required,
 } from '@vuelidate/validators';
@@ -97,7 +98,7 @@ const defaultForm: NumberFilterValue = {
   operator: FilterNumberOperator.BETWEEN,
 };
 
-const rules: any = computed(() => ({
+const rules = computed<ValidationArgs>(() => ({
   value: {
     required,
     numeric,

@@ -1,12 +1,17 @@
 import io from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { storeToRefs } from 'pinia';
 import { h } from 'vue';
 import config from '@/config';
 
 import { ToastStore } from '@/shared/message/notification';
 import type { User } from '@/modules/auth/types/User.type';
+import type {
+  OrganizationMergeSocketPayload,
+  ProfileMergeSocketPayload,
+} from '@/modules/auth/types/SocketEvents.type';
 
-let socketIoClient: any;
+let socketIoClient: Socket | null = null;
 
 const SocketEvents = {
   connect: 'connect',
@@ -50,16 +55,12 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
     console.info('Socket disconnected');
   });
 
-  socketIoClient.on(SocketEvents.integrationCompleted, (data) => {
+  socketIoClient.on(SocketEvents.integrationCompleted, (data: string) => {
     console.info('Integration onboarding done', data);
-    // store.dispatch(
-    //   'integration/doFind',
-    //   JSON.parse(data).integrationId,
-    // );
   });
 
-  socketIoClient.on(SocketEvents.memberMerge, async (data) => {
-    const parsedData = JSON.parse(data);
+  socketIoClient.on(SocketEvents.memberMerge, async (data: string) => {
+    const parsedData: ProfileMergeSocketPayload = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
@@ -67,13 +68,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
       const lsSegmentsStore = useLfSegmentsStore();
       const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-      const {
-        primaryDisplayName,
-        secondaryDisplayName,
-        primaryId,
-        secondaryId,
-        userId,
-      } = parsedData;
+      const { primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId } =
+        parsedData;
 
       if (getUser()?.id !== userId) {
         return;
@@ -95,22 +91,10 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
         },
         secondaryDisplayName,
       );
-      const between = h(
-        'span',
-        {},
-        ' merged into ',
-      );
-      const after = h(
-        'span',
-        {},
-        '. Finalizing profile merging might take some time to complete.',
-      );
+      const between = h('span', {}, ' merged into ');
+      const after = h('span', {}, '. Finalizing profile merging might take some time to complete.');
       ToastStore.closeAll();
-      ToastStore.success(h(
-        'div',
-        {},
-        [secondaryMember, between, primaryMember, after],
-      ), {
+      ToastStore.success(h('div', {}, [secondaryMember, between, primaryMember, after]), {
         title: 'Profiles merged successfully',
       });
     } catch (error) {
@@ -118,9 +102,9 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
     }
   });
 
-  socketIoClient.on(SocketEvents.memberUnmerge, async (data) => {
+  socketIoClient.on(SocketEvents.memberUnmerge, async (data: string) => {
     console.info('Member unmerge done', data);
-    const parsedData = JSON.parse(data);
+    const parsedData: ProfileMergeSocketPayload = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
@@ -128,13 +112,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
       const lsSegmentsStore = useLfSegmentsStore();
       const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-      const {
-        primaryDisplayName,
-        secondaryDisplayName,
-        primaryId,
-        secondaryId,
-        userId,
-      } = parsedData;
+      const { primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId } =
+        parsedData;
 
       if (getUser()?.id !== userId) {
         return;
@@ -156,22 +135,14 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
         },
         secondaryDisplayName,
       );
-      const between = h(
-        'span',
-        {},
-        ' unmerged from ',
-      );
+      const between = h('span', {}, ' unmerged from ');
       const after = h(
         'span',
         {},
         '. Finalizing profile unmerging might take some time to complete.',
       );
       ToastStore.closeAll();
-      ToastStore.success(h(
-        'div',
-        {},
-        [secondaryMember, between, primaryMember, after],
-      ), {
+      ToastStore.success(h('div', {}, [secondaryMember, between, primaryMember, after]), {
         title: 'Profiles unmerged successfully',
       });
     } catch (error) {
@@ -179,9 +150,9 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
     }
   });
 
-  socketIoClient.on(SocketEvents.organizationUnmerge, async (data) => {
+  socketIoClient.on(SocketEvents.organizationUnmerge, async (data: string) => {
     console.info('Organization unmerge done', data);
-    const parsedData = JSON.parse(data);
+    const parsedData: ProfileMergeSocketPayload = JSON.parse(data);
     if (!parsedData.success) {
       return;
     }
@@ -189,9 +160,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
       const lsSegmentsStore = useLfSegmentsStore();
       const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-      const {
-        primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId,
-      } = parsedData;
+      const { primaryDisplayName, secondaryDisplayName, primaryId, secondaryId, userId } =
+        parsedData;
 
       if (getUser()?.id !== userId) {
         return;
@@ -213,45 +183,34 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
         },
         secondaryDisplayName,
       );
-      const between = h(
-        'span',
-        {},
-        ' unmerged from ',
-      );
+      const between = h('span', {}, ' unmerged from ');
       const after = h(
         'span',
         {},
         '. Syncing organization activities might take some time to complete.',
       );
       ToastStore.closeAll();
-      ToastStore.success(h(
-        'div',
-        {},
-        [secondaryOrganization, between, primaryOrganization, after],
-      ), {
-        title: 'Organizations unmerged successfully',
-      });
+      ToastStore.success(
+        h('div', {}, [secondaryOrganization, between, primaryOrganization, after]),
+        {
+          title: 'Organizations unmerged successfully',
+        },
+      );
     } catch (error) {
       console.error('Socket organizationUnmerge: failed to load segments module', error);
     }
   });
 
-  socketIoClient.on(SocketEvents.orgMerge, async (payload) => {
-    const {
-      success,
-      userId,
-      primaryOrgId,
-      original,
-      toMerge,
-    } = JSON.parse(payload);
+  socketIoClient.on(SocketEvents.orgMerge, async (payload: string) => {
+    const { success, userId, primaryOrgId, original, toMerge }: OrganizationMergeSocketPayload = JSON.parse(payload);
 
-    if (getUser().id !== userId) {
+    if (getUser()?.id !== userId) {
       return;
     }
 
     try {
       const { useOrganizationStore } = await import('@/modules/organization/store/pinia');
-      const { removeMergedOrganizations } = useOrganizationStore();
+      const organizationStore = useOrganizationStore();
       const primaryOrganization = {
         id: primaryOrgId,
         displayName: original,
@@ -262,9 +221,10 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
 
       ToastStore.closeAll();
 
-      removeMergedOrganizations(primaryOrgId);
+      organizationStore.removeMergedOrganizations(primaryOrgId);
 
-      const { default: useOrganizationMergeMessage } = await import('@/shared/modules/merge/config/useOrganizationMergeMessage');
+      const { default: useOrganizationMergeMessage } =
+        await import('@/shared/modules/merge/config/useOrganizationMergeMessage');
       const { successMessage, socketErrorMessage } = useOrganizationMergeMessage;
       if (success) {
         successMessage({

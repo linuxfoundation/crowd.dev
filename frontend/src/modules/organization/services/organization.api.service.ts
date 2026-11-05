@@ -28,7 +28,7 @@ export class OrganizationApiService {
     return response.data;
   }
 
-  static async fetchMergeSuggestions(limit: number = 20, offset: number = 0, query: any = {}) {
+  static async fetchMergeSuggestions(limit: number = 20, offset: number = 0, query: Record<string, unknown> = {}) {
     const data = {
       limit,
       offset,

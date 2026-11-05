@@ -9,6 +9,7 @@ export const PR_PAGE_SIZE = 50
 // bounds re-walk cost on a run that dies far above every prior window, at the cost of
 // re-fetching the dropped window's PRs once more before it gets picked back up
 const MAX_COVERED_WINDOWS = 8
+export const LISTING_LAG_MS = 48 * 60 * 60 * 1000
 
 export type OnPrProcessed = (pr: PullRequestNode) => Promise<void>
 
@@ -64,6 +65,22 @@ function mergeCoveredWindows(
     (a, b) => new Date(b.coveredUntil).getTime() - new Date(a.coveredUntil).getTime(),
   )
   return result.slice(0, MAX_COVERED_WINDOWS)
+}
+
+function isProcessed(processed: Record<string, string>, pr: PullRequestNode): boolean {
+  const processedAt = processed[String(pr.number)]
+  return processedAt !== undefined && new Date(processedAt) >= new Date(pr.updatedAt)
+}
+
+function pruneProcessed(processed: Record<string, string>, since: string): Record<string, string> {
+  const floor = new Date(since).getTime() - LISTING_LAG_MS
+  return Object.fromEntries(
+    Object.entries(processed).filter(([, updatedAt]) => new Date(updatedAt).getTime() >= floor),
+  )
+}
+
+function toSecond(iso: string): number {
+  return Math.floor(new Date(iso).getTime() / 1000)
 }
 
 async function runBackfill(
@@ -131,20 +148,35 @@ async function runIncremental(
   repo: string,
   since: string,
   priorWindows: CoveredWindow[],
+  priorProcessed: Record<string, string>,
   processPrs: PrPageHandler,
 ): Promise<SyncOutcome> {
   const sinceDate = new Date(since)
+  const floor = new Date(sinceDate.getTime() - LISTING_LAG_MS)
   const runStartedAt = new Date().toISOString()
   // the walk is DESC by updatedAt, so a raw page cursor is a position that reorders
   // under it — never persist it across runs; resume coverage is value-based instead
   let cursor: string | null = null
   let oldestSeen: string | null = null
   let newestSeen: string | null = null
+  const processed = { ...priorProcessed }
+  const runStartedSecond = toSecond(runStartedAt)
+  const recordProcessed = (pr: PullRequestNode) => {
+    if (toSecond(pr.updatedAt) < runStartedSecond) {
+      processed[String(pr.number)] = pr.updatedAt
+    }
+  }
 
   const commitPartial = async () => {
     const coveredWindows = mergeCoveredWindows(priorWindows, oldestSeen, newestSeen)
     if (coveredWindows.length > 0) {
-      await ctx.commitWatermark({ phase: 'incremental', since, cursor: null, coveredWindows })
+      await ctx.commitWatermark({
+        phase: 'incremental',
+        since,
+        cursor: null,
+        coveredWindows,
+        processed: pruneProcessed(processed, since),
+      })
     }
   }
 
@@ -166,8 +198,10 @@ async function runIncremental(
       const { pageInfo, nodes } = data.repository.pullRequests
       const pullRequests = nodes.filter((node): node is PullRequestNode => node !== null)
 
-      const fresh = pullRequests.filter((pr) => new Date(pr.updatedAt) >= sinceDate)
-      const pending = fresh.filter((pr) => !isCovered(priorWindows, pr.updatedAt))
+      const inWindow = pullRequests.filter((pr) => new Date(pr.updatedAt) >= floor)
+      const pending = inWindow.filter(
+        (pr) => !isProcessed(processed, pr) && !isCovered(priorWindows, pr.updatedAt),
+      )
 
       let allPendingProcessed = true
       if (pending.length > 0) {
@@ -177,10 +211,16 @@ async function runIncremental(
         let processedCount = 0
         const onPrProcessed: OnPrProcessed = async (pr) => {
           processedCount += 1
-          newestSeen = newestSeen ?? fresh[0].updatedAt
+          recordProcessed(pr)
+          newestSeen = newestSeen ?? inWindow[0].updatedAt
           oldestSeen = pr.updatedAt
         }
         await processPrs(pending, sinceDate, tracksPerPrProgress ? onPrProcessed : undefined)
+        if (!tracksPerPrProgress) {
+          for (const pr of pending) {
+            recordProcessed(pr)
+          }
+        }
         allPendingProcessed = !tracksPerPrProgress || processedCount === pending.length
       }
 
@@ -190,14 +230,19 @@ async function runIncremental(
         break
       }
 
-      if (fresh.length > 0) {
-        newestSeen = newestSeen ?? fresh[0].updatedAt
-        oldestSeen = fresh[fresh.length - 1].updatedAt
+      if (inWindow.length > 0) {
+        newestSeen = newestSeen ?? inWindow[0].updatedAt
+        oldestSeen = inWindow[inWindow.length - 1].updatedAt
       }
 
-      const reachedSince = fresh.length < pullRequests.length
-      if (reachedSince || !pageInfo.hasNextPage) {
-        await ctx.commitWatermark({ phase: 'incremental', since: runStartedAt, cursor: null })
+      const reachedFloor = inWindow.length < pullRequests.length
+      if (reachedFloor || !pageInfo.hasNextPage) {
+        await ctx.commitWatermark({
+          phase: 'incremental',
+          since: runStartedAt,
+          cursor: null,
+          processed: pruneProcessed(processed, runStartedAt),
+        })
         return { complete: true }
       }
 
@@ -220,7 +265,15 @@ export async function runDualPhasePrSync(
   const watermark = readWatermark(ctx.watermark)
 
   if (watermark.phase === 'incremental' && watermark.since) {
-    return runIncremental(ctx, owner, repo, watermark.since, watermark.coveredWindows, processPrs)
+    return runIncremental(
+      ctx,
+      owner,
+      repo,
+      watermark.since,
+      watermark.coveredWindows,
+      watermark.processed,
+      processPrs,
+    )
   }
   return runBackfill(ctx, owner, repo, processPrs)
 }

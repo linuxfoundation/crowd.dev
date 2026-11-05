@@ -24,7 +24,7 @@ const props = defineProps<{
   placeholder?: string;
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: any): void}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 
 const { trackEvent } = useProductTracking();
 const router = useRouter();

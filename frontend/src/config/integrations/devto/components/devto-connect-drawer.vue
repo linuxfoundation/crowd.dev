@@ -209,11 +209,7 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import formChangeDetector from '@/shared/form/form-change';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
-
-interface DevtoSettings {
-  users: string[];
-  organizations: string[];
-}
+import type { DevtoSettings } from '@/config/integrations/devto/types/DevtoSettings';
 
 interface DevtoAccountRow {
   id: number;

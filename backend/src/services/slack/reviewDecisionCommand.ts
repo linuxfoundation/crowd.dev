@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { findProjectCatalogById, resolveProjectCatalogReview } from '@crowd/data-access-layer'
 import {
   IDbProjectCatalog,
+  IDbProjectCatalogReviewResolution,
   isSlackBotProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -14,9 +15,13 @@ import {
   buildBotDoneReply,
   buildBotRejectedReply,
   resolveReviewCdpUrl,
+  findOrganizationSiblings,
+  needsPerson,
+  organizationReviewOf,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
 import {
+  IReviewOrganization,
   NOT_ALLOWED_NOTICE,
   ReviewDecision,
   buildNotAllowedModal,
@@ -24,6 +29,7 @@ import {
   buildReviewDecisionMessage,
   buildReviewRequestBlocks,
   buildReviewRequestText,
+  organizationSubjectText,
   describeDecisionReason,
   formatSlackTime,
   getSlackBotConfig,
@@ -133,7 +139,8 @@ export async function runReviewRejectPrompt({
     return
   }
 
-  const row = await findProjectCatalogById(await getBgQx(), catalogId)
+  const qx = await getBgQx()
+  const row = await findProjectCatalogById(qx, catalogId)
   if (!row || row.action !== 'review') {
     await explainDecidedRow(row, responseUrl, log)
     return
@@ -147,7 +154,11 @@ export async function runReviewRejectPrompt({
 
   const opened = await openSlackView(
     triggerId,
-    buildRejectReviewModal({ catalogId, repoName: row.repoName, responseUrl }),
+    buildRejectReviewModal({
+      catalogId,
+      repoName: rejectSubject(row, await pendingOrganizationReview(qx, row)),
+      responseUrl,
+    }),
   )
   if (!opened.ok) {
     log.warn({ catalogId, error: opened.error }, 'The reject prompt could not be opened.')
@@ -168,14 +179,39 @@ function reviewCycleWorkflowId(catalogId: string, reviewedAt: string | null): st
   return `onboard-review-${catalogId}-${cycle}`
 }
 
+function onSameReviewCard(lead: IDbProjectCatalog): (row: IDbProjectCatalog) => boolean {
+  const cardTs = lead.reviewMessageTs
+  return (row) => !!cardTs && row.action === 'review' && row.reviewMessageTs === cardTs
+}
+
+async function decideOrganizationSiblings(
+  qx: QueryExecutor,
+  lead: IDbProjectCatalog,
+  resolution: IDbProjectCatalogReviewResolution,
+  log: IServiceOptions['log'],
+): Promise<IDbProjectCatalog[]> {
+  const siblings = await findOrganizationSiblings(qx, lead, onSameReviewCard(lead))
+  const decided: IDbProjectCatalog[] = []
+  for (const sibling of siblings) {
+    const resolved = await resolveProjectCatalogReview(qx, sibling.id, resolution)
+    if (resolved) {
+      decided.push(resolved)
+    } else {
+      log.warn({ catalogId: sibling.id, leadId: lead.id }, 'Organization sibling was not decided.')
+    }
+  }
+  return decided
+}
+
 async function startApprovedOnboarding(
   temporal: OnboardingRequestTemporal | null,
-  catalogId: string,
+  catalogIds: string[],
   reviewedAt: string | null,
   log: IServiceOptions['log'],
 ): Promise<boolean> {
+  const [catalogId] = catalogIds
   if (!temporal) {
-    log.warn({ catalogId }, 'Temporal not configured, the approved row waits for the schedule.')
+    log.warn({ catalogIds }, 'Temporal not configured, the approved rows wait for the schedule.')
     return false
   }
 
@@ -184,7 +220,7 @@ async function startApprovedOnboarding(
       taskQueue: 'automatic-onboarding',
       workflowId: reviewCycleWorkflowId(catalogId, reviewedAt),
       workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
-      args: [{ catalogIds: [catalogId] }],
+      args: [{ catalogIds }],
     })
     return true
   } catch (err) {
@@ -192,8 +228,8 @@ async function startApprovedOnboarding(
       return true
     }
     log.error(
-      { catalogId, err },
-      'Starting the approved onboarding failed, the row waits for the schedule.',
+      { catalogIds, err },
+      'Starting the approved onboarding failed, the rows wait for the schedule.',
     )
     return false
   }
@@ -221,24 +257,36 @@ export async function runReviewDecisionCommand({
   }
 
   const qx = await getBgQx()
-  const resolved = await resolveProjectCatalogReview(qx, catalogId, {
+  const resolution: IDbProjectCatalogReviewResolution = {
     decision,
     reviewedBy: actorId,
     decisionReason: reason?.decisionReason ?? null,
     decisionNote: reason?.decisionNote ?? null,
+  }
+  const { resolved, siblings } = await qx.tx(async (tx) => {
+    const lead = await resolveProjectCatalogReview(tx, catalogId, resolution)
+    if (!lead) {
+      return { resolved: null, siblings: [] as IDbProjectCatalog[] }
+    }
+    return { resolved: lead, siblings: await decideOrganizationSiblings(tx, lead, resolution, log) }
   })
   if (!resolved) {
     await handleRefusedDecision(qx, catalogId, decision, responseUrl, actorId, log)
     return
   }
+  const organization = organizationReviewOf(resolved, siblings.length)
+  const catalogIds = [resolved.id, ...siblings.map((row) => row.id)]
 
-  log.info({ catalogId, repoUrl: resolved.repoUrl, decision, actorId }, 'Review decision recorded.')
+  log.info(
+    { catalogId, repoUrl: resolved.repoUrl, decision, actorId, siblings: siblings.length },
+    'Review decision recorded.',
+  )
 
   const replaceCard = (onboardingStarted: boolean) =>
     replaceOriginal(
       responseUrl,
       buildReviewDecisionMessage(
-        toReviewRequestCard(resolved, NO_REVIEW_CARD_EXTRAS),
+        toReviewRequestCard(resolved, NO_REVIEW_CARD_EXTRAS, organization),
         decision,
         actorId,
         {
@@ -259,16 +307,22 @@ export async function runReviewDecisionCommand({
       await refreshRequestStatusMessage(qx, resolved)
       await applyRequestStatus(qx, resolved, 'checking')
     }
-    const started = await startApprovedOnboarding(temporal, catalogId, resolved.reviewedAt, log)
+    const started = await startApprovedOnboarding(temporal, catalogIds, resolved.reviewedAt, log)
     if (started !== expectsStart) {
       await replaceCard(started)
     }
   }
 
   if (decision === 'reject') {
-    await replyInBotThread(qx, resolved, buildBotRejectedReply(resolved), 'notAdded', log)
+    await replyInBotThread(
+      qx,
+      resolved,
+      buildBotRejectedReply(resolved, organization),
+      'notAdded',
+      log,
+    )
   } else if (decision === 'done') {
-    await replyInBotThread(qx, resolved, buildBotDoneReply(resolved), 'added', log)
+    await replyInBotThread(qx, resolved, buildBotDoneReply(resolved, organization), 'added', log)
   }
 }
 
@@ -284,7 +338,7 @@ function decidedVerb(row: IDbProjectCatalog): string {
     case 'skip':
       return 'rejected'
     case 'onboarded':
-      return row.proposedAction === 'human_review' ? 'marked as done' : 'approved'
+      return needsPerson(row) ? 'marked as done' : 'approved'
     default:
       return 'approved'
   }
@@ -324,16 +378,26 @@ async function handleRefusedDecision(
   }
 
   log.info({ catalogId, decision, actorId }, 'Review decision refused, the card was refreshed.')
-  const card = toReviewRequestCard(row, {
-    cdpUrl: await resolveReviewCdpUrl(qx, row, API_CONFIG.frontendUrl),
-    repoContext: null,
-  })
+  const card = toReviewRequestCard(
+    row,
+    { cdpUrl: await resolveReviewCdpUrl(qx, row, API_CONFIG.frontendUrl), repoContext: null },
+    await pendingOrganizationReview(qx, row),
+  )
   await replaceOriginal(
     responseUrl,
     { text: buildReviewRequestText(card), blocks: buildReviewRequestBlocks(card) },
     log,
   )
   await postEphemeral(responseUrl, REFUSED_DECISION_NOTICES[decision], log)
+}
+
+function rejectSubject(row: IDbProjectCatalog, organization: IReviewOrganization | null): string {
+  return organization ? organizationSubjectText(organization) : row.repoName
+}
+
+async function pendingOrganizationReview(qx: QueryExecutor, row: IDbProjectCatalog) {
+  const siblings = await findOrganizationSiblings(qx, row, onSameReviewCard(row))
+  return organizationReviewOf(row, siblings.length)
 }
 
 async function replyInBotThread(

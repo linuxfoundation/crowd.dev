@@ -105,6 +105,7 @@
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router';
+import { consumeConnectSegment } from '@/config/integrations/connect-segment';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { computed, onMounted, ref } from 'vue';
@@ -115,16 +116,19 @@ import LfxTabs from '@/ui-kit/lfx/tabs/tabs.vue';
 import LfIntegrationListItem from '@/modules/admin/modules/integration/components/integration-list-item.vue';
 import LfxTab from '@/ui-kit/lfx/tabs/tab.vue';
 import AppIntegrationProgressWrapper from '@/modules/integration/components/integration-progress-wrapper.vue';
-import { mapActions, mapGetters } from '@/shared/vuex/vuex.helpers';
+import { storeToRefs } from 'pinia';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import config from '@/config';
 import { links } from '@/config/links';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { Project } from '@/modules/lf/segments/types/Segments';
 
 const route = useRoute();
 
 const { findSubProject } = useLfSegmentsStore();
-const { doFetch } = mapActions('integration');
-const { array, loadingFetch } = mapGetters('integration');
+const integrationStore = useIntegrationStore();
+const { array, loadingFetch } = storeToRefs(integrationStore);
 
 const { id, grandparentId } = route.params;
 
@@ -137,7 +141,7 @@ const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.valu
 
 const useGitHubNango = computed(() => {
   const githubIntegration = array.value.find(
-    (integration: any) => integration.platform === 'github',
+    (integration: Integration<unknown>) => integration.platform === 'github',
   );
   if (githubIntegration) {
     return !!githubIntegration.isNango;
@@ -145,34 +149,34 @@ const useGitHubNango = computed(() => {
   return !!isTeamUser.value;
 });
 
-const subproject = ref<any>();
+const subproject = ref<Pick<Project, 'name' | 'grandparentName'>>();
 
 const tab = ref('all');
 
 const platformsByStatus = computed(() => {
   const statusConfig = lfIntegrationStatusesTabs[tab.value];
-  const all = Object.keys(lfIntegrations(useGitHubNango.value));
+  const connectedPlatforms = array.value.map((integration: { platform: string }) => integration.platform);
+  const all = Object.entries(lfIntegrations(useGitHubNango.value))
+    .filter(([platform, integrationConfig]) => !integrationConfig.autoManaged || connectedPlatforms.includes(platform))
+    .map(([platform]) => platform);
   if (!statusConfig) {
     return all;
   }
   if (statusConfig.key === 'notConnected') {
-    return all.filter(
-      (platform) => !array.value
-        .map((integration: any) => integration.platform)
-        .includes(platform),
-    );
+    return all.filter((platform) => !connectedPlatforms.includes(platform));
   }
   const matching = array.value
-    .filter((integration: any) => statusConfig.show(integration))
-    .map((integration: any) => integration.platform);
+    .filter((integration: Integration<unknown>) => statusConfig.show(integration))
+    .map((integration: Integration<unknown>) => integration.platform);
   return all.filter((platform) => matching.includes(platform));
 });
 
 onMounted(() => {
+  consumeConnectSegment();
   localStorage.setItem('segmentId', id as string);
   localStorage.setItem('segmentGrandparentId', grandparentId as string);
 
-  doFetch();
+  integrationStore.fetch();
   findSubProject(id).then((res) => {
     subproject.value = res;
   });

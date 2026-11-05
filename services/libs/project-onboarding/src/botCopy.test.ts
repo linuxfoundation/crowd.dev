@@ -24,10 +24,24 @@ describe('botCopy', () => {
       whatsNeeded: "Add this repo to SLSA's GitHub connection",
       action: 'add_to_connection',
     })
+    expect(describeReviewCase('add_to_connection', 'SLSA', 12)).toMatchObject({
+      whatsNeeded: "Add these 12 repos to SLSA's GitHub connection",
+    })
     expect(describeReviewCase('connect_github', null)).toEqual({
       insightsState: 'Project exists, GitHub not connected',
       whatsNeeded: 'Connect GitHub to the project with this repo',
       action: 'connect_github',
+    })
+    expect(describeReviewCase('new_project_by_hand', 'Acme')).toEqual({
+      insightsState: 'Not in LFX Insights yet',
+      whatsNeeded:
+        'Create Acme as a non-LF project in CDP with these repositories by hand, then mark as done',
+      action: 'manual',
+    })
+    expect(describeReviewCase('not_in_pcc', 'Acme')).toEqual({
+      insightsState: 'Not in the foundation project list',
+      whatsNeeded: 'Check Acme with PCC, then create it in CDP, add this repo and mark as done',
+      action: 'manual',
     })
     expect(describeReviewCase('legacy_connection', 'TiKV')).toEqual({
       insightsState: 'Uses the old GitHub connection',
@@ -44,10 +58,21 @@ describe('botCopy', () => {
       whatsNeeded: 'Confirm which project this repo belongs to, add it by hand, then mark as done',
       action: 'manual',
     })
-    expect(describeReviewCase('unknown', null).action).toBe('add_to_connection')
+    expect(describeReviewCase('unknown', null).action).toBe('manual')
+    expect(describeReviewCase('handed_off', null, 12).whatsNeeded).toBe(
+      'Confirm which project these 12 repos belong to, add them by hand, then mark as done',
+    )
+    expect(describeReviewCase('legacy_connection', 'TiKV', 3).whatsNeeded).toBe(
+      'Add these 3 repos by hand in CDP, then mark as done',
+    )
+    expect(describeReviewCase('handed_off', null)).toEqual({
+      insightsState: 'Handed to the CDP team by the requester',
+      whatsNeeded: 'Confirm which project this repo belongs to, add it by hand, then mark as done',
+      action: 'manual',
+    })
     expect(describeReviewCase('new_project', 'Acme')).toEqual({
       insightsState: 'Not in LFX Insights yet',
-      whatsNeeded: 'Create a new LFX Insights project and add this repo',
+      whatsNeeded: 'Create a new non-LF project in LFX Insights and add this repo',
       action: 'create_project',
     })
   })

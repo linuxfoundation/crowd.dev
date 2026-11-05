@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { evaluateProject } from './evaluator'
+import { TRANSIENT_EVALUATION_FAILURE } from './retry'
 import { IEvaluationInput } from './types'
 
 const input: IEvaluationInput = {
@@ -61,20 +62,22 @@ describe('evaluateProject', () => {
         Authorization: 'Bearer test-key',
       },
       body: JSON.stringify(input),
+      signal: expect.any(AbortSignal),
     })
     expect(result).toEqual(apiResult)
   })
 
-  it('returns an unsure/error result when the fetch call rejects', async () => {
+  it('throws a retryable transient failure when the fetch call rejects', async () => {
     fetchMock.mockRejectedValue(new Error('network down'))
 
-    const result = await evaluateProject(input)
-
-    expect(result.outcome).toBe('unsure')
-    expect(result.evaluationReason).toContain('network down')
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      nonRetryable: false,
+      message: 'API request failed: network down',
+    })
   })
 
-  it('returns a rate-limited reason on HTTP 429 from the daily evaluation cap', async () => {
+  it('throws a transient failure without an immediate retry on the daily evaluation cap', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 429,
@@ -86,13 +89,14 @@ describe('evaluateProject', () => {
       }),
     })
 
-    const result = await evaluateProject(input)
-
-    expect(result.outcome).toBe('unsure')
-    expect(result.evaluationReason).toBe('rate limited: daily evaluation cap reached')
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      nonRetryable: true,
+      message: 'rate limited: daily evaluation cap reached',
+    })
   })
 
-  it('falls back to the generic reason on HTTP 429 from an unrelated rate limiter', async () => {
+  it('throws a retryable transient failure on HTTP 429 from an unrelated rate limiter', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 429,
@@ -104,13 +108,14 @@ describe('evaluateProject', () => {
       }),
     })
 
-    const result = await evaluateProject(input)
-
-    expect(result.outcome).toBe('unsure')
-    expect(result.evaluationReason).toContain('API returned HTTP 429')
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      nonRetryable: false,
+      message: 'API returned HTTP 429: Too many requests, please try again later',
+    })
   })
 
-  it('falls back to the generic reason on HTTP 429 with a non-JSON body', async () => {
+  it('throws a transient failure on HTTP 429 with a non-JSON body', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 429,
@@ -122,23 +127,62 @@ describe('evaluateProject', () => {
       }),
     })
 
-    const result = await evaluateProject(input)
-
-    expect(result.outcome).toBe('unsure')
-    expect(result.evaluationReason).toContain('API returned HTTP 429')
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      message: 'API returned HTTP 429: Too Many Requests',
+    })
   })
 
-  it('returns an unsure/error result on a non-ok HTTP status', async () => {
+  it('throws a transient failure on a server error, with the reason the API gave', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
+      status: 503,
+      statusText: 'Service Unavailable',
+      clone: () => ({
+        json: async () => ({
+          error: { code: 'SERVICE_UNAVAILABLE', message: 'Bedrock throttled' },
+        }),
+      }),
+    })
+
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      nonRetryable: false,
+      message: 'API returned HTTP 503: Bedrock throttled',
+    })
+  })
+
+  it('returns an unsure/error result on a client error that a retry would not fix', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
     })
 
     const result = await evaluateProject(input)
 
     expect(result.outcome).toBe('unsure')
-    expect(result.evaluationReason).toContain('500')
+    expect(result.evaluationResult).toBe('error')
+    expect(result.evaluationReason).toContain('400')
+  })
+
+  it('throws a transient failure when the response body stalls past the deadline', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => {
+        throw Object.assign(new Error('The operation was aborted due to timeout'), {
+          name: 'TimeoutError',
+        })
+      },
+    })
+
+    await expect(evaluateProject(input)).rejects.toMatchObject({
+      type: TRANSIENT_EVALUATION_FAILURE,
+      nonRetryable: false,
+      message: 'API response stalled: The operation was aborted due to timeout',
+    })
   })
 
   it('returns an unsure/error result when the response body is not valid JSON', async () => {

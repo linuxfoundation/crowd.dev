@@ -23,7 +23,7 @@ const props = defineProps<{
     settings: Record<string, string>,
   }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: IncludeEnum | ''): any }>();
+const emit = defineEmits<{(e: 'update:modelValue', value: IncludeEnum | ''): void }>();
 
 const value = computed<IncludeEnum | ''>({
   get() {

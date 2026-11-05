@@ -12,6 +12,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
 import {
   computed,
   defineProps,
@@ -21,7 +23,7 @@ import LfLinkedinSettingsDrawer from '@/config/integrations/linkedin/components/
 import LfButton from '@/ui-kit/button/Button.vue';
 
 const props = defineProps<{
-  integration: any;
+  integration: Integration<LinkedinSettings>;
   segmentId: string;
   grandparentId: string;
 }>();

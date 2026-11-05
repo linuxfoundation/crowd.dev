@@ -2,6 +2,7 @@ import { isUrl } from '@crowd/common'
 import { ActivityTypeDisplayProperties, DefaultActivityTypes, PlatformType } from '@crowd/types'
 
 import { ConfluenceActivityType } from './confluence/types'
+import { CredlyActivityType } from './credly/types'
 import { DevToActivityType } from './devto/types'
 import { DiscordActivityType } from './discord/types'
 import { DiscourseActivityType } from './discourse/types'
@@ -127,6 +128,27 @@ const defaultDiscourseFormatter = (activity) => {
   const topicUrl = cleanDiscourseUrl(activity.url)
   return `<a href="${topicUrl}" target="_blank">#${activity.channel}</a>`
 }
+
+const badgeLink =
+  '<a href="{url|attributes.badgeTemplateUrl}" class="truncate max-w-2xs">{title}</a>'
+
+const badgeActivityType = (verb: string, short: string) => ({
+  display: {
+    default: `${verb} ${badgeLink}`,
+    short,
+    channel: badgeLink,
+  },
+  calculateSentiment: false,
+})
+
+const mentionActivityType = (platformLabel: string) => ({
+  display: {
+    default: `mentioned the project on ${platformLabel}`,
+    short: 'mentioned the project',
+    channel: '',
+  },
+  calculateSentiment: true,
+})
 
 export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
   [PlatformType.GITHUB]: {
@@ -331,8 +353,8 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
     },
     [GithubActivityType.MENTION]: {
       display: {
-        default: 'mentioned you on GitHub',
-        short: 'mentioned you',
+        default: 'mentioned the project on GitHub',
+        short: 'mentioned the project',
         channel: '',
       },
       calculateSentiment: true,
@@ -615,6 +637,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    [DevToActivityType.MENTION]: mentionActivityType('DEV'),
   },
   [PlatformType.DISCORD]: {
     [DiscordActivityType.JOINED_GUILD]: {
@@ -687,6 +710,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    [HackerNewsActivityType.MENTION]: mentionActivityType('Hacker News'),
   },
   [PlatformType.LINKEDIN]: {
     [LinkedinActivityType.COMMENT]: {
@@ -709,8 +733,8 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
     },
     [LinkedinActivityType.MENTION]: {
       display: {
-        default: 'mentioned you on LinkedIn',
-        short: 'mentioned you',
+        default: 'mentioned the project on LinkedIn',
+        short: 'mentioned the project',
         channel: '',
       },
       calculateSentiment: true,
@@ -735,6 +759,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    [RedditActivityType.MENTION]: mentionActivityType('Reddit'),
   },
   [PlatformType.SLACK]: {
     [SlackActivityType.JOINED_CHANNEL]: {
@@ -789,8 +814,8 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
     },
     [TwitterActivityType.MENTION]: {
       display: {
-        default: 'mentioned you in a tweet',
-        short: 'mentioned you',
+        default: 'mentioned the project on X/Twitter',
+        short: 'mentioned the project',
         channel: '',
       },
       calculateSentiment: true,
@@ -819,6 +844,7 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: true,
     },
+    [StackOverflowActivityType.MENTION]: mentionActivityType('Stack Overflow'),
   },
   [PlatformType.DISCOURSE]: {
     [DiscourseActivityType.CREATE_TOPIC]: {
@@ -1517,5 +1543,52 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       },
       calculateSentiment: false,
     },
+  },
+  [PlatformType.MEDIUM]: {
+    mention: mentionActivityType('Medium'),
+  },
+  [PlatformType.PRODUCTHUNT]: {
+    mention: mentionActivityType('Product Hunt'),
+  },
+  [PlatformType.FACEBOOK]: {
+    mention: mentionActivityType('Facebook'),
+  },
+  [PlatformType.YOUTUBE]: {
+    mention: mentionActivityType('YouTube'),
+  },
+  [PlatformType.BLUESKY]: {
+    mention: mentionActivityType('Bluesky'),
+  },
+  [PlatformType.TIKTOK]: {
+    mention: mentionActivityType('TikTok'),
+  },
+  [PlatformType.INSTAGRAM]: {
+    mention: mentionActivityType('Instagram'),
+  },
+  [PlatformType.CREDLY]: {
+    [CredlyActivityType.ISSUED_BADGE]: badgeActivityType(
+      'was issued the badge',
+      'was issued a badge',
+    ),
+    [CredlyActivityType.ACCEPTED_BADGE]: badgeActivityType(
+      'accepted the badge',
+      'accepted a badge',
+    ),
+    [CredlyActivityType.REJECTED_BADGE]: badgeActivityType(
+      'rejected the badge',
+      'rejected a badge',
+    ),
+    [CredlyActivityType.REVOKED_BADGE]: badgeActivityType(
+      'had the badge revoked:',
+      'had a badge revoked',
+    ),
+    [CredlyActivityType.REPLACED_BADGE]: badgeActivityType(
+      'had the badge replaced:',
+      'had a badge replaced',
+    ),
+    [CredlyActivityType.EXPIRED_BADGE]: badgeActivityType(
+      'let the badge expire:',
+      'let a badge expire',
+    ),
   },
 }

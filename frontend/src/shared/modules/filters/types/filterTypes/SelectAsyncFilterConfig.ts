@@ -1,5 +1,8 @@
-/* eslint-disable no-unused-vars */
-import type { BaseFilterConfig, FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
+import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
+import type {
+  BaseFilterConfig,
+  FilterConfigType,
+} from '@/shared/modules/filters/types/FilterConfig';
 
 export interface SelectAsyncFilterOption {
   label: string;
@@ -9,18 +12,26 @@ export interface SelectAsyncFilterOption {
 }
 export interface SelectAsyncFilterOptions {
   hideIncludeSwitch?: boolean;
-  remoteMethod: (query: string) => Promise<SelectAsyncFilterOption[]>
-  remotePopulateItems: (values: string) => Promise<SelectAsyncFilterOption>
+  remoteMethod: (query: string) => Promise<SelectAsyncFilterOption[]>;
+  remotePopulateItems: (values: string) => Promise<SelectAsyncFilterOption>;
 }
 
 export interface SelectAsyncFilterValue {
-  value: string,
-  include: boolean,
+  value: string;
+  include: boolean;
+}
+
+export interface SelectAsyncFilterData {
+  selected: SelectAsyncFilterOption | '';
 }
 
 export interface SelectAsyncFilterConfig extends BaseFilterConfig {
   type: FilterConfigType.SELECT_ASYNC;
   options: SelectAsyncFilterOptions;
-  itemLabelRenderer: (value: SelectAsyncFilterValue, options: SelectAsyncFilterOptions, data: any) => string;
-  apiFilterRenderer: (value: SelectAsyncFilterValue) => any[];
+  itemLabelRenderer: (
+    value: SelectAsyncFilterValue,
+    options: SelectAsyncFilterOptions,
+    data: SelectAsyncFilterData,
+  ) => string;
+  apiFilterRenderer: (value: SelectAsyncFilterValue) => ApiFilter[];
 }

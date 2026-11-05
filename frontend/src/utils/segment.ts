@@ -3,6 +3,7 @@
 
 declare global {
   interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped Segment snippet global. revisit: when Segment analytics types are added
     analytics?: any;
   }
 }
@@ -38,7 +39,7 @@ export const installAnalyticsStub = (): void => {
 
   analytics.invoked = true;
   analytics.methods = ANALYTICS_METHODS;
-  analytics.factory = (method: string) => (...args: any[]) => {
+  analytics.factory = (method: string) => (...args: unknown[]) => {
     args.unshift(method);
     analytics.push(args);
     return analytics;

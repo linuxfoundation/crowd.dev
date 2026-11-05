@@ -3,7 +3,9 @@ import type {
   ContributorIdentity,
 } from '@/modules/contributor/types/Contributor';
 import type { OrganizationIdentity } from '@/modules/organization/types/Organization';
+import bluesky from './bluesky/config';
 import confluence from './confluence/config';
+import credly from './credly/config';
 import crunchbase from './crunchbase/config';
 import cvent from './cvent/config';
 import devto from './devto/config';
@@ -16,6 +18,7 @@ import github from './github/config';
 import gitlab from './gitlab/config';
 import groupsio from './groupsio/config';
 import hackernews from './hackernews/config';
+import instagram from './instagram/config';
 import jira from './jira/config';
 import lfid from './lfx/config';
 import linkedin from './linkedin/config';
@@ -24,8 +27,10 @@ import n8n from './n8n/config';
 import reddit from './reddit/config';
 import slack from './slack/config';
 import stackoverflow from './stackoverflow/config';
+import tiktok from './tiktok/config';
 import tnc from './tnc/config';
 import twitter from './twitter/config';
+import youtube from './youtube/config';
 import zapier from './zapier/config';
 
 export interface IdentityConfig {
@@ -86,4 +91,9 @@ export const lfIdentities: Record<string, IdentityConfig> = {
   n8n,
   training_cert: tnc,
   zapier,
+  youtube,
+  bluesky,
+  tiktok,
+  instagram,
+  credly,
 };

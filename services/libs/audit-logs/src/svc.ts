@@ -5,7 +5,7 @@ import {
   addAuditAction,
 } from '@crowd/data-access-layer'
 
-import { IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
+import { HttpError, IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
 import { BuildActionFn } from './baseActions'
 
 export function buildAuditLogOptions(
@@ -60,10 +60,10 @@ async function captureChange(
   }
 
   if (error) {
-    // log only error name and message
     action.error = {
       name: error.name,
       message: error.message,
+      ...(error instanceof HttpError && error.context ? { context: error.context } : {}),
     }
   }
 

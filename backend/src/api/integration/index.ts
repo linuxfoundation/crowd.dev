@@ -196,7 +196,7 @@ export default (app) => {
       '/slack/callback',
       passport.authorize('slack', {
         session: false,
-        failureRedirect: `${API_CONFIG.frontendUrl}/integrations?error=true`,
+        failureRedirect: `${API_CONFIG.frontendUrl}/integrations?slack-error=true`,
       }),
       async (req, _res, next) => {
         req.state = JSON.parse(Buffer.from(req.query.state, 'base64').toString())

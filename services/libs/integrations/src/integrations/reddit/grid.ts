@@ -9,4 +9,7 @@ export const REDDIT_GRID: Record<RedditActivityType, IActivityScoringGrid> = {
   [RedditActivityType.COMMENT]: {
     score: 6,
   },
+  [RedditActivityType.MENTION]: {
+    score: 6,
+  },
 }

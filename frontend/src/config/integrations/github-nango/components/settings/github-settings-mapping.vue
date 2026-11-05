@@ -74,6 +74,7 @@
 </template>
 
 <script lang="ts" setup>
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
 import { computed, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -93,7 +94,7 @@ const props = defineProps<{
   repositories: GitHubSettingsRepository[];
   organizations: GitHubOrganization[];
   mappings: Record<string, string>;
-  subprojects: any[];
+  subprojects: SubProject[];
   segmentId: string | null;
 }>();
 
@@ -128,9 +129,9 @@ const filteredRepos = computed(() => repos.value.filter(
       || (r.org?.name || '').toLowerCase().includes(search.value.toLowerCase()),
 ));
 
-const allOrganizations = computed<any[]>(() => {
+const allOrganizations = computed(() => {
   const owners = new Set();
-  return filteredRepos.value.reduce((acc: any[], r) => {
+  return filteredRepos.value.reduce<(GitHubOrganization & { repositories: GitHubSettingsRepository[] })[]>((acc, r) => {
     if (!owners.has(r.org!.name)) {
       owners.add(r.org!.name);
       acc.push({

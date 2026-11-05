@@ -3,7 +3,7 @@
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-3">
         <lf-avatar
-          :src="suggestion.avatarUrl"
+          :src="suggestion.avatarUrl ?? undefined"
           :name="suggestion.displayName"
           :size="32"
         />
@@ -25,12 +25,13 @@
 </template>
 
 <script lang="ts" setup>
+import type { DataQualityMemberBotSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/member-merge-similarity.vue';
 
 const props = defineProps<{
-  suggestion: any,
+  suggestion: DataQualityMemberBotSuggestion,
 }>();
 </script>
 

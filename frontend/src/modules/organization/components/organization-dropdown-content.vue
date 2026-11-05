@@ -210,7 +210,7 @@ const doManualAction = async ({
   loadingMessage?: string;
   successMessage?: string;
   errorMessage?: string;
-  actionFn: Promise<any>;
+  actionFn: Promise<unknown>;
 }) => {
   emit('closeDropdown');
 

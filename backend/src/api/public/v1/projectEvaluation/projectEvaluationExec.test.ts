@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ServiceUnavailableError } from '@crowd/common'
 import { PRECHECK_SKIP_REASONS } from '@crowd/data-access-layer/src/project-catalog/precheck'
 import { IProjectEvaluationResponse } from '@crowd/data-access-layer/src/project-catalog/types'
 
@@ -72,6 +73,27 @@ describe('projectEvaluationExec', () => {
     )
     expect(status).toHaveBeenCalledWith(200)
     expect(json).toHaveBeenCalledWith(evaluationResponse)
+  })
+
+  it('answers a transient evaluator failure with 503 without raising a public API alert', async () => {
+    vi.mocked(evaluateProject).mockRejectedValue(new ServiceUnavailableError('Bedrock throttled'))
+
+    const { req, res, status, json } = mockReqRes({
+      id: 'catalog-1',
+      repoUrl: 'https://github.com/foo/bar',
+      repoName: 'bar',
+      projectSlug: 'foo',
+      lfCriticalityScore: null,
+      source: null,
+    })
+
+    await expect(projectEvaluationExec(req, res)).resolves.toBeUndefined()
+
+    expect(status).toHaveBeenCalledWith(503)
+    expect(json).toHaveBeenCalledWith({
+      error: { code: 'SERVICE_UNAVAILABLE', message: 'Bedrock throttled' },
+    })
+    expect(req.log.warn).toHaveBeenCalled()
   })
 
   it('keys the daily LLM reservation on the actor id', async () => {

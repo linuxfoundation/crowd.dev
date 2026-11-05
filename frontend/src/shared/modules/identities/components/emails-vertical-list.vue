@@ -19,7 +19,7 @@
           <template v-for="(identity) of Object.values(distinctEmails)" :key="identity.handle">
             <div class="flex items-center">
               <a
-                :href="identity.link"
+                :href="identity.link ?? undefined"
                 class="text-gray-900 text-xs font-medium leading-5 items-center w-auto break-all"
                 :class="{
                   'underline decoration-dashed decoration-gray-400 underline-offset-4 ':
@@ -61,13 +61,22 @@ const props = defineProps<{
       handle: string;
       link: string | null;
       verified: boolean;
+      platform: string;
   }[];
   xPadding?: number;
 }>();
 
 const { getPlatformsLabel } = useIdentitiesHelpers();
 
-const distinctEmails = computed(() => props.emails.reduce((obj: Record<string, any>, identity: any) => {
+interface DistinctEmail {
+  handle: string;
+  link: string | null;
+  verified: boolean;
+  platform: string;
+  platforms: string[];
+}
+
+const distinctEmails = computed(() => props.emails.reduce((obj: Record<string, DistinctEmail>, identity) => {
   const emailObject = { ...obj };
   if (!(identity.handle in emailObject)) {
     emailObject[identity.handle] = {

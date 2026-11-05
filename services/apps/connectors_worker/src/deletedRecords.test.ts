@@ -8,8 +8,18 @@ import { IShadowDiffMismatch } from './shadowDiff'
 
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger
 
-function missingMismatch(sourceId: string, type = 'issue-comment'): IShadowDiffMismatch {
-  return { sourceId, type, kind: 'missing_in_shadow', severity: 'high' }
+function missingMismatch(
+  sourceId: string,
+  type = 'issue-comment',
+  nangoRecordId?: string,
+): IShadowDiffMismatch {
+  return {
+    sourceId,
+    type,
+    kind: 'missing_in_shadow',
+    severity: 'high',
+    ...(nangoRecordId ? { nangoRecordId } : {}),
+  }
 }
 
 function httpWithHandler(handler: (ids: string[]) => Promise<unknown>): ConnectorHttp {
@@ -27,10 +37,20 @@ describe('hasDeletedRecordCandidates', () => {
     )
   })
 
-  it('is false when the only missing_in_shadow records have synthetic sourceIds', () => {
+  it('treats synthetic sourceIds as candidates only when a nango record id resolves to a node id', () => {
     expect(
       hasDeletedRecordCandidates('pull-requests', [missingMismatch('gen-CE_PR_1_bob_2026')]),
     ).toBe(false)
+    expect(
+      hasDeletedRecordCandidates('pull-requests', [
+        missingMismatch('gen-CE_PR_1_bob_2026', 'pull_request-closed', 'CE_unknown'),
+      ]),
+    ).toBe(false)
+    expect(
+      hasDeletedRecordCandidates('pull-requests', [
+        missingMismatch('gen-CE_PR_1_bob_2026', 'pull_request-closed', 'CE_x-closed'),
+      ]),
+    ).toBe(true)
   })
 
   it('is true when a real node-id missing_in_shadow record exists', () => {
@@ -137,33 +157,69 @@ describe('dropConfirmedDeletedRecords', () => {
     expect(requestSpy).not.toHaveBeenCalled()
   })
 
-  it('ignores synthetic gen- sourceIds since they are not graphql node ids', async () => {
-    const genMismatch = missingMismatch('gen-CE_PR_1_bob_2026', 'pull_request-closed')
-    const nodeMismatch = missingMismatch('PR_1', 'pull_request-opened')
+  it('resolves synthetic sourceIds through the nango record id and leaves unresolvable ones counted', async () => {
+    const deletedReview = missingMismatch(
+      'gen-PRR_PR_1_alice_2026',
+      'pull_request-reviewed',
+      'PRR_deleted-reviewed',
+    )
+    const aliveMerge = missingMismatch(
+      'gen-ME_PR_1_bob_2026',
+      'pull_request-merged',
+      'ME_alive-merged',
+    )
+    const deletedReviewRequest = missingMismatch(
+      'gen-RRE_PR_1_bob_carol_2026',
+      'pull_request-review-requested',
+      'RRE_deleted-review-requested',
+    )
+    const withoutRecordId = missingMismatch('gen-CE_PR_1_bob_2026', 'pull_request-closed')
+    const unknownSuffix = missingMismatch(
+      'gen-ME_PR_2_bob_2026',
+      'pull_request-merged',
+      'ME_unknown',
+    )
+    const nodeMismatch = missingMismatch('PR_1', 'pull_request-opened', 'PR_other-opened')
     const requestSpy = vi.fn(async (config: { data: { variables: { ids: string[] } } }) => ({
-      data: { nodes: config.data.variables.ids.map(() => null) },
-      errors: config.data.variables.ids.map((_, i) => ({
-        type: 'NOT_FOUND',
-        path: ['nodes', i],
-      })),
+      data: { nodes: config.data.variables.ids.map((id) => (id === 'ME_alive' ? { id } : null)) },
+      errors: config.data.variables.ids.flatMap((id, i) =>
+        id === 'ME_alive' ? [] : [{ type: 'NOT_FOUND', path: ['nodes', i] }],
+      ),
     }))
     const http = { request: requestSpy, requestCount: () => 0 } as unknown as ConnectorHttp
 
     const result = await dropConfirmedDeletedRecords(
       'pull-requests',
-      [genMismatch, nodeMismatch],
+      [
+        deletedReview,
+        aliveMerge,
+        deletedReviewRequest,
+        withoutRecordId,
+        unknownSuffix,
+        nodeMismatch,
+      ],
       http,
       log,
     )
 
-    expect(result.mismatches).toEqual([genMismatch])
     expect(requestSpy).toHaveBeenCalledTimes(1)
-    expect(requestSpy.mock.calls[0][0].data.variables.ids).toEqual(['PR_1'])
+    expect(requestSpy.mock.calls[0][0].data.variables.ids).toEqual([
+      'PRR_deleted',
+      'ME_alive',
+      'RRE_deleted',
+      'PR_1',
+    ])
+    expect(result.mismatches).toEqual([aliveMerge, withoutRecordId, unknownSuffix])
+    expect(result.confirmedDeletedCount).toBe(3)
+    expect(result.unconfirmedCount).toBe(0)
   })
 
   it('excludes every candidate as unconfirmed once the time budget is already exhausted', async () => {
     const manyIds = Array.from({ length: 150 }, (_, i) => `IC_${i}`)
-    const mismatches = manyIds.map((id) => missingMismatch(id))
+    const mismatches = [
+      ...manyIds.map((id) => missingMismatch(id)),
+      missingMismatch('gen-PRR_PR_1_alice_2026', 'pull_request-reviewed', 'PRR_late-reviewed'),
+    ]
     const requestSpy = vi.fn()
     const http = { request: requestSpy, requestCount: () => 0 } as unknown as ConnectorHttp
 
@@ -173,7 +229,7 @@ describe('dropConfirmedDeletedRecords', () => {
 
     expect(requestSpy).not.toHaveBeenCalled()
     expect(result.confirmedDeletedCount).toBe(0)
-    expect(result.unconfirmedCount).toBe(manyIds.length)
+    expect(result.unconfirmedCount).toBe(manyIds.length + 1)
     expect(result.mismatches).toEqual([])
   })
 })

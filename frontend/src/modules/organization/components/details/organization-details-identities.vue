@@ -102,11 +102,11 @@ const selectedIdentity = ref<OrganizationIdentity | null>(null);
 const addIdentity = ref<boolean>(false);
 const addIdentityTemplate = ref<Partial<OrganizationIdentity> | null>(null);
 const editIdentity = ref<OrganizationIdentity | null>(null);
-const unmerge = (identity: any) => {
+const unmerge = (identity?: OrganizationIdentity) => {
   if (identity) {
     selectedIdentity.value = identity;
   }
-  isUnmergeDialogOpen.value = props.organization as any;
+  isUnmergeDialogOpen.value = props.organization;
 };
 </script>
 

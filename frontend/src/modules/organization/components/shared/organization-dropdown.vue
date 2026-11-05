@@ -49,7 +49,7 @@ const props = defineProps<{
   organization: Organization,
 }>();
 
-const emit = defineEmits<{(e: 'reload'): any, (e: 'unmerge'): void}>();
+const emit = defineEmits<{(e: 'reload'): void, (e: 'unmerge'): void}>();
 
 const route = useRoute();
 const router = useRouter();

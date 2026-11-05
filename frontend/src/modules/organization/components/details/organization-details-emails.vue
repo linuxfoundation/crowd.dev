@@ -96,11 +96,11 @@ const emailList = computed(() => emails(props.organization));
 const showMore = ref<boolean>(false);
 const isUnmergeDialogOpen = ref<Organization | null>(null);
 const selectedIdentity = ref<OrganizationIdentity | null>(null);
-const unmerge = (identity: any) => {
+const unmerge = (identity?: OrganizationIdentity) => {
   if (identity) {
     selectedIdentity.value = identity;
   }
-  isUnmergeDialogOpen.value = props.organization as any;
+  isUnmergeDialogOpen.value = props.organization;
 };
 </script>
 

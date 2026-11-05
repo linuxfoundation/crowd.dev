@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import dns from 'node:dns';
 
-import { defineConfig } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 import Components from 'unplugin-vue-components/vite';
@@ -10,18 +10,19 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 // https://vite.dev/config/server-options#server-host
 dns.setDefaultResultOrder('verbatim');
 
-const analyzerPlugins = async () => {
+const analyzerPlugins = async (): Promise<PluginOption[]> => {
   if (!process.env.ANALYZE) return [];
   // rollup-plugin-visualizer is ESM-only, so a static import breaks this CJS-loaded config
   const { visualizer } = await import('rollup-plugin-visualizer');
   return [
+    // shortcut: the visualizer is typed with rollup's Plugin, not vite's. revisit: when the plugin ships vite-compatible types
     visualizer({
       template: 'treemap',
       open: false,
       gzipSize: true,
       brotliSize: true,
       filename: 'analyse.html',
-    }),
+    }) as PluginOption,
   ];
 };
 
@@ -38,7 +39,7 @@ export default defineConfig(async () => ({
         }),
       ],
       dts: 'components.d.ts',
-    }),
+    }) as PluginOption,
     ...(await analyzerPlugins()),
   ],
   resolve: {

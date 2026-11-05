@@ -5,8 +5,62 @@ import {
   canonicalizeRepoUrl,
   extractGithubRepoRefs,
   extractGithubRepoUrls,
+  extractGithubOrganizations,
+  githubOrganizationOwner,
   githubRepoPath,
 } from './githubRepoUrl'
+
+describe('extractGithubOrganizations', () => {
+  it('finds organization links in free text and leaves repositories and GitHub pages out', () => {
+    expect(
+      extractGithubOrganizations(
+        'onboard OpenBMC, LF project, <https://github.com/openbmc/> and github.com/OpenBMC plus https://github.com/openbmc/bmcweb, (https://github.com/orgs/tikv), https://github.com/topics/sbom.',
+      ),
+    ).toEqual(['openbmc', 'tikv'])
+    expect(
+      extractGithubOrganizations(
+        'onboard *<https://github.com/acme/>*, `github.com/beta` and (<https://github.com/orgs/gamma>).',
+      ),
+    ).toEqual(['acme', 'beta', 'gamma'])
+    expect(extractGithubOrganizations('onboard https://github.com/acme/one')).toEqual([])
+    expect(extractGithubOrganizations('onboard https://github.com/acme/_')).toEqual([])
+    expect(extractGithubOrganizations('_onboard https://github.com/acme/_')).toEqual(['acme'])
+    expect(extractGithubOrganizations('_onboard https://github.com/acme/_.')).toEqual(['acme'])
+    expect(extractGithubOrganizations('_github.com/acme/_ and _github.com/beta_')).toEqual([
+      'acme',
+      'beta',
+    ])
+    expect(extractGithubOrganizations('_github.com/acme/_, and _github.com/beta_')).toEqual([
+      'acme',
+      'beta',
+    ])
+    expect(extractGithubOrganizations('onboard github.com/acme_ and _github.com/beta_')).toEqual([
+      'acme',
+      'beta',
+    ])
+    expect(extractGithubOrganizations('*onboard github.com/acme and (`github.com/beta`)*')).toEqual(
+      ['acme', 'beta'],
+    )
+  })
+})
+
+describe('githubOrganizationOwner', () => {
+  it('returns the owner of an organization or user page on GitHub', () => {
+    expect(githubOrganizationOwner('https://github.com/openbmc/')).toBe('openbmc')
+    expect(githubOrganizationOwner('github.com/openbmc')).toBe('openbmc')
+    expect(githubOrganizationOwner('https://www.github.com/orgs/openbmc')).toBe('openbmc')
+  })
+
+  it('ignores repositories, reserved pages and other hosts', () => {
+    expect(githubOrganizationOwner('https://github.com/openbmc/bmcweb')).toBeNull()
+    for (const page of ['topics', 'explore', 'pricing', 'notifications', 'trending', 'issues']) {
+      expect(githubOrganizationOwner(`https://github.com/${page}`)).toBeNull()
+    }
+    expect(githubOrganizationOwner('https://github.com/orgs')).toBeNull()
+    expect(githubOrganizationOwner('https://gitlab.com/openbmc')).toBeNull()
+    expect(githubOrganizationOwner('')).toBeNull()
+  })
+})
 
 describe('canonicalizeRepoUrl', () => {
   it('canonicalizes a plain github.com URL', () => {

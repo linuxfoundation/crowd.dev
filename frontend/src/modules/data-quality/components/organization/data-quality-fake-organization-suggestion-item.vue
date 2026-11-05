@@ -3,7 +3,7 @@
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-3">
         <lf-avatar
-          :src="suggestion.logo"
+          :src="suggestion.logo ?? undefined"
           :name="suggestion.displayName"
           :size="32"
           img-class="!object-contain"
@@ -34,13 +34,14 @@
 </template>
 
 <script lang="ts" setup>
+import type { DataQualityFakeOrganizationSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatNumberToCompact } from '@/utils/number';
 
 defineProps<{
-  suggestion: any,
+  suggestion: DataQualityFakeOrganizationSuggestion,
 }>();
 </script>
 

@@ -86,7 +86,7 @@ const props = defineProps<{
   lockRelation?: boolean,
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: Filter), (e: 'fetch', value: FilterQuery), }>();
+const emit = defineEmits<{(e: 'update:modelValue', value: Filter): void, (e: 'fetch', value: FilterQuery): void, }>();
 
 const { trackEvent } = useProductTracking();
 const router = useRouter();

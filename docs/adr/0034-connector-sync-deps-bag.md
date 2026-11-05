@@ -6,7 +6,7 @@
 
 ## Context
 
-Some connector syncs need database reads and writes that aren't activity emits: the Octolens mention poll resolves each mention's keyword to a segment, and the planned Octolens mapping-discovery sync upserts keyword→segment mappings. `SyncContext` had no database access, so the mention poll got an Octolens-specific `resolveSegmentId` closure added directly to the generic `SyncContext` that every connector sees. Adding more connector-specific hooks there, or handing every sync a raw query executor, would both spread one connector's needs into the shared framework.
+Some connector syncs need database reads and writes that aren't activity emits: the Octolens mention poll resolves each mention's keyword to a segment and integration. (Octolens mapping discovery was first planned as a second sync here; it shipped as a separate connectors_worker Temporal schedule and does not use deps.) `SyncContext` had no database access, so the mention poll got an Octolens-specific `resolveSegmentId` closure added directly to the generic `SyncContext` that every connector sees (now replaced by `deps.resolveKeywordTarget`). Adding more connector-specific hooks there, or handing every sync a raw query executor, would both spread one connector's needs into the shared framework.
 
 ## Decision
 

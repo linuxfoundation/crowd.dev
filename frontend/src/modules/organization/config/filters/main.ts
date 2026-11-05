@@ -40,7 +40,7 @@ export const organizationCommonFilters: Record<string, FilterConfig> = {
 
 export const organizationSearchFilter: SearchFilterConfig = {
   placeholder: 'Search organizations',
-  apiFilterRenderer(value: string): any[] {
+  apiFilterRenderer(value: string) {
     return [
       {
         or: [

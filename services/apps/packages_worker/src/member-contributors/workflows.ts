@@ -9,6 +9,8 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import type { InferredRepoMemberContributorsBody } from '@crowd/data-access-layer/src/osspckgs/memberContributorsBody'
+
 import type * as memberContributorActivities from './activities'
 import { addChunkCounts, emptyChunkCounts } from './affiliations/counts'
 import type { IdentityAffiliationsRunCounts, IdentityAffiliationsState } from './affiliations/state'
@@ -85,6 +87,38 @@ const { resolveNewIdentityAffiliations } = proxyActivities<typeof memberContribu
 })
 
 const { completeMemberContributorsJob, failMemberContributorsJob } = proxyActivities<
+  typeof memberContributorActivities
+>({
+  startToCloseTimeout: '1 minute',
+  retry: UNBOUNDED_RETRY,
+})
+
+const { startInferredRepoMemberContributorsJob } = proxyActivities<
+  typeof memberContributorActivities
+>({
+  startToCloseTimeout: '5 minutes',
+  retry: RETRY,
+})
+
+const { resolveRepoViaLlm } = proxyActivities<typeof memberContributorActivities>({
+  startToCloseTimeout: '3 minutes',
+  retry: { ...RETRY, maximumAttempts: 2 },
+})
+
+const { fetchGithubRepoContributors } = proxyActivities<typeof memberContributorActivities>({
+  startToCloseTimeout: '1 hour',
+  heartbeatTimeout: '5 minutes',
+  retry: RETRY,
+})
+
+const { buildInferredRepoMemberContributors } = proxyActivities<typeof memberContributorActivities>(
+  {
+    startToCloseTimeout: '5 minutes',
+    retry: RETRY,
+  },
+)
+
+const { markMemberContributorsJobUnresolvable } = proxyActivities<
   typeof memberContributorActivities
 >({
   startToCloseTimeout: '1 minute',
@@ -195,6 +229,38 @@ export async function collectMemberContributors(input: MemberContributorsJobRef)
     const collected = await collectGithubRepoContributors(repo)
     await resolveNewIdentityAffiliations({ logins: collected.logins })
     await completeMemberContributorsJob(input)
+  } catch (err) {
+    await CancellationScope.nonCancellable(() =>
+      failMemberContributorsJob({ jobId: input.jobId, reason: failureReason(err) }),
+    )
+    throw err
+  }
+}
+
+export async function collectMemberContributorsFromInferredRepo(
+  input: MemberContributorsJobRef,
+): Promise<InferredRepoMemberContributorsBody | undefined> {
+  try {
+    const { purl, ecosystem } = await startInferredRepoMemberContributorsJob(input)
+    const resolved = await resolveRepoViaLlm({ jobId: input.jobId, purl })
+    if (resolved.outcome === 'unresolvable') {
+      await markMemberContributorsJobUnresolvable({
+        jobId: input.jobId,
+        reason: resolved.reason,
+        repoUrl: resolved.repoUrl,
+      })
+      return undefined
+    }
+    const collected = await fetchGithubRepoContributors({ repoUrl: resolved.repoUrl })
+    await resolveNewIdentityAffiliations({ logins: collected.logins })
+    const body = await buildInferredRepoMemberContributors({
+      purl,
+      ecosystem,
+      repoUrl: resolved.repoUrl,
+      logins: collected.logins,
+    })
+    await completeMemberContributorsJob(input)
+    return body
   } catch (err) {
     await CancellationScope.nonCancellable(() =>
       failMemberContributorsJob({ jobId: input.jobId, reason: failureReason(err) }),

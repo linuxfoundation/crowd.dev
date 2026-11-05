@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity'
+import { ApplicationFailure, Context } from '@temporalio/activity'
 
 import {
   ConnectorError,
@@ -9,43 +9,49 @@ import {
   getCredential,
   getManifest,
   getSync,
+  RepositoryRenamedError,
 } from '@crowd/connectors'
-import type { ConnectorHttp, Emitter, SyncContext } from '@crowd/connectors'
+import type { ConnectorHttp, Emitter, ErrorClass, SyncContext } from '@crowd/connectors'
 import {
   getUnitById,
   parkUnit,
+  reassertUnitClaim,
   recordRunFailure,
   recordRunPartial,
   recordRunSuccess,
+  recordRunTimeout,
   recordShadowRecords,
+  rescheduleUnit,
 } from '@crowd/data-access-layer/src/connectors'
+import type { ISyncUnit } from '@crowd/data-access-layer/src/connectors'
 import { fetchIntegrationById } from '@crowd/data-access-layer/src/integrations'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getChildLogger } from '@crowd/logging'
+import type { Logger } from '@crowd/logging'
+import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
+import { applyGithubRenameWorkflowId } from '../githubLifecycle'
 import { svc } from '../main'
 import { RUN_BUDGET_MS } from '../runLimits'
 import { resolveRunSegmentId } from '../runSegment'
 import { cadenceRunAt, failureRunAt, shortDeferRunAt } from '../scheduling'
+import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
+import type { IOwnedGithubRename } from './githubLifecycleActivities'
 
-const DEAD_LETTER_AFTER = 5
+const DEAD_LETTER_AFTER: Partial<Record<ErrorClass, number>> = {
+  'provider.auth': 5,
+  'provider.access_denied': 1,
+}
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RATE_LIMIT_FALLBACK_MS = 60_000
 const UNAVAILABLE_PARK_MS = 300_000
 
 const PARKED_ERROR_CLASSES = ['provider.rate_limit', 'provider.unavailable'] as const
 
-export async function executeSync(unitId: string): Promise<void> {
-  const qx = dbStoreQx(svc.postgres.writer)
-
-  const unit = await getUnitById(qx, unitId)
-  if (!unit) {
-    throw new Error(`sync unit ${unitId} not found`)
-  }
-
-  const activityContext = Context.current()
-  const log = getChildLogger('syncRun', svc.log, {
+function syncRunLogFields(activityContext: Context, unit: ISyncUnit): Record<string, unknown> {
+  return {
     workflowId: activityContext.info.workflowExecution.workflowId,
     runId: activityContext.info.workflowExecution.runId,
     unitId: unit.id,
@@ -54,7 +60,46 @@ export async function executeSync(unitId: string): Promise<void> {
     syncName: unit.syncName,
     channelId: unit.channelId,
     channelName: unit.channelName,
-  })
+  }
+}
+
+async function startGithubRename(unit: ISyncUnit, currentUrl: string, log: Logger): Promise<void> {
+  const rename: IOwnedGithubRename = {
+    integrationId: unit.integrationId,
+    from: unit.channelName,
+    to: currentUrl,
+  }
+  try {
+    await svc.temporal.workflow.start('applyGithubRename', {
+      taskQueue: 'connectors',
+      workflowId: applyGithubRenameWorkflowId(unit.integrationId, unit.channelId),
+      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      workflowExecutionTimeout: '1 hour',
+      args: [rename],
+    })
+  } catch (err) {
+    log.error(
+      { event: 'github_rename_start_failed', ...rename, errMsg: (err as Error).message },
+      'failed to start the github rename workflow',
+    )
+  }
+}
+
+export async function executeSync(unitId: string): Promise<void> {
+  const qx = dbStoreQx(svc.postgres.writer)
+
+  if (!(await reassertUnitClaim(qx, unitId))) {
+    svc.log.info({ unitId }, 'sync unit is no longer active, skipping run and releasing its claim')
+    return
+  }
+  const unit = await getUnitById(qx, unitId)
+  if (!unit) {
+    throw new Error(`sync unit ${unitId} not found`)
+  }
+
+  const activityContext = Context.current()
+  const log = getChildLogger('syncRun', svc.log, syncRunLogFields(activityContext, unit))
 
   const heartbeat = setInterval(() => {
     try {
@@ -70,6 +115,25 @@ export async function executeSync(unitId: string): Promise<void> {
   const startedAt = Date.now()
   const runDeadline = startedAt + RUN_BUDGET_MS
 
+  const keepProgressOrPark = async (resumeAt: Date, err: ConnectorError): Promise<boolean> => {
+    if (emitter && committedWatermark) {
+      await recordRunPartial(
+        qx,
+        unitId,
+        { watermark: committedWatermark, emittedCount: emitter.emittedCount() },
+        resumeAt,
+        err.errorClass,
+        err.message,
+      )
+      return true
+    }
+    await parkUnit(qx, unitId, resumeAt, err.errorClass, err.message)
+    return false
+  }
+
+  const cancellationReason = () =>
+    (activityContext.cancellationSignal.reason as Error | undefined)?.message ?? null
+
   const runSummary = (fields: Record<string, unknown>) => ({
     event: 'sync_run_summary',
     durationMs: Date.now() - startedAt,
@@ -77,6 +141,7 @@ export async function executeSync(unitId: string): Promise<void> {
     requestCount: http?.requestCount() ?? 0,
     complete: null as boolean | null,
     emitEnabled: unit.emitEnabled,
+    cancellationReason: cancellationReason(),
     ...fields,
   })
 
@@ -139,11 +204,12 @@ export async function executeSync(unitId: string): Promise<void> {
       channel: { channelId: unit.channelId, channelName: unit.channelName },
       integrationId: unit.integrationId,
       watermark: unit.watermark,
+      emitEnabled: unit.emitEnabled,
       emit: emitter.emit,
       commitWatermark: async (watermark) => {
         committedWatermark = watermark
       },
-      hasRunBudget: () => Date.now() < runDeadline,
+      hasRunBudget: () => Date.now() < runDeadline && !activityContext.cancellationSignal.aborted,
       http,
       log,
       getCredential: async () => {
@@ -156,7 +222,20 @@ export async function executeSync(unitId: string): Promise<void> {
     }
 
     const outcome = await sync.run(ctx)
-    const nextRunAt = outcome.complete ? cadenceRunAt(sync.cadenceMinutes) : shortDeferRunAt()
+    const cancelledBeforeAnyProgress =
+      activityContext.cancellationSignal.aborted &&
+      committedWatermark === unit.watermark &&
+      emitter.emittedCount() === 0
+    if (cancelledBeforeAnyProgress) {
+      const nextRunAt = shortDeferRunAt()
+      await rescheduleUnit(qx, unitId, nextRunAt)
+      log.info(runSummary({ outcome: 'deferred', complete: false, nextRunAt }), 'sync run summary')
+      return
+    }
+    const nextRunAt =
+      outcome.complete || outcome.resumeAtCadence
+        ? cadenceRunAt(sync.cadenceMinutes)
+        : shortDeferRunAt()
 
     await recordRunSuccess(
       qx,
@@ -173,6 +252,22 @@ export async function executeSync(unitId: string): Promise<void> {
       'sync run summary',
     )
   } catch (err) {
+    if (err instanceof RepositoryRenamedError) {
+      const nextRunAt = cadenceRunAt(getSync(unit.platform, unit.syncName).cadenceMinutes)
+      const progressCommitted = await keepProgressOrPark(nextRunAt, err)
+      await startGithubRename(unit, err.currentUrl, log)
+      log.info(
+        runSummary({
+          outcome: 'renamed',
+          errorClass: err.errorClass,
+          errorMessage: err.message,
+          nextRunAt,
+          progressCommitted,
+        }),
+        'sync run summary',
+      )
+      return
+    }
     if (
       err instanceof ConnectorError &&
       (PARKED_ERROR_CLASSES as readonly string[]).includes(err.errorClass)
@@ -180,19 +275,7 @@ export async function executeSync(unitId: string): Promise<void> {
       const fallbackMs =
         err.errorClass === 'provider.rate_limit' ? RATE_LIMIT_FALLBACK_MS : UNAVAILABLE_PARK_MS
       const resumeAt = err.options?.resumeAt ?? new Date(Date.now() + fallbackMs)
-      const progressCommitted = Boolean(emitter && committedWatermark)
-      if (emitter && committedWatermark) {
-        await recordRunPartial(
-          qx,
-          unitId,
-          { watermark: committedWatermark, emittedCount: emitter.emittedCount() },
-          resumeAt,
-          err.errorClass,
-          err.message,
-        )
-      } else {
-        await parkUnit(qx, unitId, resumeAt, err.errorClass, err.message)
-      }
+      const progressCommitted = await keepProgressOrPark(resumeAt, err)
       log.info(
         runSummary({
           outcome: 'parked',
@@ -207,8 +290,8 @@ export async function executeSync(unitId: string): Promise<void> {
       )
       return
     }
-    const errorClass = err instanceof ConnectorError ? err.errorClass : 'unknown'
-    const deadLetterAfter = errorClass === 'provider.auth' ? DEAD_LETTER_AFTER : null
+    const errorClass: ErrorClass = err instanceof ConnectorError ? err.errorClass : 'unknown'
+    const deadLetterAfter = DEAD_LETTER_AFTER[errorClass] ?? null
     const consecutiveFailures = unit.consecutiveFailures + 1
     const nextRunAt = failureRunAt(
       consecutiveFailures,
@@ -237,8 +320,55 @@ export async function executeSync(unitId: string): Promise<void> {
       nextRunAt,
       committedWatermark === unit.watermark ? null : committedWatermark,
     )
-    throw err
+    throw ApplicationFailure.create({
+      type: SYNC_RUN_FAILURE_RECORDED,
+      message: errorMessage,
+      cause: err instanceof Error ? err : undefined,
+    })
   } finally {
     clearInterval(heartbeat)
   }
+}
+
+export async function recordSyncRunTimeout(
+  unitId: string,
+  timeoutType: string,
+  attemptStartedAt: string,
+): Promise<void> {
+  const qx = dbStoreQx(svc.postgres.writer)
+  const unit = await getUnitById(qx, unitId)
+  if (!unit) {
+    return
+  }
+  const log = getChildLogger('syncRun', svc.log, syncRunLogFields(Context.current(), unit))
+  const errorMessage = `sync run timed out (${timeoutType})`
+  const recorded = await recordRunTimeout(qx, unitId, errorMessage, new Date(attemptStartedAt))
+  const consecutiveFailures =
+    recorded === 1 ? unit.consecutiveFailures + 1 : await ownRecordedTimeoutFailures(qx, unitId)
+  if (consecutiveFailures === null) {
+    log.info(
+      { event: 'sync_run_timeout_ignored', timeoutType },
+      'sync run timeout ignored, attempt already recorded its outcome',
+    )
+    return
+  }
+  log.error(
+    {
+      event: 'sync_run_summary',
+      outcome: 'failed',
+      errorClass: 'worker.timeout',
+      errorMessage,
+      consecutiveFailures,
+      emitEnabled: unit.emitEnabled,
+    },
+    'sync run summary',
+  )
+}
+
+async function ownRecordedTimeoutFailures(
+  qx: QueryExecutor,
+  unitId: string,
+): Promise<number | null> {
+  const current = await getUnitById(qx, unitId)
+  return current?.lastErrorClass === 'worker.timeout' ? current.consecutiveFailures : null
 }

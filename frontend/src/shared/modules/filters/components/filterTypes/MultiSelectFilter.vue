@@ -26,6 +26,7 @@ import type {
   MultiSelectFilterConfig,
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { required } from '@vuelidate/validators';
+import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 import LfMultiSelectCheckboxFilter
@@ -38,7 +39,7 @@ const props = defineProps<{
   config: MultiSelectFilterConfig
 } & MultiSelectFilterOptions>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: MultiSelectFilterValue): void, (e: 'update:data', value: any): void}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: MultiSelectFilterValue): void, (e: 'update:data', value: unknown): void}>();
 
 const allOptions = computed(() => props.options.map((g) => g.options).flat());
 
@@ -52,7 +53,7 @@ const defaultForm: MultiSelectFilterValue = {
   include: true,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },

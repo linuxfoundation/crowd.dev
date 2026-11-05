@@ -5,7 +5,7 @@
   >
     <div
       v-for="email of distinctEmails.slice(0, 3)"
-      :key="email"
+      :key="email.handle"
       class="flex items-center"
     >
       <el-tooltip
@@ -23,7 +23,7 @@
             target="_blank"
             rel="noopener noreferrer"
             class="badge--interactive flex items-center"
-            :href="email.link"
+            :href="email.link ?? undefined"
             @click.stop="trackEmailClick"
           >
             {{ email.handle }}
@@ -78,7 +78,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 class="badge--interactive flex items-center"
-                :href="email.link"
+                :href="email.link ?? undefined"
                 @click.stop="trackEmailClick"
               >
                 {{ email.handle }}
@@ -122,8 +122,15 @@ const emails = computed(() => useMemberIdentities({
   order: memberOrder.list,
 }).getEmails());
 
+interface DistinctEmail {
+  handle: string;
+  link: string | null;
+  verified: boolean;
+  platforms: string[];
+}
+
 const distinctEmails = computed(() => {
-  const emailsdata = emails.value.reduce((obj: Record<string, any>, identity: any) => {
+  const emailsdata = emails.value.reduce((obj: Record<string, DistinctEmail>, identity) => {
     const emailObject = { ...obj };
     if (!(identity.handle in emailObject)) {
       emailObject[identity.handle] = {
@@ -136,10 +143,7 @@ const distinctEmails = computed(() => {
 
     return emailObject;
   }, {});
-  return Object.keys(emailsdata).map((email) => ({
-    handle: email,
-    ...emailsdata[email],
-  }));
+  return Object.values(emailsdata);
 });
 
 const isEnrichment = (platforms:string[]) => platforms.includes('enrichment');

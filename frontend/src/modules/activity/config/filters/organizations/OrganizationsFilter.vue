@@ -59,6 +59,7 @@ import {
 } from 'vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
+import type { ValidationArgs } from '@vuelidate/core';
 import CrFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 import type {
   MultiSelectAsyncFilterConfig,
@@ -70,13 +71,18 @@ import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filt
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
+interface OrganizationsFilterData {
+  selected?: MultiSelectAsyncFilterOption[];
+}
+
 const props = defineProps<{
       modelValue: MultiSelectAsyncFilterValue,
-      data: any,
+      data: OrganizationsFilterData,
       config: MultiSelectAsyncFilterConfig
     } & MultiSelectAsyncFilterOptions>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: MultiSelectAsyncFilterValue): void, (e: 'update:data', value: any): void}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: MultiSelectAsyncFilterValue): void,
+  (e: 'update:data', value: OrganizationsFilterData): void}>();
 
 const form = computed({
   get: () => props.modelValue,
@@ -85,7 +91,7 @@ const form = computed({
 
 const data = computed({
   get: () => props.data,
-  set: (value: any) => emit('update:data', value),
+  set: (value: OrganizationsFilterData) => emit('update:data', value),
 });
 
 const defaultForm: MultiSelectAsyncFilterValue = {
@@ -93,7 +99,7 @@ const defaultForm: MultiSelectAsyncFilterValue = {
   include: true,
 };
 
-const rules: any = {
+const rules: ValidationArgs = {
   value: {
     required,
   },
@@ -136,7 +142,7 @@ const searchOptions = (query: string) => {
     });
 };
 
-const updateSelected = (value: any[]) => {
+const updateSelected = (value: MultiSelectAsyncFilterOption[]) => {
   data.value.selected = value;
   emit('update:modelValue', {
     ...props.modelValue,
