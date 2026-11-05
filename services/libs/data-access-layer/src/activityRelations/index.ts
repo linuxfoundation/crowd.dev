@@ -202,6 +202,8 @@ export async function findActivityRelationsByDedupKeys(
   )
 }
 
+// The batch loops below stop only on an empty batch: a row deleted concurrently is skipped
+// by the UPDATE, so a short batch does not mean nothing is left to move.
 export async function moveActivityRelationsToAnotherMember(
   qe: QueryExecutor,
   fromId: string,
@@ -232,7 +234,7 @@ export async function moveActivityRelationsToAnotherMember(
     )
 
     memberRowsUpdated = rowCount
-  } while (memberRowsUpdated === batchSize)
+  } while (memberRowsUpdated > 0)
 
   let objectMemberRowsUpdated
 
@@ -258,7 +260,7 @@ export async function moveActivityRelationsToAnotherMember(
     )
 
     objectMemberRowsUpdated = rowCount
-  } while (objectMemberRowsUpdated === batchSize)
+  } while (objectMemberRowsUpdated > 0)
 }
 
 export async function moveActivityRelationsWithIdentityToAnotherMember(
@@ -298,7 +300,7 @@ export async function moveActivityRelationsWithIdentityToAnotherMember(
     )
 
     memberRowsUpdated = rowCount
-  } while (memberRowsUpdated === batchSize)
+  } while (memberRowsUpdated > 0)
 
   let objectMemberRowsUpdated
 
@@ -329,7 +331,7 @@ export async function moveActivityRelationsWithIdentityToAnotherMember(
     )
 
     objectMemberRowsUpdated = rowCount
-  } while (objectMemberRowsUpdated === batchSize)
+  } while (objectMemberRowsUpdated > 0)
 }
 
 export async function moveActivityRelationsToAnotherOrganization(
@@ -362,7 +364,7 @@ export async function moveActivityRelationsToAnotherOrganization(
     )
 
     rowsUpdated = rowCount
-  } while (rowsUpdated === batchSize)
+  } while (rowsUpdated > 0)
 }
 
 export async function findMemberIdentityWithTheMostActivityInPlatform(

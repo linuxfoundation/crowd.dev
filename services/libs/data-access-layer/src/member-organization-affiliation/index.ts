@@ -517,7 +517,8 @@ async function applyAffiliationTimeline(
 
     processed += rowCount
     batches++
-  } while (rowCount === batchSize)
+    // A row deleted concurrently is skipped by the UPDATE, so only an empty batch means done.
+  } while (rowCount > 0)
 
   return { processed, batches }
 }
