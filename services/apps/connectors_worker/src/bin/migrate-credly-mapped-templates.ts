@@ -35,7 +35,7 @@ setImmediate(async () => {
     const mappings = await listActiveCredlyTemplateMappings(qx)
     const now = new Date()
 
-    const result = { alreadyPresent: 0, created: 0, skipped: 0 }
+    const result = { alreadyPresent: 0, created: 0, reactivated: 0, skipped: 0 }
     for (const mapping of mappings) {
       if (!apply) {
         const existing = await findSyncUnitByChannelId(
@@ -59,7 +59,11 @@ setImmediate(async () => {
           mapping.badgeTemplateName,
           liveOnlyWatermark(now),
         )
-        if (outcome.outcome === 'created' || outcome.reason === 'already_present') {
+        if (
+          outcome.outcome === 'created' ||
+          outcome.outcome === 'reactivated' ||
+          outcome.reason === 'already_present'
+        ) {
           await lockCredlyTemplateMapping(txQx, mapping.badgeTemplateId, {
             segmentId: mapping.segmentId,
             integrationId: mapping.integrationId,
@@ -70,6 +74,8 @@ setImmediate(async () => {
 
       if (onboarded.outcome === 'created') {
         result.created += 1
+      } else if (onboarded.outcome === 'reactivated') {
+        result.reactivated += 1
       } else if (onboarded.reason === 'already_present') {
         result.alreadyPresent += 1
       } else {
