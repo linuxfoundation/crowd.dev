@@ -25,7 +25,7 @@
 import {
   ref, h, computed,
 } from 'vue';
-import type { ElInput } from 'element-plus';
+import type { InputInstance } from 'element-plus';
 import AppLfRadioCascader from '@/modules/lf/segments/components/filter/lf-radio-cascader.vue';
 import type { ProjectsOption } from '@/modules/lf/segments/types/Filters';
 
@@ -59,7 +59,7 @@ const modelOptions = computed({
 });
 
 const searchQuery = ref('');
-const searchQueryInput = ref<InstanceType<typeof ElInput> | null>(null);
+const searchQueryInput = ref<InputInstance | null>(null);
 </script>
 
 <style lang="scss">
