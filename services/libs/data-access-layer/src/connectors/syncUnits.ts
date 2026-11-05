@@ -320,6 +320,7 @@ export async function findSyncUnitByChannelName(
 export async function findSyncUnitByChannelId(
   qx: QueryExecutor,
   integrationId: string,
+  platform: string,
   channelId: string,
   syncName: string,
 ): Promise<ISyncUnit | null> {
@@ -327,9 +328,10 @@ export async function findSyncUnitByChannelId(
     `SELECT *
      FROM integration.sync_units
      WHERE "integrationId" = $(integrationId)
+       AND platform = $(platform)
        AND "channelId" = $(channelId)
        AND "syncName" = $(syncName)`,
-    { integrationId, channelId, syncName },
+    { integrationId, platform, channelId, syncName },
   )
 }
 
