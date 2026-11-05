@@ -312,8 +312,7 @@ const isVisible = computed({
   },
 });
 
-// Number() matches Math.max's own coercion of a missing id
-const maxId = computed(() => Math.max(...model.value.map((i) => Number(i.id)), 0));
+const maxId = computed(() => Math.max(...model.value.map((i) => i.id as number), 0));
 
 const isMaxTagsReached = computed(() => model.value.length >= 3);
 
@@ -384,7 +383,7 @@ const handleTagValidation = async (index: number) => {
 };
 
 const callOnboard = useThrottleFn(async () => {
-  // shortcut: callers always pass route params. revisit: when stackoverflow-connect types them required
+  // shortcut: every caller passes both segment ids. revisit: when stackoverflow-connect types them required
   const segmentId = props.segmentId as string;
   const grandparentId = props.grandparentId as string;
   if (tagsInputUntouched.value) {
