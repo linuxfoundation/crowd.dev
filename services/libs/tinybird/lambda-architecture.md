@@ -214,8 +214,8 @@ Continuously:  PR events (opened, reviewed, merged, ...) land in
 
 Hourly at :20: pull_request_analysis_incremental_copy runs
                • Window: updatedAt >= max(snapshotId of pull_requests_analyzed) - 1 day
-               • Aggregates the window's events once per PR, segment and repository
-               • Merges them onto that row (earliest timestamp wins)
+               • Aggregates the window's lifecycle events once per PR
+               • Merges them onto every row of the PR, one per segment and repository (earliest timestamp wins)
                • Replaces pull_requests_analyzed: updated rows + every other row unchanged
 ```
 
@@ -308,10 +308,12 @@ The Pull Requests pipeline demonstrates how to **branch from the main pipeline**
 
     Node pr_window: lower updatedAt bound = max(snapshotId) - 1 day
     Node pr_delta_events: PR events in the window, latest version per activity
-    Node pr_delta_non_author: drops reviews/approvals by the PR author
-    Node pr_delta_aggregated: one row per PR, segment and repository (argMinIf/minIf per lifecycle stage)
-    Node pr_merged: window aggregate merged onto the PR's current row
-    Node pr_analysis_results: pr_merged UNION ALL untouched rows
+    Node pr_delta_non_author: drops reviews/approvals by any of the PR's author ids
+    Node pr_delta_opened: identity of each row opened in the window (per PR, segment and repository)
+    Node pr_delta_lifecycle: lifecycle timestamps and patchsets per PR (minIf per stage)
+    Node pr_targets: the PR's current rows plus new rows for opened events
+    Node pr_merged: PR lifecycle merged onto each of its rows
+    Node pr_analysis_results: pr_merged UNION ALL rows of PRs outside the window
     └─ Mode: replace
 
 [Final] Serving Layer - PR Analytics
