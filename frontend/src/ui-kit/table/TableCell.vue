@@ -9,13 +9,11 @@
 </template>
 
 <script lang="ts" setup>
+defineOptions({
+  name: 'LfTableCell',
+});
+
 const props = defineProps<{
   sticky?: boolean,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTableCell',
-};
 </script>
