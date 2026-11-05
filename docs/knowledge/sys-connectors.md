@@ -37,13 +37,13 @@ to a segment.
 
 ## Tables
 
-| Table                                                                                | Holds                                                                 |
-| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `public.integrations`                                                                | One destination per (platform, subproject segment)                    |
-| `integration.sync_units`                                                             | One row per (integration, channel, sync): status, schedule, watermark |
-| `integration.sync_shadow_records`                                                    | Records from units with `emitEnabled = false`                         |
-| `integration."octolensKeywordMappings"`                                              | Octolens keyword → subproject routing (fan-out exception)             |
-| `integration."credlyTemplateMappings"`, `"credlyBadges"`, `"credlyTemplateReleases"` | Credly resolver decisions, badge state, release backfills             |
+| Table                                                    | Holds                                                                           |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `public.integrations`                                    | One destination per (platform, subproject segment)                              |
+| `integration.sync_units`                                 | One row per (integration, channel, sync): status, schedule, watermark           |
+| `integration.sync_shadow_records`                        | Records from units with `emitEnabled = false`                                   |
+| `integration."octolensKeywordMappings"`                  | Octolens keyword → subproject routing (fan-out exception)                       |
+| `integration."credlyTemplateMappings"`, `"credlyBadges"` | Credly resolver decisions (mapped/held, drives onboarding only) and badge state |
 
 ## Decisions
 
