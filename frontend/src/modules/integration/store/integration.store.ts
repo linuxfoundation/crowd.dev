@@ -3,7 +3,7 @@
 
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import Errors from '@/shared/error/errors';
 import type { RouteParamsRaw, Router } from 'vue-router';
 import { getRouter } from '@/router/instance';
@@ -12,7 +12,7 @@ import { lfIntegrations } from '@/config/integrations';
 import type { IntegrationConfig } from '@/config/integrations';
 import { ToastStore } from '@/shared/message/notification';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
-import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { IntegrationRecord } from '@/modules/integration/types/IntegrationResponse';
 import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
 import type {
@@ -42,15 +42,6 @@ const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
 const FIRST_ACTIVITIES_MESSAGE =
   'The first activities will show up in a couple of seconds. <br /> <br /> ' +
   'This process might take a few minutes to finish, depending on the amount of data.';
-
-export interface IntegrationRecord extends Integration<Record<string, unknown>> {
-  platform: string;
-  segmentId?: string;
-  updatedAt?: string;
-  lastProcessedAt?: string;
-  loading?: boolean;
-  isNango?: boolean;
-}
 
 export type IntegrationListItem = IntegrationRecord & Partial<IntegrationConfig>;
 

@@ -11,7 +11,6 @@
   "src/modules/contributor/services/contributor.identities.api.service.ts",
   "src/modules/contributor/services/contributor.organizations.api.service.ts",
   "src/modules/data-quality/services/data-quality.api.service.ts",
-  "src/modules/integration/integration-service.js",
   "src/modules/lf/segments/lf-segments-service.js",
   "src/modules/organization/organization-service.js",
   "src/modules/organization/services/organization.api.service.ts",

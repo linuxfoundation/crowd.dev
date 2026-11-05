@@ -93,7 +93,7 @@ import type {
   GitHubSettingsRepository,
 } from '@/config/integrations/github-nango/types/GithubSettings';
 import LfGithubSettingsMapping from '@/config/integrations/github-nango/components/settings/github-settings-mapping.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';

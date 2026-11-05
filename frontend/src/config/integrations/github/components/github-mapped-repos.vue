@@ -22,25 +22,18 @@
 
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfGithubMappingsDisplay from '@/config/integrations/github/components/github-mappings-display.vue';
 import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { MappedRepos } from '@/modules/integration/types/IntegrationResponse';
 import pluralize from 'pluralize';
 
 const props = defineProps<{
   segmentId: string;
 }>();
 
-const mappedReposWithOtherProject = ref<{
-  projects: {
-    segmentName: string;
-    url: string;
-  }[];
-  repositories: {
-    url: string;
-  }[];
-}>();
+const mappedReposWithOtherProject = ref<MappedRepos | null>();
 
 const projectReposAsMappings = computed<IntegrationMapping[]>(() => {
   if (!mappedReposWithOtherProject.value?.projects) return [];
