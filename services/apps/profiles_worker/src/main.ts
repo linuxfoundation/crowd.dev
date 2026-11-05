@@ -20,6 +20,9 @@ const config: Config = {
     'CROWD_API_SERVICE_URL',
     'CROWD_LF_AGENT_USER_TOKEN',
     'CROWD_SEARCH_SYNC_API_URL',
+    'GITHUB_TOKEN_CLIENT_ID',
+    'GITHUB_TOKEN_INSTALLATION_ID',
+    'GITHUB_TOKEN_PRIVATE_KEY',
   ],
   producer: {
     enabled: false,
