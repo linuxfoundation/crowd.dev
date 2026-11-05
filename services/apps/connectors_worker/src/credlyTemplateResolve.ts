@@ -206,7 +206,7 @@ export function releaseFloor(createdAt: string | null | undefined, top: Date): s
 
 // The live cursor starts where the backfill's top ends, both clamped to WINDOW_LAG_MS before `now`
 // like every live window in badgePoll.ts, so a badge Credly hasn't surfaced yet isn't missed.
-function backfillWatermark(
+export function backfillWatermark(
   createdAt: string | null | undefined,
   now: Date,
 ): Record<string, unknown> {
