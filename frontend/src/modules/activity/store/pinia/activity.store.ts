@@ -16,7 +16,7 @@ export const useActivityStore = defineStore('activity', () => {
   } as Filter);
   const activityChannels = ref<Record<string, string[]>>({});
 
-  function fetchActivityChannels(segment: string) {
+  function fetchActivityChannels(segment?: string) {
     return ActivityService.listActivityChannels(segment).then((res) => {
       activityChannels.value = res;
       return res;

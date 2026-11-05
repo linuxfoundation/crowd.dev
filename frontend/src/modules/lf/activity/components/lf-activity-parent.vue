@@ -18,24 +18,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { toSentenceCase } from '@/utils/string';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 
-defineProps({
-  parent: {
-    type: Object,
-    default: () => {},
-  },
-});
+defineOptions({ name: 'AppLfActivityParent' });
+
+defineProps<{
+  parent: Activity;
+}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-</script>
-
-<script>
-export default {
-  name: 'AppLfActivityParent',
-};
 </script>

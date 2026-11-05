@@ -26,24 +26,21 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({ name: 'AppPaywallPage' });
 
 const route = useRoute();
 
 const onCtaClick = () => {
-  window.analytics.track('Upgrade Plan Contact', {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
+  (window as any).analytics.track('Upgrade Plan Contact', {
     route: route.path,
   });
 };
 
 const errorImage = new URL('@/assets/images/error/403.svg', import.meta.url)
   .href;
-</script>
-
-<script>
-export default {
-  name: 'AppPaywallPage',
-};
 </script>
