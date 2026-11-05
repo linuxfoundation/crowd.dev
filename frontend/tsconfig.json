@@ -20,7 +20,6 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "vuex": ["node_modules/vuex/types/index.d.ts"],
       "@popperjs/core": ["node_modules/@popperjs/core/index.d.ts"]
     }
   },
