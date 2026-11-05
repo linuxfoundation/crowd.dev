@@ -68,6 +68,8 @@ export const queryKeys = {
     integrationStatusCount: (params: GlobalIntegrationStatusCountQueryParams) =>
       [TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT, params.platform, params.segment] as const,
     integrationsAll: [TanstackKey.GLOBAL_INTEGRATIONS] as const,
+    integrationStatusCountAll: [TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT] as const,
+    integrationProgressAll: [TanstackKey.INTEGRATION_PROGRESS_LIST] as const,
     integrations: (params: GlobalIntegrationIntegrationsQueryParams) =>
       [
         TanstackKey.GLOBAL_INTEGRATIONS,

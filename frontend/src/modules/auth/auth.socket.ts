@@ -62,7 +62,11 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
   socketIoClient.on(SocketEvents.integrationCompleted, async (data) => {
     console.info('Integration onboarding done', data);
     const { integrationId }: IntegrationCompletedSocketPayload = JSON.parse(data);
-    queryClient.invalidateQueries({ queryKey: queryKeys.overview.integrationsAll });
+    [
+      queryKeys.overview.integrationsAll,
+      queryKeys.overview.integrationStatusCountAll,
+      queryKeys.overview.integrationProgressAll,
+    ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
     try {
       const { useIntegrationStore } = await import('@/modules/integration/store/integration.store');
       const integrationStore = useIntegrationStore();
