@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { assertCredentialKind, createHttpClient, getCredential } from '@crowd/connectors'
+import { credlyEventRules } from '@crowd/connectors/src/connectors/credly/mapping/eventRules'
 import { credlyTemplateOverrides } from '@crowd/connectors/src/connectors/credly/mapping/overrides'
 import { resolveTemplates } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
 import {
@@ -173,6 +174,9 @@ async function main(): Promise<void> {
       catalogue,
       segmentIdBySlug,
       overrides: credlyTemplateOverrides,
+      // A proposed rule's approvedBy stays 'pending' until a reviewer flips it: this is the only
+      // gate keeping an unreviewed guess out of production decisions, so it is enforced here.
+      eventRules: credlyEventRules.filter((eventRule) => eventRule.approvedBy !== 'pending'),
     })
     const plan = buildPlan(decisions, stored)
     const byStatus = { mapped: 0, held: 0, excluded: 0 }
@@ -185,7 +189,7 @@ async function main(): Promise<void> {
     }
     log.info({ ...byStatus, byHoldReason, plan: plan.counts }, 'credly resolve plan')
 
-    writeFileSync(outFile, JSON.stringify({ decisions, plan }, null, 2))
+    writeFileSync(outFile, JSON.stringify({ decisions, plan, templates }, null, 2))
 
     if (!apply) {
       const held = decisions

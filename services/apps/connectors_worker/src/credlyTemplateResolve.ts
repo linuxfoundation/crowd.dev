@@ -82,6 +82,7 @@ export async function loadCredlyTemplates(
         name: template.name,
         badgeCount: typeof count === 'number' && Number.isFinite(count) ? count : null,
         url: template.url ?? null,
+        activityUrl: template.global_activity_url ?? null,
         createdAt: template.created_at ?? null,
       })
     }
