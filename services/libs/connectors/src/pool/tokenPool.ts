@@ -4,7 +4,7 @@ import type { RedisClient } from '@crowd/redis'
 import type { IPooledToken } from '../http/client'
 import { ConnectorError, ProviderAuthError, RateLimitError } from '../http/errors'
 
-const PROBE_STALENESS_MS = 90_000
+export const PROBE_STALENESS_MS = 90_000
 const TOKEN_EXPIRY_MARGIN_MS = 120_000
 
 export interface BudgetSnapshot {

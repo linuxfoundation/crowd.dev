@@ -1,4 +1,5 @@
 export enum TanstackKey {
+  ACTIVITIES_LIST = 'activities-list',
   ADMIN_COLLECTIONS = 'admin-collections',
   ADMIN_INSIGHTS_PROJECTS = 'admin-insights-projects',
   ADMIN_PROJECT_GROUPS = 'admin-project-groups',

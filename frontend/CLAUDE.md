@@ -23,7 +23,6 @@ still applies here, including its "no comments" rule, and commits follow
   whose query functions call `*.api.service.ts` modules instead of `authAxios`
   directly.
 - Pinia setup stores for shared client state.
-- Vuex is legacy — do not add new stores or actions to it.
 
 ## Types
 

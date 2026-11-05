@@ -7,6 +7,7 @@ import type {
   GlobalIntegrationStatusCountQueryParams,
   IntegrationProgressListQueryParams,
 } from '@/modules/overview/services/overview.api.service';
+import type { ActivitiesQueryParams } from '@/modules/activity/queries/useActivitiesQuery';
 
 export interface EntityListKeyParams {
   projectGroupId?: string;
@@ -31,6 +32,10 @@ const entityListKey = (key: TanstackKey, params: EntityListKeyParams) =>
   ] as const;
 
 export const queryKeys = {
+  activities: {
+    all: [TanstackKey.ACTIVITIES_LIST] as const,
+    list: (params: ActivitiesQueryParams | null) => [TanstackKey.ACTIVITIES_LIST, params] as const,
+  },
   members: {
     all: [TanstackKey.MEMBERS_LIST] as const,
     list: (params: EntityListKeyParams) => entityListKey(TanstackKey.MEMBERS_LIST, params),
@@ -68,6 +73,8 @@ export const queryKeys = {
     integrationStatusCount: (params: GlobalIntegrationStatusCountQueryParams) =>
       [TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT, params.platform, params.segment] as const,
     integrationsAll: [TanstackKey.GLOBAL_INTEGRATIONS] as const,
+    integrationStatusCountAll: [TanstackKey.GLOBAL_INTEGRATION_STATUS_COUNT] as const,
+    integrationProgressAll: [TanstackKey.INTEGRATION_PROGRESS_LIST] as const,
     integrations: (params: GlobalIntegrationIntegrationsQueryParams) =>
       [
         TanstackKey.GLOBAL_INTEGRATIONS,

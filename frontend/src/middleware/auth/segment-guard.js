@@ -11,11 +11,10 @@ import { ToastStore } from '@/shared/message/notification';
  * It checks if user has access to segment (if not, redirects to /403)
  *
  * @param to
- * @param store
  * @param router
  * @returns {Promise<*>}
  */
-export default async function ({ to, store, router }) {
+export default async function ({ to, router }) {
   if (!to.meta || !to.meta.paramSegmentAccess) {
     return;
   }

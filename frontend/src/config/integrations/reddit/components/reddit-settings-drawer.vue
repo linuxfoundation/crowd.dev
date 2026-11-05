@@ -104,7 +104,6 @@ import {
   watch,
 } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
-import { useStore } from 'vuex';
 import Nango from '@nangohq/frontend';
 import isEqual from 'lodash/isEqual';
 import config from '@/config';
@@ -113,6 +112,7 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import reddit from '@/config/integrations/reddit/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
@@ -128,7 +128,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue']);
 
-const store = useStore();
+const { onboardReddit } = useIntegrationStore();
 
 const subreddits: RedditSubredditForm[] = props.integration?.settings?.subreddits.map((i) => ({
   value: i,
@@ -217,7 +217,7 @@ const handleSubredditValidation = async (index: number) => {
 };
 
 const callOnboard = useThrottleFn(async () => {
-  await store.dispatch('integration/doRedditOnboard', {
+  await onboardReddit({
     subreddits: model.value.map((i) => i.value),
     segmentId: props.segmentId,
     grandparentId: props.grandparentId,

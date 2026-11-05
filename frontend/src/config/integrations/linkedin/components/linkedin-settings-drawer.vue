@@ -94,8 +94,8 @@ import {
   ref,
   watch,
 } from 'vue';
-import { useStore } from 'vuex';
 import linkedin from '@/config/integrations/linkedin/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
@@ -113,7 +113,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue']);
 
-const store = useStore();
+const { onboardLinkedin } = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
@@ -171,14 +171,11 @@ const canClose = (done: (value: boolean) => void) => {
 const connect = async () => {
   loading.value = true;
 
-  await store.dispatch(
-    'integration/doLinkedinOnboard',
-    {
-      organizationId: model.value,
-      segmentId: props.segmentId,
-      grandparentId: props.grandparentId,
-    },
-  );
+  await onboardLinkedin({
+    organizationId: model.value,
+    segmentId: props.segmentId,
+    grandparentId: props.grandparentId,
+  });
 
   const isUpdate = (props.integration?.settings?.organizations.length ?? 0) > 0;
 

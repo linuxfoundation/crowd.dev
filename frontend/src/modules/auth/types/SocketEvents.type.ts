@@ -17,3 +17,18 @@ export interface OrganizationMergeSocketPayload {
   original: string;
   toMerge: string;
 }
+
+export interface IntegrationCompletedSocketPayload {
+  integrationId: string;
+  status: string;
+}
+
+export interface ServerToClientEvents {
+  connect: () => void;
+  disconnect: () => void;
+  'integration-completed': (payload: string) => void;
+  'member-merge': (payload: string) => void;
+  'member-unmerge': (payload: string) => void;
+  'organization-unmerge': (payload: string) => void;
+  'org-merge': (payload: string) => void;
+}

@@ -1,7 +1,6 @@
 import { createRouter as createVueRouter, createWebHistory } from 'vue-router';
 import { storeToRefs } from 'pinia';
 
-import { store } from '@/store';
 import authGuards from '@/middleware/auth';
 import modules from '@/modules';
 import ProgressBar from '@/shared/progress-bar/progress-bar';
@@ -84,7 +83,6 @@ export const createRouter = () => {
           from,
           router,
           to,
-          store,
         };
 
         await middlewareArray.reduce(

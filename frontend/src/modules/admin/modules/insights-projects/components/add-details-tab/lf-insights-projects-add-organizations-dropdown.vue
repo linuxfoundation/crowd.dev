@@ -52,6 +52,8 @@ import {
 
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
+import { OrganizationService } from '@/modules/organization/organization-service';
+import type { Pagination } from '@/shared/types/Pagination';
 import type { Organization } from '@/modules/organization/types/Organization';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import type { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
@@ -70,26 +72,28 @@ const searchQuery = ref('');
 let scrollContainer: HTMLElement | null = null;
 
 const organizationStore = useOrganizationStore();
+let lastRequestId = 0;
 
 // Your API service method
 function fetchOrganizations(query = '', pageNum = 0) {
   loading.value = true;
-  organizationStore
-    .fetchOrganizations({
-      body: {
-        filter: query
-          ? {
-            displayName: {
-              textContains: query,
-            },
-          }
-          : {},
-        offset: pageNum * pageSize,
-        limit: pageSize,
-        orderBy: 'activityCount_DESC',
-        segments: [cForm.segmentId],
-      },
-    })
+  organizationStore.selectedOrganizations = [];
+  const requestId = new Date().getTime();
+  lastRequestId = requestId;
+  OrganizationService.query({
+    filter: query
+      ? {
+        displayName: {
+          textContains: query,
+        },
+      }
+      : {},
+    offset: pageNum * pageSize,
+    limit: pageSize,
+    orderBy: 'activityCount_DESC',
+    segments: [cForm.segmentId],
+  })
+    .then((res: Pagination<Organization>) => (lastRequestId === requestId ? res : Promise.reject(res)))
     .then((res) => {
       const { rows } = res;
       const selectedItem = cForm.organizationId ? [cForm.organization as Organization] : [];

@@ -487,9 +487,6 @@ importers:
       logrocket:
         specifier: ^3.0.1
         version: 3.0.1
-      logrocket-vuex:
-        specifier: ^0.0.3
-        version: 0.0.3
       marked:
         specifier: ^4.3.0
         version: 4.3.0
@@ -532,9 +529,6 @@ importers:
       vue3-lazyload:
         specifier: ^0.3.6
         version: 0.3.6(vue@3.3.1)
-      vuex:
-        specifier: ^4.1.0
-        version: 4.1.0(vue@3.3.1)
       yup:
         specifier: ^0.32.11
         version: 0.32.11
@@ -9998,9 +9992,6 @@ packages:
     resolution: {integrity: sha512-TFYA4jnP7PVbmlBIfhlSe+WKxs9dklXMTEGcBCIvLhE/Tn3H6Gk1norupVW7m5Cnd4bLcr08AytbyV/xj7f/kQ==}
     engines: {node: '>= 12.0.0'}
 
-  logrocket-vuex@0.0.3:
-    resolution: {integrity: sha512-Xnl3pBEkc/bbtZ5JEtFwqNjVuLzVEohlBpyQHP47BlO+/6sFmSM2JcNWojysYUo4cp3IWpmWXcezax2+Cq4RsA==}
-
   logrocket@3.0.1:
     resolution: {integrity: sha512-jOWG+jEzobKVxGytzZ+4KGm2kiMQMRTHab2uDWQyVZcHfEF38BlCH1yjQVY4LCmuQUwZitP9biMzJZnyUQ0dtQ==}
 
@@ -12838,11 +12829,6 @@ packages:
 
   vue@3.3.1:
     resolution: {integrity: sha512-3Rwy4I5idbPVSDZu6I+fFh6tdDSZbauImCTqLxE7y0LpHtiDvPeY01OI7RkFPbva1nk4hoO0sv/NzosH2h60sg==}
-
-  vuex@4.1.0:
-    resolution: {integrity: sha512-hmV6UerDrPcgbSy9ORAtNXDr9M4wlNP4pEFKye4ujJF8oqgFFuxDCdOLS3eNoRTtq5O3hoBDh9Doj1bQMYHRbQ==}
-    peerDependencies:
-      vue: ^3.2.0
 
   walkdir@0.4.1:
     resolution: {integrity: sha512-3eBwRyEln6E1MSzcxcVpQIhRG8Q1jLvEqRmCZqS3dsfXEDR/AhOF4d+jHg1qvDCpYaVRZjENPQyrVxAkQqxPgQ==}
@@ -22069,8 +22055,6 @@ snapshots:
       safe-stable-stringify: 2.5.0
       triple-beam: 1.4.1
 
-  logrocket-vuex@0.0.3: {}
-
   logrocket@3.0.1: {}
 
   long@5.3.2: {}
@@ -25257,11 +25241,6 @@ snapshots:
       '@vue/runtime-dom': 3.3.1
       '@vue/server-renderer': 3.3.1(vue@3.3.1)
       '@vue/shared': 3.3.1
-
-  vuex@4.1.0(vue@3.3.1):
-    dependencies:
-      '@vue/devtools-api': 6.6.4
-      vue: 3.3.1
 
   walkdir@0.4.1: {}
 
