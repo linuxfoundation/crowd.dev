@@ -1,6 +1,7 @@
 DESCRIPTION >
     - `active_days.pipe` serves the "Development - Active days" widget showing activity patterns and development velocity.
-    - Number of days contributors were actively involved in the project and the total contributions made during the selected period. This includes commits, pull requests, and more.
+    - Number of days contributors were actively involved in the project and the total contributions made during the selected period.
+    - Contributions are the activities returned by `activities_filtered`, classified through `activityTypes` (`isCodeContribution`, `isCollaboration`). The summary and the time series count the same set.
     - **When `granularity` is NOT provided, returns active days count and average contributions per day** across the filtered time range.
     - **When `granularity` is provided, returns time-series data** showing activity counts for each time period.
     - Calculates active days as distinct dates with qualifying development activities for project health analysis.
@@ -12,7 +13,8 @@ DESCRIPTION >
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
     - `repos`: Optional array of repository URLs (e.g., ['https://github.com/kubernetes/kubernetes'])
     - `platform`: Optional string filter for source platform (e.g., 'github', 'discord', 'slack')
-    - `onlyContributions`: Optional boolean, defaults to 1 (contributions only), set to 0 for all activities
+    - `includeCodeContributions`: Optional boolean, defaults to 1. Inherited from `activityTypes_filtered`.
+    - `includeCollaborations`: Optional boolean, defaults to 0. Inherited from `activityTypes_filtered`.
     - `granularity`: Optional string for time aggregation ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
     - Response:
     - Without granularity: `activeDaysCount`, `avgContributionsPerDay`
@@ -42,44 +44,6 @@ SQL >
                 THEN toStartOfYear(af.timestamp)
             END
             = ds.startDate
-            and af.type in (
-                'pull_request-reviewed',
-                'issues-closed',
-                'merge_request-closed',
-                'pull_request-closed',
-                'authored-commit',
-                'committed-commit',
-                'informed-commit',
-                'signed-off-commit',
-                'reviewed-commit',
-                'co-authored-commit',
-                'reported-commit',
-                'tested-commit',
-                'influenced-commit',
-                'approved-commit',
-                'resolved-commit',
-                'issues-opened',
-                'issue-comment',
-                'pull_request-opened',
-                'pull_request-comment',
-                'pull_request-review-thread-comment',
-                'pull_request-merged',
-                'changeset-created',
-                'changeset-merged',
-                'changeset-abandoned',
-                'discussion-started',
-                'discussion-comment',
-                'merge_request-opened',
-                'merge_request-comment',
-                'merge_request-review-approved',
-                'merge_request-review-changes-requested',
-                'merge_request-merged',
-                'changeset-closed',
-                'changeset_comment-created',
-                'patchset-created',
-                'patchset_comment-created',
-                'patchset_approval-created'
-            )
         GROUP BY ds."startDate", ds."endDate"
         order by ds."startDate"
     {% else %} SELECT 1
