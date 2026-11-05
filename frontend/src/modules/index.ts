@@ -4,7 +4,6 @@ import layout from '@/modules/layout/layout-module';
 import settings from '@/modules/settings/settings-module';
 import integration from '@/modules/integration/integration-module';
 import member from '@/modules/member/member-module';
-import tag from '@/modules/tag/tag-module';
 import activity from '@/modules/activity/activity-module';
 import organization from '@/modules/organization/organization-module';
 
@@ -24,7 +23,6 @@ const modules: Record<string, AppModule> = {
   integration,
   member,
   activity,
-  tag,
   organization,
   admin,
   dataQuality,
