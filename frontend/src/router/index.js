@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia';
 
 import authGuards from '@/middleware/auth';
 import modules from '@/modules';
-import ProgressBar from '@/shared/progress-bar/progress-bar';
+import * as ProgressBar from '@/shared/progress-bar/progress-bar';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import auth from '@/modules/auth';
 import navigationGuard from '@/middleware/navigation/navigation-guard';

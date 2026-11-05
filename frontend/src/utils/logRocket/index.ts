@@ -18,7 +18,7 @@ const captureException = (error: Error) => {
   }
 };
 
-const identify = (user: User) => {
+const identify = (user: Pick<User, 'id' | 'fullName' | 'email'>): void => {
   if (isLogRocketEnabled()) {
     LogRocket.identify(user.id, {
       name: user.fullName,

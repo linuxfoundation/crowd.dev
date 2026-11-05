@@ -1,4 +1,5 @@
 import Axios from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { stringify } from 'qs';
 import config from '@/config';
 import { storeToRefs } from 'pinia';
@@ -7,10 +8,10 @@ import { dateHelper } from '@/shared/date-helper/date-helper';
 
 const authAxios = Axios.create({
   baseURL: config.backendUrl,
-  paramsSerializer(params) {
+  paramsSerializer(params: Record<string, unknown>): string {
     return stringify(params, {
       arrayFormat: 'brackets',
-      filter: (prefix, value) => {
+      filter: (prefix: string, value: unknown): unknown => {
         if (
           dateHelper.isDayjs(value)
           || value instanceof Date
@@ -25,7 +26,7 @@ const authAxios = Axios.create({
 });
 
 authAxios.interceptors.request.use(
-  async (options) => {
+  async (options: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => {
     const { useLfSegmentsStore } = await import('@/modules/lf/segments/store');
     const lsSegmentsStore = useLfSegmentsStore();
     const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
@@ -41,7 +42,7 @@ authAxios.interceptors.request.use(
 
     // Add segments to requests
     if (includeSegmentsInRequest) {
-      let segments;
+      let segments: string[] | undefined;
       if (hasSegmentsBody) {
         segments = options.data.segments;
       } else if (hasSegmentsQueryParams) {
@@ -86,12 +87,12 @@ authAxios.interceptors.request.use(
       delete setOptions.params.excludeSegments;
     }
 
-    if (['delete', 'put'].includes(setOptions.method)) {
+    if (setOptions.method && ['delete', 'put'].includes(setOptions.method) && setOptions.url) {
       const encodedUrl = (
         setOptions
           .url.replace(
             /\/[^/]*$/,
-            `/${encodeURIComponent(setOptions.url.split('/').at(-1))}`,
+            `/${encodeURIComponent(setOptions.url.split('/').at(-1)!)}`,
           )
       );
       Object.assign(setOptions, { url: encodedUrl });
@@ -109,7 +110,7 @@ authAxios.interceptors.request.use(
 
     return setOptions;
   },
-  (error) => {
+  (error: unknown): Promise<never> => {
     console.error('Request error: ', error);
 
     return Promise.reject(error);

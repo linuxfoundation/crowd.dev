@@ -1,8 +1,21 @@
+import type { ContributorAttribute } from '@/modules/contributor/types/Contributor';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+
+interface AttributesFormModel {
+  attributes: Record<string, ContributorAttribute>;
+  [key: string]: unknown;
+}
+
+type ParsedAttributes = Record<string, ContributorAttribute | undefined>;
+
 /**
  * Util to transform the attributes form model into the object model for the request
  */
-export default (attributes, model) => attributes.reduce(
-  (obj, attribute) => {
+export default (
+  attributes: Pick<FilterCustomAttribute, 'name'>[],
+  model: AttributesFormModel,
+): ParsedAttributes => attributes.reduce(
+  (obj: ParsedAttributes, attribute: Pick<FilterCustomAttribute, 'name'>): ParsedAttributes => {
     if (model[attribute.name]) {
       return {
         ...obj,
