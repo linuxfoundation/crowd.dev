@@ -10,7 +10,9 @@ describe('buildSourceQuery', () => {
 
       expect(query).not.toMatch(/\)\s+IS NOT NULL/)
       expect(query).toMatch(/u\.lf_username\s+\)\s+AS LFID/)
-      expect(query).toContain('WHERE er.email IS NOT NULL')
+      expect(query).toContain(
+        "WHERE er.email IS NOT NULL\n    AND TRIM(er.email) <> ''\n    AND LOWER(TRIM(er.email)) NOT IN ('test@test.com', 'email@email.com')",
+      )
     },
   )
 })
