@@ -14,7 +14,12 @@ export async function getKafkaMessageCounts(
   admin: Admin,
   topic: string,
   groupId: string,
-): Promise<{ total: number; consumed: number; unconsumed: number }> {
+): Promise<{
+  total: number
+  consumed: number
+  unconsumed: number
+  unconsumedByPartition: Map<number, number>
+}> {
   try {
     const topicOffsets = await admin.fetchTopicOffsets(topic)
     const offsetsResponse = await admin.fetchOffsets({
@@ -27,6 +32,7 @@ export async function getKafkaMessageCounts(
     let totalMessages = 0
     let consumedMessages = 0
     let totalLeft = 0
+    const unconsumedByPartition = new Map<number, number>()
 
     for (const offset of offsets) {
       const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
@@ -42,10 +48,16 @@ export async function getKafkaMessageCounts(
         totalMessages += Math.max(0, high - low)
         consumedMessages += Math.max(0, committed - low)
         totalLeft += Math.max(0, high - committed)
+        unconsumedByPartition.set(offset.partition, Math.max(0, high - committed))
       }
     }
 
-    return { total: totalMessages, consumed: consumedMessages, unconsumed: totalLeft }
+    return {
+      total: totalMessages,
+      consumed: consumedMessages,
+      unconsumed: totalLeft,
+      unconsumedByPartition,
+    }
   } catch (err) {
     log.error(err, 'Failed to get Kafka message counts!')
     throw err

@@ -17,6 +17,7 @@ import {
   IQueueSendResult,
 } from '../../types'
 import { configMap } from './config'
+import { IConsumerLiveness, createConsumerLivenessFromEnv } from './liveness'
 import { IKafkaChannelConfig, IKafkaQueueStartOptions } from './types'
 import { getKafkaMessageCounts } from './utils'
 
@@ -60,6 +61,9 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
   private reconnectAttempts: Map<string, number>
   private consumerStatus: Map<string, boolean>
   private consumers: Map<string, Consumer>
+  private assignedPartitionsByTopic: Map<string, number[]>
+  private readonly liveness: IConsumerLiveness | undefined
+  private livenessTopic: string | undefined
   private processingMessages: number
   private started: boolean
   private producer?: Producer | undefined = undefined
@@ -74,6 +78,8 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
     this.processingMessages = 0
     this.started = false
     this.consumers = new Map<string, Consumer>()
+    this.assignedPartitionsByTopic = new Map<string, number[]>()
+    this.liveness = createConsumerLivenessFromEnv(this.log)
     this.reconnectAttempts = new Map<string, number>()
     this.consumerStatus = new Map<string, boolean>()
   }
@@ -97,6 +103,12 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
   }
 
   async getQueueMessageCount(conf: IKafkaChannelConfig): Promise<number> {
+    return (await this.getQueueMessageCounts(conf)).unconsumed
+  }
+
+  private async getQueueMessageCounts(
+    conf: IKafkaChannelConfig,
+  ): Promise<{ unconsumed: number; unconsumedByPartition: Map<number, number> }> {
     const topic = conf.name
     const groupId = topic
 
@@ -104,8 +116,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
     await admin.connect()
 
     try {
-      const counts = await getKafkaMessageCounts(this.log, admin, topic, groupId)
-      return counts.unconsumed
+      return await getKafkaMessageCounts(this.log, admin, topic, groupId)
     } catch (err) {
       this.log.error({ topic, groupId, err }, 'Failed to get message count!')
       throw err
@@ -164,8 +175,13 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
         rebalanceTimeout: 60000,
         heartbeatInterval: 3000,
       })
-      consumer.on(consumer.events.GROUP_JOIN, () => {
-        this.log.info('Consumer has joined the group')
+      consumer.on(consumer.events.GROUP_JOIN, (event) => {
+        const partitions = event.payload.memberAssignment?.[groupId] ?? []
+        this.assignedPartitionsByTopic.set(groupId, partitions)
+        if (groupId === this.livenessTopic) {
+          this.liveness?.partitionsAssigned()
+        }
+        this.log.info({ partitions }, 'Consumer has joined the group')
       })
 
       consumer.on(consumer.events.REBALANCING, () => {
@@ -183,6 +199,11 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
       })
       consumer.on(consumer.events.CRASH, async (event) => {
         this.log.error({ error: event.payload.error }, 'Consumer crashed')
+        if (!event.payload.restart && groupId === this.livenessTopic) {
+          this.liveness?.consumerFailed(
+            `the consumer crashed and won't restart: ${event.payload.error?.message}`,
+          )
+        }
         await this.handleConsumerError(groupId, consumer)
       })
       this.consumers.set(groupId, consumer)
@@ -409,6 +430,19 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
       const consumer = await this.getConsumer(queueConf.name)
       await consumer.subscribe({ topic: queueConf.name })
 
+      if (this.liveness) {
+        if (this.livenessTopic === undefined || this.livenessTopic === queueConf.name) {
+          this.livenessTopic = queueConf.name
+          this.liveness.start()
+        } else {
+          this.log.warn(
+            { topic: queueConf.name, livenessTopic: this.livenessTopic },
+            'Consumer liveness only tracks the first topic of this process!',
+          )
+        }
+      }
+      const trackLiveness = this.livenessTopic === queueConf.name
+
       // Add periodic health check
       healthCheckInterval = setInterval(async () => {
         if (!this.started) {
@@ -439,7 +473,15 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
           timings = []
 
           // Get the number of messages left in the queue
-          const count = await this.getQueueMessageCount(queueConf)
+          const counts = await this.getQueueMessageCounts(queueConf)
+          const count = counts.unconsumed
+
+          if (trackLiveness) {
+            const partitions = this.assignedPartitionsByTopic.get(queueConf.name) ?? []
+            this.liveness?.setWaitingInAssignedPartitions(
+              partitions.reduce((sum, p) => sum + (counts.unconsumedByPartition.get(p) ?? 0), 0),
+            )
+          }
 
           let message = `Topic has ${count} messages left!`
           if (durations.length > 0) {
@@ -477,6 +519,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
               const now = performance.now()
 
               this.addJob()
+              const livenessId = trackLiveness ? this.liveness?.messageStarted() : undefined
 
               processMessage(data)
                 .then(() => {
@@ -494,10 +537,18 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
                 })
                 .finally(() => {
                   this.removeJob()
+                  if (livenessId !== undefined) {
+                    this.liveness?.messageFinished(livenessId)
+                  }
                 })
+            } else if (trackLiveness) {
+              this.liveness?.messageSkipped()
             }
           } catch (err) {
             this.log.error(err, 'Failed to process the message')
+            if (trackLiveness) {
+              this.liveness?.messageSkipped()
+            }
           }
         },
       })
@@ -531,6 +582,7 @@ export class KafkaQueueService extends LoggerBase implements IQueue {
 
   public stop() {
     this.started = false
+    this.liveness?.stop()
     this.consumers.forEach((c) => c.disconnect())
     this.log.info('Kafka consumers disconnected')
   }
