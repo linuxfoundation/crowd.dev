@@ -43,10 +43,14 @@ function keywordPattern(keyword: string): RegExp {
 
 function urlMatcher(activityUrl: string): CompiledEventRule['match'] {
   const prefix = normalizeActivityUrl(activityUrl)
+  // A hyphen continues a path segment (events.../kubecon-eu), not a hostname: learn.finops.org-x
+  // is a different host entirely, so hyphen continuation only applies when the prefix has a path.
+  const hasPath = prefix.includes('/')
   return (template) => {
     if (!template.activityUrl) return null
     const url = normalizeActivityUrl(template.activityUrl)
-    const matches = url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}-`)
+    const matches =
+      url === prefix || url.startsWith(`${prefix}/`) || (hasPath && url.startsWith(`${prefix}-`))
     return matches ? url : null
   }
 }

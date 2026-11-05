@@ -17,6 +17,7 @@ const RULES: readonly CredlyEventRule[] = [
     ...base,
   },
   { id: 'kubecon', nameKeyword: 'KubeCon', projectSlug: 'cncf', ...base },
+  { id: 'learn-finops', activityUrl: 'learn.finops.org', projectSlug: 'finops', ...base },
   { id: 'ceph', nameKeyword: 'Ceph', projectSlug: 'cephfoundation', ...base },
   { id: 'ai-dev', nameKeyword: 'AI_dev', projectSlug: 'tlf', ...base },
   { id: 'oss', nameKeyword: 'Open Source Summit', projectSlug: 'tlf', ...base },
@@ -54,6 +55,12 @@ describe('matchEventRules', () => {
     )
     expect(ids('Speaker', 'https://kubecon.example.org/')).toEqual([])
     expect(ids('Speaker', null)).toEqual([])
+  })
+
+  it('does not treat a hyphen as a path continuation on a hostname-only rule', () => {
+    expect(ids('Speaker', 'https://learn.finops.org-unrelated.example/course')).toEqual([])
+    expect(ids('Speaker', 'https://learn.finops.org/course')).toEqual(['learn-finops'])
+    expect(ids('Speaker', 'https://learn.finops.org')).toEqual(['learn-finops'])
   })
 
   it('matches a keyword rule on whole words, ignoring case', () => {
