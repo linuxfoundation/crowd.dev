@@ -3,8 +3,7 @@
   "dbTimeouts": {
     "lockTimeoutMs": 3600000,
     "statementTimeoutMs": 4200000,
-    "queryTimeoutMs": 4500000,
-    "connectionTimeoutMs": 60000
+    "queryTimeoutMs": 4500000
   },
   "queue": {},
   "redis": {},

@@ -9,7 +9,6 @@ export interface IDatabaseConfig {
   queryTimeoutMs?: number | string
   statementTimeoutMs?: number | string
   lockTimeoutMs?: number | string
-  connectionTimeoutMs?: number | string
 }
 
 export type DbConnection = pgPromise.IDatabase<unknown>

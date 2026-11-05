@@ -129,13 +129,11 @@ export const getDbConnection = async (
   maxPoolSize?: number,
   idleTimeoutMillis?: number,
 ): Promise<DbConnection> => {
-  const { queryTimeoutMs, statementTimeoutMs, lockTimeoutMs, connectionTimeoutMs, ...connection } =
-    config
+  const { queryTimeoutMs, statementTimeoutMs, lockTimeoutMs, ...connection } = config
   const timeouts = {
     query_timeout: parseTimeoutMs('queryTimeoutMs', queryTimeoutMs),
     statement_timeout: parseTimeoutMs('statementTimeoutMs', statementTimeoutMs),
     lock_timeout: parseTimeoutMs('lockTimeoutMs', lockTimeoutMs),
-    connectionTimeoutMillis: parseTimeoutMs('connectionTimeoutMs', connectionTimeoutMs),
   }
 
   const cacheKey = `${config.host}:${config.database}`
