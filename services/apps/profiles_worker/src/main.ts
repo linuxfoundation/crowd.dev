@@ -11,6 +11,7 @@ import {
   scheduleRefreshMemberDisplayAggregates,
   scheduleRefreshOrganizationDisplayAggregates,
 } from './schedules/refreshDisplayAggregates'
+import { scheduleResolveGitAuthorsToGithub } from './schedules/resolveGitAuthorsToGithub'
 
 const config: Config = {
   envvars: [
@@ -57,6 +58,7 @@ setImmediate(async () => {
 
   await scheduleInferMemberCountries()
   await scheduleInferOrganizationCountries()
+  await scheduleResolveGitAuthorsToGithub()
 
   await svc.start()
 })

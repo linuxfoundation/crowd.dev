@@ -28,6 +28,11 @@ import {
   updateMemberAffiliations,
 } from './activities/member/memberUpdate'
 import {
+  getResolveGitAuthorsCursor,
+  resolveGitAuthorsPage,
+  saveResolveGitAuthorsCursor,
+} from './activities/member/resolveGitAuthors'
+import {
   createFakeOrganizationSuggestion,
   getOrganizationForFakeAnalysis,
   markOrganizationAsFake,
@@ -70,4 +75,7 @@ export {
   saveCountryScanSyncedAt,
   processMemberCountries,
   processOrganizationCountries,
+  getResolveGitAuthorsCursor,
+  saveResolveGitAuthorsCursor,
+  resolveGitAuthorsPage,
 }

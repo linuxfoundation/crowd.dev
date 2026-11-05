@@ -13,6 +13,7 @@ sources:
   - services/libs/types/src/enums/organizations.ts
   - services/apps/data_sink_worker/src/service/member.service.ts
   - services/libs/data-access-layer/src/members/
+  - services/libs/data-access-layer/src/github-email-lookups/
   - services/libs/common_services/src/services/member/unmerge.ts
   - services/libs/common_services/src/services/common.member.service.ts
   - services/libs/data-access-layer/src/affiliations/index.ts
@@ -45,6 +46,7 @@ write path.
 | `memberToMerge`, `organizationToMerge`   | Merge suggestions waiting for a decision                                                                                                          |
 | `memberNoMerge`                          | Pairs that must not be suggested again                                                                                                            |
 | `mergeActions`                           | Merge and unmerge history: `type` (`member` or `org`), `primaryId`, `secondaryId`, `state` and `step`                                             |
+| `githubEmailLookups`                     | Git author emails already looked up on GitHub, with the account found and what was done with it                                                   |
 
 Identity types are small enums: members have `username` and `email`; organizations have
 `username`, `primary-domain`, `alternative-domain`, `affiliated-profile` and `email`. Members also
@@ -84,6 +86,10 @@ else goes through suggestions.
   `entity_merging_worker`.
 - `script_executor_worker` holds bulk fixes, such as merging members whose identities differ only
   in capitalization.
+- `profiles_worker` links git-only members to GitHub every hour: it asks GitHub who authored one
+  of their commits, then merges them into the member that owns that GitHub account (unless the
+  pair is in `memberNoMerge` or the stored GitHub ID differs), or adds the login as a verified
+  identity. Each email is looked up once, recorded in `githubEmailLookups`.
 
 Because activity relations live in Postgres, the rewrite replicates to Tinybird. Activity content is untouched; see [`data-flow.md`](data-flow.md).
 

@@ -31,6 +31,7 @@ import { DB_CONFIG, QUEUE_CONFIG } from '../conf'
  *
  * TABLES AFFECTED:
  * - maintainersInternal (deleted by identityId from member's identities)
+ * - githubEmailLookups (deleted by the values of member's identities)
  * - erasedMemberActivityFootprint (activity counts per segment/platform/channel are inserted here before deletion)
  * - requestedForErasureMemberIdentities (memberIdentities are inserted here with their memberId before deletion)
  * - activityRelations, memberNoMerge, memberOrganizationAffiliationOverrides
@@ -197,6 +198,16 @@ async function getDeletionSummary(store: DbStore, memberId: string): Promise<str
   )
   if (parseInt(maintainersCount.count) > 0) {
     summary += `- ${maintainersCount.count} maintainersInternal records will be deleted\n`
+  }
+
+  const githubEmailLookupsCount = await store.connection().one(
+    `select count(*) as count from "githubEmailLookups" where email in (
+      select lower(value) from "memberIdentities" where "memberId" = $(memberId)
+    )`,
+    { memberId },
+  )
+  if (parseInt(githubEmailLookupsCount.count) > 0) {
+    summary += `- ${githubEmailLookupsCount.count} githubEmailLookups records will be deleted\n`
   }
 
   // Count records in each table to be deleted
@@ -400,6 +411,30 @@ export async function deleteMemberFromDb(store: DbStore, memberId: string): Prom
     log.info(
       `Deleted ${result.rowCount} rows from table maintainersInternal for member ${memberId}!`,
     )
+  }
+
+  // githubEmailLookups is keyed by email, so it must be cleared before memberIdentities is deleted
+  const githubEmailLookupsQuery = `delete from "githubEmailLookups" where email in (
+      select lower(value) from "memberIdentities" where "memberId" = '${memberId}'
+    )`
+  console.log(`\n=== ABOUT TO DELETE FROM GITHUBEMAILLOOKUPS ===`)
+  console.log(`Query: ${githubEmailLookupsQuery}`)
+  const proceedGithubEmailLookups = await promptConfirmation(
+    'Proceed with deleting from githubEmailLookups?',
+  )
+  if (proceedGithubEmailLookups) {
+    result = await store.connection().result(
+      `delete from "githubEmailLookups" where email in (
+        select lower(value) from "memberIdentities" where "memberId" = $(memberId)
+      )`,
+      { memberId },
+    )
+
+    if (result.rowCount > 0) {
+      log.info(
+        `Deleted ${result.rowCount} rows from table githubEmailLookups for member ${memberId}!`,
+      )
+    }
   }
 
   const tablesToDelete: Map<string, string[]> = new Map([

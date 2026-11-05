@@ -21,6 +21,11 @@ const BATCH_SIZE = 500
 // rows commit after their updatedAt, so the scan stops this far behind now to not skip them.
 const SCAN_LAG_MS = 35 * 60 * 1000
 
+type CountryScanSettingKey = Extract<
+  SystemSettingKey,
+  'memberCountryInferenceLastSyncedAt' | 'organizationCountryInferenceLastSyncedAt'
+>
+
 function createLlmService(qx: QueryExecutor): LlmService {
   return new LlmService(
     qx,
@@ -42,7 +47,7 @@ function nextCursor(candidates: ICountryScanCandidate[]): ICountryScanCursor | n
 }
 
 export async function getCountryScanWindow(
-  key: SystemSettingKey,
+  key: CountryScanSettingKey,
 ): Promise<{ since: string; until: string }> {
   const qx = pgpQx(svc.postgres.reader.connection())
   const lastSynced = await getSystemSettingValue(qx, key)
@@ -52,7 +57,7 @@ export async function getCountryScanWindow(
 }
 
 export async function saveCountryScanSyncedAt(
-  key: SystemSettingKey,
+  key: CountryScanSettingKey,
   timestamp: string,
 ): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())

@@ -21,6 +21,16 @@ export class GithubPublicClientError extends Error {
   }
 }
 
+export interface IGithubAccount {
+  id: string
+  login: string
+}
+
+export type GithubCommitAuthor =
+  | { status: 'found'; account: IGithubAccount }
+  | { status: 'no-github-account' }
+  | { status: 'commit-not-found' }
+
 export interface IPublicRepoReadme {
   content: string
   truncated: boolean

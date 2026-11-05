@@ -1,5 +1,6 @@
 import { canonicalizeGithubRepoUrl, githubRepoPath } from '../githubRepoUrl'
 import {
+  GithubCommitAuthor,
   GithubPublicClientError,
   IPublicOrgRepos,
   IPublicRepoMetrics,
@@ -100,8 +101,15 @@ function assertAuthenticated(response: Response, url: string): void {
 
 // GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also
 // mean a genuine permission problem, so only 403 needs the response-body sniff.
+async function isRateLimited(response: Response): Promise<boolean> {
+  if (response.status === 429) return true
+  if (response.status !== 403) return false
+  const body = await response.text()
+  return body.toLowerCase().includes('rate limit')
+}
+
 async function assertNotRateLimited(response: Response, what: string): Promise<void> {
-  if (response.status === 429) {
+  if (await isRateLimited(response)) {
     throw new GithubPublicClientError(
       'RATE_LIMIT',
       `Rate limited ${what}`,
@@ -109,14 +117,6 @@ async function assertNotRateLimited(response: Response, what: string): Promise<v
     )
   }
   if (response.status === 403) {
-    const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
-      throw new GithubPublicClientError(
-        'RATE_LIMIT',
-        `Rate limited ${what}`,
-        rateLimitResetMs(response.headers),
-      )
-    }
     throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
   }
 }
@@ -290,6 +290,54 @@ export async function fetchPublicOrgRepos(
       return { repoUrls, exceededLimit: false }
     }
   }
+}
+
+interface ICommitItem {
+  author: { id: number; login: string } | null
+}
+
+const COMMIT_NOT_FOUND_STATUSES = new Set([403, 404, 409, 422, 451])
+
+export async function fetchCommitAuthor(
+  repoUrl: string,
+  sha: string,
+  token: string,
+): Promise<GithubCommitAuthor> {
+  const repoPath = githubRepoPath(repoUrl)
+  if (!repoPath) {
+    return { status: 'commit-not-found' }
+  }
+
+  const url = `${GITHUB_API_URL}/repos/${repoPath}/commits/${encodeURIComponent(sha)}`
+  const what = `looking up commit ${sha} in ${repoUrl}`
+  const response = await doFetch(url, {
+    headers: { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' },
+  })
+
+  assertAuthenticated(response, url)
+  if (await isRateLimited(response)) {
+    throw new GithubPublicClientError(
+      'RATE_LIMIT',
+      `Rate limited ${what}`,
+      rateLimitResetMs(response.headers),
+    )
+  }
+  if (COMMIT_NOT_FOUND_STATUSES.has(response.status)) {
+    return { status: 'commit-not-found' }
+  }
+  if (!response.ok) {
+    throw new GithubPublicClientError(
+      'TRANSIENT',
+      `GitHub returned HTTP ${response.status} ${what}`,
+    )
+  }
+
+  const { author } = await readJson<ICommitItem>(response, url)
+  if (!author) {
+    return { status: 'no-github-account' }
+  }
+
+  return { status: 'found', account: { id: String(author.id), login: author.login } }
 }
 
 export async function fetchPublicRepoReadme(
