@@ -311,6 +311,7 @@ The Pull Requests pipeline demonstrates how to **branch from the main pipeline**
     Node pr_delta_non_author: drops reviews/approvals by any of the PR's author ids
     Node pr_delta_opened: identity of each row opened in the window (per PR, segment and repository)
     Node pr_delta_lifecycle: lifecycle timestamps and patchsets per PR (minIf per stage)
+    Node pr_existing_lifecycle: lifecycle stored on the PR's rows, merged per PR and host
     Node pr_targets: the PR's current rows plus new rows for opened events
     Node pr_merged: PR lifecycle merged onto each of its rows
     Node pr_analysis_results: pr_merged UNION ALL rows of PRs outside the window
@@ -481,8 +482,9 @@ TYPE: COPY, COPY_MODE: replace, COPY_SCHEDULE: @on-demand
 TARGET: pull_requests_analyzed
 Params: bucket_id (0..9), num_buckets (set to 10)
 
-Purpose: Rebuild PR lifecycle analysis (opened → reviewed → approved → merged) from the activity history,
-with the same rules as pull_request_analysis_incremental_copy.
+Purpose: Rebuild PR lifecycle analysis (opened → reviewed → approved → merged) from the activity history plus
+the snapshot MV's retained days (events newer than the daily bucket merge), with the same rules as
+pull_request_analysis_incremental_copy.
 
 Single-shot invocation is deprecated (times out on full dataset).
   ✗ DEPRECATED: tb pipe copy run pull_request_analysis_initial_snapshot --wait
@@ -551,7 +553,7 @@ Rows whose PR has no opened event left in the activity history (deleted activiti
 | **Schedule**          | @on-demand (manual)                                     | @on-demand (manual)                     | @on-demand (manual)                                                                                         | Daily (01:30/01:34/01:38 UTC)                           | Hourly (20 * * * *)                          |
 | **Mode**              | replace (atomic)                                        | replace (atomic)                        | replace (one bucket of PRs per run, other rows kept)                                                        | replace (atomic per-bucket)                             | replace                                      |
 | **Purpose**           | Bootstrap activityRelations serving layer (3 buckets)   | Bootstrap segment aggregates            | Bootstrap PR analytics (full rebuild, run with params)                                                      | Incremental merge of activityRelations MV deltas        | Incremental merge of PR events in the window |
-| **Source**            | Base `activityRelations` table                          | Latest snapshot (query-time)            | Base `activityRelations_enriched_deduplicated_bucket_union`                                                 | MV output + own bucket (carry-forward)                  | Snapshot MV events + target                  |
+| **Source**            | Base `activityRelations` table                          | Latest snapshot (query-time)            | `activityRelations_enriched_deduplicated_bucket_union` + snapshot MV                                        | MV output + own bucket (carry-forward)                  | Snapshot MV events + target                  |
 | **Target Datasource** | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `segmentsAggregatedMV`                  | `pull_requests_analyzed`                                                                                    | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `pull_requests_analyzed`                     |
 | **Frequency**         | Once at setup (or rarely to recover a bucket)           | Once at setup                           | Once at setup (split as: `for N in 0..9; tb pipe copy run ... --param bucket_id=$N --param num_buckets=10`) | Continuous (daily, one run per bucket)                  | Continuous (hourly)                          |
 

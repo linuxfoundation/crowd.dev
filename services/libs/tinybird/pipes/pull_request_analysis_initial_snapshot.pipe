@@ -1,12 +1,57 @@
 DESCRIPTION >
-    Full rebuild of `pull_requests_analyzed` from the activity history, with the same rules as
-    `pull_request_analysis_incremental_copy`. Each bucket run replaces its PRs and keeps every other row, so it runs on a
-    populated table and a bucket can be re-run (see lambda-architecture.md):
+    Full rebuild of `pull_requests_analyzed` with the incremental copy's rules. Each bucket run replaces its PRs and keeps
+    every other row (see lambda-architecture.md):
     tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --wait
+
+NODE pr_recent_events
+DESCRIPTION >
+    Latest version of each PR event in the snapshot MV, which holds the days the daily bucket merge has not reached.
+
+SQL >
+    SELECT
+        activityId,
+        sourceId,
+        sourceParentId,
+        channel,
+        timestamp,
+        segmentId,
+        gitChangedLinesBucket,
+        memberId,
+        organizationId,
+        platform,
+        updatedAt,
+        type,
+        pullRequestReviewState
+    FROM activityRelations_enrich_snapshot_MV_ds
+    WHERE
+        type IN (
+            'pull_request-opened',
+            'merge_request-opened',
+            'changeset-created',
+            'pull_request-assigned',
+            'merge_request-assigned',
+            'pull_request-review-requested',
+            'merge_request-review-requested',
+            'pull_request-reviewed',
+            'merge_request-review-changes-requested',
+            'patchset-created',
+            'merge_request-review-approved',
+            'patchset_approval-created',
+            'pull_request-closed',
+            'merge_request-closed',
+            'changeset-closed',
+            'changeset-abandoned',
+            'pull_request-merged',
+            'merge_request-merged',
+            'changeset-merged'
+        )
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY activityId
 
 NODE pr_events
 DESCRIPTION >
-    PR events of this bucket. Buckets split by PR, so every event of a PR, in any segment, lands in the same run.
+    PR events of this bucket, one version per activity: the snapshot MV's latest version, else the history's. Buckets
+    split by PR, so all of a PR's events land in one run.
 
 SQL >
     %
@@ -35,7 +80,17 @@ SQL >
         updatedAt,
         type,
         pullRequestReviewState
-    FROM activityRelations_enriched_deduplicated_bucket_union
+    FROM
+        (
+            SELECT
+                activityId, sourceId, sourceParentId, channel, timestamp, segmentId, gitChangedLinesBucket,
+                memberId, organizationId, platform, updatedAt, type, pullRequestReviewState
+            FROM activityRelations_enriched_deduplicated_bucket_union
+            WHERE activityId NOT IN (SELECT activityId FROM pr_recent_events)
+            UNION ALL
+            SELECT *
+            FROM pr_recent_events
+        )
     WHERE
         type IN (
             'pull_request-opened',

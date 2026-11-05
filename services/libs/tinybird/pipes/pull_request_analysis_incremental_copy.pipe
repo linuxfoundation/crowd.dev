@@ -15,9 +15,8 @@ SQL >
 
 NODE pr_delta_events
 DESCRIPTION >
-    PR events in the window, latest version of each activity only, so a member merge that rewrites an activity is read
-    with its new `memberId`. The `snapshotId` bound prunes the daily snapshots (`snapshotId` is the start of the day after
-    `updatedAt`).
+    Latest version of each PR event in the window, so member merges show the new `memberId`. The `snapshotId` bound
+    prunes daily snapshots.
 
 SQL >
     SELECT
@@ -200,10 +199,30 @@ SQL >
     ORDER BY openedAt = toDateTime(0), snapshotId DESC
     LIMIT 1 BY sourceId, segmentId, channel
 
+NODE pr_existing_lifecycle
+DESCRIPTION >
+    Lifecycle already stored for each PR and host, merged across its rows, so a row added for another segment or a
+    renamed repository starts from it.
+
+SQL >
+    SELECT
+        sourceId,
+        domain(channel) AS host,
+        min(assignedAt) AS assignedAt,
+        min(reviewRequestedAt) AS reviewRequestedAt,
+        min(reviewedAt) AS reviewedAt,
+        min(approvedAt) AS approvedAt,
+        min(closedAt) AS closedAt,
+        min(mergedAt) AS mergedAt,
+        min(resolvedAt) AS resolvedAt,
+        max(numberOfPatchsets) AS numberOfPatchsets
+    FROM pr_touched_rows
+    GROUP BY sourceId, host
+
 NODE pr_targets
 DESCRIPTION >
     Rows to write for the PRs in the window: every current row, plus a new row for each opened event without one.
-    Identity fields keep the current value when set.
+    Identity fields keep the current value when set; lifecycle comes from `pr_existing_lifecycle`.
 
 SQL >
     SELECT
@@ -222,14 +241,6 @@ SQL >
             opened.gitChangedLinesBucket
         ) AS gitChangedLinesBucket,
         if(existing.platform != '', existing.platform, opened.platform) AS platform,
-        existing.assignedAt AS assignedAt,
-        existing.reviewRequestedAt AS reviewRequestedAt,
-        existing.reviewedAt AS reviewedAt,
-        existing.approvedAt AS approvedAt,
-        existing.closedAt AS closedAt,
-        existing.mergedAt AS mergedAt,
-        existing.resolvedAt AS resolvedAt,
-        existing.numberOfPatchsets AS numberOfPatchsets,
         existing.snapshotId AS snapshotId
     FROM pr_touched_rows AS existing
     FULL OUTER JOIN
@@ -255,38 +266,38 @@ SQL >
         t.gitChangedLinesBucket AS gitChangedLinesBucket,
         if(
             new.assignedAt = toDateTime(0),
-            t.assignedAt,
-            least(ifNull(t.assignedAt, new.assignedAt), new.assignedAt)
+            cur.assignedAt,
+            least(ifNull(cur.assignedAt, new.assignedAt), new.assignedAt)
         ) AS assignedAt,
         if(
             new.reviewRequestedAt = toDateTime(0),
-            t.reviewRequestedAt,
-            least(ifNull(t.reviewRequestedAt, new.reviewRequestedAt), new.reviewRequestedAt)
+            cur.reviewRequestedAt,
+            least(ifNull(cur.reviewRequestedAt, new.reviewRequestedAt), new.reviewRequestedAt)
         ) AS reviewRequestedAt,
         if(
             new.reviewedAt = toDateTime(0),
-            t.reviewedAt,
-            least(ifNull(t.reviewedAt, new.reviewedAt), new.reviewedAt)
+            cur.reviewedAt,
+            least(ifNull(cur.reviewedAt, new.reviewedAt), new.reviewedAt)
         ) AS reviewedAt,
         if(
             new.approvedAt = toDateTime(0),
-            t.approvedAt,
-            least(ifNull(t.approvedAt, new.approvedAt), new.approvedAt)
+            cur.approvedAt,
+            least(ifNull(cur.approvedAt, new.approvedAt), new.approvedAt)
         ) AS approvedAt,
         if(
             new.closedAt = toDateTime(0),
-            t.closedAt,
-            least(ifNull(t.closedAt, new.closedAt), new.closedAt)
+            cur.closedAt,
+            least(ifNull(cur.closedAt, new.closedAt), new.closedAt)
         ) AS closedAt,
         if(
             new.mergedAt = toDateTime(0),
-            t.mergedAt,
-            least(ifNull(t.mergedAt, new.mergedAt), new.mergedAt)
+            cur.mergedAt,
+            least(ifNull(cur.mergedAt, new.mergedAt), new.mergedAt)
         ) AS mergedAt,
         if(
             new.resolvedAt = toDateTime(0),
-            t.resolvedAt,
-            least(ifNull(t.resolvedAt, new.resolvedAt), new.resolvedAt)
+            cur.resolvedAt,
+            least(ifNull(cur.resolvedAt, new.resolvedAt), new.resolvedAt)
         ) AS resolvedAt,
         if(
             assignedAt IS NULL, NULL, toUnixTimestamp(assignedAt) - toUnixTimestamp(openedAt)
@@ -311,11 +322,12 @@ SQL >
         t.platform AS platform,
         if(
             new.numberOfPatchsets > 0,
-            greatest(ifNull(t.numberOfPatchsets, 0), new.numberOfPatchsets),
-            t.numberOfPatchsets
+            greatest(ifNull(cur.numberOfPatchsets, 0), new.numberOfPatchsets),
+            cur.numberOfPatchsets
         ) AS numberOfPatchsets,
         greatest(t.snapshotId, new.snapshotId) AS snapshotId
     FROM pr_targets AS t
+    LEFT JOIN pr_existing_lifecycle AS cur ON cur.sourceId = t.sourceId AND cur.host = domain(t.channel)
     LEFT JOIN pr_delta_lifecycle AS new ON new.prSourceId = t.sourceId AND new.host = domain(t.channel)
     WHERE t.id != ''
 
