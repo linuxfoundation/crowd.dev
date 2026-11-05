@@ -11,6 +11,7 @@ import {
   upsertSyncUnits,
 } from '@crowd/data-access-layer/src/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { PlatformType } from '@crowd/types'
 
 import { LIFECYCLE_STALE_LOCK_MS, type LifecycleSkipReason, isRenamedRepo } from './githubLifecycle'
 import { lifecycleSkipReasonFor, rateLimitResetAt } from './githubSkipReasons'
@@ -69,6 +70,7 @@ export async function onboardGithubRepo(
         integrationId,
         channel.channelId,
         staleLockBefore,
+        PlatformType.GITHUB_NANGO,
       )
     ) {
       return {

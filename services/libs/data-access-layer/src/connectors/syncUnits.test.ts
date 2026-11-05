@@ -457,14 +457,20 @@ describe('hasActiveSyncUnitsForChannelElsewhere', () => {
   const freshLock = new Date(Date.now() - 10 * 60_000).toISOString()
   const staleLock = new Date(Date.now() - 120 * 60_000).toISOString()
 
-  test('sees live or still-running units of another github-nango integration only', async ({
+  test('sees live or still-running units of another integration of the same platform only', async ({
     qx,
   }) => {
     const owner = await createIntegration(qx, { platform: 'github-nango' })
     const other = await createIntegration(qx, { platform: 'github-nango' })
     const unitId = await createSyncUnit(qx, owner, { channelName: 'R_1', syncName: 'issues' })
     const elsewhere = (integrationId: string, channelId: string) =>
-      hasActiveSyncUnitsForChannelElsewhere(qx, integrationId, channelId, staleLockBefore)
+      hasActiveSyncUnitsForChannelElsewhere(
+        qx,
+        integrationId,
+        channelId,
+        staleLockBefore,
+        'github-nango',
+      )
 
     expect(await elsewhere(other, 'R_1')).toBe(true)
     expect(await elsewhere(owner, 'R_1')).toBe(false)

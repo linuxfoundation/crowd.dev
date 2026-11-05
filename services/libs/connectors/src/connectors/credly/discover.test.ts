@@ -44,6 +44,6 @@ describe('credlyConnector', () => {
     expect(credlyConnector.mintToken).toBeTypeOf('function')
     expect(credlyConnector.probeBudget).toBeTypeOf('function')
     expect(credlyConnector.runCostEstimate).toBe(CREDLY_SAFE_CALLS_PER_WINDOW)
-    expect(credlyConnector.emitsOwnSegment).toBe(true)
+    expect(credlyConnector.emitsOwnSegment).toBeUndefined()
   })
 })

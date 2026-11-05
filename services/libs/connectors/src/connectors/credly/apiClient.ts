@@ -112,6 +112,9 @@ export async function fetchBadgesPage(
   )
   const page = parsePage<CredlyBadge>(badgesPageSchema, body, 'badges')
   assertBadgesInsideWindow(page.data, window)
+  if (params.badgeTemplateId) {
+    assertBadgesMatchTemplate(page.data, params.badgeTemplateId)
+  }
   return page
 }
 
@@ -220,6 +223,17 @@ function assertBadgesInsideWindow(badges: CredlyBadge[], window: StateUpdatedWin
   if (outside) {
     throw new ProviderContractError(
       `credly returned badge ${outside.id} with state_updated_at ${outside.state_updated_at} outside the window ${window.min} .. ${window.max}`,
+    )
+  }
+}
+
+// Credly ignores a filter key it does not recognise (see closedWindow above), so a per-template
+// fetch is trusted only when every returned badge actually belongs to that template.
+function assertBadgesMatchTemplate(badges: CredlyBadge[], badgeTemplateId: string): void {
+  const outside = badges.find((badge) => badge.badge_template.id !== badgeTemplateId)
+  if (outside) {
+    throw new ProviderContractError(
+      `credly returned badge ${outside.id} for template ${outside.badge_template.id}, expected ${badgeTemplateId}`,
     )
   }
 }

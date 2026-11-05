@@ -31,7 +31,6 @@ import {
   loadCatalogue,
   loadCredlyTemplates,
   loadSubprojectSegments,
-  releasesToQueue,
   unreleasedTemplatesToQueue,
 } from '../credlyTemplateResolve'
 
@@ -234,8 +233,8 @@ async function main(): Promise<void> {
       qx,
       decisions,
       listing.complete ? missing : [],
+      templates,
       log,
-      releasesToQueue(plan, templates, new Date()),
     )
     const heldQueue = await listHeldCredlyTemplateMappings(qx)
     log.info(

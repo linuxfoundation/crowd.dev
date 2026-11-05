@@ -129,7 +129,7 @@ export async function validateUnit(input: {
       repoSegment?.segmentId ?? resolveRunSegmentId(unit.integrationId, integration, manifest)
     const http = await createPlatformHttp(qx, unit.platform, unit.integrationId, log)
     const tinybird = new TinybirdClient()
-    const deps = manifest.createDeps?.({ qx, integrationId: unit.integrationId })
+    const deps = manifest.createDeps?.({ qx, integrationId: unit.integrationId, segmentId })
 
     let written = 0
     const failures: IUnitValidationFailure[] = []
