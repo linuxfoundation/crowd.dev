@@ -37,6 +37,13 @@
  *   --segments    Only keys of these segment ids (comma-separated)
  *   --batch-rows  Rows per transaction, whole keys only (default 20000)
  *   --max-rows    Stop after deleting this many rows
+ *   --until       Stop at this time (ISO timestamp with a time zone, e.g. 2026-11-06T22:00:00Z)
+ *                 A real run needs --max-rows or --until.
+ *   --max-slot-lag-mb  Wait before a batch while sequin_slot or sequin_slot_2 is further behind
+ *                 than this (default 1024)
+ *   --allow-nightly    Also run from 00:30 to 05:30 UTC (the nightly meetings export), which is
+ *                 refused by default
+ *   Ctrl-C or SIGTERM stops after the current batch.
  *
  * Environment Variables Required:
  *   CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD, CROWD_DB_DATABASE
@@ -65,6 +72,10 @@ const KEYS_PER_FETCH = 1000
 const LOCK_RETRIES = 3
 const LOCK_RETRY_DELAY_MS = 5000
 const LOCK_NOT_AVAILABLE = '55P03'
+const NIGHTLY_EXPORT_START_MINUTES = 30
+const NIGHTLY_EXPORT_END_MINUTES = 5 * 60 + 30
+const SLOTS = ['sequin_slot', 'sequin_slot_2']
+const SLOT_LAG_POLL_MS = 30_000
 
 interface ITables {
   tag: string
@@ -88,6 +99,9 @@ interface ICleanOptions extends ICommonOptions {
   segmentIds: string[]
   batchRows: number
   maxRows?: number
+  until?: Date
+  maxSlotLagBytes: number
+  allowNightly: boolean
 }
 
 interface IKey {
@@ -493,6 +507,54 @@ async function withLockRetries<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+function inNightlyExport(now: Date): boolean {
+  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+  return minutes >= NIGHTLY_EXPORT_START_MINUTES && minutes < NIGHTLY_EXPORT_END_MINUTES
+}
+
+async function slotLagBytes(db: DbConnection): Promise<number> {
+  const row: { lag: string | null } = await db.one(
+    `
+      select max(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn))::bigint::text as lag
+      from pg_replication_slots
+      where slot_name in ($(slots:csv))
+    `,
+    { slots: SLOTS },
+  )
+  return Number(row.lag ?? 0)
+}
+
+async function waitForSlots(db: DbConnection, options: ICleanOptions, stop: () => boolean) {
+  for (;;) {
+    const lag = await slotLagBytes(db)
+    if (lag <= options.maxSlotLagBytes || stop()) {
+      return
+    }
+    log.warn(
+      { lagMb: Math.round(lag / 1024 / 1024), limitMb: options.maxSlotLagBytes / 1024 / 1024 },
+      'Replication slot lag over the limit, waiting...',
+    )
+    await new Promise((resolve) => setTimeout(resolve, SLOT_LAG_POLL_MS))
+  }
+}
+
+function stopReason(options: ICleanOptions, deleted: number, interrupted: boolean): string | null {
+  const now = new Date()
+  if (interrupted) {
+    return 'interrupted'
+  }
+  if (options.maxRows !== undefined && deleted >= options.maxRows) {
+    return 'reached --max-rows'
+  }
+  if (options.until && now >= options.until) {
+    return 'reached --until'
+  }
+  if (!options.allowNightly && inNightlyExport(now)) {
+    return 'nightly meetings export window (00:30-05:30 UTC)'
+  }
+  return null
+}
+
 async function clean(db: DbConnection, options: ICleanOptions): Promise<void> {
   const tables = tablesFor(options.tag)
   const keysExist: { exists: boolean } = await db.one(
@@ -516,12 +578,28 @@ async function clean(db: DbConnection, options: ICleanOptions): Promise<void> {
     options.dryRun ? 'Cleaning (dry run)...' : 'Cleaning...',
   )
 
+  let interrupted = false
+  const onSignal = () => {
+    interrupted = true
+    log.warn('Stopping after the current batch...')
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
+
   const totals = { batches: 0, keys: 0, deleted: 0, kept: 0 }
   for (const platform of options.platforms) {
     for (;;) {
-      if (options.maxRows !== undefined && totals.deleted >= options.maxRows) {
-        log.info(totals, 'Reached --max-rows, stopping')
+      const reason = stopReason(options, totals.deleted, interrupted)
+      if (reason) {
+        log.info({ reason, ...totals }, 'Stopping')
         return
+      }
+
+      if (!options.dryRun) {
+        await waitForSlots(db, options, () => interrupted)
+        if (interrupted) {
+          continue
+        }
       }
 
       const keys = await pendingKeys(db, tables, platform, options)
@@ -646,12 +724,29 @@ function parseClean(args: string[]): ICleanOptions {
     throw new Error(`--segments must be comma-separated segment ids, got '${segmentsArg}'`)
   }
 
-  return {
+  const untilArg = getFlagValue(args, '--until')
+  const until = untilArg === undefined ? undefined : new Date(untilArg)
+  if (until && (Number.isNaN(until.getTime()) || !/Z$|[+-]\d{2}:\d{2}$/.test(untilArg))) {
+    throw new Error(`--until must be an ISO timestamp with a time zone, got '${untilArg}'`)
+  }
+
+  const allowNightly = args.includes('--allow-nightly')
+  const options: ICleanOptions = {
     ...parseCommon(args),
     segmentIds,
     batchRows: parsePositiveInt('--batch-rows', getFlagValue(args, '--batch-rows')) ?? 20000,
     maxRows: parsePositiveInt('--max-rows', getFlagValue(args, '--max-rows')),
+    until,
+    maxSlotLagBytes:
+      (parsePositiveInt('--max-slot-lag-mb', getFlagValue(args, '--max-slot-lag-mb')) ?? 1024) *
+      1024 *
+      1024,
+    allowNightly,
   }
+  if (!options.dryRun && options.maxRows === undefined && options.until === undefined) {
+    throw new Error('clean needs --max-rows or --until, so a run has a known end')
+  }
+  return options
 }
 
 function parseCollect(args: string[]): ICollectOptions {
