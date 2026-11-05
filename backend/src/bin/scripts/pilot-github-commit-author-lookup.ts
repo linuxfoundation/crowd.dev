@@ -27,8 +27,8 @@ async function fetchCommitOnlyMembersSample(
 ): Promise<CommitOnlyMember[]> {
   return qx.select(
     `
-      WITH sample AS (
-        SELECT mi."memberId", mi.value AS email
+      WITH candidates AS (
+        SELECT DISTINCT ON (mi."memberId") mi."memberId", mi.value AS email
         FROM "memberIdentities" mi TABLESAMPLE SYSTEM (1)
         WHERE mi.platform = 'git'
           AND mi.type = 'username'
@@ -42,8 +42,9 @@ async function fetchCommitOnlyMembersSample(
               AND other.platform <> 'git'
               AND other."deletedAt" IS NULL
           )
-        ORDER BY random()
-        LIMIT $(limit)
+      ),
+      sample AS (
+        SELECT * FROM candidates ORDER BY random() LIMIT $(limit)
       )
       SELECT s."memberId", s.email, commit.channel, commit."sourceId" AS sha
       FROM sample s
@@ -104,6 +105,7 @@ async function fetchCommitAuthorLogin(
           Authorization: `Bearer ${token}`,
           'X-GitHub-Api-Version': '2022-11-28',
         },
+        timeout: 15_000,
       },
     )
 
