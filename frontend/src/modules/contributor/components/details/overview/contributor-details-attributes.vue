@@ -197,6 +197,10 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 
+defineOptions({
+  name: 'LfContributorDetailsAttributes',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -244,10 +248,4 @@ const transformToLabel = (property: string) => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsAttributes',
-};
 </script>

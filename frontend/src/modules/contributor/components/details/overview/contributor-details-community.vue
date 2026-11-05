@@ -97,12 +97,11 @@ import LfContributorDetailsMaintainer
   from '@/modules/contributor/components/details/overview/contributor-details-maintainer.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorDetailsCommunity',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
-</script>
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsCommunity',
-};
 </script>
