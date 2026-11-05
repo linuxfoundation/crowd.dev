@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { personalEmailCondition } from '../../../core/personalEmail'
+
 // Exclude TIMESTAMP_TZ columns and re-add as TIMESTAMP_NTZ so Parquet export gets timezone-normalized values.
 const TIMESTAMP_TZ_COLUMNS = [
   'EVENT_START_DATE',
@@ -55,9 +57,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     AND u.lf_username IS NOT NULL
   LEFT JOIN org_accounts org
     ON er.account_id = org.account_id
-  WHERE er.email IS NOT NULL
-    AND TRIM(er.email) <> ''
-    AND LOWER(TRIM(er.email)) NOT IN ('test@test.com', 'email@email.com')
+  WHERE ${personalEmailCondition('er.email')}
     AND COALESCE(er.registration_source, '') <> 'gatewaze'`
 
   // Limit to a single project in non-prod to avoid exporting all projects data

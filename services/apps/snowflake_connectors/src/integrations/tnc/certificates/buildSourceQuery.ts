@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { personalEmailCondition } from '../../../core/personalEmail'
+
 // Main: analytics.silver_fact.certificates (certificate data)
 // Joins:
 // - ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS (segment resolution)
@@ -54,7 +56,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     AND u.lf_username IS NOT NULL
   LEFT JOIN org_accounts org
     ON c.account_id = org.account_id
-  WHERE c.user_email IS NOT NULL`
+  WHERE ${personalEmailCondition('c.user_email')}`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {

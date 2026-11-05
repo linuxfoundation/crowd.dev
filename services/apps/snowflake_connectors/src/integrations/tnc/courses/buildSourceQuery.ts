@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { personalEmailCondition } from '../../../core/personalEmail'
+
 // Main: analytics.bronze_census_ti.course_actions (course action data)
 // Joins:
 // - analytics.bronze_census_ti.users (user resolution via internal_ti_user_id)
@@ -79,7 +81,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   WHERE ca.type = 'status_change'
     AND ca.source = 'course_started'
     AND co.is_test_or_archived = false
-    AND tu.user_email IS NOT NULL`
+    AND ${personalEmailCondition('tu.user_email')}`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {

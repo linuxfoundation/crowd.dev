@@ -17,9 +17,21 @@ describe('buildSourceQuery', () => {
     },
   )
 
-  it('keeps shared meeting host accounts out of the export', () => {
-    expect(buildSourceQuery()).toContain(
-      "AND LOWER(TRIM(t.INVITEE_EMAIL)) NOT IN ('meeting1@seidengroup.com', 'meetings@dpdk.org', 'zoom-admin@nephio.org', 'zoom0@hyperledger.org', 'zoom2@hyperledger.org', 'zoom2@lfai.foundation', 'zoom@hyperledger.org', 'zoom@longnowboston.org', 'zoom@openwallet.foundation')",
+  it('keeps blank, placeholder, shared and no-reply emails out of the export', () => {
+    const query = buildSourceQuery()
+
+    expect(query).toContain("NULLIF(TRIM(t.INVITEE_EMAIL), '') IS NOT NULL")
+    expect(query).toContain(
+      "AND UPPER(TRIM(t.INVITEE_EMAIL)) NOT IN ('NONE', 'NULL', 'UNDEFINED', 'NA', 'N/A', '-')",
+    )
+    expect(query).toContain(
+      "AND LOWER(TRIM(t.INVITEE_EMAIL)) NOT IN ('meeting1@seidengroup.com', 'meetings@dpdk.org', 'zoom-admin@nephio.org', 'zoom0@hyperledger.org', 'zoom2@hyperledger.org', 'zoom2@lfai.foundation', 'zoom@hyperledger.org', 'zoom@longnowboston.org', 'zoom@openwallet.foundation', 'email@email.com', 'x@x.com', 'na@na.com', 'none@none.com', 'null@null.com', 'fake@fake.com', 'abc@abc.com', 'test@gmail.com')",
+    )
+    expect(query).toContain(
+      "AND SPLIT_PART(LOWER(TRIM(t.INVITEE_EMAIL)), '@', 2) NOT IN ('example.com', 'example.org', 'example.net', 'test.com')",
+    )
+    expect(query).toContain(
+      "AND SPLIT_PART(LOWER(TRIM(t.INVITEE_EMAIL)), '@', 1) NOT IN ('noreply', 'no-reply', 'donotreply')",
     )
   })
 
