@@ -29,6 +29,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import type { CollectionModel } from '../models/collection.model';
 
+defineOptions({
+  name: 'LfCollectionDropdown',
+});
+
 const props = defineProps<{
   id: string,
   collection: CollectionModel
@@ -49,11 +53,5 @@ const deleteCollection = () => {
 
 const starCollection = () => {
   emit('onStarCollection', props.id);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCollectionDropdown',
 };
 </script>

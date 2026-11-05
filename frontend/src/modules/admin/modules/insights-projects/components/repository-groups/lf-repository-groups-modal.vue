@@ -72,6 +72,10 @@ interface Repository {
   label: string;
 }
 
+defineOptions({
+  name: 'LfRepositoryGroupsModal',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   repositories: Repository[];
@@ -119,11 +123,5 @@ const submit = () => {
     emit('add', { ...form });
   }
   isModalOpen.value = false;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfRepositoryGroupsModal',
 };
 </script>

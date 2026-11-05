@@ -26,6 +26,10 @@ import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 import { WIDGETS_GROUPS } from '../widgets';
 
+defineOptions({
+  name: 'LfInsightsProjectAddWidgetsTab',
+});
+
 const props = defineProps<{
     form: InsightsProjectAddFormModel;
     isLoading: boolean;
@@ -33,10 +37,4 @@ const props = defineProps<{
 
 const cForm = reactive(props.form);
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectAddWidgetsTab',
-};
 </script>

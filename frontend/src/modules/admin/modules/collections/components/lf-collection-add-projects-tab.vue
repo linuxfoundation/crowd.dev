@@ -119,6 +119,10 @@ import type { CollectionFormModel } from '../models/collection.model';
 import LfInsightsProjectAdd from '../../insights-projects/components/lf-insights-project-add.vue';
 import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 
+defineOptions({
+  name: 'LfCollectionAddProjectsTab',
+});
+
 const props = defineProps<{
   form: CollectionFormModel;
 }>();
@@ -180,11 +184,5 @@ const onInsightsProjectDialogCloseSuccess = (project: InsightsProjectModel) => {
 const onInsightsProjectDialogClose = () => {
   isProjectDialogOpen.value = false;
   projectEditObject.value = undefined;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCollectionAddProjectsTab',
 };
 </script>

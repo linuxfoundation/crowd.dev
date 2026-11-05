@@ -133,6 +133,10 @@ import LfInsightsProjectAdd from '../components/lf-insights-project-add.vue';
 import { INSIGHTS_PROJECTS_SERVICE } from '../services/insights-projects.service';
 import type { InsightsProjectModel } from '../models/insights-project.model';
 
+defineOptions({
+  name: 'LfInsightsProjectsPage',
+});
+
 const invalidate = useInvalidate();
 
 const search = ref('');
@@ -227,6 +231,17 @@ const total = computed((): number => {
   return 0;
 });
 
+const onCloseRemoveProject = () => {
+  removeProjectDialog.value = false;
+  selectedProject.value = undefined;
+};
+
+const updateSelectedProject = (projectId: string) => {
+  selectedProject.value = cloneDeep(
+    projects.value.find((project) => project.id === projectId),
+  );
+};
+
 const removeMutation = useMutation({
   mutationFn: (projectId: string) => INSIGHTS_PROJECTS_SERVICE.delete(projectId),
   onSuccess: () => {
@@ -265,21 +280,4 @@ const onDeleteProject = (projectId: string) => {
   updateSelectedProject(projectId);
 };
 
-const onCloseRemoveProject = () => {
-  removeProjectDialog.value = false;
-  selectedProject.value = undefined;
-};
-
-const updateSelectedProject = (projectId: string) => {
-  selectedProject.value = cloneDeep(
-    projects.value.find((project) => project.id === projectId),
-  );
-};
-
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectsPage',
-};
 </script>

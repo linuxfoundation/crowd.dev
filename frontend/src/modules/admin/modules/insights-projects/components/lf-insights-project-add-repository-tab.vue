@@ -74,11 +74,22 @@ import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import { computed, reactive } from 'vue';
 import type { InsightsProjectAddFormModel } from '../models/insights-project-add-form.model';
 
+defineOptions({
+  name: 'LfInsightsProjectAddRepositoriesTab',
+});
+
 const props = defineProps<{
   form: InsightsProjectAddFormModel;
 }>();
 
 const cForm = reactive(props.form);
+
+const toggleRepositories = (value: boolean) => {
+  cForm.repositories = cForm.repositories.map((r) => ({
+    ...r,
+    enabled: value,
+  }));
+};
 
 const enableAll = computed({
   get() {
@@ -89,21 +100,8 @@ const enableAll = computed({
   },
 });
 
-const toggleRepositories = (value: boolean) => {
-  cForm.repositories = cForm.repositories.map((r) => ({
-    ...r,
-    enabled: value,
-  }));
-};
-
 const gerritImage = new URL(
   '@/assets/images/integrations/gerrit.png',
   import.meta.url,
 ).href;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectAddRepositoriesTab',
-};
 </script>

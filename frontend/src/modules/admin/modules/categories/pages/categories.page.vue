@@ -125,6 +125,10 @@ import { ToastStore } from '@/shared/message/notification';
 import pluralize from 'pluralize';
 import LfPopover from '@/ui-kit/popover/Popover.vue';
 
+defineOptions({
+  name: 'LfCategoriesPage',
+});
+
 const categoryGroups = ref<CategoryGroup[]>([]);
 const isCreateGroupOpen = ref<boolean>(false);
 const selectedCategoryGroup = ref<null | CategoryGroup>(null);
@@ -189,10 +193,4 @@ watch([type, search], () => {
 onMounted(() => {
   fetchCategoryGroups();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCategoriesPage',
-};
 </script>
