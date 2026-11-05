@@ -1,7 +1,6 @@
 {
   "vue/component-api-style": [
     "src/app.vue",
-    "src/config/integrations/hackernews/components/hackernews-settings-drawer.vue",
     "src/modules/activity/components/activity-content.vue",
     "src/modules/activity/components/activity-link.vue",
     "src/modules/member/components/member-engagement-level.vue",
@@ -17,7 +16,6 @@
     "src/app.vue",
     "src/config/integrations/gitlab/components/gitlab-params.vue",
     "src/config/integrations/groupsio/components/groupsio-settings-drawer.vue",
-    "src/config/integrations/hackernews/components/hackernews-settings-drawer.vue",
     "src/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue",
     "src/config/integrations/twitter/components/twitter-settings-drawer.vue",
     "src/modules/activity/components/activity-content-footer.vue",
