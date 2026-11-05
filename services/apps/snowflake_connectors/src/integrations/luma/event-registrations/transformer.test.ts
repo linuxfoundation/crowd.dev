@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { LumaActivityType } from '@crowd/integrations/src/integrations/luma/types'
 import { MemberIdentityType, OrganizationIdentityType, PlatformType } from '@crowd/types'
 
 import { LumaEventRegistrationsTransformer } from './transformer'
 
-// @crowd/integrations requires every integration folder on import, which fails under vitest.
-vi.mock('@crowd/integrations', () => import('@crowd/integrations/src/integrations/luma/types'))
+vi.mock('@crowd/integrations', () => ({
+  LumaActivityType: { REGISTERED_EVENT: 'registered-event', ATTENDED_EVENT: 'attended-event' },
+  LUMA_GRID: { 'registered-event': { score: 3 }, 'attended-event': { score: 8 } },
+}))
+
+const REGISTERED_EVENT = 'registered-event'
+const ATTENDED_EVENT = 'attended-event'
 
 const transformer = new LumaEventRegistrationsTransformer()
 
@@ -45,7 +49,7 @@ describe('LumaEventRegistrationsTransformer', () => {
     const [{ activity, segment }] = results ?? []
     expect(segment).toEqual({ slug: 'agentic-ai-foundation', sourceId: 'lfZA9uadMdkwBqqHsj' })
     expect(activity).toMatchObject({
-      type: LumaActivityType.REGISTERED_EVENT,
+      type: REGISTERED_EVENT,
       platform: PlatformType.LUMA,
       timestamp: '2026-10-20T16:30:00.000Z',
       score: 3,
@@ -97,8 +101,8 @@ describe('LumaEventRegistrationsTransformer', () => {
     expect(
       results?.map(({ activity }) => [activity.type, activity.timestamp, activity.score]),
     ).toEqual([
-      [LumaActivityType.REGISTERED_EVENT, '2026-10-20T16:30:00.000Z', 3],
-      [LumaActivityType.ATTENDED_EVENT, '2026-11-05T17:05:00.000Z', 8],
+      [REGISTERED_EVENT, '2026-10-20T16:30:00.000Z', 3],
+      [ATTENDED_EVENT, '2026-11-05T17:05:00.000Z', 8],
     ])
     const [registered, attended] = results ?? []
     expect(attended.activity.sourceId).toBe(registered.activity.sourceId)
@@ -122,6 +126,6 @@ describe('LumaEventRegistrationsTransformer', () => {
       USER_CHECKED_IN_TS: new Date('2026-11-05T17:05:00.000Z'),
     })
 
-    expect(results?.map(({ activity }) => activity.type)).toEqual([LumaActivityType.ATTENDED_EVENT])
+    expect(results?.map(({ activity }) => activity.type)).toEqual([ATTENDED_EVENT])
   })
 })
