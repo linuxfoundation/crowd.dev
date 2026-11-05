@@ -104,7 +104,7 @@ const {
 
 const loading = computed(() => !params.value || isFetching.value);
 const activities = computed(() => (isError.value || !data.value ? [] : mergeActivityPages(data.value.pages)));
-const totalActivities = computed(() => (isError.value || !data.value ? 0 : data.value.pages.at(-1).count));
+const totalActivities = computed(() => (isError.value || !data.value ? 0 : data.value.pages[0].count));
 
 filters.value = {
   search: '',

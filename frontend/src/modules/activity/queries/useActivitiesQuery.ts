@@ -37,34 +37,46 @@ const buildBody = (params: ActivitiesQueryParams, cursors: string[]) => {
 
   if (cursors.length === 0) {
     return {
-      ...params.body, filter, limit: params.limit, orderBy: params.orderBy,
+      ...params.body,
+      filter,
+      limit: params.limit,
+      orderBy: params.orderBy,
     };
   }
 
   return { filter, limit: LOAD_MORE_LIMIT, orderBy: params.orderBy };
 };
 
-export const mergeActivityPages = (pages: ActivitiesPage[]) => pages.reduce<Activity[]>(
-  (acc, page, index) => (index === 0
-    ? [...page.rows]
-    : acc.concat(page.rows.filter((row) => !acc.some((activity) => activity.id === row.id)))),
-  [],
-);
+export const mergeActivityPages = (pages: ActivitiesPage[]) => {
+  const seen = new Set<string>();
+  const merged: Activity[] = [];
+  pages.forEach((page, index) => {
+    page.rows.forEach((row) => {
+      if (index === 0 || !seen.has(row.id)) {
+        merged.push(row);
+      }
+      seen.add(row.id);
+    });
+  });
+  return merged;
+};
 
-export const useActivitiesQuery = (params: Ref<ActivitiesQueryParams | null>) => useInfiniteQuery({
-  queryKey: computed(() => queryKeys.activities.list(params.value)),
-  queryFn: ({ pageParam }): Promise<ActivitiesPage> => ActivityService.query(buildBody(params.value as ActivitiesQueryParams, pageParam)),
-  initialPageParam: [] as string[],
-  getNextPageParam: (lastPage, allPages, lastPageParam) => {
-    const activities = mergeActivityPages(allPages);
-    const cursor = activities.at(-1)?.timestamp;
-    if (!cursor || activities.length >= lastPage.count) {
-      return undefined;
-    }
-    return [...lastPageParam, cursor];
-  },
-  enabled: computed(() => !!params.value),
-  retry: false,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-});
+export const useActivitiesQuery = (params: Ref<ActivitiesQueryParams | null>) =>
+  useInfiniteQuery({
+    queryKey: computed(() => queryKeys.activities.list(params.value)),
+    queryFn: ({ pageParam }): Promise<ActivitiesPage> =>
+      ActivityService.query(buildBody(params.value as ActivitiesQueryParams, pageParam)),
+    initialPageParam: [] as string[],
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      const activities = mergeActivityPages(allPages);
+      const cursor = activities.at(-1)?.timestamp;
+      if (!cursor || activities.length >= allPages[0].count || lastPage.rows.length === 0) {
+        return undefined;
+      }
+      return [...lastPageParam, cursor];
+    },
+    enabled: computed(() => !!params.value),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
