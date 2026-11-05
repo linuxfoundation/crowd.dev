@@ -117,6 +117,10 @@ import { ToastStore } from '@/shared/message/notification';
 import { segmentService } from '../../segments/segments.service';
 import type { ProjectGroup } from '../../segments/types/Segments';
 
+defineOptions({
+  name: 'AppLfSubProjectsGroupSelection',
+});
+
 const SearchIcon = h(
   'i', // type
   { class: 'fa-light fa-magnifying-glass c-icon' }, // props
@@ -142,7 +146,6 @@ const { updateSelectedProjectGroup } = lsSegmentsStore;
 const searchQuery = ref('');
 const isPopoverVisible = ref(false);
 const searchValue = useDebounce(searchQuery, 300);
-const isSearchVisible = computed(() => projectGroupsList.value.length > 5 || searchQuery.value.length > 0);
 
 let scrollContainer: HTMLElement | null = null;
 
@@ -186,6 +189,7 @@ const projectGroupsList = computed((): ProjectGroup[] => {
   }
   return [];
 });
+const isSearchVisible = computed(() => projectGroupsList.value.length > 5 || searchQuery.value.length > 0);
 
 // Infinite scroll handler
 function onScroll(e: Event) {
@@ -238,12 +242,6 @@ onBeforeUnmount(() => {
     scrollContainer.removeEventListener('scroll', onScroll);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfSubProjectsGroupSelection',
-};
 </script>
 
 <style lang="scss">

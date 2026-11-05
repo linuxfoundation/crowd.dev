@@ -59,6 +59,10 @@ import IntegrationsFilter from '../fragments/integrations-filter.vue';
 import type { GlobalIntegrationStatusCount } from '../../types/overview.types';
 import { OVERVIEW_API_SERVICE } from '../../services/overview.api.service';
 
+defineOptions({
+  name: 'AppLfOverviewIntegrationStatus',
+});
+
 const {
   selectedIntegrationId,
   integrationStatusCount,
@@ -105,10 +109,4 @@ watch(isError, () => {
     ToastStore.error('Failed to fetch global integration status count');
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewIntegrationStatus',
-};
 </script>

@@ -36,6 +36,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatNumber } from '@/utils/number';
 import type { OverviewTrends } from '../../types/overview.types';
 
+defineOptions({
+  name: 'AppLfOverviewTrendDisplay',
+});
+
 const props = withDefaults(
   defineProps<{
     data: OverviewTrends;
@@ -80,10 +84,4 @@ const getTrendColor = computed(() => {
 
   return trendDirection.value === 'up' ? 'text-green-600' : 'text-red-600';
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewTrendDisplay',
-};
 </script>

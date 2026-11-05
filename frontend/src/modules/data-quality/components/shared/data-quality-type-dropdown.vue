@@ -64,13 +64,17 @@
 
 <script lang="ts" setup>
 import LfButton from '@/ui-kit/button/Button.vue';
-import { computed, withDefaults } from 'vue';
+import { computed } from 'vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import type { DataIssueTypeMenu } from '@/modules/data-quality/config/data-issue-types';
 import { dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import type { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfDataQualityTypeDropdown',
+});
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -92,10 +96,4 @@ const selectedType = computed({
   set: (value: string) => emit('update:modelValue', value),
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityTypeDropdown',
-};
 </script>

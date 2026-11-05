@@ -40,14 +40,12 @@ import LfDataQualityTypeDropdown from '@/modules/data-quality/components/shared/
 import LfDataQualityProjectDropdown from '@/modules/data-quality/components/shared/data-quality-project-dropdown.vue';
 import { useRoute } from 'vue-router';
 
+defineOptions({
+  name: 'LfDataQualityOrganization',
+});
+
 const route = useRoute();
 
 const tab = ref('merge-suggestions');
 const projectGroup = ref(route.query.projectGroup as string);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityOrganization',
-};
 </script>

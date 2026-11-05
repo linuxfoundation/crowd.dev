@@ -23,6 +23,10 @@ SPDX-License-Identifier: MIT
 import { ref, onMounted, watch } from 'vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 
+defineOptions({
+  name: 'AppLfLoadMore',
+});
+
 const props = defineProps<{
   text: string;
   isFetchingNextPage: boolean;
@@ -46,18 +50,18 @@ const handleIntersectCallback = (entries: IntersectionObserverEntry[]) => {
   });
 };
 
+const isElementVisible = (element: HTMLElement) => {
+  const rect = element.getBoundingClientRect();
+  const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+  return rect.top >= 0 && rect.bottom <= windowHeight;
+};
+
 const isLoadMoreVisible = () => {
   if (!loadMore.value) {
     return false;
   }
 
   return isElementVisible(loadMore.value as HTMLElement);
-};
-
-const isElementVisible = (element: HTMLElement) => {
-  const rect = element.getBoundingClientRect();
-  const windowHeight = window.innerHeight || document.documentElement.clientHeight;
-  return rect.top >= 0 && rect.bottom <= windowHeight;
 };
 
 onMounted(() => {
@@ -78,10 +82,4 @@ watch(
     }
   },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfLoadMore',
-};
 </script>

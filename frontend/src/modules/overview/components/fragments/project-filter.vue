@@ -96,6 +96,10 @@ import LfxDropdownSeparator from '@/ui-kit/lfx/dropdown/dropdown-separator.vue';
 import LfxDropdownSearch from '@/ui-kit/lfx/dropdown/dropdown-search.vue';
 import { useOverviewStore } from '../../store/overview.store';
 
+defineOptions({
+  name: 'AppLfProjectFilter',
+});
+
 const props = defineProps<{
   projects: Project[];
 }>();
@@ -130,10 +134,4 @@ watch(selectedProjectId, (newVal) => {
     selectedProject.value = null;
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectFilter',
-};
 </script>

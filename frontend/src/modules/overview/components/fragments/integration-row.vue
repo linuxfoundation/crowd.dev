@@ -97,6 +97,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import StatusDisplay from './status-display.vue';
 import type { IntegrationStatus } from '../../types/overview.types';
 
+defineOptions({
+  name: 'AppLfOverviewIntegrationRow',
+});
+
 const props = defineProps<{
   integrationStatus: IntegrationStatus;
   tabKey: string
@@ -138,11 +142,5 @@ const disconnectIntegration = async (integration: IntegrationStatus) => {
   await integrationStore.destroy(integration.id);
 
   // TODO: Fetch integrations
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewIntegrationRow',
 };
 </script>

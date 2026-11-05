@@ -123,6 +123,10 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import { useOverviewStore } from '../../store/overview.store';
 import AppLfLoadMore from './load-more.vue';
 
+defineOptions({
+  name: 'AppLfProjectGroupFilter',
+});
+
 const overviewStore = useOverviewStore();
 const {
   selectedProjectGroup,
@@ -203,10 +207,4 @@ watch(selectedProjectGroupId, async (newVal) => {
     selectedSubProject.value = null;
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupFilter',
-};
 </script>
