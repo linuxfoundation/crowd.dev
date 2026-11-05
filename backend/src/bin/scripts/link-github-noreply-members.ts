@@ -148,15 +148,8 @@ setImmediate(async () => {
         true,
       )
 
-      // the identity is already written, so a rerun would skip this member and never sync it
       await Promise.all(
-        linkedIdentities.map(async ({ memberId }) => {
-          try {
-            await searchSyncApi.triggerMemberSync(memberId)
-          } catch (err) {
-            log.error({ err, memberId }, 'Failed to sync member to OpenSearch!')
-          }
-        }),
+        linkedIdentities.map(({ memberId }) => searchSyncApi.triggerMemberSync(memberId)),
       )
 
       const noMergePairs = await getMemberNoMerge(
@@ -165,7 +158,8 @@ setImmediate(async () => {
         { includeExpired: true },
       )
 
-      const mergeResults = await Promise.all(
+      // allSettled lets in-flight merges finish before failing, so none is left half-done
+      const mergeResults = await Promise.allSettled(
         toMerge.map(async ({ memberId, ownerId }) => {
           const isNoMerge = noMergePairs.some(
             (pair) =>
@@ -188,16 +182,26 @@ setImmediate(async () => {
                 { memberId, ownerId },
                 'Skipping members, one is gone or already being merged',
               )
-            } else {
-              log.error({ err, memberId, ownerId }, 'Failed to merge members!')
+              return false
             }
-            return false
+
+            log.error({ err, memberId, ownerId }, 'Failed to merge members!')
+            throw err
           }
         }),
       )
 
+      const failedMerge = mergeResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      )
+      if (failedMerge) {
+        throw failedMerge.reason
+      }
+
       const linked = linkedIdentities.length
-      const merged = mergeResults.filter(Boolean).length
+      const merged = mergeResults.filter(
+        (result) => result.status === 'fulfilled' && result.value,
+      ).length
       processedInPass += linked + merged
       totalLinked += linked
       totalMerged += merged
