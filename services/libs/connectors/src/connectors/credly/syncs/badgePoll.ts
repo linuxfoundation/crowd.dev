@@ -1,10 +1,6 @@
 import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
 
-import {
-  ConnectorError,
-  ProviderContractError,
-  ProviderUnavailableError,
-} from '../../../http/errors'
+import { ConnectorError, ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadge, fetchBadgesPage } from '../apiClient'
@@ -257,6 +253,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     splits: 0,
     replacements: 0,
     replacementsMissing: 0,
+    replacementsCrossTemplate: 0,
     backfillPages: 0,
     backfillWindows: 0,
   }
@@ -348,9 +345,12 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         try {
           const replacement = await fetchBadge(ctx.http, { organizationId, badgeId }, ctx.log)
           if (replacement.badge_template.id !== badgeTemplateId) {
-            throw new ProviderContractError(
-              `credly replacement badge ${badgeId} belongs to template ${replacement.badge_template.id}, expected ${badgeTemplateId}`,
+            counters.replacementsCrossTemplate += 1
+            ctx.log.warn(
+              { badgeId, replacementTemplateId: replacement.badge_template.id, badgeTemplateId },
+              'credly replacement badge belongs to a different template, skipping it here',
             )
+            continue
           }
           fetched.push(replacement)
           counters.replacements += 1

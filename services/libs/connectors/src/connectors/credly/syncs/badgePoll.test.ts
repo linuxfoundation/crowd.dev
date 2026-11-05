@@ -802,15 +802,23 @@ describe('runBadgePoll replacements', () => {
     ])
   })
 
-  it('fails the run when a fetched replacement belongs to another template', async () => {
+  it('skips a fetched replacement that belongs to another template and keeps the rest', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(page([replaced('old', 'new')]))
     mockedFetchBadge.mockResolvedValueOnce(
       renewed('new', 'old', { badge_template: { id: 'tpl-other', name: 'Other' } }),
     )
-    const { ctx } = makeCtx()
+    const { ctx, emitted } = makeCtx()
 
-    await expect(runBadgePoll(ctx)).rejects.toThrow(
-      'credly replacement badge new belongs to template tpl-other, expected template-1',
+    await runBadgePoll(ctx)
+
+    expect(emitted[0].map((r) => (r as { sourceId: string }).sourceId)).toEqual(['old', 'old'])
+    expect(LOG.warn).toHaveBeenCalledWith(
+      { badgeId: 'new', replacementTemplateId: 'tpl-other', badgeTemplateId: TEMPLATE_ID },
+      'credly replacement badge belongs to a different template, skipping it here',
+    )
+    expect(LOG.info).toHaveBeenCalledWith(
+      expect.objectContaining({ replacementsCrossTemplate: 1 }),
+      expect.any(String),
     )
   })
 
