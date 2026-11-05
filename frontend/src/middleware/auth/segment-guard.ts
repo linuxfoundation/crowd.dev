@@ -2,19 +2,16 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { ToastStore } from '@/shared/message/notification';
+import type { GuardContext } from '@/middleware/types';
 
 /**
  * Segment Guard
  *
  * This middleware runs before rendering any route that has meta.paramSegmentAccess = (route param that holds segmentId)
  *
- * It checks if user has access to segment (if not, redirects to /403)
- *
- * @param to
- * @param router
- * @returns {Promise<*>}
+ * It checks if user has access to segment (if not, shows an error toast and redirects to /)
  */
-export default async function ({ to, router }) {
+export default async function ({ to, router }: GuardContext): Promise<void> {
   if (!to.meta || !to.meta.paramSegmentAccess) {
     return;
   }
@@ -31,9 +28,9 @@ export default async function ({ to, router }) {
   if (isCheckingProjectGroup) {
     await lsSegmentsStore.listAdminProjectGroups();
 
-    hasPermission = hasAccessToProjectGroup(to.params[to.meta.paramSegmentAccess.parameter]);
+    hasPermission = hasAccessToProjectGroup(to.params[to.meta.paramSegmentAccess.parameter] as string);
   } else {
-    hasPermission = hasAccessToSegmentId(to.params[to.meta.paramSegmentAccess.parameter]);
+    hasPermission = hasAccessToSegmentId(to.params[to.meta.paramSegmentAccess.parameter] as string);
   }
 
   if (!hasPermission) {
