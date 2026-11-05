@@ -11,7 +11,7 @@
             },
           }"
         >
-          {{ getSegmentName(grandparentId) || subproject?.grandparentName }}
+          {{ getSegmentName(grandparentId as string) || subproject?.grandparentName }}
         </router-link>
         <p v-if="subproject" class="text-gray-600">
           >

@@ -1,4 +1,4 @@
-function isUrl(url) {
+function isUrl(url: string): boolean {
   const urlPattern = new RegExp(
     '^(https?:\\/\\/)?' // validate protocol
       + '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' // validate domain name
