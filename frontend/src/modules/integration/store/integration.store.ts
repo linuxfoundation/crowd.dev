@@ -123,7 +123,7 @@ export const useIntegrationStore = defineStore('integration', () => {
     array.value.filter(
       (i) =>
         i.status === 'error' &&
-        isCurrentDateAfterGivenWorkingDays(i.updatedAt, ERROR_BANNER_WORKING_DAYS_DISPLAY),
+        isCurrentDateAfterGivenWorkingDays(i.updatedAt!, ERROR_BANNER_WORKING_DAYS_DISPLAY),
     ),
   );
   const withNoData = computed(() => array.value.filter((i) => i.status === 'no-data'));

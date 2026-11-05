@@ -1,4 +1,6 @@
+import type { ConfigType } from 'dayjs';
 import config from '@/config';
+import type { Tenant } from '@/modules/auth/types/Tenant.type';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 /**
@@ -6,31 +8,26 @@ import { dateHelper } from '@/shared/date-helper/date-helper';
  *
  * This is a small wrapper of the dateHelper(date).fromNow() method, to handle our data-related exception regarding
  * the year 1970, replacing the default label ("52 years ago") to "some time ago".
- *
- * @param timestamp
- * @returns {string|string}
  */
-export const formatDateToTimeAgo = (timestamp) => (dateHelper.utc(timestamp).year() < 2000
+export const formatDateToTimeAgo = (timestamp: ConfigType): string => (dateHelper.utc(timestamp).year() < 2000
   ? 'some time ago'
   : dateHelper.utc(timestamp).fromNow());
 
-export const formatDateToTimeAgoForIntegrations = (timestamp) => dateHelper().to(dateHelper(timestamp));
+export const formatDateToTimeAgoForIntegrations = (timestamp: ConfigType): string => dateHelper().to(dateHelper(timestamp));
 
-/**
- *
- * @param {string} timestamp
- * @param {number} subtractDays
- * @param {number} subtractMonths
- * @param {string} format (default: "YYYY-MM-DD")
- * @returns timestamp in format
- */
 export const formatDate = ({
   timestamp = null,
   subtractDays,
   subtractMonths,
   subtractYears,
   format = 'YYYY-MM-DD',
-}) => {
+}: {
+  timestamp?: ConfigType;
+  subtractDays?: number | null;
+  subtractMonths?: number | null;
+  subtractYears?: number | null;
+  format?: string;
+}): string => {
   const date = timestamp ? dateHelper(timestamp) : dateHelper();
 
   if (subtractDays) {
@@ -48,8 +45,8 @@ export const formatDate = ({
   return date.format(format);
 };
 
-export const getTrialDate = (tenant) => {
-  if (config.isCommunityVersion || !tenant.isTrialPlan) {
+export const getTrialDate = (tenant: Pick<Tenant, 'isTrialPlan' | 'trialEndsAt'>): string | null => {
+  if ((config as typeof config & { isCommunityVersion: boolean }).isCommunityVersion || !tenant.isTrialPlan) {
     return null;
   }
 
@@ -61,7 +58,7 @@ export const getTrialDate = (tenant) => {
   return `Trial (${daysLeft < 0 ? 0 : daysLeft} days left)`;
 };
 
-export const isCurrentDateAfterGivenWorkingDays = (date, workingDays = 3) => {
+export const isCurrentDateAfterGivenWorkingDays = (date: string | number | Date, workingDays: number = 3): boolean => {
   const givenDate = new Date(date);
   let workingDaysAdded = 0;
 

@@ -1,11 +1,12 @@
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import type { ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
 
 export const getSegmentsFromProjectGroup = (
-  projectGroup,
-  options,
-  isGetMethod,
-) => {
+  projectGroup: ProjectGroup | null | undefined,
+  options?: { url?: string },
+  isGetMethod?: boolean,
+): string[] => {
   if (!projectGroup) {
     return [];
   }
@@ -26,24 +27,24 @@ export const getSegmentsFromProjectGroup = (
     return [projectGroup.id];
   }
 
-  return selectedProjectGroupSubprojects.value.map((sp) => sp.id);
+  return selectedProjectGroupSubprojects.value.map((sp: SubProject): string => sp.id);
 };
 
-export const getProjectGroupsThroughSegments = (segments) => {
+export const getProjectGroupsThroughSegments = (segments?: string[]): Pick<ProjectGroup, 'id' | 'name'>[] => {
   const lsSegmentsStore = useLfSegmentsStore();
   const { projectGroups } = storeToRefs(lsSegmentsStore);
 
   return projectGroups.value.list
-    .filter((p) => segments?.includes(p.id))
-    .map((p) => ({
+    .filter((p: ProjectGroup): boolean | undefined => segments?.includes(p.id))
+    .map((p: ProjectGroup): Pick<ProjectGroup, 'id' | 'name'> => ({
       id: p.id,
       name: p.name,
     }));
 };
 
-export const getSegmentName = (segmentId) => {
+export const getSegmentName = (segmentId: string): string => {
   const lsSegmentsStore = useLfSegmentsStore();
   const { projectGroups } = storeToRefs(lsSegmentsStore);
 
-  return projectGroups.value.list.find((p) => p.id === segmentId)?.name ?? '';
+  return projectGroups.value.list.find((p: ProjectGroup): boolean => p.id === segmentId)?.name ?? '';
 };

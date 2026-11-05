@@ -1,7 +1,4 @@
 /**
- *
- * @param {*} number
- * @returns the original number into a short number format
  * Precision: 1 digit
  * 12 -> 12
  * 1,200 -> 1.2K
@@ -13,7 +10,7 @@
  * 1,222,000,000 -> 1.2B
  * 1,022,222,222 -> 1B
  */
-export const formatNumberToCompact = (number) => {
+export const formatNumberToCompact = (number: number | string | null | undefined): string => {
   if (typeof number !== 'number') {
     return '-';
   }
@@ -24,19 +21,13 @@ export const formatNumberToCompact = (number) => {
   }).format(number);
 };
 
-/**
- *
- * @param {*} number
- * @returns returns a string with a language-sensitive representation
- * of the original number
- */
-export const formatNumber = (number) => number.toLocaleString('en-US');
+export const formatNumber = (number: number | string): string => number.toLocaleString('en-US');
 
-export const formatPercentage = (percentage) => `${Math.ceil(
+export const formatPercentage = (percentage: number): string => `${Math.ceil(
   percentage < 0 ? percentage * -1 : percentage,
 )} %`;
 
-export const formatFloatToYears = (years) => {
+export const formatFloatToYears = (years: number): string => {
   const integerPart = Math.floor(years);
   const fractionalPart = Math.round((years - integerPart) * 12);
 
@@ -56,7 +47,7 @@ export const formatFloatToYears = (years) => {
   return result;
 };
 
-export const formatFloatToPercentage = (value) => {
+export const formatFloatToPercentage = (value: number): string => {
   const percentage = (value * 100).toFixed(2);
 
   return `${percentage}%`;
