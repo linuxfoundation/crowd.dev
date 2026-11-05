@@ -144,8 +144,6 @@ const showCreateSuggestion = computed(() => (
   )
 ));
 
-// Show empty message if request is not loading,
-// there are options or the only option is empty
 const showEmptyMessage = computed(() => (
   !loading.value
   && (!localOptions.value.length
@@ -153,7 +151,7 @@ const showEmptyMessage = computed(() => (
       && !localOptions.value[0].id))
 ));
 
-const onChange = async (value: AutocompleteOption | '' | undefined) => {
+const onChange = async (value: AutocompleteOption | string | undefined) => {
   if (
     currentQuery.value !== ''
     && props.createIfNotFound
