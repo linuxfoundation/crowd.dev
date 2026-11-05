@@ -1,31 +1,32 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { continueAsNew, proxyActivities, sleep } from '@temporalio/workflow'
 
 import * as activities from '../../activities'
 
-const { getResolveGitAuthorsCursor, saveResolveGitAuthorsCursor, resolveGitAuthorsPage } =
-  proxyActivities<typeof activities>({
-    startToCloseTimeout: '30 minutes',
-    retry: { maximumAttempts: 3 },
-  })
+const { resolveGitAuthorsPage } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '30 minutes',
+  retry: { maximumAttempts: 3 },
+})
 
-// The GitHub App token is shared with other workers, and pages with nothing left to look up
-// still grow the workflow history, so each run is capped on both.
-const MAX_LOOKUPS_PER_RUN = 10_000
-const MAX_PAGES_PER_RUN = 1000
+const PAGES_PER_EXECUTION = 500
 
-export async function resolveGitAuthorsToGithub(): Promise<void> {
-  let afterEmail = await getResolveGitAuthorsCursor()
-  let lookups = 0
+export async function resolveGitAuthorsToGithub(afterEmail: string | null = null): Promise<void> {
+  for (let page = 0; page < PAGES_PER_EXECUTION; page++) {
+    const { nextEmail, lookups, rateLimited } = await resolveGitAuthorsPage(afterEmail)
 
-  for (let page = 0; page < MAX_PAGES_PER_RUN && lookups < MAX_LOOKUPS_PER_RUN; page++) {
-    const result = await resolveGitAuthorsPage(afterEmail)
-    lookups += result.lookups
-    afterEmail = result.nextEmail
+    if (rateLimited) {
+      await sleep('15 minutes')
+      continue
+    }
+    if (!nextEmail) {
+      return
+    }
 
-    if (result.rateLimited || !afterEmail) {
-      break
+    afterEmail = nextEmail
+    // The GitHub App token is shared with other workers, so lookups are paced to about one a second.
+    if (lookups > 0) {
+      await sleep(lookups * 1000)
     }
   }
 
-  await saveResolveGitAuthorsCursor(afterEmail)
+  await continueAsNew<typeof resolveGitAuthorsToGithub>(afterEmail)
 }

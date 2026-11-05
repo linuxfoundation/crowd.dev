@@ -13,11 +13,9 @@ import {
   findGitAuthorsPage,
   findGithubAccountOwner,
   getMemberNoMerge,
-  getSystemSettingValue,
   insertGithubEmailLookup,
   insertMemberIdentities,
   pgpQx,
-  setSystemSettingValue,
 } from '@crowd/data-access-layer'
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
@@ -28,17 +26,6 @@ export interface IResolveGitAuthorsPageResult {
   nextEmail: string | null
   lookups: number
   rateLimited: boolean
-}
-
-export async function getResolveGitAuthorsCursor(): Promise<string | null> {
-  const qx = pgpQx(svc.postgres.reader.connection())
-  const setting = await getSystemSettingValue(qx, 'resolveGitAuthorsCursor')
-  return setting?.afterEmail ?? null
-}
-
-export async function saveResolveGitAuthorsCursor(afterEmail: string | null): Promise<void> {
-  const qx = pgpQx(svc.postgres.writer.connection())
-  await setSystemSettingValue(qx, 'resolveGitAuthorsCursor', { afterEmail })
 }
 
 export async function resolveGitAuthorsPage(
@@ -53,7 +40,7 @@ export async function resolveGitAuthorsPage(
       await resolveGitAuthor(qx, memberService, author)
     } catch (err) {
       if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
-        svc.log.warn('GitHub rate limit reached, resuming git author lookups next run')
+        svc.log.warn('GitHub rate limit reached, pausing git author lookups')
         return { nextEmail: afterEmail, lookups: index, rateLimited: true }
       }
       throw err
