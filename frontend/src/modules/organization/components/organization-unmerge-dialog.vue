@@ -74,7 +74,6 @@
             :organization="props.modelValue"
             is-primary
           >
-            <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
             <template #header>
               <div class="h-13 flex justify-between items-start">
                 <div
@@ -92,7 +91,6 @@
             is-primary
             is-preview
           >
-            <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
             <template #header>
               <div class="h-13 flex justify-between items-start">
                 <div
@@ -119,7 +117,6 @@
               :compare-organization="preview.primary"
               is-preview
             >
-              <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
               <template #header>
                 <div class="h-13">
                   <div class="flex justify-between items-start">

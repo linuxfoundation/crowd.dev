@@ -32,7 +32,7 @@ import type { Platform } from '@/shared/modules/platform/types/Platform';
 import type { Organization } from '@/modules/organization/types/Organization';
 
 const props = defineProps<{
-  organization: Organization;
+  organization: Partial<Organization>;
   order: Platform[]
   xPadding?: number;
   displayShowMore?: boolean;

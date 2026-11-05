@@ -5,9 +5,9 @@ import { lfIdentities } from '@/config/identities';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 const useOrganizationHelpers = () => {
-  const displayName = (organization: Organization) => organization.attributes?.name?.default || organization.displayName;
+  const displayName = (organization: Partial<Organization>) => organization.attributes?.name?.default || organization.displayName;
 
-  const logo = (organization: Organization) => organization.attributes?.logo?.default || organization.logo;
+  const logo = (organization: Partial<Organization>) => organization.attributes?.logo?.default || organization.logo;
 
   const isNew = (organization: Organization) => {
     if (!organization.joinedAt) {

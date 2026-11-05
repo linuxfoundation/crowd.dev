@@ -40,7 +40,7 @@
   </app-drawer>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref,
   computed,
@@ -53,18 +53,20 @@ import AppOrganizationFormPhoneNumber from '@/modules/organization/components/fo
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  organization: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({ name: 'AppOrganizationManagePhoneNumbersDrawer' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+  organization: Organization;
+}>(), {
+  modelValue: false,
 });
-const emit = defineEmits(['update:modelValue', 'reload']);
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void;
+  (e: 'reload'): void;
+}>();
 
 const { trackEvent } = useProductTracking();
 
@@ -96,7 +98,7 @@ const handleSubmit = async () => {
     key: FeatureEventKey.EDIT_ORGANIZATION_PHONE_NUMBER,
     type: EventType.FEATURE,
     properties: {
-      phoneNumbers: organizationModel.value.phoneNumbers.filter((p) => p.trim().length),
+      phoneNumbers: organizationModel.value.phoneNumbers.filter((p: string) => p.trim().length),
     },
   });
 
@@ -106,8 +108,8 @@ const handleSubmit = async () => {
       ...props.organization.attributes,
       phoneNumber: {
         ...props.organization.attributes.logo,
-        default: organizationModel.value.phoneNumbers.filter((p) => p.trim().length),
-        custom: [organizationModel.value.phoneNumbers.filter((p) => p.trim().length)],
+        default: organizationModel.value.phoneNumbers.filter((p: string) => p.trim().length),
+        custom: [organizationModel.value.phoneNumbers.filter((p: string) => p.trim().length)],
       },
     },
   }).then(() => {
@@ -118,12 +120,6 @@ const handleSubmit = async () => {
     loading.value = false;
   });
   emit('update:modelValue', false);
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationManagePhoneNumbersDrawer',
 };
 </script>
 
