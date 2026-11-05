@@ -1,4 +1,4 @@
 [
-  "modules/index.ts > modules/layout/layout-module.js > modules/layout/layout-store.js > router/index.js",
-  "modules/index.ts > modules/layout/layout-module.js > modules/layout/layout-store.js > router/index.js > store/index.js"
+  "modules/index.ts > modules/tag/tag-module.js > modules/tag/tag-store.js > modules/tag/tag-destroy-store.js > router/index.js",
+  "modules/index.ts > modules/tag/tag-module.js > modules/tag/tag-store.js > modules/tag/tag-destroy-store.js > router/index.js > store/index.js"
 ]
