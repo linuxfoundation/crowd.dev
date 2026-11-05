@@ -16,8 +16,8 @@
  *              1. locks the key's NULL-channel copies (NOWAIT: never waits on app transactions),
  *              2. ranks only the locked copies and keeps rank 1,
  *              3. carries parentId, conversationId and sourceParentId to the kept copy where it
- *                 has none, and moves its updatedAt past every deleted copy's (millisecond
- *                 precision, as Tinybird stores it) only when it isn't already,
+ *                 has none, and moves its updatedAt at least 2 ms past every deleted copy's
+ *                 (Tinybird stores milliseconds) only when it isn't already,
  *              4. moves the other copies to the backup table with the kept activityId,
  *              5. checks that every key still has exactly one locked copy and that every deleted
  *                 row is in the backup, and rolls back otherwise,
@@ -48,12 +48,15 @@
  *   --segments a,b     Only keys of these segment ids
  *   --batch-rows N     Rows per transaction, whole keys only (default 20000, max 100000)
  *   --max-rows N       Stop after deleting this many rows
- *   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead)
+ *   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
+ *                      with --wait-nightly)
  *                      A real run needs --max-rows or --until.
  *   --max-slot-lag-mb N  Wait before a batch while sequin_slot or sequin_slot_2 is further behind
  *                      (default 1024). A missing slot stops the run.
  *   --skip-slot-guard  Run without the slot check (for environments without Sequin)
  *   --allow-nightly    Also run 00:30-05:30 UTC (nightly meetings export); needs --until
+ *   --wait-nightly     Pause during 00:30-05:30 UTC and continue afterwards instead of stopping;
+ *                      allows --until up to 7 days ahead
  *   --allow-partial-collect  Clean although collect hasn't caught up for these platforms
  *   --retry-deferred   Also take keys deferred by earlier runs
  *   --sample-batches N Dry run: batches to check per platform (default 3)
@@ -62,7 +65,8 @@
  * (the open transaction rolls back).
  *
  * Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal,
- * 3 finished but some keys were deferred (rerun with --retry-deferred), 1 error, 64 usage error.
+ * 3 finished but some keys were deferred (rerun with --retry-deferred), 4 database connection
+ * lost (safe to restart), 1 error incl. a failed safety check (look before restarting), 64 usage.
  *
  * Environment: CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD,
  * CROWD_DB_DATABASE. Logs are JSON lines with a constant "msg" per event (run.config, run.plan,
@@ -89,10 +93,14 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_UNTIL_MS = 48 * 60 * 60 * 1000
+const MAX_UNTIL_WAIT_NIGHTLY_MS = 7 * DAY_MS
 const MAX_BATCH_ROWS = 100_000
 
 const COLLECT_STATEMENT_TIMEOUT_MS = 5 * 60_000
 const CLEAN_STATEMENT_TIMEOUT_MS = 30_000
+// the lock step reads every copy's heap page, cold in prod: ~15 s for a 20k-row batch
+const CLEAN_LOCK_STATEMENT_TIMEOUT_MS = 60_000
+const RUN_LOCK_WAIT_MS = 2 * 60_000
 const SESSION_QUERY_TIMEOUT_MS = 10 * 60_000
 const CLEAN_LOCK_TIMEOUT = '5s'
 const IDLE_IN_TRANSACTION_TIMEOUT = '60s'
@@ -116,6 +124,7 @@ const EXIT_DONE = 0
 const EXIT_ERROR = 1
 const EXIT_STOPPED = 2
 const EXIT_DEFERRED = 3
+const EXIT_CONNECTION = 4
 const EXIT_USAGE = 64
 const EXIT_SIGNAL = 130
 
@@ -140,6 +149,7 @@ const COMMAND_FLAGS: Record<string, { values: string[]; switches: string[] }> = 
       '--yes',
       '--skip-slot-guard',
       '--allow-nightly',
+      '--wait-nightly',
       '--allow-partial-collect',
       '--retry-deferred',
     ],
@@ -183,6 +193,7 @@ interface ICleanOptions extends ICommonOptions {
   maxSlotLagBytes: number
   skipSlotGuard: boolean
   allowNightly: boolean
+  waitNightly: boolean
   allowPartialCollect: boolean
   retryDeferred: boolean
   sampleBatches: number
@@ -279,6 +290,21 @@ function pgFields(err: unknown): Record<string, unknown> {
   }
 }
 
+function isConnectionError(err: unknown): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const e = err as any
+  const code = typeof e?.code === 'string' ? e.code : ''
+  return (
+    code.startsWith('08') ||
+    ['57P01', '57P02', '57P03', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE'].includes(
+      code,
+    ) ||
+    /Connection terminated|connection error|Query read timeout|not queryable/i.test(
+      e?.message ?? '',
+    )
+  )
+}
+
 async function tableExists(db: Session, rawName: string): Promise<boolean> {
   const row: { exists: boolean } = await db.one(
     `select to_regclass($(name)) is not null as exists`,
@@ -349,16 +375,41 @@ async function ensureTables(db: Session, tables: ITables): Promise<void> {
   })
 }
 
-async function acquireRunLock(db: Session, tables: ITables): Promise<void> {
-  const row: { locked: boolean } = await db.one(
-    `select pg_try_advisory_lock(hashtext($(name))) as locked`,
+async function acquireRunLock(db: Session, log: Log, tables: ITables): Promise<void> {
+  const name = `cleanup-null-channel-duplicates:${tables.tag}`
+  const started = Date.now()
+  for (;;) {
+    const row: { locked: boolean } = await db.one(
+      `select pg_try_advisory_lock(hashtext($(name))) as locked`,
+      { name },
+    )
+    if (row.locked) {
+      return
+    }
+    // an aborted run's backend keeps the lock until its last statement ends (up to a minute)
+    const holders = await runLockHolders(db, tables)
+    if (Date.now() - started >= RUN_LOCK_WAIT_MS || stopState.requested) {
+      throw new UsageError(
+        `Another collect or clean run for tag ${tables.tag} holds the run lock: ${JSON.stringify(holders)}`,
+      )
+    }
+    log.warn({ holders }, 'run.lock-wait')
+    await sleep(10_000, () => stopState.requested)
+  }
+}
+
+async function runLockHolders(db: Session, tables: ITables) {
+  return db.any(
+    `
+      select a.pid, a.application_name as "applicationName", a.client_addr::text as "clientAddr",
+        a.state, a.backend_start::text as "backendStart", left(a.query, 120) as query
+      from pg_locks l
+      join pg_stat_activity a on a.pid = l.pid
+      where l.locktype = 'advisory' and l.granted
+        and l.objid = (hashtext($(name)) & 4294967295)::oid
+    `,
     { name: `cleanup-null-channel-duplicates:${tables.tag}` },
   )
-  if (!row.locked) {
-    throw new UsageError(
-      `Another collect or clean run for tag ${tables.tag} holds the run lock; stop it first`,
-    )
-  }
 }
 
 function collectProgressName(platforms: string[]): string {
@@ -438,7 +489,15 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     await ensureTables(db, tables)
   }
 
-  const totals = { windows: 0, found: 0, inserted: 0, copies: 0, ms: 0 }
+  const totals = {
+    windows: 0,
+    skippedDays: 0,
+    found: 0,
+    inserted: 0,
+    reopened: 0,
+    copies: 0,
+    ms: 0,
+  }
   let windowStart = startMs
   let windowDays = options.windowDays
   while (windowStart < endMs) {
@@ -447,11 +506,30 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       return EXIT_STOPPED
     }
 
+    // years without rows (timestamps go from 0026 to 2120): jump to the next day that has any
+    const next = await epochMs(
+      db,
+      `select (extract(epoch from min("timestamp")) * 1000)::bigint::text as ms
+       from "activityRelations" where "timestamp" >= $(from)::timestamptz`,
+      { from: new Date(windowStart).toISOString() },
+    )
+    if (next === null || next >= endMs) {
+      totals.skippedDays += Math.round((endMs - windowStart) / DAY_MS)
+      windowStart = endMs
+      break
+    }
+    const nextDay = next - (next % DAY_MS)
+    if (nextDay > windowStart) {
+      totals.skippedDays += Math.round((nextDay - windowStart) / DAY_MS)
+      windowStart = nextDay
+    }
+
     const windowEnd = Math.min(windowStart + windowDays * DAY_MS, endMs)
     const started = Date.now()
     let result: {
       found: number
       inserted: number
+      reopened: number
       copies: number
       maxCopies: number
       byPlatform: Record<string, number>
@@ -483,17 +561,18 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     totals.windows += 1
     totals.found += result.found
     totals.inserted += result.inserted
+    totals.reopened += result.reopened
     totals.copies += result.copies
     totals.ms += ms
-    const windowsLeft = Math.ceil((endMs - windowEnd) / (windowDays * DAY_MS))
     log.info(
       {
         windowStart: new Date(windowStart).toISOString(),
         windowEnd: new Date(windowEnd).toISOString(),
+        windowDays,
         ...result,
         ms,
-        windowsLeft,
-        etaMin: Math.round(((totals.ms / totals.windows) * windowsLeft) / 60_000),
+        // share of the time range done; days without rows are skipped, so no ETA
+        rangeDonePct: Math.round(((windowEnd - startMs) / (endMs - startMs)) * 1000) / 10,
         totals,
         dryRun: options.dryRun,
       },
@@ -547,30 +626,43 @@ async function collectWindow(
     await t.none(`set local statement_timeout = ${COLLECT_STATEMENT_TIMEOUT_MS}`)
 
     if (options.dryRun) {
-      const row = await t.one(`with found as (${found}) select 0 as inserted, ${summary}`, params)
+      const row = await t.one(
+        `with found as (${found}) select 0 as inserted, 0 as reopened, ${summary}`,
+        params,
+      )
       return row
     }
 
     const row = await t.one(
       `
         with found as (${found}),
-        inserted as (
+        upserted as (
           insert into ${tables.keys} ("timestamp", platform, type, "sourceId", "segmentId", copies)
           select "timestamp", platform, type, "sourceId", "segmentId", copies from found
-          on conflict ("timestamp", platform, type, "sourceId", "segmentId") do nothing
-          returning 1
+          on conflict ("timestamp", platform, type, "sourceId", "segmentId") do update set
+            status = 'pending', copies = excluded.copies, deleted = null, error = null,
+            "collectedAt" = now()
+          -- a finished key that has duplicates again (e.g. a re-send raced the cleanup)
+          where ${tables.keys}.status in ('done', 'no_duplicates')
+          returning (xmax = 0) as inserted
         )
-        select (select count(*) from inserted)::int as inserted, ${summary}
+        select (select count(*) from upserted where inserted)::int as inserted,
+          (select count(*) from upserted where not inserted)::int as reopened, ${summary}
       `,
       params,
     )
-    await t.none(
-      `
-        insert into ${tables.progress} (name, "windowEnd") values ($(progressName), $(windowEnd)::timestamptz)
-        on conflict (name) do update set "windowEnd" = excluded."windowEnd", "updatedAt" = now()
-      `,
-      params,
-    )
+    // an explicit --to is a re-scan of part of the range, not progress
+    if (!options.to) {
+      await t.none(
+        `
+          insert into ${tables.progress} (name, "windowEnd") values ($(progressName), $(windowEnd)::timestamptz)
+          on conflict (name) do update set
+            "windowEnd" = greatest(${tables.progress}."windowEnd", excluded."windowEnd"),
+            "updatedAt" = now()
+        `,
+        params,
+      )
+    }
     return row
   })
 }
@@ -713,7 +805,8 @@ const PLAN = `
     select kr."activityId",
       greatest(
         kr."updatedAt",
-        date_trunc('milliseconds', c."maxDroppedUpdatedAt") + interval '1 millisecond'
+        -- 2 ms: a deleted copy's updatedAt rounded up instead of truncated still can't tie
+        date_trunc('milliseconds', c."maxDroppedUpdatedAt") + interval '2 milliseconds'
       ) as "newUpdatedAt",
       kr."updatedAt" as "oldUpdatedAt",
       kr."parentId" is null and c."parentId" is not null as "carryParentId",
@@ -736,6 +829,7 @@ async function cleanBatch(
   batchId: string,
   statuses: string[],
   dryRun: boolean,
+  record: { runId: string; platform: string; attempts: number; startedAt: Date },
 ): Promise<IBatchMetrics> {
   const params = { keyIds: keys.map((k) => k.id), statuses, batchId }
   const ms = { lock: 0, clean: 0, verify: 0, mark: 0 }
@@ -777,6 +871,7 @@ async function cleanBatch(
 
     const walStart: { lsn: string } = await t.one(`select pg_current_wal_lsn()::text as lsn`)
 
+    await t.none(`set local statement_timeout = ${CLEAN_LOCK_STATEMENT_TIMEOUT_MS}`)
     let started = Date.now()
     // NOWAIT: an app transaction holding a copy fails this batch instead of making it wait, so
     // the script never blocks app writes and never takes part in a deadlock
@@ -792,6 +887,7 @@ async function cleanBatch(
       params,
     )
     ms.lock = Date.now() - started
+    await t.none(`set local statement_timeout = ${CLEAN_STATEMENT_TIMEOUT_MS}`)
     const lockedIds = locked.ids ?? []
 
     started = Date.now()
@@ -892,17 +988,30 @@ async function cleanBatch(
       { lsn: walStart.lsn },
     )
 
-    return {
+    const metrics: IBatchMetrics = {
       ...result,
       lockedRows: locked.n,
       walBytes: Number(walEnd.bytes),
       ms,
     }
+    await recordBatch(
+      t,
+      tables,
+      record.runId,
+      record.platform,
+      keys,
+      batchId,
+      record.attempts,
+      record.startedAt,
+      metrics,
+    )
+    return metrics
   })
 }
 
 async function recordBatch(
-  db: Session,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: { none: (query: string, params?: any) => Promise<null> },
   tables: ITables,
   runId: string,
   platform: string,
@@ -1090,7 +1199,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
 
   if (!options.dryRun) {
     const nowReason = stopReason(options, 0)
-    if (nowReason === 'nightly-window') {
+    if (nowReason === 'nightly-window' && !options.waitNightly) {
       throw new UsageError(
         'Refusing to start during the nightly meetings export (00:30-05:30 UTC); pass --allow-nightly with --until to override',
       )
@@ -1153,12 +1262,142 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     )
   }
 
+  const processKeys = async (
+    platform: string,
+    keys: IKey[],
+    platformTotals: { batches: number; keys: number; deleted: number },
+  ): Promise<void> => {
+    const batchId = randomUUID()
+    const startedAt = new Date()
+    const batchContext = {
+      platform,
+      batchId,
+      keyIdMin: keys[0].id,
+      keyIdMax: keys[keys.length - 1].id,
+      keys: keys.length,
+      expectedRows: keys.reduce((sum, k) => sum + k.copies, 0),
+    }
+    log.info(batchContext, 'batch.start')
+
+    let metrics: IBatchMetrics | null = null
+    let attempts = 0
+    for (;;) {
+      attempts += 1
+      try {
+        metrics = await cleanBatch(db, tables, columns, keys, batchId, statuses, options.dryRun, {
+          runId,
+          platform,
+          attempts,
+          startedAt,
+        })
+        break
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const code = (err as any)?.code
+        if (!RETRYABLE_CODES[code]) {
+          log.error({ ...pgFields(err), ...batchContext, attempts }, 'batch.failed')
+          throw err
+        }
+        // a batch too slow for the timeout is retried as two smaller ones
+        if (code === '57014' && keys.length > 1) {
+          const half = Math.ceil(keys.length / 2)
+          log.warn(
+            { pgCode: code, ...batchContext, attempts, splitInto: [half, keys.length - half] },
+            'batch.split',
+          )
+          totals.retries += 1
+          await processKeys(platform, keys.slice(0, half), platformTotals)
+          if (!stopReason(options, totals.deleted)) {
+            await processKeys(platform, keys.slice(half), platformTotals)
+          }
+          return
+        }
+        if (attempts > RETRY_DELAYS_MS.length) {
+          log.warn(
+            { ...pgFields(err), ...batchContext, attempts, cause: RETRYABLE_CODES[code] },
+            'batch.deferred',
+          )
+          if (!options.dryRun) {
+            await deferKeys(db, tables, keys, `${RETRYABLE_CODES[code]}: ${err.message}`)
+          }
+          totals.deferredKeys += keys.length
+          return
+        }
+        totals.retries += 1
+        const delay = RETRY_DELAYS_MS[attempts - 1]
+        log.warn(
+          { pgCode: code, cause: RETRYABLE_CODES[code], ...batchContext, attempts, delayMs: delay },
+          'batch.retry',
+        )
+        await sleep(delay, () => stopState.requested)
+        if (stopState.requested) {
+          return
+        }
+      }
+    }
+
+    totals.batches += 1
+    totals.keys += keys.length
+    totals.deleted += metrics.deleted
+    totals.keptUpdated += metrics.keptUpdated
+    totals.keysNoDuplicates += metrics.keysFound - metrics.keysWithDuplicates
+    totals.crossYear += metrics.crossYear
+    totals.carried +=
+      metrics.carriedParentId + metrics.carriedConversationId + metrics.carriedSourceParentId
+    totals.parentConflicts += metrics.parentConflicts
+    totals.walBytes += metrics.walBytes
+    platformTotals.batches += 1
+    platformTotals.keys += keys.length
+    platformTotals.deleted += metrics.deleted
+    lastBatchId = batchId
+
+    const totalMs = Date.now() - startedAt.getTime()
+    const { perKey, ...metricsToLog } = metrics
+    log.info(
+      {
+        ...batchContext,
+        attempts,
+        ...metricsToLog,
+        keysMissing: keys.length - metrics.keysFound,
+        keysNoDuplicates: metrics.keysFound - metrics.keysWithDuplicates,
+        drift: batchContext.expectedRows - metrics.lockedRows,
+        perKeyCount: Object.keys(perKey).length,
+        totalMs,
+        rowsPerSec: totalMs > 0 ? Math.round((metrics.deleted * 1000) / totalMs) : null,
+        slotLagMb:
+          lastSlots &&
+          Object.fromEntries(
+            Object.entries(lastSlots).map(([s, b]) => [s, Math.round(b / 1048576)]),
+          ),
+        totals,
+        dryRun: options.dryRun,
+      },
+      'batch.done',
+    )
+  }
+
   try {
     platforms: for (const platform of options.platforms) {
       let afterId = '0'
       const platformTotals = { batches: 0, keys: 0, deleted: 0 }
       for (;;) {
         const stop = stopReason(options, totals.deleted)
+        if (stop === 'nightly-window' && options.waitNightly) {
+          const now = new Date()
+          const resume = new Date(now)
+          resume.setUTCHours(
+            Math.floor(NIGHTLY_EXPORT_END_MINUTES / 60),
+            NIGHTLY_EXPORT_END_MINUTES % 60,
+            0,
+            0,
+          )
+          log.info({ resumeAt: resume.toISOString() }, 'nightly.wait')
+          await sleep(resume.getTime() - now.getTime(), () => {
+            const other = stopReason({ ...options, allowNightly: true }, totals.deleted)
+            return !!other
+          })
+          continue
+        }
         if (stop) {
           reason = stop
           exitCode = EXIT_STOPPED
@@ -1200,117 +1439,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
         }
         afterId = keys[keys.length - 1].id
 
-        const batchId = randomUUID()
-        const startedAt = new Date()
-        const batchContext = {
-          platform,
-          batchId,
-          keyIdMin: keys[0].id,
-          keyIdMax: afterId,
-          keys: keys.length,
-          expectedRows: keys.reduce((sum, k) => sum + k.copies, 0),
-        }
-
-        let metrics: IBatchMetrics | null = null
-        let attempts = 0
-        for (;;) {
-          attempts += 1
-          try {
-            metrics = await cleanBatch(db, tables, columns, keys, batchId, statuses, options.dryRun)
-            break
-          } catch (err) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const code = (err as any)?.code
-            if (!RETRYABLE_CODES[code]) {
-              log.error({ ...pgFields(err), ...batchContext, attempts }, 'batch.failed')
-              throw err
-            }
-            if (attempts > RETRY_DELAYS_MS.length) {
-              log.warn(
-                { ...pgFields(err), ...batchContext, attempts, cause: RETRYABLE_CODES[code] },
-                'batch.deferred',
-              )
-              if (!options.dryRun) {
-                await deferKeys(db, tables, keys, `${RETRYABLE_CODES[code]}: ${err.message}`)
-              }
-              totals.deferredKeys += keys.length
-              break
-            }
-            totals.retries += 1
-            const delay = RETRY_DELAYS_MS[attempts - 1]
-            log.warn(
-              {
-                pgCode: code,
-                cause: RETRYABLE_CODES[code],
-                ...batchContext,
-                attempts,
-                delayMs: delay,
-              },
-              'batch.retry',
-            )
-            await sleep(delay, () => stopState.requested)
-            if (stopState.requested) {
-              break
-            }
-          }
-        }
-
-        if (!metrics) {
-          continue
-        }
-
-        if (!options.dryRun) {
-          await recordBatch(
-            db,
-            tables,
-            runId,
-            platform,
-            keys,
-            batchId,
-            attempts,
-            startedAt,
-            metrics,
-          )
-        }
-
-        totals.batches += 1
-        totals.keys += keys.length
-        totals.deleted += metrics.deleted
-        totals.keptUpdated += metrics.keptUpdated
-        totals.keysNoDuplicates += metrics.keysFound - metrics.keysWithDuplicates
-        totals.crossYear += metrics.crossYear
-        totals.carried +=
-          metrics.carriedParentId + metrics.carriedConversationId + metrics.carriedSourceParentId
-        totals.parentConflicts += metrics.parentConflicts
-        totals.walBytes += metrics.walBytes
-        platformTotals.batches += 1
-        platformTotals.keys += keys.length
-        platformTotals.deleted += metrics.deleted
-        lastBatchId = batchId
-
-        const totalMs = Date.now() - startedAt.getTime()
-        const { perKey, ...metricsToLog } = metrics
-        log.info(
-          {
-            ...batchContext,
-            attempts,
-            ...metricsToLog,
-            keysMissing: keys.length - metrics.keysFound,
-            keysNoDuplicates: metrics.keysFound - metrics.keysWithDuplicates,
-            drift: batchContext.expectedRows - metrics.lockedRows,
-            perKeyCount: Object.keys(perKey).length,
-            totalMs,
-            rowsPerSec: totalMs > 0 ? Math.round((metrics.deleted * 1000) / totalMs) : null,
-            slotLagMb:
-              lastSlots &&
-              Object.fromEntries(
-                Object.entries(lastSlots).map(([s, b]) => [s, Math.round(b / 1048576)]),
-              ),
-            totals,
-            dryRun: options.dryRun,
-          },
-          'batch.done',
-        )
+        await processKeys(platform, keys, platformTotals)
 
         if (options.dryRun && platformTotals.batches >= options.sampleBatches) {
           break
@@ -1332,8 +1461,16 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       exitCode = EXIT_DEFERRED
     }
   } catch (err) {
-    reason = err instanceof InvariantError ? 'invariant-violation' : 'error'
-    exitCode = EXIT_ERROR
+    if (err instanceof InvariantError) {
+      reason = 'invariant-violation'
+      exitCode = EXIT_ERROR
+    } else if (isConnectionError(err)) {
+      reason = 'connection-lost'
+      exitCode = EXIT_CONNECTION
+    } else {
+      reason = 'error'
+      exitCode = EXIT_ERROR
+    }
     throw err
   } finally {
     if (totals.batches > 0 && !options.dryRun) {
@@ -1400,8 +1537,30 @@ async function status(db: Session, log: Log, options: ICommonOptions): Promise<n
       })
     : null
 
+  const perPlatform: Record<string, { copies: number; finished: number }> = {}
+  for (const row of keys) {
+    const p = (perPlatform[row.platform] ??= { copies: 0, finished: 0 })
+    p.copies += Number(row.copies)
+    if (row.status === 'done' || row.status === 'no_duplicates') {
+      p.finished += Number(row.copies)
+    }
+  }
+  const percentDone = Object.fromEntries(
+    Object.entries(perPlatform).map(([platform, p]) => [
+      platform,
+      p.copies > 0 ? Math.round((p.finished / p.copies) * 1000) / 10 : null,
+    ]),
+  )
+
   log.info(
-    { tag: options.tag, progress, batches, backupBytes: backupSize?.bytes ?? null },
+    {
+      tag: options.tag,
+      activeRun: await runLockHolders(db, tables),
+      percentDone,
+      progress,
+      batches,
+      backupBytes: backupSize?.bytes ?? null,
+    },
     'status.summary',
   )
   for (const row of keys) {
@@ -1531,8 +1690,11 @@ function parseClean(flags: Map<string, string | true>): ICleanOptions {
     if (until.getTime() <= Date.now()) {
       throw new UsageError(`--until is in the past: ${untilArg}`)
     }
-    if (until.getTime() - Date.now() > MAX_UNTIL_MS) {
-      throw new UsageError('--until must be at most 48 hours ahead')
+    const maxUntil = flags.has('--wait-nightly') ? MAX_UNTIL_WAIT_NIGHTLY_MS : MAX_UNTIL_MS
+    if (until.getTime() - Date.now() > maxUntil) {
+      throw new UsageError(
+        `--until must be at most ${maxUntil / 3_600_000} hours ahead (7 days with --wait-nightly)`,
+      )
     }
   }
 
@@ -1547,6 +1709,7 @@ function parseClean(flags: Map<string, string | true>): ICleanOptions {
       1048576,
     skipSlotGuard: flags.has('--skip-slot-guard'),
     allowNightly: flags.has('--allow-nightly'),
+    waitNightly: flags.has('--wait-nightly'),
     allowPartialCollect: flags.has('--allow-partial-collect'),
     retryDeferred: flags.has('--retry-deferred'),
     sampleBatches: parseInt('--sample-batches', value(flags, '--sample-batches'), 1, 1000) ?? 3,
@@ -1556,6 +1719,9 @@ function parseClean(flags: Map<string, string | true>): ICleanOptions {
   }
   if (options.allowNightly && !options.until) {
     throw new UsageError('--allow-nightly needs --until')
+  }
+  if (options.allowNightly && options.waitNightly) {
+    throw new UsageError('--allow-nightly and --wait-nightly contradict each other')
   }
   return options
 }
@@ -1653,7 +1819,7 @@ async function main(): Promise<number> {
 
   try {
     if (command !== 'status' && !options.dryRun) {
-      await acquireRunLock(session, tablesFor(options.tag))
+      await acquireRunLock(session, log, tablesFor(options.tag))
     }
     if (command === 'collect') {
       return await collect(session, log, options as ICollectOptions)
@@ -1676,5 +1842,5 @@ main()
       process.exit(EXIT_USAGE)
     }
     baseLog.error(pgFields(error), 'run.failed')
-    process.exit(EXIT_ERROR)
+    process.exit(isConnectionError(error) ? EXIT_CONNECTION : EXIT_ERROR)
   })
