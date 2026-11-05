@@ -1,4 +1,4 @@
-export const EVENT_RULES_VERSION = 1
+export const EVENT_RULES_VERSION = 2
 
 interface EventRuleBase {
   id: string
@@ -9,7 +9,7 @@ interface EventRuleBase {
 
 export type CredlyEventRule =
   | (EventRuleBase & { activityUrl: string })
-  | (EventRuleBase & { nameKeyword: string })
+  | (EventRuleBase & { nameKeyword: string; caseSensitive?: boolean })
 
 export interface EventRuleTemplate {
   name: string
@@ -36,9 +36,10 @@ export function normalizeActivityUrl(url: string): string {
     .replace(/\/+$/, '')
 }
 
-function keywordPattern(keyword: string): RegExp {
+function keywordPattern(keyword: string, caseSensitive: boolean): RegExp {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'i')
+  // Boundary check stays case-agnostic regardless of caseSensitive, which only governs the keyword.
+  return new RegExp(`(?<![a-zA-Z0-9])${escaped}(?![a-zA-Z0-9])`, caseSensitive ? '' : 'i')
 }
 
 function urlMatcher(activityUrl: string): CompiledEventRule['match'] {
@@ -55,15 +56,18 @@ function urlMatcher(activityUrl: string): CompiledEventRule['match'] {
   }
 }
 
-function keywordMatcher(keyword: string): CompiledEventRule['match'] {
-  const pattern = keywordPattern(keyword)
+function keywordMatcher(keyword: string, caseSensitive: boolean): CompiledEventRule['match'] {
+  const pattern = keywordPattern(keyword, caseSensitive)
   return (template) => (pattern.test(template.name) ? keyword : null)
 }
 
 export function compileEventRules(rules: readonly CredlyEventRule[]): CompiledEventRule[] {
   return rules.map((rule) => ({
     rule,
-    match: 'activityUrl' in rule ? urlMatcher(rule.activityUrl) : keywordMatcher(rule.nameKeyword),
+    match:
+      'activityUrl' in rule
+        ? urlMatcher(rule.activityUrl)
+        : keywordMatcher(rule.nameKeyword, rule.caseSensitive ?? false),
   }))
 }
 
@@ -82,12 +86,18 @@ export function matchEventRules(
 const REVIEW =
   'mapping review https://claude.ai/artifact/7p4tERK9DVU5xnQeJPxkV9, decided 2026-10-27'
 
+const PROPOSED = 'proposed 2026-11-04 from the production held queue, awaiting reviewer approval'
+
 const rule = (
   id: string,
-  match: { activityUrl: string } | { nameKeyword: string },
+  match: { activityUrl: string } | { nameKeyword: string; caseSensitive?: boolean },
   projectSlug: string,
   note = REVIEW,
-): CredlyEventRule => ({ id, projectSlug, approvedBy: 'joana', note, ...match })
+  approvedBy = 'joana',
+): CredlyEventRule => ({ id, projectSlug, approvedBy, note, ...match })
+
+const proposed = (id: string, nameKeyword: string, projectSlug: string): CredlyEventRule =>
+  rule(id, { nameKeyword }, projectSlug, PROPOSED, 'pending')
 
 // Ordered: the first matching rule wins, so event-specific rules sit above the LF-wide ones
 // that co-located events ("KubeCon + Open Source Summit China") would also match.
@@ -114,6 +124,104 @@ export const credlyEventRules: readonly CredlyEventRule[] = [
   rule('graphql', { nameKeyword: 'GraphQL' }, 'gql'),
   rule('learn-finops', { activityUrl: 'learn.finops.org' }, 'finops'),
   rule('finops', { nameKeyword: 'FinOps' }, 'finops'),
+  proposed('cloudnativesecuritycon', 'CloudNativeSecurityCon', 'cncf'),
+  proposed('cncf', 'CNCF', 'cncf'),
+  proposed('cloud-native', 'Cloud Native', 'cncf'),
+  proposed('kubernetes-community-days', 'Kubernetes Community Days', 'cncf'),
+  proposed('kcd', 'KCD', 'cncf'),
+  proposed('kubeday', 'KubeDay', 'cncf'),
+  proposed('argocon', 'ArgoCon', 'cncf'),
+  proposed('wasmcon', 'WasmCon', 'cncf'),
+  proposed('bazelcon', 'BazelCon', 'cncf'),
+  proposed('grpconf', 'gRPConf', 'cncf'),
+  proposed('observability-day', 'Observability Day', 'cncf'),
+  proposed('observability-summit', 'Observability Summit', 'cncf'),
+  proposed('otel-community-day', 'OTel Community Day', 'cncf'),
+  proposed('platform-engineering-day', 'Platform Engineering Day', 'cncf'),
+  proposed('maintainer-summit', 'Maintainer Summit', 'cncf'),
+  proposed('istio', 'Istio', 'cncf'),
+  proposed('cilium', 'Cilium', 'cncf'),
+  proposed('kyverno', 'Kyverno', 'cncf'),
+  proposed('backstage', 'Backstage', 'cncf'),
+  proposed('prometheus', 'Prometheus', 'cncf'),
+  proposed('pytorch', 'PyTorch', 'ptproject'),
+  proposed('focus', 'FOCUS', 'finops'),
+  proposed('technology-value', 'Technology Value', 'finops'),
+  proposed('ai-value', 'AI Value', 'finops'),
+  proposed('tokenomics', 'Tokenomics', 'finops'),
+  proposed('finos', 'FINOS', 'finos'),
+  proposed('fdc3', 'FDC3', 'finos'),
+  proposed('open-source-strategy-forum', 'Open Source Strategy Forum', 'finos'),
+  proposed('node-red', 'Node-RED', 'node-red'),
+  proposed('openjs', 'OpenJS', 'ojsf'),
+  proposed('javascriptlandia', 'JavaScriptLandia', 'ojsf'),
+  proposed('jsconf', 'JSConf', 'ojsf'),
+  proposed('nodejs', 'Node.js', 'ojsf'),
+  proposed('onap', 'ONAP', 'onap'),
+  proposed('opendaylight', 'OpenDaylight', 'opendaylight'),
+  proposed('anuket', 'Anuket', 'anuket'),
+  proposed('akraino', 'Akraino', 'akraino'),
+  proposed('tungsten-fabric', 'Tungsten Fabric', 'lfn'),
+  proposed('fdio', 'FD.io', 'lfn'),
+  proposed('one-summit', 'ONE Summit', 'lfn'),
+  proposed('open-networking', 'Open Networking', 'lfn'),
+  proposed('5g-super-blueprint', '5G Super Blueprint', 'lfn'),
+  proposed('lf-networking', 'LF Networking', 'lfn'),
+  proposed('magma', 'Magma', 'lfn'),
+  proposed('nephio', 'Nephio', 'lfn'),
+  proposed('zephyr', 'Zephyr', 'zep'),
+  proposed('agntcon', 'AGNTCon', 'agentic-ai-foundation'),
+  proposed('mcpcon', 'MCPCon', 'agentic-ai-foundation'),
+  proposed('mcp-dev-summit', 'MCP Dev Summit', 'agentic-ai-foundation'),
+  proposed('agentic-ai-foundation', 'Agentic AI Foundation', 'agentic-ai-foundation'),
+  proposed('kata-containers', 'Kata Containers', 'kata-containers'),
+  proposed('openstack', 'OpenStack', 'openinfra-foundation'),
+  proposed('openinfra', 'OpenInfra', 'openinfra-foundation'),
+  proposed('risc-v', 'RISC-V', 'risc-v-international'),
+  proposed('opensearch', 'OpenSearch', 'opensearch-foundation'),
+  proposed('opensearchcon', 'OpenSearchCon', 'opensearch-foundation'),
+  proposed('cdcon', 'cdCon', 'cdf'),
+  proposed('gitopscon', 'GitOpsCon', 'cdf'),
+  proposed('cd-foundation', 'CD Foundation', 'cdf'),
+  proposed('spinnaker', 'Spinnaker', 'cdf'),
+  proposed('jenkins', 'Jenkins', 'cdf'),
+  proposed('tekton', 'Tekton', 'cdf'),
+  proposed('mainframe', 'Mainframe', 'open-mainframe-project'),
+  proposed('zowe', 'Zowe', 'open-mainframe-project'),
+  proposed('openssf', 'OpenSSF', 'openssf'),
+  proposed('soss', 'SOSS', 'openssf'),
+  proposed('hyperledger', 'Hyperledger', 'lf-decentralized-trust'),
+  proposed('lfdt', 'LFDT', 'lf-decentralized-trust'),
+  rule(
+    'user-conference',
+    { nameKeyword: 'useR!', caseSensitive: true },
+    'rcons',
+    PROPOSED,
+    'pending',
+  ),
+  proposed('r-medicine', 'R/Medicine', 'rcons'),
+  proposed('hpsf', 'HPSF', 'hpsf'),
+  proposed('jupyter', 'Jupyter', 'jupyter'),
+  proposed('jupytercon', 'JupyterCon', 'jupyter'),
+  proposed('academy-software-foundation', 'Academy Software Foundation', 'aswf'),
+  proposed('aswf', 'ASWF', 'aswf'),
+  proposed('open-source-days', 'Open Source Days', 'aswf'),
+  proposed('lf-energy', 'LF Energy', 'lfenergy'),
+  proposed('confidential-computing', 'Confidential Computing', 'ccc'),
+  proposed('dpdk', 'DPDK', 'dpdk'),
+  proposed('cloud-foundry', 'Cloud Foundry', 'cloud-foundry'),
+  proposed('px4', 'PX4', 'px4'),
+  proposed('prestocon', 'PrestoCon', 'presto-project'),
+  proposed('sonic', 'SONiC', 'sonic-foundation'),
+  proposed('egeria', 'Egeria', 'odpi-egeria'),
+  proposed('automotive-linux', 'Automotive Linux', 'agl'),
+  proposed('als', 'ALS', 'agl'),
+  proposed('openapi', 'OpenAPI', 'openapi'),
+  proposed('linux-foundation-research', 'Linux Foundation Research', 'tlf'),
+  proposed('member-summit', 'Member Summit', 'tlf'),
+  proposed('embedded-linux-conference', 'Embedded Linux Conference', 'tlf'),
+  proposed('elc', 'ELC', 'tlf'),
+  proposed('oss', 'OSS', 'tlf'),
   rule(
     'open-source-summit-url',
     { activityUrl: 'events.linuxfoundation.org/open-source-summit' },
