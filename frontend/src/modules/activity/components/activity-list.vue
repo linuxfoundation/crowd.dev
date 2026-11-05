@@ -80,6 +80,8 @@ import { storeToRefs } from 'pinia';
 import { activityFilters, activitySearchFilter } from '@/modules/activity/config/filters/main';
 import AppLoadMore from '@/shared/button/load-more.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
+import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import { mergeActivityPages, useActivitiesQuery } from '@/modules/activity/queries/useActivitiesQuery';
 
 // const sorterFilter = ref('trending');
 
@@ -92,12 +94,17 @@ defineProps({
 });
 
 const activityStore = useActivityStore();
-const {
-  filters, activities, totalActivities, savedFilterBody, limit, timestamp,
-} = storeToRefs(activityStore);
-const { fetchActivities } = activityStore;
+const { filters } = storeToRefs(activityStore);
+const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const loading = ref(false);
+const params = ref(null);
+const {
+  data, isFetching, isError, fetchNextPage,
+} = useActivitiesQuery(params);
+
+const loading = computed(() => !params.value || isFetching.value);
+const activities = computed(() => (isError.value || !data.value ? [] : mergeActivityPages(data.value.pages)));
+const totalActivities = computed(() => (isError.value || !data.value ? 0 : data.value.pages[0].count));
 
 filters.value = {
   search: '',
@@ -121,68 +128,20 @@ const emptyState = computed(() => ({
 const isLoadMoreVisible = computed(() => activities.value.length < totalActivities.value);
 
 const onLoadMore = () => {
-  timestamp.value = activities.value.at(-1).timestamp;
-
-  if (savedFilterBody.value.and) {
-    savedFilterBody.value.and = savedFilterBody.value.and.reduce((acc, filter) => {
-      const newFilter = { ...filter };
-
-      if (newFilter.timestamp) {
-        newFilter.timestamp = {
-          ...newFilter.timestamp,
-          lte: timestamp.value,
-        };
-      }
-
-      acc.push(newFilter);
-
-      return acc;
-    }, []);
-  } else {
-    savedFilterBody.value.and = [
-      {
-        timestamp: {
-          lte: timestamp.value,
-        },
-      },
-    ];
-  }
-
-  fetch({
-    ...savedFilterBody.value,
-    limit: limit.value,
-    append: true,
-  });
+  fetchNextPage();
 };
 
 const fetch = ({
-  filter, limit = 50, orderBy, body, append,
+  filter, limit = 50, orderBy, body,
 }) => {
-  loading.value = true;
-
-  const payloadFilter = { ...filter };
-  if (!payloadFilter.and) {
-    payloadFilter.and = [];
-  }
-
-  payloadFilter.and.push({
-    timestamp: {
-      lte: timestamp.value,
-    },
-  });
-
-  fetchActivities({
-    body: {
-      ...body,
-      filter: payloadFilter,
-      limit,
-      orderBy,
-    },
-    append,
-  })
-    .finally(() => {
-      loading.value = false;
-    });
+  params.value = {
+    projectGroupId: selectedProjectGroup.value?.id,
+    filter,
+    body,
+    orderBy,
+    limit,
+    timestamp: dateHelper().toISOString(),
+  };
 };
 </script>
 
