@@ -33,6 +33,10 @@ import type {
   StackOverflowOnboardPayload,
 } from '@/modules/integration/types/ConnectPayloads';
 
+// shortcut: segmentId is always set after connect, as Vuex assumed. revisit: when IntegrationRecord.segmentId is required
+const notifyProgress = (platform: string, segmentId?: string | null) =>
+  showIntegrationProgressNotification(platform, segmentId as string);
+
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
 
 const FIRST_ACTIVITIES_MESSAGE =
@@ -428,7 +432,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         targetSegmentId,
       );
       upsert(integration);
-      showIntegrationProgressNotification('reddit', integration.segmentId);
+      notifyProgress('reddit', integration.segmentId);
       pushToIntegration({ id: targetSegmentId, grandparentId });
     } catch (error) {
       Errors.handle(error);
@@ -448,7 +452,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         (integration.settings as { organizations: unknown[] } | undefined)?.organizations.length ===
         1
       ) {
-        showIntegrationProgressNotification('linkedin', integration.segmentId);
+        notifyProgress('linkedin', integration.segmentId);
       }
       pushToIntegration({ id: integration.segmentId, grandparentId });
     } catch (error) {
@@ -467,7 +471,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         targetSegmentId,
       );
       upsert(integration);
-      showIntegrationProgressNotification('linkedin', integration.segmentId);
+      notifyProgress('linkedin', integration.segmentId);
       pushToIntegration({ id: integration.segmentId, grandparentId });
     } catch (error) {
       Errors.handle(error);
@@ -478,7 +482,7 @@ export const useIntegrationStore = defineStore('integration', () => {
     try {
       const integration: IntegrationRecord = await IntegrationService.discordConnect(guildId);
       upsert(integration);
-      showIntegrationProgressNotification('discord', integration.segmentId);
+      notifyProgress('discord', integration.segmentId);
       pushToIntegration({ id: integration.segmentId });
     } catch (error) {
       Errors.handle(error);
@@ -500,7 +504,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         [targetSegmentId],
       );
       upsert(integration);
-      showIntegrationProgressNotification('devto', integration.segmentId);
+      notifyProgress('devto', integration.segmentId);
       pushToIntegration({ id: integration.segmentId, grandparentId });
     } catch (error) {
       Errors.handle(error);
@@ -520,7 +524,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         [targetSegmentId],
       );
       upsert(integration);
-      showIntegrationProgressNotification('hackernews', integration.segmentId);
+      notifyProgress('hackernews', integration.segmentId);
       pushToIntegration({ id: integration.segmentId, grandparentId });
     } catch (error) {
       Errors.handle(error);
@@ -540,7 +544,7 @@ export const useIntegrationStore = defineStore('integration', () => {
         keywords,
       );
       upsert(integration);
-      showIntegrationProgressNotification('stackoverflow', targetSegmentId);
+      notifyProgress('stackoverflow', targetSegmentId);
       pushToIntegration({ id: targetSegmentId, grandparentId });
     } catch (error) {
       Errors.handle(error);
