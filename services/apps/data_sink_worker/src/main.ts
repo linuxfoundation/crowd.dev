@@ -5,7 +5,14 @@ import { QueueFactory } from '@crowd/queue'
 import { getRedisClient } from '@crowd/redis'
 import { Client as TemporalClient, getTemporalClient } from '@crowd/temporal'
 
-import { DB_CONFIG, QUEUE_CONFIG, REDIS_CONFIG, TEMPORAL_CONFIG, WORKER_SETTINGS } from './conf'
+import {
+  DB_CONFIG,
+  DB_TIMEOUTS_CONFIG,
+  QUEUE_CONFIG,
+  REDIS_CONFIG,
+  TEMPORAL_CONFIG,
+  WORKER_SETTINGS,
+} from './conf'
 import { WorkerQueueReceiver } from './queue'
 
 const log = getServiceLogger()
@@ -23,7 +30,10 @@ setImmediate(async () => {
 
   const queueClient = QueueFactory.createQueueService(QUEUE_CONFIG())
 
-  const dbConnection = await getDbConnection(DB_CONFIG(), MAX_CONCURRENT_PROCESSING)
+  const dbConnection = await getDbConnection(
+    { ...DB_CONFIG(), ...DB_TIMEOUTS_CONFIG() },
+    MAX_CONCURRENT_PROCESSING,
+  )
 
   const redisClient = await getRedisClient(REDIS_CONFIG())
 
