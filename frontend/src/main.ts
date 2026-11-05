@@ -82,12 +82,12 @@ declare module 'vue' {
   app.use(store).use(router).mount('#app');
 
   if (config.env === 'production' && config.hotjarKey) {
+    // prettier-ignore
     (function (h, o, t, j, a, r) {
       // @ts-ignore
-      h.hj =
-        h.hj ||
+      h.hj = h.hj
         // @ts-ignore
-        function (...args) {
+        || function (...args) {
           // @ts-ignore
           (h.hj.q = h.hj.q || []).push(args);
         };
@@ -103,7 +103,12 @@ declare module 'vue' {
       r.src = t + h._hjSettings.hjid + j + h._hjSettings.hjsv;
       // @ts-ignore
       a.appendChild(r);
-    })(window, document, 'https://static.hotjar.com/c/hotjar-', '.js?sv=');
+    }(
+      window,
+      document,
+      'https://static.hotjar.com/c/hotjar-',
+      '.js?sv=',
+    ));
   }
 
   if (config.env === 'production' && config.datadog.rum) {
