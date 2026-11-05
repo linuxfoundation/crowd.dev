@@ -149,7 +149,7 @@ import { storeToRefs } from 'pinia';
 import {
   watch, ref, computed, onUnmounted,
 } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { useRoute } from 'vue-router';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';

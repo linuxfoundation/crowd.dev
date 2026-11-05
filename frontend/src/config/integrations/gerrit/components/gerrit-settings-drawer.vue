@@ -139,7 +139,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import LfGerritSettingsEmpty from '@/config/integrations/gerrit/components/gerrit-settings-empty.vue';

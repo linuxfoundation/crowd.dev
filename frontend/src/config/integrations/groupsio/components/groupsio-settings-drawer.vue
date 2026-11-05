@@ -268,7 +268,7 @@ import groupsio from '@/config/integrations/groupsio/config';
 import AppDrawer from '@/shared/drawer/drawer.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import formChangeDetector from '@/shared/form/form-change';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
   EventType,

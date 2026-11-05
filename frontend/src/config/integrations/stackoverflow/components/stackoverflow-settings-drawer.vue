@@ -155,7 +155,7 @@ import isEqual from 'lodash/isEqual';
 import stackoverflow from '@/config/integrations/stackoverflow/config';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import config from '@/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';

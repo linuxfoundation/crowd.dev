@@ -218,7 +218,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import AppFormItem from '@/shared/form/form-item.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';

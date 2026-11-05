@@ -49,7 +49,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

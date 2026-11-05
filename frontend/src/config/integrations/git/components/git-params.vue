@@ -88,7 +88,7 @@ import {
   ref, onMounted, watch, computed,
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import pluralize from 'pluralize';
 import { lfIntegrations } from '@/config/integrations';
 import { Platform } from '@/shared/modules/platform/types/Platform';
@@ -112,7 +112,7 @@ const nativeRepos = computed(() => repositories.value.filter((r) => !mirroredRep
 const fetchRepositories = () => {
   if (!props.integration?.id) return;
 
-  IntegrationService.fetchGitMappings(props.integration)
+  IntegrationService.fetchGitMappings({ id: props.integration.id, segmentId: props.integration.segmentId })
     .then((res: IntegrationMapping[]) => {
       const reposFromMappings = res.map((r) => r.url);
       repositories.value = reposFromMappings.length > 0 ? reposFromMappings : [...(props.integration.settings?.remotes || [])];
