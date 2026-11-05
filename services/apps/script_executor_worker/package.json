@@ -10,6 +10,7 @@
     "cleanup-fork-activities": "tsx src/bin/cleanup-fork-activities-and-maintainers.ts",
     "cleanup-member-aggregates": "tsx src/bin/cleanup-member-aggregates.ts",
     "cleanup-activities-by-platform-and-type": "tsx src/bin/cleanup-activities-by-platform-and-type.ts",
+    "cleanup-null-channel-duplicates": "tsx src/bin/cleanup-null-channel-duplicates.ts",
     "recalculate-enrichment-affiliations": "tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "tsx src/bin/recalculate-all-affiliations.ts",
     "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts"
