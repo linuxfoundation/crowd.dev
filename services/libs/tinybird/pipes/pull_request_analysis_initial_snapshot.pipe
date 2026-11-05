@@ -1,192 +1,65 @@
 DESCRIPTION >
-    Bootstrap/full-rebuild pipe for pull_requests_analyzed. Do not run single-shot
-    (`--wait` with no bucket params) — it does not finish against the full dataset.
-    Run bucketed instead, one bucket_id at a time (see lambda-architecture.md):
+    Full rebuild of `pull_requests_analyzed` from the activity history, with the same rules as
+    `pull_request_analysis_incremental_copy`. Run it bucketed into an empty table (see lambda-architecture.md):
     tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --mode append
 
-NODE pull_request_opened
+NODE pr_events
+DESCRIPTION >
+    PR events of this bucket. Buckets split by PR, so every event of a PR, in any segment, lands in the same run.
+
 SQL >
     %
     SELECT
-        activityId as id,
+        activityId,
+        if(
+            type IN (
+                'pull_request-opened',
+                'merge_request-opened',
+                'changeset-created',
+                'changeset-abandoned',
+                'changeset-merged'
+            ),
+            sourceId,
+            if(type = 'patchset_approval-created', splitByChar('-', sourceParentId)[1], sourceParentId)
+        ) AS prSourceId,
         sourceId,
         lower(channel) AS channel,
-        timestamp AS openedAt,
+        domain(channel) AS host,
+        timestamp AS ts,
         segmentId,
         gitChangedLinesBucket,
         memberId,
         organizationId,
         platform,
-        updatedAt
+        updatedAt,
+        type,
+        pullRequestReviewState
     FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        (type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created')
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-
-NODE pull_request_first_assigned
-SQL >
-    %
-    SELECT sourceParentId, argMin(updatedAt, timestamp) AS updatedAt, min(timestamp) AS assignedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
-        type IN ('pull_request-assigned', 'merge_request-assigned')
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
-    ORDER BY assignedAt DESC
-
-NODE pull_request_first_review_requested
-SQL >
-    %
-    SELECT
-        sourceParentId, argMin(updatedAt, timestamp) AS updatedAt, MIN(timestamp) AS reviewRequestedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
-        (type = 'pull_request-review-requested' OR type = 'merge_request-review-requested')
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
-
-NODE pull_request_first_reviewed
-DESCRIPTION >
-    Non-author reviews only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
-
-SQL >
-    %
-    SELECT
-        r.prSourceId AS sourceParentId,
-        argMin(r.updatedAt, r.timestamp) AS updatedAt,
-        MIN(r.timestamp) AS reviewedAt
-    FROM
-        (
-            SELECT
-                if(
-                    type = 'patchset_approval-created',
-                    splitByChar('-', sourceParentId)[1],
-                    sourceParentId
-                ) AS prSourceId,
-                timestamp,
-                updatedAt,
-                memberId
-            FROM activityRelations_enriched_deduplicated_bucket_union
-            WHERE
-                sourceParentId <> ''
-                and (
-                    type = 'pull_request-reviewed'
-                    OR type = 'merge_request-review-changes-requested'
-                    OR type = 'merge_request-review-approved'
-                    OR type = 'patchset_approval-created'
-                )
-                {% if defined(bucket_id) %}
-                    AND cityHash64(segmentId)
-                    % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-                    = {{
-                        UInt8(
-                            bucket_id,
-                            0,
-                            description="Bucket index to process (0 to num_buckets-1)",
-                            required=False,
-                        )
-                    }}
-                {% end %}
-        ) AS r
-    INNER JOIN pull_request_opened opened ON r.prSourceId = opened.sourceId
-    WHERE r.memberId != '' AND opened.memberId != '' AND r.memberId != opened.memberId
-    GROUP BY r.prSourceId
-
-NODE pull_request_first_review_approved
-DESCRIPTION >
-    Non-author approvals only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
-
-SQL >
-    %
-    SELECT
-        r.prSourceId AS sourceParentId,
-        argMin(r.updatedAt, r.timestamp) AS updatedAt,
-        MIN(r.timestamp) AS approvedAt
-    FROM
-        (
-            SELECT
-                if(
-                    type = 'patchset_approval-created',
-                    splitByChar('-', sourceParentId)[1],
-                    sourceParentId
-                ) AS prSourceId,
-                timestamp,
-                updatedAt,
-                memberId
-            FROM activityRelations_enriched_deduplicated_bucket_union
-            WHERE
-                (
-                    (type = 'pull_request-reviewed' and pullRequestReviewState = 'APPROVED')
-                    OR type = 'merge_request-review-approved'
-                    OR type = 'patchset_approval-created'
-                )
-                {% if defined(bucket_id) %}
-                    AND cityHash64(segmentId)
-                    % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-                    = {{
-                        UInt8(
-                            bucket_id,
-                            0,
-                            description="Bucket index to process (0 to num_buckets-1)",
-                            required=False,
-                        )
-                    }}
-                {% end %}
-        ) AS r
-    INNER JOIN pull_request_opened opened ON r.prSourceId = opened.sourceId
-    WHERE r.memberId != '' AND opened.memberId != '' AND r.memberId != opened.memberId
-    GROUP BY r.prSourceId
-
-NODE pull_request_first_closed
-SQL >
-    %
-    SELECT
-        if(type = 'changeset-abandoned', sourceId, sourceParentId) AS sourceParentId,
-        argMin(updatedAt, timestamp) AS updatedAt,
-        MIN(timestamp) AS closedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
-        (
-            type = 'pull_request-closed'
-            OR type = 'merge_request-closed'
-            OR type = 'changeset-closed'
-            OR type = 'changeset-abandoned'
+        type IN (
+            'pull_request-opened',
+            'merge_request-opened',
+            'changeset-created',
+            'pull_request-assigned',
+            'merge_request-assigned',
+            'pull_request-review-requested',
+            'merge_request-review-requested',
+            'pull_request-reviewed',
+            'merge_request-review-changes-requested',
+            'patchset-created',
+            'merge_request-review-approved',
+            'patchset_approval-created',
+            'pull_request-closed',
+            'merge_request-closed',
+            'changeset-closed',
+            'changeset-abandoned',
+            'pull_request-merged',
+            'merge_request-merged',
+            'changeset-merged'
         )
+        AND prSourceId != ''
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
+            AND cityHash64(prSourceId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
             = {{
                 UInt8(
@@ -197,161 +70,158 @@ SQL >
                 )
             }}
         {% end %}
-    GROUP BY sourceParentId
 
-NODE pull_request_first_merged
+NODE pr_authors
 DESCRIPTION >
-    Resolved PRs are the ones that are either closed or merged
+    Every author id of each PR, from its opened events.
 
 SQL >
-    %
-    SELECT
-        if(type = 'changeset-merged', sourceId, sourceParentId) AS sourceParentId,
-        argMin(updatedAt, timestamp) AS updatedAt,
-        MIN(timestamp) AS mergedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
+    SELECT prSourceId, host, groupUniqArray(memberId) AS authorIds
+    FROM pr_events
     WHERE
-        (type = 'pull_request-merged' OR type = 'merge_request-merged' OR type = 'changeset-merged')
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
+        type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created') AND memberId != ''
+    GROUP BY prSourceId, host
 
-NODE pull_request_first_resolved
+NODE pr_non_author
+DESCRIPTION >
+    Drops reviews and approvals by any of the PR's author ids, or by anyone when the author is unknown. Other event types
+    pass through.
+
 SQL >
-    %
-    SELECT
-        if(
-            type IN ('changeset-abandoned', 'changeset-merged'), sourceId, sourceParentId
-        ) AS sourceParentId,
-        argMin(updatedAt, timestamp) AS updatedAt,
-        MIN(timestamp) AS resolvedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
+    SELECT e.*
+    FROM pr_events AS e
+    LEFT JOIN pr_authors AS a ON a.prSourceId = e.prSourceId AND a.host = e.host
     WHERE
-        (
-            type = 'pull_request-closed'
-            OR type = 'pull_request-merged'
-            OR type = 'merge_request-closed'
-            OR type = 'merge_request-merged'
-            OR type = 'changeset-merged'
-            OR type = 'changeset-closed'
-            OR type = 'changeset-abandoned'
+        e.type NOT IN (
+            'pull_request-reviewed',
+            'merge_request-review-changes-requested',
+            'merge_request-review-approved',
+            'patchset_approval-created'
         )
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
+        OR (e.memberId != '' AND notEmpty(a.authorIds) AND NOT has(a.authorIds, e.memberId))
 
-NODE patchsets_count
+NODE pr_opened
 DESCRIPTION >
-    Count the number of patchsets for each Gerrit changeset
+    One row per PR, segment and repository, with the identity of its first opened event.
 
-SQL >
-    %
-    SELECT sourceParentId, toInt64(COUNT(*)) AS numberOfPatchsets
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
-        type = 'patchset-created' AND sourceParentId != ''
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
-                )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
-
-NODE pull_request_analysis_results_merged
 SQL >
     SELECT
-        pr_opened.id,
-        pr_opened.sourceId,
-        pr_opened.openedAt,
-        pr_opened.segmentId,
-        pr_opened.channel,
-        pr_opened.memberId,
-        pr_opened.organizationId,
-        pr_opened.gitChangedLinesBucket,
-        IF(assigned.assignedAt = toDateTime(0), NULL, assigned.assignedAt) AS assignedAt,
-        IF(
-            review_requested.reviewRequestedAt = toDateTime(0), NULL, review_requested.reviewRequestedAt
+        prSourceId,
+        segmentId,
+        channel,
+        argMin(activityId, ts) AS id,
+        argMin(gitChangedLinesBucket, ts) AS gitChangedLinesBucket,
+        argMin(memberId, ts) AS memberId,
+        argMin(organizationId, ts) AS organizationId,
+        argMin(platform, ts) AS platform,
+        min(ts) AS openedAt
+    FROM pr_events
+    WHERE type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created') AND prSourceId != ''
+    GROUP BY prSourceId, segmentId, channel
+
+NODE pr_lifecycle
+DESCRIPTION >
+    Lifecycle per PR and host, so every row of the PR gets it across segments and renamed repositories. Gerrit change
+    numbers repeat across hosts. `numberOfPatchsets` is the highest Gerrit patchset number.
+
+SQL >
+    SELECT
+        prSourceId,
+        host,
+        toInt64(
+            maxIf(toUInt32OrZero(splitByChar('-', sourceId)[-1]), type = 'patchset-created')
+        ) AS numberOfPatchsets,
+        minIf(ts, type IN ('pull_request-assigned', 'merge_request-assigned')) AS assignedAt,
+        minIf(
+            ts, type IN ('pull_request-review-requested', 'merge_request-review-requested')
         ) AS reviewRequestedAt,
-        IF(reviewed.reviewedAt = toDateTime(0), NULL, reviewed.reviewedAt) AS reviewedAt,
-        IF(approved.approvedAt = toDateTime(0), NULL, approved.approvedAt) AS approvedAt,
-        IF(closed.closedAt = toDateTime(0), NULL, closed.closedAt) AS closedAt,
-        IF(merged.mergedAt = toDateTime(0), NULL, merged.mergedAt) AS mergedAt,
-        IF(resolved.resolvedAt = toDateTime(0), NULL, resolved.resolvedAt) AS resolvedAt,
-        IF(
+        minIf(
+            ts,
+            type IN (
+                'pull_request-reviewed',
+                'merge_request-review-changes-requested',
+                'merge_request-review-approved',
+                'patchset_approval-created'
+            )
+        ) AS reviewedAt,
+        minIf(
+            ts,
+            (type = 'pull_request-reviewed' AND pullRequestReviewState = 'APPROVED')
+            OR type IN ('merge_request-review-approved', 'patchset_approval-created')
+        ) AS approvedAt,
+        minIf(
+            ts,
+            type IN (
+                'pull_request-closed', 'merge_request-closed', 'changeset-closed', 'changeset-abandoned'
+            )
+        ) AS closedAt,
+        minIf(
+            ts, type IN ('pull_request-merged', 'merge_request-merged', 'changeset-merged')
+        ) AS mergedAt,
+        minIf(
+            ts,
+            type IN (
+                'pull_request-closed',
+                'pull_request-merged',
+                'merge_request-closed',
+                'merge_request-merged',
+                'changeset-merged',
+                'changeset-closed',
+                'changeset-abandoned'
+            )
+        ) AS resolvedAt,
+        toDateTime(toStartOfHour(max(updatedAt))) + INTERVAL 1 HOUR AS snapshotId
+    FROM pr_non_author
+    WHERE prSourceId != ''
+    GROUP BY prSourceId, host
+
+NODE pr_analysis_results
+DESCRIPTION >
+    The PR's lifecycle on each of its rows. Aggregates with no matching event (`minIf` over no rows) come back as epoch
+    and are stored as NULL.
+
+SQL >
+    SELECT
+        o.id AS id,
+        o.prSourceId AS sourceId,
+        o.openedAt AS openedAt,
+        o.segmentId AS segmentId,
+        o.channel AS channel,
+        o.memberId AS memberId,
+        o.organizationId AS organizationId,
+        o.gitChangedLinesBucket AS gitChangedLinesBucket,
+        if(l.assignedAt = toDateTime(0), NULL, l.assignedAt) AS assignedAt,
+        if(l.reviewRequestedAt = toDateTime(0), NULL, l.reviewRequestedAt) AS reviewRequestedAt,
+        if(l.reviewedAt = toDateTime(0), NULL, l.reviewedAt) AS reviewedAt,
+        if(l.approvedAt = toDateTime(0), NULL, l.approvedAt) AS approvedAt,
+        if(l.closedAt = toDateTime(0), NULL, l.closedAt) AS closedAt,
+        if(l.mergedAt = toDateTime(0), NULL, l.mergedAt) AS mergedAt,
+        if(l.resolvedAt = toDateTime(0), NULL, l.resolvedAt) AS resolvedAt,
+        if(
             assignedAt IS NULL, NULL, toUnixTimestamp(assignedAt) - toUnixTimestamp(openedAt)
         ) AS assignedInSeconds,
-        IF(
+        if(
             reviewRequestedAt IS NULL,
             NULL,
             toUnixTimestamp(reviewRequestedAt) - toUnixTimestamp(openedAt)
         ) AS reviewRequestedInSeconds,
-        IF(
+        if(
             reviewedAt IS NULL, NULL, toUnixTimestamp(reviewedAt) - toUnixTimestamp(openedAt)
         ) AS reviewedInSeconds,
-        IF(
+        if(
             closedAt IS NULL, NULL, toUnixTimestamp(closedAt) - toUnixTimestamp(openedAt)
         ) AS closedInSeconds,
-        IF(
+        if(
             mergedAt IS NULL, NULL, toUnixTimestamp(mergedAt) - toUnixTimestamp(openedAt)
         ) AS mergedInSeconds,
-        IF(
+        if(
             resolvedAt IS NULL, NULL, toUnixTimestamp(resolvedAt) - toUnixTimestamp(openedAt)
         ) AS resolvedInSeconds,
-        pr_opened.platform,
-        patchsets.numberOfPatchsets,
-        toStartOfInterval(
-            greatest(
-                pr_opened.updatedAt,
-                assigned.updatedAt,
-                review_requested.updatedAt,
-                reviewed.updatedAt,
-                approved.updatedAt,
-                closed.updatedAt,
-                merged.updatedAt,
-                resolved.updatedAt
-            ),
-            INTERVAL 1 hour
-        )
-        + INTERVAL 1 hour as snapshotId
-    FROM pull_request_opened pr_opened
-    LEFT JOIN pull_request_first_assigned AS assigned ON pr_opened.sourceId = assigned.sourceParentId
-    LEFT JOIN
-        pull_request_first_review_requested AS review_requested
-        ON pr_opened.sourceId = review_requested.sourceParentId
-    LEFT JOIN pull_request_first_reviewed AS reviewed ON pr_opened.sourceId = reviewed.sourceParentId
-    LEFT JOIN
-        pull_request_first_review_approved AS approved ON pr_opened.sourceId = approved.sourceParentId
-    LEFT JOIN pull_request_first_closed AS closed ON pr_opened.sourceId = closed.sourceParentId
-    LEFT JOIN pull_request_first_merged AS merged ON pr_opened.sourceId = merged.sourceParentId
-    LEFT JOIN pull_request_first_resolved as resolved on pr_opened.sourceId = resolved.sourceParentId
-    LEFT JOIN patchsets_count AS patchsets ON pr_opened.sourceId = patchsets.sourceParentId
+        o.platform AS platform,
+        if(l.numberOfPatchsets > 0, l.numberOfPatchsets, NULL) AS numberOfPatchsets,
+        l.snapshotId AS snapshotId
+    FROM pr_opened AS o
+    LEFT JOIN pr_lifecycle AS l ON l.prSourceId = o.prSourceId AND l.host = domain(o.channel)
 
 TYPE COPY
 TARGET_DATASOURCE pull_requests_analyzed
