@@ -45,6 +45,10 @@
 <script setup lang="ts">
 import LfButton from '@/ui-kit/button/Button.vue';
 
+defineOptions({
+  name: 'AppError404Page',
+});
+
 withDefaults(
   defineProps<{
     code?: number | null;
@@ -67,11 +71,5 @@ const imageUrl = (code: number | null) => {
     default:
       return new URL('@/assets/images/error/404.svg', import.meta.url).href;
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppError404Page',
 };
 </script>

@@ -27,6 +27,10 @@
 import type { RouteLocationRaw } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfMenuLink',
+});
+
 const props = defineProps<{
   isCollapsed: boolean;
   to: RouteLocationRaw,
@@ -34,10 +38,4 @@ const props = defineProps<{
   title: string,
   disabled?: boolean,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMenuLink',
-};
 </script>

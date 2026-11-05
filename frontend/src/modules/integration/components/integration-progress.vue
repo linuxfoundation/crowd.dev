@@ -39,6 +39,10 @@ import { computed } from 'vue';
 import { lfIntegrations } from '@/config/integrations';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppIntegrationProgress',
+});
+
 const props = defineProps<{
   progress: IntegrationProgress | null,
   showBar?: boolean,
@@ -66,10 +70,4 @@ const parts = computed<IntegrationProgressPart[]>(() => {
 
   return Object.values(props.progress.data).sort((a, b) => priority(a.status) - priority(b.status));
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIntegrationProgress',
-};
 </script>
