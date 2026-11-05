@@ -23,6 +23,7 @@ export class GithubPublicClientError extends Error {
 
 export interface IGithubAccount {
   id: string
+  nodeId: string
   login: string
 }
 

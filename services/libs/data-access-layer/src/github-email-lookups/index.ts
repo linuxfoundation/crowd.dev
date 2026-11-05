@@ -43,7 +43,9 @@ async function findUnresolvedGitAuthors(
 ): Promise<IGitAuthor[]> {
   return qx.select(
     `
-      select i."memberId", i.email, i."integrationId", c."repoUrl", c."commitSha"
+      -- one email per member: resolving it can merge the member away, so the rest wait a pass
+      select distinct on (i."memberId")
+        i."memberId", i.email, i."integrationId", c."repoUrl", c."commitSha"
       from unnest($(memberIds)::uuid[], $(emails)::text[], $(integrationIds)::uuid[])
         as i("memberId", email, "integrationId")
       cross join lateral (
@@ -65,6 +67,7 @@ async function findUnresolvedGitAuthors(
             and other."deletedAt" is null
             and (other.platform <> $(platform) or lower(other.value) like '%@users.noreply.github.com')
         )
+      order by i."memberId", i.email
     `,
     {
       platform: PlatformType.GIT,

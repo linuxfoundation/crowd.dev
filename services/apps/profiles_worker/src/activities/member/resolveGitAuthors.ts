@@ -20,12 +20,12 @@ import {
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { svc } from '../../main'
-import { syncMember } from './memberUpdate'
 
 export interface IResolveGitAuthorsPageResult {
   nextEmail: string | null
   lookups: number
   rateLimited: boolean
+  memberIdsToSync: string[]
 }
 
 export async function resolveGitAuthorsPage(
@@ -34,39 +34,44 @@ export async function resolveGitAuthorsPage(
   const qx = pgpQx(svc.postgres.writer.connection())
   const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
   const { authors, nextEmail } = await findGitAuthorsPage(qx, afterEmail, 200)
+  const memberIdsToSync: string[] = []
 
   for (const [index, author] of authors.entries()) {
     try {
-      await resolveGitAuthor(qx, memberService, author)
+      const result = await resolveGitAuthor(qx, memberService, author)
+      if (result === 'identity-added') {
+        memberIdsToSync.push(author.memberId)
+      }
     } catch (err) {
       if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
         svc.log.warn('GitHub rate limit reached, pausing git author lookups')
-        return { nextEmail: afterEmail, lookups: index, rateLimited: true }
+        return { nextEmail: afterEmail, lookups: index, rateLimited: true, memberIdsToSync }
       }
       throw err
     }
   }
 
-  return { nextEmail, lookups: authors.length, rateLimited: false }
+  return { nextEmail, lookups: authors.length, rateLimited: false, memberIdsToSync }
 }
 
 async function resolveGitAuthor(
   qx: QueryExecutor,
   memberService: CommonMemberService,
   author: IGitAuthor,
-): Promise<void> {
+): Promise<GithubEmailLookupResult | null> {
   const token = await getGithubInstallationToken()
   const commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
 
   if (commit.status !== 'found') {
     await recordLookup(qx, author, commit.status)
-    return
+    return commit.status
   }
 
   const result = await linkGithubAccount(qx, memberService, author, commit.account)
   if (result) {
     await recordLookup(qx, author, result, commit.account)
   }
+  return result
 }
 
 async function linkGithubAccount(
@@ -80,7 +85,7 @@ async function linkGithubAccount(
   if (!owner) {
     return addGithubIdentity(qx, author, account)
   }
-  if (owner.githubId && owner.githubId !== account.id) {
+  if (owner.githubId && ![account.id, account.nodeId].includes(owner.githubId)) {
     return 'github-id-mismatch'
   }
   if (await isNoMergePair(qx, author.memberId, owner.memberId)) {
@@ -113,12 +118,7 @@ async function addGithubIdentity(
     true,
   )
 
-  if (!identity) {
-    return null
-  }
-
-  await syncMember(author.memberId)
-  return 'identity-added'
+  return identity ? 'identity-added' : null
 }
 
 async function isNoMergePair(

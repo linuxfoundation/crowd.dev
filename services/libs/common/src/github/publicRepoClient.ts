@@ -293,7 +293,7 @@ export async function fetchPublicOrgRepos(
 }
 
 interface ICommitItem {
-  author: { id: number; login: string } | null
+  author: { id: number; node_id: string; login: string } | null
 }
 
 const COMMIT_NOT_FOUND_STATUSES = new Set([403, 404, 409, 422, 451])
@@ -337,7 +337,10 @@ export async function fetchCommitAuthor(
     return { status: 'no-github-account' }
   }
 
-  return { status: 'found', account: { id: String(author.id), login: author.login } }
+  return {
+    status: 'found',
+    account: { id: String(author.id), nodeId: author.node_id, login: author.login },
+  }
 }
 
 export async function fetchPublicRepoReadme(
