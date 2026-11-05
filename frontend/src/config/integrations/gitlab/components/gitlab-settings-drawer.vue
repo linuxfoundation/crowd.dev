@@ -218,6 +218,10 @@ import DrawerFooterButtons from '@/modules/admin/modules/integration/components/
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import AppGitlabSettingsBulkSelect from './gitlab-settings-bulk-select.vue';
 
+defineOptions({
+  name: 'AppGitlabSettingsDrawer',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   integration: GitlabIntegration;
@@ -484,10 +488,4 @@ watch(form, (newForm) => {
   // Force reactivity update
   selectedRepos.value = { ...selectedRepos.value };
 }, { deep: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGitlabSettingsDrawer',
-};
 </script>
