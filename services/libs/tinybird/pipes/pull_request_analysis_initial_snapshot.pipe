@@ -83,8 +83,19 @@ SQL >
     FROM
         (
             SELECT
-                activityId, sourceId, sourceParentId, channel, timestamp, segmentId, gitChangedLinesBucket,
-                memberId, organizationId, platform, updatedAt, type, pullRequestReviewState
+                activityId,
+                sourceId,
+                sourceParentId,
+                channel,
+                timestamp,
+                segmentId,
+                gitChangedLinesBucket,
+                memberId,
+                organizationId,
+                platform,
+                updatedAt,
+                type,
+                pullRequestReviewState
             FROM activityRelations_enriched_deduplicated_bucket_union
             WHERE activityId NOT IN (SELECT activityId FROM pr_recent_events)
             UNION ALL
@@ -172,7 +183,9 @@ SQL >
         argMin(platform, ts) AS platform,
         min(ts) AS openedAt
     FROM pr_events
-    WHERE type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created') AND prSourceId != ''
+    WHERE
+        type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        AND prSourceId != ''
     GROUP BY prSourceId, segmentId, channel
 
 NODE pr_lifecycle

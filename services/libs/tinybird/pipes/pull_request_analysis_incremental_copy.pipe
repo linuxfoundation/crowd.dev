@@ -128,7 +128,9 @@ SQL >
         argMin(platform, ts) AS platform,
         min(ts) AS openedAt
     FROM pr_delta_events
-    WHERE type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created') AND prSourceId != ''
+    WHERE
+        type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        AND prSourceId != ''
     GROUP BY prSourceId, segmentId, channel
 
 NODE pr_delta_lifecycle
