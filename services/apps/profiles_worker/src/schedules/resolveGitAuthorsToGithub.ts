@@ -8,10 +8,10 @@ export const scheduleResolveGitAuthorsToGithub = async () => {
     await svc.temporal.schedule.create({
       scheduleId: 'resolve-git-authors-to-github',
       spec: {
-        cronExpressions: ['30 * * * *'],
+        cronExpressions: ['0 2 * * *'],
       },
       policies: {
-        overlap: ScheduleOverlapPolicy.SKIP,
+        overlap: ScheduleOverlapPolicy.BUFFER_ONE,
         catchupWindow: '1 minute',
       },
       action: {

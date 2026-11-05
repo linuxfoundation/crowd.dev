@@ -10,8 +10,8 @@ const { getResolveGitAuthorsCursor, saveResolveGitAuthorsCursor, resolveGitAutho
 
 // The GitHub App token is shared with other workers, and pages with nothing left to look up
 // still grow the workflow history, so each run is capped on both.
-const MAX_LOOKUPS_PER_RUN = 2000
-const MAX_PAGES_PER_RUN = 500
+const MAX_LOOKUPS_PER_RUN = 10_000
+const MAX_PAGES_PER_RUN = 1000
 
 export async function resolveGitAuthorsToGithub(): Promise<void> {
   let afterEmail = await getResolveGitAuthorsCursor()

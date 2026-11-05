@@ -86,7 +86,7 @@ else goes through suggestions.
   `entity_merging_worker`.
 - `script_executor_worker` holds bulk fixes, such as merging members whose identities differ only
   in capitalization.
-- `profiles_worker` links git-only members to GitHub every hour: it asks GitHub who authored one
+- `profiles_worker` links git-only members to GitHub once a day: it asks GitHub who authored one
   of their commits, then merges them into the member that owns that GitHub account (unless the
   pair is in `memberNoMerge` or the stored GitHub ID differs), or adds the login as a verified
   identity. Each email is looked up once, recorded in `githubEmailLookups`.
