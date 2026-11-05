@@ -1,3 +1,62 @@
+interface AppConfig {
+  frontendUrl: {
+    host?: string;
+    protocol?: string;
+  };
+  backendUrl?: string;
+  websocketsUrl?: string;
+  tenantMode: string;
+  isPlanEnabled: boolean;
+  gitHubInstallationUrl?: string;
+  discordInstallationUrl?: string;
+  edition?: string;
+  communityPremium?: string;
+  env?: string;
+  hotjarKey?: string;
+  nangoUrl?: string;
+  typeformId?: string;
+  typeformTitle?: string;
+  stripe: {
+    publishableKey: string;
+    growthPlanPaymentLink: string;
+    customerPortalLink: string;
+  };
+  auth0: {
+    domain?: string;
+    clientId?: string;
+    database?: string;
+  };
+  lf: {
+    tenantId?: string;
+  };
+  isGitEnabled?: string;
+  isGroupsioEnabled?: string;
+  isConfluenceEnabled?: string | boolean;
+  isGerritEnabled?: string;
+  isTwitterEnabled?: string;
+  datadog: {
+    rum: {
+      applicationId?: string;
+      clientToken?: string;
+    };
+  };
+  permissions: {
+    teamUserIds?: string;
+  };
+  intercom: {
+    appId?: string;
+    apiBase: string;
+    auth0IntercomClaim: string;
+    auth0UsernameClaim: string;
+  };
+  segmentKey?: string;
+  isCommunityVersion?: boolean;
+  hasPremiumModules?: boolean;
+  isGitIntegrationEnabled?: boolean;
+  isGroupsioIntegrationEnabled?: boolean;
+  isTwitterIntegrationEnabled?: boolean;
+}
+
 /**
  * Tenant Mode
  * multi: Allow new users to create new tenants.
@@ -11,7 +70,7 @@ const tenantMode = 'multi';
  */
 const isPlanEnabled = true;
 
-const defaultConfig = {
+const defaultConfig: AppConfig = {
   frontendUrl: {
     host: import.meta.env.VUE_APP_FRONTEND_HOST,
     protocol: import.meta.env.VUE_APP_FRONTEND_PROTOCOL,
@@ -65,7 +124,7 @@ const defaultConfig = {
   segmentKey: import.meta.env.VUE_APP_SEGMENT_KEY,
 };
 
-const composedConfig = {
+const composedConfig: AppConfig = {
   frontendUrl: {
     host: 'CROWD_VUE_APP_FRONTEND_HOST',
     protocol: 'CROWD_VUE_APP_FRONTEND_PROTOCOL',
@@ -84,10 +143,9 @@ const composedConfig = {
   typeformId: 'CROWD_VUE_APP_TYPEFORM_ID',
   typeformTitle: 'CROWD_VUE_APP_TYPEFORM_TITLE',
   stripe: {
-    publishableKey: 'CROWD_VUE_APP_STRIPE_PUBLISHABLE_KEY' || '',
-    growthPlanPaymentLink:
-      'CROWD_VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK' || '',
-    customerPortalLink: 'CROWD_VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK' || '',
+    publishableKey: 'CROWD_VUE_APP_STRIPE_PUBLISHABLE_KEY',
+    growthPlanPaymentLink: 'CROWD_VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK',
+    customerPortalLink: 'CROWD_VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK',
   },
   auth0: {
     domain: 'CROWD_VUE_APP_AUTH0_DOMAIN',

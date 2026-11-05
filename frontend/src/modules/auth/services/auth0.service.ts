@@ -12,8 +12,8 @@ class Auth0ServiceClass {
 
   public constructor() {
     this.webAuth = new Auth0Client({
-      domain: config.auth0.domain,
-      clientId: config.auth0.clientId,
+      domain: config.auth0.domain!,
+      clientId: config.auth0.clientId!,
       authorizationParams: {
         redirect_uri: authCallback,
         scope,
