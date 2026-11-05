@@ -174,7 +174,9 @@ async function main(): Promise<void> {
       catalogue,
       segmentIdBySlug,
       overrides: credlyTemplateOverrides,
-      eventRules: credlyEventRules,
+      // A proposed rule's approvedBy stays 'pending' until a reviewer flips it: this is the only
+      // gate keeping an unreviewed guess out of production decisions, so it is enforced here.
+      eventRules: credlyEventRules.filter((eventRule) => eventRule.approvedBy !== 'pending'),
     })
     const plan = buildPlan(decisions, stored)
     const byStatus = { mapped: 0, held: 0, excluded: 0 }
