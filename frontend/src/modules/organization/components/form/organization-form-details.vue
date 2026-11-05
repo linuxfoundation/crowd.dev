@@ -3,11 +3,11 @@
     <h6>Company details</h6>
     <div class="col-span-2 organization-details-form">
       <el-form-item
-        :label="fields.displayName.label"
-        :prop="fields.displayName.name"
+        label="Name"
+        prop="displayName"
         required
       >
-        <el-input v-model="model[fields.displayName.name]" />
+        <el-input v-model="model.displayName" />
         <template #error>
           <div class="el-form-item__error">
             Name is required
@@ -23,10 +23,6 @@ import { defineEmits, defineProps, computed } from 'vue';
 
 const props = defineProps({
   modelValue: {
-    type: Object,
-    default: () => {},
-  },
-  fields: {
     type: Object,
     default: () => {},
   },
