@@ -29,6 +29,7 @@ export enum PlatformType {
   CVENT = 'cvent',
   TNC = 'tnc',
   MEETINGS = 'meetings',
+  LUMA = 'luma',
   GITLAB = 'gitlab',
   FACEBOOK = 'facebook',
   OTHER = 'other',
