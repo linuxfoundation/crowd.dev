@@ -162,6 +162,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 
+defineOptions({
+  name: 'LfSavedViews',
+});
+
 const props = defineProps<{
   modelValue: Filter,
   config: SavedViewsConfig,
@@ -189,6 +193,13 @@ const filters = computed<Filter>({
     emit('update:modelValue', value);
   },
 });
+
+const views = ref<SavedView[]>([]);
+
+const allViews = computed<SavedView[]>(() => [
+  ...(props.staticViews || []),
+  ...views.value,
+]);
 
 const selectedTab = ref<string>('');
 
@@ -264,13 +275,6 @@ const checkIfTabConfigMatch = () => {
 };
 
 // View management
-const views = ref<SavedView[]>([]);
-
-const allViews = computed<SavedView[]>(() => [
-  ...(props.staticViews || []),
-  ...views.value,
-]);
-
 const getViews = () => {
   SavedViewsService.query({
     placement: [props.placement],
@@ -346,12 +350,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', checkIfScrollableTabs);
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSavedViews',
-};
 </script>
 
 <style lang="scss" scoped>

@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import {
-  computed, defineProps, onMounted, ref, watch,
+  computed, onMounted, ref, watch,
 } from 'vue';
 import type { Filter, FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import LfFilterDropdown from '@/shared/modules/filters/components/FilterDropdown.vue';
@@ -75,6 +75,10 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({
+  name: 'LfFilter',
+});
 
 const props = defineProps<{
   modelValue: Filter,
@@ -97,6 +101,16 @@ const { isDeveloperModeActive } = storeToRefs(userStore);
 
 const open = ref('');
 
+const filterList = ref<string[]>([]);
+
+const alignFilterList = (value: Filter) => {
+  const {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omits keys via rest sibling
+    settings, search, relation, order, ...filterValues
+  } = value;
+  filterList.value = Object.keys(filterValues);
+};
+
 const filters = computed<Filter>({
   get() {
     return props.modelValue;
@@ -112,20 +126,11 @@ const configuration = computed(() => ({
   ...props.customConfig,
 }));
 
-const filterList = ref<string[]>([]);
-
 const switchOperator = () => {
   if (props.lockRelation) {
     return;
   }
   filters.value.relation = filters.value.relation === 'and' ? 'or' : 'and';
-};
-
-const alignFilterList = (value: Filter) => {
-  const {
-    settings, search, relation, order, ...filterValues
-  } = value;
-  filterList.value = Object.keys(filterValues);
 };
 
 const removeFilter = (key: string) => {
@@ -189,6 +194,7 @@ watch(
 const alignQueryUrl = () => {
   const { query } = route;
   const {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omits keys via rest sibling
     projectGroup, segmentId, menu, ...parsedQuery
   } = query;
   const parsed = parseQuery(
@@ -232,14 +238,7 @@ const copyToClipboard = async () => {
   ToastStore.success('Filters payload successfully copied to your clipboard');
 };
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   alignFilterList,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilter',
-};
 </script>

@@ -45,11 +45,15 @@
 <script setup lang="ts">
 import {
   computed,
-  defineProps, ref,
+  ref,
 } from 'vue';
 import type { FilterConfig } from '@/shared/modules/filters/types/FilterConfig';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfFilterDropdown',
+});
 
 const props = defineProps<{
   config: Record<string, FilterConfig>,
@@ -90,10 +94,4 @@ const add = (key: string) => {
   emit('update:modelValue', [...props.modelValue, key]);
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterDropdown',
-};
 </script>

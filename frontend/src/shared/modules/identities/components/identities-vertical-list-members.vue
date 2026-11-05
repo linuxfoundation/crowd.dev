@@ -35,6 +35,10 @@ import { computed } from 'vue';
 import type { Platform } from '@/shared/modules/platform/types/Platform';
 import AppEmailsVerticalList from '@/shared/modules/identities/components/emails-vertical-list.vue';
 
+defineOptions({
+  name: 'AppIdentitiesVerticalListMembers',
+});
+
 const props = defineProps<{
   member: Member;
   xPadding?: number;
@@ -47,10 +51,4 @@ const identities = computed(() => useMemberIdentities({
   member: props.member,
   order: props.order,
 }));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesVerticalListMembers',
-};
 </script>

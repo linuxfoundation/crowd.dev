@@ -68,6 +68,10 @@ import type {
 import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
+defineOptions({
+  name: 'LfMultiSelectAsyncFilter',
+});
+
 const props = defineProps<
   {
     modelValue: MultiSelectAsyncFilterValue;
@@ -160,12 +164,6 @@ onMounted(() => {
     data.value.selected = [];
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectAsyncFilter',
-};
 </script>
 
 <style lang="scss">
