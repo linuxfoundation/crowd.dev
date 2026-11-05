@@ -20,7 +20,8 @@ import marked from '@/shared/plugins/marked';
 import { useLogRocket } from '@/utils/logRocket';
 import { initRUM } from '@/utils/datadog/rum';
 import { installAnalyticsStub, loadSegment, isRealSegmentKey } from '@/utils/segment';
-import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
+import { VueQueryPlugin } from '@tanstack/vue-query';
+import { queryClient } from '@/shared/queries/client';
 import type { marked as Marked } from 'marked';
 
 declare module 'vue' {
@@ -44,11 +45,6 @@ declare module 'vue' {
   const pinia = createPinia();
   const app = createApp(App);
   app.use(pinia);
-
-  // Create a client
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { staleTime: 1000 * 60 * 5 } },
-  });
 
   // Install the VueQuery plugin
   app.use(VueQueryPlugin, {
@@ -86,6 +82,7 @@ declare module 'vue' {
   app.use(store).use(router).mount('#app');
 
   if (config.env === 'production' && config.hotjarKey) {
+    // prettier-ignore
     (function (h, o, t, j, a, r) {
       // @ts-ignore
       h.hj = h.hj
@@ -117,4 +114,4 @@ declare module 'vue' {
   if (config.env === 'production' && config.datadog.rum) {
     initRUM();
   }
-}());
+})();

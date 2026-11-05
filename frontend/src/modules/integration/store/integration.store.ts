@@ -61,6 +61,19 @@ const getNangoStatus = (integration: IntegrationRecord) => {
   return mapped.length < allRepos.length ? 'in-progress' : 'done';
 };
 
+// Temporary workaround while two GitHub integrations are supported
+const mapNangoIntegration = (row: IntegrationRecord): IntegrationRecord => {
+  if (row.platform === 'github-nango') {
+    return {
+      ...row,
+      platform: 'github',
+      isNango: true,
+      status: getNangoStatus(row),
+    };
+  }
+  return row;
+};
+
 const withConfig = (integration: IntegrationRecord): IntegrationListItem => ({
   ...integration,
   ...lfIntegrations()[integration.platform],
@@ -131,18 +144,7 @@ export const useIntegrationStore = defineStore('integration', () => {
 
       const response = await IntegrationService.list(null, null, null, null, segments);
 
-      // Temporary workaround while two GitHub integrations are supported
-      const rows: IntegrationRecord[] = response.rows.map((row: IntegrationRecord) => {
-        if (row.platform === 'github-nango') {
-          return {
-            ...row,
-            platform: 'github',
-            isNango: true,
-            status: getNangoStatus(row),
-          };
-        }
-        return row;
-      });
+      const rows: IntegrationRecord[] = response.rows.map(mapNangoIntegration);
 
       const byId: Record<string, IntegrationRecord> = {};
       const ids: string[] = [];
@@ -172,15 +174,16 @@ export const useIntegrationStore = defineStore('integration', () => {
       if (integrations.value[id]) {
         integrations.value[id].loading = true;
       }
-      const record: IntegrationRecord | null = await IntegrationService.find(id);
-      if (!record) {
+      const response: IntegrationRecord | null = await IntegrationService.find(id);
+      if (!response) {
+        return;
+      }
+      const record = mapNangoIntegration(response);
+      if (!integrations.value[record.id]) {
         return;
       }
       integrations.value[record.id] = record;
       integrations.value[record.id].loading = false;
-      if (!allIds.value.includes(record.id)) {
-        allIds.value.push(record.id);
-      }
     } catch (error) {
       Errors.handle(error);
       if (integrations.value[id]) {
