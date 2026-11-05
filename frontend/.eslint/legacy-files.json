@@ -16,7 +16,6 @@
   "vue/block-lang": [
     "src/app.vue",
     "src/config/integrations/gitlab/components/gitlab-params.vue",
-    "src/config/integrations/groupsio/components/groupsio-settings-drawer.vue",
     "src/config/integrations/hackernews/components/hackernews-settings-drawer.vue",
     "src/config/integrations/stackoverflow/components/stackoverflow-settings-drawer.vue",
     "src/config/integrations/twitter/components/twitter-settings-drawer.vue",
@@ -153,7 +152,6 @@
     "src/config/integrations/groupsio/components/groupsio-connect.vue",
     "src/config/integrations/groupsio/components/groupsio-dropdown.vue",
     "src/config/integrations/groupsio/components/groupsio-params.vue",
-    "src/config/integrations/groupsio/components/groupsio-settings-drawer.vue",
     "src/config/integrations/hackernews/components/hackernews-connect.vue",
     "src/config/integrations/hackernews/components/hackernews-params.vue",
     "src/config/integrations/jira/components/jira-connect.vue",

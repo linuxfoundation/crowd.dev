@@ -7,7 +7,7 @@
     pre-title="Integration"
     show-footer
     has-border
-    close-on-click-modal="true"
+    close-on-click-modal
     :close-function="canClose"
     @close="handleCancel()"
   >
@@ -244,7 +244,7 @@
 
     <template #footer>
       <drawer-footer-buttons
-        :integration="props.integration"
+        :integration="props.integration ?? undefined"
         :is-edit-mode="!!integration?.settings?.email"
         :has-form-changed="hasFormChanged"
         :is-loading="loading"
@@ -258,7 +258,7 @@
   <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, reactive, onMounted, computed,
 } from 'vue';
@@ -283,31 +283,60 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+import type { AxiosError } from 'axios';
+import type { GroupsioSettings } from '@/config/integrations/groupsio/types/GroupsioSettings';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 
-const props = defineProps({
-  integration: {
-    type: Object,
-    default: null,
-  },
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  segmentId: {
-    type: String,
-    default: null,
-  },
-  grandparentId: {
-    type: String,
-    default: null,
-  },
+interface GroupsioSubscription {
+  id: number;
+  group_name: string;
+  nice_group_name: string;
+}
+
+interface SelectableGroup extends GroupsioSubscription {
+  selected: boolean;
+}
+
+interface GroupHierarchy {
+  mainGroup: SelectableGroup;
+  subGroups: SelectableGroup[];
+  allSubgroupsSelected: boolean;
+}
+
+interface SelectedGroup {
+  id: number;
+  slug: string;
+  name: string;
+  groupAddedOn: Date;
+}
+
+interface GroupsioForm {
+  email: string;
+  password: string;
+  twoFactorCode: string;
+  groups: unknown[];
+  groupsValidationState: (boolean | null)[];
+}
+
+defineOptions({ name: 'LfGroupsioSettingsDrawer' });
+
+const props = withDefaults(defineProps<{
+  integration?: Integration<GroupsioSettings> | null;
+  modelValue?: boolean;
+  segmentId?: string | null;
+  grandparentId?: string | null;
+}>(), {
+  integration: null,
+  modelValue: false,
+  segmentId: null,
+  grandparentId: null,
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
 const { connectGroupsio } = useIntegrationStore();
 
-const form = reactive({
+const form = reactive<GroupsioForm>({
   email: '',
   password: '',
   twoFactorCode: '',
@@ -320,7 +349,7 @@ const form = reactive({
 });
 
 const { trackEvent } = useProductTracking();
-const changesConfirmationModalRef = ref(null);
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const isValidating = ref(false);
 const isVerificationEnabled = ref(false);
@@ -332,7 +361,26 @@ const cookie = ref('');
 const cookieExpiry = ref('');
 const loading = ref(false);
 const isLoadingSubscriptions = ref(false);
-const userSubscriptions = ref([]);
+const userSubscriptions = ref<Record<string, GroupHierarchy>>({});
+
+const rules = computed(() => {
+  if (!props.integration?.settings?.email) {
+    return {
+      email: {
+        required,
+        email,
+      },
+      password: {
+        required,
+      },
+    };
+  }
+  return {};
+});
+
+const $v = useVuelidate(rules, form, { $stopPropagation: true });
+
+const { hasFormChanged, formSnapshot } = formChangeDetector(form);
 
 const cantConnect = computed(() => {
   if (props.integration?.settings?.email) {
@@ -357,55 +405,9 @@ const hasSelectedGroups = computed(() => Object.values(userSubscriptions.value).
       || group.subGroups.some((subGroup) => subGroup.selected),
 ));
 
-const rules = computed(() => {
-  if (!props.integration?.settings?.email) {
-    return {
-      email: {
-        required,
-        email,
-      },
-      password: {
-        required,
-      },
-    };
-  }
-  return {};
-});
-
-const $v = useVuelidate(rules, form, { $stopPropagation: true });
-
-const validateAccount = async () => {
-  isVerifyingAccount.value = true;
-  accountVerificationFailed.value = false;
-  errorMessage.value = '';
-  try {
-    const response = await IntegrationService.groupsioGetToken(
-      form.email,
-      form.password,
-      form.twoFactorCode,
-      [props.segmentId],
-    );
-    const { groupsioCookie, groupsioCookieExpiry } = response;
-    cookie.value = groupsioCookie;
-    cookieExpiry.value = groupsioCookieExpiry;
-    isAPIConnectionValid.value = true;
-    getUserSubscriptions();
-  } catch (error) {
-    isAPIConnectionValid.value = false;
-    accountVerificationFailed.value = true;
-
-    // Only display API error message for status code 400
-    if (error?.response?.status === 400 && typeof error?.response?.data === 'string') {
-      errorMessage.value = error.response.data;
-    } else {
-      errorMessage.value = 'Authentication failed';
-    }
-  }
-  isVerifyingAccount.value = false;
-};
-
-const getGroupsHierarchy = (groups) => {
-  const hierarchy = {};
+const getGroupsHierarchy = (groups: GroupsioSubscription[]): Record<string, GroupHierarchy> => {
+  // shortcut: mainGroup stays null for subgroup-only subscriptions, as before. revisit: K-03 split
+  const hierarchy: Record<string, Omit<GroupHierarchy, 'mainGroup'> & { mainGroup: SelectableGroup | null }> = {};
 
   groups.forEach((group) => {
     const [mainGroupSlug, subGroupSlug] = group.group_name.split('+');
@@ -425,21 +427,53 @@ const getGroupsHierarchy = (groups) => {
     }
   });
 
-  return hierarchy;
+  return hierarchy as Record<string, GroupHierarchy>;
 };
 
-const getUserSubscriptions = async () => {
+const getUserSubscriptions = async (): Promise<void> => {
   isLoadingSubscriptions.value = true;
   try {
     const response = await IntegrationService.groupsioGetUserSubscriptions(
       cookie.value,
     );
-    userSubscriptions.value = getGroupsHierarchy(response);
+    userSubscriptions.value = getGroupsHierarchy(response as GroupsioSubscription[]);
   } catch (error) {
     console.error('Error fetching user subscriptions:', error);
   } finally {
     isLoadingSubscriptions.value = false;
   }
+};
+
+const validateAccount = async () => {
+  isVerifyingAccount.value = true;
+  accountVerificationFailed.value = false;
+  errorMessage.value = '';
+  try {
+    const response = await IntegrationService.groupsioGetToken(
+      form.email,
+      form.password,
+      // shortcut: main's JS service infers twoFactorCode as null. revisit: CM-1584 types it string | null
+      form.twoFactorCode as unknown as null,
+      [props.segmentId],
+    );
+    const { groupsioCookie, groupsioCookieExpiry } = response;
+    cookie.value = groupsioCookie;
+    cookieExpiry.value = groupsioCookieExpiry;
+    isAPIConnectionValid.value = true;
+    getUserSubscriptions();
+  } catch (error) {
+    isAPIConnectionValid.value = false;
+    accountVerificationFailed.value = true;
+    const { response } = (error as AxiosError | null | undefined) ?? {};
+
+    // Only display API error message for status code 400
+    if (response?.status === 400 && typeof response?.data === 'string') {
+      errorMessage.value = response.data;
+    } else {
+      errorMessage.value = 'Authentication failed';
+    }
+  }
+  isVerifyingAccount.value = false;
 };
 
 const reverifyAccount = () => {
@@ -450,8 +484,17 @@ const reverifyAccount = () => {
   form.email = '';
   form.password = '';
   form.twoFactorCode = '';
-  userSubscriptions.value = [];
+  userSubscriptions.value = {};
   $v.value.$reset();
+};
+
+const canVerify = async () => {
+  const isCorrect = await $v.value.$validate();
+  if (isCorrect) {
+    isVerificationEnabled.value = true;
+  } else {
+    isVerificationEnabled.value = false;
+  }
 };
 
 const onBlurEmail = () => {
@@ -469,29 +512,34 @@ const onBlurTwoFactorCode = () => {
   canVerify();
 };
 
-const canVerify = async () => {
-  const isCorrect = await $v.value.$validate();
-  if (isCorrect) {
-    isVerificationEnabled.value = true;
-  } else {
-    isVerificationEnabled.value = false;
-  }
-};
-
-const { hasFormChanged, formSnapshot } = formChangeDetector(form);
-
 const logoUrl = groupsio.image;
 
 const isVisible = computed({
   get() {
     return props.modelValue;
   },
-  set(value) {
+  set(value: boolean) {
     return emit('update:modelValue', value);
   },
 });
 
-const canClose = (done) => {
+const revertChanges = () => {
+  form.email = props.integration?.settings?.email ?? '';
+  form.password = '';
+  form.twoFactorCode = '';
+  form.groups = props?.integration?.settings?.groups
+    ? [...(props.integration?.settings.groups || [])]
+    : [{}];
+  form.groupsValidationState = new Array(form.groups.length).fill(true);
+  cookie.value = props?.integration?.settings?.token ?? '';
+  isAPIConnectionValid.value = true;
+  isVerifyingAccount.value = false;
+  accountVerificationFailed.value = false;
+  errorMessage.value = '';
+  $v.value.$reset();
+};
+
+const canClose = (done: (cancel?: boolean) => void) => {
   if (hasFormChanged.value) {
     changesConfirmationModalRef.value?.open().then((discardChanges) => {
       if (discardChanges) {
@@ -524,23 +572,7 @@ const handleCancel = () => {
   } else {
     revertChanges();
   }
-  userSubscriptions.value = [];
-};
-
-const revertChanges = () => {
-  form.email = props.integration?.settings?.email;
-  form.password = '';
-  form.twoFactorCode = '';
-  form.groups = props?.integration?.settings?.groups
-    ? [...(props.integration?.settings.groups || [])]
-    : [{}];
-  form.groupsValidationState = new Array(form.groups.length).fill(true);
-  cookie.value = props?.integration?.settings?.token;
-  isAPIConnectionValid.value = true;
-  isVerifyingAccount.value = false;
-  accountVerificationFailed.value = false;
-  errorMessage.value = '';
-  $v.value.$reset();
+  userSubscriptions.value = {};
 };
 
 onMounted(() => {
@@ -561,7 +593,7 @@ const connect = async () => {
   const isUpdate = !!props.integration?.settings?.email;
   const selectedGroups = Object.values(userSubscriptions.value).flatMap(
     (group) => {
-      const selected = [];
+      const selected: SelectedGroup[] = [];
       if (group.mainGroup.selected) {
         selected.push({
           id: group.mainGroup.id,
@@ -585,7 +617,7 @@ const connect = async () => {
   );
 
   const autoImports = Object.entries(userSubscriptions.value)
-    .filter(([_, object]) => object.allSubgroupsSelected)
+    .filter(([, object]) => object.allSubgroupsSelected)
     .map(([group]) => ({
       mainGroup: group,
       isAllowed: true,
@@ -622,7 +654,7 @@ const connect = async () => {
   formSnapshot();
 };
 
-const toggleAllSubgroups = (group) => {
+const toggleAllSubgroups = (group: GroupHierarchy) => {
   if (group.allSubgroupsSelected) {
     // eslint-disable-next-line no-param-reassign
     group.mainGroup.selected = true;
@@ -634,19 +666,13 @@ const toggleAllSubgroups = (group) => {
   // If toggle is turned off, we don't change the state of subgroups
 };
 
-const updateSelectedGroups = (group) => {
+const updateSelectedGroups = (group: GroupHierarchy) => {
   const allSelected = group.mainGroup.selected
     && group.subGroups.every((subGroup) => subGroup.selected);
   if (!allSelected) {
     // eslint-disable-next-line no-param-reassign
     group.allSubgroupsSelected = false;
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'LfGroupsioSettingsDrawer',
 };
 </script>
 
