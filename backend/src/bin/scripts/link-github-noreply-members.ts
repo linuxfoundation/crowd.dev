@@ -1,6 +1,7 @@
 import commandLineArgs from 'command-line-args'
 
 import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
+import { getSearchSyncApiClient } from '@/utils/apiClients'
 import { Error404, Error409 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
@@ -82,12 +83,6 @@ const options = [
     type: Boolean,
     description: 'Run in test mode (stop after the first 10 members).',
   },
-  {
-    name: 'help',
-    alias: 'h',
-    type: Boolean,
-    description: 'Print this usage guide.',
-  },
 ]
 
 const parameters = commandLineArgs(options)
@@ -107,6 +102,7 @@ setImmediate(async () => {
   const qx = pgpQx(db)
   const temporal = await getTemporalClient(TEMPORAL_CONFIG)
   const memberService = new CommonMemberService(qx, temporal, log)
+  const searchSyncApi = await getSearchSyncApiClient()
 
   log.info({ testRun, BATCH_SIZE }, 'Running script with the following parameters!')
 
@@ -137,7 +133,7 @@ setImmediate(async () => {
       const toLink = batch.filter(({ ownerId }) => !ownerId)
       const toMerge = batch.filter(({ ownerId }) => ownerId)
 
-      const linked = await insertMemberIdentities(
+      const linkedIdentities = await insertMemberIdentities(
         qx,
         toLink.map(({ memberId, integrationId, githubUsername }) => ({
           memberId,
@@ -148,6 +144,19 @@ setImmediate(async () => {
           verified: true,
           source: 'integration',
         })),
+        false,
+        true,
+      )
+
+      // the identity is already written, so a rerun would skip this member and never sync it
+      await Promise.all(
+        linkedIdentities.map(async ({ memberId }) => {
+          try {
+            await searchSyncApi.triggerMemberSync(memberId)
+          } catch (err) {
+            log.error({ err, memberId }, 'Failed to sync member to OpenSearch!')
+          }
+        }),
       )
 
       const noMergePairs = await getMemberNoMerge(
@@ -187,6 +196,7 @@ setImmediate(async () => {
         }),
       )
 
+      const linked = linkedIdentities.length
       const merged = mergeResults.filter(Boolean).length
       processedInPass += linked + merged
       totalLinked += linked
