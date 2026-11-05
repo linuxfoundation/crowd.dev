@@ -141,28 +141,35 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Member } from '@/modules/member/types/Member';
+import type { MemberMergeSuggestion } from '@/modules/member/types/MemberSuggestion';
+import type { Pagination } from '@/shared/types/Pagination';
 import { MemberService } from '@/modules/member/services/member.api.service';
 
-const props = defineProps({
-  query: {
-    type: Object,
-    required: false,
-    default: () => ({}),
-  },
-  offset: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+type MemberMergeSuggestionsResponse = Pagination<MemberMergeSuggestion> & { hasMore?: boolean };
+
+defineOptions({
+  name: 'AppMemberMergeSuggestionsPage',
 });
 
-const emit = defineEmits(['reload']);
+const props = withDefaults(defineProps<{
+  query?: Record<string, unknown>;
+  offset?: number;
+}>(), {
+  query: () => ({}),
+  offset: 0,
+});
+
+const emit = defineEmits<{(e: 'reload'): void}>();
+
+defineSlots<{
+  actions?:() => unknown;
+}>();
 
 const { trackEvent } = useProductTracking();
 const { getContributorMergeActions } = useContributorStore();
 
-// shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
-const membersToMerge = ref<{ members: any[]; similarity?: number }>({ members: [] });
+const membersToMerge = ref<{ members: Member[]; similarity?: number }>({ members: [] });
 const primary = ref(0);
 const offset = ref(props.offset);
 const hasMore = ref(false);
@@ -176,8 +183,7 @@ const changed = ref(false);
 
 const bioHeight = ref(0);
 
-// shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
-const clearMember = (member: any) => {
+const clearMember = (member: Member): Member => {
   const cleanedMember = { ...member };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in cleanedMember.attributes) {
@@ -191,21 +197,23 @@ const clearMember = (member: any) => {
 const preview = computed(() => {
   const primaryMember = membersToMerge.value.members[primary.value];
   const secondaryMember = membersToMerge.value.members[(primary.value + 1) % 2];
-  const mergedMembers = merge({}, clearMember(secondaryMember), clearMember(primaryMember));
+  const mergedMembers: Omit<Member, 'activityCount'> & { activityCount: string | number } = merge(
+    {},
+    clearMember(secondaryMember),
+    clearMember(primaryMember),
+  );
   mergedMembers.identities = [
-    ...primaryMember.identities,
-    ...secondaryMember.identities,
+    ...primaryMember.identities!,
+    ...secondaryMember.identities!,
   ];
   mergedMembers.score = Math.max(primaryMember.score, secondaryMember.score);
   mergedMembers.activityCount = +primaryMember.activityCount + +secondaryMember.activityCount;
   return mergedMembers;
 });
 
-// shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
-const updateSuggestionsState = (res: any) => {
+const updateSuggestionsState = (res: MemberMergeSuggestionsResponse) => {
   hasMore.value = Boolean(res.hasMore);
-  // shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
-  const rows = res.rows.filter((suggestion: any) => suggestion.similarity > 0);
+  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
 
   if (rows.length > 0) {
     hasSuggestion.value = true;
@@ -231,8 +239,7 @@ const fetch = (page = -1, trackNavigation = true): Promise<void> => {
   loading.value = true;
 
   return MemberService.fetchMergeSuggestions(1, offset.value, props.query ?? {})
-    // shortcut: any — revisit: when MemberService.fetchMergeSuggestions gets a return type
-    .then((res: any) => {
+    .then((res: MemberMergeSuggestionsResponse) => {
       offset.value = +res.offset;
 
       updateSuggestionsState(res);
@@ -349,10 +356,4 @@ onUnmounted(() => {
     emit('reload');
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberMergeSuggestionsPage',
-};
 </script>
