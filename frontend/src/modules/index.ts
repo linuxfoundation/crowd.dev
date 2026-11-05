@@ -13,7 +13,6 @@ import dataQuality from '@/modules/data-quality/data-quality.module';
 interface AppModule {
   routes?: Record<string, unknown>[];
   components?: Record<string, Component>;
-  store?: unknown;
 }
 
 const modules: Record<string, AppModule> = {
