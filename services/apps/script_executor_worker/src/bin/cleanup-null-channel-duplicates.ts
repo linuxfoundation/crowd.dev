@@ -414,8 +414,6 @@ async function cleanBatch(
           with k as (${BATCH_KEYS}), ranked as (${RANKED})
           select count(*) filter (where rank > 1)::int as deleted,
             count(distinct "keptActivityId") filter (where rank > 1)::int as kept
-          from ranked r2 where r2."keptActivityId" = ranked."activityId" and r2.rank > 1
-            ))::int as kept
           from ranked
         `,
         params,
