@@ -550,6 +550,10 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     copies: 0,
     ms: 0,
   }
+  const progressNamesForRun = [
+    ...(recordsProgress ? [progressName] : []),
+    ...(options.rescan && recordsProgress ? [rescanName] : []),
+  ]
   let windowStart = startMs
   let windowMs = options.windowDays * DAY_MS
   while (windowStart < endMs) {
@@ -568,6 +572,10 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     if (next === null || next >= endMs) {
       totals.skippedDays += Math.round((endMs - windowStart) / DAY_MS)
       windowStart = endMs
+      // no rows left before the end: that range is scanned too
+      if (!options.dryRun) {
+        await recordProgress(db, tables, progressNamesForRun, endMs)
+      }
       break
     }
     const nextDay = startOfUtcDay(next)
@@ -587,17 +595,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       byPlatform: Record<string, number>
     }
     try {
-      result = await collectWindow(
-        db,
-        tables,
-        options,
-        [
-          ...(recordsProgress ? [progressName] : []),
-          ...(options.rescan && recordsProgress ? [rescanName] : []),
-        ],
-        windowStart,
-        windowEnd,
-      )
+      result = await collectWindow(db, tables, options, progressNamesForRun, windowStart, windowEnd)
     } catch (err) {
       // halves down to an hour, so one dense day can't stop the collect for good
       if (asPgError(err).code === '57014' && windowMs > HOUR_MS) {
@@ -652,6 +650,27 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
   }
   log.info({ ...totals, dryRun: options.dryRun }, 'collect.summary')
   return EXIT_DONE
+}
+
+async function recordProgress(
+  db: { none: (query: string, params?: Record<string, unknown>) => Promise<null> },
+  tables: ITables,
+  names: string[],
+  windowEndMs: number,
+): Promise<void> {
+  if (names.length === 0) {
+    return
+  }
+  await db.none(
+    `
+      insert into ${tables.progress} (name, "windowEnd")
+      select unnest($(names)::text[]), $(windowEnd)::timestamptz
+      on conflict (name) do update set
+        "windowEnd" = greatest(${tables.progress}."windowEnd", excluded."windowEnd"),
+        "updatedAt" = now()
+    `,
+    { names, windowEnd: new Date(windowEndMs).toISOString() },
+  )
 }
 
 async function collectWindow(
@@ -720,18 +739,7 @@ async function collectWindow(
       `,
       params,
     )
-    if (progressNames.length > 0) {
-      await t.none(
-        `
-          insert into ${tables.progress} (name, "windowEnd")
-          select unnest($(progressNames)::text[]), $(windowEnd)::timestamptz
-          on conflict (name) do update set
-            "windowEnd" = greatest(${tables.progress}."windowEnd", excluded."windowEnd"),
-            "updatedAt" = now()
-        `,
-        params,
-      )
-    }
+    await recordProgress(t, tables, progressNames, windowEndMs)
     return row
   })
 }
