@@ -8,7 +8,6 @@
     "src/modules/member/components/member-last-activity.vue",
     "src/modules/settings/pages/settings-page.vue",
     "src/shared/avatar/avatar.vue",
-    "src/shared/form/autocomplete-many-input.vue",
     "src/shared/form/autocomplete-one-input.vue",
     "src/shared/form/keywords-input.vue",
     "src/shared/svg/svg.vue"
@@ -82,7 +81,6 @@
     "src/shared/banner/banner.vue",
     "src/shared/empty-state/empty-state-cta.vue",
     "src/shared/empty-state/empty-state.vue",
-    "src/shared/form/autocomplete-many-input.vue",
     "src/shared/form/autocomplete-one-input.vue",
     "src/shared/form/keywords-input.vue",
     "src/shared/image/image.vue",
