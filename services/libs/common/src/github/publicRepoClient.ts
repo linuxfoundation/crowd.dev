@@ -328,7 +328,7 @@ export async function fetchCommitAuthor(
   }
 
   const { author } = await readJson<ICommitItem>(response, url)
-  if (!author) {
+  if (!author?.login) {
     return { status: 'no-github-account' }
   }
 

@@ -30,14 +30,15 @@ A platform has one or more data sources. Each source maps to a Snowflake table, 
 own `buildSourceQuery.ts` and `transformer.ts` under `src/integrations/<platform>/<source>/`. Each source is exported,
 tracked and transformed on its own.
 
-| Platform     | Source                | Activity types                                 |
-| ------------ | --------------------- | ---------------------------------------------- |
-| `cvent`      | `event-registrations` | `registered-event`, `attended-event`           |
-| `tnc`        | `enrollments`         | `enrolled-certification`, `enrolled-training`  |
-| `tnc`        | `certificates`        | `issued-certification`                         |
-| `tnc`        | `courses`             | `attempted-course`, `attempted-exam`           |
-| `meetings`   | `meeting-attendance`  | `invited-meeting`, `attended-meeting`          |
-| `committees` | `committees`          | `added-to-committee`, `removed-from-committee` |
+| Platform     | Source                     | Activity types                                 |
+| ------------ | -------------------------- | ---------------------------------------------- |
+| `cvent`      | `event-registrations`      | `registered-event`, `attended-event`           |
+| `tnc`        | `enrollments`              | `enrolled-certification`, `enrolled-training`  |
+| `tnc`        | `certificates`             | `issued-certification`                         |
+| `tnc`        | `courses`                  | `attempted-course`, `attempted-exam`           |
+| `meetings`   | `meeting-attendance`       | `invited-meeting`, `attended-meeting`          |
+| `committees` | `committees`               | `added-to-committee`, `removed-from-committee` |
+| `luma`       | `luma-event-registrations` | `registered-event`, `attended-event`           |
 
 A platform runs only when it is listed in `CROWD_SNOWFLAKE_ENABLED_PLATFORMS`. Code for a platform that is not listed
 is never exported or transformed.
@@ -106,6 +107,10 @@ failed jobs and jobs with skipped rows stay in S3 for inspection.
 - `cleanIdentityValue()` treats empty strings and placeholders such as `none`, `null`, `n/a` and `-` as missing.
 - `buildMemberIdentities()` adds a verified email identity, plus username identities from the platform username, the
   LFID username or, when neither exists, the email.
+  The `luma` transformer builds its own identities instead: Gatewaze emails are unverified, so it adds the email as an
+  unverified identity next to a verified username (the LFID username or, without one, the email), as the git
+  integration does. Its LFID comes only from the registration's Salesforce user, never from an email match, so
+  another account that shares the email can't reassign it.
 - `cleanPersonalEmail()` drops known shared meeting-account emails, so they never become member identities.
 
 ## Tables

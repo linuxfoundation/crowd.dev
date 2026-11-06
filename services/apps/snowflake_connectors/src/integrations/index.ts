@@ -10,6 +10,8 @@ import { buildSourceQuery as committeesCommitteesBuildQuery } from './committees
 import { CommitteesCommitteesTransformer } from './committees/committees/transformer'
 import { buildSourceQuery as cventBuildSourceQuery } from './cvent/event-registrations/buildSourceQuery'
 import { CventTransformer } from './cvent/event-registrations/transformer'
+import { buildSourceQuery as lumaEventRegistrationsBuildQuery } from './luma/event-registrations/buildSourceQuery'
+import { LumaEventRegistrationsTransformer } from './luma/event-registrations/transformer'
 import { buildSourceQuery as meetingAttendanceBuildQuery } from './meetings/meeting-attendance/buildSourceQuery'
 import { MeetingAttendanceTransformer } from './meetings/meeting-attendance/transformer'
 import { buildSourceQuery as tncCertificatesBuildQuery } from './tnc/certificates/buildSourceQuery'
@@ -67,6 +69,15 @@ const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
         name: DataSourceName.TNC_COURSES,
         buildSourceQuery: tncCoursesBuildQuery,
         transformer: new TncCoursesTransformer(),
+      },
+    ],
+  },
+  [PlatformType.LUMA]: {
+    sources: [
+      {
+        name: DataSourceName.LUMA_EVENT_REGISTRATIONS,
+        buildSourceQuery: lumaEventRegistrationsBuildQuery,
+        transformer: new LumaEventRegistrationsTransformer(),
       },
     ],
   },
