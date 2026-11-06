@@ -57,6 +57,8 @@ collect options:
   --from YYYY-MM-DD  First day to scan (default: the last finished window, else the oldest row)
   --to YYYY-MM-DD    Scan up to this day, exclusive (default: the day after the newest row)
   --window-days N    Days per window (default 7, halved automatically when a window times out)
+  --rescan           Scan from the oldest row again although earlier windows are finished: the
+                     final sweep after clean, which re-opens keys that got duplicates again
 
 clean options:
   --segments a,b     Only keys of these segment ids
@@ -78,9 +80,11 @@ clean options:
 Stopping: Ctrl-C, SIGTERM or SIGHUP stops after the current batch; a second one exits at once
 (the open transaction rolls back).
 
-Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal,
+Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal or
+another run still holding the run lock after 2 minutes,
 3 finished but some keys were deferred (rerun with --retry-deferred), 4 database connection
 lost (safe to restart), 1 error incl. a failed safety check (look before restarting), 64 usage.
+serverWalBytes in the batch metrics is all WAL the server wrote during the batch, not only ours.
 
 Environment: CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD,
 CROWD_DB_DATABASE. Logs are JSON lines with a constant "msg" per event (run.config, run.plan,
@@ -136,7 +140,7 @@ const EXIT_SIGNAL = 130
 const COMMAND_FLAGS: Record<string, { values: string[]; switches: string[] }> = {
   collect: {
     values: ['--tag', '--platforms', '--from', '--to', '--window-days'],
-    switches: ['--dry-run', '--yes'],
+    switches: ['--dry-run', '--yes', '--rescan'],
   },
   clean: {
     values: [
@@ -168,6 +172,7 @@ type Log = ReturnType<typeof getServiceChildLogger>
 class UsageError extends Error {}
 class InvariantError extends Error {}
 class GuardError extends Error {}
+class RunLockBusyError extends Error {}
 
 interface ITables {
   tag: string
@@ -189,6 +194,7 @@ interface ICollectOptions extends ICommonOptions {
   from?: Date
   to?: Date
   windowDays: number
+  rescan: boolean
 }
 
 interface ICleanOptions extends ICommonOptions {
@@ -228,7 +234,7 @@ interface IBatchMetrics {
   parentConflicts: number
   segments: number
   perKey: Record<string, number>
-  walBytes: number
+  serverWalBytes: number
   ms: { lock: number; clean: number; verify: number; mark: number }
 }
 
@@ -241,10 +247,11 @@ interface IRunTotals {
   crossYear: number
   carried: number
   parentConflicts: number
-  walBytes: number
+  serverWalBytes: number
   retries: number
   deferredKeys: number
   slotWaitMs: number
+  nightlyWaitMs: number
   maxSlotLagBytes: number
 }
 
@@ -412,7 +419,7 @@ async function acquireRunLock(db: Session, log: Log, tables: ITables): Promise<v
     // an aborted run's backend keeps the lock until its last statement ends (up to a minute)
     const holders = await runLockHolders(db, tables)
     if (Date.now() - started >= RUN_LOCK_WAIT_MS || stopState.requested) {
-      throw new UsageError(
+      throw new RunLockBusyError(
         `Another collect or clean run for tag ${tables.tag} holds the run lock: ${JSON.stringify(holders)}`,
       )
     }
@@ -476,6 +483,8 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
         'collect.gap',
       )
     }
+  } else if (options.rescan) {
+    startMs = startOfUtcDay(oldest)
   } else {
     startMs = storedEnd ?? startOfUtcDay(oldest)
   }
@@ -496,7 +505,9 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     'collect.plan',
   )
   if (startMs >= endMs) {
-    log.info('collect.uptodate')
+    log.info(
+      'collect.uptodate: nothing scanned; pass --rescan (or --from) to scan finished windows again',
+    )
     return EXIT_DONE
   }
 
@@ -776,6 +787,10 @@ const RANKED = (onlyLocked: boolean) => `
   select ar.*, k."keyId",
     first_value(ar."activityId") over w as "keptActivityId",
     first_value(ar."createdAt") over w as "keptCreatedAt",
+    first_value(ar."updatedAt") over w as "keptUpdatedAt",
+    first_value(ar."parentId") over w as "keptParentId",
+    first_value(ar."conversationId") over w as "keptConversationId",
+    first_value(ar."sourceParentId") over w as "keptSourceParentId",
     row_number() over w as rank
   from "activityRelations" ar
   join k on ${KEY_JOIN}
@@ -804,34 +819,35 @@ const STATS = `
   (select count(*) from plan where "parentConflict")::int as "parentConflicts"
 `
 
+// the kept row's columns come from window functions in ranked: joining ranked back to itself
+// made the planner (which estimates the CTE at 1-2 rows) scan the whole batch per kept row
 const PLAN = `
   carried as (
-    select "keptActivityId",
+    select "keptActivityId", "keptUpdatedAt", "keptParentId", "keptConversationId", "keptSourceParentId",
       max("updatedAt") as "maxDroppedUpdatedAt",
       (array_agg("parentId" order by rank) filter (where "parentId" is not null))[1] as "parentId",
       count(distinct "parentId") as "parentIds",
       (array_agg("conversationId" order by rank) filter (where "conversationId" is not null))[1] as "conversationId",
       (array_agg("sourceParentId" order by rank) filter (where "sourceParentId" is not null))[1] as "sourceParentId"
     from dropped
-    group by "keptActivityId"
+    group by "keptActivityId", "keptUpdatedAt", "keptParentId", "keptConversationId", "keptSourceParentId"
   ),
   plan as (
-    select kr."activityId",
+    select c."keptActivityId" as "activityId",
       greatest(
-        kr."updatedAt",
+        c."keptUpdatedAt",
         -- 2 ms: a deleted copy's updatedAt rounded up instead of truncated still can't tie
         date_trunc('milliseconds', c."maxDroppedUpdatedAt") + interval '2 milliseconds'
       ) as "newUpdatedAt",
-      kr."updatedAt" as "oldUpdatedAt",
-      kr."parentId" is null and c."parentId" is not null as "carryParentId",
-      kr."conversationId" is null and c."conversationId" is not null as "carryConversationId",
-      kr."sourceParentId" is null and c."sourceParentId" is not null as "carrySourceParentId",
+      c."keptUpdatedAt" as "oldUpdatedAt",
+      c."keptParentId" is null and c."parentId" is not null as "carryParentId",
+      c."keptConversationId" is null and c."conversationId" is not null as "carryConversationId",
+      c."keptSourceParentId" is null and c."sourceParentId" is not null as "carrySourceParentId",
       c."parentIds" > 1
-        or (kr."parentId" is not null and c."parentId" is not null and kr."parentId" <> c."parentId")
+        or (c."keptParentId" is not null and c."parentId" is not null and c."keptParentId" <> c."parentId")
         as "parentConflict",
       c."parentId", c."conversationId", c."sourceParentId"
     from carried c
-    join ranked kr on kr."activityId" = c."keptActivityId"
   )
 `
 
@@ -878,7 +894,7 @@ async function cleanBatch(
         deleted: stats.dropped,
         backedUp: 0,
         perKey: {},
-        walBytes: 0,
+        serverWalBytes: 0,
         ms,
       }
     }
@@ -1005,7 +1021,7 @@ async function cleanBatch(
     const metrics: IBatchMetrics = {
       ...result,
       lockedRows: locked.n,
-      walBytes: Number(walEnd.bytes),
+      serverWalBytes: Number(walEnd.bytes),
       ms,
     }
     await recordBatch(
@@ -1239,10 +1255,11 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     crossYear: 0,
     carried: 0,
     parentConflicts: 0,
-    walBytes: 0,
+    serverWalBytes: 0,
     retries: 0,
     deferredKeys: 0,
     slotWaitMs: 0,
+    nightlyWaitMs: 0,
     maxSlotLagBytes: 0,
   }
   const runStarted = Date.now()
@@ -1259,8 +1276,9 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       `select pg_total_relation_size($(name)::regclass)::text as bytes`,
       { name: `public.${tables.backup}` },
     )
-    const elapsedMin = (Date.now() - runStarted) / 60_000
-    const rate = elapsedMin > 0 ? totals.deleted / elapsedMin : 0
+    // waits for slot lag and the nightly window don't count, so the ETA is for cleaning time
+    const activeMin = (Date.now() - runStarted - totals.slotWaitMs - totals.nightlyWaitMs) / 60_000
+    const rate = activeMin > 0 ? totals.deleted / activeMin : 0
     const left = remaining.reduce((sum, p) => sum + p.duplicates, 0)
     log.info(
       {
@@ -1356,12 +1374,12 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     totals.keys += keys.length
     totals.deleted += metrics.deleted
     totals.keptUpdated += metrics.keptUpdated
-    totals.keysNoDuplicates += metrics.keysFound - metrics.keysWithDuplicates
+    totals.keysNoDuplicates += keys.length - metrics.keysWithDuplicates
     totals.crossYear += metrics.crossYear
     totals.carried +=
       metrics.carriedParentId + metrics.carriedConversationId + metrics.carriedSourceParentId
     totals.parentConflicts += metrics.parentConflicts
-    totals.walBytes += metrics.walBytes
+    totals.serverWalBytes += metrics.serverWalBytes
     platformTotals.batches += 1
     platformTotals.keys += keys.length
     platformTotals.deleted += metrics.deleted
@@ -1375,7 +1393,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
         attempts,
         ...metricsToLog,
         keysMissing: keys.length - metrics.keysFound,
-        keysNoDuplicates: metrics.keysFound - metrics.keysWithDuplicates,
+        keysNoDuplicates: keys.length - metrics.keysWithDuplicates,
         drift: batchContext.expectedRows - metrics.lockedRows,
         perKeyCount: Object.keys(perKey).length,
         totalMs,
@@ -1408,10 +1426,12 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
             0,
           )
           log.info({ resumeAt: resume.toISOString() }, 'nightly.wait')
+          const waitStarted = Date.now()
           await sleep(resume.getTime() - now.getTime(), () => {
             const other = stopReason({ ...options, allowNightly: true }, totals.deleted)
             return !!other
           })
+          totals.nightlyWaitMs += Date.now() - waitStarted
           // a split batch stopped by the window left keys behind the cursor
           afterId = '0'
           continue
@@ -1539,7 +1559,7 @@ async function status(db: Session, log: Log, options: ICommonOptions): Promise<n
             coalesce(sum((metrics ->> 'crossYear')::bigint), 0)::text as "crossYear",
             coalesce(sum((metrics ->> 'keptUpdated')::bigint), 0)::text as "keptUpdated",
             coalesce(sum((metrics ->> 'parentConflicts')::bigint), 0)::text as "parentConflicts",
-            coalesce(sum((metrics ->> 'walBytes')::bigint), 0)::text as "walBytes",
+            coalesce(sum((metrics ->> 'serverWalBytes')::bigint), 0)::text as "serverWalBytes",
             max("finishedAt")::text as "lastBatchAt"
           from ${tables.batches}
         `,
@@ -1687,11 +1707,15 @@ function parseCollect(flags: Map<string, string | true>): ICollectOptions {
   if (from && to && from >= to) {
     throw new UsageError('--from must be before --to')
   }
+  if (from && flags.has('--rescan')) {
+    throw new UsageError('--rescan and --from contradict each other')
+  }
   return {
     ...parseCommon(flags),
     from,
     to,
     windowDays: parseIntFlag('--window-days', value(flags, '--window-days'), 1, 366) ?? 7,
+    rescan: flags.has('--rescan'),
   }
 }
 
@@ -1860,6 +1884,10 @@ main()
     if (error instanceof UsageError) {
       baseLog.error({ message: error.message }, 'run.usage-error')
       process.exit(EXIT_USAGE)
+    }
+    if (error instanceof RunLockBusyError) {
+      baseLog.warn({ message: error.message }, 'run.lock-busy')
+      process.exit(EXIT_STOPPED)
     }
     if (error instanceof GuardError) {
       baseLog.error({ message: error.message }, 'run.guard-failed')
