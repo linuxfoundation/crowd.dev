@@ -6,6 +6,7 @@ import { inferMemberCountries } from './workflows/member/inferMemberCountries'
 import { memberUpdate } from './workflows/member/memberUpdate'
 import { processMemberBotAnalysisWithLLM } from './workflows/member/processMemberBotAnalysisWithLLM'
 import { refreshMemberDisplayAggregates } from './workflows/member/refreshMemberDisplayAggregates'
+import { resolveGitAuthorsToGithub } from './workflows/member/resolveGitAuthorsToGithub'
 import { calculateProjectGroupOrganizationAggregates } from './workflows/organization/calculateProjectGroupOrganizationAggregates'
 import { calculateProjectOrganizationAggregates } from './workflows/organization/calculateProjectOrganizationAggregates'
 import { fakeOrganizationAnalysisWithLLM } from './workflows/organization/fakeOrganizationAnalysisWithLLM'
@@ -30,4 +31,5 @@ export {
   calculateLeafSegmentAggregates,
   inferMemberCountries,
   inferOrganizationCountries,
+  resolveGitAuthorsToGithub,
 }
