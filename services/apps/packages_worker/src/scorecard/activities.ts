@@ -13,7 +13,7 @@ import { getCdpDb, getPackagesDb } from '../db'
 import { canonicalRepoUrl, parseRepoUrl } from '../deps-dev/canonicalRepoUrl'
 import { buildInsert } from '../deps-dev/sqlUtils'
 import { mapWithConcurrency } from '../utils/concurrency'
-import { fetchScorecard } from './scorecardApi'
+import { ScorecardFetch, fetchScorecard } from './scorecardApi'
 import { ScorecardRows, scorecardProjectPath, toScorecardRows } from './scorecardRows'
 import { ScorecardPageCounts, emptyScorecardCounts } from './types'
 
@@ -91,6 +91,30 @@ export interface IngestScorecardPageOutput {
 
 type ScorecardTarget = { url: string; projectPath: string; repoId: number }
 
+const FAILURE_RATE_MIN_SAMPLE = 50
+
+function failureRateExceeded(counts: ScorecardPageCounts): boolean {
+  return counts.failed * 2 >= counts.fetched
+}
+
+function pageFailure(counts: ScorecardPageCounts): Error {
+  return new Error(
+    `scorecard api failed for ${counts.failed} of ${counts.fetched} repos in the page`,
+  )
+}
+
+function logFetchFailure(url: string, result: ScorecardFetch): void {
+  if (result.kind === 'OK') {
+    ingestLog.warn({ url, date: result.payload.date }, 'scorecard payload unusable')
+    return
+  }
+  if (result.kind === 'NOT_FOUND') return
+  ingestLog.warn(
+    { url, kind: result.kind, statusCode: result.statusCode },
+    `scorecard fetch failed: ${result.message}`,
+  )
+}
+
 async function listCdpGithubRepos(
   input: IngestScorecardPageInput,
 ): Promise<Array<{ id: string; url: string }>> {
@@ -166,29 +190,20 @@ export async function ingestScorecardPage(
       if (notFoundSample.length < 5) notFoundSample.push(target.url)
       return
     }
-    if (result.kind !== 'OK') {
-      counts.failed++
-      ingestLog.warn(
-        { url: target.url, kind: result.kind, statusCode: result.statusCode },
-        `scorecard fetch failed: ${result.message}`,
-      )
+    const rows = result.kind === 'OK' ? toScorecardRows(target.repoId, result.payload) : null
+    if (rows) {
+      counts.scored++
+      rowsByRepoId.set(target.repoId, rows)
       return
     }
-    const rows = toScorecardRows(target.repoId, result.payload)
-    if (!rows) {
-      counts.failed++
-      ingestLog.warn({ url: target.url, date: result.payload.date }, 'scorecard payload unusable')
-      return
+    counts.failed++
+    logFetchFailure(target.url, result)
+    if (counts.fetched >= FAILURE_RATE_MIN_SAMPLE && failureRateExceeded(counts)) {
+      throw pageFailure(counts)
     }
-    counts.scored++
-    rowsByRepoId.set(target.repoId, rows)
   })
 
-  if (counts.fetched > 0 && counts.failed * 2 >= counts.fetched) {
-    throw new Error(
-      `scorecard api failed for ${counts.failed} of ${counts.fetched} repos in the page`,
-    )
-  }
+  if (counts.fetched > 0 && failureRateExceeded(counts)) throw pageFailure(counts)
 
   if (rowsByRepoId.size > 0) {
     const pkgsDb = await getPackagesDb()

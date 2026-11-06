@@ -80,6 +80,24 @@ describe('fetchScorecard', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('honours an HTTP-date Retry-After', async () => {
+    const onRetryWait = vi.fn()
+    const retryAt = new Date(Date.now() + 30_000).toUTCString()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(429, undefined, { 'retry-after': retryAt }))
+      .mockResolvedValueOnce(fakeResponse(200, okBody))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const pending = fetchScorecard('github.com/a/b', { ...cfg, onRetryWait })
+    await vi.advanceTimersByTimeAsync(29_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect((await pending).kind).toBe('OK')
+    expect(onRetryWait).toHaveBeenCalledTimes(1)
+  })
+
   it('gives up on persistent 429 with RATE_LIMIT', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(429)))
     const result = await withTimers(() => fetchScorecard('github.com/a/b', cfg))
@@ -127,6 +145,36 @@ describe('fetchScorecard', () => {
 
     expect(result.kind).toBe('OK')
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a transport error while reading the body', async () => {
+    const reset = {
+      ...fakeResponse(200),
+      json: () => Promise.reject(new TypeError('terminated')),
+    } as unknown as Response
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reset)
+      .mockResolvedValueOnce(fakeResponse(200, okBody))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await withTimers(() => fetchScorecard('github.com/a/b', cfg))
+
+    expect(result.kind).toBe('OK')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts the request once a non-200 response is classified', async () => {
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      const signal = init.signal as AbortSignal
+      return Promise.resolve({ ...fakeResponse(404), signal } as unknown as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchScorecard('github.com/a/b', cfg)
+
+    const signal = fetchMock.mock.calls[0][1].signal as AbortSignal
+    expect(signal.aborted).toBe(true)
   })
 
   it('caps the Retry-After wait and reports each retry wait', async () => {

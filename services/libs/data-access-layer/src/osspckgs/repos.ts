@@ -69,6 +69,8 @@ export async function updateRepoScorecards(
         (j->>'lastRunAt')::timestamptz  AS last_run_at
       FROM jsonb_array_elements($(rows)::jsonb) j
     ),
+    -- Other workers bulk-update the same repos rows (enricher, contacts, contributors):
+    -- locking in id order first is what keeps this UPDATE from deadlocking against them.
     locked AS (
       SELECT r.id
       FROM repos r

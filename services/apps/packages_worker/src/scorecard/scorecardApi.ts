@@ -43,8 +43,13 @@ function backoffMs(attempt: number): number {
 }
 
 function retryAfterMs(res: Response): number | null {
-  const retryAfterSec = parseInt(res.headers.get('retry-after') ?? '', 10)
-  return Number.isNaN(retryAfterSec) ? null : retryAfterSec * 1000
+  const header = res.headers.get('retry-after')
+  if (!header) return null
+  if (/^\d+$/.test(header.trim())) return parseInt(header, 10) * 1000
+  const at = Date.parse(header)
+  if (Number.isNaN(at)) return null
+  const waitMs = at - Date.now()
+  return waitMs > 0 ? waitMs : null
 }
 
 function errorMessage(e: unknown): string {
@@ -115,21 +120,26 @@ async function attemptFetch(url: string, timeoutMs: number): Promise<Attempt> {
     let body: unknown
     try {
       body = await res.json()
-    } catch {
-      if (controller.signal.aborted) {
-        return {
-          kind: 'RETRY',
-          waitMs: null,
-          giveUp: { kind: 'TRANSIENT', statusCode: 200, message: 'body read timed out' },
-        }
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        return { kind: 'MALFORMED', statusCode: 200, message: 'invalid json' }
       }
-      return { kind: 'MALFORMED', statusCode: 200, message: 'invalid json' }
+      return {
+        kind: 'RETRY',
+        waitMs: null,
+        giveUp: {
+          kind: 'TRANSIENT',
+          statusCode: 200,
+          message: `body read failed: ${errorMessage(e)}`,
+        },
+      }
     }
     const payload = parsePayload(body)
     if (!payload) return { kind: 'MALFORMED', statusCode: 200, message: 'unexpected payload shape' }
     return { kind: 'OK', payload }
   } finally {
     clearTimeout(timer)
+    controller.abort()
   }
 }
 
