@@ -37,7 +37,7 @@ export interface ISweepRepo {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DIFF_LAG_DAYS = 2
-export const CLEAN_DAYS_REQUIRED = 3
+export const CLEAN_DAYS_REQUIRED = 1
 export const NANGO_CONSUMPTION_MAX_AGE_MS = 24 * 60 * 60 * 1000
 export const NANGO_HANDOVER_OVERLAP_MS = 60 * 60 * 1000
 

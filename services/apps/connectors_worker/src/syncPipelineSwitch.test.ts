@@ -40,11 +40,7 @@ describe('resolveSwitchTargets', () => {
 
 describe('recentDiffedDays', () => {
   it('starts two days back because the nightly diff targets D-2', () => {
-    expect(recentDiffedDays(new Date('2026-10-19T10:00:00Z'))).toEqual([
-      '2026-10-17',
-      '2026-10-16',
-      '2026-10-15',
-    ])
+    expect(recentDiffedDays(new Date('2026-10-19T10:00:00Z'))).toEqual(['2026-10-17'])
   })
 })
 
