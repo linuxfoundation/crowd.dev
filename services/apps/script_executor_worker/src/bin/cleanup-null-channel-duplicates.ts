@@ -63,7 +63,8 @@ collect options:
 clean options:
   --segments a,b     Only keys of these segment ids
   --batch-rows N     Rows per transaction, whole keys only (default 20000, max 100000)
-  --max-rows N       Stop after deleting this many rows
+  --max-rows N       Stop after deleting this many rows. Batches are trimmed to what is left,
+                     but a key is never split, so the last key's copies can go over
   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
                      with --wait-nightly)
                      A real run needs --max-rows or --until.
@@ -481,7 +482,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     if (storedEnd !== null && startMs > storedEnd) {
       log.warn(
         { storedEnd: new Date(storedEnd).toISOString(), from: options.from.toISOString() },
-        'collect.gap',
+        'collect.gap: windows scanned now are not recorded as progress',
       )
     }
   } else if (options.rescan) {
@@ -490,11 +491,15 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     startMs = storedEnd ?? startOfUtcDay(oldest)
   }
   const endMs = options.to ? options.to.getTime() : startOfUtcDay(newest) + DAY_MS
+  // progress means "scanned from the oldest row up to here": a partial scan (--to) or one that
+  // starts past what was scanned (--from with a gap) must not move it
+  const recordsProgress = !options.to && startMs <= (storedEnd ?? startOfUtcDay(oldest))
 
   log.info(
     {
       platforms: options.platforms,
       progressName,
+      recordsProgress,
       storedEnd: storedEnd === null ? null : new Date(storedEnd).toISOString(),
       oldest: new Date(oldest).toISOString(),
       newest: new Date(newest).toISOString(),
@@ -566,7 +571,14 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       byPlatform: Record<string, number>
     }
     try {
-      result = await collectWindow(db, tables, options, progressName, windowStart, windowEnd)
+      result = await collectWindow(
+        db,
+        tables,
+        options,
+        recordsProgress ? progressName : null,
+        windowStart,
+        windowEnd,
+      )
     } catch (err) {
       if (asPgError(err).code === '57014' && windowDays > 1) {
         windowDays = Math.max(1, Math.floor(windowDays / 2))
@@ -619,7 +631,7 @@ async function collectWindow(
   db: Session,
   tables: ITables,
   options: ICollectOptions,
-  progressName: string,
+  progressName: string | null,
   windowStartMs: number,
   windowEndMs: number,
 ) {
@@ -681,8 +693,7 @@ async function collectWindow(
       `,
       params,
     )
-    // an explicit --to is a re-scan of part of the range, not progress
-    if (!options.to) {
+    if (progressName !== null) {
       await t.none(
         `
           insert into ${tables.progress} (name, "windowEnd") values ($(progressName), $(windowEnd)::timestamptz)
@@ -1091,6 +1102,7 @@ async function nextKeys(
   options: ICleanOptions,
   statuses: string[],
   afterId: string,
+  maxDeletes: number | undefined,
 ): Promise<IKey[]> {
   const keys: IKey[] = await db.any(
     `
@@ -1112,14 +1124,21 @@ async function nextKeys(
     },
   )
 
+  // whole keys only: the first key is always taken, so one key can still go past --max-rows
   const batch: IKey[] = []
   let rows = 0
+  let deletes = 0
   for (const key of keys) {
-    if (batch.length > 0 && rows + key.copies > options.batchRows) {
+    if (
+      batch.length > 0 &&
+      (rows + key.copies > options.batchRows ||
+        (maxDeletes !== undefined && deletes + key.copies - 1 > maxDeletes))
+    ) {
       break
     }
     batch.push(key)
     rows += key.copies
+    deletes += key.copies - 1
   }
   return batch
 }
@@ -1243,7 +1262,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     await confirm(
       options,
       `Clean ${duplicates} duplicate rows (${plan.map((p) => `${p.platform}: ${p.duplicates}`).join(', ')}) from activityRelations into ${tables.backup}` +
-        `${options.maxRows ? `, at most ${options.maxRows} rows` : ''}${options.until ? `, until ${options.until.toISOString()}` : ''}.`,
+        `${options.maxRows ? `, stopping after ${options.maxRows} rows (whole keys, so the last key can go over)` : ''}${options.until ? `, until ${options.until.toISOString()}` : ''}.`,
     )
   }
 
@@ -1299,6 +1318,34 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     )
   }
 
+  const waitForSlots = async (): Promise<void> => {
+    const waitStarted = Date.now()
+    for (;;) {
+      lastSlots = await slotLags(db)
+      const lag = Math.max(...Object.values(lastSlots))
+      totals.maxSlotLagBytes = Math.max(totals.maxSlotLagBytes, lag)
+      if (lag <= options.maxSlotLagBytes || stopReason(options, totals.deleted)) {
+        break
+      }
+      log.warn(
+        {
+          slotLagMb: Object.fromEntries(
+            Object.entries(lastSlots).map(([s, b]) => [s, Math.round(b / 1048576)]),
+          ),
+          limitMb: options.maxSlotLagBytes / 1048576,
+          waitedS: Math.round((Date.now() - waitStarted) / 1000),
+        },
+        'slot.wait',
+      )
+      await sleep(SLOT_POLL_MS, () => !!stopReason(options, totals.deleted))
+    }
+    const waited = Date.now() - waitStarted
+    if (waited > 1000) {
+      totals.slotWaitMs += waited
+      log.info({ waitedS: Math.round(waited / 1000) }, 'slot.resumed')
+    }
+  }
+
   const processKeys = async (
     platform: string,
     keys: IKey[],
@@ -1319,6 +1366,17 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     let metrics: IBatchMetrics | null = null
     let attempts = 0
     for (;;) {
+      // every attempt, retry and split half passes the same guards as a new batch; keys left
+      // here stay pending and the main loop stops or waits
+      let stop = stopReason(options, totals.deleted)
+      if (!stop && !options.dryRun && !options.skipSlotGuard) {
+        await waitForSlots()
+        stop = stopReason(options, totals.deleted)
+      }
+      if (stop) {
+        log.info({ ...batchContext, attempts, reason: stop }, 'batch.not-started')
+        return
+      }
       attempts += 1
       try {
         metrics = await cleanBatch(db, tables, columns, keys, batchId, statuses, options.dryRun, {
@@ -1342,9 +1400,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           )
           totals.retries += 1
           await processKeys(platform, keys.slice(0, half), platformTotals)
-          if (!stopReason(options, totals.deleted)) {
-            await processKeys(platform, keys.slice(half), platformTotals)
-          }
+          await processKeys(platform, keys.slice(half), platformTotals)
           return
         }
         if (attempts > RETRY_DELAYS_MS.length) {
@@ -1364,10 +1420,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           { pgCode: code, cause: RETRYABLE_CODES[code], ...batchContext, attempts, delayMs: delay },
           'batch.retry',
         )
-        await sleep(delay, () => stopState.requested)
-        if (stopState.requested) {
-          return
-        }
+        await sleep(delay, () => !!stopReason(options, totals.deleted))
       }
     }
 
@@ -1443,36 +1496,15 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           break platforms
         }
 
-        if (!options.dryRun && !options.skipSlotGuard) {
-          const waitStarted = Date.now()
-          for (;;) {
-            lastSlots = await slotLags(db)
-            const lag = Math.max(...Object.values(lastSlots))
-            totals.maxSlotLagBytes = Math.max(totals.maxSlotLagBytes, lag)
-            if (lag <= options.maxSlotLagBytes || stopReason(options, totals.deleted)) {
-              break
-            }
-            log.warn(
-              {
-                slotLagMb: Object.fromEntries(
-                  Object.entries(lastSlots).map(([s, b]) => [s, Math.round(b / 1048576)]),
-                ),
-                limitMb: options.maxSlotLagBytes / 1048576,
-                waitedS: Math.round((Date.now() - waitStarted) / 1000),
-              },
-              'slot.wait',
-            )
-            await sleep(SLOT_POLL_MS, () => !!stopReason(options, totals.deleted))
-          }
-          const waited = Date.now() - waitStarted
-          if (waited > 1000) {
-            totals.slotWaitMs += waited
-            log.info({ waitedS: Math.round(waited / 1000) }, 'slot.resumed')
-            continue
-          }
-        }
-
-        const keys = await nextKeys(db, tables, platform, options, statuses, afterId)
+        const keys = await nextKeys(
+          db,
+          tables,
+          platform,
+          options,
+          statuses,
+          afterId,
+          options.maxRows === undefined ? undefined : options.maxRows - totals.deleted,
+        )
         if (keys.length === 0) {
           break
         }
@@ -1495,9 +1527,15 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       }
       log.info({ platform, ...platformTotals, dryRun: options.dryRun }, 'platform.done')
     }
-    if (exitCode === EXIT_DONE && totals.deferredKeys > 0) {
-      reason = 'done-with-deferred-keys'
-      exitCode = EXIT_DEFERRED
+    if (exitCode === EXIT_DONE && !options.dryRun) {
+      // deferred by this run or an earlier one, in this run's platforms and segments
+      const deferred = await cleanPlan(db, tables, options, ['deferred'])
+      const deferredKeysLeft = deferred.reduce((sum, p) => sum + p.keys, 0)
+      if (deferredKeysLeft > 0) {
+        log.warn({ deferredKeysLeft, deferred }, 'run.deferred-keys-left')
+        reason = 'done-with-deferred-keys'
+        exitCode = EXIT_DEFERRED
+      }
     }
   } catch (err) {
     if (err instanceof InvariantError) {
