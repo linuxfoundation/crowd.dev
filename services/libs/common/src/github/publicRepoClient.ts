@@ -101,15 +101,8 @@ function assertAuthenticated(response: Response, url: string): void {
 
 // GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also
 // mean a genuine permission problem, so only 403 needs the response-body sniff.
-async function isRateLimited(response: Response): Promise<boolean> {
-  if (response.status === 429) return true
-  if (response.status !== 403) return false
-  const body = await response.text()
-  return body.toLowerCase().includes('rate limit')
-}
-
 async function assertNotRateLimited(response: Response, what: string): Promise<void> {
-  if (await isRateLimited(response)) {
+  if (response.status === 429) {
     throw new GithubPublicClientError(
       'RATE_LIMIT',
       `Rate limited ${what}`,
@@ -117,6 +110,14 @@ async function assertNotRateLimited(response: Response, what: string): Promise<v
     )
   }
   if (response.status === 403) {
+    const body = await response.text()
+    if (body.toLowerCase().includes('rate limit')) {
+      throw new GithubPublicClientError(
+        'RATE_LIMIT',
+        `Rate limited ${what}`,
+        rateLimitResetMs(response.headers),
+      )
+    }
     throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
   }
 }
@@ -315,16 +316,7 @@ export async function fetchCommitAuthor(
   })
 
   assertAuthenticated(response, url)
-  if (await isRateLimited(response)) {
-    throw new GithubPublicClientError(
-      'RATE_LIMIT',
-      `Rate limited ${what}`,
-      rateLimitResetMs(response.headers),
-    )
-  }
-  if (response.status === 403) {
-    throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
-  }
+  await assertNotRateLimited(response, what)
   if (COMMIT_NOT_FOUND_STATUSES.has(response.status)) {
     return { status: 'commit-not-found' }
   }

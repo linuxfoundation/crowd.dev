@@ -1,11 +1,4 @@
-import {
-  Error404,
-  Error409,
-  GithubCommitAuthor,
-  GithubPublicClientError,
-  IGithubAccount,
-  fetchCommitAuthor,
-} from '@crowd/common'
+import { Error404, Error409, IGithubAccount, fetchCommitAuthor } from '@crowd/common'
 import { CommonMemberService, getGithubInstallationToken } from '@crowd/common_services'
 import {
   GithubEmailLookupResult,
@@ -22,39 +15,32 @@ import {
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { svc } from '../../main'
+import { syncMember } from './memberUpdate'
 
 export async function getGitAuthorsPage(afterEmail: string | null): Promise<IGitAuthorsPage> {
-  return findGitAuthorsPage(pgpQx(svc.postgres.writer.connection()), afterEmail, 200)
+  return findGitAuthorsPage(pgpQx(svc.postgres.writer.connection()), afterEmail, 500)
 }
 
-export async function resolveGitAuthor(
-  author: IGitAuthor,
-): Promise<GithubEmailLookupResult | 'rate-limited' | null> {
+export async function resolveGitAuthor(author: IGitAuthor): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const token = await getGithubInstallationToken()
-
-  let commit: GithubCommitAuthor
-  try {
-    commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
-  } catch (err) {
-    if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
-      svc.log.warn('GitHub rate limit reached, pausing git author lookups')
-      return 'rate-limited'
-    }
-    throw err
-  }
+  const commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
 
   if (commit.status !== 'found') {
     await recordLookup(qx, author, commit.status)
-    return commit.status
+    return
   }
 
   const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
   const result = await linkGithubAccount(qx, memberService, author, commit.account)
-  if (result) {
-    await recordLookup(qx, author, result, commit.account)
+  if (!result) {
+    return
   }
-  return result
+
+  await recordLookup(qx, author, result, commit.account)
+  if (result === 'identity-added') {
+    await syncMember(author.memberId)
+  }
 }
 
 async function linkGithubAccount(
@@ -67,6 +53,10 @@ async function linkGithubAccount(
 
   if (!owner) {
     return addGithubIdentity(qx, author, account)
+  }
+  // A retried attempt finds the identity it already added.
+  if (owner.memberId === author.memberId) {
+    return 'identity-added'
   }
   if (owner.githubId && ![account.id, account.nodeId].includes(owner.githubId)) {
     return 'github-id-mismatch'
