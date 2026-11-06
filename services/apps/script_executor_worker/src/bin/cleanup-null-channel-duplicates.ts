@@ -54,15 +54,17 @@ Common options:
 collect options:
   --from YYYY-MM-DD  First day to scan (default: the last finished window, else the oldest row)
   --to YYYY-MM-DD    Scan up to this day, exclusive (default: the day after the newest row)
-  --window-days N    Days per window (default 7, halved automatically when a window times out)
+  --window-days N    Days per window (default 7, halved down to an hour when a window times out)
   --rescan           Scan from the oldest row again although earlier windows are finished: the
-                     final sweep after clean, which re-opens keys that got duplicates again
+                     final sweep after clean, which re-opens keys that got duplicates again. An
+                     interrupted rescan continues where it stopped when run with --rescan again
 
 clean options:
   --segments a,b     Only keys of these segment ids
   --batch-rows N     Rows per transaction, whole keys only (default 20000, max 100000)
-  --max-rows N       Stop after deleting this many rows. Batches are trimmed to what is left,
-                     but a key is never split, so the last key's copies can go over
+  --max-rows N       Delete at most this many rows. A key that doesn't fit what is left isn't
+                     started, and a batch that would still go over (copies added since collect)
+                     rolls back; the run then stops with exit 2
   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
                      with --wait-nightly)
                      A real run needs --max-rows or --until.
@@ -79,8 +81,8 @@ clean options:
 Stopping: Ctrl-C, SIGTERM or SIGHUP stops after the current batch; a second one exits at once
 (the open transaction rolls back).
 
-Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal or
-another run still holding the run lock after 2 minutes,
+Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal, or not
+started (another run still holds the run lock after 2 minutes, or inside the nightly window),
 3 finished but some keys were deferred (rerun with --retry-deferred), 4 database connection
 lost (safe to restart), 1 error incl. a failed safety check (look before restarting), 64 usage.
 serverWalBytes in the batch metrics is all WAL the server wrote during the batch, not only ours.
@@ -96,7 +98,8 @@ const TAG_PATTERN = /^(0[1-9]|[12][0-9]|3[01])_(0[1-9]|1[0-2])_20[0-9]{2}$/
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-const DAY_MS = 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
 const MAX_UNTIL_MS = 48 * 60 * 60 * 1000
 const MAX_UNTIL_WAIT_NIGHTLY_MS = 7 * DAY_MS
 const MAX_BATCH_ROWS = 100_000
@@ -171,7 +174,8 @@ type Log = ReturnType<typeof getServiceChildLogger>
 class UsageError extends Error {}
 class InvariantError extends Error {}
 class GuardError extends Error {}
-class RunLockBusyError extends Error {}
+class NotStartedError extends Error {}
+class MaxRowsError extends Error {}
 
 interface ITables {
   tag: string
@@ -418,7 +422,7 @@ async function acquireRunLock(db: Session, log: Log, tables: ITables): Promise<v
     // an aborted run's backend keeps the lock until its last statement ends (up to a minute)
     const holders = await runLockHolders(db, tables)
     if (Date.now() - started >= RUN_LOCK_WAIT_MS || stopState.requested) {
-      throw new RunLockBusyError(
+      throw new NotStartedError(
         `Another collect or clean run for tag ${tables.tag} holds the run lock: ${JSON.stringify(holders)}`,
       )
     }
@@ -446,6 +450,10 @@ function collectProgressName(platforms: string[]): string {
   return `collect:${[...platforms].sort().join(',')}`
 }
 
+function rescanProgressName(platforms: string[]): string {
+  return `rescan:${[...platforms].sort().join(',')}`
+}
+
 async function epochMs(db: Session, sql: string, params = {}): Promise<number | null> {
   const row: { ms: string | null } = await db.one(sql, params)
   return row.ms === null ? null : Number(row.ms)
@@ -454,14 +462,20 @@ async function epochMs(db: Session, sql: string, params = {}): Promise<number | 
 async function collect(db: Session, log: Log, options: ICollectOptions): Promise<number> {
   const tables = tablesFor(options.tag)
   const progressName = collectProgressName(options.platforms)
+  const rescanName = rescanProgressName(options.platforms)
 
-  const storedEnd = (await tableExists(db, tables.raw.progress))
-    ? await epochMs(
-        db,
-        `select floor(extract(epoch from max("windowEnd")) * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
-        { name: progressName },
-      )
-    : null
+  const progressTable = await tableExists(db, tables.raw.progress)
+  const readProgress = async (name: string) =>
+    progressTable
+      ? epochMs(
+          db,
+          `select floor(extract(epoch from max("windowEnd")) * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
+          { name },
+        )
+      : null
+  const storedEnd = await readProgress(progressName)
+  // an interrupted --rescan continues where it stopped; the row goes away when a rescan ends
+  const rescanEnd = options.rescan ? await readProgress(rescanName) : null
   const oldest = await epochMs(
     db,
     `select floor(extract(epoch from min("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
@@ -484,7 +498,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       )
     }
   } else if (options.rescan) {
-    startMs = startOfUtcDay(oldest)
+    startMs = rescanEnd ?? startOfUtcDay(oldest)
   } else {
     startMs = storedEnd ?? startOfUtcDay(oldest)
   }
@@ -499,6 +513,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       progressName,
       recordsProgress,
       storedEnd: storedEnd === null ? null : new Date(storedEnd).toISOString(),
+      rescanEnd: rescanEnd === null ? null : new Date(rescanEnd).toISOString(),
       oldest: new Date(oldest).toISOString(),
       newest: new Date(newest).toISOString(),
       from: new Date(startMs).toISOString(),
@@ -533,7 +548,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     ms: 0,
   }
   let windowStart = startMs
-  let windowDays = options.windowDays
+  let windowMs = options.windowDays * DAY_MS
   while (windowStart < endMs) {
     if (stopState.requested) {
       log.info({ reason: stopState.reason, ...totals }, 'collect.stopped')
@@ -558,7 +573,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       windowStart = nextDay
     }
 
-    const windowEnd = Math.min(windowStart + windowDays * DAY_MS, endMs)
+    const windowEnd = Math.min(windowStart + windowMs, endMs)
     const started = Date.now()
     let result: {
       found: number
@@ -573,15 +588,23 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
         db,
         tables,
         options,
-        recordsProgress ? progressName : null,
+        [
+          ...(recordsProgress ? [progressName] : []),
+          ...(options.rescan && recordsProgress ? [rescanName] : []),
+        ],
         windowStart,
         windowEnd,
       )
     } catch (err) {
-      if (asPgError(err).code === '57014' && windowDays > 1) {
-        windowDays = Math.max(1, Math.floor(windowDays / 2))
+      // halves down to an hour, so one dense day can't stop the collect for good
+      if (asPgError(err).code === '57014' && windowMs > HOUR_MS) {
+        windowMs = Math.max(HOUR_MS, Math.floor(windowMs / 2 / HOUR_MS) * HOUR_MS)
         log.warn(
-          { ...pgFields(err), windowStart: new Date(windowStart).toISOString(), windowDays },
+          {
+            ...pgFields(err),
+            windowStart: new Date(windowStart).toISOString(),
+            windowHours: windowMs / HOUR_MS,
+          },
           'collect.window.timeout',
         )
         continue
@@ -608,7 +631,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       {
         windowStart: new Date(windowStart).toISOString(),
         windowEnd: new Date(windowEnd).toISOString(),
-        windowDays,
+        windowHours: windowMs / HOUR_MS,
         ...result,
         ms,
         // share of the time range done; days without rows are skipped, so no ETA
@@ -621,6 +644,9 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     windowStart = windowEnd
   }
 
+  if (options.rescan && !options.dryRun && progressTable) {
+    await db.none(`delete from ${tables.progress} where name = $(name)`, { name: rescanName })
+  }
   log.info({ ...totals, dryRun: options.dryRun }, 'collect.summary')
   return EXIT_DONE
 }
@@ -629,7 +655,7 @@ async function collectWindow(
   db: Session,
   tables: ITables,
   options: ICollectOptions,
-  progressName: string | null,
+  progressNames: string[],
   windowStartMs: number,
   windowEndMs: number,
 ) {
@@ -637,7 +663,7 @@ async function collectWindow(
     windowStart: new Date(windowStartMs).toISOString(),
     windowEnd: new Date(windowEndMs).toISOString(),
     platforms: options.platforms,
-    progressName,
+    progressNames,
   }
   const found = `
     select "timestamp", platform, type, "sourceId", "segmentId", count(*)::int as copies
@@ -691,10 +717,11 @@ async function collectWindow(
       `,
       params,
     )
-    if (progressName !== null) {
+    if (progressNames.length > 0) {
       await t.none(
         `
-          insert into ${tables.progress} (name, "windowEnd") values ($(progressName), $(windowEnd)::timestamptz)
+          insert into ${tables.progress} (name, "windowEnd")
+          select unnest($(progressNames)::text[]), $(windowEnd)::timestamptz
           on conflict (name) do update set
             "windowEnd" = greatest(${tables.progress}."windowEnd", excluded."windowEnd"),
             "updatedAt" = now()
@@ -869,6 +896,7 @@ async function cleanBatch(
   batchId: string,
   statuses: string[],
   dryRun: boolean,
+  maxDeletes: number | undefined,
   record: { runId: string; platform: string; attempts: number; startedAt: Date },
 ): Promise<IBatchMetrics> {
   const params = { keyIds: keys.map((k) => k.id), statuses, batchId }
@@ -975,6 +1003,11 @@ async function cleanBatch(
 
     started = Date.now()
     const context = { batchId, lockedRows: locked.n, ...result }
+    if (maxDeletes !== undefined && result.deleted > maxDeletes) {
+      throw new MaxRowsError(
+        `Batch ${batchId} would delete ${result.deleted} rows, ${maxDeletes} left under --max-rows`,
+      )
+    }
     if (result.deleted !== result.dropped || result.backedUp !== result.deleted) {
       throw new InvariantError(
         `Deleted ${result.deleted} rows, expected ${result.dropped}, backed up ${result.backedUp}: ${JSON.stringify(context)}`,
@@ -1101,7 +1134,7 @@ async function nextKeys(
   statuses: string[],
   afterId: string,
   maxDeletes: number | undefined,
-): Promise<IKey[]> {
+): Promise<{ batch: IKey[]; limited: boolean }> {
   const keys: IKey[] = await db.any(
     `
       select id, copies
@@ -1122,23 +1155,22 @@ async function nextKeys(
     },
   )
 
-  // whole keys only: the first key is always taken, so one key can still go past --max-rows
+  // whole keys only; a key bigger than --batch-rows still goes alone, one past --max-rows doesn't
   const batch: IKey[] = []
   let rows = 0
   let deletes = 0
   for (const key of keys) {
-    if (
-      batch.length > 0 &&
-      (rows + key.copies > options.batchRows ||
-        (maxDeletes !== undefined && deletes + key.copies - 1 > maxDeletes))
-    ) {
+    if (maxDeletes !== undefined && deletes + key.copies - 1 > maxDeletes) {
+      return { batch, limited: true }
+    }
+    if (batch.length > 0 && rows + key.copies > options.batchRows) {
       break
     }
     batch.push(key)
     rows += key.copies
     deletes += key.copies - 1
   }
-  return batch
+  return { batch, limited: false }
 }
 
 interface IPlatformPlan {
@@ -1206,17 +1238,24 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
         `select name, floor(extract(epoch from "windowEnd") * 1000)::bigint::text as "windowEndMs" from ${tables.progress}`,
       )
     : []
-  const covered = progress.filter((p) =>
-    options.platforms.every((platform) =>
-      p.name
-        .replace(/^collect:/, '')
-        .split(',')
-        .includes(platform),
-    ),
+  // per platform: the furthest end of any collect run that included it, so collects done in
+  // separate platform runs count; the run as a whole is covered up to the least covered one
+  const collectedUntilByPlatform = Object.fromEntries(
+    options.platforms.map((platform) => [
+      platform,
+      progress
+        .filter(
+          (p) =>
+            p.name.startsWith('collect:') &&
+            p.name
+              .replace(/^collect:/, '')
+              .split(',')
+              .includes(platform),
+        )
+        .reduce((max, p) => Math.max(max, Number(p.windowEndMs)), 0),
+    ]),
   )
-  const collectedUntil = covered
-    .map((p) => Number(p.windowEndMs))
-    .reduce((max, ms) => Math.max(max, ms), 0)
+  const collectedUntil = Math.min(...Object.values(collectedUntilByPlatform))
   const slots = options.skipSlotGuard ? null : await slotLags(db)
   const newest = await epochMs(
     db,
@@ -1233,6 +1272,12 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
         windowEnd: new Date(Number(p.windowEndMs)).toISOString(),
       })),
       collectedUntil: collectedUntil ? new Date(collectedUntil).toISOString() : null,
+      collectedUntilByPlatform: Object.fromEntries(
+        Object.entries(collectedUntilByPlatform).map(([p, ms]) => [
+          p,
+          ms ? new Date(ms).toISOString() : null,
+        ]),
+      ),
       collectTarget: new Date(collectTarget).toISOString(),
       slotLagMb:
         slots &&
@@ -1252,15 +1297,15 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
   if (!options.dryRun) {
     const nowReason = stopReason(options, 0)
     if (nowReason === 'nightly-window' && !options.waitNightly) {
-      throw new UsageError(
-        'Refusing to start during the nightly meetings export (00:30-05:30 UTC); pass --allow-nightly with --until to override',
+      throw new NotStartedError(
+        'Not starting during the nightly meetings export (00:30-05:30 UTC): start again after 05:30, or pass --wait-nightly, or --allow-nightly with --until',
       )
     }
     const duplicates = plan.reduce((sum, p) => sum + p.duplicates, 0)
     await confirm(
       options,
       `Clean ${duplicates} duplicate rows (${plan.map((p) => `${p.platform}: ${p.duplicates}`).join(', ')}) from activityRelations into ${tables.backup}` +
-        `${options.maxRows ? `, stopping after ${options.maxRows} rows (whole keys, so the last key can go over)` : ''}${options.until ? `, until ${options.until.toISOString()}` : ''}.`,
+        `${options.maxRows ? `, at most ${options.maxRows} rows` : ''}${options.until ? `, until ${options.until.toISOString()}` : ''}.`,
     )
   }
 
@@ -1344,6 +1389,8 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     }
   }
 
+  let limitHit = false
+
   const processKeys = async (
     platform: string,
     keys: IKey[],
@@ -1366,6 +1413,9 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     for (;;) {
       // every attempt, retry and split half passes the same guards as a new batch; keys left
       // here stay pending and the main loop stops or waits
+      if (limitHit) {
+        return
+      }
       let stop = stopReason(options, totals.deleted)
       if (!stop && !options.dryRun && !options.skipSlotGuard) {
         await waitForSlots()
@@ -1377,14 +1427,24 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       }
       attempts += 1
       try {
-        metrics = await cleanBatch(db, tables, columns, keys, batchId, statuses, options.dryRun, {
-          runId,
-          platform,
-          attempts,
-          startedAt,
-        })
+        metrics = await cleanBatch(
+          db,
+          tables,
+          columns,
+          keys,
+          batchId,
+          statuses,
+          options.dryRun,
+          options.maxRows === undefined ? undefined : options.maxRows - totals.deleted,
+          { runId, platform, attempts, startedAt },
+        )
         break
       } catch (err) {
+        if (err instanceof MaxRowsError) {
+          log.info({ ...batchContext, attempts, message: err.message }, 'batch.over-max-rows')
+          limitHit = true
+          return
+        }
         const code = asPgError(err).code ?? ''
         if (!RETRYABLE_CODES[code]) {
           log.error({ ...pgFields(err), ...batchContext, attempts }, 'batch.failed')
@@ -1465,6 +1525,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
   try {
     platforms: for (const platform of options.platforms) {
       let afterId = '0'
+      let sampled = 0
       const platformTotals = { batches: 0, keys: 0, deleted: 0 }
       for (;;) {
         const stop = stopReason(options, totals.deleted)
@@ -1494,7 +1555,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           break platforms
         }
 
-        const keys = await nextKeys(
+        const { batch: keys, limited } = await nextKeys(
           db,
           tables,
           platform,
@@ -1504,13 +1565,26 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           options.maxRows === undefined ? undefined : options.maxRows - totals.deleted,
         )
         if (keys.length === 0) {
+          if (limited) {
+            log.info({ platform, deleted: totals.deleted }, 'run.max-rows-reached')
+            reason = 'max-rows'
+            exitCode = EXIT_STOPPED
+            break platforms
+          }
           break
         }
         afterId = keys[keys.length - 1].id
 
         await processKeys(platform, keys, platformTotals)
+        sampled += 1
+        if (limitHit) {
+          reason = 'max-rows'
+          exitCode = EXIT_STOPPED
+          break platforms
+        }
 
-        if (options.dryRun && platformTotals.batches >= options.sampleBatches) {
+        // counts batches tried, not only those that succeeded, so failing dry runs stay bounded
+        if (options.dryRun && sampled >= options.sampleBatches) {
           break
         }
 
@@ -1922,8 +1996,8 @@ main()
       baseLog.error({ message: error.message }, 'run.usage-error')
       process.exit(EXIT_USAGE)
     }
-    if (error instanceof RunLockBusyError) {
-      baseLog.warn({ message: error.message }, 'run.lock-busy')
+    if (error instanceof NotStartedError) {
+      baseLog.warn({ message: error.message }, 'run.not-started')
       process.exit(EXIT_STOPPED)
     }
     if (error instanceof GuardError) {
