@@ -125,3 +125,31 @@ export async function insertGithubEmailLookup(
     lookup,
   )
 }
+
+export async function countGithubEmailLookupsByMember(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<number> {
+  const { count } = await qx.selectOne(
+    `
+      select count(*)::int as count
+      from "githubEmailLookups"
+      where email in (select lower(value) from "memberIdentities" where "memberId" = $(memberId))
+    `,
+    { memberId },
+  )
+  return count
+}
+
+export async function deleteGithubEmailLookupsByMember(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<number> {
+  return qx.result(
+    `
+      delete from "githubEmailLookups"
+      where email in (select lower(value) from "memberIdentities" where "memberId" = $(memberId))
+    `,
+    { memberId },
+  )
+}
