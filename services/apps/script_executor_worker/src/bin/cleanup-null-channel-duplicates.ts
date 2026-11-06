@@ -469,7 +469,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
   const progressName = collectProgressName(options.platforms)
   const rescanName = rescanProgressName(options.platforms)
 
-  const progressTable = await tableExists(db, tables.raw.progress)
+  let progressTable = await tableExists(db, tables.raw.progress)
   const readProgress = async (name: string) =>
     progressTable
       ? epochMs(
@@ -545,6 +545,16 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     )
     // after the prompt, so a run left waiting for an answer holds no lock
     await acquireRunLock(db, log, tables)
+    // another run may have moved progress while this one waited for the answer: its plan would
+    // be stale, so it stops (exit 2) and the next start plans again
+    progressTable = await tableExists(db, tables.raw.progress)
+    const storedEndNow = await readProgress(progressName)
+    const rescanEndNow = options.rescan ? await readProgress(rescanName) : null
+    if (storedEndNow !== storedEnd || rescanEndNow !== rescanEnd) {
+      throw new NotStartedError(
+        'Collect progress changed while this run waited for the confirmation; start it again to plan from the current progress',
+      )
+    }
     await ensureTables(db, tables)
     // a stale cursor would stay ahead of this rescan (progress only moves forward) and make an
     // interrupted run look finished
