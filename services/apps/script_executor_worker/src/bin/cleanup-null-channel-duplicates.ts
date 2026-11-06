@@ -52,7 +52,8 @@ Common options:
                      "activityRelationsNullChannelBatches_<tag>" (batch metrics),
                      "activityRelationsNullChannelProgress_<tag>" (collect progress).
   --platforms a,b    Default: meetings,linkedin,tnc,cvent,slack,stackoverflow
-  --dry-run          Read only: report what would happen
+  --dry-run          Read only: report what would happen. collect --dry-run scans the same range
+                     as a real collect (hours on production): pass --from/--to to sample
   --yes              Skip the confirmation prompt (required when stdin isn't a terminal)
 
 collect options:
@@ -542,6 +543,8 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       options,
       `Collect duplicate keys for ${options.platforms.join(', ')} from ${new Date(startMs).toISOString()} to ${new Date(endMs).toISOString()} into ${tables.keys}.`,
     )
+    // after the prompt, so a run left waiting for an answer holds no lock
+    await acquireRunLock(db, log, tables)
     await ensureTables(db, tables)
     // a stale cursor would stay ahead of this rescan (progress only moves forward) and make an
     // interrupted run look finished
@@ -1329,6 +1332,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       `Clean ${duplicates} duplicate rows (${plan.map((p) => `${p.platform}: ${p.duplicates}`).join(', ')}) from activityRelations into ${tables.backup}` +
         `${options.maxRows ? `, at most ${options.maxRows} rows` : ''}${options.until ? `, until ${options.until.toISOString()}` : ''}.`,
     )
+    await acquireRunLock(db, log, tables)
   }
 
   const totals: IRunTotals = {
@@ -1915,15 +1919,21 @@ async function confirm(options: ICommonOptions, plan: string): Promise<void> {
     throw new UsageError('stdin is not a terminal: pass --yes to run without the confirmation')
   }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await new Promise<string>((resolve, reject) => {
-    // readline takes Ctrl-C in a terminal, so the process signal handler never sees it
-    rl.on('SIGINT', () => rl.close())
-    rl.on('close', () => reject(new UsageError('Aborted by the operator')))
-    rl.question(`\n${plan}\nType the tag (${options.tag}) to proceed: `, resolve)
-  })
-  rl.close()
-  if (answer.trim() !== options.tag) {
-    throw new UsageError('Aborted by the operator')
+  // SIGTERM/SIGHUP only set stopState, so the prompt watches it to end with them
+  const watch = setInterval(() => stopState.requested && rl.close(), 500)
+  try {
+    const answer = await new Promise<string>((resolve, reject) => {
+      // readline takes Ctrl-C in a terminal, so the process signal handler never sees it
+      rl.on('SIGINT', () => rl.close())
+      rl.on('close', () => reject(new UsageError('Aborted by the operator')))
+      rl.question(`\n${plan}\nType the tag (${options.tag}) to proceed: `, resolve)
+    })
+    if (answer.trim() !== options.tag) {
+      throw new UsageError('Aborted by the operator')
+    }
+  } finally {
+    clearInterval(watch)
+    rl.close()
   }
 }
 
@@ -2001,9 +2011,6 @@ async function main(): Promise<number> {
   )
 
   try {
-    if (command !== 'status' && !options.dryRun) {
-      await acquireRunLock(session, log, tablesFor(options.tag))
-    }
     if (command === 'collect') {
       return await collect(session, log, options as ICollectOptions)
     }
