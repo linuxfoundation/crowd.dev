@@ -1,78 +1,5 @@
-/**
- * NULL-channel duplicate cleanup for activityRelations (linuxfoundation/lfx-cdp-insights-ops#852)
- *
- * Before #850, activities without a channel got a new activityRelations row on every re-send, so
- * one dedup key ("timestamp", platform, type, "sourceId", "segmentId" with a NULL channel) can have
- * many copies. This script keeps one copy per key, the one data-sink-worker reads (newest by
- * "updatedAt", "createdAt", "activityId"), and moves the other copies to a dated backup table, in
- * short transactions that can be stopped and resumed.
- *
- * Commands:
- *   collect  Walk the dedup index in time windows and record every key with more than one
- *            NULL-channel copy in the work table. Resumes from the last finished window of the
- *            same platform list.
- *   clean    Take pending keys platform by platform (--platforms order), whole keys up to
- *            --batch-rows rows per transaction. Each transaction:
- *              1. locks the key's NULL-channel copies (NOWAIT: never waits on app transactions),
- *              2. ranks only the locked copies and keeps rank 1,
- *              3. carries parentId, conversationId and sourceParentId to the kept copy where it
- *                 has none, and moves its updatedAt at least 2 ms past every deleted copy's
- *                 (Tinybird stores milliseconds) only when it isn't already,
- *              4. moves the other copies to the backup table with the kept activityId,
- *              5. checks that every key still has exactly one locked copy and that every deleted
- *                 row is in the backup, and rolls back otherwise,
- *              6. marks the keys and records the batch's metrics in the batches table.
- *            Keys whose batch keeps failing on locks, deadlocks or timeouts are marked deferred
- *            and skipped; --retry-deferred takes them again.
- *   status   Print progress from the work, batches and progress tables.
- *
- * Usage:
- *   npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
- *   (or pnpm run cleanup-null-channel-duplicates -- <command> ...)
- *
- * Common options:
- *   --tag DD_MM_YYYY   Shared by every run of one cleanup. Tables: "activityRelations_<tag>"
- *                      (backup), "activityRelationsNullChannelKeys_<tag>" (work),
- *                      "activityRelationsNullChannelBatches_<tag>" (batch metrics),
- *                      "activityRelationsNullChannelProgress_<tag>" (collect progress).
- *   --platforms a,b    Default: meetings,linkedin,tnc,cvent,slack,stackoverflow
- *   --dry-run          Read only: report what would happen
- *   --yes              Skip the confirmation prompt (required when stdin isn't a terminal)
- *
- * collect options:
- *   --from YYYY-MM-DD  First day to scan (default: the last finished window, else the oldest row)
- *   --to YYYY-MM-DD    Scan up to this day, exclusive (default: the day after the newest row)
- *   --window-days N    Days per window (default 7, halved automatically when a window times out)
- *
- * clean options:
- *   --segments a,b     Only keys of these segment ids
- *   --batch-rows N     Rows per transaction, whole keys only (default 20000, max 100000)
- *   --max-rows N       Stop after deleting this many rows
- *   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
- *                      with --wait-nightly)
- *                      A real run needs --max-rows or --until.
- *   --max-slot-lag-mb N  Wait before a batch while sequin_slot or sequin_slot_2 is further behind
- *                      (default 1024). A missing slot stops the run.
- *   --skip-slot-guard  Run without the slot check (for environments without Sequin)
- *   --allow-nightly    Also run 00:30-05:30 UTC (nightly meetings export); needs --until
- *   --wait-nightly     Pause during 00:30-05:30 UTC and continue afterwards instead of stopping;
- *                      allows --until up to 7 days ahead
- *   --allow-partial-collect  Clean although collect hasn't caught up for these platforms
- *   --retry-deferred   Also take keys deferred by earlier runs
- *   --sample-batches N Dry run: batches to check per platform (default 3)
- *
- * Stopping: Ctrl-C, SIGTERM or SIGHUP stops after the current batch; a second one exits at once
- * (the open transaction rolls back).
- *
- * Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal,
- * 3 finished but some keys were deferred (rerun with --retry-deferred), 4 database connection
- * lost (safe to restart), 1 error incl. a failed safety check (look before restarting), 64 usage.
- *
- * Environment: CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD,
- * CROWD_DB_DATABASE. Logs are JSON lines with a constant "msg" per event (run.config, run.plan,
- * collect.window, batch.done, batch.retry, batch.deferred, slot.wait, run.progress, run.summary,
- * ...); pipe through jq.
- */
+// NULL-channel duplicate cleanup for activityRelations (linuxfoundation/lfx-cdp-insights-ops#852).
+// Commands, options and exit codes: USAGE below, or run with --help.
 import { randomUUID } from 'crypto'
 import { hostname } from 'os'
 import * as readline from 'readline'
@@ -85,6 +12,81 @@ import {
 import { getServiceChildLogger } from '@crowd/logging'
 
 const baseLog = getServiceChildLogger('cleanup-null-channel-duplicates')
+
+const USAGE = `NULL-channel duplicate cleanup for activityRelations (linuxfoundation/lfx-cdp-insights-ops#852)
+
+Before #850, activities without a channel got a new activityRelations row on every re-send, so
+one dedup key ("timestamp", platform, type, "sourceId", "segmentId" with a NULL channel) can have
+many copies. This script keeps one copy per key, the one data-sink-worker reads (newest by
+"updatedAt", "createdAt", "activityId"), and moves the other copies to a dated backup table, in
+short transactions that can be stopped and resumed.
+
+Commands:
+  collect  Walk the dedup index in time windows and record every key with more than one
+           NULL-channel copy in the work table. Resumes from the last finished window of the
+           same platform list.
+  clean    Take pending keys platform by platform (--platforms order), whole keys up to
+           --batch-rows rows per transaction. Each transaction:
+             1. locks the key's NULL-channel copies (NOWAIT: never waits on app transactions),
+             2. ranks only the locked copies and keeps rank 1,
+             3. carries parentId, conversationId and sourceParentId to the kept copy where it
+                has none, and moves its updatedAt at least 2 ms past every deleted copy's
+                (Tinybird stores milliseconds) only when it isn't already,
+             4. moves the other copies to the backup table with the kept activityId,
+             5. checks that every key still has exactly one locked copy and that every deleted
+                row is in the backup, and rolls back otherwise,
+             6. marks the keys and records the batch's metrics in the batches table.
+           Keys whose batch keeps failing on locks, deadlocks or timeouts are marked deferred
+           and skipped; --retry-deferred takes them again.
+  status   Print progress from the work, batches and progress tables.
+
+Usage:
+  npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
+  (or pnpm run cleanup-null-channel-duplicates -- <command> ...)
+
+Common options:
+  --tag DD_MM_YYYY   Shared by every run of one cleanup. Tables: "activityRelations_<tag>"
+                     (backup), "activityRelationsNullChannelKeys_<tag>" (work),
+                     "activityRelationsNullChannelBatches_<tag>" (batch metrics),
+                     "activityRelationsNullChannelProgress_<tag>" (collect progress).
+  --platforms a,b    Default: meetings,linkedin,tnc,cvent,slack,stackoverflow
+  --dry-run          Read only: report what would happen
+  --yes              Skip the confirmation prompt (required when stdin isn't a terminal)
+
+collect options:
+  --from YYYY-MM-DD  First day to scan (default: the last finished window, else the oldest row)
+  --to YYYY-MM-DD    Scan up to this day, exclusive (default: the day after the newest row)
+  --window-days N    Days per window (default 7, halved automatically when a window times out)
+
+clean options:
+  --segments a,b     Only keys of these segment ids
+  --batch-rows N     Rows per transaction, whole keys only (default 20000, max 100000)
+  --max-rows N       Stop after deleting this many rows
+  --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
+                     with --wait-nightly)
+                     A real run needs --max-rows or --until.
+  --max-slot-lag-mb N  Wait before a batch while sequin_slot or sequin_slot_2 is further behind
+                     (default 1024). A missing slot stops the run.
+  --skip-slot-guard  Run without the slot check (for environments without Sequin)
+  --allow-nightly    Also run 00:30-05:30 UTC (nightly meetings export); needs --until
+  --wait-nightly     Pause during 00:30-05:30 UTC and continue afterwards instead of stopping;
+                     allows --until up to 7 days ahead
+  --allow-partial-collect  Clean although collect hasn't caught up for these platforms
+  --retry-deferred   Also take keys deferred by earlier runs
+  --sample-batches N Dry run: batches to check per platform (default 3)
+
+Stopping: Ctrl-C, SIGTERM or SIGHUP stops after the current batch; a second one exits at once
+(the open transaction rolls back).
+
+Exit codes: 0 nothing left to do, 2 stopped by --max-rows/--until/nightly window/signal,
+3 finished but some keys were deferred (rerun with --retry-deferred), 4 database connection
+lost (safe to restart), 1 error incl. a failed safety check (look before restarting), 64 usage.
+
+Environment: CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD,
+CROWD_DB_DATABASE. Logs are JSON lines with a constant "msg" per event (run.config, run.plan,
+collect.window, batch.done, batch.retry, batch.deferred, slot.wait, run.progress, run.summary,
+...); pipe through jq.
+`
 
 const DEFAULT_PLATFORMS = ['meetings', 'linkedin', 'tnc', 'cvent', 'slack', 'stackoverflow']
 const TAG_PATTERN = /^(0[1-9]|[12][0-9]|3[01])_(0[1-9]|1[0-2])_20[0-9]{2}$/
@@ -162,6 +164,7 @@ type Log = ReturnType<typeof getServiceChildLogger>
 
 class UsageError extends Error {}
 class InvariantError extends Error {}
+class GuardError extends Error {}
 
 interface ITables {
   tag: string
@@ -261,6 +264,11 @@ function tablesFor(tag: string): ITables {
   }
 }
 
+// floor, not ms - ms % DAY_MS: that rounds pre-1970 timestamps (back to year 0026) up
+function startOfUtcDay(ms: number): number {
+  return Math.floor(ms / DAY_MS) * DAY_MS
+}
+
 function sleep(ms: number, stop: () => boolean): Promise<void> {
   return new Promise((resolve) => {
     const started = Date.now()
@@ -275,10 +283,23 @@ function sleep(ms: number, stop: () => boolean): Promise<void> {
   })
 }
 
+interface IPgError {
+  code?: string
+  message?: string
+  detail?: string
+  hint?: string
+  table?: string
+  constraint?: string
+  where?: string
+}
+
+function asPgError(err: unknown): IPgError {
+  return typeof err === 'object' && err !== null ? (err as IPgError) : {}
+}
+
 // pg error fields the bunyan serializer drops
 function pgFields(err: unknown): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const e = err as any
+  const e = asPgError(err)
   return {
     err,
     pgCode: e?.code,
@@ -291,8 +312,7 @@ function pgFields(err: unknown): Record<string, unknown> {
 }
 
 function isConnectionError(err: unknown): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const e = err as any
+  const e = asPgError(err)
   const code = typeof e?.code === 'string' ? e.code : ''
   return (
     code.startsWith('08') ||
@@ -421,10 +441,6 @@ async function epochMs(db: Session, sql: string, params = {}): Promise<number | 
   return row.ms === null ? null : Number(row.ms)
 }
 
-// ---------------------------------------------------------------------------------------------
-// collect
-// ---------------------------------------------------------------------------------------------
-
 async function collect(db: Session, log: Log, options: ICollectOptions): Promise<number> {
   const tables = tablesFor(options.tag)
   const progressName = collectProgressName(options.platforms)
@@ -432,17 +448,17 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
   const storedEnd = (await tableExists(db, tables.raw.progress))
     ? await epochMs(
         db,
-        `select (extract(epoch from "windowEnd") * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
+        `select floor(extract(epoch from "windowEnd") * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
         { name: progressName },
       )
     : null
   const oldest = await epochMs(
     db,
-    `select (extract(epoch from min("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
+    `select floor(extract(epoch from min("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
   )
   const newest = await epochMs(
     db,
-    `select (extract(epoch from max("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
+    `select floor(extract(epoch from max("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
   )
   if (oldest === null || newest === null) {
     throw new UsageError('activityRelations has no rows with a timestamp')
@@ -458,9 +474,9 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       )
     }
   } else {
-    startMs = storedEnd ?? oldest - (oldest % DAY_MS)
+    startMs = storedEnd ?? startOfUtcDay(oldest)
   }
-  const endMs = options.to ? options.to.getTime() : newest - (newest % DAY_MS) + DAY_MS
+  const endMs = options.to ? options.to.getTime() : startOfUtcDay(newest) + DAY_MS
 
   log.info(
     {
@@ -509,7 +525,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     // years without rows (timestamps go from 0026 to 2120): jump to the next day that has any
     const next = await epochMs(
       db,
-      `select (extract(epoch from min("timestamp")) * 1000)::bigint::text as ms
+      `select floor(extract(epoch from min("timestamp")) * 1000)::bigint::text as ms
        from "activityRelations" where "timestamp" >= $(from)::timestamptz`,
       { from: new Date(windowStart).toISOString() },
     )
@@ -518,7 +534,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       windowStart = endMs
       break
     }
-    const nextDay = next - (next % DAY_MS)
+    const nextDay = startOfUtcDay(next)
     if (nextDay > windowStart) {
       totals.skippedDays += Math.round((nextDay - windowStart) / DAY_MS)
       windowStart = nextDay
@@ -537,8 +553,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     try {
       result = await collectWindow(db, tables, options, progressName, windowStart, windowEnd)
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((err as any)?.code === '57014' && windowDays > 1) {
+      if (asPgError(err).code === '57014' && windowDays > 1) {
         windowDays = Math.max(1, Math.floor(windowDays / 2))
         log.warn(
           { ...pgFields(err), windowStart: new Date(windowStart).toISOString(), windowDays },
@@ -640,7 +655,7 @@ async function collectWindow(
           insert into ${tables.keys} ("timestamp", platform, type, "sourceId", "segmentId", copies)
           select "timestamp", platform, type, "sourceId", "segmentId", copies from found
           on conflict ("timestamp", platform, type, "sourceId", "segmentId") do update set
-            status = 'pending', copies = excluded.copies, deleted = null, error = null,
+            status = 'pending', copies = excluded.copies, error = null,
             "collectedAt" = now()
           -- a finished key that has duplicates again (e.g. a re-send raced the cleanup)
           where ${tables.keys}.status in ('done', 'no_duplicates')
@@ -666,10 +681,6 @@ async function collectWindow(
     return row
   })
 }
-
-// ---------------------------------------------------------------------------------------------
-// clean
-// ---------------------------------------------------------------------------------------------
 
 async function activityRelationColumns(db: Session): Promise<string[]> {
   const rows: { name: string }[] = await db.any(
@@ -711,7 +722,7 @@ async function slotLags(db: Session): Promise<Record<string, number>> {
   )
   const missing = SLOTS.filter((s) => !rows.some((r) => r.slot === s && r.lag !== null))
   if (missing.length > 0) {
-    throw new UsageError(
+    throw new GuardError(
       `Replication slot(s) missing or without a confirmed flush position: ${missing.join(', ')}. ` +
         "The lag guard can't work; use --skip-slot-guard only where there is no Sequin.",
     )
@@ -944,8 +955,7 @@ async function cleanBatch(
         `Ranked ${result.foundRows} rows but locked ${locked.n}: ${JSON.stringify(context)}`,
       )
     }
-    // every key that had locked copies must keep exactly one of them
-    const remaining: { rows: number; keys: number } = await t.one(
+    const survivorsPerKey: { rows: number; keys: number } = await t.one(
       `
         with k as (${KEYS_CTE(tables)})
         select count(*)::int as rows, count(distinct k."keyId")::int as keys
@@ -954,9 +964,9 @@ async function cleanBatch(
       `,
       { ...params, lockedIds },
     )
-    if (remaining.rows !== result.keysFound || remaining.keys !== result.keysFound) {
+    if (survivorsPerKey.rows !== result.keysFound || survivorsPerKey.keys !== result.keysFound) {
       throw new InvariantError(
-        `After the batch ${remaining.rows} locked rows of ${remaining.keys} keys remain, expected one row for each of ${result.keysFound} keys: ${JSON.stringify(context)}`,
+        `After the batch ${survivorsPerKey.rows} locked rows of ${survivorsPerKey.keys} keys remain, expected one row for each of ${result.keysFound} keys: ${JSON.stringify(context)}`,
       )
     }
     ms.verify = Date.now() - started
@@ -966,7 +976,7 @@ async function cleanBatch(
       `
         update ${tables.keys} k set
           status = case when coalesce((d.counts ->> k.id::text)::int, 0) > 0 then 'done' else 'no_duplicates' end,
-          deleted = coalesce((d.counts ->> k.id::text)::int, 0),
+          deleted = coalesce(k.deleted, 0) + coalesce((d.counts ->> k.id::text)::int, 0),
           attempts = k.attempts + 1,
           error = null,
           "batchId" = $(batchId),
@@ -1010,8 +1020,7 @@ async function cleanBatch(
 }
 
 async function recordBatch(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: { none: (query: string, params?: any) => Promise<null> },
+  db: { none: (query: string, params?: Record<string, unknown>) => Promise<null> },
   tables: ITables,
   runId: string,
   platform: string,
@@ -1150,7 +1159,7 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     tables.raw.progress,
   ))
     ? await db.any(
-        `select name, (extract(epoch from "windowEnd") * 1000)::bigint::text as "windowEndMs" from ${tables.progress}`,
+        `select name, floor(extract(epoch from "windowEnd") * 1000)::bigint::text as "windowEndMs" from ${tables.progress}`,
       )
     : []
   const covered = progress.filter((p) =>
@@ -1165,12 +1174,11 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     .map((p) => Number(p.windowEndMs))
     .reduce((max, ms) => Math.max(max, ms), 0)
   const slots = options.skipSlotGuard ? null : await slotLags(db)
-  // collect's default end: the day after the newest row (future-dated rows included)
   const newest = await epochMs(
     db,
-    `select (extract(epoch from max("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
+    `select floor(extract(epoch from max("timestamp")) * 1000)::bigint::text as ms from "activityRelations"`,
   )
-  const collectTarget = newest === null ? 0 : newest - (newest % DAY_MS) + DAY_MS
+  const collectTarget = newest === null ? 0 : startOfUtcDay(newest) + DAY_MS
 
   log.info(
     {
@@ -1292,13 +1300,11 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
         })
         break
       } catch (err) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const code = (err as any)?.code
+        const code = asPgError(err).code ?? ''
         if (!RETRYABLE_CODES[code]) {
           log.error({ ...pgFields(err), ...batchContext, attempts }, 'batch.failed')
           throw err
         }
-        // a batch too slow for the timeout is retried as two smaller ones
         if (code === '57014' && keys.length > 1) {
           const half = Math.ceil(keys.length / 2)
           log.warn(
@@ -1396,6 +1402,8 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
             const other = stopReason({ ...options, allowNightly: true }, totals.deleted)
             return !!other
           })
+          // a split batch stopped by the window left keys behind the cursor
+          afterId = '0'
           continue
         }
         if (stop) {
@@ -1464,6 +1472,9 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
     if (err instanceof InvariantError) {
       reason = 'invariant-violation'
       exitCode = EXIT_ERROR
+    } else if (err instanceof GuardError) {
+      reason = 'guard-failed'
+      exitCode = EXIT_ERROR
     } else if (isConnectionError(err)) {
       reason = 'connection-lost'
       exitCode = EXIT_CONNECTION
@@ -1491,10 +1502,6 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
 
   return exitCode
 }
-
-// ---------------------------------------------------------------------------------------------
-// status
-// ---------------------------------------------------------------------------------------------
 
 async function status(db: Session, log: Log, options: ICommonOptions): Promise<number> {
   const tables = tablesFor(options.tag)
@@ -1572,10 +1579,6 @@ async function status(db: Session, log: Log, options: ICommonOptions): Promise<n
   return EXIT_DONE
 }
 
-// ---------------------------------------------------------------------------------------------
-// arguments, confirmation, main
-// ---------------------------------------------------------------------------------------------
-
 function parseFlags(command: string, args: string[]): Map<string, string | true> {
   const allowed = COMMAND_FLAGS[command]
   const flags = new Map<string, string | true>()
@@ -1608,7 +1611,7 @@ function value(flags: Map<string, string | true>, flag: string): string | undefi
   return typeof v === 'string' ? v : undefined
 }
 
-function parseDate(flag: string, input: string | undefined): Date | undefined {
+function parseDateFlag(flag: string, input: string | undefined): Date | undefined {
   if (input === undefined) {
     return undefined
   }
@@ -1618,7 +1621,7 @@ function parseDate(flag: string, input: string | undefined): Date | undefined {
   return new Date(`${input}T00:00:00Z`)
 }
 
-function parseInt(flag: string, input: string | undefined, min: number, max: number) {
+function parseIntFlag(flag: string, input: string | undefined, min: number, max: number) {
   if (input === undefined) {
     return undefined
   }
@@ -1629,7 +1632,11 @@ function parseInt(flag: string, input: string | undefined, min: number, max: num
   return parsed
 }
 
-function parseList(flag: string, input: string | undefined, pattern: RegExp): string[] | undefined {
+function parseListFlag(
+  flag: string,
+  input: string | undefined,
+  pattern: RegExp,
+): string[] | undefined {
   if (input === undefined) {
     return undefined
   }
@@ -1657,7 +1664,7 @@ function parseCommon(flags: Map<string, string | true>): ICommonOptions {
   return {
     tag,
     platforms:
-      parseList('--platforms', value(flags, '--platforms'), IDENTIFIER_PATTERN) ??
+      parseListFlag('--platforms', value(flags, '--platforms'), IDENTIFIER_PATTERN) ??
       DEFAULT_PLATFORMS,
     dryRun: flags.has('--dry-run'),
     yes: flags.has('--yes'),
@@ -1665,8 +1672,8 @@ function parseCommon(flags: Map<string, string | true>): ICommonOptions {
 }
 
 function parseCollect(flags: Map<string, string | true>): ICollectOptions {
-  const from = parseDate('--from', value(flags, '--from'))
-  const to = parseDate('--to', value(flags, '--to'))
+  const from = parseDateFlag('--from', value(flags, '--from'))
+  const to = parseDateFlag('--to', value(flags, '--to'))
   if (from && to && from >= to) {
     throw new UsageError('--from must be before --to')
   }
@@ -1674,7 +1681,7 @@ function parseCollect(flags: Map<string, string | true>): ICollectOptions {
     ...parseCommon(flags),
     from,
     to,
-    windowDays: parseInt('--window-days', value(flags, '--window-days'), 1, 366) ?? 7,
+    windowDays: parseIntFlag('--window-days', value(flags, '--window-days'), 1, 366) ?? 7,
   }
 }
 
@@ -1700,19 +1707,20 @@ function parseClean(flags: Map<string, string | true>): ICleanOptions {
 
   const options: ICleanOptions = {
     ...common,
-    segmentIds: parseList('--segments', value(flags, '--segments'), UUID_PATTERN) ?? [],
-    batchRows: parseInt('--batch-rows', value(flags, '--batch-rows'), 2, MAX_BATCH_ROWS) ?? 20000,
-    maxRows: parseInt('--max-rows', value(flags, '--max-rows'), 1, 200_000_000),
+    segmentIds: parseListFlag('--segments', value(flags, '--segments'), UUID_PATTERN) ?? [],
+    batchRows:
+      parseIntFlag('--batch-rows', value(flags, '--batch-rows'), 2, MAX_BATCH_ROWS) ?? 20000,
+    maxRows: parseIntFlag('--max-rows', value(flags, '--max-rows'), 1, 200_000_000),
     until,
     maxSlotLagBytes:
-      (parseInt('--max-slot-lag-mb', value(flags, '--max-slot-lag-mb'), 1, 1_000_000) ?? 1024) *
+      (parseIntFlag('--max-slot-lag-mb', value(flags, '--max-slot-lag-mb'), 1, 1_000_000) ?? 1024) *
       1048576,
     skipSlotGuard: flags.has('--skip-slot-guard'),
     allowNightly: flags.has('--allow-nightly'),
     waitNightly: flags.has('--wait-nightly'),
     allowPartialCollect: flags.has('--allow-partial-collect'),
     retryDeferred: flags.has('--retry-deferred'),
-    sampleBatches: parseInt('--sample-batches', value(flags, '--sample-batches'), 1, 1000) ?? 3,
+    sampleBatches: parseIntFlag('--sample-batches', value(flags, '--sample-batches'), 1, 1000) ?? 3,
   }
   if (!options.dryRun && options.maxRows === undefined && !options.until) {
     throw new UsageError('A real clean needs --max-rows or --until, so the run has a known end')
@@ -1734,9 +1742,12 @@ async function confirm(options: ICommonOptions, plan: string): Promise<void> {
     throw new UsageError('stdin is not a terminal: pass --yes to run without the confirmation')
   }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await new Promise<string>((resolve) =>
-    rl.question(`\n${plan}\nType the tag (${options.tag}) to proceed: `, resolve),
-  )
+  const answer = await new Promise<string>((resolve, reject) => {
+    // readline takes Ctrl-C in a terminal, so the process signal handler never sees it
+    rl.on('SIGINT', () => rl.close())
+    rl.on('close', () => reject(new UsageError('Aborted by the operator')))
+    rl.question(`\n${plan}\nType the tag (${options.tag}) to proceed: `, resolve)
+  })
   rl.close()
   if (answer.trim() !== options.tag) {
     throw new UsageError('Aborted by the operator')
@@ -1744,10 +1755,7 @@ async function confirm(options: ICommonOptions, plan: string): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(
-    'Usage: npx tsx src/bin/cleanup-null-channel-duplicates.ts <collect|clean|status> --tag <DD_MM_YYYY> [options]\n' +
-      'See the header of services/apps/script_executor_worker/src/bin/cleanup-null-channel-duplicates.ts\n',
-  )
+  process.stdout.write(USAGE)
 }
 
 function installSignalHandlers(log: Log): void {
@@ -1840,6 +1848,10 @@ main()
     if (error instanceof UsageError) {
       baseLog.error({ message: error.message }, 'run.usage-error')
       process.exit(EXIT_USAGE)
+    }
+    if (error instanceof GuardError) {
+      baseLog.error({ message: error.message }, 'run.guard-failed')
+      process.exit(EXIT_ERROR)
     }
     baseLog.error(pgFields(error), 'run.failed')
     process.exit(isConnectionError(error) ? EXIT_CONNECTION : EXIT_ERROR)
