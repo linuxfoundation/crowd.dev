@@ -28,31 +28,26 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps, computed } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Member } from '@/modules/member/types/Member';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    default: () => {},
-  },
-});
+defineOptions({ name: 'AppMemberSentiment' });
+
+const props = defineProps<{
+  member: Member;
+}>();
 
 const label = computed(() => {
-  if (props.member.averageSentiment >= 67) {
+  const sentiment = props.member.averageSentiment ?? 0;
+  if (sentiment >= 67) {
     return 'Positive';
-  } if (props.member.averageSentiment <= 33) {
+  } if (sentiment <= 33) {
     return 'Negative';
   }
   return 'Neutral';
 });
-</script>
-
-<script>
-export default {
-  name: 'AppMemberSentiment',
-};
 </script>
 
 <style lang="scss">
