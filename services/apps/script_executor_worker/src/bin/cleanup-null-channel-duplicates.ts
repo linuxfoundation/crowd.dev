@@ -436,6 +436,7 @@ async function runLockHolders(db: Session, tables: ITables) {
       from pg_locks l
       join pg_stat_activity a on a.pid = l.pid
       where l.locktype = 'advisory' and l.granted
+        and l.database = (select oid from pg_database where datname = current_database())
         and l.objid = (hashtext($(name)) & 4294967295)::oid
     `,
     { name: `cleanup-null-channel-duplicates:${tables.tag}` },
@@ -458,7 +459,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
   const storedEnd = (await tableExists(db, tables.raw.progress))
     ? await epochMs(
         db,
-        `select floor(extract(epoch from "windowEnd") * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
+        `select floor(extract(epoch from max("windowEnd")) * 1000)::bigint::text as ms from ${tables.progress} where name = $(name)`,
         { name: progressName },
       )
     : null
