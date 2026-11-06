@@ -15,7 +15,7 @@
           v-if="!hasOrganizations"
           icon="house-building"
           title="No organizations yet"
-          :description="`We couldn't track any organizations related to all the people who interacted with ${selectedProjectGroup.name} projects.`"
+          :description="`We couldn't track any organizations related to all the people who interacted with ${selectedProjectGroup!.name} projects.`"
           cta-btn="Add organization"
           @cta-click="onCtaClick"
         />
@@ -42,9 +42,10 @@
             >
               <template #defaultFilters>
                 <div>・</div>
+                <!-- shortcut: Filter.settings is untyped. revisit: saved-views settings typing -->
                 <lf-default-filters
                   :config="organizationSavedViews"
-                  :settings="filters.settings"
+                  :settings="filters.settings as DefaultFiltersSettings"
                 />
               </template>
             </app-pagination-sorter>
@@ -231,7 +232,7 @@
                           <a
                             v-if="getOrganizationWebsite(org)"
                             class="website-link hover:!text-gray-900"
-                            :href="withHttp(getOrganizationWebsite(org))"
+                            :href="withHttp(getOrganizationWebsite(org) as string)"
                             target="_blank"
                             rel="noopener noreferrer"
                             @click.stop
@@ -409,7 +410,7 @@
     <el-popover
       placement="bottom-end"
       popper-class="popover-dropdown"
-      :virtual-ref="actionBtnRefs[selectedActionOrganization?.id]"
+      :virtual-ref="selectedActionOrganization ? actionBtnRefs[selectedActionOrganization.id] : undefined"
       trigger="click"
       :visible="showOrganizationDropdownPopover"
       virtual-triggering
@@ -429,12 +430,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import AppOrganizationMergeDialog from '@/modules/organization/components/organization-merge-dialog.vue';
 import revenueRange from '@/modules/organization/config/enrichment/revenueRange';
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+import type { OrganizationsListParams } from '@/modules/organization/queries/useOrganizationsQuery';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
+import type { Organization } from '@/modules/organization/types/Organization';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfDefaultFilters from '@/shared/modules/default-filters/components/default-filters.vue';
 import AppIdentitiesHorizontalListOrganizations from '@/shared/modules/identities/components/identities-horizontal-list-organizations.vue';
@@ -445,6 +448,7 @@ import {
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/SavedViewsConfig';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -455,52 +459,57 @@ import { formatNumberToCompact } from '@/utils/number';
 import { getOrganizationWebsite } from '@/utils/organization';
 import { withHttp } from '@/utils/string';
 import { ClickOutside as vClickOutside } from 'element-plus';
+import type { ScrollbarInstance } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import {
   computed,
   onUnmounted,
   ref, toRefs, watch,
 } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import { useRouter } from 'vue-router';
 import { organizationSavedViews } from '../../config/saved-views/main';
 import AppOrganizationDropdownContent from '../organization-dropdown-content.vue';
 import AppOrganizationName from '../organization-name.vue';
 import AppOrganizationListToolbar from './organization-list-toolbar.vue';
 
-const props = defineProps({
-  hasOrganizations: {
-    type: Boolean,
-    default: () => false,
-  },
-  isPageLoading: {
-    type: Boolean,
-    default: () => true,
-  },
-  isTableLoading: {
-    type: Boolean,
-    default: () => false,
-  },
-  organizations: {
-    type: Array,
-    default: () => [],
-  },
-  totalOrganizations: {
-    type: Number,
-    default: () => 0,
-  },
-  savedFilterBody: {
-    type: Object,
-    default: () => ({}),
-  },
-  pagination: {
-    type: Object,
-    default: () => ({
-      page: 1,
-      perPage: 20,
-    }),
-  },
+interface TablePagination {
+  page: number;
+  perPage: number;
+}
+
+type OrganizationListRow = Organization & { segmentId?: string };
+
+// shortcut: LfTable has no setScrollLeft; the call throws. revisit: K-02 (CM-1711)
+interface ScrollableTable {
+  setScrollLeft(scrollLeft: number): void;
+}
+
+defineOptions({ name: 'AppOrganizationListTable' });
+
+const props = withDefaults(defineProps<{
+  hasOrganizations?: boolean;
+  isPageLoading?: boolean;
+  isTableLoading?: boolean;
+  organizations?: OrganizationListRow[];
+  totalOrganizations?: number;
+  savedFilterBody?: Omit<OrganizationsListParams, 'segments'> | Record<string, never>;
+  pagination?: TablePagination;
+}>(), {
+  hasOrganizations: false,
+  isPageLoading: true,
+  isTableLoading: false,
+  organizations: () => [],
+  totalOrganizations: 0,
+  savedFilterBody: () => ({}),
+  pagination: () => ({
+    page: 1,
+    perPage: 20,
+  }),
 });
-const emit = defineEmits(['update:pagination']);
+const emit = defineEmits<{
+  'update:pagination': [value: TablePagination];
+}>();
 const { trackEvent } = useProductTracking();
 const router = useRouter();
 
@@ -519,25 +528,28 @@ const { organizations, totalOrganizations, savedFilterBody } = toRefs(props);
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-const isMergeDialogOpen = ref(null);
-const table = ref(null);
-const scrollbarRef = ref();
-const tableBodyRef = ref();
-const tableHeaderRef = ref();
+// shortcut: showReach was never declared, so the Annual Revenue column stays hidden. revisit: revenue column removal
+const showReach = false;
+
+const isMergeDialogOpen = ref<Organization | null>(null);
+const table = ref<ScrollableTable | null>(null);
+const scrollbarRef = ref<ScrollbarInstance>();
+const tableBodyRef = ref<HTMLElement>();
+const tableHeaderRef = ref<HTMLElement>();
 const isScrollbarVisible = ref(false);
 const isTableHovered = ref(false);
 const isCursorDown = ref(false);
 
 const showOrganizationDropdownPopover = ref(false);
-const actionBtnRefs = ref({});
-const selectedActionOrganization = ref(null);
+const actionBtnRefs = ref<Record<string, Element | ComponentPublicInstance>>({});
+const selectedActionOrganization = ref<OrganizationListRow | null>(null);
 const sorting = computed(
   () => `${filters.value.order.prop}_${filters.value.order.order === 'descending' ? 'DESC' : 'ASC'}`,
 );
 
 const showEnrichmentPopover = ref(false);
-const enrichmentRefs = ref({});
-const selectedEnrichmentAttribute = ref(null);
+const enrichmentRefs = ref<Record<string, Element | ComponentPublicInstance>>({});
+const selectedEnrichmentAttribute = ref<string | null>(null);
 
 const pagination = computed({
   get() {
@@ -561,13 +573,13 @@ document.onmouseup = () => {
   isCursorDown.value = false;
 };
 
-const setActionBtnsRef = (el, id) => {
+const setActionBtnsRef = (el: Element | ComponentPublicInstance | null, id: string) => {
   if (el) {
     actionBtnRefs.value[id] = el;
   }
 };
 
-const onActionBtnClick = (organization) => {
+const onActionBtnClick = (organization: OrganizationListRow) => {
   if (selectedActionOrganization.value?.id === organization.id) {
     showOrganizationDropdownPopover.value = false;
 
@@ -580,23 +592,24 @@ const onActionBtnClick = (organization) => {
   }
 };
 
-const setEnrichmentAttributesRef = (el, id) => {
+const setEnrichmentAttributesRef = (el: Element | ComponentPublicInstance | null, id: string) => {
   if (el) {
     enrichmentRefs.value[id] = el;
   }
 };
 
-const handleCellMouseEnter = (row, columnName) => {
+const handleCellMouseEnter = (row: OrganizationListRow, columnName: string) => {
   showEnrichmentPopover.value = true;
   selectedEnrichmentAttribute.value = `${row.id}-${columnName}`;
 };
 
-const onColumnHeaderMouseOver = (id) => {
+const onColumnHeaderMouseOver = (id: string) => {
   showEnrichmentPopover.value = true;
   selectedEnrichmentAttribute.value = id;
 };
 
-const closeEnrichmentPopover = (ev) => {
+// shortcut: toElement is a non-standard MouseEvent field. revisit: revenue column removal
+const closeEnrichmentPopover = (ev?: MouseEvent & { toElement?: Element | null }) => {
   if (ev?.toElement?.id !== 'popover-content') {
     showEnrichmentPopover.value = false;
 
@@ -614,8 +627,8 @@ const closeDropdown = () => {
   }, 200);
 };
 
-const onClickOutside = (el) => {
-  if (!el.target?.id.includes('buttonRef')) {
+const onClickOutside = (el: MouseEvent) => {
+  if (!(el.target as HTMLElement | null)?.id.includes('buttonRef')) {
     closeDropdown();
   }
 };
@@ -628,7 +641,9 @@ const toggleAllOrganizationsSelection = () => {
   }
 };
 
-const toggleOrgSelection = (org) => {
+const isSelected = (org: OrganizationListRow) => selectedOrganizations.value.find((r) => r.id === org.id) !== undefined;
+
+const toggleOrgSelection = (org: OrganizationListRow) => {
   if (isSelected(org)) {
     selectedOrganizations.value = selectedOrganizations.value.filter(
       (r) => r.id !== org.id,
@@ -638,9 +653,7 @@ const toggleOrgSelection = (org) => {
   }
 };
 
-const isSelected = (org) => selectedOrganizations.value.find((r) => r.id === org.id) !== undefined;
-
-function doChangeSort(sorter) {
+function doChangeSort(sorter: string) {
   trackEvent({
     key: FeatureEventKey.SORT_ORGANIZATIONS,
     type: EventType.FEATURE,
@@ -656,14 +669,14 @@ function doChangeSort(sorter) {
   };
 }
 
-function doChangePaginationCurrentPage(currentPage) {
+function doChangePaginationCurrentPage(currentPage: number) {
   emit('update:pagination', {
     ...pagination.value,
     page: currentPage,
   });
 }
 
-function doChangePaginationPageSize(pageSize) {
+function doChangePaginationPageSize(pageSize: number) {
   emit('update:pagination', {
     page: 1,
     perPage: pageSize,
@@ -677,19 +690,19 @@ const onCtaClick = () => {
 };
 
 // On custom scrollbar scroll, set the table scroll with the same value
-const onCustomScrollbarScroll = ({ scrollLeft }) => {
-  table.value.setScrollLeft(scrollLeft);
+const onCustomScrollbarScroll = ({ scrollLeft }: { scrollLeft: number }) => {
+  table.value?.setScrollLeft(scrollLeft);
 };
 
 // On table body scroll, set the custom scrollbar scroll with the same value
 const onTableBodyScroll = () => {
-  scrollbarRef.value.setScrollLeft(tableBodyRef.value.scrollLeft);
+  scrollbarRef.value?.setScrollLeft(tableBodyRef.value?.scrollLeft ?? 0);
 };
 
 // On table header scroll, set the custom scrollbar scroll with the same value
 const onTableHeaderScroll = () => {
-  scrollbarRef.value.setScrollLeft(tableHeaderRef.value.scrollLeft);
-  table.value.setScrollLeft(tableHeaderRef.value.scrollLeft);
+  scrollbarRef.value?.setScrollLeft(tableHeaderRef.value?.scrollLeft ?? 0);
+  table.value?.setScrollLeft(tableHeaderRef.value?.scrollLeft ?? 0);
 };
 
 const onScrollMousedown = () => {
@@ -707,20 +720,20 @@ const onTableMouseLeft = () => {
 };
 
 const doExport = () => OrganizationService.export({
-  filter: savedFilterBody.value.filter,
+  filter: savedFilterBody.value.filter as Record<string, unknown> | undefined,
   orderBy: savedFilterBody.value.orderBy,
   limit: totalOrganizations.value,
   offset: null,
-  segments: [selectedProjectGroup.value?.id],
+  segments: [selectedProjectGroup.value?.id] as string[],
 });
 
-watch(table, (newValue) => {
+watch(table, () => {
   // Add scroll events to table, it's not possible to access it from 'el-table'
   // as the overflowed element is within it
-  const tableBodyEl = document.querySelector(
+  const tableBodyEl = document.querySelector<HTMLElement>(
     '#organizations-table .el-scrollbar__wrap',
   );
-  const tableHeaderEl = document.querySelector(
+  const tableHeaderEl = document.querySelector<HTMLElement>(
     '#organizations-table .el-table__header-wrapper',
   );
 
@@ -741,12 +754,6 @@ onUnmounted(() => {
   tableBodyRef.value?.removeEventListener('scroll', onTableBodyScroll);
   tableHeaderRef.value?.removeEventListener('scroll', onTableHeaderScroll);
 });
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationListTable',
-};
 </script>
 
 <style lang="scss">

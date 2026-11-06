@@ -18,27 +18,24 @@
   </el-tooltip>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-const props = defineProps({
-  entity: {
-    type: Object,
-    default: () => {},
-  },
-  entityName: {
-    type: String,
-    default: null,
-  },
-  isSmallAvatar: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({ name: 'AppAvatarNewBadge' });
+
+const props = withDefaults(defineProps<{
+  entity?: { joinedAt?: string | null } | null;
+  entityName?: string | null;
+  isSmallAvatar?: boolean;
+}>(), {
+  entity: undefined,
+  entityName: null,
+  isSmallAvatar: false,
 });
 
 const isNew = computed(() => {
-  if (!props.entity.joinedAt) {
+  if (!props.entity?.joinedAt) {
     return false;
   }
 
@@ -49,18 +46,12 @@ const isNew = computed(() => {
 const computedContent = computed(() => {
   if (props.entityName === 'organization') {
     return `Organization since ${dateHelper(
-      props.entity.joinedAt,
+      props.entity?.joinedAt,
     ).format('MMM DD, YYYY')}`;
   }
 
   return `Member since ${dateHelper(
-    props.entity.joinedAt,
+    props.entity?.joinedAt,
   ).format('MMM DD, YYYY')}`;
 });
-</script>
-
-<script>
-export default {
-  name: 'AppAvatarNewBadge',
-};
 </script>
