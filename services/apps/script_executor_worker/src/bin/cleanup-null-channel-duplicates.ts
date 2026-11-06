@@ -488,6 +488,10 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     throw new UsageError('activityRelations has no rows with a timestamp')
   }
 
+  const endMs = options.to ? options.to.getTime() : startOfUtcDay(newest) + DAY_MS
+  // a rescan cursor at or past the end belongs to a rescan that finished (or died right after
+  // its last window): the next rescan starts from the oldest row again
+  const rescanResume = rescanEnd !== null && rescanEnd < endMs ? rescanEnd : null
   let startMs: number
   if (options.from) {
     startMs = options.from.getTime()
@@ -498,11 +502,10 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
       )
     }
   } else if (options.rescan) {
-    startMs = rescanEnd ?? startOfUtcDay(oldest)
+    startMs = rescanResume ?? startOfUtcDay(oldest)
   } else {
     startMs = storedEnd ?? startOfUtcDay(oldest)
   }
-  const endMs = options.to ? options.to.getTime() : startOfUtcDay(newest) + DAY_MS
   // progress means "scanned from the oldest row up to here": a partial scan (--to) or one that
   // starts past what was scanned (--from with a gap) must not move it
   const recordsProgress = !options.to && startMs <= (storedEnd ?? startOfUtcDay(oldest))
@@ -644,7 +647,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     windowStart = windowEnd
   }
 
-  if (options.rescan && !options.dryRun && progressTable) {
+  if (options.rescan && !options.dryRun && !options.to) {
     await db.none(`delete from ${tables.progress} where name = $(name)`, { name: rescanName })
   }
   log.info({ ...totals, dryRun: options.dryRun }, 'collect.summary')
