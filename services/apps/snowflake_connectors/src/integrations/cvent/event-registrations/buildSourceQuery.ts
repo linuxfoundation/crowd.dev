@@ -15,11 +15,7 @@ const TIMESTAMP_TZ_COLUMNS = [
   'UPDATED_TS',
 ]
 
-const LFID_COALESCE = `COALESCE(
-      CASE WHEN er.registration_source = 'bevy' THEN er.user_name END,
-      mu.user_name,
-      u.lf_username
-    )`
+const BEVY_LFID = `CASE WHEN er.registration_source = 'bevy' THEN er.user_name END`
 
 const CDP_MATCHED_SEGMENTS = `
   cdp_matched_segments AS (
@@ -44,7 +40,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     ${castClauses},
     org.website AS ORG_WEBSITE,
     org.domain_aliases AS ORG_DOMAIN_ALIASES,
-    ${LFID_COALESCE} AS LFID
+    COALESCE(${BEVY_LFID}, u.lf_username) AS LFID,
+    COALESCE(${BEVY_LFID}, mu.user_name) AS REGISTRANT_LFID
   FROM analytics.silver_fact.event_registrations er
   INNER JOIN cdp_matched_segments cms
     ON cms.slug = er.project_slug
