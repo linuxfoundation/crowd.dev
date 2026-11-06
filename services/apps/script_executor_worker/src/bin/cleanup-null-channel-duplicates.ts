@@ -28,8 +28,10 @@ Commands:
              1. locks the key's NULL-channel copies (NOWAIT: never waits on app transactions),
              2. ranks only the locked copies and keeps rank 1,
              3. carries parentId, conversationId and sourceParentId to the kept copy where it
-                has none, and moves its updatedAt at least 2 ms past every deleted copy's
-                (Tinybird stores milliseconds) only when it isn't already,
+                has none. When it changes the kept copy, or the kept copy isn't 2 ms past every
+                deleted copy's updatedAt (Tinybird stores milliseconds), it sets the kept copy's
+                updatedAt to now() (or later, if it already is), so Tinybird's daily merge
+                picks it up,
              4. moves the other copies to the backup table with the kept activityId,
              5. checks that every key still has exactly one locked copy and that every deleted
                 row is in the backup, and rolls back otherwise,
@@ -982,7 +984,9 @@ async function cleanBatch(
             "parentId" = case when p."carryParentId" then p."parentId" else ar."parentId" end,
             "conversationId" = case when p."carryConversationId" then p."conversationId" else ar."conversationId" end,
             "sourceParentId" = case when p."carrySourceParentId" then p."sourceParentId" else ar."sourceParentId" end,
-            "updatedAt" = p."newUpdatedAt"
+            -- now(): Tinybird's daily merge only takes rows whose updatedAt day is at or after its
+            -- last run, so a kept row left with an old updatedAt would never reach the served layer
+            "updatedAt" = greatest(p."newUpdatedAt", now())
           from plan p
           where ar."activityId" = p."activityId"
             and ar.channel is null
