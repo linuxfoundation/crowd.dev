@@ -544,7 +544,7 @@ async function collect(db: Session, log: Log, options: ICollectOptions): Promise
     await ensureTables(db, tables)
     // a stale cursor would stay ahead of this rescan (progress only moves forward) and make an
     // interrupted run look finished
-    if (options.rescan && rescanEnd !== null && rescanResume === null) {
+    if (options.rescan && !options.to && rescanEnd !== null && rescanResume === null) {
       await db.none(`delete from ${tables.progress} where name = $(name)`, { name: rescanName })
     }
   }
