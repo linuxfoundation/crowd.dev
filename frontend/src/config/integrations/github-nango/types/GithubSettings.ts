@@ -22,7 +22,7 @@ export interface GitHubSettingsOrganization extends GitHubOrganization {
 }
 export interface GitHubSettings {
   orgs: GitHubSettingsOrganization[];
-  nangoMapping?: Record<string, { repoName: string }>;
+  nangoMapping?: Record<string, { owner: string; repoName: string }>;
   syncedRepos?: string[];
   updateMemberAttributes: boolean;
 }
