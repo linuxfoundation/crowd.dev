@@ -97,6 +97,9 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_UNTIL_MS = 48 * 60 * 60 * 1000
 const MAX_UNTIL_WAIT_NIGHTLY_MS = 7 * DAY_MS
 const MAX_BATCH_ROWS = 100_000
+// session temp table, so the locked ids never travel as query params (the shared pg-promise
+// error hook logs every failed query's params: 20k uuids per retry)
+const LOCKED_IDS = 'pg_temp."activityRelationsNullChannelLocked"'
 
 const COLLECT_STATEMENT_TIMEOUT_MS = 5 * 60_000
 const CLEAN_STATEMENT_TIMEOUT_MS = 30_000
@@ -776,7 +779,7 @@ const RANKED = (onlyLocked: boolean) => `
     row_number() over w as rank
   from "activityRelations" ar
   join k on ${KEY_JOIN}
-  ${onlyLocked ? `where ar."activityId" = any($(lockedIds)::uuid[])` : ''}
+  ${onlyLocked ? `where ar."activityId" in (select "activityId" from ${LOCKED_IDS})` : ''}
   window w as (
     partition by k."keyId"
     order by ar."updatedAt" desc, ar."createdAt" desc, ar."activityId" desc
@@ -886,10 +889,11 @@ async function cleanBatch(
     let started = Date.now()
     // NOWAIT: an app transaction holding a copy fails this batch instead of making it wait, so
     // the script never blocks app writes and never takes part in a deadlock
-    const locked: { ids: string[] | null; n: number } = await t.one(
+    const lockedResult = await t.result(
       `
         with k as (${KEYS_CTE(tables)})
-        select array_agg(l."activityId") as ids, count(*)::int as n from (
+        insert into ${LOCKED_IDS} ("activityId")
+        select l."activityId" from (
           select ar."activityId" from "activityRelations" ar join k on ${KEY_JOIN}
           order by ar."activityId"
           for update of ar nowait
@@ -897,9 +901,9 @@ async function cleanBatch(
       `,
       params,
     )
+    const locked = { n: lockedResult.rowCount }
     ms.lock = Date.now() - started
     await t.none(`set local statement_timeout = ${CLEAN_STATEMENT_TIMEOUT_MS}`)
-    const lockedIds = locked.ids ?? []
 
     started = Date.now()
     const result = await t.one(
@@ -939,7 +943,7 @@ async function cleanBatch(
           (select coalesce(jsonb_object_agg("keyId", n), '{}') from (
             select "keyId", count(*)::int as n from deleted group by "keyId") d) as "perKey"
       `,
-      { ...params, lockedIds },
+      params,
     )
     ms.clean = Date.now() - started
 
@@ -960,9 +964,9 @@ async function cleanBatch(
         with k as (${KEYS_CTE(tables)})
         select count(*)::int as rows, count(distinct k."keyId")::int as keys
         from "activityRelations" ar join k on ${KEY_JOIN}
-        where ar."activityId" = any($(lockedIds)::uuid[])
+        where ar."activityId" in (select "activityId" from ${LOCKED_IDS})
       `,
-      { ...params, lockedIds },
+      params,
     )
     if (survivorsPerKey.rows !== result.keysFound || survivorsPerKey.keys !== result.keysFound) {
       throw new InvariantError(
@@ -1150,6 +1154,12 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
 
   const columns = await activityRelationColumns(db)
   await assertBackupMatches(db, tables, columns)
+  if (!options.dryRun) {
+    // emptied by every commit and rollback, so it only ever holds the open batch's locked ids
+    await db.none(
+      `create temp table if not exists ${LOCKED_IDS} ("activityId" uuid primary key) on commit delete rows`,
+    )
+  }
 
   const statuses = options.retryDeferred ? ['pending', 'deferred'] : ['pending']
   const plan = await cleanPlan(db, tables, options, statuses)
@@ -1811,6 +1821,8 @@ async function main(): Promise<number> {
   )
   // one dedicated session for the whole run: the advisory run lock lives as long as it does
   const session = await db.connect()
+  // from here a bare process.exit() can only come from @crowd/database's connection-error hook
+  process.exitCode = EXIT_CONNECTION
 
   const config = WRITE_DB_CONFIG()
   log.info(
