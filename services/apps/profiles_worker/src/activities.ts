@@ -27,6 +27,7 @@ import {
   triggerMemberAffiliationsRefresh,
   updateMemberAffiliations,
 } from './activities/member/memberUpdate'
+import { getGitAuthorsPage, resolveGitAuthor } from './activities/member/resolveGitAuthors'
 import {
   createFakeOrganizationSuggestion,
   getOrganizationForFakeAnalysis,
@@ -70,4 +71,6 @@ export {
   saveCountryScanSyncedAt,
   processMemberCountries,
   processOrganizationCountries,
+  getGitAuthorsPage,
+  resolveGitAuthor,
 }

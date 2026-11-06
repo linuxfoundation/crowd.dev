@@ -2,11 +2,13 @@ import {
   ApplicationFailure,
   ChildWorkflowFailure,
   executeChild,
+  isCancellation,
   proxyActivities,
   workflowInfo,
 } from '@temporalio/workflow'
 
 import { rankPackagesWorkflow } from '../../criticality/workflow'
+import type * as scorecardActivities from '../../scorecard/activities'
 import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
 import { ingestAdvisories } from './ingestAdvisories'
@@ -24,6 +26,11 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
 })
 
 const { notifyBqCeilingSkip } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
+const { notifyScorecardIngestFailed } = proxyActivities<typeof scorecardActivities>({
   startToCloseTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
 })
@@ -337,9 +344,15 @@ export async function bootstrapOsspckgs(opts: {
     }
   }
   if (runs('scorecard')) {
-    await executeChild(ingestScorecard, {
-      args: [{ runId, reuseExports: opts.reuseExports, exportName: opts.exportName }],
-    })
+    try {
+      await executeChild(ingestScorecard, { args: [] })
+    } catch (err) {
+      if (isCancellation(err)) throw err
+      const cause = (err instanceof ChildWorkflowFailure && err.cause) || err
+      await notifyScorecardIngestFailed({
+        message: cause instanceof Error ? cause.message : String(cause),
+      })
+    }
   }
   if (runs('ranking')) {
     await executeChild(rankPackagesWorkflow, { args: [] })

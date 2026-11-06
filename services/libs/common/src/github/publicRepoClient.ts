@@ -1,5 +1,6 @@
 import { canonicalizeGithubRepoUrl, githubRepoPath } from '../githubRepoUrl'
 import {
+  GithubCommitAuthor,
   GithubPublicClientError,
   IPublicOrgRepos,
   IPublicRepoMetrics,
@@ -289,6 +290,51 @@ export async function fetchPublicOrgRepos(
     if (items.length < ORG_REPOS_PAGE_SIZE) {
       return { repoUrls, exceededLimit: false }
     }
+  }
+}
+
+interface ICommitItem {
+  author: { id: number; node_id: string; login: string } | null
+}
+
+const COMMIT_NOT_FOUND_STATUSES = new Set([404, 409, 422, 451])
+
+export async function fetchCommitAuthor(
+  repoUrl: string,
+  sha: string,
+  token: string,
+): Promise<GithubCommitAuthor> {
+  const repoPath = githubRepoPath(repoUrl)
+  if (!repoPath) {
+    return { status: 'commit-not-found' }
+  }
+
+  const url = `${GITHUB_API_URL}/repos/${repoPath}/commits/${encodeURIComponent(sha)}`
+  const what = `looking up commit ${sha} in ${repoUrl}`
+  const response = await doFetch(url, {
+    headers: { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' },
+  })
+
+  assertAuthenticated(response, url)
+  await assertNotRateLimited(response, what)
+  if (COMMIT_NOT_FOUND_STATUSES.has(response.status)) {
+    return { status: 'commit-not-found' }
+  }
+  if (!response.ok) {
+    throw new GithubPublicClientError(
+      'TRANSIENT',
+      `GitHub returned HTTP ${response.status} ${what}`,
+    )
+  }
+
+  const { author } = await readJson<ICommitItem>(response, url)
+  if (!author) {
+    return { status: 'no-github-account' }
+  }
+
+  return {
+    status: 'found',
+    account: { id: String(author.id), nodeId: author.node_id, login: author.login },
   }
 }
 

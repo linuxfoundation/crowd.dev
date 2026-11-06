@@ -450,10 +450,10 @@ async function applyAffiliationTimeline(
 
   let processed = 0
   let batches = 0
-  let rowCount: number
+  let selected: number
 
   do {
-    rowCount = await qx.result(
+    const result: { selected: number; updated: number } = await qx.selectOne(
       `
         WITH items AS (
           SELECT *
@@ -506,18 +506,26 @@ async function applyAffiliationTimeline(
           WHERE ar."memberId" = $(memberId)
             AND target."organizationId" IS DISTINCT FROM ar."organizationId"
           LIMIT $(batchSize)
+        ),
+        updated AS (
+          UPDATE "activityRelations" ar
+          SET "organizationId" = changes."organizationId", "updatedAt" = CURRENT_TIMESTAMP
+          FROM changes
+          WHERE ar."activityId" = changes."activityId"
+          RETURNING 1
         )
-        UPDATE "activityRelations" ar
-        SET "organizationId" = changes."organizationId", "updatedAt" = CURRENT_TIMESTAMP
-        FROM changes
-        WHERE ar."activityId" = changes."activityId"
+        SELECT
+          (SELECT count(*) FROM changes)::int AS selected,
+          (SELECT count(*) FROM updated)::int AS updated
       `,
       { memberId, items, checkManualCoverage, batchSize },
     )
 
-    processed += rowCount
+    selected = result.selected
+    processed += result.updated
     batches++
-  } while (rowCount === batchSize)
+    // a row deleted concurrently is skipped by the UPDATE, so count the rows selected, not updated
+  } while (selected === batchSize)
 
   return { processed, batches }
 }
