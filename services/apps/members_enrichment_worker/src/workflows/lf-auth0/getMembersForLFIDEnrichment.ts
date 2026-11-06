@@ -14,15 +14,6 @@ const { getLFIDEnrichableMembers } = proxyActivities<typeof activities>({
   startToCloseTimeout: '10 seconds',
 })
 
-const { refreshToken } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '2 minutes',
-  retry: {
-    initialInterval: '2 seconds',
-    backoffCoefficient: 2,
-    maximumAttempts: 3,
-  },
-})
-
 export async function getMembersForLFIDEnrichment(
   args: IGetMembersForLFIDEnrichmentArgs,
 ): Promise<void> {
@@ -33,8 +24,6 @@ export async function getMembersForLFIDEnrichment(
   if (members.length === 0) {
     return
   }
-
-  const token = await refreshToken()
 
   for (const member of members) {
     await executeChild(enrichMemberWithLFAuth0, {
@@ -48,7 +37,7 @@ export async function getMembersForLFIDEnrichment(
         initialInterval: 2 * 1000,
         maximumInterval: 30 * 1000,
       },
-      args: [token, member],
+      args: [member],
     })
   }
 

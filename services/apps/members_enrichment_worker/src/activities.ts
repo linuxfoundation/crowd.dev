@@ -18,7 +18,6 @@ import {
   updateMemberEnrichmentCache,
   updateMemberUsingSquashedPayload,
 } from './activities/enrichment'
-import { refreshToken } from './activities/lf-auth0/authenticateLFAuth0'
 import { getEnrichmentLFAuth0 } from './activities/lf-auth0/getEnrichmentLFAuth0'
 import { getLFIDEnrichableMembers } from './activities/lf-auth0/getLFIDEnrichableMembers'
 import {
@@ -52,7 +51,6 @@ export {
   insertMemberEnrichmentCache,
   syncMembersToOpensearch,
   syncOrganizationsToOpensearch,
-  refreshToken,
   getEnrichmentLFAuth0,
   getLFIDEnrichableMembers,
   getGithubIdentitiesWithoutSourceId,
