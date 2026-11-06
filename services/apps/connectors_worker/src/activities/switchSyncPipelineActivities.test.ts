@@ -82,17 +82,13 @@ describe('switch activities', () => {
     })
   })
 
-  it('gates on the unit, nango consumption, then the three most recent diffed days', async () => {
+  it('gates on the unit, nango consumption, then the most recent diffed day', async () => {
     mocks.findSyncUnitByChannelName.mockResolvedValue(activeUnit)
     mocks.getNangoModelLastCheckedAt.mockResolvedValue('2026-10-19T09:30:00Z')
     mocks.getNangoModelLastCheckedAt.mockResolvedValue('2026-10-19T09:30:00Z')
-    mocks.getSyncDiffCountsForDays.mockResolvedValue(
-      ['2026-10-17', '2026-10-16', '2026-10-15'].map((day) => ({
-        day,
-        missingInShadowCount: 0,
-        unsupportedSyncCount: 0,
-      })),
-    )
+    mocks.getSyncDiffCountsForDays.mockResolvedValue([
+      { day: '2026-10-17', missingInShadowCount: 0, unsupportedSyncCount: 0 },
+    ])
 
     await expect(
       evaluateForwardGate({
@@ -115,11 +111,7 @@ describe('switch activities', () => {
       'conn-1',
       'GithubIssue',
     )
-    expect(mocks.getSyncDiffCountsForDays).toHaveBeenCalledWith('qx', 'u-1', [
-      '2026-10-17',
-      '2026-10-16',
-      '2026-10-15',
-    ])
+    expect(mocks.getSyncDiffCountsForDays).toHaveBeenCalledWith('qx', 'u-1', ['2026-10-17'])
 
     mocks.findSyncUnitByChannelName.mockResolvedValue({ ...activeUnit, status: 'dead_letter' })
     await expect(
