@@ -1,4 +1,13 @@
-import { Error404, Error409, IGithubAccount, fetchCommitAuthor } from '@crowd/common'
+import { ApplicationFailure } from '@temporalio/client'
+
+import {
+  Error404,
+  Error409,
+  GithubCommitAuthor,
+  GithubPublicClientError,
+  IGithubAccount,
+  fetchCommitAuthor,
+} from '@crowd/common'
 import { CommonMemberService, getGithubInstallationToken } from '@crowd/common_services'
 import {
   GithubEmailLookupResult,
@@ -17,6 +26,9 @@ import { MemberIdentityType, PlatformType } from '@crowd/types'
 import { svc } from '../../main'
 import { syncMember } from './memberUpdate'
 
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
 export async function getGitAuthorsPage(afterEmail: string | null): Promise<IGitAuthorsPage> {
   return findGitAuthorsPage(pgpQx(svc.postgres.writer.connection()), afterEmail, 500)
 }
@@ -24,7 +36,20 @@ export async function getGitAuthorsPage(afterEmail: string | null): Promise<IGit
 export async function resolveGitAuthor(author: IGitAuthor): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const token = await getGithubInstallationToken()
-  const commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
+
+  let commit: GithubCommitAuthor
+  try {
+    commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
+  } catch (err) {
+    if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
+      const resetInMs = (err.resetAtMs ?? 0) - Date.now()
+      throw ApplicationFailure.create({
+        message: err.message,
+        nextRetryDelay: Math.min(Math.max(resetInMs, ONE_MINUTE_MS), ONE_HOUR_MS),
+      })
+    }
+    throw err
+  }
 
   if (commit.status !== 'found') {
     await recordLookup(qx, author, commit.status)
