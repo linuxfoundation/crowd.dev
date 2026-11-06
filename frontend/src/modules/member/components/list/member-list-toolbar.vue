@@ -74,7 +74,7 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
@@ -97,6 +97,14 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfTableBulkActions from '@/ui-kit/table/table-bulk-actions.vue';
 import { useInvalidate } from '@/shared/queries/invalidate';
+
+type MemberListToolbarCommand =
+  | { action: 'markAsTeamMember' | 'markAsBot'; value: boolean }
+  | { action: 'mergeMembers' | 'editAttribute' | 'destroyAll' | 'export' };
+
+defineOptions({
+  name: 'AppMemberListToolbar',
+});
 
 const { trackEvent } = useProductTracking();
 
@@ -126,7 +134,7 @@ const onBulkAttributesUpdated = async () => {
 };
 
 // Helper function to fetch member with all attributes before bulk update
-const fetchMemberWithAllAttributes = async (memberId) => {
+const fetchMemberWithAllAttributes = async (memberId: string) => {
   const lsSegmentsStore = useLfSegmentsStore();
   const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
@@ -140,7 +148,8 @@ const fetchMemberWithAllAttributes = async (memberId) => {
 };
 
 const markAsTeamMemberOptions = computed(() => {
-  const isTeamView = filters.value.settings.teamMember === 'filter';
+  // shortcut: assertion keeps main's throw when filters lack settings. revisit: linuxfoundation/lfx-cdp-insights-ops#428
+  const isTeamView = filters.value.settings!.teamMember === 'filter';
   const membersCopy = pluralize(
     'person',
     selectedMembers.value.length,
@@ -163,12 +172,6 @@ const markAsTeamMemberOptions = computed(() => {
 });
 
 const markAsBotOptions = computed(() => {
-  const membersCopy = pluralize(
-    'person',
-    selectedMembers.value.length,
-    false,
-  );
-
   // Check if any of the selected members is already marked as bot
   const hasBot = selectedMembers.value.some((member) => member.attributes?.isBot?.default);
 
@@ -292,7 +295,7 @@ const handleEditAttribute = async () => {
   bulkAttributesUpdateVisible.value = true;
 };
 
-const doMarkAsTeamMember = async (value) => {
+const doMarkAsTeamMember = async (value: boolean) => {
   ToastStore.info('People are being updated');
 
   const updatePromises = selectedMembers.value.map(async (member) => {
@@ -332,7 +335,7 @@ const doMarkAsTeamMember = async (value) => {
     });
 };
 
-const doMarkAsBot = async (value) => {
+const doMarkAsBot = async (value: boolean) => {
   ToastStore.info('People are being updated');
 
   const updatePromises = selectedMembers.value.map(async (member) => {
@@ -373,7 +376,7 @@ const doMarkAsBot = async (value) => {
     });
 };
 
-const handleCommand = async (command) => {
+const handleCommand = async (command: MemberListToolbarCommand) => {
   if (command.action === 'markAsTeamMember') {
     trackEvent({
       key: FeatureEventKey.MARK_AS_TEAM_MEMBER,
@@ -405,11 +408,5 @@ const handleCommand = async (command) => {
   } else if (command.action === 'destroyAll') {
     await doDestroyAllWithConfirm();
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'AppMemberListToolbar',
 };
 </script>
