@@ -1,6 +1,7 @@
 import {
   Error404,
   Error409,
+  GithubCommitAuthor,
   GithubPublicClientError,
   IGithubAccount,
   fetchCommitAuthor,
@@ -9,6 +10,7 @@ import { CommonMemberService, getGithubInstallationToken } from '@crowd/common_s
 import {
   GithubEmailLookupResult,
   IGitAuthor,
+  IGitAuthorsPage,
   QueryExecutor,
   findGitAuthorsPage,
   findGithubAccountOwner,
@@ -21,52 +23,33 @@ import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { svc } from '../../main'
 
-export interface IResolveGitAuthorsPageResult {
-  nextEmail: string | null
-  lookups: number
-  rateLimited: boolean
-  memberIdsToSync: string[]
+export async function getGitAuthorsPage(afterEmail: string | null): Promise<IGitAuthorsPage> {
+  return findGitAuthorsPage(pgpQx(svc.postgres.writer.connection()), afterEmail, 200)
 }
 
-export async function resolveGitAuthorsPage(
-  afterEmail: string | null,
-): Promise<IResolveGitAuthorsPageResult> {
-  const qx = pgpQx(svc.postgres.writer.connection())
-  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
-  const { authors, nextEmail } = await findGitAuthorsPage(qx, afterEmail, 200)
-  const memberIdsToSync: string[] = []
-
-  for (const [index, author] of authors.entries()) {
-    try {
-      const result = await resolveGitAuthor(qx, memberService, author)
-      if (result === 'identity-added') {
-        memberIdsToSync.push(author.memberId)
-      }
-    } catch (err) {
-      if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
-        svc.log.warn('GitHub rate limit reached, pausing git author lookups')
-        return { nextEmail: afterEmail, lookups: index, rateLimited: true, memberIdsToSync }
-      }
-      throw err
-    }
-  }
-
-  return { nextEmail, lookups: authors.length, rateLimited: false, memberIdsToSync }
-}
-
-async function resolveGitAuthor(
-  qx: QueryExecutor,
-  memberService: CommonMemberService,
+export async function resolveGitAuthor(
   author: IGitAuthor,
-): Promise<GithubEmailLookupResult | null> {
+): Promise<GithubEmailLookupResult | 'rate-limited' | null> {
+  const qx = pgpQx(svc.postgres.writer.connection())
   const token = await getGithubInstallationToken()
-  const commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
+
+  let commit: GithubCommitAuthor
+  try {
+    commit = await fetchCommitAuthor(author.repoUrl, author.commitSha, token)
+  } catch (err) {
+    if (err instanceof GithubPublicClientError && err.kind === 'RATE_LIMIT') {
+      svc.log.warn('GitHub rate limit reached, pausing git author lookups')
+      return 'rate-limited'
+    }
+    throw err
+  }
 
   if (commit.status !== 'found') {
     await recordLookup(qx, author, commit.status)
     return commit.status
   }
 
+  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
   const result = await linkGithubAccount(qx, memberService, author, commit.account)
   if (result) {
     await recordLookup(qx, author, result, commit.account)

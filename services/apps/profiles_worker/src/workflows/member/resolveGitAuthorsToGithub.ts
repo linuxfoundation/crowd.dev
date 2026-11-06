@@ -1,36 +1,33 @@
-import { continueAsNew, proxyActivities, sleep } from '@temporalio/workflow'
+import { continueAsNew, proxyActivities, sleep, workflowInfo } from '@temporalio/workflow'
 
 import * as activities from '../../activities'
 
-const { resolveGitAuthorsPage, syncMember } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30 minutes',
+const { getGitAuthorsPage, resolveGitAuthor, syncMember } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
 })
 
-const PAGES_PER_EXECUTION = 500
-
 export async function resolveGitAuthorsToGithub(afterEmail: string | null = null): Promise<void> {
-  for (let page = 0; page < PAGES_PER_EXECUTION; page++) {
-    const { nextEmail, lookups, rateLimited, memberIdsToSync } =
-      await resolveGitAuthorsPage(afterEmail)
+  while (!workflowInfo().continueAsNewSuggested) {
+    const { authors, nextEmail } = await getGitAuthorsPage(afterEmail)
 
-    for (const memberId of memberIdsToSync) {
-      await syncMember(memberId)
+    for (const author of authors) {
+      let result = await resolveGitAuthor(author)
+      while (result === 'rate-limited') {
+        await sleep('15 minutes')
+        result = await resolveGitAuthor(author)
+      }
+      if (result === 'identity-added') {
+        await syncMember(author.memberId)
+      }
+      // The GitHub App token is shared with other workers, so lookups are paced to about one a second.
+      await sleep('1 second')
     }
 
-    if (rateLimited) {
-      await sleep('15 minutes')
-      continue
-    }
     if (!nextEmail) {
       return
     }
-
     afterEmail = nextEmail
-    // The GitHub App token is shared with other workers, so lookups are paced to about one a second.
-    if (lookups > 0) {
-      await sleep(lookups * 1000)
-    }
   }
 
   await continueAsNew<typeof resolveGitAuthorsToGithub>(afterEmail)

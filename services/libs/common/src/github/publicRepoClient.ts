@@ -296,7 +296,7 @@ interface ICommitItem {
   author: { id: number; node_id: string; login: string } | null
 }
 
-const COMMIT_NOT_FOUND_STATUSES = new Set([403, 404, 409, 422, 451])
+const COMMIT_NOT_FOUND_STATUSES = new Set([404, 409, 422, 451])
 
 export async function fetchCommitAuthor(
   repoUrl: string,
@@ -321,6 +321,9 @@ export async function fetchCommitAuthor(
       `Rate limited ${what}`,
       rateLimitResetMs(response.headers),
     )
+  }
+  if (response.status === 403) {
+    throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
   }
   if (COMMIT_NOT_FOUND_STATUSES.has(response.status)) {
     return { status: 'commit-not-found' }
