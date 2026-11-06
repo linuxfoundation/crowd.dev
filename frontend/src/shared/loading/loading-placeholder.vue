@@ -10,27 +10,18 @@
   />
 </template>
 
-<script>
-export default {
-  name: 'AppLoading',
-  props: {
-    height: {
-      required: false,
-      type: String,
-      default: '100px',
-    },
-    width: {
-      required: false,
-      type: String,
-      default: '100%',
-    },
-    radius: {
-      required: false,
-      type: String,
-      default: '0px',
-    },
-  },
-};
+<script setup lang="ts">
+defineOptions({ name: 'AppLoading' });
+
+withDefaults(defineProps<{
+  height?: string;
+  width?: string;
+  radius?: string;
+}>(), {
+  height: '100px',
+  width: '100%',
+  radius: '0px',
+});
 </script>
 
 <style scoped lang="scss">

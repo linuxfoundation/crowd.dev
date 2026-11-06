@@ -39,30 +39,24 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { computed } from 'vue';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    required: true,
-  },
-});
+defineOptions({ name: 'AppMemberOrganizations' });
+
+const props = defineProps<{
+  member: Contributor;
+}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 const { activeOrganization } = useContributorHelpers();
 
 const currentOrganization = computed(() => activeOrganization(props.member));
-</script>
-
-<script>
-export default {
-  name: 'AppMemberOrganizations',
-};
 </script>

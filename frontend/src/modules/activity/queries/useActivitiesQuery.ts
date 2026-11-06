@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { computed, type Ref } from 'vue';
 import { useInfiniteQuery } from '@tanstack/vue-query';
-import { ActivityService } from '@/modules/activity/activity-service';
+import { ActivityService } from '@/modules/activity/services/activity.api.service';
 import type { Activity } from '@/shared/modules/activity/types/Activity';
 import { queryKeys } from '@/shared/queries/keys';
 

@@ -20,8 +20,8 @@
         </div>
         <div class="w-1/2 px-3">
           <app-member-selection-dropdown
-            v-if="!memberToMerge"
-            :id="props.modelValue?.id"
+            v-if="!memberToMerge && props.modelValue"
+            :id="props.modelValue.id"
             v-model="memberToMerge"
             style="margin-right: 5px"
           />
@@ -72,7 +72,7 @@
   </lf-modal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { MemberService } from '@/modules/member/services/member.api.service';
@@ -88,21 +88,22 @@ import {
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 import AppMemberSelectionDropdown from './member-selection-dropdown.vue';
 import AppMemberSuggestionsDetails from './suggestions/member-merge-suggestions-details.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true,
-  },
-  toMerge: {
-    type: Object,
-    default: null,
-  },
+defineOptions({ name: 'AppMemberMergeDialog' });
+
+const props = withDefaults(defineProps<{
+  modelValue: Contributor | null;
+  toMerge?: Contributor | null;
+}>(), {
+  toMerge: null,
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{
+  'update:modelValue': [value: null];
+}>();
 
 const { trackEvent } = useProductTracking();
 
@@ -111,10 +112,10 @@ const router = useRouter();
 
 const memberStore = useMemberStore();
 
-const originalMemberPrimary = ref(true);
-const sendingMerge = ref(false);
+const originalMemberPrimary = ref<boolean>(true);
+const sendingMerge = ref<boolean>(false);
 
-const memberToMerge = ref(null);
+const memberToMerge = ref<Contributor | null>(null);
 
 const isModalOpen = computed({
   get() {
@@ -144,7 +145,7 @@ const changeMember = () => {
 };
 
 const mergeSuggestion = () => {
-  if (sendingMerge.value) {
+  if (sendingMerge.value || !props.modelValue || !memberToMerge.value) {
     return;
   }
 
@@ -197,11 +198,5 @@ const mergeSuggestion = () => {
     .finally(() => {
       sendingMerge.value = false;
     });
-};
-</script>
-
-<script>
-export default {
-  name: 'AppMemberMergeDialog',
 };
 </script>
