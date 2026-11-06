@@ -1778,10 +1778,16 @@ function parseDateFlag(flag: string, input: string | undefined): Date | undefine
   if (input === undefined) {
     return undefined
   }
-  if (!DATE_PATTERN.test(input) || Number.isNaN(Date.parse(`${input}T00:00:00Z`))) {
+  const parsed = new Date(`${input}T00:00:00Z`)
+  // Date rolls 2025-02-30 over to 2025-03-02: the date has to come back unchanged
+  if (
+    !DATE_PATTERN.test(input) ||
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== input
+  ) {
     throw new UsageError(`${flag} must be a valid YYYY-MM-DD date, got '${input}'`)
   }
-  return new Date(`${input}T00:00:00Z`)
+  return parsed
 }
 
 function parseIntFlag(flag: string, input: string | undefined, min: number, max: number) {
