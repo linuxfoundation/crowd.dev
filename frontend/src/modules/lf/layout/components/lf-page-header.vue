@@ -7,23 +7,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
-defineProps({
-  textClass: {
-    type: Object || String,
-    default: null,
-  },
+defineOptions({ name: 'AppLfPageHeader' });
+
+withDefaults(defineProps<{
+  textClass?: string | null;
+}>(), {
+  textClass: null,
 });
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-</script>
-
-<script>
-export default {
-  name: 'AppLfPageHeader',
-};
 </script>

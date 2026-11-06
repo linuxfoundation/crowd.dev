@@ -8,20 +8,24 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { h, ref, watch } from 'vue';
 import debounce from 'lodash/debounce';
 import { useRoute } from 'vue-router';
 
-defineProps({
-  placeholder: {
-    type: String,
-    default: () => null,
-  },
+defineOptions({ name: 'AppLfSearchInput' });
+
+withDefaults(defineProps<{
+  placeholder?: string | null;
+}>(), {
+  placeholder: null,
 });
-const emit = defineEmits(['onChange']);
+
+const emit = defineEmits<{(e: 'onChange', value: string): void;
+}>();
+
 const route = useRoute();
-const searchInput = ref();
+const searchInput = ref<string | null>();
 
 const SearchIcon = h(
   'i', // type
@@ -29,7 +33,7 @@ const SearchIcon = h(
   [],
 );
 
-const debouncedChange = debounce((value) => {
+const debouncedChange = debounce((value: string) => {
   emit('onChange', value);
 }, 300);
 
@@ -38,10 +42,4 @@ watch(() => route.query.activeTab, (newActiveTab, oldActiveTab) => {
     searchInput.value = null;
   }
 });
-</script>
-
-<script>
-export default {
-  name: 'AppLfSearchInput',
-};
 </script>

@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { AxiosError } from 'axios';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import Errors from '@/shared/error/errors';
 import { ToastStore } from '@/shared/message/notification';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
@@ -21,11 +21,12 @@ import allMembers from '@/modules/member/config/saved-views/views/all-members';
 
 const { buildFilterFromAttributes } = customAttributesService();
 
-const refetchCustomAttributes = (): Promise<void> => MemberService.fetchCustomAttributes()
-  .then(() => undefined)
-  .catch((error: unknown) => {
-    Errors.handle(error);
-  });
+const refetchCustomAttributes = (): Promise<void> =>
+  MemberService.fetchCustomAttributes()
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      Errors.handle(error);
+    });
 
 export const useMemberStore = defineStore('member', () => {
   const filters = ref<Filter>({ ...allMembers.config });
@@ -35,12 +36,13 @@ export const useMemberStore = defineStore('member', () => {
   const toMergeMember = ref<{ id: string; segmentId: string } | null>(null);
 
   function getMemberCustomAttributes(): Promise<Record<string, FilterConfig>> {
-    return MemberService.fetchCustomAttributes()
-      .then(({ rows }: { rows: FilterCustomAttribute[] }) => {
+    return MemberService.fetchCustomAttributes().then(
+      ({ rows }: { rows: FilterCustomAttribute[] }) => {
         customAttributes.value = rows;
         customAttributesFilter.value = buildFilterFromAttributes(rows);
         return Promise.resolve(customAttributesFilter.value);
-      });
+      },
+    );
   }
 
   function fetchCustomAttributes(): Promise<void> {
@@ -95,7 +97,8 @@ export const useMemberStore = defineStore('member', () => {
   }
 
   function findMember(id: string): Promise<Contributor | null> {
-    return useContributorStore().getContributor(id)
+    return useContributorStore()
+      .getContributor(id)
       .catch(async (error: unknown) => {
         Errors.handle(error);
         const { router } = await import('@/router');
@@ -104,9 +107,13 @@ export const useMemberStore = defineStore('member', () => {
       });
   }
 
-  async function bulkUpdateMembersAttribute(
-    { members: membersToUpdate, attributesToSave }: { members: BulkAttributesMember[]; attributesToSave: BulkAttributesToSave },
-  ): Promise<Member[] | undefined> {
+  async function bulkUpdateMembersAttribute({
+    members: membersToUpdate,
+    attributesToSave,
+  }: {
+    members: BulkAttributesMember[];
+    attributesToSave: BulkAttributesToSave;
+  }): Promise<Member[] | undefined> {
     try {
       const payload = buildBulkUpdatePayload(membersToUpdate, attributesToSave);
       const updatedMembers: Member[] = await MemberService.updateBulk(payload);

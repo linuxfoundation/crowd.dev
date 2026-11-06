@@ -10,7 +10,7 @@
     :clearable="false"
     class="w-full"
     :teleported="false"
-    @update:model-value="form = $event"
+    @update:model-value="form = $event as Organization | null"
   >
     <template v-if="isCreatingOrganization" #prefix>
       <lf-spinner size="1rem" class="mr-2 text-black" />
@@ -35,8 +35,8 @@
       <div class="flex w-full items-center justify-between gap-2 flex-wrap">
         <div class="flex items-center">
           <lf-avatar
-            :name="item.displayName"
-            :src="item.logo"
+            :name="item.displayName as string"
+            :src="item.logo as string"
             :size="20"
             class="mr-2 !rounded-sm"
           >
@@ -49,7 +49,7 @@
           {{ item.displayName || item.name }}
         </div>
 
-        <lf-project-groups-tags :segments="item.segments" />
+        <lf-project-groups-tags :segments="item.segments as string[]" />
       </div>
     </template>
   </app-autocomplete-one-input>
@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import type { Organization } from '@/modules/organization/types/Organization';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';

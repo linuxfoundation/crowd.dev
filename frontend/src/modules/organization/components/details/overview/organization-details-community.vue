@@ -62,7 +62,7 @@ import pluralize from 'pluralize';
 import {
   computed, onMounted, ref,
 } from 'vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfLoading from '@/ui-kit/loading/Loading.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';

@@ -12,7 +12,6 @@
       class="!border-t-0 !shadow-none"
       @reload="emit('reload')"
     >
-      <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
       <template #actions>
         <lf-button
           type="secondary-ghost-light"

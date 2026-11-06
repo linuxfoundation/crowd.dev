@@ -19,7 +19,7 @@
 import type { Integration, IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, onMounted, ref } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import LfGithubMappingsDisplay from '@/config/integrations/github/components/github-mappings-display.vue';
 
 const props = defineProps<{

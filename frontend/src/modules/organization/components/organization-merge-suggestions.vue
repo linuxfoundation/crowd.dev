@@ -42,7 +42,7 @@
         <app-member-merge-similarity v-if="!loading && organizationsToMerge.similarity" :similarity="organizationsToMerge.similarity" />
         <lf-button
           type="secondary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingIgnore"
           @click="ignoreSuggestion()"
         >
@@ -50,7 +50,7 @@
         </lf-button>
         <lf-button
           type="primary"
-          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
+          :disabled="loading || !hasSuggestion"
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
@@ -128,7 +128,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, onMounted, computed, onUnmounted,
 } from 'vue';
@@ -145,28 +145,33 @@ import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/me
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { OrganizationService } from '../organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+import type { SuggestionsPage } from '@/modules/organization/services/organization.api.service';
+import type { OrganizationMergeSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
-const props = defineProps({
-  query: {
-    type: Object,
-    required: false,
-    default: () => ({}),
-  },
-  offset: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsPage',
 });
 
-const emit = defineEmits(['reload']);
+const props = withDefaults(defineProps<{
+  query?: Record<string, unknown>;
+  offset?: number;
+}>(), {
+  query: () => ({}),
+  offset: 0,
+});
+
+const emit = defineEmits<{(e: 'reload'): void}>();
+
+defineSlots<{
+  actions?:() => unknown;
+}>();
 
 const organizationStore = useOrganizationStore();
 
 const { trackEvent } = useProductTracking();
 
-const organizationsToMerge = ref([]);
+const organizationsToMerge = ref<OrganizationMergeSuggestion | Record<string, never>>({});
 const primary = ref(0);
 const currentOffset = ref(0);
 const hasMore = ref(false);
@@ -180,8 +185,8 @@ const changed = ref(false);
 
 const bioHeight = ref(0);
 
-const clearOrganization = (organization) => {
-  const cleanedOrganization = { ...organization };
+const clearOrganization = <T extends object>(organization: T): Partial<T> => {
+  const cleanedOrganization: Partial<T> = { ...organization };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in cleanedOrganization) {
     if (!cleanedOrganization[key]) {
@@ -206,7 +211,7 @@ const preview = computed(() => {
   return mergedOrganizations;
 });
 
-const updateSuggestionsState = (res) => {
+const updateSuggestionsState = (res: SuggestionsPage<OrganizationMergeSuggestion>) => {
   hasMore.value = Boolean(res.hasMore);
   const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
 
@@ -215,12 +220,12 @@ const updateSuggestionsState = (res) => {
     [organizationsToMerge.value] = rows;
   } else {
     hasSuggestion.value = false;
-    organizationsToMerge.value = [];
+    organizationsToMerge.value = {};
   }
 };
 
-const fetch = (page, trackNavigation = true) => {
-  if (page > -1) {
+const fetch = (page?: number, trackNavigation = true): Promise<void> => {
+  if (page !== undefined && page > -1) {
     currentOffset.value = page;
   }
 
@@ -270,7 +275,7 @@ const ignoreSuggestion = () => {
   });
 
   sendingIgnore.value = true;
-  OrganizationService.addToNoMerge(...organizationsToMerge.value.organizations)
+  OrganizationService.addToNoMerge(organizationsToMerge.value.organizations[0], organizationsToMerge.value.organizations[1])
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
 
@@ -345,10 +350,4 @@ onUnmounted(() => {
     emit('reload');
   }
 });
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationMergeSuggestionsPage',
-};
 </script>

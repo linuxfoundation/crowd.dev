@@ -181,7 +181,7 @@ import { useMemberStore } from '@/modules/member/store/pinia';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import LfSvg from '@/shared/svg/svg.vue';
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';

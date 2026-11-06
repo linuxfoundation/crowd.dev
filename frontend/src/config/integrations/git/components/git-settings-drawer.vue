@@ -111,7 +111,7 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
@@ -187,7 +187,7 @@ const isMirroredRepo = (url: string) => mirroredRepoUrls.value.has(url);
 const fetchRepoMappings = () => {
   if (!props.integration?.id) return;
 
-  IntegrationService.fetchGitMappings(props.integration)
+  IntegrationService.fetchGitMappings({ id: props.integration.id, segmentId: props.integration.segmentId })
     .then((repos: IntegrationMapping[]) => {
       // Find repos where sourceIntegrationId != gitIntegrationId (mirrored from other platforms)
       mirroredRepos.value = repos

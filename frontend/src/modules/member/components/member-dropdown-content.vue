@@ -151,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';

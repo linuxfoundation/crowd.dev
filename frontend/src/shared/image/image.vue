@@ -7,25 +7,13 @@
   />
 </template>
 
-<script setup>
-import { defineProps } from 'vue';
+<script setup lang="ts">
+defineOptions({ name: 'AppImage' });
 
-defineProps({
-  src: {
-    type: String,
-    required: true,
-  },
-  alt: {
-    type: String,
-    required: true,
-  },
-});
-</script>
-
-<script>
-export default {
-  name: 'AppImage',
-};
+defineProps<{
+  src: string;
+  alt: string;
+}>();
 </script>
 
 <style lang="scss" scoped>

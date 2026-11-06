@@ -41,7 +41,7 @@
           <el-tooltip
             v-else
             content="Linux Foundation's member organization must be the primary organization."
-            :disabled="!props.compareOrganization.lfxMembership"
+            :disabled="!props.compareOrganization!.lfxMembership"
             placement="top"
           >
             <span>
@@ -49,7 +49,7 @@
                 type="bordered"
                 size="small"
                 class="leading-5 !px-4 !py-1"
-                :disabled="!!props.compareOrganization.lfxMembership"
+                :disabled="!!props.compareOrganization!.lfxMembership"
                 @click="emit('makePrimary')"
               >
                 <lf-icon name="arrow-right-arrow-left" type="solid" :size="16" class="text-gray-600 mr-2" />
@@ -63,17 +63,17 @@
       <div class="pb-6">
         <div class="flex justify-between">
           <router-link
-            v-if="!isPreview && props.organization?.id"
+            v-if="!isPreview && currentOrganization?.id"
             :to="{
               name: 'organizationView',
-              params: { id: organization.id },
+              params: { id: currentOrganization.id },
               query: { projectGroup: selectedProjectGroup?.id },
             }"
             target="_blank"
           >
             <lf-avatar
-              :name="displayName(props.organization)?.replace('@', '')"
-              :src="logo(props.organization)"
+              :name="displayName(currentOrganization)?.replace('@', '')"
+              :src="logo(currentOrganization)"
               :size="48"
               class="mr-4 mb-4"
               img-class="!object-contain"
@@ -81,8 +81,8 @@
           </router-link>
           <lf-avatar
             v-else
-            :name="displayName(props.organization)?.replace('@', '')"
-            :src="logo(props.organization)"
+            :name="displayName(currentOrganization)?.replace('@', '')"
+            :src="logo(currentOrganization)"
             :size="48"
             class="mr-4 mb-4"
             img-class="!object-contain"
@@ -90,10 +90,10 @@
         </div>
         <div>
           <router-link
-            v-if="!isPreview && props.organization.id"
+            v-if="!isPreview && currentOrganization.id"
             :to="{
               name: 'organizationView',
-              params: { id: organization.id },
+              params: { id: currentOrganization.id },
               query: { projectGroup: selectedProjectGroup?.id },
             }"
             target="_blank"
@@ -101,10 +101,10 @@
             <div class="flex items-center gap-1">
               <h6
                 class="text-base text-black font-semibold hover:text-primary-500 leading-6"
-                v-html="$sanitize(displayName(props.organization))"
+                v-html="$sanitize(displayName(currentOrganization))"
               />
               <lf-organization-lf-member-tag
-                :organization="props.organization"
+                :organization="currentOrganization"
                 only-show-icon
               />
             </div>
@@ -112,19 +112,19 @@
           <div v-else class="flex items-center gap-1">
             <h6
               class="text-base text-black font-semibold hover:text-primary-500 leading-6"
-              v-html="$sanitize(displayName(props.organization))"
+              v-html="$sanitize(displayName(currentOrganization))"
             />
             <lf-organization-lf-member-tag
-              :organization="props.organization"
+              :organization="currentOrganization"
               only-show-icon
             />
           </div>
           <div
-            v-if="props.organization.attributes?.description?.default"
+            v-if="currentOrganization.attributes?.description?.default"
             ref="bio"
             class="text-gray-600 leading-5 !text-xs merge-member-bio mt-2"
             :class="{ 'line-clamp-2': !more }"
-            v-html="$sanitize(props.organization.attributes?.description?.default)"
+            v-html="$sanitize(currentOrganization.attributes?.description?.default)"
           />
           <div
             v-else-if="compareOrganization?.attributes?.description?.default"
@@ -136,7 +136,7 @@
           <div
             v-if="displayShowMore"
             class="text-sm text-primary-500 mt-2 cursor-pointer"
-            :class="{ invisible: !props.organization.description }"
+            :class="{ invisible: !currentOrganization.description }"
             @click.stop="more = !more"
           >
             Show {{ more ? 'less' : 'more' }}
@@ -147,7 +147,7 @@
       <div>
         <article
           v-if="
-            getOrganizationWebsite(organization)
+            getOrganizationWebsite(currentOrganization)
               || getOrganizationWebsite(compareOrganization)
           "
           class="pb-4"
@@ -156,15 +156,15 @@
             Website
           </p>
           <a
-            :href="withHttp(getOrganizationWebsite(organization))"
+            :href="withHttp(getOrganizationWebsite(currentOrganization) as string)"
             target="_blank"
             rel="noopener noreferrer"
             class="text-xs text-gray-900 whitespace-normal inline-block leading"
-          >{{ getOrganizationWebsite(organization) || '-' }}</a>
+          >{{ getOrganizationWebsite(currentOrganization) || '-' }}</a>
         </article>
         <article
           v-if="
-            props.organization.location
+            currentOrganization.location
               || props.compareOrganization?.location
           "
           class="pb-4"
@@ -173,12 +173,12 @@
             Location
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ props.organization.location || '-' }}
+            {{ currentOrganization.location || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.attributes?.employees?.default
+            currentOrganization.attributes?.employees?.default
               || props.compareOrganization?.attributes?.employees?.default
           "
           class="pb-4"
@@ -187,12 +187,12 @@
             # of employees
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ props.organization.attributes?.employees?.default || '-' }}
+            {{ currentOrganization.attributes?.employees?.default || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.attributes?.revenueRange?.default
+            currentOrganization.attributes?.revenueRange?.default
               || props.compareOrganization?.attributes?.revenueRange?.default
           "
           class="pb-4"
@@ -202,13 +202,13 @@
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
             {{ revenueRange.formatValue(
-              props.organization.attributes?.revenueRange?.default,
+              currentOrganization.attributes?.revenueRange?.default,
             ) || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.attributes?.industry?.default
+            currentOrganization.attributes?.industry?.default
               || props.compareOrganization?.attributes?.industry?.default
           "
           class="pb-4"
@@ -217,12 +217,12 @@
             Industry
           </p>
           <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
-            {{ props.organization.attributes?.industry?.default || '-' }}
+            {{ currentOrganization.attributes?.industry?.default || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.attributes?.type?.default
+            currentOrganization.attributes?.type?.default
               || props.compareOrganization?.attributes?.type?.default
           "
           class="pb-4"
@@ -231,12 +231,12 @@
             Type
           </p>
           <p class="text-xs text-gray-900 first-letter:uppercase whitespace-normal">
-            {{ props.organization.attributes?.type?.default || '-' }}
+            {{ currentOrganization.attributes?.type?.default || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.attributes?.founded?.default
+            currentOrganization.attributes?.founded?.default
               || props.compareOrganization?.attributes?.founded?.default
           "
           class="pb-4"
@@ -245,12 +245,12 @@
             Founded
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ props.organization.attributes?.founded?.default || '-' }}
+            {{ currentOrganization.attributes?.founded?.default || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.joinedAt
+            currentOrganization.joinedAt
               || props.compareOrganization?.joinedAt
           "
           class="pb-4"
@@ -259,12 +259,12 @@
             Joined date
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ formatDateToTimeAgo(props.organization.joinedAt) || '-' }}
+            {{ formatDateToTimeAgo(currentOrganization.joinedAt) || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.memberCount
+            currentOrganization.memberCount
               || props.compareOrganization?.memberCount
           "
           class="pb-4"
@@ -273,12 +273,12 @@
             # of people
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ props.organization.memberCount || '-' }}
+            {{ currentOrganization.memberCount || '-' }}
           </p>
         </article>
         <article
           v-if="
-            props.organization.activityCount
+            currentOrganization.activityCount
               || props.compareOrganization?.activityCount
           "
           class="pb-4"
@@ -287,7 +287,7 @@
             # of Activities
           </p>
           <p class="text-xs text-gray-900 whitespace-normal">
-            {{ props.organization.activityCount || '-' }}
+            {{ currentOrganization.activityCount || '-' }}
           </p>
         </article>
       </div>
@@ -296,7 +296,7 @@
           Identities
         </h6>
         <app-identities-vertical-list-organizations
-          :organization="organization"
+          :organization="currentOrganization"
           include-emails
           include-domains
           include-phone-numbers
@@ -307,9 +307,9 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
-  onMounted, ref,
+  computed, onMounted, ref,
 } from 'vue';
 import AppLoading from '@/shared/loading/loading-placeholder.vue';
 import { withHttp } from '@/utils/string';
@@ -325,49 +325,46 @@ import useOrganizationHelpers from '@/modules/organization/helpers/organization.
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  organization: {
-    type: Object,
-    default: () => null,
-  },
-  compareOrganization: {
-    type: Object,
-    required: false,
-    default: () => null,
-  },
-  isPrimary: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  isPreview: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  loading: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  extendBio: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+defineOptions({ name: 'AppOrganizationMergeSuggestionsDetails' });
+
+const props = withDefaults(defineProps<{
+  organization?: Partial<Organization> | null;
+  compareOrganization?: Organization | null;
+  isPrimary?: boolean;
+  isPreview?: boolean;
+  loading?: boolean;
+  extendBio?: number;
+}>(), {
+  organization: () => null,
+  compareOrganization: () => null,
+  isPrimary: false,
+  isPreview: false,
+  loading: false,
+  extendBio: 0,
 });
 
-const emit = defineEmits(['makePrimary', 'bioHeight']);
+const emit = defineEmits<{(e: 'makePrimary'): void;
+  (e: 'bioHeight', value: number): void;
+}>();
+
+defineSlots<{
+  header?:() => unknown;
+  action?:() => unknown;
+}>();
+
+// shortcut: organization is only null while loading. revisit: K-20 / CM-1731 moves the loading skeleton out
+const currentOrganization = computed(() => props.organization!);
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const { logo, displayName } = useOrganizationHelpers();
 
-const bio = ref(null);
-const displayShowMore = ref(null);
-const more = ref(null);
+const bio = ref<HTMLElement | null>(null);
+const displayShowMore = ref<boolean | null>(null);
+const more = ref<boolean | null>(null);
 
 onMounted(() => {
   setTimeout(() => {
@@ -385,12 +382,6 @@ onMounted(() => {
 defineExpose({
   more,
 });
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationMergeSuggestionsDetails',
-};
 </script>
 
 <style lang="scss">

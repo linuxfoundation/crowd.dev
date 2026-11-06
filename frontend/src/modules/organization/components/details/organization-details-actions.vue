@@ -80,7 +80,7 @@ import { onMounted, ref } from 'vue';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationApiService } from '@/modules/organization/services/organization.api.service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import AppOrganizationMergeSuggestionsDialog
   from '@/modules/organization/components/organization-merge-suggestions-dialog.vue';
 import AppOrganizationMergeDialog from '@/modules/organization/components/organization-merge-dialog.vue';
@@ -104,7 +104,7 @@ const unmerge = ref<Organization | null>(null);
 const mergeSuggestionsCount = ref<number>(0);
 
 const fetchMergeSuggestions = () => {
-  OrganizationApiService.fetchMergeSuggestions(0, 0, {
+  OrganizationService.fetchMergeSuggestions(0, 0, {
     filter: {
       organizationId: props.organization.id,
     },

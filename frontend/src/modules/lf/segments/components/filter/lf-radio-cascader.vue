@@ -7,7 +7,7 @@
       <el-radio-group
         v-model="selectedProject"
         class="px-2"
-        @change="(value) => handleParentOptionChange(value)"
+        @change="(value: RadioValue) => handleParentOptionChange(value)"
       >
         <el-radio
           :label="option.id"
@@ -20,7 +20,7 @@
         <div v-if="option.children">
           <el-radio-group
             v-model="selectedSubProject"
-            @change="(value) => handleChildOptionChange(value, option)"
+            @change="(value: RadioValue) => handleChildOptionChange(value)"
           >
             <el-radio
               v-for="(childOption, index) in option.children"
@@ -40,38 +40,40 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { ProjectsOption } from '@/modules/lf/segments/types/Filters';
 
-const props = defineProps({
-  options: {
-    type: Array,
-    default: () => [],
-  },
-  emptyText: {
-    type: String,
-    default: null,
-  },
-  loading: {
-    type: Boolean,
-    default: false,
-  },
+type RadioValue = string | number | boolean | undefined;
+
+defineOptions({ name: 'AppLfRadioCascader' });
+
+const props = withDefaults(defineProps<{
+  options?: ProjectsOption[];
+  emptyText?: string | null;
+  loading?: boolean;
+}>(), {
+  options: () => [],
+  emptyText: null,
+  loading: false,
 });
-const emit = defineEmits(['update:options', 'onChange']);
+const emit = defineEmits<{(e: 'update:options', value: ProjectsOption[]): void;
+  (e: 'onChange', value: ProjectsOption[]): void;
+}>();
 const model = computed({
   get() {
     return props.options;
   },
-  set(v) {
+  set(v: ProjectsOption[]) {
     emit('update:options', v);
     emit('onChange', v);
   },
 });
 
-const selectedProject = ref('');
-const selectedSubProject = ref('');
+const selectedProject = ref<string | undefined>('');
+const selectedSubProject = ref<string | undefined>('');
 
-const handleParentOptionChange = (parentOptionValue) => {
+const handleParentOptionChange = (parentOptionValue: RadioValue) => {
   if (parentOptionValue) {
     selectedSubProject.value = '';
   }
@@ -86,7 +88,7 @@ const handleParentOptionChange = (parentOptionValue) => {
   }));
 };
 
-const handleChildOptionChange = (childOptionValue) => {
+const handleChildOptionChange = (childOptionValue: RadioValue) => {
   if (childOptionValue) {
     selectedProject.value = '';
   }
@@ -108,12 +110,6 @@ watch(() => props.options, (updatedOptions) => {
   deep: true,
   immediate: true,
 });
-</script>
-
-<script>
-export default {
-  name: 'AppLfRadioCascader',
-};
 </script>
 
 <style lang="scss">

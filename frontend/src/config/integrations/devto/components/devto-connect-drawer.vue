@@ -199,7 +199,7 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppFormItem from '@/shared/form/form-item.vue';
 import devto from '@/config/integrations/devto/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';

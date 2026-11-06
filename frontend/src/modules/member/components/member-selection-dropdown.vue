@@ -26,9 +26,9 @@
                 class="mr-3"
               />
               <div class="flex flex-col justify-center">
-                <p class="text-xs leading-4.5" v-html="$sanitize(item.label)" />
-                <p v-if="item.organizations.length > 0" class="text-xxs leading-4.5 text-gray-500">
-                  {{ item.organizations.map((o) => o.name).join(', ') }}
+                <p class="text-xs leading-4.5" v-html="$sanitize(item.label as string)" />
+                <p v-if="(item.organizations as { name: string }[]).length > 0" class="text-xxs leading-4.5 text-gray-500">
+                  {{ (item.organizations as { name: string }[]).map((o) => o.name).join(', ') }}
                 </p>
               </div>
             </div>
@@ -39,53 +39,45 @@
   </div>
 </template>
 
-<script setup>
-import {
-  computed,
-  ref,
-  defineProps,
-  defineEmits,
-} from 'vue';
-import { MemberService } from '@/modules/member/member-service';
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import AppAutocompleteOneInput from '@/shared/form/autocomplete-one-input.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true,
-  },
-  id: {
-    type: String,
-    required: true,
-  },
-});
-const emit = defineEmits('update:modelValue');
-const loadingMemberToMerge = ref();
-const computedMemberToMerge = computed({
+const props = defineProps<{
+  modelValue: Contributor | null;
+  id: string;
+}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: Contributor): void}>();
+const loadingMemberToMerge = ref<boolean>();
+const computedMemberToMerge = computed<Pick<Contributor, 'id'> | undefined>({
   get() {
-    return props.modelValue;
+    // shortcut: null cast past the inferred Object prop. revisit: when autocomplete-one-input is typed
+    return props.modelValue as Pick<Contributor, 'id'> | undefined;
   },
   async set(value) {
     loadingMemberToMerge.value = true;
 
-    const response = await MemberService.find(value.id);
+    const response = await MemberService.find(value!.id);
 
     emit('update:modelValue', response);
     loadingMemberToMerge.value = false;
   },
 });
 
-const fetchFn = async ({ query, limit }) => {
+const fetchFn = async ({ query, limit }: { query: string; limit: number }) => {
   const options = await MemberService.listMembersAutocomplete({
     query,
     limit,
+    segments: undefined,
     excludeSegments: true,
   });
 
   // Remove primary member from members that can be merged with
-  const filteredOptions = options.filter((m) => m.id !== props.id);
+  const filteredOptions: { id?: string }[] = options.filter((m: Pick<Contributor, 'id'>) => m.id !== props.id);
 
   // If the primary member was removed, add an empty object in replacement
   if (options.length !== filteredOptions.length) {

@@ -54,7 +54,7 @@ import type { DataQualityOrganizationMergeSuggestion } from '@/modules/data-qual
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import LfDataQualityOrganizationMergeSuggestionsItem
   from '@/modules/data-quality/components/organization/data-quality-organization-merge-suggestions-item.vue';
 import AppOrganizationMergeSuggestionsDialog

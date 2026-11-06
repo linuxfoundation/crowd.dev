@@ -71,29 +71,28 @@
   </el-popover>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
 import {
   reactive, h, ref, onMounted,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
 
-const props = defineProps({
-  selectedSubproject: {
-    type: Object,
-    default: () => {},
-  },
-  selectedSubprojectParent: {
-    type: Object,
-    default: () => {},
-  },
-});
+defineOptions({ name: 'AppLfSubProjectsListDropdown' });
 
-const emit = defineEmits(['onChange']);
+const props = defineProps<{
+  selectedSubproject?: Pick<SubProject, 'id' | 'name'>;
+  selectedSubprojectParent?: Pick<Project, 'name'>;
+}>();
+
+const emit = defineEmits<{(e: 'onChange', value: { subprojectId: string; isSubmitEnabled: boolean }): void;
+}>();
 
 const SearchIcon = h(
   'i', // type
@@ -116,10 +115,10 @@ const ArrowUpIcon = h(
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-const inputRef = ref(null);
+const inputRef = ref<InputInstance | null>(null);
 const loading = ref(false);
 const searchQuery = ref('');
-const projectsList = ref([]);
+const projectsList = ref<Project[]>([]);
 const isPopoverVisible = ref(false);
 
 const inputValue = ref('');
@@ -135,16 +134,16 @@ const rules = {
 
 const $v = useVuelidate(rules, form);
 
-const listProjects = (clearList) => {
+const listProjects = (clearList?: boolean) => {
   loading.value = true;
 
   LfService.queryProjects({
     filter: {
       name: searchQuery.value,
-      parentSlug: selectedProjectGroup.value.slug,
+      parentSlug: selectedProjectGroup.value!.slug,
     },
   })
-    .then((response) => {
+    .then((response: { rows: Project[] }) => {
       if (clearList) {
         projectsList.value = response.rows;
       } else {
@@ -156,7 +155,7 @@ const listProjects = (clearList) => {
     });
 };
 
-const getInputValue = (subproject, project) => `${subproject.name} (${project.name})`;
+const getInputValue = (subproject: Pick<SubProject, 'name'>, project: Pick<Project, 'name'>) => `${subproject.name} (${project.name})`;
 
 onMounted(() => {
   listProjects();
@@ -167,13 +166,13 @@ onMounted(() => {
   }
 });
 
-const onSearchProjects = (query) => {
+const onSearchProjects = (query: string) => {
   searchQuery.value = query;
 
   listProjects(true);
 };
 
-const onOptionClick = (subproject, project) => {
+const onOptionClick = (subproject: SubProject, project: Project) => {
   isPopoverVisible.value = false;
 
   form.subprojectId = subproject.id;
@@ -183,12 +182,6 @@ const onOptionClick = (subproject, project) => {
     subprojectId: form.subprojectId,
     isSubmitEnabled: !$v.value.$invalid,
   });
-};
-</script>
-
-<script>
-export default {
-  name: 'AppLfSubProjectsListDropdown',
 };
 </script>
 

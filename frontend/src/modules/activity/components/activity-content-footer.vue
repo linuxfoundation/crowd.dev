@@ -33,40 +33,27 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-defineProps({
-  changes: {
-    type: Number,
-    default: null,
-  },
-  changesCopy: {
-    type: String,
-    default: null,
-  },
-  insertions: {
-    type: Number,
-    default: null,
-  },
-  deletions: {
-    type: Number,
-    default: null,
-  },
-  sourceId: {
-    type: String,
-    default: null,
-  },
-  displaySourceId: {
-    type: Boolean,
-    default: false,
-  },
-});
-</script>
-
-<script>
-export default {
+defineOptions({
   name: 'AppActivityContentFooter',
-};
+});
+
+withDefaults(defineProps<{
+  changes?: number | null;
+  changesCopy: string;
+  insertions?: number | null;
+  deletions?: number | null;
+  sourceId?: string | null;
+  displaySourceId?: boolean;
+}>(), {
+  changes: null,
+  insertions: null,
+  deletions: null,
+  sourceId: null,
+  displaySourceId: false,
+});
+
 </script>

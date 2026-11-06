@@ -110,16 +110,17 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import AppIntegrationProgress from '@/modules/integration/components/integration-progress.vue';
 import { lfIntegrations } from '@/config/integrations';
 
-type Integrations = SubProject & IntegrationProgress & { mappedWith?: string };
+type Integrations = NonNullable<SubProject['integrations']>[number];
 
 const props = withDefaults(
   defineProps<{
     segmentId: string;
-    integrations: Integrations[];
-    progress?: IntegrationProgress[];
+    integrations?: Integrations[];
+    progress?: IntegrationProgress[] | null;
     progressError?: boolean;
   }>(),
   {
+    integrations: undefined,
     progress: () => [],
     progressError: false,
   },

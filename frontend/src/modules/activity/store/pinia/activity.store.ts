@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
-import { ActivityService } from '@/modules/activity/activity-service';
+import { ActivityService } from '@/modules/activity/services/activity.api.service';
 
 export const useActivityStore = defineStore('activity', () => {
   const filters = ref({
@@ -16,7 +16,7 @@ export const useActivityStore = defineStore('activity', () => {
   } as Filter);
   const activityChannels = ref<Record<string, string[]>>({});
 
-  function fetchActivityChannels(segment: string) {
+  function fetchActivityChannels(segment?: string) {
     return ActivityService.listActivityChannels(segment).then((res) => {
       activityChannels.value = res;
       return res;

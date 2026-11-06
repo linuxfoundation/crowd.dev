@@ -96,7 +96,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { ToastStore } from '@/shared/message/notification';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import type { MemberBotSuggestion } from '@/modules/member/types/MemberSuggestion';
 
 const props = withDefaults(

@@ -6,7 +6,7 @@
 import {
   onMounted, onUnmounted, ref, watch,
 } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import { useTimeoutPoll } from '@vueuse/core';
 

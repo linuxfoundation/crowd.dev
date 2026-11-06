@@ -51,7 +51,7 @@ import {
 } from 'vue';
 import AppAutocompleteOneInput from '@/shared/form/autocomplete-one-input.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useRoute } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 

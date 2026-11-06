@@ -54,7 +54,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import AppActivityMessage from '@/modules/activity/components/activity-message.vue';
 import AppActivitySentiment from '@/modules/activity/components/activity-sentiment.vue';
@@ -62,18 +62,23 @@ import { formatDateToTimeAgo } from '@/utils/date';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 import { useActivityStore } from '../store/pinia';
 
-const props = defineProps({
-  activity: {
-    type: Object,
-    default: () => {},
-  },
-  showAffiliations: {
-    type: Boolean,
-    default: true,
-  },
+defineOptions({
+  name: 'AppActivityHeader',
 });
+
+const props = withDefaults(defineProps<{
+  activity: Activity;
+  showAffiliations?: boolean;
+}>(), {
+  showAffiliations: true,
+});
+
+defineSlots<{
+  default?:() => unknown;
+}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
@@ -90,10 +95,5 @@ const segmentId = computed(() => {
 });
 const timeAgo = computed(() => formatDateToTimeAgo(props.activity.timestamp));
 const sentiment = computed(() => props.activity?.sentiment?.sentiment || 0);
-</script>
 
-<script>
-export default {
-  name: 'AppActivityHeader',
-};
 </script>

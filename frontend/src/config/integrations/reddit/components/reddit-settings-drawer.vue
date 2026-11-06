@@ -107,7 +107,7 @@ import { useThrottleFn } from '@vueuse/core';
 import Nango from '@nangohq/frontend';
 import isEqual from 'lodash/isEqual';
 import config from '@/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';

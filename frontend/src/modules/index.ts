@@ -1,4 +1,5 @@
 import type { Component } from 'vue';
+import type { RouteRecordRaw } from 'vue-router';
 import shared from '@/shared/shared-module';
 import layout from '@/modules/layout/layout-module';
 import settings from '@/modules/settings/settings-module';
@@ -11,7 +12,8 @@ import admin from '@/modules/admin/admin.module';
 import dataQuality from '@/modules/data-quality/data-quality.module';
 
 interface AppModule {
-  routes?: Record<string, unknown>[];
+  // shortcut: untyped JS module routes allowed. revisit: when lfx-cdp-insights-ops#307 types every module file
+  routes?: (RouteRecordRaw | Record<string, unknown>)[];
   components?: Record<string, Component>;
 }
 

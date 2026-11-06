@@ -129,7 +129,7 @@ import LfFilter from '@/shared/modules/filters/components/Filter.vue';
 import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useMemberStore } from '@/modules/member/store/pinia';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import type { Pagination } from '@/shared/types/Pagination';

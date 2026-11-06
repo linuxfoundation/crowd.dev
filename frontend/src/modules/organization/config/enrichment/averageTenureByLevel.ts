@@ -14,7 +14,7 @@ const averageTenureByLevel: OrganizationEnrichmentConfig = {
   type: AttributeType.JSON,
   showInForm: true,
   showInAttributes: true,
-  formatValue: (val) => Object.entries(val).reduce((final, [key, value]) => ({
+  formatValue: (val) => Object.entries<number>(val).reduce((final, [key, value]) => ({
     ...final,
     [averageTenureByLevelLabels[key] || snakeToSentenceCase(key)]: formatFloatToYears(value),
   }), {}),

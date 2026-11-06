@@ -1,4 +1,4 @@
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import RelationToManyField from '@/shared/fields/relation-to-many-field';
 
 export class OrganizationField {

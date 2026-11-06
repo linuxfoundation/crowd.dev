@@ -159,7 +159,7 @@ import AppOrganizationFormDetails from '@/modules/organization/components/form/o
 import AppOrganizationFormAttributes from '@/modules/organization/components/form/organization-form-attributes.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import Errors from '@/shared/error/errors';
 
 import { ToastStore } from '@/shared/message/notification';

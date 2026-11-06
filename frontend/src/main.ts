@@ -37,7 +37,7 @@ declare module 'vue' {
 (async function () {
   installAnalyticsStub();
   if (isRealSegmentKey(config.segmentKey)) {
-    loadSegment(config.segmentKey);
+    loadSegment(config.segmentKey!);
   }
 
   const pinia = createPinia();

@@ -135,7 +135,7 @@
 <script setup lang="ts">
 import AppBackLink from '@/shared/modules/back-link/components/back-link.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { onMounted, ref } from 'vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfButton from '@/ui-kit/button/Button.vue';

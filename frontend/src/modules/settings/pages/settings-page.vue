@@ -15,62 +15,39 @@
   </app-page-wrapper>
 </template>
 
-<script>
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import AppApiKeysPage from '@/modules/settings/pages/api-keys-page.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
-export default {
-  name: 'AppSettingsPage',
+defineOptions({ name: 'AppSettingsPage' });
 
-  components: {
-    AppApiKeysPage,
+const route = useRoute();
+const router = useRouter();
+const { updateSelectedProjectGroup } = useLfSegmentsStore();
+
+updateSelectedProjectGroup(null);
+const params = Object.fromEntries(
+  new URLSearchParams(window.location.search).entries(),
+);
+const activeTab = ref<string>(params.activeTab || 'api-keys');
+
+const computedActiveTab = computed({
+  get: () => activeTab.value,
+  set: (value: string) => {
+    router.push({
+      name: 'settings',
+      query: { activeTab: value },
+    });
   },
+});
 
-  data() {
-    return {
-      activeTab: null,
-    };
-  },
-
-  computed: {
-    computedActiveTab: {
-      get() {
-        return this.activeTab;
-      },
-      set(value) {
-        this.$router.push({
-          name: 'settings',
-          query: { activeTab: value },
-        });
-      },
-    },
-  },
-
-  watch: {
-    '$route.query.activeTab': {
-      handler(newActiveTab) {
-        if (newActiveTab) {
-          this.activeTab = newActiveTab;
-        }
-      },
-    },
-  },
-
-  created() {
-    const lsSegmentsStore = useLfSegmentsStore();
-    const { updateSelectedProjectGroup } = lsSegmentsStore;
-
-    updateSelectedProjectGroup(null);
-    const urlSearchParams = new URLSearchParams(
-      window.location.search,
-    );
-    const params = Object.fromEntries(
-      urlSearchParams.entries(),
-    );
-
-    this.activeTab = params.activeTab || 'api-keys';
-  },
-};
+watch(() => route.query.activeTab, (newActiveTab) => {
+  if (newActiveTab) {
+    activeTab.value = newActiveTab as string;
+  }
+});
 </script>
 
 <style lang="scss">
