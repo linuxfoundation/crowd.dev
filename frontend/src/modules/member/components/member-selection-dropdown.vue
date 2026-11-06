@@ -26,9 +26,9 @@
                 class="mr-3"
               />
               <div class="flex flex-col justify-center">
-                <p class="text-xs leading-4.5" v-html="$sanitize(item.label)" />
-                <p v-if="item.organizations.length > 0" class="text-xxs leading-4.5 text-gray-500">
-                  {{ item.organizations.map((o: { name: string }) => o.name).join(', ') }}
+                <p class="text-xs leading-4.5" v-html="$sanitize(item.label as string)" />
+                <p v-if="(item.organizations as { name: string }[]).length > 0" class="text-xxs leading-4.5 text-gray-500">
+                  {{ (item.organizations as { name: string }[]).map((o) => o.name).join(', ') }}
                 </p>
               </div>
             </div>
