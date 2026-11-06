@@ -6,7 +6,7 @@
     size="600px"
     pre-title="Integration"
     has-border
-    close-on-click-modal="true"
+    close-on-click-modal
     :close-function="canClose"
     @close="cancel"
   >
@@ -86,7 +86,7 @@
     </template>
     <template #footer>
       <drawer-footer-buttons
-        :integration="integration"
+        :integration="integration ?? undefined"
         :is-edit-mode="!!integration?.settings?.urls"
         :has-form-changed="hasFormChanged"
         :is-loading="loading"
@@ -100,9 +100,14 @@
   <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
-<script>
+<script setup lang="ts">
+import {
+  computed, onMounted, ref, watch,
+} from 'vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import hackernews from '@/config/integrations/hackernews/config';
+import type { HackernewsSettings } from '@/config/integrations/hackernews/types/HackernewsSettings';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import isUrl from '@/utils/isUrl';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -114,221 +119,203 @@ import {
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfButton from '@/ui-kit/button/Button.vue';
 import AppDrawer from '@/shared/drawer/drawer.vue';
+import AppKeywordsInput from '@/shared/form/keywords-input.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 
-export default {
-  name: 'LfHackernewsSettingsDrawer',
-  components: {
-    LfIcon,
-    LfButton,
-    AppDrawer,
-    DrawerDescription,
-    DrawerFooterButtons,
-    ChangesConfirmationModal,
+interface UrlField {
+  id: number;
+  url: string;
+  touched: boolean;
+  valid: boolean;
+  validating: boolean;
+}
+
+defineOptions({ name: 'LfHackernewsSettingsDrawer' });
+
+const props = withDefaults(defineProps<{
+  integration?: Integration<HackernewsSettings> | null;
+  modelValue?: boolean;
+  segmentId?: string | null;
+  grandparentId?: string | null;
+}>(), {
+  integration: null,
+  modelValue: false,
+  segmentId: null,
+  grandparentId: null,
+});
+
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
+
+const logoUrl = hackernews.image;
+const urls = ref<UrlField[]>([]);
+const keywords = ref<string[]>([]);
+const loading = ref(false);
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
+
+const hasFormChanged = computed(() => {
+  const validUrls = urls.value.filter((u) => !!u.url);
+  const validKeywords = keywords.value.filter((k) => !!k);
+  const originalUrls = props.integration?.settings?.urls || [];
+  const originalKeywords = props.integration?.settings?.keywords || [];
+
+  if (validUrls.length !== originalUrls.length) return true;
+  if (validKeywords.length !== originalKeywords.length) return true;
+  if (!validUrls.every((o) => originalUrls.includes(o.url))) return true;
+  if (!validKeywords.every((k) => originalKeywords.includes(k))) return true;
+
+  return false;
+});
+
+const maxId = computed(() => urls.value.length);
+
+const isVisible = computed({
+  get() {
+    return props.modelValue;
   },
-  props: {
-    integration: {
-      type: Object,
-      default: null,
-    },
-    modelValue: {
-      type: Boolean,
-      default: false,
-    },
-    segmentId: {
-      type: String,
-      default: null,
-    },
-    grandparentId: {
-      type: String,
-      default: null,
-    },
+  set(value: boolean) {
+    emit('update:modelValue', value);
   },
-  emits: ['update:modelValue'],
-  data() {
-    return {
-      logoUrl: hackernews.image,
-      users: [],
-      urls: [],
-      keywords: [],
-      loading: false,
-      changesConfirmationModalRef: null,
-    };
-  },
-  computed: {
-    hasFormChanged() {
-      const validUrls = this.urls.filter((u) => !!u.url);
-      const validKeywords = this.keywords.filter((k) => !!k);
-      const originalUrls = this.integration?.settings?.urls || [];
-      const originalKeywords = this.integration?.settings?.keywords || [];
+});
 
-      if (validUrls.length !== originalUrls.length) return true;
-      if (validKeywords.length !== originalKeywords.length) return true;
-      if (!validUrls.every((o) => originalUrls.includes(o.url))) return true;
-      if (!validKeywords.every((k) => originalKeywords.includes(k))) return true;
+const isValid = computed(() => {
+  const relevantUrls = urls.value.filter((u) => !!u.url);
 
-      return false;
-    },
-    maxId() {
-      return this.urls.length;
-    },
-    isVisible: {
-      get() {
-        return this.modelValue;
-      },
-      set(value) {
-        this.$emit('update:modelValue', value);
-      },
-    },
-    isValid() {
-      const relevantUrls = this.urls.filter((u) => !!u.url);
+  const relevantKeywords = keywords.value.filter((k) => !!k);
 
-      const relevantKeywords = this.keywords.filter((k) => !!k);
+  if (relevantUrls.some((url) => !url.valid)) {
+    return false;
+  }
 
-      if (relevantUrls.some((url) => !url.valid)) {
-        return false;
-      }
+  return relevantUrls.length > 0 || relevantKeywords.length > 0;
+});
 
-      return relevantUrls.length > 0 || relevantKeywords.length > 0;
-    },
-    connectDisabled() {
-      if (!this.isValid) {
-        return true;
-      }
+const connectDisabled = computed(() => {
+  if (!isValid.value) {
+    return true;
+  }
 
-      const validUrls = this.urls.filter((u) => !!u.url);
+  const validUrls = urls.value.filter((u) => !!u.url);
 
-      const validKeywords = this.keywords.filter((k) => !!k);
+  const validKeywords = keywords.value.filter((k) => !!k);
 
-      const empty = validUrls.length === 0 && validKeywords.length === 0;
-      if (this.integration?.settings && !empty) {
-        return (
-          validUrls.length === this.integration?.settings.urls.length
-          && validUrls.every((o) => this.integration?.settings.urls.includes(o.url))
-          && validKeywords.length === this.integration?.settings.keywords.length
-        );
-      }
-      return empty;
-    },
-    isLastUrl() {
-      return this.urls.length === 1;
-    },
-  },
-  watch: {
-    integration: {
-      handler(newVal) {
-        if (newVal) {
-          this.syncData();
-        }
-      },
-    },
-  },
+  const empty = validUrls.length === 0 && validKeywords.length === 0;
+  if (props.integration?.settings && !empty) {
+    return (
+      validUrls.length === props.integration?.settings.urls.length
+      && validUrls.every((o) => props.integration?.settings.urls.includes(o.url))
+      && validKeywords.length === props.integration?.settings.keywords.length
+    );
+  }
+  return empty;
+});
 
-  mounted() {
-    this.syncData();
-  },
+const isLastUrl = computed(() => urls.value.length === 1);
 
-  methods: {
-    canClose(done) {
-      if (this.hasFormChanged) {
-        this.$refs.changesConfirmationModalRef?.open().then((discardChanges) => {
-          if (discardChanges) {
-            this.revertChanges();
-            done(false);
-          } else {
-            done(true);
-          }
-        });
-      } else {
-        done(false);
-      }
-    },
-
-    toggle() {
-      this.isVisible = !this.isVisible;
-    },
-
-    syncData() {
-      this.urls = [];
-
-      if (this.integration && this.integration?.settings) {
-        this.integration?.settings.urls.forEach((k) => this.addNewUrl(k));
-      }
-
-      if (this.urls.length === 0) {
-        this.addNewUrl();
-      }
-    },
-
-    revertChanges() {
-      this.syncData();
-      this.keywords = this.integration?.settings.keywords;
-    },
-
-    addNewUrl(url) {
-      this.urls.push({
-        id: this.maxId + 1,
-        url: typeof url === 'string' || url instanceof String ? url : '',
-        touched: false,
-        valid: false,
-        validating: false,
-      });
-    },
-
-    handleUrlValidation(id) {
-      const url = this.urls.find((o) => o.id === id);
-      url.validating = true;
-      url.url = url.url.replace('https://', '');
-      url.url = url.url.replace('http://', '');
-
-      const isValid = isUrl(url.url);
-
-      url.valid = isValid && !!url.url;
-      url.validating = false;
-      url.touched = true;
-    },
-
-    removeUrl(id) {
-      this.urls = this.urls.filter((u) => u.id !== id);
-    },
-
-    cancel() {
-      this.isVisible = false;
-      this.syncData();
-    },
-
-    async save() {
-      this.loading = true;
-
-      const relevantUrls = this.urls.filter((u) => !!u.url);
-
-      const relevantKeywords = this.keywords.filter((k) => !!k);
-
-      await useIntegrationStore().connectHackerNews({
-        urls: relevantUrls.map((u) => u.url),
-        keywords: relevantKeywords,
-        segmentId: this.segmentId,
-        grandparentId: this.grandparentId,
-      });
-
-      const { trackEvent } = useProductTracking();
-
-      const isUpdate = !!this.integration?.settings;
-
-      trackEvent({
-        key: isUpdate
-          ? FeatureEventKey.EDIT_INTEGRATION_SETTINGS
-          : FeatureEventKey.CONNECT_INTEGRATION,
-        type: EventType.FEATURE,
-        properties: { platform: Platform.HACKER_NEWS },
-      });
-
-      this.isVisible = false;
-      this.loading = false;
-    },
-  },
+const addNewUrl = (url?: unknown) => {
+  urls.value.push({
+    id: maxId.value + 1,
+    url: typeof url === 'string' || url instanceof String ? String(url) : '',
+    touched: false,
+    valid: false,
+    validating: false,
+  });
 };
+
+const syncData = () => {
+  urls.value = [];
+
+  if (props.integration && props.integration?.settings) {
+    props.integration?.settings.urls.forEach((k) => addNewUrl(k));
+  }
+
+  if (urls.value.length === 0) {
+    addNewUrl();
+  }
+};
+
+const revertChanges = () => {
+  syncData();
+  keywords.value = props.integration?.settings.keywords as string[];
+};
+
+const canClose = (done: (cancel?: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
+};
+
+const handleUrlValidation = (id: number) => {
+  const url = urls.value.find((o) => o.id === id);
+  if (!url) return;
+  url.validating = true;
+  url.url = url.url.replace('https://', '');
+  url.url = url.url.replace('http://', '');
+
+  const isUrlValid = isUrl(url.url);
+
+  url.valid = isUrlValid && !!url.url;
+  url.validating = false;
+  url.touched = true;
+};
+
+const removeUrl = (id: number) => {
+  urls.value = urls.value.filter((u) => u.id !== id);
+};
+
+const cancel = () => {
+  isVisible.value = false;
+  syncData();
+};
+
+const save = async () => {
+  loading.value = true;
+
+  const relevantUrls = urls.value.filter((u) => !!u.url);
+
+  const relevantKeywords = keywords.value.filter((k) => !!k);
+
+  await useIntegrationStore().connectHackerNews({
+    urls: relevantUrls.map((u) => u.url),
+    keywords: relevantKeywords,
+    segmentId: props.segmentId,
+    grandparentId: props.grandparentId,
+  });
+
+  const { trackEvent } = useProductTracking();
+
+  const isUpdate = !!props.integration?.settings;
+
+  trackEvent({
+    key: isUpdate
+      ? FeatureEventKey.EDIT_INTEGRATION_SETTINGS
+      : FeatureEventKey.CONNECT_INTEGRATION,
+    type: EventType.FEATURE,
+    properties: { platform: Platform.HACKER_NEWS },
+  });
+
+  isVisible.value = false;
+  loading.value = false;
+};
+
+watch(() => props.integration, (newVal) => {
+  if (newVal) {
+    syncData();
+  }
+});
+
+onMounted(() => {
+  syncData();
+});
 </script>
 <style lang="scss">
 .integration-hackerNews-form {
