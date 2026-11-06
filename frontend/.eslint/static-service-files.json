@@ -1,6 +1,5 @@
 [
   "src/config/integrations/github-nango/services/github.api.service.ts",
-  "src/modules/activity/activity-service.js",
   "src/modules/admin/modules/categories/services/category-group.service.ts",
   "src/modules/admin/modules/categories/services/category.service.ts",
   "src/modules/admin/modules/insights-projects/services/insights-projects.service.ts",

@@ -78,7 +78,7 @@
               show-more
               :display-thread="false"
             >
-              <template v-if="platform?.activityDisplay?.showContentDetails" #details>
+              <template v-if="platform?.activity?.showContentDetails" #details>
                 <div v-if="activity.attributes">
                   <app-activity-content-footer
                     :source-id="activity.sourceId"
@@ -106,7 +106,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { lfIdentities } from '@/config/identities';
 import AppActivityContentFooter from '@/modules/activity/components/activity-content-footer.vue';
 import AppActivityContent from '@/modules/activity/components/activity-content.vue';
@@ -116,23 +116,23 @@ import AppMemberDisplayName from '@/modules/member/components/member-display-nam
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import AppLoading from '@/shared/loading/loading-placeholder.vue';
 import LfActivityDisplay from '@/shared/modules/activity/components/activity-display.vue';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import AppActivityHeader from './activity-header.vue';
 
-const props = defineProps({
-  activity: {
-    type: Object,
-    required: false,
-    default: () => ({}),
-  },
-  loading: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
+defineOptions({
+  name: 'AppActivityItem',
+});
+
+const props = withDefaults(defineProps<{
+  activity?: Activity;
+  loading?: boolean;
+}>(), {
+  activity: () => ({} as Activity),
+  loading: false,
 });
 
 const lsSegmentsStore = useLfSegmentsStore();
@@ -140,10 +140,4 @@ const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const platform = computed(() => lfIdentities[props.activity.platform]);
 
-</script>
-
-<script>
-export default {
-  name: 'AppActivityItem',
-};
 </script>

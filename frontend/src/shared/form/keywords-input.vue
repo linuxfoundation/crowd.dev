@@ -1,5 +1,5 @@
 <template>
-  <div class="app-keywords-input">
+  <div ref="root" class="app-keywords-input">
     <div
       class="el-keywords-input-wrapper"
       :class="focused ? 'is-focus' : ''"
@@ -19,7 +19,7 @@
       <input
         v-if="!readOnly"
         class="el-keywords-input"
-        :placeholder="placeholder"
+        :placeholder="placeholder ?? undefined"
         :value="newKeyword"
         autocomplete="off"
         data-lpignore="true"
@@ -43,130 +43,120 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { ref, watch } from 'vue';
 import LfTag from '@/ui-kit/tag/Tag.vue';
 
-export default {
-  name: 'AppKeywordsInput',
-  components: {
-    LfTag,
-  },
-  props: {
-    modelValue: {
-      type: Array,
-      default: () => [],
-    },
-    addKeywordOnKeys: {
-      type: Array,
-      default: () => [13, 188, 9],
-    },
-    readOnly: {
-      type: Boolean,
-      default: false,
-    },
-    placeholder: {
-      type: String,
-      default: null,
-    },
-    isError: {
-      type: Boolean,
-      default: false,
-    },
-    showHint: {
-      type: Boolean,
-      default: false,
-    },
-    hintText: {
-      type: String,
-      default: 'Press ENTER or comma (,) to separate keywords.',
-    },
+defineOptions({ name: 'AppKeywordsInput' });
 
-  },
-  emits: ['update:modelValue'],
-  data() {
-    return {
-      newKeyword: '',
-      innerKeywords: [...this.modelValue],
-      focused: false,
-    };
-  },
-  watch: {
-    modelValue() {
-      this.innerKeywords = [...this.modelValue];
-    },
-  },
-  methods: {
-    focusKeywordInput() {
-      if (
-        !(this.readOnly
-        || !this.$el.querySelector('.el-keywords-input'))) {
-        this.$el.querySelector('.el-keywords-input').focus();
-        this.focused = true;
-      }
-    },
-    inputKeyword(ev) {
-      this.newKeyword = ev.target.value;
-    },
-    blur(e) {
-      this.focused = false;
-      this.addNew(e);
-    },
-    focus() {
-      this.focused = true;
-    },
-    addNew(e) {
-      if (
-        e
-        && !this.addKeywordOnKeys.includes(e.keyCode)
-        && e.type !== 'blur'
-      ) {
-        return;
-      }
-      if (e) {
-        e.stopPropagation();
-        e.preventDefault();
-      }
-      let addSuccess = false;
-      if (this.newKeyword.includes(',')) {
-        this.newKeyword.split(',').forEach((item) => {
-          if (this.addKeyword(item.trim())) {
-            addSuccess = true;
-          }
-        });
-      } else if (this.addKeyword(this.newKeyword.trim())) {
+const props = withDefaults(defineProps<{
+  modelValue?: string[];
+  addKeywordOnKeys?: number[];
+  readOnly?: boolean;
+  placeholder?: string | null;
+  isError?: boolean;
+  showHint?: boolean;
+  hintText?: string;
+}>(), {
+  modelValue: () => [],
+  addKeywordOnKeys: () => [13, 188, 9],
+  readOnly: false,
+  placeholder: null,
+  isError: false,
+  showHint: false,
+  hintText: 'Press ENTER or comma (,) to separate keywords.',
+});
+
+const emit = defineEmits<{(e: 'update:modelValue', value: string[]): void}>();
+
+const root = ref<HTMLElement | null>(null);
+const newKeyword = ref('');
+const innerKeywords = ref<string[]>([...props.modelValue]);
+const focused = ref(false);
+
+watch(() => props.modelValue, () => {
+  innerKeywords.value = [...props.modelValue];
+});
+
+const focusKeywordInput = () => {
+  if (props.readOnly) {
+    return;
+  }
+  const input = root.value?.querySelector<HTMLInputElement>('.el-keywords-input');
+  if (input) {
+    input.focus();
+    focused.value = true;
+  }
+};
+
+const inputKeyword = (ev: Event) => {
+  newKeyword.value = (ev.target as HTMLInputElement).value;
+};
+
+const keywordChange = () => {
+  emit('update:modelValue', innerKeywords.value);
+};
+
+const addKeyword = (keyword: string) => {
+  const trimmedKeyword = keyword.trim();
+  if (
+    trimmedKeyword
+    && !innerKeywords.value.includes(trimmedKeyword)
+  ) {
+    innerKeywords.value.push(trimmedKeyword);
+    return true;
+  }
+  return false;
+};
+
+const addNew = (e?: KeyboardEvent | FocusEvent) => {
+  if (
+    e
+    && !props.addKeywordOnKeys.includes((e as KeyboardEvent).keyCode)
+    && e.type !== 'blur'
+  ) {
+    return;
+  }
+  if (e) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  let addSuccess = false;
+  if (newKeyword.value.includes(',')) {
+    newKeyword.value.split(',').forEach((item) => {
+      if (addKeyword(item.trim())) {
         addSuccess = true;
       }
-      if (addSuccess) {
-        this.keywordChange();
-        this.newKeyword = '';
-      }
-    },
-    addKeyword(keyword) {
-      const trimmedKeyword = keyword.trim();
-      if (
-        trimmedKeyword
-        && !this.innerKeywords.includes(trimmedKeyword)
-      ) {
-        this.innerKeywords.push(trimmedKeyword);
-        return true;
-      }
-      return false;
-    },
-    remove(index) {
-      this.innerKeywords.splice(index, 1);
-      this.keywordChange();
-    },
-    removeLastKeyword() {
-      if (this.newKeyword) {
-        return;
-      }
-      this.innerKeywords.pop();
-      this.keywordChange();
-    },
-    keywordChange() {
-      this.$emit('update:modelValue', this.innerKeywords);
-    },
-  },
+    });
+  } else if (addKeyword(newKeyword.value.trim())) {
+    addSuccess = true;
+  }
+  if (addSuccess) {
+    keywordChange();
+    newKeyword.value = '';
+  }
+};
+
+const blur = (e: FocusEvent) => {
+  focused.value = false;
+  addNew(e);
+};
+
+const focus = () => {
+  focused.value = true;
+};
+
+const remove = (index: number) => {
+  innerKeywords.value.splice(index, 1);
+  keywordChange();
+};
+
+const removeLastKeyword = () => {
+  if (newKeyword.value) {
+    return;
+  }
+  innerKeywords.value.pop();
+  keywordChange();
 };
 </script>
 
