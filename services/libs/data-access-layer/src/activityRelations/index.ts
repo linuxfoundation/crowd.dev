@@ -202,65 +202,62 @@ export async function findActivityRelationsByDedupKeys(
   )
 }
 
-// The batch loops below stop only on an empty batch: a row deleted concurrently is skipped
-// by the UPDATE, so a short batch does not mean nothing is left to move.
+// A concurrent delete shortens the UPDATE but not the selection, so a full selection is what
+// says more rows may follow; the UPDATE re-checks the filter on rows that changed meanwhile.
+async function updateActivityRelationsInBatches(
+  qe: QueryExecutor,
+  set: string,
+  filter: string,
+  params: Record<string, unknown>,
+  batchSize: number,
+): Promise<void> {
+  let selected: number
+  do {
+    const result: { selected: number } = await qe.selectOne(
+      `
+        WITH batch AS (
+          SELECT "activityId" FROM "activityRelations" WHERE ${filter} LIMIT $(batchSize)
+        ),
+        updated AS (
+          UPDATE "activityRelations" ar
+          SET ${set}, "updatedAt" = now()
+          FROM batch
+          WHERE ar."activityId" = batch."activityId" AND ${filter}
+          RETURNING 1
+        )
+        SELECT (SELECT count(*) FROM batch)::int AS selected,
+          (SELECT count(*) FROM updated)::int AS updated
+      `,
+      { ...params, batchSize },
+    )
+    selected = result.selected
+  } while (selected === batchSize)
+}
+
 export async function moveActivityRelationsToAnotherMember(
   qe: QueryExecutor,
   fromId: string,
   toId: string,
   batchSize = 5000,
 ) {
-  let memberRowsUpdated
+  if (fromId === toId) {
+    return
+  }
 
-  do {
-    const rowCount = await qe.result(
-      `
-          UPDATE "activityRelations"
-          SET
-            "memberId" = $(toId),
-            "updatedAt" = now()
-          WHERE "activityId" in (
-            select "activityId" from "activityRelations"
-            where "memberId" = $(fromId)
-            limit $(batchSize)
-          )
-          returning "activityId"
-        `,
-      {
-        toId,
-        fromId,
-        batchSize,
-      },
-    )
-
-    memberRowsUpdated = rowCount
-  } while (memberRowsUpdated > 0)
-
-  let objectMemberRowsUpdated
-
-  do {
-    const rowCount = await qe.result(
-      `
-          UPDATE "activityRelations"
-          SET
-            "objectMemberId" = $(toId),
-            "updatedAt" = now()
-          WHERE "activityId" in (
-            select "activityId" from "activityRelations"
-            where "objectMemberId" = $(fromId)
-            limit $(batchSize)
-          )
-          returning "activityId"
-        `,
-      {
-        toId,
-        fromId,
-        batchSize,
-      },
-    )
-
-    objectMemberRowsUpdated = rowCount
-  } while (objectMemberRowsUpdated > 0)
+  await updateActivityRelationsInBatches(
+    qe,
+    `"memberId" = $(toId)`,
+    `"memberId" = $(fromId)`,
+    { fromId, toId },
+    batchSize,
+  )
+  await updateActivityRelationsInBatches(
+    qe,
+    `"objectMemberId" = $(toId)`,
+    `"objectMemberId" = $(fromId)`,
+    { fromId, toId },
+    batchSize,
+  )
 }
 
 export async function moveActivityRelationsWithIdentityToAnotherMember(
@@ -271,67 +268,24 @@ export async function moveActivityRelationsWithIdentityToAnotherMember(
   platform: string,
   batchSize = 5000,
 ) {
-  let memberRowsUpdated
+  if (fromId === toId) {
+    return
+  }
 
-  do {
-    const rowCount = await qe.result(
-      `
-          UPDATE "activityRelations"
-          SET
-            "memberId" = $(toId),
-            "updatedAt" = now()
-          WHERE "activityId" in (
-            select "activityId" from "activityRelations"
-            where 
-              "memberId" = $(fromId) and
-              "username" = $(username) and
-              "platform" = $(platform)
-            limit $(batchSize)
-          )
-          returning "activityId"
-        `,
-      {
-        toId,
-        fromId,
-        username,
-        platform,
-        batchSize,
-      },
-    )
-
-    memberRowsUpdated = rowCount
-  } while (memberRowsUpdated > 0)
-
-  let objectMemberRowsUpdated
-
-  do {
-    const rowCount = await qe.result(
-      `
-          UPDATE "activityRelations"
-          SET
-            "objectMemberId" = $(toId),
-            "updatedAt" = now()
-          WHERE "activityId" in (
-            select "activityId" from "activityRelations"
-            where 
-              "objectMemberId" = $(fromId) and
-              "objectMemberUsername" = $(username) and
-              "platform" = $(platform)
-            limit $(batchSize)
-          )
-          returning "activityId"
-        `,
-      {
-        toId,
-        fromId,
-        username,
-        platform,
-        batchSize,
-      },
-    )
-
-    objectMemberRowsUpdated = rowCount
-  } while (objectMemberRowsUpdated > 0)
+  await updateActivityRelationsInBatches(
+    qe,
+    `"memberId" = $(toId)`,
+    `"memberId" = $(fromId) AND "username" = $(username) AND "platform" = $(platform)`,
+    { fromId, toId, username, platform },
+    batchSize,
+  )
+  await updateActivityRelationsInBatches(
+    qe,
+    `"objectMemberId" = $(toId)`,
+    `"objectMemberId" = $(fromId) AND "objectMemberUsername" = $(username) AND "platform" = $(platform)`,
+    { fromId, toId, username, platform },
+    batchSize,
+  )
 }
 
 export async function moveActivityRelationsToAnotherOrganization(
@@ -340,31 +294,17 @@ export async function moveActivityRelationsToAnotherOrganization(
   toId: string,
   batchSize = 5000,
 ) {
-  let rowsUpdated
+  if (fromId === toId) {
+    return
+  }
 
-  do {
-    const rowCount = await qe.result(
-      `
-          UPDATE "activityRelations"
-          SET
-            "organizationId" = $(toId),
-            "updatedAt" = now()
-          WHERE "activityId" in (
-            select "activityId" from "activityRelations"
-            where "organizationId" = $(fromId)
-            limit $(batchSize)
-          )
-          returning "activityId"
-        `,
-      {
-        toId,
-        fromId,
-        batchSize,
-      },
-    )
-
-    rowsUpdated = rowCount
-  } while (rowsUpdated > 0)
+  await updateActivityRelationsInBatches(
+    qe,
+    `"organizationId" = $(toId)`,
+    `"organizationId" = $(fromId)`,
+    { fromId, toId },
+    batchSize,
+  )
 }
 
 export async function findMemberIdentityWithTheMostActivityInPlatform(
