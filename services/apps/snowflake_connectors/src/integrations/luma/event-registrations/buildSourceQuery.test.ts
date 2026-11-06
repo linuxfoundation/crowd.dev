@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import { personalEmailCondition } from '../../../core/personalEmail'
-import { FIRST_INGEST_EVENT_ID, LUMA_EVENT_HOST, buildSourceQuery } from './buildSourceQuery'
+import { LUMA_EVENT_HOST, buildSourceQuery } from './buildSourceQuery'
 
 describe('buildSourceQuery', () => {
   it.each([undefined, '2026-11-04T00:00:00.000Z'])(
-    'exports only accepted or checked-in luma registrations of the first event (since %j)',
+    'exports only accepted or checked-in luma registrations of every event (since %j)',
     (sinceTimestamp) => {
       const query = buildSourceQuery(sinceTimestamp)
       const branches = sinceTimestamp ? 2 : 1
 
       expect(query.split("er.registration_source = 'gatewaze'")).toHaveLength(branches + 1)
       expect(query.split(`= '${LUMA_EVENT_HOST}'`)).toHaveLength(branches + 1)
-      expect(query.split(`er.event_id = '${FIRST_INGEST_EVENT_ID}'`)).toHaveLength(branches + 1)
+      expect(query).not.toContain('er.event_id =')
       expect(query).toContain(
         "er.registration_status = 'Accepted'\n      OR (er.user_attended AND er.user_checked_in_ts IS NOT NULL)",
       )
