@@ -12,21 +12,15 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { Member } from '@/modules/member/types/Member';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    required: true,
-  },
-});
+defineOptions({ name: 'AppMemberOrganizations' });
+
+const props = defineProps<{
+  member: Member;
+}>();
 
 const activeOrganization = computed(() => props.member.organizations?.[0]);
-</script>
-
-<script>
-export default {
-  name: 'AppMemberOrganizations',
-};
 </script>

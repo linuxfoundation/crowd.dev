@@ -19,40 +19,27 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps } from 'vue';
+<script setup lang="ts">
 import AppMemberBadge from '@/modules/member/components/member-badge.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
+import type { Member } from '@/modules/member/types/Member';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    default: () => {},
-  },
-  showBadge: {
-    type: Boolean,
-    required: false,
-    default: true,
-  },
-  withLink: {
-    type: Boolean,
-    default: false,
-  },
-  customClass: {
-    type: String,
-    default: null,
-  },
+defineOptions({ name: 'AppMemberDisplayName' });
+
+const props = withDefaults(defineProps<{
+  member: Member;
+  showBadge?: boolean;
+  withLink?: boolean;
+  customClass?: string | null;
+}>(), {
+  showBadge: true,
+  withLink: false,
+  customClass: null,
 });
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const customComponent = props.withLink ? 'router-link' : 'span';
-</script>
-
-<script>
-export default {
-  name: 'AppMemberDisplayName',
-};
 </script>

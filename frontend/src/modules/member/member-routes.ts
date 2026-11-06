@@ -1,12 +1,12 @@
+import type { RouteLocation, RouteLocationRaw } from 'vue-router';
 import Layout from '@/modules/layout/components/layout.vue';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 
 const MemberListPage = () => import('@/modules/member/pages/member-list-page.vue');
-const MemberMergeSuggestionsPage = () => import(
-  '@/modules/member/pages/member-merge-suggestions-page.vue'
-);
+const MemberMergeSuggestionsPage = () =>
+  import('@/modules/member/pages/member-merge-suggestions-page.vue');
 const PersonViewPage = () => import('@/modules/contributor/pages/contributor-details.page.vue');
 export default [
   {
@@ -29,9 +29,7 @@ export default [
             requireSelectedProjectGroup: true,
           },
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.memberRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.memberRead)],
       },
       {
         name: 'memberMergeSuggestions',
@@ -44,9 +42,7 @@ export default [
             requireSelectedProjectGroup: true,
           },
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.mergeMembers),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.mergeMembers)],
       },
       {
         name: 'memberView',
@@ -61,9 +57,7 @@ export default [
           },
         },
         props: true,
-        beforeEnter: [
-          PermissionGuard(LfPermission.memberRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.memberRead)],
       },
       {
         name: 'memberMerge',
@@ -77,41 +71,39 @@ export default [
           },
         },
         props: true,
-        beforeEnter: [
-          PermissionGuard(LfPermission.memberEdit),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.memberEdit)],
       },
       {
         path: '/contributors',
-        redirect: (to) => ({
+        redirect: (to: RouteLocation): RouteLocationRaw => ({
           path: '/people',
           query: to.query,
         }),
       },
       {
         path: '/contributors/new',
-        redirect: (to) => ({
+        redirect: (to: RouteLocation): RouteLocationRaw => ({
           path: '/people/new',
           query: to.query,
         }),
       },
       {
         path: '/contributors/merge-suggestions',
-        redirect: (to) => ({
+        redirect: (to: RouteLocation): RouteLocationRaw => ({
           path: '/people/merge-suggestions',
           query: to.query,
         }),
       },
       {
         path: '/contributors/:id',
-        redirect: (to) => ({
+        redirect: (to: RouteLocation): RouteLocationRaw => ({
           path: `/people/${to.params.id}`,
           query: to.query,
         }),
       },
       {
         path: '/contributors/:id/merge',
-        redirect: (to) => ({
+        redirect: (to: RouteLocation): RouteLocationRaw => ({
           path: `/people/${to.params.id}/merge`,
           query: to.query,
         }),

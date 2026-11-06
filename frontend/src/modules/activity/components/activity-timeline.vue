@@ -235,7 +235,7 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import type { Organization } from '@/modules/organization/types/Organization';
 import type { Pagination } from '@/shared/types/Pagination';
 import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
-import { ActivityService } from '../activity-service';
+import { ActivityService } from '../services/activity.api.service';
 
 const props = defineProps({
   entityType: {

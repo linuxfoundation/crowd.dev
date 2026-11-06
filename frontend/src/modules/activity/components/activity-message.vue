@@ -5,19 +5,19 @@
   />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 
-const props = defineProps({
-  activity: {
-    type: Object,
-    required: true,
-  },
-  type: {
-    type: String,
-    required: false,
-    default: 'default',
-  },
+defineOptions({
+  name: 'AppActivityMessage',
+});
+
+const props = withDefaults(defineProps<{
+  activity: Activity;
+  type?: keyof Activity['display'];
+}>(), {
+  type: 'default',
 });
 
 const activityMessage = computed(() => {
@@ -29,12 +29,7 @@ const activityMessage = computed(() => {
   }
   return '';
 });
-</script>
 
-<script>
-export default {
-  name: 'AppActivityMessage',
-};
 </script>
 
 <style lang="scss">

@@ -46,7 +46,7 @@
       </div>
     </div>
     <div
-      v-else-if="props.member.attributes.jobTitle?.default || activeOrganization?.memberOrganizations?.title"
+      v-else-if="props.member.attributes.jobTitle?.default"
     >
       <p class="text-gray-900 text-ellipsis truncate">
         -
@@ -57,7 +57,6 @@
       >
         {{
           props.member.attributes.jobTitle?.default
-            || activeOrganization?.memberOrganizations?.title
             || '-'
         }}
       </div>
@@ -115,25 +114,23 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    required: true,
-  },
-  showTitle: {
-    type: Boolean,
-    default: true,
-  },
-  orientation: {
-    type: String,
-    default: () => 'vertical',
-  },
+defineOptions({ name: 'AppMemberOrganizations' });
+
+const props = withDefaults(defineProps<{
+  member: Contributor;
+  showTitle?: boolean;
+  orientation?: string;
+}>(), {
+  showTitle: true,
+  orientation: 'vertical',
 });
 
 const lsSegmentsStore = useLfSegmentsStore();
@@ -160,9 +157,9 @@ const activeOrganization = computed(() => {
     .filter((organization) => !!organization.memberOrganizations?.dateStart && !organization.memberOrganizations?.dateEnd);
 
   // Return the most recent organization, comparing the startDate
-  const mostRecent = completeOrganizations.reduce((mostRecent, organization) => {
-    const mostRecentStartDate = new Date(mostRecent.memberOrganizations?.dateStart);
-    const organizationStartDate = new Date(organization.memberOrganizations?.dateStart);
+  const mostRecent = completeOrganizations.reduce<Organization | null>((mostRecent, organization) => {
+    const mostRecentStartDate = new Date(mostRecent?.memberOrganizations?.dateStart ?? '');
+    const organizationStartDate = new Date(organization.memberOrganizations?.dateStart ?? '');
 
     if (organizationStartDate > mostRecentStartDate) {
       return organization;
@@ -177,10 +174,4 @@ const activeOrganization = computed(() => {
 
   return organizations[0];
 });
-</script>
-
-<script>
-export default {
-  name: 'AppMemberOrganizations',
-};
 </script>
