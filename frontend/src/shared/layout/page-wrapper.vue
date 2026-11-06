@@ -12,19 +12,20 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps, computed } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
 
-const props = defineProps({
-  size: {
-    type: String,
-    default: 'default',
-  },
-  containerClass: {
-    type: String,
-    default: 'col-start-1 col-end-13',
-  },
+const props = withDefaults(defineProps<{
+  size?: string;
+  containerClass?: string;
+}>(), {
+  size: 'default',
+  containerClass: 'col-start-1 col-end-13',
 });
+
+defineSlots<{
+  default?:() => unknown;
+}>();
 
 const computedClass = computed(() => {
   if (props.size === 'default') {

@@ -15,20 +15,20 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: 'AlertBar',
-  props: {
-    variant: {
-      type: String,
-      default: null,
-    },
-    spinner: {
-      type: Boolean,
-      default: false,
-    },
-  },
-};
+<script setup lang="ts">
+defineOptions({ name: 'AlertBar' });
+
+withDefaults(defineProps<{
+  variant?: string | null;
+  spinner?: boolean;
+}>(), {
+  variant: null,
+  spinner: false,
+});
+
+defineSlots<{
+  default?:() => unknown;
+}>();
 </script>
 
 <style lang="scss">
