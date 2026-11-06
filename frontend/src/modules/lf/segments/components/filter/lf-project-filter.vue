@@ -8,7 +8,7 @@
       class="lf-filter-input filter-dropdown-search"
       :prefix-icon="SearchIcon"
       data-qa="filter-list-search"
-      @input="(value) => emit('onSearchChange', value)"
+      @input="(value: string) => emit('onSearchChange', value)"
     />
   </div>
   <div class="p-2">
@@ -21,24 +21,28 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, h, computed,
 } from 'vue';
+import type { InputInstance } from 'element-plus';
 import AppLfRadioCascader from '@/modules/lf/segments/components/filter/lf-radio-cascader.vue';
+import type { ProjectsOption } from '@/modules/lf/segments/types/Filters';
 
-const props = defineProps({
-  options: {
-    type: Array,
-    default: () => [],
-  },
-  loading: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({ name: 'AppLfProjectFilter' });
+
+const props = withDefaults(defineProps<{
+  options?: ProjectsOption[];
+  loading?: boolean;
+}>(), {
+  options: () => [],
+  loading: false,
 });
 
-const emit = defineEmits(['update:options', 'onChange', 'onSearchChange']);
+const emit = defineEmits<{(e: 'update:options', value: ProjectsOption[]): void;
+  (e: 'onChange', value: ProjectsOption[]): void;
+  (e: 'onSearchChange', value: string): void;
+}>();
 
 const SearchIcon = h(
   'i', // type
@@ -49,19 +53,13 @@ const modelOptions = computed({
   get() {
     return props.options;
   },
-  set(v) {
+  set(v: ProjectsOption[]) {
     emit('update:options', v);
   },
 });
 
 const searchQuery = ref('');
-const searchQueryInput = ref(null);
-</script>
-
-<script>
-export default {
-  name: 'AppLfProjectFilter',
-};
+const searchQueryInput = ref<InputInstance | null>(null);
 </script>
 
 <style lang="scss">

@@ -1,3 +1,4 @@
+import type { RouteRecordRaw } from 'vue-router';
 import ErrorPage from '@/modules/layout/pages/error-page.vue';
 
 export default [
@@ -11,8 +12,7 @@ export default [
     props: {
       code: 403,
       title: 'Restricted access',
-      subtitle:
-        'Sorry, you don’t have permissions to access this page.',
+      subtitle: 'Sorry, you don’t have permissions to access this page.',
     },
   },
   {
@@ -25,8 +25,7 @@ export default [
     props: {
       code: 404,
       title: 'Page not found',
-      subtitle:
-        'Sorry, the page you are looking for doesn’t exist or was removed.',
+      subtitle: 'Sorry, the page you are looking for doesn’t exist or was removed.',
     },
   },
-];
+] satisfies RouteRecordRaw[];

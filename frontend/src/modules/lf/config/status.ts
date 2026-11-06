@@ -1,4 +1,11 @@
-export default [
+export interface StatusOption {
+  class: string;
+  color: string;
+  label: string;
+  value: string;
+}
+
+const statusOptions: StatusOption[] = [
   {
     class: 'success',
     color: 'bg-green-500',
@@ -24,3 +31,5 @@ export default [
     value: 'archived',
   },
 ];
+
+export default statusOptions;
