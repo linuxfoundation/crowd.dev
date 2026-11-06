@@ -21,7 +21,7 @@
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
     "js-yaml": "^4.3.2",
-    "moment": "~2.29.4",
+    "moment": "~2.31.0",
     "tsx": "catalog:"
   },
   "devDependencies": {

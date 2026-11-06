@@ -29,7 +29,7 @@
     "@temporalio/workflow": "catalog:",
     "axios": "catalog:",
     "csv-parse": "^7.0.2",
-    "moment": "~2.29.4",
+    "moment": "~2.31.0",
     "tsx": "catalog:"
   },
   "devDependencies": {
