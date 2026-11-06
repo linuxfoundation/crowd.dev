@@ -1080,7 +1080,7 @@ export default class MemberService extends LoggerBase {
               if (result) {
                 organizations.push({
                   id: result.id,
-                  source: data.source,
+                  source: org.source,
                 })
               }
             }
