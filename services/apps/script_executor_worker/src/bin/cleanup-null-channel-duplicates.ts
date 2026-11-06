@@ -1,5 +1,3 @@
-// NULL-channel duplicate cleanup for activityRelations (linuxfoundation/lfx-cdp-insights-ops#852).
-// Commands, options and exit codes: USAGE below, or run with --help.
 import { randomUUID } from 'crypto'
 import { hostname } from 'os'
 import * as readline from 'readline'
