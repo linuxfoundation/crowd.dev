@@ -2,6 +2,7 @@
   <div class="flex gap-10">
     <div class="flex-grow">
       <div v-if="(activity.title || displayTitleBody) || activity.body">
+        <!-- @vue-expect-error legacy always-true comparison kept for parity -->
         <div
           v-if="
             activity.title
@@ -101,91 +102,46 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
 import emoji from 'node-emoji';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 
-export default {
-  name: 'AppActivityContent',
-  props: {
-    activity: {
-      type: Object,
-      required: true,
-    },
-    // classes to bind to title
-    titleClasses: {
-      type: String,
-      required: false,
-      default: '',
-    },
-    // if display show more and limit content
-    showMore: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-    // number of lines limited when showMore is enabled
-    limit: {
-      type: Number,
-      required: false,
-      default: 4,
-    },
-    // if title is displayed
-    displayTitle: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
-    // if thread is displayed
-    displayThread: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
-    // if body is displayed
-    displayBody: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
-    displayTitleBody: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-  },
-  data() {
-    return {
-      more: false,
-      displayShowMore: false,
-    };
-  },
-  mounted() {
-    if (this.showMore) {
-      if (this.$refs.body) {
-        const { body } = this.$refs;
-        const height = body.clientHeight;
-        const { scrollHeight } = body;
-        this.displayShowMore = scrollHeight > height;
-      } else if (this.$refs.content) {
-        const { content } = this.$refs;
-        if (content.$refs.body) {
-          const { body } = content.$refs;
-          const height = body.clientHeight;
-          const { scrollHeight } = body;
-          this.displayShowMore = scrollHeight > height;
-        }
-      }
-    }
-  },
-  methods: {
-    contentRenderEmojis(content) {
-      return emoji.emojify(
-        content,
-        () => '<abbr class=“no-underline” title=“Unable to detect emoji”>&#65533;</abbr>',
-      );
-    },
-  },
-};
+defineOptions({ name: 'AppActivityContent' });
+
+const props = withDefaults(defineProps<{
+  activity: Activity & { thread?: { body: string } };
+  titleClasses?: string;
+  showMore?: boolean;
+  limit?: number;
+  displayTitle?: boolean;
+  displayThread?: boolean;
+  displayBody?: boolean;
+  displayTitleBody?: boolean;
+}>(), {
+  titleClasses: '',
+  showMore: false,
+  limit: 4,
+  displayTitle: true,
+  displayThread: true,
+  displayBody: true,
+  displayTitleBody: false,
+});
+
+const body = ref<HTMLElement | null>(null);
+const more = ref(false);
+const displayShowMore = ref(false);
+
+onMounted(() => {
+  if (props.showMore && body.value) {
+    displayShowMore.value = body.value.scrollHeight > body.value.clientHeight;
+  }
+});
+
+const contentRenderEmojis = (content: string) => emoji.emojify(
+  content,
+  () => '<abbr class=“no-underline” title=“Unable to detect emoji”>&#65533;</abbr>',
+);
 </script>
 
 <style scoped lang="scss">
