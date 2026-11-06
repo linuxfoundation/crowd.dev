@@ -8,6 +8,7 @@ import { IMember, MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { svc } from '../../service'
 import { IGetEnrichmentDataResponse } from '../../sources/lfid/types'
+import { refreshToken } from './authenticateLFAuth0'
 
 // We'll keep the remaining rate limits in redisCache(lfx-auth0)
 // This key will keep the results from the last request:
@@ -15,7 +16,6 @@ import { IGetEnrichmentDataResponse } from '../../sources/lfid/types'
 // The access to this key will be protected by a mutex lock, only one api call at a time
 // will be allowed to update this key, preventing race conditions to the rate limit redis key
 export async function getEnrichmentLFAuth0(
-  token: string,
   member: IMember,
 ): Promise<GetUsers200ResponseOneOfInner> {
   const MUTEX_LOCK_KEY = 'lfx-auth0-mutex'
@@ -40,7 +40,7 @@ export async function getEnrichmentLFAuth0(
       throw new Error('Soft rate limit exceeded. Starting exponential backoff and retrying!')
     }
 
-    result = await getEnrichmentData(token, member)
+    result = await getEnrichmentData(member)
 
     // update rate limit cache
     if (result?.rateLimit) {
@@ -59,12 +59,9 @@ export async function getEnrichmentLFAuth0(
   return result?.user || null
 }
 
-async function getEnrichmentData(
-  token: string,
-  member: IMember,
-): Promise<IGetEnrichmentDataResponse> {
+async function getEnrichmentData(member: IMember): Promise<IGetEnrichmentDataResponse> {
   const management = new ManagementClient({
-    token,
+    token: await refreshToken(),
     domain: process.env['CROWD_LFX_AUTH0_DOMAIN'],
     audience: process.env['CROWD_LFX_AUTH0_AUDIENCE'],
   })

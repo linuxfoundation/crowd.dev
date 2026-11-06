@@ -21,7 +21,10 @@ async function saveTokenToRedis(
   token: ITokenWithExpiration,
   redisCache: RedisCache,
 ): Promise<void> {
-  await redisCache.set('access-token', token.token, token.expirationInSeconds)
+  const ttlWithExpiryBuffer = token.expirationInSeconds - 5 * 60
+  if (ttlWithExpiryBuffer > 0) {
+    await redisCache.set('access-token', token.token, ttlWithExpiryBuffer)
+  }
 }
 
 async function getTokenFromAuth0(): Promise<ITokenWithExpiration> {
