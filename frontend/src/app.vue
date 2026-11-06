@@ -20,7 +20,8 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { onUnmounted, watch } from 'vue';
 import AppResizePage from '@/modules/layout/pages/resize-page.vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
@@ -30,55 +31,35 @@ import LfGlobals from '@/shared/components/globals.vue';
 import { VueQueryDevtools } from '@tanstack/vue-query-devtools';
 import ToastContainer from '@/shared/message/toaster-container.vue';
 
-export default {
-  name: 'App',
+defineOptions({ name: 'App' });
 
-  components: {
-    LfGlobals,
-    AppResizePage,
-    VueQueryDevtools,
-    ToastContainer,
-  },
+const authStore = useAuthStore();
+const { detachListeners } = useSessionTracking(() => authStore.user);
+const { listProjectGroups } = useLfSegmentsStore();
+const { init } = authStore;
+const { tenant } = storeToRefs(authStore);
 
-  setup() {
-    const authStore = useAuthStore();
-    const { detachListeners } = useSessionTracking(() => authStore.user);
-    const { listProjectGroups } = useLfSegmentsStore();
-    const { init } = authStore;
-    const { tenant, loaded } = storeToRefs(authStore);
-    return {
-      init, tenant, loaded, detachListeners, listProjectGroups,
-    };
-  },
+watch(tenant, (newTenant, oldTenant) => {
+  if (newTenant?.id && newTenant.id !== oldTenant?.id) {
+    listProjectGroups({
+      limit: 20,
+      reset: true,
+    });
+  }
+});
 
-  watch: {
-    tenant: {
-      handler(tenant, oldTenant) {
-        if (tenant?.id && tenant.id !== oldTenant?.id) {
-          this.listProjectGroups({
-            limit: 20,
-            reset: true,
-          });
-        }
-      },
-    },
-  },
+const queryParameters = new URLSearchParams(window.location.search);
+const isNoConnectIntegration = queryParameters.get('state') === 'noconnect'
+  && window.location.pathname.includes('/integration');
+const isAuthCallback = ['/auth/callback'].includes(window.location.pathname);
 
-  async created() {
-    const queryParameters = new URLSearchParams(window.location.search);
-    if (queryParameters.get('state') === 'noconnect' && window.location.pathname.includes('/integration')) {
-      return;
-    }
-    if (['/auth/callback'].includes(window.location.pathname)) {
-      return;
-    }
-    this.init();
-  },
+if (!isNoConnectIntegration && !isAuthCallback) {
+  init();
+}
 
-  unmounted() {
-    this.detachListeners();
-  },
-};
+onUnmounted(() => {
+  detachListeners();
+});
 </script>
 
 <style lang="scss">

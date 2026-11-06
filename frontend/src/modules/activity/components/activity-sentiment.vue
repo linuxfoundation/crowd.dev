@@ -11,16 +11,18 @@
   </el-tooltip>
 </template>
 
-<script setup>
-import { defineProps, computed } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const props = defineProps({
-  sentiment: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+defineOptions({
+  name: 'AppActivitySentiment',
+});
+
+const props = withDefaults(defineProps<{
+  sentiment?: number;
+}>(), {
+  sentiment: 0,
 });
 
 const label = computed(() => {
@@ -31,10 +33,5 @@ const label = computed(() => {
   }
   return 'Neutral';
 });
-</script>
 
-<script>
-export default {
-  name: 'AppActivitySentiment',
-};
 </script>
