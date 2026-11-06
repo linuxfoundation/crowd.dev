@@ -93,6 +93,10 @@ import pluralize from 'pluralize';
 import { lfIntegrations } from '@/config/integrations';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 
+defineOptions({
+  name: 'AppGithubSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -163,10 +167,4 @@ const removeProtocolAndDomain = (url: string) => {
 };
 
 const getIntegrationName = (key: string) => allIntegrations.value[key.replace('-nango', '')]?.name || key;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettings',
-};
 </script>

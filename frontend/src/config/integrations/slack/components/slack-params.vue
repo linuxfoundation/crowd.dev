@@ -46,6 +46,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfSlackParams',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -56,10 +60,4 @@ const props = defineProps({
 const channels = computed<{ name: string; id: string }[]>(
   () => props.integration.settings.channels,
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSlackParams',
-};
 </script>

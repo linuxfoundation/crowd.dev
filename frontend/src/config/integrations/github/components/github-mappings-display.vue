@@ -65,6 +65,10 @@ import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 
+defineOptions({
+  name: 'LfGithubMappingsDisplay',
+});
+
 const props = defineProps<{
   mappings: IntegrationMapping[];
 }>();
@@ -80,10 +84,4 @@ const groupedMappings = computed(() => props.mappings.reduce((acc, mapping) => {
   acc[mapping.segment.name] = [...(acc[mapping.segment.name] || []), mapping];
   return acc;
 }, {} as { [key: string]: IntegrationMapping[] }));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubMappingsDisplay',
-};
 </script>

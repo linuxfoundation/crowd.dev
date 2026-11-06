@@ -8,9 +8,13 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DiscourseSettings } from '@/config/integrations/discourse/types/DiscourseSettings';
-import { defineProps } from 'vue';
+
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfDiscourseDropdown',
+});
 
 defineProps<{
   integration: Integration<DiscourseSettings> | undefined,
@@ -20,10 +24,4 @@ defineProps<{
 
 const emit = defineEmits<{(e: 'open-setting'): void;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDiscourseDropdown',
-};
 </script>
