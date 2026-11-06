@@ -18,12 +18,17 @@ import {
 
 const log = getServiceChildLogger('cventTransformer')
 
+function isSameLfid(attendeeLfid: string | null, registrantLfid: string | null): boolean {
+  return !!attendeeLfid && attendeeLfid.toLowerCase() === registrantLfid?.toLowerCase()
+}
+
 export class CventTransformer extends TransformerBase {
   readonly platform = PlatformType.CVENT
 
   transformRow(row: Record<string, unknown>): TransformedActivity | null {
-    const userName = cleanIdentityValue(row.USER_NAME)
     const lfUsername = cleanIdentityValue(row.LFID)
+    const registrantIsAttendee = isSameLfid(lfUsername, cleanIdentityValue(row.REGISTRANT_LFID))
+    const userName = registrantIsAttendee ? cleanIdentityValue(row.USER_NAME) : null
     const fullName = (row.FULL_NAME as string | null)?.trim() || null
     const firstName = (row.FIRST_NAME as string | null)?.trim() || null
     const lastName = (row.LAST_NAME as string | null)?.trim() || null
@@ -37,7 +42,9 @@ export class CventTransformer extends TransformerBase {
     }
 
     const registrationId = (row.REGISTRATION_ID as string)?.trim()
-    const sourceId = cleanIdentityValue(row.USER_ID) ?? undefined
+    const sourceId = registrantIsAttendee
+      ? (cleanIdentityValue(row.USER_ID) ?? undefined)
+      : undefined
 
     const displayName =
       fullName ||
