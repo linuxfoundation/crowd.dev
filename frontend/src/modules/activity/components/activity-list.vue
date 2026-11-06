@@ -66,7 +66,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed,
   ref,
@@ -81,23 +81,30 @@ import { activityFilters, activitySearchFilter } from '@/modules/activity/config
 import AppLoadMore from '@/shared/button/load-more.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { mergeActivityPages, useActivitiesQuery } from '@/modules/activity/queries/useActivitiesQuery';
+import {
+  mergeActivityPages,
+  useActivitiesQuery,
+  type ActivitiesQueryParams,
+} from '@/modules/activity/queries/useActivitiesQuery';
+import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
+
+defineOptions({
+  name: 'AppActivityList',
+});
 
 // const sorterFilter = ref('trending');
 
-defineProps({
-  cardOptions: {
-    type: Object,
-    required: false,
-    default: () => ({}),
-  },
+withDefaults(defineProps<{
+  cardOptions?: Record<string, unknown>;
+}>(), {
+  cardOptions: () => ({}),
 });
 
 const activityStore = useActivityStore();
 const { filters } = storeToRefs(activityStore);
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const params = ref(null);
+const params = ref<ActivitiesQueryParams | null>(null);
 const {
   data, isFetching, isError, fetchNextPage,
 } = useActivitiesQuery(params);
@@ -133,7 +140,7 @@ const onLoadMore = () => {
 
 const fetch = ({
   filter, limit = 50, orderBy, body,
-}) => {
+}: FilterQuery & { limit?: number }) => {
   params.value = {
     projectGroupId: selectedProjectGroup.value?.id,
     filter,
@@ -143,10 +150,5 @@ const fetch = ({
     timestamp: dateHelper().toISOString(),
   };
 };
-</script>
 
-<script>
-export default {
-  name: 'AppActivityList',
-};
 </script>
