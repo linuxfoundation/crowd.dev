@@ -3,7 +3,6 @@ import { IS_PROD_ENV } from '@crowd/common'
 import { personalEmailCondition } from '../../../core/personalEmail'
 
 export const LUMA_EVENT_HOST = 'luma.com'
-export const FIRST_INGEST_EVENT_ID = 'gatewaze_166d7ea1-9759-4cf5-943c-76ee2bd53449'
 
 const NON_PROD_PROJECT_SLUG = 'agentic-ai-foundation'
 
@@ -84,7 +83,6 @@ const buildSelect = (): string => {
     ON er.account_id = org.account_id
   WHERE er.registration_source = 'gatewaze'
     AND ${EVENT_HOST} = '${LUMA_EVENT_HOST}'
-    AND er.event_id = '${FIRST_INGEST_EVENT_ID}'
     AND (
       er.registration_status = 'Accepted'
       OR (er.user_attended AND er.user_checked_in_ts IS NOT NULL)
