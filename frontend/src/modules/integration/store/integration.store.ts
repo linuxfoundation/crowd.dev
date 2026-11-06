@@ -15,6 +15,7 @@ import { showIntegrationProgressNotification } from '@/modules/integration/helpe
 import type { IntegrationRecord } from '@/modules/integration/types/IntegrationResponse';
 import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type { GitHubSettings } from '@/config/integrations/github-nango/types/GithubSettings';
+import { githubRepoConnectionMatcher } from '@/config/integrations/github-nango/github-nango.helpers';
 import type {
   ConfluenceConnectPayload,
   DevtoConnectPayload,
@@ -47,9 +48,9 @@ export type IntegrationListItem = IntegrationRecord & Partial<IntegrationConfig>
 
 const getNangoStatus = (integration: IntegrationRecord) => {
   const settings = integration.settings as unknown as GitHubSettings;
-  const mapped = settings.nangoMapping ? Object.values(settings.nangoMapping) : [];
-  const allRepos = settings.orgs.map((org) => org.repos).flat();
-  return mapped.length < allRepos.length ? 'in-progress' : 'done';
+  const isConnected = githubRepoConnectionMatcher(settings);
+  const allRepos = settings.orgs.flatMap((org) => org.repos ?? []);
+  return allRepos.every((repo) => isConnected(repo.url)) ? 'done' : 'in-progress';
 };
 
 // Temporary workaround while two GitHub integrations are supported
