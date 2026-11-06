@@ -39,7 +39,8 @@ Commands:
              6. marks the keys and records the batch's metrics in the batches table.
            Keys whose batch keeps failing on locks, deadlocks or timeouts are marked deferred
            and skipped; --retry-deferred takes them again.
-  status   Print progress from the work, batches and progress tables.
+  status   Print progress from the work, batches and progress tables, per platform, for
+           every platform of the tag (no --platforms).
 
 Usage:
   npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
@@ -168,7 +169,7 @@ const COMMAND_FLAGS: Record<string, { values: string[]; switches: string[] }> = 
       '--retry-deferred',
     ],
   },
-  status: { values: ['--tag', '--platforms'], switches: [] },
+  status: { values: ['--tag'], switches: [] },
 }
 
 type Session = Awaited<ReturnType<DbConnection['connect']>>
