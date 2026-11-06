@@ -25,7 +25,8 @@ Commands:
            same platform list.
   clean    Take pending keys platform by platform (--platforms order), whole keys up to
            --batch-rows rows per transaction. Each transaction:
-             1. locks the key's NULL-channel copies (NOWAIT: never waits on app transactions),
+             1. locks the key's NULL-channel copies with NOWAIT: a copy an app transaction holds
+                fails the batch (retried); app writes to locked copies wait until it commits,
              2. ranks only the locked copies and keeps rank 1,
              3. carries parentId, conversationId and sourceParentId to the kept copy where it
                 has none. When it changes the kept copy, or the kept copy isn't 2 ms past every
@@ -959,8 +960,8 @@ async function cleanBatch(
 
     await t.none(`set local statement_timeout = ${CLEAN_LOCK_STATEMENT_TIMEOUT_MS}`)
     let started = Date.now()
-    // NOWAIT: an app transaction holding a copy fails this batch instead of making it wait, so
-    // the script never blocks app writes and never takes part in a deadlock
+    // NOWAIT: a copy an app transaction holds fails the batch (retried) instead of waiting; app
+    // writes to copies locked here wait for this transaction, bounded by its statement timeouts
     const lockedResult = await t.result(
       `
         with k as (${KEYS_CTE(tables)})
