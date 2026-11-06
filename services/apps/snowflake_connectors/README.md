@@ -109,7 +109,8 @@ failed jobs and jobs with skipped rows stay in S3 for inspection.
   LFID username or, when neither exists, the email.
   The `luma` transformer builds its own identities instead: Gatewaze emails are unverified, so it adds the email as an
   unverified identity next to a verified username (the LFID username or, without one, the email), as the git
-  integration does.
+  integration does. Its LFID comes only from the registration's Salesforce user, never from an email match, so
+  another account that shares the email can't reassign it.
 - `cleanPersonalEmail()` drops known shared meeting-account emails, so they never become member identities.
 
 ## Tables

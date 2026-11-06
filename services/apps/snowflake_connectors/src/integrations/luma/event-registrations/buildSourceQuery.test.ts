@@ -20,7 +20,8 @@ describe('buildSourceQuery', () => {
       expect(query).toContain(
         "CONVERT_TIMEZONE('UTC', er.registration_ts)::TIMESTAMP_NTZ AS registration_ts",
       )
-      expect(query).toMatch(/COALESCE\(mu\.user_name, u\.lf_username\) AS LFID/)
+      expect(query).toContain('mu.user_name AS LFID')
+      expect(query).not.toContain('silver_dim.users')
       expect(query).not.toMatch(/er\.\*/)
       expect(query.includes(`er.updated_ts > '${sinceTimestamp}'`)).toBe(Boolean(sinceTimestamp))
     },

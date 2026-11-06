@@ -72,7 +72,7 @@ const buildSelect = (): string => {
     CONVERT_TIMEZONE('UTC', er.registration_ts)::TIMESTAMP_NTZ AS registration_ts,
     org.website AS ORG_WEBSITE,
     org.domain_aliases AS ORG_DOMAIN_ALIASES,
-    COALESCE(mu.user_name, u.lf_username) AS LFID
+    mu.user_name AS LFID
   FROM analytics.silver_fact.event_registrations er
   INNER JOIN cdp_matched_segments cms
     ON cms.slug = er.project_slug
@@ -80,9 +80,6 @@ const buildSelect = (): string => {
   LEFT JOIN analytics.bronze_fivetran_salesforce.bronze_salesforce_merged_user mu
     ON er.user_id = mu.user_id
     AND mu.user_name IS NOT NULL
-  LEFT JOIN analytics.silver_dim.users u
-    ON LOWER(er.email) = LOWER(u.email)
-    AND u.lf_username IS NOT NULL
   LEFT JOIN org_accounts org
     ON er.account_id = org.account_id
   WHERE er.registration_source = 'gatewaze'
