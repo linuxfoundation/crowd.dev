@@ -73,8 +73,9 @@ clean options:
   --until ISO        Stop at this time, e.g. 2026-11-06T22:00:00Z (at most 48 h ahead, 7 days
                      with --wait-nightly)
                      A real run needs --max-rows or --until.
-  --max-slot-lag-mb N  Wait before a batch while sequin_slot or sequin_slot_2 is further behind
-                     (default 1024). A missing slot stops the run.
+  --max-slot-lag-mb N  Wait before a batch while sequin_slot or sequin_slot_2 keeps more WAL than
+                     this, measured from restart_lsn (default 1024). A missing slot, or one whose
+                     wal_status is unreserved or lost, stops the run.
   --skip-slot-guard  Run without the slot check (for environments without Sequin)
   --allow-nightly    Also run 00:30-05:30 UTC (nightly meetings export); needs --until
   --wait-nightly     Pause during 00:30-05:30 UTC and continue afterwards instead of stopping;
@@ -794,11 +795,13 @@ async function assertBackupMatches(db: Session, tables: ITables, columns: string
   }
 }
 
+// WAL each slot keeps on disk, from restart_lsn: a long transaction holds restart_lsn back
+// while confirmed_flush_lsn moves on, so the confirmed lag alone would miss it
 async function slotLags(db: Session): Promise<Record<string, number>> {
-  const rows: { slot: string; active: boolean; lag: string | null }[] = await db.any(
+  const rows: { slot: string; walStatus: string | null; lag: string | null }[] = await db.any(
     `
-      select slot_name as slot, active,
-        pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)::bigint::text as lag
+      select slot_name as slot, wal_status as "walStatus",
+        pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint::text as lag
       from pg_replication_slots
       where slot_name in ($(slots:csv))
     `,
@@ -807,8 +810,15 @@ async function slotLags(db: Session): Promise<Record<string, number>> {
   const missing = SLOTS.filter((s) => !rows.some((r) => r.slot === s && r.lag !== null))
   if (missing.length > 0) {
     throw new GuardError(
-      `Replication slot(s) missing or without a confirmed flush position: ${missing.join(', ')}. ` +
+      `Replication slot(s) missing or without a restart position: ${missing.join(', ')}. ` +
         "The lag guard can't work; use --skip-slot-guard only where there is no Sequin.",
+    )
+  }
+  // unreserved: past max_wal_size and about to lose WAL; lost: already gone
+  const endangered = rows.filter((r) => r.walStatus === 'unreserved' || r.walStatus === 'lost')
+  if (endangered.length > 0) {
+    throw new GuardError(
+      `Replication slot(s) close to losing WAL: ${endangered.map((r) => `${r.slot}=${r.walStatus}`).join(', ')}`,
     )
   }
   return Object.fromEntries(rows.map((r) => [r.slot, Number(r.lag)]))
