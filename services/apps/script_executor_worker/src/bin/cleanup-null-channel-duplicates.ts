@@ -1496,6 +1496,11 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
           log.error({ ...pgFields(err), ...batchContext, attempts }, 'batch.failed')
           throw err
         }
+        // a dry run only samples: a timeout is reported, not split or retried into more queries
+        if (code === '57014' && options.dryRun) {
+          log.warn({ pgCode: code, ...batchContext, attempts }, 'batch.dry-run-timeout')
+          return
+        }
         if (code === '57014' && keys.length > 1) {
           const half = Math.ceil(keys.length / 2)
           log.warn(
