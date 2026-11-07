@@ -1929,13 +1929,29 @@ async function confirm(options: ICommonOptions, plan: string): Promise<void> {
     throw new UsageError('stdin is not a terminal: pass --yes to run without the confirmation')
   }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  // SIGTERM/SIGHUP only set stopState, so the prompt watches it to end with them
-  const watch = setInterval(() => stopState.requested && rl.close(), 500)
+  // a signal at the prompt is a stop (exit 2) like one between batches; SIGTERM/SIGHUP only
+  // set stopState, so the prompt watches it
+  let signalled = false
+  const watch = setInterval(() => {
+    if (stopState.requested) {
+      signalled = true
+      rl.close()
+    }
+  }, 500)
   try {
     const answer = await new Promise<string>((resolve, reject) => {
       // readline takes Ctrl-C in a terminal, so the process signal handler never sees it
-      rl.on('SIGINT', () => rl.close())
-      rl.on('close', () => reject(new UsageError('Aborted by the operator')))
+      rl.on('SIGINT', () => {
+        signalled = true
+        rl.close()
+      })
+      rl.on('close', () =>
+        reject(
+          signalled
+            ? new NotStartedError('Stopped at the confirmation prompt')
+            : new UsageError('Aborted by the operator'),
+        ),
+      )
       rl.question(`\n${plan}\nType the tag (${options.tag}) to proceed: `, resolve)
     })
     if (answer.trim() !== options.tag) {
