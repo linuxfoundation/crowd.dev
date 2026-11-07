@@ -753,7 +753,6 @@ async function collectWindow(
           on conflict ("timestamp", platform, type, "sourceId", "segmentId") do update set
             status = 'pending', copies = excluded.copies, error = null,
             "collectedAt" = now()
-          -- a finished key that has duplicates again (e.g. a re-send raced the cleanup)
           where ${tables.keys}.status in ('done', 'no_duplicates')
           returning (xmax = 0) as inserted
         )
@@ -1651,7 +1650,6 @@ async function clean(db: Session, log: Log, options: ICleanOptions, runId: strin
       log.info({ platform, ...platformTotals, dryRun: options.dryRun }, 'platform.done')
     }
     if (exitCode === EXIT_DONE && !options.dryRun) {
-      // deferred by this run or an earlier one, in this run's platforms and segments
       const deferred = await cleanPlan(db, tables, options, ['deferred'])
       const deferredKeysLeft = deferred.reduce((sum, p) => sum + p.keys, 0)
       if (deferredKeysLeft > 0) {
