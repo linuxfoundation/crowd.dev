@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { readFileSync, writeFileSync } from 'fs'
 import { hostname } from 'os'
 import * as readline from 'readline'
 
@@ -41,6 +42,14 @@ Commands:
            and skipped; --retry-deferred takes them again.
   status   Print progress from the work, batches and progress tables, per platform, for
            every platform of the tag (no --platforms).
+  snapshot Read only. Save every row (any channel) of the next --keys pending keys of one
+           platform (and --segments), in the order clean takes them, to --out (JSON).
+  verify   Read only. Compare the keys of a --snapshot file with what is there now, the backup
+           table, the keys table and the batches table. Exit 0 and verify.pass when clean did
+           exactly what it should, exit 1 and verify.fail with every problem otherwise.
+  rollback Put the deleted rows of one --batch back into activityRelations, set its keys back
+           to pending and remove the restored rows from the backup table. Kept rows keep their
+           carried fields and bumped updatedAt.
 
 Usage:
   npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
@@ -63,6 +72,18 @@ collect options:
   --rescan           Scan from the oldest row again although earlier windows are finished: the
                      final sweep after clean, which re-opens keys that got duplicates again. An
                      interrupted rescan continues where it stopped when run with --rescan again
+
+snapshot options:
+  --platforms p      Exactly one platform, the one the gated clean run uses
+  --segments a,b     Only keys of these segment ids, as in clean
+  --keys N           How many pending keys to save (more than the clean run will take)
+  --out FILE         Where to write the snapshot
+
+verify options:
+  --snapshot FILE    A file from snapshot, taken before the clean run
+
+rollback options:
+  --batch UUID       The batchId from batch.done or the batches table
 
 clean options:
   --segments a,b     Only keys of these segment ids
@@ -99,6 +120,7 @@ collect.window, batch.done, batch.retry, batch.deferred, slot.wait, run.progress
 ...); pipe through jq.
 `
 
+const CARRIED_COLUMNS = ['parentId', 'conversationId', 'sourceParentId']
 const DEFAULT_PLATFORMS = ['meetings', 'linkedin', 'tnc', 'cvent', 'slack', 'stackoverflow']
 const TAG_PATTERN = /^(0[1-9]|[12][0-9]|3[01])_(0[1-9]|1[0-2])_20[0-9]{2}$/
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/
@@ -172,6 +194,9 @@ const COMMAND_FLAGS: Record<string, { values: string[]; switches: string[] }> = 
     ],
   },
   status: { values: ['--tag'], switches: [] },
+  snapshot: { values: ['--tag', '--platforms', '--segments', '--keys', '--out'], switches: [] },
+  verify: { values: ['--tag', '--snapshot'], switches: [] },
+  rollback: { values: ['--tag', '--batch'], switches: ['--yes'] },
 }
 
 type Session = Awaited<ReturnType<DbConnection['connect']>>
@@ -197,6 +222,36 @@ interface ICommonOptions {
   platforms: string[]
   dryRun: boolean
   yes: boolean
+}
+
+interface ISnapshotOptions extends ICommonOptions {
+  segmentIds: string[]
+  keys: number
+  out: string
+}
+
+interface IVerifyOptions extends ICommonOptions {
+  snapshot: string
+}
+
+interface IRollbackOptions extends ICommonOptions {
+  batchId: string
+}
+
+interface IKeyRow {
+  keyId: string
+  updatedUs: string
+  createdUs: string
+  row: Record<string, unknown>
+}
+
+interface ISnapshotFile {
+  tag: string
+  takenAt: string
+  platform: string
+  segmentIds: string[]
+  keyIds: string[]
+  rows: IKeyRow[]
 }
 
 interface ICollectOptions extends ICommonOptions {
@@ -1769,6 +1824,407 @@ async function status(db: Session, log: Log, options: ICommonOptions): Promise<n
   return EXIT_DONE
 }
 
+type Queryable = Pick<Session, 'any' | 'one' | 'none' | 'result'>
+
+const KEY_COLUMNS_JOIN = (alias: string) => `
+  ${alias}."timestamp" = k."timestamp"
+  and ${alias}.platform = k.platform
+  and ${alias}.type = k.type
+  and ${alias}."sourceId" = k."sourceId"
+  and ${alias}."segmentId" = k."segmentId"
+`
+
+// to_jsonb keeps the microseconds a JS Date would drop; the *Us columns are for ranking
+async function keyRows(t: Queryable, tables: ITables, keyIds: string[]): Promise<IKeyRow[]> {
+  if (keyIds.length === 0) {
+    return []
+  }
+  return t.any(
+    `
+      select k.id::text as "keyId",
+        (extract(epoch from ar."updatedAt") * 1000000)::bigint::text as "updatedUs",
+        (extract(epoch from ar."createdAt") * 1000000)::bigint::text as "createdUs",
+        to_jsonb(ar) as row
+      from ${tables.keys} k
+      join "activityRelations" ar on ${KEY_COLUMNS_JOIN('ar')}
+      where k.id in ($(keyIds:csv))
+      order by k.id, ar."activityId"
+    `,
+    { keyIds },
+  )
+}
+
+async function snapshot(db: Session, log: Log, options: ISnapshotOptions): Promise<number> {
+  const tables = tablesFor(options.tag)
+  if (!(await tableExists(db, tables.raw.keys))) {
+    throw new UsageError(`No cleanup tables for tag ${options.tag}`)
+  }
+  if (options.platforms.length !== 1) {
+    throw new UsageError(
+      'snapshot takes exactly one platform: --platforms <the one clean will run>',
+    )
+  }
+  const platform = options.platforms[0]
+
+  const file: ISnapshotFile = await db.tx(async (t) => {
+    await t.none(`set transaction isolation level repeatable read read only`)
+    // the alias differs from the column, so order by is numeric like clean's, not by the text
+    const keys: { keyId: string }[] = await t.any(
+      `
+        select id::text as "keyId" from ${tables.keys}
+        where status = 'pending' and platform = $(platform)
+          ${options.segmentIds.length > 0 ? `and "segmentId" in ($(segmentIds:csv))` : ''}
+        order by id
+        limit $(limit)
+      `,
+      { platform, segmentIds: options.segmentIds, limit: options.keys },
+    )
+    const keyIds = keys.map((k) => k.keyId)
+    return {
+      tag: options.tag,
+      takenAt: new Date().toISOString(),
+      platform,
+      segmentIds: options.segmentIds,
+      keyIds,
+      rows: await keyRows(t, tables, keyIds),
+    }
+  })
+
+  writeFileSync(options.out, JSON.stringify(file))
+  log.info(
+    {
+      out: options.out,
+      keys: file.keyIds.length,
+      rows: file.rows.length,
+      nullChannelRows: file.rows.filter((r) => r.row.channel === null).length,
+      firstKeyId: file.keyIds[0] ?? null,
+      lastKeyId: file.keyIds[file.keyIds.length - 1] ?? null,
+    },
+    'snapshot.saved',
+  )
+  return EXIT_DONE
+}
+
+function stableJson(value: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.keys(value)
+      .sort()
+      .map((k) => [k, value[k]]),
+  )
+}
+
+// newest first, the order clean ranks copies in
+function newer(a: IKeyRow, b: IKeyRow): boolean {
+  const au = BigInt(a.updatedUs)
+  const bu = BigInt(b.updatedUs)
+  if (au !== bu) return au > bu
+  const ac = BigInt(a.createdUs)
+  const bc = BigInt(b.createdUs)
+  if (ac !== bc) return ac > bc
+  return String(a.row.activityId) > String(b.row.activityId)
+}
+
+function auditKeys(
+  snap: ISnapshotFile,
+  keyStatus: Map<string, { status: string; deleted: number | null }>,
+  now: IKeyRow[],
+  backup: { keyId: string; keptActivityId: string; row: Record<string, unknown> }[],
+): { problems: string[]; stats: Record<string, number> } {
+  const problems: string[] = []
+  const stats = { keysProcessed: 0, keysUntouched: 0, rowsDeleted: 0, keptUpdated: 0 }
+  const group = <T extends { keyId: string }>(rows: T[]) => {
+    const m = new Map<string, T[]>()
+    for (const r of rows) m.set(r.keyId, [...(m.get(r.keyId) ?? []), r])
+    return m
+  }
+  const beforeByKey = group(snap.rows)
+  const nowByKey = group(now)
+  const backupByKey = group(backup)
+  const presentIds = new Set(now.map((r) => String(r.row.activityId)))
+
+  for (const keyId of snap.keyIds) {
+    const before = new Map((beforeByKey.get(keyId) ?? []).map((r) => [String(r.row.activityId), r]))
+    const after = new Map((nowByKey.get(keyId) ?? []).map((r) => [String(r.row.activityId), r]))
+    const backedUp = backupByKey.get(keyId) ?? []
+    const status = keyStatus.get(keyId)
+    for (const id of after.keys()) {
+      if (!before.has(id)) problems.push(`key ${keyId}: row ${id} appeared after the snapshot`)
+    }
+    if (!status) {
+      problems.push(`key ${keyId}: missing from the keys table`)
+      continue
+    }
+
+    if (status.status === 'pending') {
+      stats.keysUntouched++
+      for (const [id, r] of before) {
+        const a = after.get(id)
+        if (!a || stableJson(a.row) !== stableJson(r.row)) {
+          problems.push(`key ${keyId} (pending): row ${id} changed or disappeared`)
+        }
+      }
+      if (backedUp.length > 0)
+        problems.push(`key ${keyId} (pending): ${backedUp.length} backup row(s)`)
+      continue
+    }
+
+    stats.keysProcessed++
+    const nullBefore = [...before.values()].filter((r) => r.row.channel === null)
+    const kept = nullBefore.reduce<IKeyRow | null>(
+      (best, r) => (!best || newer(r, best) ? r : best),
+      null,
+    )
+    const keptId = kept ? String(kept.row.activityId) : null
+    const deleted = nullBefore.filter((r) => String(r.row.activityId) !== keptId)
+
+    for (const [id, r] of before) {
+      if (r.row.channel !== null) {
+        const a = after.get(id)
+        if (!a || stableJson(a.row) !== stableJson(r.row)) {
+          problems.push(
+            `key ${keyId}: row ${id} with channel "${r.row.channel}" changed or disappeared`,
+          )
+        }
+      }
+    }
+
+    const nullLeft = [...after.values()]
+      .filter((r) => r.row.channel === null && before.has(String(r.row.activityId)))
+      .map((r) => String(r.row.activityId))
+    if (nullLeft.length !== (keptId ? 1 : 0) || (keptId && nullLeft[0] !== keptId)) {
+      problems.push(
+        `key ${keyId}: NULL-channel rows left ${JSON.stringify(nullLeft)}, expected only ${keptId}`,
+      )
+    }
+
+    const backupById = new Map(backedUp.map((b) => [String(b.row.activityId), b]))
+    const deletedIds = deleted.map((r) => String(r.row.activityId)).sort()
+    if (JSON.stringify([...backupById.keys()].sort()) !== JSON.stringify(deletedIds)) {
+      problems.push(
+        `key ${keyId}: backup has ${JSON.stringify([...backupById.keys()].sort())}, deleted copies are ${JSON.stringify(deletedIds)}`,
+      )
+    }
+    for (const r of deleted) {
+      const id = String(r.row.activityId)
+      if (presentIds.has(id)) problems.push(`key ${keyId}: deleted row ${id} still exists`)
+      const b = backupById.get(id)
+      if (!b) continue
+      if (stableJson(b.row) !== stableJson(r.row))
+        problems.push(`key ${keyId}: backup row ${id} differs from the snapshot`)
+      if (b.keptActivityId !== keptId)
+        problems.push(
+          `key ${keyId}: backup row ${id} keptActivityId ${b.keptActivityId}, expected ${keptId}`,
+        )
+    }
+    stats.rowsDeleted += deleted.length
+    if ((status.deleted ?? 0) !== backedUp.length) {
+      problems.push(
+        `key ${keyId}: keys.deleted ${status.deleted} but ${backedUp.length} backup row(s)`,
+      )
+    }
+
+    if (!kept || !keptId) continue
+    const keptNow = after.get(keptId)
+    if (!keptNow) {
+      problems.push(`key ${keyId}: kept row ${keptId} is gone`)
+      continue
+    }
+    let changed = false
+    for (const col of new Set([...Object.keys(kept.row), ...Object.keys(keptNow.row)])) {
+      const was = kept.row[col] ?? null
+      const is = keptNow.row[col] ?? null
+      if (JSON.stringify(was) === JSON.stringify(is)) continue
+      changed = true
+      if (col === 'updatedAt') {
+        const maxDeletedUs = deleted.reduce(
+          (m, r) => (BigInt(r.updatedUs) > m ? BigInt(r.updatedUs) : m),
+          BigInt(0),
+        )
+        if (
+          BigInt(keptNow.updatedUs) < BigInt(kept.updatedUs) ||
+          BigInt(keptNow.updatedUs) <= maxDeletedUs
+        ) {
+          problems.push(
+            `key ${keyId}: kept updatedAt ${is} isn't after its old value and every deleted copy`,
+          )
+        }
+      } else if (CARRIED_COLUMNS.includes(col)) {
+        const sources = new Set(deleted.map((r) => JSON.stringify(r.row[col] ?? null)))
+        if (was !== null || !sources.has(JSON.stringify(is))) {
+          problems.push(
+            `key ${keyId}: kept ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}`,
+          )
+        }
+      } else {
+        problems.push(
+          `key ${keyId}: kept row column ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}`,
+        )
+      }
+    }
+    if (changed) stats.keptUpdated++
+  }
+  return { problems, stats }
+}
+
+async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<number> {
+  const snap: ISnapshotFile = JSON.parse(readFileSync(options.snapshot, 'utf8'))
+  if (snap.tag !== options.tag) {
+    throw new UsageError(`The snapshot is for tag ${snap.tag}, not ${options.tag}`)
+  }
+  const tables = tablesFor(options.tag)
+  if (snap.keyIds.length === 0) {
+    throw new UsageError('The snapshot has no keys')
+  }
+
+  const state = await db.tx(async (t) => {
+    await t.none(`set transaction isolation level repeatable read read only`)
+    const keys: {
+      keyId: string
+      status: string
+      deleted: number | null
+      batchId: string | null
+    }[] = await t.any(
+      `select id::text as "keyId", status, deleted, "batchId" from ${tables.keys} where id in ($(keyIds:csv))`,
+      { keyIds: snap.keyIds },
+    )
+    const backup: {
+      keyId: string
+      batchId: string
+      keptActivityId: string
+      row: Record<string, unknown>
+    }[] = await t.any(
+      `
+          select k.id::text as "keyId", b."batchId", b."keptActivityId",
+            to_jsonb(b) - array['keptActivityId', 'batchId', 'deletedAt'] as row
+          from ${tables.keys} k
+          join ${tables.backup} b on ${KEY_COLUMNS_JOIN('b')}
+          where k.id in ($(keyIds:csv))
+        `,
+      { keyIds: snap.keyIds },
+    )
+    const batchIds = [...new Set(backup.map((b) => b.batchId))]
+    const batches: { batchId: string; deleted: number; backedUp: number }[] =
+      batchIds.length === 0
+        ? []
+        : await t.any(
+            `
+              select bt."batchId", (bt.metrics ->> 'deleted')::int as deleted,
+                (select count(*)::int from ${tables.backup} x where x."batchId" = bt."batchId") as "backedUp"
+              from ${tables.batches} bt
+              where bt."batchId" in ($(batchIds:csv))
+            `,
+            { batchIds },
+          )
+    return { keys, backup, batches, now: await keyRows(t, tables, snap.keyIds) }
+  })
+
+  const { problems, stats } = auditKeys(
+    snap,
+    new Map(state.keys.map((k) => [k.keyId, { status: k.status, deleted: k.deleted }])),
+    state.now,
+    state.backup,
+  )
+  for (const b of state.batches) {
+    if (b.deleted !== b.backedUp) {
+      problems.push(
+        `batch ${b.batchId}: metrics.deleted ${b.deleted} but ${b.backedUp} backup rows`,
+      )
+    }
+  }
+
+  const context = {
+    snapshot: options.snapshot,
+    takenAt: snap.takenAt,
+    keys: snap.keyIds.length,
+    batches: state.batches.length,
+    ...stats,
+  }
+  if (problems.length > 0) {
+    log.error(
+      { ...context, problemCount: problems.length, problems: problems.slice(0, 200) },
+      'verify.fail',
+    )
+    return EXIT_ERROR
+  }
+  log.info(context, 'verify.pass')
+  return EXIT_DONE
+}
+
+async function rollback(db: Session, log: Log, options: IRollbackOptions): Promise<number> {
+  const tables = tablesFor(options.tag)
+  for (const name of [tables.raw.keys, tables.raw.backup]) {
+    if (!(await tableExists(db, name))) {
+      throw new UsageError(`Table "${name}" doesn't exist`)
+    }
+  }
+  const columns = await activityRelationColumns(db)
+  await assertBackupMatches(db, tables, columns)
+  const preview: { rows: number; keys: number } = await db.one(
+    `
+      select count(*)::int as rows,
+        count(distinct ("timestamp", platform, type, "sourceId", "segmentId"))::int as keys
+      from ${tables.backup} where "batchId" = $(batchId)
+    `,
+    { batchId: options.batchId },
+  )
+  if (preview.rows === 0) {
+    throw new UsageError(`Batch ${options.batchId} has no rows in ${tables.backup}`)
+  }
+
+  await confirm(
+    options,
+    `Put ${preview.rows} rows of batch ${options.batchId} back into activityRelations and set its ${preview.keys} keys back to pending.`,
+  )
+  // a clean run of the same tag must not take these keys while they are restored
+  await acquireRunLock(db, log, tables)
+
+  const cols = columns.map((c) => `"${c}"`).join(', ')
+  const result = await db.tx(async (t) => {
+    await t.none(`set local lock_timeout = '${CLEAN_LOCK_TIMEOUT}'`)
+    const restored = await t.result(
+      `
+        insert into "activityRelations" (${cols})
+        select ${cols} from ${tables.backup} where "batchId" = $(batchId)
+        on conflict ("activityId") do nothing
+      `,
+      { batchId: options.batchId },
+    )
+    const reopened = await t.result(
+      `
+        update ${tables.keys} k set
+          status = 'pending',
+          deleted = greatest(coalesce(k.deleted, 0) - b.n, 0),
+          "batchId" = null,
+          "doneAt" = null
+        from (
+          select "timestamp", platform, type, "sourceId", "segmentId", count(*)::int as n
+          from ${tables.backup} where "batchId" = $(batchId)
+          group by 1, 2, 3, 4, 5
+        ) b
+        where ${KEY_COLUMNS_JOIN('b')}
+      `,
+      { batchId: options.batchId },
+    )
+    // restored rows leave the backup, so a later clean backs them up once and the counts agree
+    const removed = await t.result(
+      `
+        delete from ${tables.backup} b
+        where b."batchId" = $(batchId)
+          and exists (select 1 from "activityRelations" ar where ar."activityId" = b."activityId")
+      `,
+      { batchId: options.batchId },
+    )
+    return {
+      restored: restored.rowCount,
+      reopened: reopened.rowCount,
+      removedFromBackup: removed.rowCount,
+    }
+  })
+
+  log.info({ batchId: options.batchId, backupRows: preview.rows, ...result }, 'rollback.done')
+  return EXIT_DONE
+}
+
 function parseFlags(command: string, args: string[]): Map<string, string | true> {
   const allowed = COMMAND_FLAGS[command]
   const flags = new Map<string, string | true>()
@@ -1865,6 +2321,36 @@ function parseCommon(flags: Map<string, string | true>): ICommonOptions {
     dryRun: flags.has('--dry-run'),
     yes: flags.has('--yes'),
   }
+}
+
+function parseSnapshot(flags: Map<string, string | true>): ISnapshotOptions {
+  const keys = parseIntFlag('--keys', value(flags, '--keys'), 1, 100_000)
+  const out = value(flags, '--out')
+  if (keys === undefined || !out) {
+    throw new UsageError('snapshot needs --keys and --out')
+  }
+  return {
+    ...parseCommon(flags),
+    segmentIds: parseListFlag('--segments', value(flags, '--segments'), UUID_PATTERN) ?? [],
+    keys,
+    out,
+  }
+}
+
+function parseVerify(flags: Map<string, string | true>): IVerifyOptions {
+  const snapshotFile = value(flags, '--snapshot')
+  if (!snapshotFile) {
+    throw new UsageError('verify needs --snapshot')
+  }
+  return { ...parseCommon(flags), snapshot: snapshotFile }
+}
+
+function parseRollback(flags: Map<string, string | true>): IRollbackOptions {
+  const batchId = value(flags, '--batch')
+  if (!batchId || !UUID_PATTERN.test(batchId)) {
+    throw new UsageError(`rollback needs --batch <uuid>, got '${batchId ?? ''}'`)
+  }
+  return { ...parseCommon(flags), batchId }
 }
 
 function parseCollect(flags: Map<string, string | true>): ICollectOptions {
@@ -2011,12 +2497,15 @@ async function main(): Promise<number> {
   }
 
   const flags = parseFlags(command, args)
-  const options =
-    command === 'collect'
-      ? parseCollect(flags)
-      : command === 'clean'
-        ? parseClean(flags)
-        : parseCommon(flags)
+  const parsers: Record<string, (f: Map<string, string | true>) => ICommonOptions> = {
+    collect: parseCollect,
+    clean: parseClean,
+    status: parseCommon,
+    snapshot: parseSnapshot,
+    verify: parseVerify,
+    rollback: parseRollback,
+  }
+  const options = parsers[command](flags)
 
   const runId = randomUUID()
   const log = baseLog.child({ runId, tag: options.tag, command })
@@ -2055,6 +2544,15 @@ async function main(): Promise<number> {
     }
     if (command === 'clean') {
       return await clean(session, log, options as ICleanOptions, runId)
+    }
+    if (command === 'snapshot') {
+      return await snapshot(session, log, options as ISnapshotOptions)
+    }
+    if (command === 'verify') {
+      return await verify(session, log, options as IVerifyOptions)
+    }
+    if (command === 'rollback') {
+      return await rollback(session, log, options as IRollbackOptions)
     }
     return await status(session, log, options)
   } finally {
