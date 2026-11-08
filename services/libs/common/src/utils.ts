@@ -1,5 +1,3 @@
-import { timeout } from './timing'
-
 export const processPaginated = async <T>(
   dataLoader: (page: number) => Promise<T[]>,
   processor: (data: T[]) => Promise<boolean | void>,
@@ -22,7 +20,7 @@ export class BatchProcessor<T> {
 
   private isStopped = false
 
-  private isProcessing = false
+  private processing?: Promise<void>
 
   constructor(
     private readonly batchSize: number,
@@ -37,8 +35,10 @@ export class BatchProcessor<T> {
       throw new Error('Batch processor is stopped')
     }
 
-    while (this.isProcessing) {
-      await timeout(50)
+    // the check and the push stay in one synchronous step, so no other caller can start a batch
+    // in between; a failed batch belongs to the caller that started it, so waiters ignore it
+    while (this.processing) {
+      await this.processing.catch(() => undefined)
     }
 
     this.batch.push(element)
@@ -65,27 +65,35 @@ export class BatchProcessor<T> {
   private async processBatch(): Promise<void> {
     if (this.batch.length === 0) return
 
-    this.isProcessing = true
     const clone = [...this.batch]
     this.batch = []
-    try {
-      await this.processor(clone)
-    } catch (error) {
-      await this.errorHandler(clone, error)
-    } finally {
-      if (this.timer) {
-        clearTimeout(this.timer)
-        this.timer = undefined
+    // started on the next microtask, so processing is set before the processor runs
+    const run = Promise.resolve().then(async () => {
+      try {
+        await this.processor(clone)
+      } catch (error) {
+        await this.errorHandler(clone, error)
+      } finally {
+        if (this.timer) {
+          clearTimeout(this.timer)
+          this.timer = undefined
+        }
       }
-
-      this.isProcessing = false
+    })
+    this.processing = run
+    try {
+      await run
+    } finally {
+      if (this.processing === run) {
+        this.processing = undefined
+      }
     }
   }
 
   async stop() {
     this.isStopped = true
-    while (this.isProcessing) {
-      await timeout(50)
+    while (this.processing) {
+      await this.processing.catch(() => undefined)
     }
     await this.processBatch()
   }
