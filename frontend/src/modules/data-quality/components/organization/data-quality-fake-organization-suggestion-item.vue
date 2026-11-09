@@ -40,13 +40,11 @@ import LfBadge from '@/ui-kit/badge/Badge.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { formatNumberToCompact } from '@/utils/number';
 
+defineOptions({
+  name: 'LfDataQualityFakeOrganizationSuggestionItem',
+});
+
 defineProps<{
   suggestion: DataQualityFakeOrganizationSuggestion,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityFakeOrganizationSuggestionItem',
-};
 </script>
