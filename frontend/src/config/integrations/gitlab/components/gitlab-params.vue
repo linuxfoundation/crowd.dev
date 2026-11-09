@@ -54,6 +54,10 @@ import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppGitlabSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -70,10 +74,4 @@ onMounted(() => {
     mappings.value = res;
   });
 });
-</script>
-
-<script>
-export default {
-  name: 'AppGitlabSettings',
-};
 </script>

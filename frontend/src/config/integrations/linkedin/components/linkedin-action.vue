@@ -16,11 +16,14 @@ import type { Integration } from '@/modules/admin/modules/integration/types/Inte
 import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
 import {
   computed,
-  defineProps,
   ref,
 } from 'vue';
 import LfLinkedinSettingsDrawer from '@/config/integrations/linkedin/components/linkedin-settings-drawer.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({
+  name: 'LfLinkedinAction',
+});
 
 const props = defineProps<{
   integration: Integration<LinkedinSettings>;
@@ -32,10 +35,4 @@ const isPendingAction = computed(() => props.integration.status === 'pending-act
 
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const isLinkedinSettingsDrawerOpen = ref(isPendingAction.value);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLinkedinAction',
-};
 </script>

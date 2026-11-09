@@ -90,6 +90,10 @@ import LfTable from '@/ui-kit/table/Table.vue';
 import LfGithubSettingsRepoItem from '@/config/integrations/github-nango/components/settings/github-settings-repo-item.vue';
 import LfSvg from '@/shared/svg/svg.vue';
 
+defineOptions({
+  name: 'LfGithubSettingsMapping',
+});
+
 const props = defineProps<{
   repositories: GitHubSettingsRepository[];
   organizations: GitHubOrganization[];
@@ -149,11 +153,5 @@ const removeMapping = (repoUrl: string) => {
   const newMappings = { ...repoMappings.value };
   delete newMappings[repoUrl];
   repoMappings.value = newMappings;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsMapping',
 };
 </script>

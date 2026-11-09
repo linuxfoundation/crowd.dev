@@ -64,6 +64,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
+defineOptions({
+  name: 'LfTwitterSettingsDrawer',
+});
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -167,12 +171,6 @@ const canClose = (done) => {
   } else {
     done(false);
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'LfTwitterSettingsDrawer',
 };
 </script>
 
