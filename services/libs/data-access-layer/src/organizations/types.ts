@@ -123,6 +123,8 @@ export interface IQueryNumberOfNewOrganizations {
 export interface IFindOrCreateOrganizationResult {
   id: string
   created: boolean
+  // True when it may have written, also for a created organization
+  changed: boolean
 }
 
 export interface IQueryTimeseriesOfNewOrganizations {

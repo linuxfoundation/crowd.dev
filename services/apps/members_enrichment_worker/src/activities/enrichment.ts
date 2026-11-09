@@ -13,7 +13,7 @@ import {
   sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
 } from '@crowd/common'
-import { signalMemberUpdate } from '@crowd/common_services'
+import { markOrganizationsChanged, signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
@@ -308,6 +308,7 @@ export async function updateMemberUsingSquashedPayload(
 ): Promise<boolean> {
   const affectedOrgIds: string[] = []
   const orgIdsToSync: string[] = []
+  const changedOrgIds: string[] = []
   let affiliationNeedsRefresh = false
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
@@ -490,7 +491,13 @@ export async function updateMemberUsingSquashedPayload(
         try {
           // Keep the org write in a savepoint: if this identity is already verified
           // on another org, we can recover without aborting the member update transaction.
-          orgId = (await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload)))?.id
+          const result = await qx.tx((trnx) =>
+            findOrCreateOrganization(trnx, orgSource, orgPayload),
+          )
+          orgId = result?.id
+          if (result?.changed) {
+            changedOrgIds.push(result.id)
+          }
         } catch (error) {
           const constraint = 'uix_organizationIdentities_plat_val_typ_tenantId_verified'
           const dbError = error as { constraint?: string; detail?: string }
@@ -553,14 +560,16 @@ export async function updateMemberUsingSquashedPayload(
               ),
           )
 
-          orgId = (
-            await qx.tx((trnx) =>
-              findOrCreateOrganization(trnx, orgSource, {
-                ...orgPayload,
-                identities: retryIdentities,
-              }),
-            )
-          )?.id
+          const result = await qx.tx((trnx) =>
+            findOrCreateOrganization(trnx, orgSource, {
+              ...orgPayload,
+              identities: retryIdentities,
+            }),
+          )
+          orgId = result?.id
+          if (result?.changed) {
+            changedOrgIds.push(result.id)
+          }
 
           if (orgId) {
             const mergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
@@ -583,6 +592,7 @@ export async function updateMemberUsingSquashedPayload(
 
             if (identitiesToInsert.length > 0) {
               await insertOrganizationIdentities(qx, identitiesToInsert, false)
+              changedOrgIds.push(orgId)
             }
 
             for (const identityOwner of identityOwners) {
@@ -743,6 +753,8 @@ export async function updateMemberUsingSquashedPayload(
 
     return didUpdate
   })
+
+  await markOrganizationsChanged(svc.redis, changedOrgIds, svc.log)
 
   if (orgIdsToSync.length > 0) {
     await Promise.all(

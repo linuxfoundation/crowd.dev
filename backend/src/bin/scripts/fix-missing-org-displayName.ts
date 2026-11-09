@@ -10,7 +10,9 @@ import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import OrganizationRepository from '@/database/repositories/organizationRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { markOrganizationsChanged } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { getServiceLogger } from '@crowd/logging'
 
 const options = [
   {
@@ -148,6 +150,8 @@ if (parameters.help || !parameters.tenantId) {
               options,
             )
           }
+
+          await markOrganizationsChanged(options.redis, [org.id], getServiceLogger())
         } else {
           console.log(`Organization ${org.id} does not have displayName`)
         }

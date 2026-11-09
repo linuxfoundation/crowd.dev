@@ -19,7 +19,12 @@ import {
   mergeObjects,
   normalizeHostname,
 } from '@crowd/common'
-import { roleExistsInArray, signalMemberUpdate, unmergeRoles } from '@crowd/common_services'
+import {
+  markOrganizationsChanged,
+  roleExistsInArray,
+  signalMemberUpdate,
+  unmergeRoles,
+} from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -489,6 +494,12 @@ export default class OrganizationService extends LoggerBase {
           // trigger entity-merging-worker to move activities in the background
           await SequelizeRepository.commitTransaction(tx)
 
+          await markOrganizationsChanged(
+            this.options.redis,
+            [organizationId, secondaryOrganization.id],
+            this.log,
+          )
+
           return { organization, secondaryOrganization }
         }),
       )
@@ -826,6 +837,8 @@ export default class OrganizationService extends LoggerBase {
 
           await SequelizeRepository.commitTransaction(tx)
 
+          await markOrganizationsChanged(this.options.redis, [originalId, toMergeId], this.log)
+
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
 
           await setMergeAction(
@@ -1060,6 +1073,8 @@ export default class OrganizationService extends LoggerBase {
 
       await SequelizeRepository.commitTransaction(transaction)
 
+      await markOrganizationsChanged(this.options.redis, [record.id], this.log)
+
       if (syncOptions.doSync) {
         await this.startOrganizationUpdateWorkflow(record.id, {
           syncToOpensearch: syncOptions.doSync,
@@ -1194,6 +1209,8 @@ export default class OrganizationService extends LoggerBase {
 
       await SequelizeRepository.commitTransaction(tx)
 
+      await markOrganizationsChanged(this.options.redis, [record.id], this.log)
+
       if (syncToOpensearch || recalculateAffiliations) {
         await this.startOrganizationUpdateWorkflow(record.id, {
           syncToOpensearch,
@@ -1233,6 +1250,8 @@ export default class OrganizationService extends LoggerBase {
       }
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      await markOrganizationsChanged(this.options.redis, ids, this.log)
 
       const searchSyncService = new SearchSyncService(this.options, SyncMode.ASYNCHRONOUS)
 
@@ -1328,6 +1347,8 @@ export default class OrganizationService extends LoggerBase {
       )
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      await markOrganizationsChanged(this.options.redis, ids, this.log)
 
       const searchSyncService = new SearchSyncService(this.options)
 

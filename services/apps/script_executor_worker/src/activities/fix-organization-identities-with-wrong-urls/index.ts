@@ -1,3 +1,4 @@
+import { markOrganizationsChanged } from '@crowd/common_services'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import OrganizationRepo from '@crowd/data-access-layer/src/old/apps/script_executor_worker/organization.repo'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -49,6 +50,7 @@ export async function updateOrganizationIdentity(
   try {
     const repo = new OrganizationRepo(svc.postgres.writer.connection(), svc.log)
     await repo.updateOrganizationIdentity(orgId, platform, newValue, oldValue, type, verified)
+    await markOrganizationsChanged(svc.redis, [orgId], svc.log)
   } catch (err) {
     throw new Error(err)
   }
@@ -64,6 +66,7 @@ export async function deleteOrganizationIdentity(
   try {
     const repo = new OrganizationRepo(svc.postgres.writer.connection(), svc.log)
     await repo.deleteOrganizationIdentity(orgId, platform, type, value, verified)
+    await markOrganizationsChanged(svc.redis, [orgId], svc.log)
   } catch (err) {
     throw new Error(err)
   }
