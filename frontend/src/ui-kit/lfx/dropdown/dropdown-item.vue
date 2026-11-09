@@ -36,6 +36,10 @@ import { useAttrs, computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { DropdownItemType } from '@/ui-kit/lfx/dropdown/types/dropdown.types';
 
+defineOptions({
+  name: 'LfxDropdownItem',
+});
+
 const props = defineProps<{
   value?: string;
   label?: string;
@@ -59,11 +63,5 @@ const handleClick = () => {
     label: props.label,
     ...attrs,
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxDropdownItem',
 };
 </script>

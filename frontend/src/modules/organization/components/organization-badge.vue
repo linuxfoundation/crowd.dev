@@ -14,22 +14,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  organization: {
-    type: Object,
-    default: () => {},
-  },
-});
+defineOptions({ name: 'AppOrganizationBadge' });
+
+const props = defineProps<{
+  organization: Organization;
+}>();
 
 const isTeam = computed(() => props.organization.isTeamOrganization);
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationBadge',
-};
 </script>
