@@ -4,7 +4,7 @@ import { timeout } from '@crowd/common'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
-import { ConnectorCodeError, ProviderContractError } from '../../http/errors'
+import { ConnectorCodeError, ProviderContractError, RateLimitError } from '../../http/errors'
 import {
   CREDLY_API_BASE_URL,
   CREDLY_MIN_CALL_INTERVAL_MS,
@@ -254,6 +254,65 @@ describe('fetchBadgesPage', () => {
 
     expect(mockedTimeout).toHaveBeenCalledTimes(1)
     expect(mockedTimeout).toHaveBeenCalledWith(CREDLY_MIN_CALL_INTERVAL_MS)
+  })
+
+  it('queues concurrent calls so the interval holds between them too', async () => {
+    const http = httpReturning(pageOf([]))
+
+    await Promise.all([
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 2 }, log),
+    ])
+
+    expect(http.request).toHaveBeenCalledTimes(2)
+    expect(mockedTimeout).toHaveBeenCalledTimes(1)
+    expect(mockedTimeout).toHaveBeenCalledWith(CREDLY_MIN_CALL_INTERVAL_MS)
+  })
+
+  it('waits for the budget reset and retries when the token pool is exhausted', async () => {
+    const resumeAt = new Date(Date.now() + 20_000)
+    const http = httpReturning(pageOf([]))
+    http.request.mockRejectedValueOnce(new RateLimitError('token pool exhausted', { resumeAt }))
+
+    const page = await fetchBadgesPage(
+      http,
+      { organizationId: 'org-1', window: WINDOW, page: 1 },
+      log,
+    )
+
+    expect(page.data).toEqual([])
+    expect(http.request).toHaveBeenCalledTimes(2)
+    expect(mockedTimeout).toHaveBeenCalledWith(20_000)
+    expect(log.info).toHaveBeenCalledWith(
+      { waitMs: 20_000 },
+      'credly call budget spent, waiting for its reset',
+    )
+  })
+
+  it('does not wait for a reset further away than a budget window', async () => {
+    const resumeAt = new Date(Date.now() + 10 * 60_000)
+    const http = httpReturning(pageOf([]))
+    const err = new RateLimitError('token pool exhausted', { resumeAt })
+    http.request.mockRejectedValueOnce(err)
+
+    await expect(
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+    ).rejects.toBe(err)
+    expect(http.request).toHaveBeenCalledTimes(1)
+    expect(mockedTimeout).not.toHaveBeenCalledWith(10 * 60_000)
+  })
+
+  it('waits only once on a budget that does not come back', async () => {
+    const http = httpReturning(pageOf([]))
+    const err = new RateLimitError('token pool exhausted', {
+      resumeAt: new Date(Date.now() + 1_000),
+    })
+    http.request.mockRejectedValue(err)
+
+    await expect(
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+    ).rejects.toBe(err)
+    expect(http.request).toHaveBeenCalledTimes(2)
   })
 })
 
