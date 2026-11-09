@@ -73,6 +73,10 @@ import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 
+defineOptions({
+  name: 'LfOrganizationEmailEdit',
+});
+
 const props = defineProps<{
   modelValue: OrganizationIdentity | null,
   organization: Organization,
@@ -151,11 +155,5 @@ const updateEmail = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationEmailEdit',
 };
 </script>
