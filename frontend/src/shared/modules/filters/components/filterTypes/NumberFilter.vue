@@ -76,6 +76,10 @@ import LfFilterInlineSelect from '@/shared/modules/filters/components/partials/F
 import AppFormErrors from '@/shared/form/form-errors.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 
+defineOptions({
+  name: 'LfNumberFilter',
+});
+
 const props = defineProps<{
   modelValue: NumberFilterValue,
   config: NumberFilterConfig
@@ -92,6 +96,11 @@ const defaultForm: NumberFilterValue = {
   value: '',
   operator: FilterNumberOperator.EQ,
 };
+
+const isBetween = computed<boolean>(() => ([
+  FilterNumberOperator.BETWEEN,
+  FilterNumberOperator.NOT_BETWEEN,
+] as FilterNumberOperator[]).includes(form.value.operator));
 
 const rules = computed<ValidationArgs>(() => ({
   value: props.config.options.validators || {
@@ -112,11 +121,6 @@ const rules = computed<ValidationArgs>(() => ({
     required,
   },
 }));
-
-const isBetween = computed<boolean>(() => ([
-  FilterNumberOperator.BETWEEN,
-  FilterNumberOperator.NOT_BETWEEN,
-] as FilterNumberOperator[]).includes(form.value.operator));
 
 const $v = useVuelidate(rules, form);
 
@@ -150,10 +154,4 @@ onMounted(() => {
     };
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfNumberFilter',
-};
 </script>

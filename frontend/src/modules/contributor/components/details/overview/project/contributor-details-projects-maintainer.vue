@@ -29,16 +29,14 @@ import { computed } from 'vue';
 import LfContributorDetailsProjectsMaintainerItem
   from '@/modules/contributor/components/details/overview/project/contributor-details-projects-maintainer-item.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsProjectsMaintainer',
+});
+
 const props = defineProps<{
   maintainerRoles: ContributorMaintainerRole[],
 }>();
 
 const maintainer = computed<ContributorMaintainerRole[]>(() => (props.maintainerRoles || []).filter((role) => role.role.includes('maintainer')));
 const contributor = computed<ContributorMaintainerRole[]>(() => (props.maintainerRoles || []).filter((role) => role.role.includes('contributor')));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjectsMaintainer',
-};
 </script>

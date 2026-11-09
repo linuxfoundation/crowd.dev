@@ -34,11 +34,15 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, computed } from 'vue';
+import { computed } from 'vue';
 import AppPlatformIcon from '@/shared/modules/platform/components/platform-icon.vue';
 import AppPlatformSvg from '@/shared/modules/platform/components/platform-svg.vue';
 import AppPlatformImg from '@/shared/modules/platform/components/platform-img.vue';
 import { lfIdentities } from '@/config/identities';
+
+defineOptions({
+  name: 'AppPlatform',
+});
 
 const props = withDefaults(
   defineProps<{
@@ -78,12 +82,6 @@ const platformName = computed(() => {
 
   return lfIdentities[props.platform]?.name || 'Custom';
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppPlatform',
-};
 </script>
 
 <style lang="scss">

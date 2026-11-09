@@ -43,6 +43,10 @@ import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfInput from '@/ui-kit/input/Input.vue';
 
+defineOptions({
+  name: 'LfDataQualityProjectDropdown',
+});
+
 const props = defineProps<{
   modelValue: string;
 }>();
@@ -80,10 +84,4 @@ const getProjectName = computed(() => {
   }
   return selectedProjectGroup.value?.projects?.find((group) => group.id === project.value)?.name;
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityProjectDropdown',
-};
 </script>

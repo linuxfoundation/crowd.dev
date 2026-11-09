@@ -65,6 +65,10 @@ import AppMemberBotSuggestionsDialog
   from '@/modules/member/components/member-bot-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
+defineOptions({
+  name: 'LfDataQualityMemberBotSuggestions',
+});
+
 const props = defineProps<{
   projectGroup: string,
 }>();
@@ -100,6 +104,11 @@ const loadBotSuggestions = () => {
     });
 };
 
+const reload = () => {
+  offset.value = 0;
+  loadBotSuggestions();
+};
+
 const ignoreSuggestion = (suggestion: DataQualityMemberBotSuggestion) => {
   itemsLoading.value[suggestion.memberId] = true;
 
@@ -127,11 +136,6 @@ const loadMore = () => {
   loadBotSuggestions();
 };
 
-const reload = () => {
-  offset.value = 0;
-  loadBotSuggestions();
-};
-
 watch(() => props.projectGroup, () => {
   offset.value = 0;
   loadBotSuggestions();
@@ -140,10 +144,4 @@ watch(() => props.projectGroup, () => {
 onMounted(() => {
   loadBotSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMemberBotSuggestions',
-};
 </script>

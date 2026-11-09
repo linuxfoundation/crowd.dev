@@ -138,6 +138,10 @@ import LfPopover from '@/ui-kit/popover/Popover.vue';
 import LfContributorDetailsIdentityItemImage from './contributor-details-identity-item-image.vue';
 import LfContributorDetailsIdentityItemValue from './contributor-details-identity-item-value.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsIdentityItem',
+});
+
 const props = defineProps<{
   identity: ContributorIdentity,
   contributor: Contributor
@@ -169,11 +173,5 @@ const removeIdentity = () => {
     .catch(() => {
       ToastStore.error('Something went wrong while deleting an identity');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsIdentityItem',
 };
 </script>

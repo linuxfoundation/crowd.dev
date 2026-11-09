@@ -63,6 +63,10 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import { computed, ref } from 'vue';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 
+defineOptions({
+  name: 'LfContributorDetailsIdentityAddDropdown',
+});
+
 const emit = defineEmits<{(e: 'add', value: Partial<ContributorIdentity>): void}>();
 
 const { memberIdentities } = useIdentitiesHelpers();
@@ -75,10 +79,4 @@ const platforms = computed(() => memberIdentities.filter((i) => {
 }));
 
 const showEmail = computed(() => 'email'.includes(search.value.toLowerCase()));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsIdentityAddDropdown',
-};
 </script>

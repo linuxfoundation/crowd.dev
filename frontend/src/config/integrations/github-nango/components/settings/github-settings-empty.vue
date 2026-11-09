@@ -31,11 +31,9 @@
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const emit = defineEmits<{(e: 'add'): void }>();
-</script>
-
-<script lang="ts">
-export default {
+defineOptions({
   name: 'LfGithubSettingsEmpty',
-};
+});
+
+const emit = defineEmits<{(e: 'add'): void }>();
 </script>

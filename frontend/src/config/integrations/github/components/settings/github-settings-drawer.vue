@@ -237,6 +237,10 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
+defineOptions({
+  name: 'AppGithubSettingsDrawer',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   integration: GithubMappingIntegration;
@@ -263,6 +267,21 @@ const isDrawerVisible = computed({
   },
 });
 
+// Display data
+const repos = computed(() => props.integration?.settings?.orgs[0]?.repos || []);
+
+// Form
+const form = ref<Record<string, string>>(
+  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
+  repos.value.reduce<Record<string, string>>(
+    (a, b) => ({
+      ...a,
+      [b.url]: props.integration.segmentId,
+    }),
+    {},
+  ),
+);
+
 // Search
 const search = ref('');
 
@@ -278,9 +297,6 @@ const bulkApply = (data: Record<string, string>) => {
   };
 };
 
-// Display data
-const repos = computed(() => props.integration?.settings?.orgs[0]?.repos || []);
-
 const owner = computed<{ name: string; logo?: string } | null>(() => (repos.value.length > 0
   ? {
     name: props.integration?.settings?.orgs[0]?.name,
@@ -290,18 +306,6 @@ const owner = computed<{ name: string; logo?: string } | null>(() => (repos.valu
 
 // Static github details
 const githubDetails = computed(() => github);
-
-// Form
-const form = ref<Record<string, string>>(
-  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-  repos.value.reduce<Record<string, string>>(
-    (a, b) => ({
-      ...a,
-      [b.url]: props.integration.segmentId,
-    }),
-    {},
-  ),
-);
 
 const rules = computed(() => repos.value.reduce<Record<string, { required: typeof required }>>(
   (a, b) => ({
@@ -328,6 +332,23 @@ const hasFormChanged = computed(() => {
 
 // Connecting
 const sending = ref(false);
+
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping github repositories');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'github');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
+};
 
 const connect = () => {
   const data = { ...form.value };
@@ -374,23 +395,6 @@ const connect = () => {
         errorHandler(error);
       });
   });
-};
-
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping github repositories');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'github');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
 };
 
 // Fetching subprojects
@@ -442,10 +446,4 @@ const canClose = (done: (value: boolean) => void) => {
 onMounted(() => {
   fetchSubProjects();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettingsDrawer',
-};
 </script>

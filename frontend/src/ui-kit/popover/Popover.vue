@@ -30,6 +30,10 @@ import {
 import type { PopoverPlacement } from '@/ui-kit/popover/types/PopoverPlacement';
 import type { PopoverTrigger } from '@/ui-kit/popover/types/PopoverTrigger';
 
+defineOptions({
+  name: 'LfPopover',
+});
+
 const props = withDefaults(defineProps<{
   placement?: PopoverPlacement,
   disabled?: boolean,
@@ -64,6 +68,25 @@ watch(isVisible, (newValue) => {
   emit('update:visibility', newValue);
 });
 
+const handleClickOutside = (event: MouseEvent) => {
+  if (
+    !trigger.value?.contains(event.target as Node)
+      && !popover.value?.contains(event.target as Node)
+  ) {
+    isVisible.value = false;
+    // eslint-disable-next-line no-use-before-define
+    removeOutsideClickListener();
+  }
+};
+
+const addOutsideClickListener = () => {
+  document.addEventListener('click', handleClickOutside);
+};
+
+const removeOutsideClickListener = () => {
+  document.removeEventListener('click', handleClickOutside);
+};
+
 const togglePopover = () => {
   isVisible.value = !isVisible.value;
   if (isVisible.value) addOutsideClickListener();
@@ -78,24 +101,6 @@ const showPopover = () => {
 const hidePopover = () => {
   isVisible.value = false;
   removeOutsideClickListener();
-};
-
-const handleClickOutside = (event: MouseEvent) => {
-  if (
-    !trigger.value?.contains(event.target as Node)
-      && !popover.value?.contains(event.target as Node)
-  ) {
-    isVisible.value = false;
-    removeOutsideClickListener();
-  }
-};
-
-const addOutsideClickListener = () => {
-  document.addEventListener('click', handleClickOutside);
-};
-
-const removeOutsideClickListener = () => {
-  document.removeEventListener('click', handleClickOutside);
 };
 
 const popoverStyle = computed(() => {
@@ -119,10 +124,4 @@ const popoverStyle = computed(() => {
 onBeforeUnmount(() => {
   removeOutsideClickListener();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfPopover',
-};
 </script>

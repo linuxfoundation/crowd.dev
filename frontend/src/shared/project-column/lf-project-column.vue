@@ -37,6 +37,10 @@
 import { computed } from 'vue';
 import AppLfProjectCount from './lf-project-count.vue';
 
+defineOptions({
+  name: 'AppLfProjectColumn',
+});
+
 const props = withDefaults(defineProps<{
   projects?: {
     id: string;
@@ -53,10 +57,4 @@ const props = withDefaults(defineProps<{
 });
 
 const displayCount = computed(() => props.projectCount ?? props.projects?.length ?? 0);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectColumn',
-};
 </script>

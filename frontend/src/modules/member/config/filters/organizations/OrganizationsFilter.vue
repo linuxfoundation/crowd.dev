@@ -72,6 +72,10 @@ import type { MultiSelectFilterValue } from '@/shared/modules/filters/types/filt
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
+defineOptions({
+  name: 'LfMultiSelectAsyncFilter',
+});
+
 const props = defineProps<{
     modelValue: MultiSelectAsyncFilterValue,
     data: MultiSelectAsyncFilterData,
@@ -157,12 +161,6 @@ onMounted(() => {
     data.value.selected = [];
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectAsyncFilter',
-};
 </script>
 
   <style lang="scss">

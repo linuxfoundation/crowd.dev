@@ -95,6 +95,10 @@ import LfxDropdownSearch from '@/ui-kit/lfx/dropdown/dropdown-search.vue';
 import { useOverviewStore } from '../../store/overview.store';
 import { OVERVIEW_API_SERVICE } from '../../services/overview.api.service';
 
+defineOptions({
+  name: 'AppLfSubProjectFilter',
+});
+
 const overviewStore = useOverviewStore();
 const { selectedProjectId, selectedSubProjectId, selectedSubProject } = storeToRefs(overviewStore);
 
@@ -123,10 +127,4 @@ watch(selectedSubProjectId, (newVal) => {
     selectedSubProject.value = null;
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfSubProjectFilter',
-};
 </script>

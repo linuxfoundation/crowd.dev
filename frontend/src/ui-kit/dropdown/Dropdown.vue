@@ -26,6 +26,10 @@ import type { DropdownPlacement } from '@/ui-kit/dropdown/types/DropdownPlacemen
 import LfPopover from '@/ui-kit/popover/Popover.vue';
 import { ClickOutside as vClickOutside } from 'element-plus';
 
+defineOptions({
+  name: 'LfDropdown',
+});
+
 const props = withDefaults(defineProps<{
   placement?: DropdownPlacement;
   width?: string;
@@ -37,10 +41,4 @@ const props = withDefaults(defineProps<{
   persistent: false,
   zIndex: undefined,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDropdown',
-};
 </script>

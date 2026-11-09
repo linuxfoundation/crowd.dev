@@ -14,6 +14,10 @@
 import type { BadgeSize } from '@/ui-kit/badge/types/BadgeSize';
 import type { BadgeType } from '@/ui-kit/badge/types/BadgeType';
 
+defineOptions({
+  name: 'LfBadge',
+});
+
 const props = withDefaults(defineProps<{
   size?: BadgeSize,
   type?: BadgeType,
@@ -21,10 +25,4 @@ const props = withDefaults(defineProps<{
   size: 'medium',
   type: 'primary',
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfBadge',
-};
 </script>

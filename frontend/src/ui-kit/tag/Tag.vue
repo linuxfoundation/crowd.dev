@@ -19,9 +19,12 @@
 <script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-import { defineProps } from 'vue';
 import type { TagSize } from './types/TagSize';
 import type { TagType } from './types/TagType';
+
+defineOptions({
+  name: 'LfTag',
+});
 
 const props = withDefaults(defineProps<{
     size?: TagSize,
@@ -39,10 +42,4 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{(e: 'close'): void;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTag',
-};
 </script>

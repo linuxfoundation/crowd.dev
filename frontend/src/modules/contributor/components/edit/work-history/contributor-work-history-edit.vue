@@ -131,6 +131,10 @@ import LfFieldMessage from '@/ui-kit/field-message/FieldMessage.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorEditWorkHistory',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   organization: Organization | null,
@@ -183,6 +187,15 @@ const rules = {
 
 const $v = useVuelidate(rules, form);
 
+const isModalOpen = computed<boolean>({
+  get() {
+    return props.modelValue;
+  },
+  set(value: boolean) {
+    emit('update:modelValue', value);
+  },
+});
+
 const updateWorkExperience = () => {
   const data: Partial<MemberOrganization> = {
     organizationId: (form.organization || props.organization)?.id,
@@ -227,15 +240,6 @@ const updateWorkExperience = () => {
     });
 };
 
-const isModalOpen = computed<boolean>({
-  get() {
-    return props.modelValue;
-  },
-  set(value: boolean) {
-    emit('update:modelValue', value);
-  },
-});
-
 const hasSameOrganization = computed(() => (props.contributor.organizations || []).some((o: Organization) => o.id === form.organization?.id)
     && (!isEdit.value || form.organization?.id !== props.organization?.id));
 
@@ -278,12 +282,6 @@ onMounted(() => {
     form.currentlyWorking = !form.dateEnd && !!form.dateStart;
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditWorkHistory',
-};
 </script>
 
 <style lang="scss">

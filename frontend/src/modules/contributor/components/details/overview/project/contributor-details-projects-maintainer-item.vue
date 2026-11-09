@@ -70,6 +70,10 @@ import { computed } from 'vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfContributorDetailsProjectsMaintainerItem',
+});
+
 const props = defineProps<{
   maintainerRoles: ContributorMaintainerRole[],
 }>();
@@ -78,10 +82,4 @@ const currentRepos = computed<ContributorMaintainerRole[]>(() => props.maintaine
 const previousRepos = computed<ContributorMaintainerRole[]>(() => props.maintainerRoles.filter((role) => !!role.dateEnd));
 
 const getName = (url: string) => url.split('/').pop();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjectsMaintainerItem',
-};
 </script>

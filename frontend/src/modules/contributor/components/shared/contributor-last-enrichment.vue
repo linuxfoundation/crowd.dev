@@ -10,13 +10,11 @@
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorLastEnrichment',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorLastEnrichment',
-};
 </script>

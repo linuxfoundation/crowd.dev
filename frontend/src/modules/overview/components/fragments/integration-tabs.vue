@@ -16,6 +16,10 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { IntegrationTabs } from '../../types/overview.types';
 
+defineOptions({
+  name: 'AppLfOverviewIntegrationTabs',
+});
+
 const props = defineProps<{
   tabs: IntegrationTabs[];
   modelValue: string;
@@ -32,12 +36,6 @@ const activeTab = computed<string>({
     emit('update:modelValue', value);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewIntegrationTabs',
-};
 </script>
 
 <style scoped>

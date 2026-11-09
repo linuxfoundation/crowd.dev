@@ -12,6 +12,10 @@
 <script lang="ts" setup>
 import { onMounted, ref } from 'vue';
 
+defineOptions({
+  name: 'InfinitePagination',
+});
+
 const props = defineProps({
   currentPage: {
     type: Number,
@@ -41,9 +45,13 @@ const emit = defineEmits([
 
 const infinitePaginationWrapper = ref<HTMLDivElement>();
 
-onMounted(() => {
-  observeSections();
-});
+const sectionObserveHandler = (entries: IntersectionObserverEntry[]) => {
+  entries.forEach((entry) => {
+    if (entry.intersectionRatio > 0 && props.total > props.currentPage * props.pageSize) {
+      emit('loadMore', props.currentPage + 1);
+    }
+  });
+};
 
 const observeSections = () => {
   const options = {
@@ -55,17 +63,8 @@ const observeSections = () => {
   observer.observe(infinitePaginationWrapper.value as Element);
 };
 
-const sectionObserveHandler = (entries: IntersectionObserverEntry[]) => {
-  entries.forEach((entry) => {
-    if (entry.intersectionRatio > 0 && props.total > props.currentPage * props.pageSize) {
-      emit('loadMore', props.currentPage + 1);
-    }
-  });
-};
+onMounted(() => {
+  observeSections();
+});
 
-</script>
-<script lang="ts">
-export default {
-  name: 'InfinitePagination',
-};
 </script>

@@ -12,15 +12,13 @@ import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 
+defineOptions({
+  name: 'LfProjectCount',
+});
+
 const props = defineProps<{
   count: number;
   icon?: string;
   title?: string;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfProjectCount',
-};
 </script>

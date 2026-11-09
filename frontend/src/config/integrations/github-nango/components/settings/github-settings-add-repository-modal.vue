@@ -232,6 +232,10 @@ import { GithubApiService } from '@/config/integrations/github-nango/services/gi
 import { ToastStore } from '@/shared/message/notification';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfGithubSettingsAddRepositoryModal',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   organizations: GitHubOrganization[];
@@ -415,10 +419,4 @@ const githubSearchImage = new URL(
   '@/assets/images/integrations/github-search.png',
   import.meta.url,
 ).href;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsAddRepositoryModal',
-};
 </script>

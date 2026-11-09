@@ -75,6 +75,10 @@ import LfGithubVersionTag from '@/config/integrations/github/components/github-v
 import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
+defineOptions({
+  name: 'LfGithubConnect',
+});
+
 const props = defineProps<{
   integration: Integration<GitHubSettings> | undefined,
   segmentId: string | null;
@@ -115,10 +119,4 @@ const finalizeGithubConnect = () => {
 onMounted(() => {
   finalizeGithubConnect();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubConnect',
-};
 </script>

@@ -136,6 +136,10 @@ import LfTimeline from '@/ui-kit/timeline/Timeline.vue';
 import LfTimelineItem from '@/ui-kit/timeline/TimelineItem.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsWorkHistory',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -167,10 +171,4 @@ const orgGrouped = computed(() => {
 });
 const minimumShownGroups = 3;
 const shownGroups = computed(() => orgGrouped.value.slice(0, showMore.value ? orgGrouped.value.length : minimumShownGroups));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsWorkHistory',
-};
 </script>

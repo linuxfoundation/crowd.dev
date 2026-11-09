@@ -28,14 +28,12 @@ import { lfIdentities } from '@/config/identities';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsIdentityItemImage',
+});
+
 const props = defineProps<{
   identity: ContributorIdentity
 }>();
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsIdentityItemImage',
-};
 </script>

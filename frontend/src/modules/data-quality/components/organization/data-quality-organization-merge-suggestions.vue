@@ -61,6 +61,10 @@ import AppOrganizationMergeSuggestionsDialog
   from '@/modules/organization/components/organization-merge-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
+defineOptions({
+  name: 'LfDataQualityOrganizationMergeSuggestions',
+});
+
 const props = defineProps<{
   projectGroup?: string,
 }>();
@@ -106,10 +110,4 @@ const loadMore = () => {
 onMounted(() => {
   loadMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityOrganizationMergeSuggestions',
-};
 </script>

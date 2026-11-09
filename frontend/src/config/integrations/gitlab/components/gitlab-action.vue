@@ -17,6 +17,10 @@ import { computed, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import AppGitlabSettingsDrawer from './gitlab-settings-drawer.vue';
 
+defineOptions({
+  name: 'AppGitlabAction',
+});
+
 const props = defineProps<{
   integration: GitlabIntegration;
   segmentId: string | null;
@@ -27,10 +31,4 @@ const isMapping = computed(() => props.integration.status === 'mapping');
 
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
 const isSettingsDrawerOpen = ref(isMapping.value);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGitlabAction',
-};
 </script>

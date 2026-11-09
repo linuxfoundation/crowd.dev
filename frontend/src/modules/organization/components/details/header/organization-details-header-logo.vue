@@ -43,6 +43,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 import LfOrganizationEditLogo from '@/modules/organization/components/edit/organization-edit-logo.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsHeaderLogo',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -50,10 +54,4 @@ const props = defineProps<{
 const { isNew, logo, displayName } = useOrganizationHelpers();
 
 const isEditModalOpen = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsHeaderLogo',
-};
 </script>

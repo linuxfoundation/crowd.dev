@@ -17,6 +17,10 @@
 import { computed } from 'vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
+defineOptions({
+  name: 'LfFilterMultiSelectOption',
+});
+
 const props = withDefaults(defineProps<{
   modelValue: string[],
   value: string,
@@ -44,12 +48,6 @@ const selectOption = () => {
   }
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterMultiSelectOption',
-};
 </script>
 
 <style lang="scss" scoped>

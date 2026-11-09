@@ -154,6 +154,10 @@ import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import LfTableHead from '@/ui-kit/table/TableHead.vue';
 import { logRenderingConfig } from '../../config/audit-logs/log-rendering';
 
+defineOptions({
+  name: 'AppLfAuditLogsPage',
+});
+
 const loading = ref<boolean>(false);
 
 const pagination = reactive({
@@ -177,26 +181,6 @@ const auditLogs = ref<AuditLog[]>([]);
 const filter = ref<{ and?: Record<string, unknown>[] }>({});
 
 const { trackEvent } = useProductTracking();
-
-const loadMore = () => {
-  pagination.page += 1;
-  fetch();
-};
-
-const onFilterChange = (filterQuery: FilterQuery) => {
-  trackEvent({
-    key: FeatureEventKey.FILTER_AUDIT_LOGS,
-    type: EventType.FEATURE,
-    properties: {
-      filter: filterQuery.filter,
-    },
-  });
-
-  filter.value = filterQuery.filter;
-  pagination.page = 1;
-  pagination.total = 0;
-  fetch();
-};
 
 const fetch = () => {
   const query = filter.value.and?.reduce(
@@ -230,6 +214,26 @@ const fetch = () => {
     });
 };
 
+const loadMore = () => {
+  pagination.page += 1;
+  fetch();
+};
+
+const onFilterChange = (filterQuery: FilterQuery) => {
+  trackEvent({
+    key: FeatureEventKey.FILTER_AUDIT_LOGS,
+    type: EventType.FEATURE,
+    properties: {
+      filter: filterQuery.filter,
+    },
+  });
+
+  filter.value = filterQuery.filter;
+  pagination.page = 1;
+  pagination.total = 0;
+  fetch();
+};
+
 const openLogDetailsDrawer = (log: AuditLog) => {
   openLogDetails.value = log;
 
@@ -237,11 +241,5 @@ const openLogDetailsDrawer = (log: AuditLog) => {
     key: FeatureEventKey.VIEW_AUDIT_LOG_DETAILS,
     type: EventType.FEATURE,
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfAuditLogsPage',
 };
 </script>

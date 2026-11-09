@@ -266,6 +266,10 @@ import type { InsightsProjectAddFormModel } from '../models/insights-project-add
 import LfInsightsProjectsAddCollectionDropdown from './add-details-tab/lf-insights-projects-add-collection-dropdown.vue';
 import LfInsightsProjectsAddOrganizationsDropdown from './add-details-tab/lf-insights-projects-add-organizations-dropdown.vue';
 
+defineOptions({
+  name: 'LfInsightsProjectAddDetailsTab',
+});
+
 const props = defineProps<{
   form: InsightsProjectAddFormModel;
   oldForm?: InsightsProjectAddFormModel;
@@ -324,11 +328,5 @@ const isWebsiteSectionDifferent = () => {
     || props.oldForm.github !== props.newForm.github
     || props.oldForm.twitter !== props.newForm.twitter
   );
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectAddDetailsTab',
 };
 </script>

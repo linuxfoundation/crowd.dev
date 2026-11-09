@@ -15,6 +15,10 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Organization } from '../../types/Organization';
 
+defineOptions({
+  name: 'LfOrganizationMembership',
+});
+
 const props = withDefaults(
   defineProps<{
       organization: Organization;
@@ -26,10 +30,4 @@ const props = withDefaults(
     iconSize: 16,
   },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationMembership',
-};
 </script>

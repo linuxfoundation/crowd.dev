@@ -147,6 +147,10 @@ import DrawerFooterButtons from '@/modules/admin/modules/integration/components/
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
+defineOptions({
+  name: 'LfGerritSettingsDrawer',
+});
+
 const props = defineProps<{
   integration: Integration<GerritSettings> | undefined;
   modelValue: boolean;
@@ -241,6 +245,23 @@ const cancel = () => {
   isVisible.value = false;
 };
 
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping gerrit repositories');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'gerrit');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
+};
+
 const connect = async () => {
   loading.value = true;
 
@@ -275,26 +296,4 @@ const connect = async () => {
     });
 };
 
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping gerrit repositories');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'gerrit');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGerritSettingsDrawer',
-};
 </script>
