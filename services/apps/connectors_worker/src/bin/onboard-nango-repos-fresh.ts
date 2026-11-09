@@ -64,7 +64,12 @@ async function onboardOne(
   if (isRenamedRepo(mappedUrl.toLowerCase(), channel.channelName)) {
     return { ...row, outcome: 'renamed', reason: `${mappedUrl} -> ${channel.channelName}` }
   }
-  if (!(await findIntegrationRepositoryUrl(qx, mapping.integrationId, channel.channelName))) {
+  const storedUrl = await findIntegrationRepositoryUrl(
+    qx,
+    mapping.integrationId,
+    channel.channelName,
+  )
+  if (!storedUrl) {
     return { ...row, outcome: 'skipped', reason: 'no repository row' }
   }
   const result = await onboardGithubRepo(
@@ -72,7 +77,7 @@ async function onboardOne(
     token,
     mapping.integrationId,
     channel.channelName.toLowerCase(),
-    { storedUrl: channel.channelName, resolved: channel },
+    { storedUrl, resolved: channel },
   )
   switch (result.outcome) {
     case 'created':
