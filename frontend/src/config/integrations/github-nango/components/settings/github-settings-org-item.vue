@@ -96,6 +96,10 @@ import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import { GithubApiService } from '@/config/integrations/github-nango/services/github.api.service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfGithubSettingsOrgItem',
+});
+
 const props = defineProps<{
   organizations: GitHubOrganization[];
   repositories: GitHubRepository[];
@@ -158,11 +162,5 @@ const remove = () => {
 
   // Emit all repository URLs that need to be removed from mapping
   emit('remove-mapping', reposToRemove);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsOrgItem',
 };
 </script>

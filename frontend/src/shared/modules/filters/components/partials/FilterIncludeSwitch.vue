@@ -23,6 +23,10 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 
+defineOptions({
+  name: 'LfFilterIncludeSwitch',
+});
+
 const props = defineProps<{
   modelValue: boolean | undefined
 }>();
@@ -36,12 +40,6 @@ const model = computed<boolean>({
     emit('update:modelValue', v);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterIncludeSwitch',
-};
 </script>
 
 <style lang="scss">

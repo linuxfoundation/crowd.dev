@@ -30,6 +30,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 
+defineOptions({
+  name: 'LfCollectionAddDropdown',
+});
+
 const props = defineProps<{
   id: string;
   starred: boolean;
@@ -50,11 +54,5 @@ const featuredProject = () => {
 
 const removeProject = () => {
   emit('onRemoveProject', props.id);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCollectionAddDropdown',
 };
 </script>

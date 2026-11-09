@@ -56,6 +56,10 @@ import LfVerifiedIdentityBadge from '@/shared/modules/identities/components/veri
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppEmailsVerticalList',
+});
+
 const props = defineProps<{
   emails: {
       handle: string;
@@ -92,10 +96,4 @@ const distinctEmails = computed(() => props.emails.reduce((obj: Record<string, D
 
 const isEnrichment = (platforms:string[]) => platforms.includes('enrichment');
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppEmailsVerticalList',
-};
 </script>

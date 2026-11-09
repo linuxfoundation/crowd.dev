@@ -94,6 +94,10 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import type { FakeOrganizationSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 
+defineOptions({
+  name: 'AppFakeOrganizationSuggestions',
+});
+
 const props = withDefaults(
   defineProps<{
     offset?: number;
@@ -227,10 +231,4 @@ onUnmounted(() => {
     emit('reload');
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppFakeOrganizationSuggestions',
-};
 </script>

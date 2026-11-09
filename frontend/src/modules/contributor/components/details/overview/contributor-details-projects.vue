@@ -151,6 +151,10 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 
+defineOptions({
+  name: 'LfContributorDetailsProjects',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -196,11 +200,5 @@ const viewActivity = (projectId: string) => {
       subProjectId: projectId,
     },
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjects',
 };
 </script>

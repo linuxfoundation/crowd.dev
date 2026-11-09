@@ -113,6 +113,10 @@ import memberOrder from '@/shared/modules/identities/config/identitiesOrder/memb
 import { lfIdentities } from '@/config/identities';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppMemberListEmails',
+});
+
 const props = defineProps<{
   member: Member
 }>();
@@ -169,10 +173,4 @@ const trackEmailClick = () => {
   });
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberListEmails',
-};
 </script>

@@ -16,6 +16,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfLinkedinParams',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -28,10 +32,4 @@ const organization = computed<{ id: string; name: string; inUse: boolean }>(
     (org: { id: string; name: string; inUse: boolean }) => org?.inUse,
   )?.[0],
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLinkedinParams',
-};
 </script>

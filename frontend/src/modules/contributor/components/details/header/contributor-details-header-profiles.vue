@@ -82,6 +82,10 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { lfIdentities } from '@/config/identities';
 import type { Platform } from '@/shared/modules/platform/types/Platform';
 
+defineOptions({
+  name: 'LfContributorDetailsHeaderProfiles',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -103,12 +107,6 @@ const platformIdentities = computed(() => {
   });
   return data;
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsHeaderProfiles',
-};
 </script>
 
 <style scoped lang="scss">

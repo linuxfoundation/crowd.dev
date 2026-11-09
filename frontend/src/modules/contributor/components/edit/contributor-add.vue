@@ -144,6 +144,10 @@ import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import type { IdentityConfig } from '@/config/identities';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfContributorAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean,
 }>();
@@ -272,11 +276,5 @@ const createContributor = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAdd',
 };
 </script>

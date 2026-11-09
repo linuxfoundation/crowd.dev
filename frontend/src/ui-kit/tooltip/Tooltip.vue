@@ -15,6 +15,10 @@
 <script setup lang="ts">
 import type { TooltipPlacement } from '@/ui-kit/tooltip/types/TooltipPlacement';
 
+defineOptions({
+  name: 'LfTooltip',
+});
+
 const props = withDefaults(defineProps<{
   placement?: TooltipPlacement,
   content?: string,
@@ -26,10 +30,4 @@ const props = withDefaults(defineProps<{
   disabled: false,
   contentClass: '',
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTooltip',
-};
 </script>

@@ -5,13 +5,11 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfContributorAttributeBoolean',
+});
+
 const props = defineProps<{
   data: boolean,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAttributeBoolean',
-};
 </script>

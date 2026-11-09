@@ -124,6 +124,10 @@ import { links } from '@/config/links';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 
+defineOptions({
+  name: 'LfIntegrationListPage',
+});
+
 const route = useRoute();
 
 const { findSubProject } = useLfSegmentsStore();
@@ -181,10 +185,4 @@ onMounted(() => {
     subproject.value = res;
   });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIntegrationListPage',
-};
 </script>

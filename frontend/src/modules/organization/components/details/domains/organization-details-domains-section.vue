@@ -35,6 +35,10 @@ import pluralize from 'pluralize';
 import LfOrganizationDetailsDomainItem
   from '@/modules/organization/components/details/domains/organization-details-domain-item.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsDomainsSection',
+});
+
 const props = defineProps<{
   title?: string;
   domains: OrganizationIdentity[],
@@ -67,10 +71,4 @@ const domainList = computed(() => {
   return Object.values(domainData);
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsDomainsSection',
-};
 </script>

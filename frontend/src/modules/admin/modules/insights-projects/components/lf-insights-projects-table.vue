@@ -104,6 +104,10 @@ import type {
   InsightsProjectRequest,
 } from '../models/insights-project.model';
 
+defineOptions({
+  name: 'LfInsightsProjectsTable',
+});
+
 defineProps<{
   projects: InsightsProjectModel[];
 }>();
@@ -113,7 +117,7 @@ const emit = defineEmits<{(e: 'onEditProject', id: string): void;
 }>();
 
 const invalidate = useInvalidate();
-const onSuccess = (res: InsightsProjectModel) => {
+const onSuccess = () => {
   invalidate.insightsProjects();
   ToastStore.closeAll();
   ToastStore.success('Insights project updated successfully');
@@ -132,11 +136,5 @@ const updateMutation = useMutation({
 
 const changeProjectEnabled = (projectId: string, enabled: boolean) => {
   updateMutation.mutate({ id: projectId, form: { enabled } });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectsTable',
 };
 </script>

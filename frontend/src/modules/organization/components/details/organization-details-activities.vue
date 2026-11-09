@@ -39,6 +39,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import { ref } from 'vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsActivities',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -49,14 +53,7 @@ const loadMore = () => {
   timeline.value?.fetchActivities();
 };
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsActivities',
-};
 </script>

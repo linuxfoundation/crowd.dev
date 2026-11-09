@@ -17,16 +17,14 @@
 import LfButton from '@/ui-kit/button/Button.vue';
 import { ref } from 'vue';
 
+defineOptions({
+  name: 'LfOrganizationAttributeString',
+});
+
 const props = defineProps<{
   data: string,
 }>();
 
 const limit = 150;
 const showMore = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAttributeString',
-};
 </script>

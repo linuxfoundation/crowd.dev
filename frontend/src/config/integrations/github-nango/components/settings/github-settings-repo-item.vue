@@ -63,6 +63,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useVuelidate from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
 
+defineOptions({
+  name: 'LfGithubSettingsRepoItem',
+});
+
 const props = defineProps<{
   repositories: GitHubRepository[];
   repository: GitHubRepository;
@@ -112,10 +116,4 @@ watch(
   },
   { immediate: true },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsRepoItem',
-};
 </script>

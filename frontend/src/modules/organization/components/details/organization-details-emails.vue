@@ -78,6 +78,10 @@ import LfOrganizationEmailEdit from '@/modules/organization/components/edit/emai
 import LfOrganizationDetailsEmailItem
   from '@/modules/organization/components/details/email/organization-details-email-item.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsEmails',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -101,11 +105,5 @@ const unmerge = (identity?: OrganizationIdentity) => {
     selectedIdentity.value = identity;
   }
   isUnmergeDialogOpen.value = props.organization;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsEmails',
 };
 </script>

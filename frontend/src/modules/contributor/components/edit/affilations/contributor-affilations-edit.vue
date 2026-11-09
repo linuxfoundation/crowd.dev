@@ -124,6 +124,10 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorEditAffilations',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   contributor: Contributor,
@@ -220,10 +224,4 @@ onMounted(() => {
   }));
   initialForm.value = [...form.value];
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditAffilations',
-};
 </script>

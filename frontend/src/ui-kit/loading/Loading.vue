@@ -11,6 +11,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfLoading',
+});
+
 const props = withDefaults(defineProps<{
   height?: string,
   width?: string,
@@ -20,10 +24,4 @@ const props = withDefaults(defineProps<{
   width: '100%',
   count: 1,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLoading',
-};
 </script>

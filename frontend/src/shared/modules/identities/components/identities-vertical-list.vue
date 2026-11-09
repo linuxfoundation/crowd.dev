@@ -89,6 +89,10 @@ import LfVerifiedIdentityBadge from '@/shared/modules/identities/components/veri
 import { lfIdentities } from '@/config/identities';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppIdentitiesVerticalList',
+});
+
 const props = defineProps<{
   identities: {
     [key: string]: {
@@ -116,10 +120,4 @@ const isCustomPlatform = (platform: string) => platform !== Platform.EMAILS
   && platform !== 'domains'
   && platform !== 'email'
   && !lfIdentities[platform]?.name;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesVerticalList',
-};
 </script>

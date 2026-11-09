@@ -149,7 +149,7 @@ import type { Integration } from '@/modules/admin/modules/integration/types/Inte
 import type { JiraSettings } from '@/config/integrations/jira/types/JiraSettings';
 import useVuelidate from '@vuelidate/core';
 import {
-  computed, defineProps, onMounted, reactive, ref,
+  computed, onMounted, reactive, ref,
 } from 'vue';
 import jira from '@/config/integrations/jira/config';
 import formChangeDetector from '@/shared/form/form-change';
@@ -164,6 +164,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'LfJiraSettingsDrawer',
+});
 
 const props = defineProps<{
   integration: Integration<JiraSettings> | undefined,
@@ -253,11 +257,6 @@ const canClose = (done: (value: boolean) => void) => {
   }
 };
 
-const onBlurJiraURL = () => {
-  $v.value.jiraURL.$touch();
-  canVerify();
-};
-
 const canVerify = async () => {
   const isCorrect = await $v.value.$validate();
   if (isCorrect) {
@@ -265,6 +264,11 @@ const canVerify = async () => {
   } else {
     isVerificationEnabled.value = false;
   }
+};
+
+const onBlurJiraURL = () => {
+  $v.value.jiraURL.$touch();
+  canVerify();
 };
 
 const connect = async () => {
@@ -287,11 +291,5 @@ const connect = async () => {
     .finally(() => {
       loading.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfJiraSettingsDrawer',
 };
 </script>

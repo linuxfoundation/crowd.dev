@@ -41,6 +41,10 @@ import { useIntegrationStore } from '@/modules/integration/store/integration.sto
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 
+defineOptions({
+  name: 'IntegrationConfirmationModal',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   platform: string;
@@ -75,10 +79,4 @@ const disconnectIntegration = () => {
   integrationStore.destroy(props.integrationId);
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'IntegrationConfirmationModal',
-};
 </script>

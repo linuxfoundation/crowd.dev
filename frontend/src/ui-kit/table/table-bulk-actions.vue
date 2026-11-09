@@ -11,13 +11,11 @@
 <script setup lang="ts">
 import pluralize from 'pluralize';
 
+defineOptions({
+  name: 'LfTableBulkActions',
+});
+
 defineProps<{
   selectedItems: unknown[];
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTableBulkActions',
-};
 </script>

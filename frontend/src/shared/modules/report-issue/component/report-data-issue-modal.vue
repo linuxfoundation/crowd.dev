@@ -137,6 +137,10 @@ import authAxios from '@/shared/axios/auth-axios';
 import { ToastStore } from '@/shared/message/notification';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfReportDataIssueModal',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   type?: ReportDataType,
@@ -221,11 +225,5 @@ const submit = () => {
     .finally(() => {
       loading.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfReportDataIssueModal',
 };
 </script>

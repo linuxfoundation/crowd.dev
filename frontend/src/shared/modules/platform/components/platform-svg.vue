@@ -10,6 +10,10 @@
 import LfSvg from '@/shared/svg/svg.vue';
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'AppPlatformSvg',
+});
+
 const props = defineProps<{
     platform: string;
     size?: string;
@@ -25,10 +29,4 @@ const svgClass = computed(() => {
 
   return 'max-w-[16px] h-4';
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppPlatformSvg',
-};
 </script>

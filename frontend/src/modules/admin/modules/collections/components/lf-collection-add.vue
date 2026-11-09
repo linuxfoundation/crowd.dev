@@ -239,6 +239,10 @@ import type {
 import type { InsightsProjectModel } from '../../insights-projects/models/insights-project.model';
 import { COLLECTIONS_SERVICE } from '../services/collections.service';
 
+defineOptions({
+  name: 'LfCollectionAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   collection?: CollectionModel;
@@ -316,31 +320,6 @@ const onCancel = () => {
   model.value = false;
 };
 
-const onSubmit = () => {
-  const request: CollectionRequest = {
-    name: form.name,
-    description: form.description,
-    logoUrl: form.logoUrl || undefined,
-    imageUrl: form.imageUrl || undefined,
-    color: form.color || undefined,
-    projects: form.projects.map((project) => ({
-      id: project.id,
-      starred: project?.starred || false,
-    })),
-    starred: !!form.starred,
-    categoryId: form.categoryId,
-    slug: form.name.toLowerCase().replace(/ /g, '-'),
-  };
-  if (isEditForm.value) {
-    updateMutation.mutate({
-      id: props.collection!.id,
-      form: request,
-    });
-  } else {
-    createMutation.mutate(request);
-  }
-};
-
 const invalidate = useInvalidate();
 const onSuccess = () => {
   invalidate.collections();
@@ -374,6 +353,31 @@ const updateMutation = useMutation({
   onError,
 });
 
+const onSubmit = () => {
+  const request: CollectionRequest = {
+    name: form.name,
+    description: form.description,
+    logoUrl: form.logoUrl || undefined,
+    imageUrl: form.imageUrl || undefined,
+    color: form.color || undefined,
+    projects: form.projects.map((project) => ({
+      id: project.id,
+      starred: project?.starred || false,
+    })),
+    starred: !!form.starred,
+    categoryId: form.categoryId,
+    slug: form.name.toLowerCase().replace(/ /g, '-'),
+  };
+  if (isEditForm.value) {
+    updateMutation.mutate({
+      id: props.collection!.id,
+      form: request,
+    });
+  } else {
+    createMutation.mutate(request);
+  }
+};
+
 const categories = ref<CategoryGroup[]>([]);
 
 const fetchCategories = (query: string) => {
@@ -397,12 +401,6 @@ watch(
     fetchCategories('');
   },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCollectionAdd',
-};
 </script>
 
 <style lang="scss">

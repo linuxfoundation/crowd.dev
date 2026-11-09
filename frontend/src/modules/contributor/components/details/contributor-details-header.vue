@@ -48,6 +48,10 @@ import LfContributorDetailsHeaderProfiles
 import LfContributorDetailsHeaderProfilePhoto
   from '@/modules/contributor/components/details/header/contributor-details-header-profile-photo.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsHeader',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -63,10 +67,4 @@ const hasHeaderIdentities = computed(
 const organization = computed(() => activeProfileOrganization(props.contributor));
 const jobTitle = computed(() => props.contributor.attributes?.jobTitle?.default
     || organization.value?.memberOrganizations?.title);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsHeader',
-};
 </script>

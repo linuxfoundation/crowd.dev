@@ -22,15 +22,13 @@ import { computed } from 'vue';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfContributorSyncingActivities',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
 
 const inProgress = computed(() => props.contributor.activitySycning?.state === MergeActionState.IN_PROGRESS);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorSyncingActivities',
-};
 </script>

@@ -87,6 +87,10 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 
+defineOptions({
+  name: 'LfGithubSettingsRepositoriesBulkSelect',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   repositories: GitHubSettingsRepository[];
@@ -149,11 +153,5 @@ const mapRepos = () => {
   emit('apply', data);
   reset();
   isModalVisible.value = false;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsRepositoriesBulkSelect',
 };
 </script>

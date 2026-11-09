@@ -21,10 +21,14 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { RedditSettings } from '@/config/integrations/reddit/types/RedditSettings';
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfRedditSettingsDrawer from '@/config/integrations/reddit/components/reddit-settings-drawer.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({
+  name: 'AppRedditConnect',
+});
 
 const props = defineProps<{
   integration: Integration<RedditSettings> | undefined,
@@ -32,10 +36,4 @@ const props = defineProps<{
   grandparentId: string,
 }>();
 const isRedditSettingsDrawerOpen = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppRedditConnect',
-};
 </script>

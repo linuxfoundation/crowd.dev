@@ -268,6 +268,10 @@ import type {
 } from '@/modules/organization/types/Organization';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 
+defineOptions({
+  name: 'AppOrganizationUnmergeDialog',
+});
+
 const props = defineProps<{
   modelValue: Organization | null;
   selectedIdentity?: OrganizationIdentity | null;
@@ -349,13 +353,6 @@ const identities = computed(() => {
     .map((i) => parseIdentityValues(i));
 });
 
-const changeIdentity = (identity: OrganizationIdentityParsed) => {
-  localSelectedIdentity.value = identity;
-  resetRevertPreviousMerge();
-  getCanRevertMerge(identity);
-  fetchPreview(identity);
-};
-
 const fetchPreview = (identity: OrganizationIdentityParsed) => {
   if (fetchingPreview.value) {
     return;
@@ -393,6 +390,13 @@ const getCanRevertMerge = (identity: OrganizationIdentityParsed) => {
     .catch(() => {
       canRevertPreviousMerge.value = false;
     });
+};
+
+const changeIdentity = (identity: OrganizationIdentityParsed) => {
+  localSelectedIdentity.value = identity;
+  resetRevertPreviousMerge();
+  getCanRevertMerge(identity);
+  fetchPreview(identity);
 };
 
 const unmerge = () => {
@@ -437,10 +441,4 @@ onMounted(() => {
     changeIdentity(identity);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationUnmergeDialog',
-};
 </script>

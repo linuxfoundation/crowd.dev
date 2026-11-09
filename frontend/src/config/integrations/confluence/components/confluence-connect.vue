@@ -19,10 +19,14 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { ConfluenceSettings } from '@/config/integrations/confluence/types/ConfluenceSettings';
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfConfluenceSettingsDrawer from '@/config/integrations/confluence/components/confluence-settings-drawer.vue';
+
+defineOptions({
+  name: 'LfConfluenceConnect',
+});
 
 const props = defineProps<{
   integration: Integration<ConfluenceSettings> | undefined;
@@ -31,10 +35,4 @@ const props = defineProps<{
 }>();
 
 const isConfluenceSettingsDrawerVisible = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfConfluenceConnect',
-};
 </script>

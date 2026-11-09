@@ -15,12 +15,10 @@ import { useSharedStore } from '@/shared/pinia/shared.store';
 import { storeToRefs } from 'pinia';
 import LfReportDataIssueModal from '@/shared/modules/report-issue/component/report-data-issue-modal.vue';
 
+defineOptions({
+  name: 'LfGlobals',
+});
+
 const sharedStore = useSharedStore();
 const { reportDataModal } = storeToRefs(sharedStore);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGlobals',
-};
 </script>

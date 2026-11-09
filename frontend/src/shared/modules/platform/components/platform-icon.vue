@@ -11,6 +11,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppPlatformIcon',
+});
+
 const props = defineProps<{
   platform: string;
   size: string;
@@ -29,10 +33,4 @@ const iconClass = computed(() => {
 
   return 'text-base leading-4';
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppPlatformIcon',
-};
 </script>

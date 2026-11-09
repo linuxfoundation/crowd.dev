@@ -108,6 +108,10 @@ import { segmentService } from '@/modules/lf/segments/segments.service';
 
 import { ToastStore } from '@/shared/message/notification';
 
+defineOptions({
+  name: 'AppLfProjectGroupsPage',
+});
+
 const authStore = useAuthStore();
 const { roles } = storeToRefs(authStore);
 
@@ -212,11 +216,5 @@ const onSearchProjectGroup = (val: string) => {
   });
 
   searchQuery.value = val;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupsPage',
 };
 </script>

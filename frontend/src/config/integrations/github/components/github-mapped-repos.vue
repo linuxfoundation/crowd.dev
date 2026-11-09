@@ -29,6 +29,10 @@ import type { IntegrationMapping } from '@/modules/admin/modules/integration/typ
 import type { MappedRepos } from '@/modules/integration/types/IntegrationResponse';
 import pluralize from 'pluralize';
 
+defineOptions({
+  name: 'LfGithubMappedRepos',
+});
+
 const props = defineProps<{
   segmentId: string;
 }>();
@@ -66,10 +70,4 @@ onMounted(() => {
     mappedReposWithOtherProject.value = res;
   });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubMappedRepos',
-};
 </script>

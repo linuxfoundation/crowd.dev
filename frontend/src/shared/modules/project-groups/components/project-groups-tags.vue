@@ -36,15 +36,13 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfTag from '@/ui-kit/tag/Tag.vue';
 
+defineOptions({
+  name: 'LfProjectGroupsTags',
+});
+
 const props = defineProps<{
   segments: string[];
 }>();
 
 const projectGroups = computed(() => getProjectGroupsThroughSegments(props.segments));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfProjectGroupsTags',
-};
 </script>
