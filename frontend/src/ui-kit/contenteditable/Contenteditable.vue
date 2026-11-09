@@ -11,6 +11,10 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 
+defineOptions({
+  name: 'LfConteneditable',
+});
+
 const props = defineProps<{
   modelValue: string,
 }>();
@@ -41,10 +45,4 @@ watch(() => props.modelValue, () => {
 onMounted(() => {
   setDefualtValue();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfConteneditable',
-};
 </script>

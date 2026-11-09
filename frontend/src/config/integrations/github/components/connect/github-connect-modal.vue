@@ -146,6 +146,10 @@ import { useIntegrationStore } from '@/modules/integration/store/integration.sto
 import LfSvg from '@/shared/svg/svg.vue';
 import type { GithubInstallation } from '@/modules/integration/types/IntegrationResponse';
 
+defineOptions({
+  name: 'LfGithubConnectModal',
+});
+
 const props = defineProps<{
   modelValue: boolean,
 }>();
@@ -204,10 +208,4 @@ const getGithubInstallations = () => {
 onMounted(() => {
   getGithubInstallations();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubConnectModal',
-};
 </script>
