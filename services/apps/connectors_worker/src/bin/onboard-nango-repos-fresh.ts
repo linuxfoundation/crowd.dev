@@ -8,6 +8,7 @@ import {
   resolveRepo,
 } from '@crowd/connectors/src/connectors/github/discover'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
+import { fetchGithubLifecycleIntegration } from '@crowd/data-access-layer/src/integrations'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
@@ -16,6 +17,7 @@ import {
 } from '@crowd/data-access-layer/src/repositories'
 import { getServiceLogger } from '@crowd/logging'
 import { githubChannelName } from '@crowd/nango'
+import { PlatformType } from '@crowd/types'
 
 import { isRenamedRepo } from '../githubLifecycle'
 import { lifecycleSkipReasonFor } from '../githubSkipReasons'
@@ -58,6 +60,10 @@ async function onboardOne(
   const repository = await findLiveRepository(qx, repo)
   if (!repository?.sourceIntegrationId) {
     return { ...row, outcome: 'skipped', reason: 'no repository row' }
+  }
+  const integration = await fetchGithubLifecycleIntegration(qx, repository.sourceIntegrationId)
+  if (integration?.platform !== PlatformType.GITHUB_NANGO || integration.deletedAt !== null) {
+    return { ...row, outcome: 'skipped', reason: 'integration is not a live github-nango one' }
   }
 
   let channel: ResolvedGithubRepo
