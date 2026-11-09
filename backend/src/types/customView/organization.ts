@@ -40,7 +40,7 @@ const mostMembers: ICustomView = {
 }
 
 const teamOrganizations: ICustomView = {
-  name: 'Team organizations',
+  name: 'Team companies',
   config: {
     search: '',
     relation: 'and',

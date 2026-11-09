@@ -613,7 +613,7 @@ export async function findOrCreateOrganization(
   let verifiedIdentities = data.identities.filter((i) => i.verified)
 
   if (verifiedIdentities.length === 0 && !data.displayName) {
-    const message = `Missing organization identity or displayName while creating/updating organization!`
+    const message = `Missing company identity or displayName while creating/updating company!`
     log.error(data, message)
     throw new UnrepeatableError(message)
   }

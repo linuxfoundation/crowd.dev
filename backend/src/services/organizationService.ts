@@ -971,7 +971,7 @@ export default class OrganizationService extends LoggerBase {
     const verifiedIdentities = data.identities.filter((i) => i.verified)
 
     if (verifiedIdentities.length === 0) {
-      const message = `Missing organization identity while creating/updating organization!`
+      const message = `Missing company identity while creating/updating company!`
       this.log.error(data, message)
       throw new Error(message)
     }
