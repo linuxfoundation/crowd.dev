@@ -229,8 +229,8 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
       )
     }
 
-    if (data.linkedin_url) {
-      const linkedinHandle = data.linkedin_url.split('/').pop()
+    const linkedinHandle = data.linkedin_url?.split('/').filter(Boolean).pop()?.trim()
+    if (linkedinHandle) {
       normalized = normalizeSocialIdentity(
         {
           handle: linkedinHandle,
