@@ -110,6 +110,10 @@ import { useSharedStore } from '@/shared/pinia/shared.store';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 
+defineOptions({
+  name: 'LfOrganizationDetailsEmailItem',
+});
+
 const props = defineProps<{
   email: OrganizationIdentity & { platforms: string[] },
   organization: Organization
@@ -139,11 +143,5 @@ const removeEmail = () => {
     .catch(() => {
       ToastStore.error('Something went wrong while deleting an email');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsEmailItem',
 };
 </script>

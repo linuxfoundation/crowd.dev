@@ -21,6 +21,10 @@ SPDX-License-Identifier: MIT
 import { ref } from 'vue';
 import type { ChipSize, ChipType } from './types/chip.types';
 
+defineOptions({
+  name: 'LfxChip',
+});
+
 const props = withDefaults(
   defineProps<{
     size?: ChipSize;
@@ -40,11 +44,5 @@ const isVisible = ref(true);
 const dismiss = () => {
   isVisible.value = false;
   emit('dismissed');
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxChip',
 };
 </script>

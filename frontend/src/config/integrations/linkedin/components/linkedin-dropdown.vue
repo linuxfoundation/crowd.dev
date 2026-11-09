@@ -8,9 +8,12 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
-import { defineProps } from 'vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfLinkedinDropdown',
+});
 
 defineProps<{
   integration: Integration<LinkedinSettings> | undefined;
@@ -20,10 +23,4 @@ defineProps<{
 
 const emit = defineEmits<{(e: 'open-setting'): void;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLinkedinDropdown',
-};
 </script>

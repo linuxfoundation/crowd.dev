@@ -68,6 +68,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfHackernewsParams',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -77,10 +81,4 @@ const props = defineProps({
 
 const urls = computed<string[]>(() => props.integration.settings.urls);
 const keywords = computed<string[]>(() => props.integration.settings.keywords);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfHackernewsParams',
-};
 </script>

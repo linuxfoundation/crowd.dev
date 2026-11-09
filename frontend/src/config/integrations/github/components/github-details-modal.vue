@@ -112,6 +112,10 @@ import { computed } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfGithubDetailsModal',
+});
+
 const props = defineProps<{
   modelValue: boolean;
 }>();
@@ -134,10 +138,4 @@ const lfxImage = new URL(
   '@/assets/images/integrations/custom/lfx.png',
   import.meta.url,
 ).href;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubDetailsModal',
-};
 </script>

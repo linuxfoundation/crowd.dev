@@ -84,6 +84,10 @@ import {
 import type { Organization, OrganizationIdentity } from '@/modules/organization/types/Organization';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfOrganizationDetailsHeaderProfiles',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -105,12 +109,6 @@ const platformIdentities = computed(() => {
   });
   return data;
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsHeaderProfiles',
-};
 </script>
 
 <style scoped lang="scss">

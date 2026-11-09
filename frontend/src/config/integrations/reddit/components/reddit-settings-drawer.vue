@@ -97,8 +97,6 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { RedditSettings, RedditSubredditForm } from '@/config/integrations/reddit/types/RedditSettings';
 import {
-  defineEmits,
-  defineProps,
   computed,
   ref,
   watch,
@@ -118,6 +116,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfRedditSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -256,12 +258,6 @@ watch(isVisible, (newValue, oldValue) => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfRedditSettingsDrawer',
-};
 </script>
 
 <style lang="scss">

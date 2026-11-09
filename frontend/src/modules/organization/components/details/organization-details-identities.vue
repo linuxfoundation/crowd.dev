@@ -85,6 +85,10 @@ import LfOrganizationDetailsIdentityItem
 import LfOrganizationIdentityAdd from '@/modules/organization/components/edit/identity/organization-identity-add.vue';
 import LfOrganizationIdentityEdit from '@/modules/organization/components/edit/identity/organization-identity-edit.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsIdentities',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -107,11 +111,5 @@ const unmerge = (identity?: OrganizationIdentity) => {
     selectedIdentity.value = identity;
   }
   isUnmergeDialogOpen.value = props.organization;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsIdentities',
 };
 </script>

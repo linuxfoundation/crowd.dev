@@ -30,10 +30,14 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import { withHttp } from '@/utils/string';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
+
+defineOptions({
+  name: 'LfOrganizationAttributeArray',
+});
 
 const props = defineProps<{
   data: string[],
@@ -43,10 +47,4 @@ const props = defineProps<{
 const limit = 10;
 
 const showMore = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAttributeArray',
-};
 </script>

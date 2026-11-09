@@ -21,6 +21,10 @@ SPDX-License-Identifier: MIT
 <script lang="ts" setup>
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfxDropdownSelector',
+});
+
 const props = withDefaults(
   defineProps<{
     size?: 'medium' | 'small';
@@ -31,10 +35,4 @@ const props = withDefaults(
     type: 'transparent',
   },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxDropdownSelector',
-};
 </script>

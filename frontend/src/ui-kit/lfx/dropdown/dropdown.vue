@@ -33,6 +33,10 @@ import type { Placement } from '@popperjs/core';
 import LfxPopover from '@/ui-kit/lfx/popover/popover.vue';
 import useResponsive from '@/utils/responsive';
 
+defineOptions({
+  name: 'LfxDropdown',
+});
+
 const props = withDefaults(
   defineProps<{
     placement?: Placement;
@@ -69,10 +73,4 @@ const isVisible = computed({
 const popover = ref<typeof LfxPopover | null>(null);
 
 const { pageWidth } = useResponsive();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxDropdown',
-};
 </script>

@@ -72,6 +72,10 @@ import LfOrganizationDetailsDomainsAddDropdown
 import LfOrganizationDomainAdd from '@/modules/organization/components/edit/domain/organization-domain-add.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsDomains',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -93,11 +97,5 @@ const unmerge = (identity?: OrganizationIdentity) => {
     selectedIdentity.value = identity;
   }
   isUnmergeDialogOpen.value = props.organization;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsDomains',
 };
 </script>

@@ -13,6 +13,10 @@ import { computed, ref } from 'vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfInputPassword',
+});
+
 const props = defineProps<{
   modelValue: string,
 }>();
@@ -29,10 +33,4 @@ const value = computed<string>({
 });
 
 const reveal = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInputPassword',
-};
 </script>

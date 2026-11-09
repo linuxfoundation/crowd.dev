@@ -5,6 +5,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue';
 
+defineOptions({
+  name: 'LfScrollBodyControll',
+});
+
 const emit = defineEmits<{(e: 'bottom'): void }>();
 
 let mainPageWrapper: HTMLElement | null = null;
@@ -30,10 +34,4 @@ onBeforeUnmount(() => {
     mainPageWrapper.removeEventListener('scroll', handleScroll);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfScrollBodyControll',
-};
 </script>

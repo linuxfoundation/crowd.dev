@@ -20,6 +20,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfTableHead',
+});
+
 const props = defineProps<{
   modelValue?: string,
   property?: string,
@@ -43,11 +47,5 @@ const sort = () => {
   } else {
     model.value = `${props.property}_DESC`;
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTableHead',
 };
 </script>

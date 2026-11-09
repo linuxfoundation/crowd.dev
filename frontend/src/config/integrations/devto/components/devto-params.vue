@@ -67,6 +67,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppGithubSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -78,10 +82,4 @@ const organizations = computed<string[]>(
   () => props.integration.settings.organizations,
 );
 const users = computed<string[]>(() => props.integration.settings.users);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettings',
-};
 </script>

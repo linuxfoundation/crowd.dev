@@ -8,9 +8,12 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { RedditSettings } from '@/config/integrations/reddit/types/RedditSettings';
-import { defineProps } from 'vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfRedditDropdown',
+});
 
 defineProps<{
   integration: Integration<RedditSettings> | undefined,
@@ -20,10 +23,4 @@ defineProps<{
 
 const emit = defineEmits<{(e: 'open-setting'): void;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfRedditDropdown',
-};
 </script>
