@@ -134,24 +134,27 @@ if (parameters.help || !parameters.tenantId) {
         }
 
         if (displayName) {
-          await updateOrgDisplayName(qx, org.id, displayName)
+          // the writes commit one by one, so a failed second one leaves the first in place
+          try {
+            await updateOrgDisplayName(qx, org.id, displayName)
 
-          if (updateAttributes) {
-            await OrganizationRepository.updateOrgAttributes(
-              org.id,
-              {
-                attributes: {
-                  name: {
-                    custom: [displayName],
-                    default: displayName,
+            if (updateAttributes) {
+              await OrganizationRepository.updateOrgAttributes(
+                org.id,
+                {
+                  attributes: {
+                    name: {
+                      custom: [displayName],
+                      default: displayName,
+                    },
                   },
                 },
-              },
-              options,
-            )
+                options,
+              )
+            }
+          } finally {
+            await markOrganizationsChanged(options.redis, [org.id], getServiceLogger())
           }
-
-          await markOrganizationsChanged(options.redis, [org.id], getServiceLogger())
         } else {
           console.log(`Organization ${org.id} does not have displayName`)
         }
