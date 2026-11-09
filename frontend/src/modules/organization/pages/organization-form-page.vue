@@ -100,7 +100,6 @@
           >
             <app-organization-form-details
               v-model="formModel"
-              :fields="fields"
             />
             <el-divider
               class="!mb-6 !mt-8 !border-gray-200"
@@ -147,12 +146,12 @@
 
 <script setup>
 import {
-  computed, h, onMounted, onUnmounted, reactive, ref, watch,
+  computed, h, onMounted, onUnmounted, ref, watch,
 } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import isEqual from 'lodash/isEqual';
-import { OrganizationModel } from '@/modules/organization/organization-model';
-import { FormSchema } from '@/shared/form/form-schema';
+import useVuelidate from '@vuelidate/core';
+import { integer, required } from '@vuelidate/validators';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import AppOrganizationFormIdentities from '@/modules/organization/components/form/organization-form-identities.vue';
 import AppOrganizationFormDetails from '@/modules/organization/components/form/organization-form-details.vue';
@@ -194,33 +193,32 @@ const ArrowPrevIcon = h(
   [],
 );
 
-const { fields } = OrganizationModel;
-const formSchema = new FormSchema([
-  fields.name,
-  fields.displayName,
-  fields.description,
-  fields.location,
-  fields.employees,
-  fields.revenueRange,
-  fields.emails,
-  fields.identities,
-  fields.type,
-  fields.size,
-  fields.industry,
-  fields.founded,
-  fields.averageEmployeeTenure,
-  fields.averageTenureByLevel,
-  fields.averageTenureByRole,
-  fields.employeeChurnRate,
-  fields.employeeCountByCountry,
-  fields.employeeCountByMonth,
-  fields.employeeGrowthRate,
-  fields.gicsSector,
-  fields.grossAdditionsByMonth,
-  fields.grossDeparturesByMonth,
-  fields.immediateParent,
-  fields.ultimateParent,
-]);
+const FORM_FIELDS = [
+  'name',
+  'displayName',
+  'description',
+  'location',
+  'employees',
+  'revenueRange',
+  'emails',
+  'identities',
+  'organizationType',
+  'size',
+  'industry',
+  'founded',
+  'averageEmployeeTenure',
+  'averageTenureByLevel',
+  'averageTenureByRole',
+  'employeeChurnRate',
+  'employeeCountByCountry',
+  'employeeCountByMonth',
+  'employeeGrowthRate',
+  'gicsSector',
+  'grossAdditionsByMonth',
+  'grossDeparturesByMonth',
+  'immediateParent',
+  'ultimateParent',
+];
 
 const { trackEvent } = useProductTracking();
 
@@ -251,21 +249,23 @@ const selectedSegments = computed(() => {
 });
 
 function getInitialModel(record) {
-  return JSON.parse(
-    JSON.stringify(
-      formSchema.initialValues({
-        ...(record || {}),
-        name: record ? record.name : '',
-        displayName: record ? record.displayName || record.name : '',
-        joinedAt: record ? record.joinedAt : '',
-        identities: record
-          ? [
-            ...record.identities,
-          ]
-          : [],
-      }),
-    ),
-  );
+  const source = {
+    ...(record || {}),
+    name: record ? record.name : '',
+    displayName: record ? record.displayName || record.name : '',
+    identities: record ? [...record.identities] : [],
+  };
+  const model = {};
+
+  FORM_FIELDS.forEach((key) => {
+    const value = key === 'emails' ? source.emails || [] : source[key];
+
+    if (value) {
+      model[key] = value;
+    }
+  });
+
+  return JSON.parse(JSON.stringify(model));
 }
 
 const record = ref(null);
@@ -276,11 +276,19 @@ const isPageLoading = ref(true);
 const isFormSubmitting = ref(false);
 const wasFormSubmittedSuccessfully = ref(false);
 
-const rules = reactive(formSchema.rules());
+const rules = {
+  displayName: [{ required: true, message: 'This field is required' }],
+};
+// $scope: false keeps child vuelidate instances (email rows) out of the Save button's validity.
+const $v = useVuelidate(
+  { displayName: { required }, founded: { integer } },
+  formModel,
+  { $scope: false },
+);
 
 // UI Validations
 const isEditPage = computed(() => !!route.params.id);
-const isFormValid = computed(() => formSchema.isValidSync(formModel.value));
+const isFormValid = computed(() => !$v.value.$invalid);
 
 const segments = computed(() => {
   if (!isEditPage.value) {
