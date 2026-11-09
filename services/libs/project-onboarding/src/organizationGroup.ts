@@ -1,3 +1,4 @@
+import { canonicalizeRepoUrl } from '@crowd/common'
 import { findProjectCatalogBySourceUrl } from '@crowd/data-access-layer'
 import {
   IDbProjectCatalog,
@@ -7,19 +8,22 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   IReviewOrganization,
   escapeSlackText,
-  organizationLabel,
   repositoriesWord,
+  reviewGroupLabel,
 } from '@crowd/slack'
 
-import { OrganizationGroupRow, organizationGroupKey, organizationOf } from './organizationGrouping'
+import { OrganizationGroupRow, requestGroupKey, requestGroupOf } from './organizationGrouping'
 
 export {
   createsNewProject,
   joinsExistingProject,
   onboardsWithOrganization,
-  organizationGroupKey,
   organizationOf,
+  requestGroupId,
+  requestGroupKey,
+  requestGroupOf,
   sameReviewProposal,
+  type IRequestGroup,
   type OrganizationGroupRow,
 } from './organizationGrouping'
 
@@ -38,38 +42,45 @@ export function sameQuestion(
   )
 }
 
-export function organizationSiblings<T extends OrganizationGroupRow>(rows: T[], lead: T): T[] {
-  const key = organizationGroupKey(lead)
+export function requestGroupSiblings<T extends OrganizationGroupRow>(rows: T[], lead: T): T[] {
+  const key = requestGroupKey(lead)
   if (!key) {
     return []
   }
-  return rows.filter((row) => row.id !== lead.id && organizationGroupKey(row) === key)
+  return rows.filter((row) => row.id !== lead.id && requestGroupKey(row) === key)
 }
 
-export async function findOrganizationSiblings(
+export async function findRequestGroupSiblings(
   qx: QueryExecutor,
   lead: IDbProjectCatalog,
   keep: (row: IDbProjectCatalog) => boolean,
 ): Promise<IDbProjectCatalog[]> {
-  if (!organizationOf(lead) || !lead.sourceUrl) {
+  if (!lead.sourceUrl || !requestGroupKey(lead)) {
     return []
   }
   const rows = await findProjectCatalogBySourceUrl(qx, lead.sourceUrl)
-  return organizationSiblings(rows, lead).filter(keep)
+  return requestGroupSiblings(rows, lead).filter(keep)
 }
 
 export type IOrganizationReview = IReviewOrganization
 
-export function organizationReviewOf(
-  lead: Pick<IDbProjectCatalog, 'requestHints'>,
+export function requestGroupReviewOf(
+  lead: Pick<IDbProjectCatalog, 'requestHints' | 'repoUrl'>,
   siblings: number,
 ): IOrganizationReview | null {
-  const owner = organizationOf(lead)
-  return owner && siblings > 0 ? { owner, repositories: siblings + 1 } : null
+  const group = requestGroupOf(lead)
+  if (!group || siblings === 0) {
+    return null
+  }
+  const repositories = siblings + 1
+  if (group.kind === 'organization') {
+    return { owner: group.owner, repositories }
+  }
+  return { owner: canonicalizeRepoUrl(lead.repoUrl)?.owner ?? '', name: group.name, repositories }
 }
 
-export function organizationSubject({ owner, repositories }: IOrganizationReview): string {
-  return `*${escapeSlackText(organizationLabel(owner))}* (${repositories} ${repositoriesWord(repositories)})`
+export function organizationSubject(organization: IOrganizationReview): string {
+  return `*${escapeSlackText(reviewGroupLabel(organization))}* (${organization.repositories} ${repositoriesWord(organization.repositories)})`
 }
 
 export function hasManyRepositories(organization: IOrganizationReview | null): boolean {

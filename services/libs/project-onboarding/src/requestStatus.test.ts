@@ -182,6 +182,24 @@ describe('buildRequestStatusContent', () => {
     expect(content.text).toBe('⏳ *<https://github.com/acme/one|acme/one>* · checking…')
   })
 
+  it('folds the repositories of a project group into one line named after the project', () => {
+    const hints = { project: 'Acme <Tools>', mainRepoUrl: ONE }
+    const content = buildRequestStatusContent({
+      header: { lines: [], buttons: [], alreadyTracked: 0 },
+      rows: [
+        row({ repoUrl: ONE, requestHints: hints, action: 'review', reviewReason: 'needs a look' }),
+        row({ repoUrl: TWO, requestHints: hints, action: 'review', reviewReason: 'needs a look' }),
+        row({ repoUrl: 'https://github.com/acme/solo', requestHints: { project: 'Other' } }),
+      ],
+    })
+
+    expect(content.text.split('\n')).toEqual([
+      '👀 *Acme &lt;Tools&gt;* · 2 repositories · with the CDP team: needs a look',
+      '⏳ *<https://github.com/acme/solo|acme/solo>* · checking…',
+      '_2 with the CDP team, 1 checking_',
+    ])
+  })
+
   it('folds the repositories of an organization request into one line', () => {
     const org = (repoUrl: string, overrides: Partial<RequestStatusRow> = {}) =>
       row({ repoUrl, requestHints: { organization: 'acme' }, ...overrides })

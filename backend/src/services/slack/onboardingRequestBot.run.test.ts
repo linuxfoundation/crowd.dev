@@ -320,7 +320,13 @@ describe('runOnboardingRequestBot', () => {
 
     expect(upsertSlackOnboardingRequest).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ header: { lines: [], buttons: [], alreadyTracked: 0 } }),
+      expect.objectContaining({
+        header: {
+          lines: ["I'll add these 2 repositories to one project, *Acme*."],
+          buttons: [],
+          alreadyTracked: 0,
+        },
+      }),
     )
   })
 
@@ -547,7 +553,7 @@ describe('runOnboardingRequestBot', () => {
       {
         repoUrl: 'https://github.com/openbmc/docs',
         sourceUrl: 'https://acme.slack.com/archives/C1/p1',
-        organization: 'openbmc',
+        requestHints: { organization: 'openbmc' },
         requestText: 'onboard OpenBMC https://github.com/openbmc/',
         projectName: 'OpenBMC',
         requestedBy: 'U1',
