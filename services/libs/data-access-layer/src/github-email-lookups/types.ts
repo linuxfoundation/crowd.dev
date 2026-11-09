@@ -5,6 +5,8 @@ export type GithubEmailLookupResult =
   | 'github-id-mismatch'
   | 'no-github-account'
   | 'commit-not-found'
+  | 'bot-account'
+  | 'repo-inaccessible'
 
 export interface IGithubEmailLookup {
   email: string
@@ -14,12 +16,15 @@ export interface IGithubEmailLookup {
   commitSha: string
 }
 
-export interface IGitAuthor {
+export interface IGitAuthorCommit {
+  repoUrl: string
+  commitSha: string
+}
+
+export interface IGitAuthor extends IGitAuthorCommit {
   memberId: string
   email: string
   integrationId: string | null
-  repoUrl: string
-  commitSha: string
 }
 
 export interface IGitAuthorsPage {
@@ -30,4 +35,5 @@ export interface IGitAuthorsPage {
 export interface IGithubAccountOwner {
   memberId: string
   githubId: string | null
+  isBot: boolean
 }

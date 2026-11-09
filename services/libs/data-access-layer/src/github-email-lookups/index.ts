@@ -1,7 +1,13 @@
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-import { IGitAuthor, IGitAuthorsPage, IGithubAccountOwner, IGithubEmailLookup } from './types'
+import {
+  IGitAuthor,
+  IGitAuthorCommit,
+  IGitAuthorsPage,
+  IGithubAccountOwner,
+  IGithubEmailLookup,
+} from './types'
 
 export * from './types'
 
@@ -48,6 +54,9 @@ async function findUnresolvedGitAuthors(
         i."memberId", i.email, i."integrationId", c."repoUrl", c."commitSha"
       from unnest($(memberIds)::uuid[], $(emails)::text[], $(integrationIds)::uuid[])
         as i("memberId", email, "integrationId")
+      join members m on m.id = i."memberId"
+        and m."deletedAt" is null
+        and coalesce((m.attributes -> 'isBot' ->> 'default')::boolean, false) = false
       cross join lateral (
         select ar.channel as "repoUrl", ar."sourceId" as "commitSha"
         from "activityRelations" ar
@@ -94,19 +103,49 @@ export async function findGitAuthorsPage(
   }
 }
 
+export async function findGitAuthorCommitOutsideOwners(
+  qx: QueryExecutor,
+  author: Pick<IGitAuthor, 'memberId' | 'email'>,
+  excludedOwners: string[],
+): Promise<IGitAuthorCommit | null> {
+  return qx.selectOneOrNone(
+    `
+      select ar.channel as "repoUrl", ar."sourceId" as "commitSha"
+      from "activityRelations" ar
+      where ar."memberId" = $(memberId)
+        and ar.platform = $(platform)
+        and ar.type = 'authored-commit'
+        and ar.channel like 'https://github.com/%'
+        and lower(ar.username) = $(email)
+        and lower(split_part(ar.channel, '/', 4)) <> all($(excludedOwners)::text[])
+      limit 1
+    `,
+    {
+      memberId: author.memberId,
+      email: author.email,
+      platform: PlatformType.GIT,
+      excludedOwners,
+    },
+  )
+}
+
 export async function findGithubAccountOwner(
   qx: QueryExecutor,
   login: string,
 ): Promise<IGithubAccountOwner | null> {
   return qx.selectOneOrNone(
     `
-      select "memberId", "sourceId" as "githubId"
-      from "memberIdentities"
-      where platform = $(platform)
-        and type = $(type)
-        and verified = true
-        and "deletedAt" is null
-        and lower(value) = lower($(login))
+      select
+        mi."memberId",
+        mi."sourceId" as "githubId",
+        coalesce((m.attributes -> 'isBot' ->> 'default')::boolean, false) as "isBot"
+      from "memberIdentities" mi
+      join members m on m.id = mi."memberId"
+      where mi.platform = $(platform)
+        and mi.type = $(type)
+        and mi.verified = true
+        and mi."deletedAt" is null
+        and lower(mi.value) = lower($(login))
     `,
     { platform: PlatformType.GITHUB, type: MemberIdentityType.USERNAME, login },
   )
