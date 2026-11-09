@@ -78,9 +78,8 @@ function orgCacheKey(org: IOrganization): string | null {
   return null
 }
 
-// Per batch (through its org promise cache): the latest find-or-create call for each verified
-// identity. A call waits for the earlier ones that share an identity with it, so it finds the
-// organization they created instead of creating a duplicate when members are updated concurrently.
+// Per batch: the latest find-or-create of each verified identity. A call waits for earlier ones
+// sharing an identity, so concurrent member updates find the organization instead of duplicating it
 const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
 
 // The verified identities, and the name as the fallback. Without a display name, an organization
@@ -104,9 +103,8 @@ function orgLockKeys(org: IOrganization): string[] {
   return keys
 }
 
-// Per batch: the latest update of each existing organization. Calls with different identities can
-// resolve to the same organization (so the identity locks don't order them), and the data sink
-// has no transactions, so they update it one at a time.
+// Per batch: the latest update of each organization. Calls with different identities can reach the
+// same organization, and without transactions they update it one at a time
 const orgIdLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<void>>>()
 
 function lockOrganizationFor(orgPromiseCache: OrgPromiseCache) {
@@ -443,9 +441,8 @@ async function linkMemberOrganizationsOnce(
   const organizations: IOrganizationIdSource[] = []
   const orgService = new OrganizationService(store, temporal, log)
   for (const org of data.organizations ?? []) {
-    // Temp fix: skip the individual-noaccount.com placeholder org to avoid
-    // hot-row contention on the organizations table. Permanent fix is in
-    // tncTransformerBase.ts to stop emitting this org entirely.
+    // Temp fix against hot-row contention on this placeholder; tncTransformerBase.ts should stop
+    // emitting it
     if (org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')) {
       continue
     }

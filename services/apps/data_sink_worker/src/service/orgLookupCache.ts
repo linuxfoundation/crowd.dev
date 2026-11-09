@@ -116,8 +116,10 @@ export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLooku
         return
       }
       try {
+        // an absolute expiry: a SET that lands late must not outlive the marks that invalidate it
+        const expiresAt = Math.floor(Date.now() / 1000) + TTL_SECONDS
         await withinDeadline(
-          redis.set(lookupKey(payloadKey), `${result.id}:${startedAt}`, { EX: TTL_SECONDS }),
+          redis.set(lookupKey(payloadKey), `${result.id}:${startedAt}`, { EXAT: expiresAt }),
         )
       } catch (err) {
         log.warn({ err, organizationId: result.id }, 'Failed to cache an organization lookup!')
