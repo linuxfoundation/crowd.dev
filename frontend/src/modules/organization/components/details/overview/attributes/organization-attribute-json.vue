@@ -30,6 +30,10 @@
 import { computed, ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
+defineOptions({
+  name: 'LfOrganizationAttributeJson',
+});
+
 const props = defineProps<{
   data: Record<string, string>
 }>();
@@ -39,10 +43,4 @@ const limit = 10;
 const showMore = ref(false);
 
 const dataList = computed(() => Object.entries(props.data));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAttributeJson',
-};
 </script>

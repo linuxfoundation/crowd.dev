@@ -19,6 +19,10 @@ import { OrganizationIdentityType } from '@/modules/organization/types/Organizat
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsDomainsAddDropdown',
+});
+
 const emit = defineEmits<{(e: 'add', value: Partial<OrganizationIdentity>): void}>();
 
 const domainTypes: OrganizationIdentityType[] = [
@@ -26,10 +30,4 @@ const domainTypes: OrganizationIdentityType[] = [
   OrganizationIdentityType.ALTERNATIVE_DOMAIN,
 ];
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsDomainsAddDropdown',
-};
 </script>
