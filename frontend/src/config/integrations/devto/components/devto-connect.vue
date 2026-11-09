@@ -19,12 +19,16 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDevtoConnectDrawer from '@/config/integrations/devto/components/devto-connect-drawer.vue';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DevtoSettings } from '@/config/integrations/devto/types/DevtoSettings';
+
+defineOptions({
+  name: 'AppDevtoConnect',
+});
 
 const props = defineProps<{
   integration: Integration<DevtoSettings> | undefined,
@@ -33,10 +37,4 @@ const props = defineProps<{
 }>();
 
 const isDevtoConnectDrawerVisible = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppDevtoConnect',
-};
 </script>
