@@ -443,8 +443,8 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     const linkedinUrlHashmap = new Map<string, number>()
 
     for (const linkedin of input.linkedin) {
-      if (linkedin && linkedin.value && linkedin.verified) {
-        const handle = linkedin.value.replace(/\//g, '')
+      const handle = linkedin?.verified ? this.toScrapableLinkedinHandle(linkedin.value) : null
+      if (handle) {
         if (!linkedinUrlHashmap.get(handle)) {
           consumableIdentities.push({
             ...linkedin,
@@ -470,9 +470,9 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
           this.log,
         )
         const normalized = service.normalize(cache.data) as IMemberEnrichmentDataNormalized
-        if (normalized.identities.some((i) => i.platform === PlatformType.LINKEDIN)) {
-          const identity = normalized.identities.find((i) => i.platform === PlatformType.LINKEDIN)
-          const handle = identity.value.replace(/\//g, '')
+        const identity = normalized.identities.find((i) => i.platform === PlatformType.LINKEDIN)
+        const handle = identity ? this.toScrapableLinkedinHandle(identity.value) : null
+        if (handle) {
           if (!linkedinUrlHashmap.get(handle)) {
             consumableIdentities.push({
               ...identity,
@@ -492,6 +492,17 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     }
 
     return consumableIdentities
+  }
+
+  private toScrapableLinkedinHandle(value: string | undefined): string | null {
+    const handle = value?.replace(/\//g, '').trim()
+    if (!handle) return null
+
+    try {
+      return /\s/.test(decodeURIComponent(handle)) ? null : handle
+    } catch {
+      return null
+    }
   }
 
   normalize(profiles: IMemberEnrichmentDataCrustdata[]): IMemberEnrichmentDataNormalized[] {
