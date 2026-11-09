@@ -22,6 +22,10 @@ import { computed, onMounted, ref } from 'vue';
 import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import LfGithubMappingsDisplay from '@/config/integrations/github/components/github-mappings-display.vue';
 
+defineOptions({
+  name: 'LfGithubParams',
+});
+
 const props = defineProps<{
   integration: Integration<GitHubSettings>;
 }>();
@@ -52,10 +56,4 @@ onMounted(() => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubParams',
-};
 </script>

@@ -21,10 +21,14 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { JiraSettings } from '@/config/integrations/jira/types/JiraSettings';
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfJiraSettingsDrawer from '@/config/integrations/jira/components/jira-settings-drawer.vue';
+
+defineOptions({
+  name: 'LfJiraConnect',
+});
 
 const props = defineProps<{
   integration: Integration<JiraSettings> | undefined;
@@ -33,10 +37,4 @@ const props = defineProps<{
 }>();
 
 const isJiraSettingsDrawerVisible = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfJiraConnect',
-};
 </script>

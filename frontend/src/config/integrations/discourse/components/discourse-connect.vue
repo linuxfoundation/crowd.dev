@@ -21,10 +21,14 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DiscourseSettings } from '@/config/integrations/discourse/types/DiscourseSettings';
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfDiscourseSettingsDrawer from '@/config/integrations/discourse/components/discourse-settings-drawer.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({
+  name: 'AppDiscourseConnect',
+});
 
 const props = defineProps<{
   integration: Integration<DiscourseSettings> | undefined,
@@ -33,10 +37,4 @@ const props = defineProps<{
 }>();
 
 const isDiscourseConnectDrawerOpen = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppDiscourseConnect',
-};
 </script>

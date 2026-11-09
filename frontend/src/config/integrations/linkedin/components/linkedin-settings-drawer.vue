@@ -88,8 +88,6 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
 import {
-  defineEmits,
-  defineProps,
   computed,
   ref,
   watch,
@@ -103,6 +101,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfLinkedinSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -202,10 +204,4 @@ watch(isVisible, (newValue, oldValue) => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLinkedinSettingsDrawer',
-};
 </script>
