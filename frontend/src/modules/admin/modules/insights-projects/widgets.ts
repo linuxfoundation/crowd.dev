@@ -41,7 +41,7 @@ export const WIDGETS_GROUPS = [
         key: Widgets.ACTIVE_CONTRIBUTORS,
       },
       {
-        name: 'Active company',
+        name: 'Active companies',
         key: Widgets.ACTIVE_ORGANIZATION,
       },
       {
