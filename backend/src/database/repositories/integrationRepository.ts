@@ -3,6 +3,7 @@ import Sequelize, { QueryTypes } from 'sequelize'
 
 import { captureApiChange, integrationConnectAction } from '@crowd/audit-logs'
 import { DEFAULT_TENANT_ID, Error404 } from '@crowd/common'
+import { getEmittingChannelNamesForIntegrations } from '@crowd/data-access-layer/src/connectors'
 import {
   fetchGlobalIntegrations,
   fetchGlobalIntegrationsCount,
@@ -638,8 +639,9 @@ class IntegrationRepository {
       )
       .map((r) => r.id)
 
-    const [allNangoMappings, allReposByOrg] = await Promise.all([
+    const [allNangoMappings, allSyncedRepos, allReposByOrg] = await Promise.all([
       getNangoMappingsForIntegrations(qx, nangoIntegrationIds),
+      getEmittingChannelNamesForIntegrations(qx, nangoIntegrationIds),
       getReposGroupedByOrgForIntegrations(qx, githubIntegrationIds),
     ])
 
@@ -649,6 +651,7 @@ class IntegrationRepository {
         if (nangoMapping && Object.keys(nangoMapping).length > 0) {
           output.settings = { ...output.settings, nangoMapping }
         }
+        output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
       }
 
       if (
@@ -691,11 +694,15 @@ class IntegrationRepository {
 
     // For github-nango integrations, populate settings.nangoMapping from dedicated table
     if (output.platform === PlatformType.GITHUB_NANGO) {
-      const allNangoMappings = await getNangoMappingsForIntegrations(qx, [output.id])
+      const [allNangoMappings, allSyncedRepos] = await Promise.all([
+        getNangoMappingsForIntegrations(qx, [output.id]),
+        getEmittingChannelNamesForIntegrations(qx, [output.id]),
+      ])
       const nangoMapping = allNangoMappings[output.id] || {}
       if (Object.keys(nangoMapping).length > 0) {
         output.settings = { ...output.settings, nangoMapping }
       }
+      output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
     }
 
     // For both github and github-nango, populate orgs[].repos from repositories table
