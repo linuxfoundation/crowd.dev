@@ -37,6 +37,10 @@ import type { LogChanges } from '@/modules/lf/config/audit-logs/log-rendering';
 import { logRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppLfAuditLogsChanges',
+});
+
 const props = defineProps<{
   log: AuditLog
 }>();
@@ -68,12 +72,6 @@ const hasChanges = computed(() => {
 onMounted(() => {
   getChanges();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfAuditLogsChanges',
-};
 </script>
 
 <style lang="scss">

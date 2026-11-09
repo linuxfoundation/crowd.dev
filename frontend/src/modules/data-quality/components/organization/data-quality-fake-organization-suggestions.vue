@@ -72,6 +72,10 @@ import AppFakeOrganizationSuggestionsDialog
   from '@/modules/organization/components/fake-organization-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
+defineOptions({
+  name: 'LfDataQualityFakeOrganizationSuggestions',
+});
+
 const props = defineProps<{
   projectGroup: string,
 }>();
@@ -144,10 +148,4 @@ watch(() => props.projectGroup, () => {
 onMounted(() => {
   loadSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityFakeOrganizationSuggestions',
-};
 </script>

@@ -23,6 +23,10 @@ import type { MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberS
 import AppMergeSuggestionsProjectsFilter
   from '@/modules/member/components/suggestions/filters/merge-suggestions-projects-filter.vue';
 
+defineOptions({
+  name: 'AppMergeSuggestionsFilters',
+});
+
 const props = defineProps<{
   placeholder?: string;
 }>();
@@ -53,10 +57,4 @@ watch(() => form, (form) => {
   });
 }, { deep: true, immediate: true });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMergeSuggestionsFilters',
-};
 </script>

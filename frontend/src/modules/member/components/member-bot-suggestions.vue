@@ -99,6 +99,10 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import { MemberService } from '@/modules/member/services/member.api.service';
 import type { MemberBotSuggestion } from '@/modules/member/types/MemberSuggestion';
 
+defineOptions({
+  name: 'AppMemberBotSuggestions',
+});
+
 const props = withDefaults(
   defineProps<{
     offset?: number;
@@ -221,10 +225,4 @@ onUnmounted(() => {
     emit('reload');
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberBotSuggestions',
-};
 </script>

@@ -75,6 +75,10 @@ interface OrganizationsFilterData {
   selected?: MultiSelectAsyncFilterOption[];
 }
 
+defineOptions({
+  name: 'LfMultiSelectAsyncFilter',
+});
+
 const props = defineProps<{
       modelValue: MultiSelectAsyncFilterValue,
       data: OrganizationsFilterData,
@@ -160,12 +164,6 @@ onMounted(() => {
     data.value.selected = [];
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectAsyncFilter',
-};
 </script>
 
     <style lang="scss">

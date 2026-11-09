@@ -11,6 +11,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppMemberMergeSimilarity',
+});
+
 const props = defineProps<{
   similarity: number,
   percentageOnly?: boolean
@@ -39,10 +43,4 @@ const style = computed<{
     icon: 'signal-bars-fair',
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberMergeSimilarity',
-};
 </script>

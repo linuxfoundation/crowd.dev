@@ -223,6 +223,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 
+defineOptions({
+  name: 'LfSavedViewsForm',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   config: SavedViewsConfig,
@@ -315,7 +319,7 @@ const settings = computed<Record<string, SavedViewsSetting<unknown>>>(() => {
 const dropdownSearch = ref<string>('');
 
 const filteredFilters = computed(() => Object.entries(props.filters)
-  .filter(([_, config]: [string, FilterConfig]) => config.label.toLowerCase().includes(dropdownSearch.value.toLowerCase())));
+  .filter(([, config]: [string, FilterConfig]) => config.label.toLowerCase().includes(dropdownSearch.value.toLowerCase())));
 
 const allFilters = computed(() => ({
   ...props.filters,
@@ -348,6 +352,7 @@ const fillForm = () => {
     // shortcut: an edited view always has a name and config, as on main. revisit: when create and edit views get separate types.
     form.name = props.view.name!;
     const {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omits keys via rest sibling
       relation, order, settings, search, ...restFilters
     } = props.view.config!;
     form.relation = relation;
@@ -491,12 +496,6 @@ const submit = (): void => {
         sending.value = false;
       });
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSavedViewsForm',
 };
 </script>
 

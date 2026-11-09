@@ -32,6 +32,10 @@ import LfFilterInlineSelect from '@/shared/modules/filters/components/partials/F
 import LfFilterInput from '@/shared/modules/filters/components/partials/string/FilterInput.vue';
 import { stringFilterOperators, FilterStringOperator } from '@/shared/modules/filters/config/constants/string.constants';
 
+defineOptions({
+  name: 'LfStringFilter',
+});
+
 const props = defineProps<{
   modelValue: StringFilterValue,
   config: StringFilterConfig
@@ -66,10 +70,4 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfStringFilter',
-};
 </script>

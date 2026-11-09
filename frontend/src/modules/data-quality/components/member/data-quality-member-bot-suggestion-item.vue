@@ -30,13 +30,11 @@ import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/member-merge-similarity.vue';
 
+defineOptions({
+  name: 'LfDataQualityMemberBotSuggestionItem',
+});
+
 const props = defineProps<{
   suggestion: DataQualityMemberBotSuggestion,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMemberBotSuggestionItem',
-};
 </script>

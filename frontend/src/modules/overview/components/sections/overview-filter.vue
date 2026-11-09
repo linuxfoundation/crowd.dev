@@ -14,14 +14,12 @@ import AppLfProjectFilter from '../fragments/project-filter.vue';
 import AppLfSubProjectFilter from '../fragments/sub-project-filter.vue';
 import { useOverviewStore } from '../../store/overview.store';
 
+defineOptions({
+  name: 'AppLfOverviewFilter',
+});
+
 const overviewStore = useOverviewStore();
 const { selectedProjectGroup, selectedProject, selectedProjectId } = storeToRefs(overviewStore);
 
 const projects = computed(() => selectedProjectGroup.value?.projects || []);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewFilter',
-};
 </script>

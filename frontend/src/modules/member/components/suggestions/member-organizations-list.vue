@@ -53,6 +53,10 @@
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'AppMemberOrganizationList',
+});
+
 const props = defineProps({
   member: {
     type: Object,
@@ -66,10 +70,4 @@ const hasValues = (organizations: {
   dateStart: string
 }) => Object.values(organizations || {});
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberOrganizationList',
-};
 </script>

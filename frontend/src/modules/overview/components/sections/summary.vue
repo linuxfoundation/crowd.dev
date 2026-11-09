@@ -61,6 +61,10 @@ import AppLfOverviewTrendDisplay from '../fragments/trend-display.vue';
 import { OVERVIEW_API_SERVICE } from '../../services/overview.api.service';
 import { useOverviewStore } from '../../store/overview.store';
 
+defineOptions({
+  name: 'AppLfOverviewSummary',
+});
+
 const overviewStore = useOverviewStore();
 const {
   selectedProject, selectedProjectGroupId, selectedProjectId, selectedSubProjectId,
@@ -100,10 +104,4 @@ watch(isError, (newVal) => {
     ToastStore.error('Failed to fetch dashboard metrics');
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewSummary',
-};
 </script>

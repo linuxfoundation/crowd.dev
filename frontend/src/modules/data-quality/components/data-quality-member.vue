@@ -48,14 +48,12 @@ import { memberDataIssueTypeMenu } from '@/modules/data-quality/config/data-issu
 import LfDataQualityMemberBotSuggestions
   from '@/modules/data-quality/components/member/data-quality-member-bot-suggestions.vue';
 
+defineOptions({
+  name: 'LfDataQualityMember',
+});
+
 const route = useRoute();
 
 const tab = ref('merge-suggestions');
 const projectGroup = ref(route.query.projectGroup as string);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMember',
-};
 </script>

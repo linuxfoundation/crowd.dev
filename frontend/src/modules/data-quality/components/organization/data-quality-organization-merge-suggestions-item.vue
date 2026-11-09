@@ -41,13 +41,11 @@ import LfBadge from '@/ui-kit/badge/Badge.vue';
 import AppMemberMergeSimilarity from '@/modules/member/components/suggestions/member-merge-similarity.vue';
 import type { DataQualityOrganizationMergeSuggestion } from '@/modules/data-quality/types/DataQualitySuggestion';
 
+defineOptions({
+  name: 'LfDataQualityOrganizationMergeSuggestionsItem',
+});
+
 const props = defineProps<{
   suggestion: DataQualityOrganizationMergeSuggestion,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityOrganizationMergeSuggestionsItem',
-};
 </script>

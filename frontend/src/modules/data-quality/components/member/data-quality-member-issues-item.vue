@@ -37,6 +37,10 @@ import pluralize from 'pluralize';
 import { formatNumber } from '@/utils/number';
 import type { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
 
+defineOptions({
+  name: 'LfDataQualityMemberIssuesItem',
+});
+
 const props = defineProps<{
   member: Contributor,
   type: DataIssueType,
@@ -47,10 +51,4 @@ const { avatar } = useContributorHelpers();
 const config = computed<DataIssueTypeConfig>(() => dataIssueTypes[props.type]);
 
 const description = computed<string | null>(() => config.value.description(props.member));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMemberIssuesItem',
-};
 </script>
