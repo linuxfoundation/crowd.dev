@@ -42,6 +42,10 @@ import type {
 } from '@popperjs/core';
 import { createPopper } from '@popperjs/core';
 
+defineOptions({
+  name: 'LfxPopover',
+});
+
 const props = withDefaults(
   defineProps<{
     placement?: Placement;
@@ -121,6 +125,7 @@ const destroyPopperInstance = () => {
 const openPopover = async () => {
   isVisible.value = true;
   if (props.triggerEvent === 'click') {
+    // eslint-disable-next-line no-use-before-define
     document.addEventListener('click', handleClickOutside);
   }
 };
@@ -128,6 +133,7 @@ const openPopover = async () => {
 const closePopover = () => {
   isVisible.value = false;
   if (props.triggerEvent === 'click') {
+    // eslint-disable-next-line no-use-before-define
     document.removeEventListener('click', handleClickOutside);
   }
 };
@@ -210,15 +216,8 @@ onBeforeUnmount(() => {
   }
 });
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   closePopover,
   openPopover,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxPopover',
-};
 </script>

@@ -13,6 +13,10 @@
 <script lang="ts" setup>
 import { computed, watch } from 'vue';
 
+defineOptions({
+  name: 'LfDrawer',
+});
+
 const props = withDefaults(defineProps<{
   modelValue: boolean,
   width?: string,
@@ -57,10 +61,4 @@ watch(() => isDrawerOpened.value, (show: boolean) => {
     window.addEventListener('keyup', onEscapeKeyUp);
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDrawer',
-};
 </script>
