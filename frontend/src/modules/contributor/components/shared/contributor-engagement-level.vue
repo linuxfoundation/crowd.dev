@@ -22,6 +22,10 @@ import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorEngagementLevel',
+});
+
 const props = defineProps<{
   contributor: Pick<Contributor, 'score'>,
 }>();
@@ -73,10 +77,4 @@ const data = computed<{
   return null;
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEngagementLevel',
-};
 </script>

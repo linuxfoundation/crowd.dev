@@ -114,13 +114,9 @@ import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 import { required } from '@vuelidate/validators';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-export interface AffilationForm {
-  segmentId: string;
-  organization: string | null,
-  dateStart: string;
-  dateEnd: string;
-  currentlyAffiliated: boolean;
-}
+defineOptions({
+  name: 'LfContributorEditAffilationsItem',
+});
 
 const props = defineProps<{
   modelValue: AffilationForm,
@@ -128,6 +124,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: AffilationForm): void }>();
+
+export interface AffilationForm {
+  segmentId: string;
+  organization: string | null,
+  dateStart: string;
+  dateEnd: string;
+  currentlyAffiliated: boolean;
+}
 
 const { displayName, logo } = useOrganizationHelpers();
 
@@ -171,10 +175,4 @@ const rules = {
 const $v = useVuelidate(rules, form);
 
 const selectedOrg = computed(() => availableOrganizations.value.find((org) => org.id === form.value.organization));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditAffilationsItem',
-};
 </script>

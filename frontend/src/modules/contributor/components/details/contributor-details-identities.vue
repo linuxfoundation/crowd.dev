@@ -96,6 +96,10 @@ import LfContributorIdentityEdit from '@/modules/contributor/components/edit/ide
 import LfContributorIdentityAdd from '@/modules/contributor/components/edit/identity/contributor-identity-add.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsIdentities',
+});
+
 const props = defineProps<{
   contributor: Contributor;
 }>();
@@ -150,11 +154,5 @@ const unmerge = (identityId: string) => {
     selectedIdentity.value = identityId;
   }
   isUnmergeDialogOpen.value = props.contributor;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsIdentities',
 };
 </script>

@@ -49,6 +49,10 @@ import useContributorHelpers from '@/modules/contributor/helpers/contributor.hel
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 
+defineOptions({
+  name: 'LfContributorDropdown',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -149,10 +153,4 @@ const deleteContributor = () => {
   });
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDropdown',
-};
 </script>

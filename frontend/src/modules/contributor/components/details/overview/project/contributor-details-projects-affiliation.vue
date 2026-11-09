@@ -112,6 +112,10 @@ import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorDetailsProjectsAffiliation',
+});
+
 const props = defineProps<{
   project: { affiliations: Record<string, ContributorAffiliation[]> },
 }>();
@@ -132,10 +136,4 @@ const getAffilationPeriodText = (affilations: ContributorAffiliation[]) => affil
   return `${start} → ${end}`;
 }).join(' <br> ');
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjectsAffiliation',
-};
 </script>
