@@ -696,7 +696,7 @@ export async function onboardOrganizationProject(
       input.repoUrls,
       config.apiUrl,
       config.apiToken,
-      repos[0].owner,
+      input.owner,
     )
   } catch (err) {
     return errorResult((err as Error).message)

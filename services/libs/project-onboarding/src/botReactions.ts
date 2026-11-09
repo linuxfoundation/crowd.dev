@@ -9,7 +9,7 @@ import { getServiceLogger } from '@crowd/logging'
 import { setSlackRequestReactions } from '@crowd/slack'
 
 import { BotStatus, STATUS_REACTION } from './botCopy'
-import { organizationOf } from './organizationGroup'
+import { requestGroupOf } from './organizationGroup'
 
 const log = getServiceLogger()
 
@@ -62,7 +62,7 @@ export async function applyRequestStatus(
     const open = await countProjectCatalogOpenBySourceUrl(qx, project.sourceUrl)
     const result = await setSlackRequestReactions(project.sourceUrl, {
       add: [STATUS_REACTION[status]],
-      remove: reactionsToRemove(status, open, Boolean(organizationOf(project))),
+      remove: reactionsToRemove(status, open, requestGroupOf(project) !== null),
     })
     if (!result.ok) {
       log.warn(

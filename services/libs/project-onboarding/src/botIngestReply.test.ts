@@ -9,6 +9,7 @@ import {
   buildBotIngestReply,
   buildBotNoRepositoryReply,
   collectIngestNotes,
+  projectGroupNote,
   missingRepositoryLine,
   reopenedRequestNote,
 } from './botIngestReply'
@@ -353,6 +354,14 @@ describe('collectIngestNotes', () => {
         truncated: false,
       }),
     ).toEqual([])
+  })
+})
+
+describe('projectGroupNote', () => {
+  it('says the listed repositories go to one project', () => {
+    expect(projectGroupNote({ name: 'Acme <Tools>', repositories: 2 })).toBe(
+      "I'll add these 2 repositories to one project, *Acme &lt;Tools&gt;*.",
+    )
   })
 })
 

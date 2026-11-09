@@ -697,7 +697,12 @@ describe('onboardOrganizationProject', () => {
   it('creates one non-LF project and connects every repository in one call', async () => {
     const { created, connectPayloads } = installOrganizationBackend([])
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result).toEqual({ outcome: 'onboarded', segmentId: 'created-Acme', error: null })
     expect(created).toEqual([
@@ -714,7 +719,12 @@ describe('onboardOrganizationProject', () => {
   it('names the project after the owner when the request gave no name', async () => {
     const { created } = installOrganizationBackend([])
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: null, repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: null,
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result.segmentId).toBe('created-Acme')
     expect(created[0]).toMatchObject({ name: 'Acme', slug: 'acme' })
@@ -725,7 +735,12 @@ describe('onboardOrganizationProject', () => {
       { name: 'Acme', id: 'seg-acme', connectedRepoUrls: [repoUrls[0]] },
     ])
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result).toEqual({ outcome: 'onboarded', segmentId: 'seg-acme', error: null })
     expect(created).toEqual([])
@@ -740,7 +755,12 @@ describe('onboardOrganizationProject', () => {
       { name: 'Acme', id: 'seg-acme', connectedRepoUrls: ['https://github.com/acme/older'] },
     ])
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result).toEqual({ outcome: 'onboarded', segmentId: 'seg-acme', error: null })
     expect(created).toEqual([])
@@ -754,12 +774,39 @@ describe('onboardOrganizationProject', () => {
     })
   })
 
+  it('does not join a project holding other repositories of the owner when the request lists repositories', async () => {
+    const { created, connectPayloads } = installOrganizationBackend([
+      { name: 'Acme', id: 'seg-acme', connectedRepoUrls: ['https://github.com/acme/older'] },
+    ])
+
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: null,
+      repoUrls,
+    })
+
+    expect(result.segmentId).toBe('created-Acme (github.com/acme)')
+    expect(created[0]).toMatchObject({ name: 'Acme (github.com/acme)' })
+    expect(connectPayloads[0]).toMatchObject({
+      mapping: {
+        [repoUrls[0]]: 'created-Acme (github.com/acme)',
+        [repoUrls[1]]: 'created-Acme (github.com/acme)',
+      },
+    })
+  })
+
   it('falls back to the owner-qualified name when the requested one belongs to another project', async () => {
     const { created } = installOrganizationBackend([
       { name: 'Acme', id: 'seg-other', connectedRepoUrls: ['https://github.com/other/acme'] },
     ])
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result.segmentId).toBe('created-Acme (github.com/acme)')
     expect(created[0]).toMatchObject({
@@ -771,10 +818,16 @@ describe('onboardOrganizationProject', () => {
   it('returns an error result without calling the backend for an empty or non GitHub list', async () => {
     const { created, connectPayloads } = installOrganizationBackend([])
 
-    const empty = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls: [] })
+    const empty = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls: [],
+    })
     const gitlab = await onboardOrganizationProject({
       id: 'row',
       projectName: 'Acme',
+      owner: 'acme',
       repoUrls: ['https://gitlab.com/a/b'],
     })
 
@@ -787,7 +840,12 @@ describe('onboardOrganizationProject', () => {
   it('returns an error result when the api configuration is missing', async () => {
     vi.stubEnv('CROWD_API_SERVICE_URL', '')
 
-    const result = await onboardOrganizationProject({ id: 'row', projectName: 'Acme', repoUrls })
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      owner: 'acme',
+      repoUrls,
+    })
 
     expect(result.outcome).toBe('error')
     expect(result.error).toContain('Missing API configuration')

@@ -58,6 +58,27 @@ describe('groupOnboardingUnits', () => {
     ).toEqual([['a', 'b'], 'c', 'd'])
   })
 
+  it('creates one project for the listed repositories of a project group', () => {
+    const creation = {
+      classificationKind: 'non_lf_new_project' as const,
+      proposedAction: 'create_segment' as const,
+      pccProjectId: null,
+      matchedSegmentId: null,
+      requestHints: { project: 'Acme', mainRepoUrl: 'https://github.com/acme/one' },
+    }
+    const units = groupOnboardingUnits([
+      row({ id: 'a', ...creation }),
+      row({ id: 'b', repoUrl: 'https://github.com/other/two', ...creation }),
+      row({ id: 'c', repoUrl: 'https://github.com/acme/three', ...creation, requestHints: null }),
+    ])
+
+    expect(
+      units.map((unit) =>
+        unit.kind === 'single' ? unit.project.id : unit.projects.map((p) => p.id),
+      ),
+    ).toEqual([['a', 'b'], 'c'])
+  })
+
   it('keeps a lone organization row as a single onboarding unless it creates the project', () => {
     expect(groupOnboardingUnits([row({ id: 'a' })])).toEqual([
       { kind: 'single', project: row({ id: 'a' }) },

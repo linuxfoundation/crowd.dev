@@ -63,6 +63,8 @@ export interface IRequestHints {
   pccProject?: IRequestHintProject
   segmentId?: string
   organization?: string
+  project?: string
+  mainRepoUrl?: string
 }
 
 export type RequestQuestionKind = 'did_you_mean' | 'lf_conflict' | 'lf_confirm' | 'pick_project'
@@ -205,7 +207,7 @@ export interface IProjectCatalogReopenRequest {
   requestText: string
   projectName: string | null
   requestedBy: string | null
-  organization: string | null
+  requestHints: IRequestHints | null
 }
 
 export type IDbProjectCatalogCreate = Omit<

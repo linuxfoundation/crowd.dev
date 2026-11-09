@@ -229,6 +229,7 @@ describe('runOrganizationProposedAction', () => {
       repoUrl: `https://github.com/kubernetes/${name}`,
       projectName: 'Kube Tools',
       proposedAction: 'create_segment' as const,
+      requestHints: { organization: 'kubernetes' },
     }))
 
     const result = await runOrganizationProposedAction(rows, deps)
@@ -237,10 +238,28 @@ describe('runOrganizationProposedAction', () => {
     expect(deps.onboardOrganizationProject).toHaveBeenCalledWith({
       id: 'one',
       projectName: 'Kube Tools',
+      owner: 'kubernetes',
       repoUrls: ['https://github.com/kubernetes/one', 'https://github.com/kubernetes/two'],
     })
     expect(deps.onboardProject).not.toHaveBeenCalled()
     expect(deps.connectReposToSegment).not.toHaveBeenCalled()
+  })
+
+  it('creates one project for the listed repositories of a project group without an owner', async () => {
+    const rows = ['one', 'two'].map((name) => ({
+      ...project,
+      id: name,
+      repoUrl: `https://github.com/kubernetes/${name}`,
+      projectName: 'Kube Tools',
+      proposedAction: 'create_segment' as const,
+      requestHints: { project: 'Kube Tools', mainRepoUrl: 'https://github.com/kubernetes/one' },
+    }))
+
+    await runOrganizationProposedAction(rows, deps)
+
+    expect(deps.onboardOrganizationProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectName: 'Kube Tools', owner: null }),
+    )
   })
 
   it('refuses a mixed group and takes the segment lock when it writes one', async () => {
@@ -330,6 +349,23 @@ describe('runProposedActionSerialized', () => {
     await runOrganizationProposedActionSerialized(rows, lockingQx, buildDeps)
 
     expect(lockProjectCatalogOnboardingTarget).toHaveBeenCalledWith(tx, 'organization:kubernetes')
+    expect(buildDeps).toHaveBeenCalledWith(tx)
+  })
+
+  it('serializes the creation of a project group on the project name', async () => {
+    const tx = { marker: 'tx' }
+    const lockingQx = { tx: async (run: (inner: unknown) => Promise<unknown>) => run(tx) } as never
+    const rows = [
+      {
+        ...project,
+        proposedAction: 'create_segment' as const,
+        requestHints: { project: 'Kube Tools', mainRepoUrl: project.repoUrl },
+      },
+    ]
+
+    await runOrganizationProposedActionSerialized(rows, lockingQx, buildDeps)
+
+    expect(lockProjectCatalogOnboardingTarget).toHaveBeenCalledWith(tx, 'project:kube tools')
     expect(buildDeps).toHaveBeenCalledWith(tx)
   })
 })

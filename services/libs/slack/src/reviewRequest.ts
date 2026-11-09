@@ -31,11 +31,19 @@ export interface IReviewRepoContext {
 
 export interface IReviewOrganization {
   owner: string
+  name?: string
   repositories: number
 }
 
 export function organizationLabel(owner: string): string {
   return `github.com/${owner}`
+}
+
+export function reviewGroupLabel({
+  owner,
+  name,
+}: Pick<IReviewOrganization, 'owner' | 'name'>): string {
+  return name ?? organizationLabel(owner)
 }
 
 export function repositoriesWord(count: number): string {
@@ -94,12 +102,12 @@ function countRepositories(repositories: number): string {
   return `${repositories} ${repositoriesWord(repositories)}`
 }
 
-export function organizationSubjectText({ owner, repositories }: IReviewOrganization): string {
-  return `${organizationLabel(owner)} (${countRepositories(repositories)})`
+export function organizationSubjectText(organization: IReviewOrganization): string {
+  return `${reviewGroupLabel(organization)} (${countRepositories(organization.repositories)})`
 }
 
-export function organizationHeading({ owner, repositories }: IReviewOrganization): string {
-  return `*${escapeSlackText(organizationLabel(owner))}* · ${countRepositories(repositories)}`
+export function organizationHeading(organization: IReviewOrganization): string {
+  return `*${escapeSlackText(reviewGroupLabel(organization))}* · ${countRepositories(organization.repositories)}`
 }
 
 function reposPhrase(card: IReviewRequestCard): string {
@@ -107,7 +115,10 @@ function reposPhrase(card: IReviewRequestCard): string {
   if (!organization) {
     return formatRepoUrl(card.repoUrl)
   }
-  return `the ${countRepositories(organization.repositories)} of ${formatRepoUrl(`https://github.com/${organization.owner}`)}`
+  const subject = organization.name
+    ? `*${escapeSlackText(organization.name)}*`
+    : formatRepoUrl(`https://github.com/${organization.owner}`)
+  return `the ${countRepositories(organization.repositories)} of ${subject}`
 }
 
 function reposWord(card: IReviewRequestCard): string {
@@ -173,12 +184,13 @@ function evaluationNoteBlock(note: string | null): KnownBlock[] {
 }
 
 function headingLines(card: IReviewRequestCard): string[] {
-  return card.organization
-    ? [
-        organizationHeading(card.organization),
-        escapeSlackText(`https://github.com/${card.organization.owner}`),
-      ]
-    : [`*${escapeSlackText(card.repoName)}*`, escapeSlackText(card.repoUrl)]
+  if (!card.organization) {
+    return [`*${escapeSlackText(card.repoName)}*`, escapeSlackText(card.repoUrl)]
+  }
+  const page = card.organization.name
+    ? card.repoUrl
+    : `https://github.com/${card.organization.owner}`
+  return [organizationHeading(card.organization), escapeSlackText(page)]
 }
 
 function summaryBlocks(card: IReviewRequestCard): KnownBlock[] {

@@ -13,12 +13,13 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import {
   DecisionReason,
-  ISlackMessageContent,
-  MAX_BLOCKS_PER_MESSAGE,
-  escapeSlackText,
-  linkButtonBlocks,
-  mrkdwnSections,
   describeDecisionReason,
+  escapeSlackText,
+  ISlackMessageContent,
+  linkButtonBlocks,
+  MAX_BLOCKS_PER_MESSAGE,
+  mrkdwnSections,
+  repositoriesWord,
 } from '@crowd/slack'
 
 import {
@@ -61,12 +62,21 @@ export interface IIngestOutcome {
   notes: string[]
 }
 
+export interface IIngestProjectGroup {
+  name: string
+  repositories: number
+}
+
 export interface IIngestNotesInput {
   requestText: string
   repoUrls: string[]
   nonGithubRepoUrls: string[] | null
   truncated: boolean
   organizations?: IExpandedOrganization[]
+}
+
+export function projectGroupNote({ name, repositories }: IIngestProjectGroup): string {
+  return `I'll add these ${repositories} ${repositoriesWord(repositories)} to one project, *${escapeSlackText(name)}*.`
 }
 
 const BUTTONS_PER_BLOCK = 5

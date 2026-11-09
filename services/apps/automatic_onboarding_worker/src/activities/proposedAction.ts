@@ -10,6 +10,7 @@ import {
   createsNewProject,
   joinsExistingProject,
   organizationOf,
+  requestGroupOf,
 } from '@crowd/project-onboarding'
 
 export interface IProposedActionDeps {
@@ -120,6 +121,7 @@ export async function runOrganizationProposedAction(
     return deps.onboardOrganizationProject({
       id: lead.id,
       projectName: lead.projectName,
+      owner: organizationOf(lead),
       repoUrls: projects.map((project) => project.repoUrl),
     })
   }
@@ -137,8 +139,13 @@ function sharedSegmentLockTarget(project: ProposedActionProject | undefined): st
   if (joinsExistingProject(project) && project.pccProjectId !== null) {
     return project.pccProjectId
   }
-  const owner = organizationOf(project)
-  return createsNewProject(project) && owner ? `organization:${owner.toLowerCase()}` : null
+  const group = createsNewProject(project) ? requestGroupOf(project) : null
+  if (!group) {
+    return null
+  }
+  return group.kind === 'organization'
+    ? `organization:${group.owner.toLowerCase()}`
+    : `project:${group.name.toLowerCase()}`
 }
 
 async function withSegmentLock(

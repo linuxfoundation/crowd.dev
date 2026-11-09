@@ -152,6 +152,17 @@ describe('routeEvaluationOutcome', () => {
     )
   })
 
+  it('names a project group after the request and counts its repositories', () => {
+    expect(
+      routeEvaluationOutcome(botRow, verdict, {
+        autoApply: false,
+        organization: { owner: 'apache', name: 'Apache HugeGraph', repositories: 5 },
+      }).reviewReason,
+    ).toBe(
+      "Apache HugeGraph isn't in LFX Insights yet; it would be created as a non-LF project with its 5 repositories, and new projects are added by the CDP team",
+    )
+  })
+
   it('lets the row onboard when auto apply is on or the request did not come from the bot', () => {
     expect(routeEvaluationOutcome(botRow, verdict, { autoApply: true })).toEqual({
       action: 'onboard',

@@ -8,10 +8,10 @@ import {
   buildBotAnsweredContent,
   decodeAnswerValue,
   describeAnsweredQuestion,
-  findOrganizationSiblings,
+  findRequestGroupSiblings,
   findQuestionOption,
   handOffReason,
-  organizationReviewOf,
+  requestGroupReviewOf,
   refreshRequestStatusMessage,
 } from '@crowd/project-onboarding'
 import { getSlackBotConfig } from '@crowd/slack'
@@ -105,7 +105,7 @@ export async function runAnswerRequestCommand({
   }
 
   const messageTs = row.requestQuestion.messageTs
-  const siblings = await findOrganizationSiblings(
+  const siblings = await findRequestGroupSiblings(
     qx,
     row,
     (sibling) =>
@@ -136,7 +136,7 @@ export async function runAnswerRequestCommand({
     await postEphemeral(responseUrl, 'This question was already answered.', log)
     return
   }
-  const organization = organizationReviewOf(row, catalogIds.length - 1)
+  const organization = requestGroupReviewOf(row, catalogIds.length - 1)
 
   log.info(
     { catalogId, optionId, actorId, siblings: catalogIds.length - 1 },
