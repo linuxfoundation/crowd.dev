@@ -352,6 +352,10 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import AppMemberSuggestionsDetails from './suggestions/member-merge-suggestions-details.vue';
 
+defineOptions({
+  name: 'AppMemberUnmergeDialog',
+});
+
 const props = defineProps<{
   modelValue: Contributor;
   selectedIdentity?: string | null;
@@ -400,13 +404,6 @@ const identities = computed(() => (props.modelValue.identities || []).sort((a, b
   return aOrder - bOrder;
 }));
 
-const changeIdentity = (identityId: string) => {
-  localSelectedIdentity.value = identityId;
-  resetRevertPreviousMerge();
-  getCanRevertMerge(identityId);
-  fetchPreview(identityId);
-};
-
 const fetchPreview = (identityId: string) => {
   if (fetchingPreview.value) {
     return;
@@ -447,6 +444,13 @@ const getCanRevertMerge = (identityId: string) => {
     });
 };
 
+const changeIdentity = (identityId: string) => {
+  localSelectedIdentity.value = identityId;
+  resetRevertPreviousMerge();
+  getCanRevertMerge(identityId);
+  fetchPreview(identityId);
+};
+
 const unmerge = () => {
   if (unmerging.value) {
     return;
@@ -480,7 +484,7 @@ const unmerge = () => {
       });
       emit('update:modelValue', null);
     })
-    .catch((error) => {
+    .catch(() => {
       ToastStore.error('There was an error unmerging profile');
     })
     .finally(() => {
@@ -493,10 +497,4 @@ onMounted(() => {
     changeIdentity(props.selectedIdentity);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberUnmergeDialog',
-};
 </script>

@@ -84,6 +84,10 @@ import { useRouter } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
 
+defineOptions({
+  name: 'AppMergeSuggestionsProjectsFilter',
+});
+
 const props = defineProps<{
   segments: string[]
   childSegments: string[]
@@ -226,10 +230,4 @@ const hasChanged = computed(() => !isEqual(segments.value, props.segments) || !i
 onMounted(() => {
   loadProjects('');
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMergeSuggestionsProjectsFilter',
-};
 </script>
