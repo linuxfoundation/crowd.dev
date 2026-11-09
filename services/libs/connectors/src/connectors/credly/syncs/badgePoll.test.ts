@@ -1020,6 +1020,25 @@ describe('runBadgePoll backfill', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
   })
 
+  it('steps a window saved before the window grew down by a week, skipping nothing', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const weekAgo = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+    const nextMid = new Date(Date.parse(weekAgo) - BACKFILL_WINDOW_MS).toISOString()
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: weekAgo, until: TOP, page: 1 },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: weekAgo, max: TOP },
+      { min: nextMid, max: weekAgo },
+      { min: FLOOR, max: nextMid },
+    ])
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
+  })
+
   it('shrinks a failing backfill window to the live step and walks the rest before moving down', async () => {
     const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
     mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
@@ -1057,7 +1076,50 @@ describe('runBadgePoll backfill', () => {
       since: HORIZON,
       until: null,
       page: 1,
-      backfill: { floor: FLOOR, top: TOP, since: MID, until: TOP, page: MAX_PAGES_PER_RUN + 1 },
+      backfill: {
+        floor: FLOOR,
+        top: TOP,
+        since: MID,
+        until: TOP,
+        page: MAX_PAGES_PER_RUN + 1,
+        nextTop: MID,
+      },
+    })
+  })
+
+  it('moves the top to the saved nextTop once an open window advanced by pages drains', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const advancedSince = '2026-09-01T00:00:00.000Z'
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: advancedSince, until: TOP, page: 1, nextTop: MID },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: advancedSince, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
+  })
+
+  it('ignores a saved nextTop outside floor..since and steps down a week instead', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const weekAgo = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+    const { ctx, watermarks } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: weekAgo, until: TOP, page: 1, nextTop: TOP },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(watermarks[0]?.backfill).toEqual({
+      floor: FLOOR,
+      top: weekAgo,
+      since: null,
+      until: null,
+      page: 1,
     })
   })
 

@@ -42,14 +42,15 @@ type Window = {
   page: number
 }
 
-// Walked from `top` down to `floor` once the live cursor is caught up; a window always starts at
-// max(floor, top - BACKFILL_WINDOW_MS), so `top` alone says where the next one goes.
+// Walked from `top` down to `floor` once the live cursor is caught up. `nextTop` is where `top` goes
+// once the open window drains; a cursor saved before the window grew lacks it, and its window was a week.
 export type CredlyBackfillCursor = {
   floor: string
   top: string
   since: string | null
   until: string | null
   page: number
+  nextTop?: string
 }
 
 export type CredlyBadgePollWatermark = {
@@ -81,13 +82,23 @@ function readBackfill(raw: unknown): CredlyBackfillCursor | undefined {
     until !== null &&
     wholeSecond(until) > wholeSecond(since) &&
     wholeSecond(until) <= wholeSecond(top)
+  const nextTop = open ? savedNextTop(cursor.nextTop, floor, since) : null
   return {
     floor,
     top,
     since: open ? since : null,
     until: open ? until : null,
     page: open ? savedPage(cursor.page) : 1,
+    ...(nextTop && { nextTop }),
   }
+}
+
+function savedNextTop(value: unknown, floor: string, since: string): string | null {
+  const nextTop = parsableIso(value)
+  if (!nextTop) return null
+  const inRange =
+    wholeSecond(nextTop) >= wholeSecond(floor) && wholeSecond(nextTop) <= wholeSecond(since)
+  return inRange ? nextTop : null
 }
 
 function readWatermark(
@@ -119,14 +130,15 @@ function openWindow(since: string, horizonMs: number): Window | null {
   }
 }
 
-function backfillWindowStart(cursor: CredlyBackfillCursor): string {
+function windowStart(cursor: CredlyBackfillCursor, widthMs: number): string {
   return new Date(
-    Math.max(Date.parse(cursor.floor), Date.parse(cursor.top) - BACKFILL_WINDOW_MS),
+    Math.max(Date.parse(cursor.floor), Date.parse(cursor.top) - widthMs),
   ).toISOString()
 }
 
 function openBackfillWindow(cursor: CredlyBackfillCursor): CredlyBackfillCursor {
-  return { ...cursor, since: backfillWindowStart(cursor), until: cursor.top, page: 1 }
+  const nextTop = windowStart(cursor, BACKFILL_WINDOW_MS)
+  return { ...cursor, since: nextTop, until: cursor.top, page: 1, nextTop }
 }
 
 // A window ends below `top` only after it failed and was cut, so the rest is walked at the live step.
@@ -136,9 +148,10 @@ function afterBackfillDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor 
     const until = new Date(Math.min(untilMs + MAX_WINDOW_MS, Date.parse(cursor.top))).toISOString()
     return { ...cursor, since: cursor.until, until, page: 1 }
   }
-  const top = backfillWindowStart(cursor)
+  const top = cursor.nextTop ?? windowStart(cursor, MAX_WINDOW_MS)
   if (wholeSecond(top) <= wholeSecond(cursor.floor)) return undefined
-  return { ...cursor, top, since: null, until: null, page: 1 }
+  const { nextTop: _drained, ...rest } = cursor
+  return { ...rest, top, since: null, until: null, page: 1 }
 }
 
 function withBackfill(
@@ -456,7 +469,6 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     }
     const window: Window = { since: cursor.since, until: cursor.until, page: cursor.page }
 
-    // A failing backfill window drops straight to the live step, the size the #864 probes proved.
     const result = await fetchOrHalve(window, MAX_WINDOW_MS)
     if ('halved' in result) {
       watermark = withBackfill(watermark, { ...cursor, ...result.halved })
