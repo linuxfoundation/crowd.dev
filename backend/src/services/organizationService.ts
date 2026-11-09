@@ -151,7 +151,7 @@ export default class OrganizationService extends LoggerBase {
             i.verified === identity.verified,
         )
       ) {
-        throw new Error(`Organization doesn't have the identity sent to be unmerged!`)
+        throw new Error(`Company doesn't have the identity sent to be unmerged!`)
       }
 
       organization.identities = identities
@@ -165,7 +165,7 @@ export default class OrganizationService extends LoggerBase {
         )
 
         if (!mergeAction) {
-          throw new Error('No previous merge action found to revert for organization!')
+          throw new Error('No previous merge action found to revert for company!')
         }
 
         const primaryBackup = mergeAction.unmergeBackup.primary as IOrganizationUnmergeBackup
@@ -299,7 +299,7 @@ export default class OrganizationService extends LoggerBase {
             i.verified === identity.verified,
         )
       ) {
-        throw new Error(`Organization doesn't have the identity sent to be unmerged!`)
+        throw new Error(`Company doesn't have the identity sent to be unmerged!`)
       }
 
       // Check if there was a previous merge involving this identity
