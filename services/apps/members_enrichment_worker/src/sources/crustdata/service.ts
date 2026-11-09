@@ -1,12 +1,6 @@
 import axios from 'axios'
 
-import {
-  isDomainExcluded,
-  isValidEmail,
-  linkedinProfileHandle,
-  normalizeLinkedinHandle,
-  replaceDoubleQuotes,
-} from '@crowd/common'
+import { isDomainExcluded, isValidEmail, replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
@@ -449,7 +443,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     const linkedinUrlHashmap = new Map<string, number>()
 
     for (const linkedin of input.linkedin) {
-      const handle = linkedin?.verified ? normalizeLinkedinHandle(linkedin.value) : null
+      const handle = linkedin?.verified ? this.toScrapableLinkedinHandle(linkedin.value) : null
       if (handle) {
         if (!linkedinUrlHashmap.get(handle)) {
           consumableIdentities.push({
@@ -477,7 +471,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
         )
         const normalized = service.normalize(cache.data) as IMemberEnrichmentDataNormalized
         const identity = normalized.identities.find((i) => i.platform === PlatformType.LINKEDIN)
-        const handle = normalizeLinkedinHandle(identity?.value)
+        const handle = identity ? this.toScrapableLinkedinHandle(identity.value) : null
         if (handle) {
           if (!linkedinUrlHashmap.get(handle)) {
             consumableIdentities.push({
@@ -498,6 +492,11 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     }
 
     return consumableIdentities
+  }
+
+  private toScrapableLinkedinHandle(value: string | undefined): string | null {
+    const handle = value?.replace(/\//g, '').trim()
+    return handle && !/\s/.test(handle) ? handle : null
   }
 
   normalize(profiles: IMemberEnrichmentDataCrustdata[]): IMemberEnrichmentDataNormalized[] {
@@ -562,18 +561,19 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       )
     }
 
-    const linkedinHandle = linkedinProfileHandle(
-      data.social_handles?.professional_network_identifier?.profile_url,
-    )
-    if (linkedinHandle) {
-      normalized = normalizeSocialIdentity(
-        {
-          handle: linkedinHandle,
-          platform: PlatformType.LINKEDIN,
-        },
-        MemberIdentityType.USERNAME,
-        normalized,
-      )
+    const linkedinUrl = data.social_handles?.professional_network_identifier?.profile_url
+    if (linkedinUrl) {
+      const handle = linkedinUrl.split('/').filter(Boolean).pop()
+      if (handle) {
+        normalized = normalizeSocialIdentity(
+          {
+            handle,
+            platform: PlatformType.LINKEDIN,
+          },
+          MemberIdentityType.USERNAME,
+          normalized,
+        )
+      }
     }
 
     const githubUrl = data.social_handles?.dev_platform_identifier?.profile_url

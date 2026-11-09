@@ -1,7 +1,7 @@
 import axios from 'axios'
 import lodash from 'lodash'
 
-import { linkedinProfileHandle, normalizeHostname, replaceDoubleQuotes } from '@crowd/common'
+import { normalizeHostname, replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   MemberAttributeName,
@@ -229,7 +229,7 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
       )
     }
 
-    const linkedinHandle = linkedinProfileHandle(data.linkedin_url)
+    const linkedinHandle = data.linkedin_url?.match(/\/in\/([^/?#]+)/)?.[1]?.trim()
     if (linkedinHandle) {
       normalized = normalizeSocialIdentity(
         {
