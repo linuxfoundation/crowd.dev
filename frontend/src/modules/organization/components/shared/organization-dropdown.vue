@@ -45,6 +45,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 
+defineOptions({
+  name: 'LfOrganizationDropdown',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -131,11 +135,5 @@ const deleteOrganization = () => {
       });
     });
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDropdown',
 };
 </script>

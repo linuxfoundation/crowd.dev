@@ -31,15 +31,13 @@ import type { ContributorIdentity } from '@/modules/contributor/types/Contributo
 import { lfIdentities } from '@/config/identities';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 
+defineOptions({
+  name: 'LfContributorDetailsIdentityItemValue',
+});
+
 const props = defineProps<{
   identity: ContributorIdentity;
 }>();
 
 const { getPlatformsLabel } = useIdentitiesHelpers();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsIdentityItemValue',
-};
 </script>

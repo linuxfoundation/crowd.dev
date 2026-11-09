@@ -158,6 +158,10 @@ import { ToastStore } from '@/shared/message/notification';
 import { CategoryService } from '@/modules/admin/modules/categories/services/category.service';
 import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
+defineOptions({
+  name: 'LfCategoryGroupForm',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   categoryGroup?: CategoryGroup,
@@ -257,10 +261,4 @@ const cancel = () => {
 onMounted(() => {
   fillForm();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCategoryGroupForm',
-};
 </script>

@@ -189,8 +189,6 @@ import {
   reactive,
   onMounted,
   computed,
-  defineEmits,
-  defineProps,
   watch,
 } from 'vue';
 import { required } from '@vuelidate/validators';
@@ -211,13 +209,9 @@ import DrawerFooterButtons from '@/modules/admin/modules/integration/components/
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DevtoSettings } from '@/config/integrations/devto/types/DevtoSettings';
 
-interface DevtoAccountRow {
-  id: number;
-  username: string;
-  touched: boolean;
-  valid: boolean;
-  validating: boolean;
-}
+defineOptions({
+  name: 'LfDevtoConnectDrawer',
+});
 
 const props = defineProps<{
   integration: Integration<DevtoSettings> | undefined;
@@ -227,6 +221,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
+
+interface DevtoAccountRow {
+  id: number;
+  username: string;
+  touched: boolean;
+  valid: boolean;
+  validating: boolean;
+}
 
 const { connectDevto } = useIntegrationStore();
 
@@ -238,6 +240,46 @@ const organizations = ref<DevtoAccountRow[]>([]);
 const loading = ref(false);
 const isAPIConnectionValid = ref(false);
 const isValidating = ref(false);
+
+const form = reactive({
+  apiKey: '',
+});
+
+const rules = {
+  apiKey: {
+    required,
+  },
+};
+
+const $externalResults = ref({});
+
+const $v = useVuelidate(rules, form, { $externalResults, $stopPropagation: true });
+
+const { formSnapshot, hasFormChanged } = formChangeDetector(form);
+
+const isVisible = computed({
+  get() {
+    return props.modelValue;
+  },
+  set(value) {
+    return emit('update:modelValue', value);
+  },
+});
+
+const isValid = computed(() => {
+  const relevantUsers = users.value.filter((u) => !!u.username);
+
+  if (relevantUsers.some((user) => !user.valid)) {
+    return false;
+  }
+
+  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
+  if (relevantOrganizations.some((org) => !org.valid)) {
+    return false;
+  }
+
+  return relevantUsers.length + relevantOrganizations.length > 0;
+});
 
 const connectDisabled = computed(() => {
   if (!isValid.value) {
@@ -265,21 +307,6 @@ const isLastOrganization = computed(() => organizations.value.length === 1);
 
 const isLastUser = computed(() => users.value.length === 1);
 
-const isValid = computed(() => {
-  const relevantUsers = users.value.filter((u) => !!u.username);
-
-  if (relevantUsers.some((user) => !user.valid)) {
-    return false;
-  }
-
-  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
-  if (relevantOrganizations.some((org) => !org.valid)) {
-    return false;
-  }
-
-  return relevantUsers.length + relevantOrganizations.length > 0;
-});
-
 const maxId = computed(() => {
   if (users.value.length === 0 && organizations.value.length === 0) {
     return 0;
@@ -300,26 +327,6 @@ const maxId = computed(() => {
 
   return maxId;
 });
-
-const syncData = () => {
-  users.value = [];
-  organizations.value = [];
-  form.apiKey = '';
-  $v.value.$reset();
-  $v.value.$clearExternalResults();
-
-  if (props.integration && props.integration?.settings) {
-    props.integration?.settings.users.forEach((u) => addNewUser(u));
-    props.integration?.settings.organizations.forEach((o) => addNewOrganization(o));
-  }
-
-  if (users.value.length === 0) {
-    addNewUser();
-  }
-  if (organizations.value.length === 0) {
-    addNewOrganization();
-  }
-};
 
 const addNewUser = (username?: string | MouseEvent) => {
   users.value.push({
@@ -347,6 +354,26 @@ const addNewOrganization = (username?: string | MouseEvent) => {
 
 const removeOrganization = (id: number) => {
   organizations.value = organizations.value.filter((o) => o.id !== id);
+};
+
+const syncData = () => {
+  users.value = [];
+  organizations.value = [];
+  form.apiKey = '';
+  $v.value.$reset();
+  $v.value.$clearExternalResults();
+
+  if (props.integration && props.integration?.settings) {
+    props.integration?.settings.users.forEach((u) => addNewUser(u));
+    props.integration?.settings.organizations.forEach((o) => addNewOrganization(o));
+  }
+
+  if (users.value.length === 0) {
+    addNewUser();
+  }
+  if (organizations.value.length === 0) {
+    addNewOrganization();
+  }
 };
 
 const handleUserValidation = async (id: number) => {
@@ -410,6 +437,26 @@ const handleOrganizationValidation = async (id: number) => {
   }
 };
 
+const validateAPIKey = async () => {
+  $v.value.$clearExternalResults();
+
+  if ($v.value.$error) return;
+
+  isValidating.value = true;
+
+  const isValid = await IntegrationService.devtoValidateAPIKey(form.apiKey);
+  if (isValid) {
+    isAPIConnectionValid.value = true;
+  } else {
+    const errors = {
+      apiKey: 'Invalid API key',
+    };
+    $externalResults.value = errors;
+    isAPIConnectionValid.value = false;
+  }
+  isValidating.value = false;
+};
+
 const onBlurAPIKey = async () => {
   $v.value.apiKey.$touch();
   await validateAPIKey();
@@ -446,42 +493,6 @@ const save = async () => {
   loading.value = false;
 };
 
-const validateAPIKey = async () => {
-  $v.value.$clearExternalResults();
-
-  if ($v.value.$error) return;
-
-  isValidating.value = true;
-
-  const isValid = await IntegrationService.devtoValidateAPIKey(form.apiKey);
-  if (isValid) {
-    isAPIConnectionValid.value = true;
-  } else {
-    const errors = {
-      apiKey: 'Invalid API key',
-    };
-    $externalResults.value = errors;
-    isAPIConnectionValid.value = false;
-  }
-  isValidating.value = false;
-};
-
-const form = reactive({
-  apiKey: '',
-});
-
-const rules = {
-  apiKey: {
-    required,
-  },
-};
-
-const $externalResults = ref({});
-
-const $v = useVuelidate(rules, form, { $externalResults, $stopPropagation: true });
-
-const { formSnapshot, hasFormChanged } = formChangeDetector(form);
-
 watch(
   () => props.integration,
   (newVal) => {
@@ -490,15 +501,6 @@ watch(
     }
   },
 );
-
-const isVisible = computed({
-  get() {
-    return props.modelValue;
-  },
-  set(value) {
-    return emit('update:modelValue', value);
-  },
-});
 
 const revertChanges = () => {
   if (props.integration?.settings) {
@@ -509,12 +511,6 @@ const revertChanges = () => {
 };
 
 onMounted(syncData);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDevtoConnectDrawer',
-};
 </script>
 
 <style lang="scss">

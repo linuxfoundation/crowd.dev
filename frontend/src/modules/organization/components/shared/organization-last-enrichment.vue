@@ -10,13 +10,11 @@
 import type { Organization } from '@/modules/organization/types/Organization';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfOrganizationLastEnrichment',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationLastEnrichment',
-};
 </script>

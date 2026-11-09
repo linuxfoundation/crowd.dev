@@ -79,6 +79,10 @@ interface RepositoryGroup {
   repositories: string[];
 }
 
+defineOptions({
+  name: 'LfInsightsProjectAddRepositoryGroups',
+});
+
 const props = defineProps<{
   form: InsightsProjectAddFormModel;
 }>();
@@ -120,11 +124,5 @@ const remove = (index: number) => {
     list.splice(index, 1);
     cForm.repositoryGroups = list;
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectAddRepositoryGroups',
 };
 </script>

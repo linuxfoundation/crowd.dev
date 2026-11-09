@@ -22,6 +22,10 @@ import useVuelidate from '@vuelidate/core';
 import { email } from '@vuelidate/validators';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 
+defineOptions({
+  name: 'LfContributorAddEmailItem',
+});
+
 const props = defineProps<{
   modelValue: string,
 }>();
@@ -40,10 +44,4 @@ const rules = {
 };
 
 const $v = useVuelidate(rules, { form });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAddEmailItem',
-};
 </script>

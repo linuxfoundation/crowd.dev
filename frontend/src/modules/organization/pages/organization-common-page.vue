@@ -59,6 +59,10 @@ import AppPagination from '@/shared/pagination/pagination.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import pluralize from 'pluralize';
 
+defineOptions({
+  name: 'AppOrganizationCommonPage',
+});
+
 const { listProjectGroups } = useLfSegmentsStore();
 
 const loading = ref(true);
@@ -95,7 +99,7 @@ const getOrganizations = (body?: OrganizationQueryBody) => {
       organizations.value = data.rows;
       totalOrganizations.value = data.count;
     })
-    .catch((err: Error) => {
+    .catch(() => {
       organizations.value = [];
       totalOrganizations.value = 0;
     })
@@ -133,10 +137,4 @@ onMounted(() => {
     reset: true,
   } as Parameters<typeof listProjectGroups>[0]);
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationCommonPage',
-};
 </script>

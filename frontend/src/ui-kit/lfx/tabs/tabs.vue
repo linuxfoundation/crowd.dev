@@ -11,6 +11,10 @@ import {
 import { useRoute, useRouter } from 'vue-router';
 import type { TabsSize } from '@/ui-kit/tabs/types/TabsSize';
 
+defineOptions({
+  name: 'LfxTabs',
+});
+
 const props = withDefaults(defineProps<{
   modelValue?: string,
   size?: TabsSize,
@@ -61,10 +65,4 @@ onMounted(() => {
 watch(() => route?.hash, () => {
   readHash();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxTabs',
-};
 </script>

@@ -57,6 +57,10 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsCommunityProjectSelect',
+});
+
 const props = defineProps<{
   organization: Organization,
   segment: string,
@@ -95,11 +99,5 @@ const onVisibilityChange = (isVisible: boolean) => {
   if (!isVisible) {
     search.value = '';
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsCommunityProjectSelect',
 };
 </script>

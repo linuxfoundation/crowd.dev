@@ -156,6 +156,10 @@ import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 
 import { ToastStore } from '@/shared/message/notification';
 
+defineOptions({
+  name: 'AppLfProjectGroupForm',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   id: string | null;
@@ -243,29 +247,6 @@ const onCancel = () => {
   model.value = false;
 };
 
-const onSubmit = () => {
-  submitLoading.value = true;
-
-  if (isEditForm.value) {
-    trackEvent({
-      key: FeatureEventKey.EDIT_PROJECT_GROUP,
-      type: EventType.FEATURE,
-    });
-
-    updateMutation.mutate({
-      id: props.id!,
-      form: form as ProjectGroup,
-    });
-  } else {
-    trackEvent({
-      key: FeatureEventKey.ADD_PROJECT_GROUP,
-      type: EventType.FEATURE,
-    });
-
-    createMutation.mutate(form as ProjectGroup);
-  }
-};
-
 const invalidate = useInvalidate();
 const onSuccess = () => {
   submitLoading.value = false;
@@ -296,10 +277,27 @@ const createMutation = useMutation({
   onError,
 
 });
-</script>
 
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupForm',
+const onSubmit = () => {
+  submitLoading.value = true;
+
+  if (isEditForm.value) {
+    trackEvent({
+      key: FeatureEventKey.EDIT_PROJECT_GROUP,
+      type: EventType.FEATURE,
+    });
+
+    updateMutation.mutate({
+      id: props.id!,
+      form: form as ProjectGroup,
+    });
+  } else {
+    trackEvent({
+      key: FeatureEventKey.ADD_PROJECT_GROUP,
+      type: EventType.FEATURE,
+    });
+
+    createMutation.mutate(form as ProjectGroup);
+  }
 };
 </script>

@@ -10,13 +10,11 @@ import LfOrganizationDetailsCommunity
 import LfOrganizationDetailsAttributes
   from '@/modules/organization/components/details/overview/organization-details-attributes.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsOverview',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsOverview',
-};
 </script>

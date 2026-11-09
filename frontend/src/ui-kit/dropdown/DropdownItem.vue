@@ -17,6 +17,10 @@
 <script lang="ts" setup>
 import type { DropdownItemType } from '@/ui-kit/dropdown/types/DropdownItemType';
 
+defineOptions({
+  name: 'LfDropdownItem',
+});
+
 const props = withDefaults(defineProps<{
   disabled?: boolean
   selected?: boolean
@@ -37,10 +41,4 @@ const handleClick = (event: MouseEvent) => {
   emit('click');
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDropdownItem',
-};
 </script>

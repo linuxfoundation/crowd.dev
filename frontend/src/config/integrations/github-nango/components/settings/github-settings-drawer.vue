@@ -111,6 +111,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
+defineOptions({
+  name: 'LfGithubSettingsDrawer',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   integration?: Integration<GitHubSettings>;
@@ -202,6 +206,25 @@ const buildSettings = (): GitHubSettings => {
   return { orgs, updateMemberAttributes: true };
 };
 
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, props.integration?.id
+    ? 'There was error updating settings'
+    : 'There was error connecting GitHub');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'github');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
+};
+
 const connect = () => {
   sending.value = true;
   const settings: GitHubSettings = buildSettings();
@@ -241,25 +264,6 @@ const connect = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, props.integration?.id
-    ? 'There was error updating settings'
-    : 'There was error connecting GitHub');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'github');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
 };
 
 const revertChanges = () => {
@@ -348,10 +352,4 @@ const githubImage = new URL(
   '@/assets/images/integrations/github.png',
   import.meta.url,
 ).href;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsDrawer',
-};
 </script>

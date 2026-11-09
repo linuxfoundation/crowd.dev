@@ -44,6 +44,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 
+defineOptions({
+  name: 'LfContributorWorkPosition',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -56,10 +60,4 @@ const { activeProfileOrganization } = useContributorHelpers();
 const organization = computed(() => activeProfileOrganization(props.contributor));
 const jobTitle = computed(() => organization.value?.memberOrganizations?.title
     || props.contributor.attributes?.jobTitle?.default);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorWorkPosition',
-};
 </script>

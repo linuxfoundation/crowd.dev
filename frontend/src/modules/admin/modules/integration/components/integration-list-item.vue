@@ -166,6 +166,10 @@ import IntegrationConfirmationModal from '@/modules/admin/modules/integration/co
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 
+defineOptions({
+  name: 'LfIntegrationListItem',
+});
+
 const props = defineProps<{
   config: IntegrationConfig,
   progress: IntegrationProgress[] | null,
@@ -225,10 +229,4 @@ onMounted(() => {
   isComponentMounted.value = true;
   fetchRepoMappings();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIntegrationListItem',
-};
 </script>
