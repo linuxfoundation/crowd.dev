@@ -51,22 +51,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import AppOrganizationBadge from '@/modules/organization/components/organization-badge.vue';
 import AppAvatarNewBadge from '@/shared/avatar/avatar-new-badge.vue';
 import AppAvatarImage from '@/shared/avatar-image/avatar-image.vue';
 import LfOrganizationLfMemberTag from '@/modules/organization/components/lf-member/organization-lf-member-tag.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-defineProps({
-  organization: {
-    type: Object,
-    default: () => null,
-  },
-});
+defineOptions({ name: 'AppOrganizationName' });
 
-const nameRef = ref();
+defineProps<{
+  organization: Organization;
+}>();
+
+const nameRef = ref<HTMLElement>();
 const showTooltip = ref(false);
 
 const handleOnMouseOver = () => {
@@ -74,16 +74,11 @@ const handleOnMouseOver = () => {
     showTooltip.value = false;
   }
 
-  showTooltip.value = nameRef.value.scrollWidth > nameRef.value.clientWidth;
+  // non-null: mouseover only fires on the mounted element
+  showTooltip.value = nameRef.value!.scrollWidth > nameRef.value!.clientWidth;
 };
 
 const handleOnMouseLeave = () => {
   showTooltip.value = false;
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationName',
 };
 </script>
