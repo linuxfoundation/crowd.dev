@@ -113,6 +113,10 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 
+defineOptions({
+  name: 'LfAdminUsers',
+});
+
 const search = ref('');
 const loading = ref<boolean>(false);
 const offset = ref(0);
@@ -185,10 +189,4 @@ const nameDisplay = (user: UserModel) => {
 onMounted(() => {
   searchUsers();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfAdminUsers',
-};
 </script>

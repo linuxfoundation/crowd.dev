@@ -159,10 +159,9 @@ import LfRadio from '@/ui-kit/radio/Radio.vue';
 import LfSvg from '@/shared/svg/svg.vue';
 import type { AxiosError } from 'axios';
 
-const enum ProjectType {
-  LF = 'LF',
-  NON_LF = 'nonLF',
-}
+defineOptions({
+  name: 'AppLfProjectForm',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -174,6 +173,11 @@ const props = defineProps<{
 const emit = defineEmits<{(e: 'update:modelValue', v: boolean): void;
   (e: 'onSuccess'): void;
 }>();
+
+const enum ProjectType {
+  LF = 'LF',
+  NON_LF = 'nonLF',
+}
 
 const route = useRoute();
 
@@ -293,6 +297,15 @@ const onCancel = () => {
   model.value = false;
 };
 
+const buildRequest = (): ProjectRequest => ({
+  name: form.name,
+  slug: form.slug,
+  sourceId: form.sourceId,
+  status: form.status,
+  isLF: form.type === ProjectType.LF,
+  parentSlug: form.parentSlug,
+});
+
 const onSubmit = () => {
   submitLoading.value = true;
 
@@ -318,18 +331,4 @@ const onSubmit = () => {
   }
 };
 
-const buildRequest = (): ProjectRequest => ({
-  name: form.name,
-  slug: form.slug,
-  sourceId: form.sourceId,
-  status: form.status,
-  isLF: form.type === ProjectType.LF,
-  parentSlug: form.parentSlug,
-});
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectForm',
-};
 </script>

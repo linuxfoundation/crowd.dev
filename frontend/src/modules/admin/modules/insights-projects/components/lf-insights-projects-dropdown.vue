@@ -24,6 +24,10 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 
+defineOptions({
+  name: 'LfInsightsProjectDropdown',
+});
+
 const props = defineProps<{
   id: string,
 }>();
@@ -38,11 +42,5 @@ const editProject = () => {
 
 const deleteProject = () => {
   emit('onDeleteProject', props.id);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectDropdown',
 };
 </script>

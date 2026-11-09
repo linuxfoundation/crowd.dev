@@ -61,6 +61,10 @@ import { CategoryGroupService } from '@/modules/admin/modules/categories/service
 import type { CategoryGroup } from '@/modules/admin/modules/categories/types/CategoryGroup';
 import { ToastStore } from '@/shared/message/notification';
 
+defineOptions({
+  name: 'LfCategoryGroupDropdown',
+});
+
 const props = defineProps<{
   categoryGroup: CategoryGroup,
 }>();
@@ -89,11 +93,5 @@ const deleteCategoryGroup = () => {
     .finally(() => {
       deleting.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCategoryGroupDropdown',
 };
 </script>

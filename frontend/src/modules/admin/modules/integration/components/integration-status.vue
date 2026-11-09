@@ -13,16 +13,14 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { IntegrationStatusSource } from '@/modules/admin/modules/integration/config/status';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 
+defineOptions({
+  name: 'LfIntegrationStatus',
+});
+
 const props = defineProps<{
   integration: IntegrationStatusSource,
 }>();
 
 const status = computed(() => getIntegrationStatus(props.integration));
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIntegrationStatus',
-};
 </script>

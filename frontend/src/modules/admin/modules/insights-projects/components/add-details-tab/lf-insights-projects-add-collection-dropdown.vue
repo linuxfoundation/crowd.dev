@@ -49,6 +49,10 @@ import { debounce } from 'lodash';
 import type { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
 import type { CollectionModel } from '../../../collections/models/collection.model';
 
+defineOptions({
+  name: 'LfInsightsProjectsAddCollectionDropdown',
+});
+
 const props = defineProps<{
   form: InsightsProjectAddFormModel;
 }>();
@@ -153,12 +157,6 @@ onBeforeUnmount(() => {
     scrollContainer.removeEventListener('scroll', onScroll);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectsAddCollectionDropdown',
-};
 </script>
 
 <style>
