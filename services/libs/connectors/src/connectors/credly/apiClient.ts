@@ -154,6 +154,8 @@ export async function fetchBadgeTemplatesPage(
 // The shared per-minute budget (budget.ts) empties when two runs of one worker overlap. Its reset lands
 // within the pool's probe window, so a call waits for it once instead of ending the run as rate limited.
 const BUDGET_RESET_WAIT_MAX_MS = PROBE_STALENESS_MS
+// The pool re-probes only once `now >= resetAt`, and a timer may wake just before it.
+const BUDGET_RESET_MARGIN_MS = 1_000
 
 let lastCallAtMs = 0
 let pacing: Promise<void> = Promise.resolve()
@@ -197,7 +199,7 @@ async function credlyGet(
 function budgetResetWaitMs(err: unknown): number | null {
   if (!(err instanceof RateLimitError) || !err.options?.resumeAt) return null
   const waitMs = err.options.resumeAt.getTime() - Date.now()
-  return waitMs <= BUDGET_RESET_WAIT_MAX_MS ? Math.max(waitMs, 0) : null
+  return waitMs <= BUDGET_RESET_WAIT_MAX_MS ? Math.max(waitMs, 0) + BUDGET_RESET_MARGIN_MS : null
 }
 
 function pace(): Promise<void> {
