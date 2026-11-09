@@ -132,6 +132,10 @@ import { useInvalidate } from '@/shared/queries/invalidate';
 import { useDebounce } from '@vueuse/core';
 import type { Pagination } from '@/shared/types/Pagination';
 
+defineOptions({
+  name: 'LfCollectionsPage',
+});
+
 const invalidate = useInvalidate();
 
 const search = ref('');
@@ -268,6 +272,11 @@ const openRemoveCollectionDialog = (collectionId: string) => {
   removeCollection.value = true;
 };
 
+const closeRemoveDialog = () => {
+  removeCollection.value = false;
+  removeCollectionId.value = '';
+};
+
 const deleteCollectionMutation = useMutation({
   mutationFn: (collectionId: string) => COLLECTIONS_SERVICE.delete(collectionId),
   onSuccess: () => {
@@ -286,14 +295,4 @@ const deleteCollectionMutation = useMutation({
   },
 });
 
-const closeRemoveDialog = () => {
-  removeCollection.value = false;
-  removeCollectionId.value = '';
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCollectionsPage',
-};
 </script>

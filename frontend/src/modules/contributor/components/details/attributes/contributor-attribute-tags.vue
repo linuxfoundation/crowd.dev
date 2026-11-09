@@ -23,15 +23,13 @@ import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { ref } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
+defineOptions({
+  name: 'LfContributorAttributeTags',
+});
+
 const props = defineProps<{
   data: string[],
 }>();
 
 const showMore = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAttributeTags',
-};
 </script>

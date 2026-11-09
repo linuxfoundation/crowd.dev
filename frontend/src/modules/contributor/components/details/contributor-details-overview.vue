@@ -13,13 +13,11 @@ import LfContributorDetailsAttributes
   from '@/modules/contributor/components/details/overview/contributor-details-attributes.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorDetailsOverview',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsOverview',
-};
 </script>

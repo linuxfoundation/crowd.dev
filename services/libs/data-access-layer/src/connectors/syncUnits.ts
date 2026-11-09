@@ -584,6 +584,31 @@ export async function listSyncUnitChannelsForIntegration(
   )
 }
 
+export async function getEmittingChannelNamesForIntegrations(
+  qx: QueryExecutor,
+  integrationIds: string[],
+): Promise<Record<string, string[]>> {
+  if (integrationIds.length === 0) return {}
+
+  const rows: { integrationId: string; channelName: string }[] = await qx.select(
+    `SELECT "integrationId", min("channelName") AS "channelName"
+     FROM integration.sync_units
+     WHERE "integrationId" IN ($(integrationIds:csv))
+       AND "emitEnabled"
+       AND status <> 'decommissioned'
+     GROUP BY "integrationId", lower("channelName")`,
+    { integrationIds },
+  )
+
+  const result: Record<string, string[]> = {}
+  for (const { integrationId, channelName } of rows) {
+    const channelNames = result[integrationId] ?? []
+    channelNames.push(channelName)
+    result[integrationId] = channelNames
+  }
+  return result
+}
+
 export async function decommissionSyncUnitsForChannels(
   qx: QueryExecutor,
   integrationId: string,

@@ -82,6 +82,10 @@ import { ToastStore } from '@/shared/message/notification';
 import { INSIGHTS_PROJECTS_SERVICE } from '../../insights-projects/services/insights-projects.service';
 import { useInsightsProjectsStore } from '../../insights-projects/pinia';
 
+defineOptions({
+  name: 'LfInsightsProjectsListDropdown',
+});
+
 const props = defineProps<{
   selectedProjects: InsightsProjectModel[];
 }>();
@@ -114,6 +118,16 @@ const inputRef = ref<InputInstance | null>(null);
 const searchQuery = ref('');
 const searchValue = useDebounce(searchQuery, 300);
 const isPopoverVisible = ref(false);
+
+const removeSelectedProject = (projects: InsightsProjectModel[]) => {
+  const selectedProjectsIds = props.selectedProjects.map(
+    (project) => project.id,
+  );
+  return projects.filter(
+    (project) => !selectedProjectsIds.includes(project.id),
+  );
+};
+
 const displayProjects = computed(() => removeSelectedProject(
   insightsProjectsStore.searchInsightsProjects(searchQuery.value),
 ));
@@ -149,15 +163,6 @@ const {
   },
   initialPageParam: 0,
 });
-
-const removeSelectedProject = (projects: InsightsProjectModel[]) => {
-  const selectedProjectsIds = props.selectedProjects.map(
-    (project) => project.id,
-  );
-  return projects.filter(
-    (project) => !selectedProjectsIds.includes(project.id),
-  );
-};
 
 const onSearchProjects = (query: string) => {
   searchQuery.value = query;
@@ -225,12 +230,6 @@ onBeforeUnmount(() => {
     scrollContainer.removeEventListener('scroll', onScroll);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectsListDropdown',
-};
 </script>
 
 <style lang="scss">

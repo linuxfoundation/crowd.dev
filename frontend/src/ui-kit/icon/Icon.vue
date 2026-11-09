@@ -5,6 +5,10 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'LfIcon',
+});
+
 const props = withDefaults(defineProps<{
   name: string,
   type?: string,
@@ -22,10 +26,4 @@ const sizeStyle = computed(() => {
     '--lf-icon-size': `${(props.size / 16)}rem`,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIcon',
-};
 </script>

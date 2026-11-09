@@ -128,6 +128,10 @@ import AppLfSubProjectsListDropdown from '@/modules/admin/modules/projects/compo
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfOrganizationAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean,
 }>();
@@ -255,11 +259,5 @@ const createOrganization = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAdd',
 };
 </script>

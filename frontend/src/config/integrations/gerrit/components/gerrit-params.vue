@@ -42,6 +42,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
 
+defineOptions({
+  name: 'AppGithubSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -52,10 +56,4 @@ const props = defineProps({
 const repositories = computed<string[]>(
   () => props.integration.settings?.remote?.repoNames,
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettings',
-};
 </script>

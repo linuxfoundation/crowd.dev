@@ -37,6 +37,10 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import LfContributorEditProfilePhoto from '@/modules/contributor/components/edit/contributor-edit-profile-photo.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsHeaderProfilePhoto',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -44,10 +48,4 @@ const props = defineProps<{
 const { isNew, avatar } = useContributorHelpers();
 
 const isEditModalOpen = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsHeaderProfilePhoto',
-};
 </script>

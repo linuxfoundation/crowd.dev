@@ -119,6 +119,10 @@ import type { Project } from '@/modules/lf/segments/types/Segments';
 
 import { ToastStore } from '@/shared/message/notification';
 
+defineOptions({
+  name: 'LfCmSubProjectListDropdown',
+});
+
 const props = defineProps<{
   selectedProjectId: string;
 }>();
@@ -270,12 +274,6 @@ onBeforeUnmount(() => {
   }
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCmSubProjectListDropdown',
-};
 </script>
 
 <style lang="scss">

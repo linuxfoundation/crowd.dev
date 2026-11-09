@@ -15,7 +15,7 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { TwitterSettings } from '@/config/integrations/twitter/types/TwitterSettings';
 import {
-  defineProps, computed, onMounted,
+  computed, onMounted,
 } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import config from '@/config';
@@ -24,6 +24,10 @@ import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { rememberConnectSegment } from '@/config/integrations/connect-segment';
+
+defineOptions({
+  name: 'LfTwitterConnect',
+});
 
 const props = defineProps<{
   segmentId: string | null;
@@ -76,10 +80,4 @@ const finallizeTwitterConnection = () => {
 onMounted(() => {
   finallizeTwitterConnection();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTwitterConnect',
-};
 </script>

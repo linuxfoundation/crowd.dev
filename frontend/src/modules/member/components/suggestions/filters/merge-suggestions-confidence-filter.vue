@@ -66,6 +66,10 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { useRouter } from 'vue-router';
 
+defineOptions({
+  name: 'AppMergeSuggestionsConfidenceFilter',
+});
+
 const props = defineProps<{
   modelValue: string[]
 }>();
@@ -114,10 +118,4 @@ const apply = () => {
 };
 
 const hasChanged = computed(() => !isEqual(model.value, props.modelValue));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMergeSuggestionsConfidenceFilter',
-};
 </script>

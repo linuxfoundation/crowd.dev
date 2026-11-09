@@ -17,6 +17,10 @@
 import { computed } from 'vue';
 import LfImg from '@/ui-kit/img/Img.vue';
 
+defineOptions({
+  name: 'LfAvatar',
+});
+
 const props = withDefaults(defineProps<{
   size?: number,
   name?: string,
@@ -30,10 +34,4 @@ const props = withDefaults(defineProps<{
 });
 
 const initials = computed(() => props.name.match(/\b\w/g)?.join('').substring(0, 2) || '');
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfAvatar',
-};
 </script>

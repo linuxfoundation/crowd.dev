@@ -8,6 +8,10 @@
 import LfPill from '@/ui-kit/pill/Pill.vue';
 import type { PillType } from '@/ui-kit/pill/types/PillType';
 
+defineOptions({
+  name: 'LfProjectStatusPill',
+});
+
 const props = defineProps<{
   status: string;
 }>();
@@ -29,11 +33,5 @@ const statusDisplay: Record<string, { type: PillType, label: string }> = {
     type: 'secondary',
     label: 'Archived',
   },
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfProjectStatusPill',
 };
 </script>

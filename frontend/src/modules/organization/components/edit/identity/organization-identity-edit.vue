@@ -77,6 +77,10 @@ import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfOrganizationIdentityEdit',
+});
+
 const props = defineProps<{
   modelValue: OrganizationIdentity | null,
   organization: Organization,
@@ -161,11 +165,5 @@ const updateIdentity = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationIdentityEdit',
 };
 </script>

@@ -18,15 +18,13 @@
 import LfButton from '@/ui-kit/button/Button.vue';
 import { ref } from 'vue';
 
+defineOptions({
+  name: 'LfContributorAttributeString',
+});
+
 const props = defineProps<{
   data: string,
 }>();
 
 const showMore = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAttributeString',
-};
 </script>

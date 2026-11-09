@@ -71,6 +71,10 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import AppOrganizationManagePhoneNumbersDrawer
   from '@/modules/organization/components/organization-manage-phone-numbers-drawer.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsPhoneNumbers',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -85,10 +89,4 @@ const phoneNumbersList = computed(() => phoneNumbers(props.organization));
 
 const showMore = ref<boolean>(false);
 const edit = ref<boolean>(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsPhoneNumbers',
-};
 </script>

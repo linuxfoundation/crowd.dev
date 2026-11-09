@@ -19,6 +19,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
+defineOptions({
+  name: 'AppLinkedInConnect',
+});
+
 const props = defineProps<{
   segmentId: string;
   grandparentId: string;
@@ -45,11 +49,5 @@ const connect = async () => {
   } catch (e) {
     console.error(e);
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLinkedInConnect',
 };
 </script>

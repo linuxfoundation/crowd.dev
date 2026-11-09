@@ -19,6 +19,10 @@ import { computed } from 'vue';
 import { fieldMessageTypeData } from '@/ui-kit/field-message/constants/fieldMessageTypeData';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfFieldMessage',
+});
+
 const props = withDefaults(defineProps<{
   type?: FieldMessageType,
   hideIcon?: boolean,
@@ -34,10 +38,4 @@ const iconClass = computed(() => {
   }
   return null;
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFieldMessage',
-};
 </script>
