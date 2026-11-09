@@ -47,6 +47,10 @@ import { ref, computed } from 'vue';
 import type { FilterOperator } from '@/shared/modules/filters/types/FilterOperator';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfFilterInlineSelect',
+});
+
 const props = defineProps<{
   modelValue: string,
   options: FilterOperator[],
@@ -65,12 +69,6 @@ const model = computed<string>({
 
 const selectOptionLabel = computed<string | undefined>(() => props.options.find((o) => o.value === model.value)
   ?.label) || '';
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterInlineSelect',
-};
 </script>
 
 <style lang="scss">

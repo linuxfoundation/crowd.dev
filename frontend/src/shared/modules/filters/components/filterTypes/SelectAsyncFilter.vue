@@ -62,6 +62,10 @@ import type {
 import type { SelectFilterValue } from '@/shared/modules/filters/types/filterTypes/SelectFilterConfig';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfSelectAsyncFilter',
+});
+
 const props = defineProps<{
   modelValue: SelectAsyncFilterValue,
   data: SelectAsyncFilterData,
@@ -134,10 +138,4 @@ onMounted(() => {
     data.value.selected = '';
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSelectAsyncFilter',
-};
 </script>

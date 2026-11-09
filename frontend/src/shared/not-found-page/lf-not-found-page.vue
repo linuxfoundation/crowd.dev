@@ -16,6 +16,10 @@ import { useRouter } from 'vue-router';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 
+defineOptions({
+  name: 'LfNotFoundPage',
+});
+
 const props = withDefaults(
   defineProps<{
     icon?: string;
@@ -35,15 +39,6 @@ const router = useRouter();
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-const goBack = () => {
-  const { back } = router.options.history.state;
-  if (!back || back.toString().includes('/auth')) {
-    router.push(customURL());
-    return;
-  }
-  router.go(-1);
-};
-
 const customURL = () => ({
   ...props.to,
   query: {
@@ -53,10 +48,13 @@ const customURL = () => ({
     ...(props.to.query || {}),
   },
 });
-</script>
 
-<script lang="ts">
-export default {
-  name: 'LfNotFoundPage',
+const goBack = () => {
+  const { back } = router.options.history.state;
+  if (!back || back.toString().includes('/auth')) {
+    router.push(customURL());
+    return;
+  }
+  router.go(-1);
 };
 </script>

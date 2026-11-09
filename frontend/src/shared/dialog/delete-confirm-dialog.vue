@@ -51,6 +51,10 @@ import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 
+defineOptions({
+  name: 'DeleteConfirmDialog',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   title: string;
@@ -83,11 +87,5 @@ const onClose = () => {
 
 const onConfirm = () => {
   emit('confirm');
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'DeleteConfirmDialog',
 };
 </script>

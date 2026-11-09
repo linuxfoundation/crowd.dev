@@ -70,6 +70,10 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfSavedViewsManagement',
+});
+
 const props = defineProps<{
   config: SavedViewsConfig,
   views: SavedView[]
@@ -151,12 +155,6 @@ const remove = (view: SavedView) => {
           ToastStore.error('There was an error deleting view');
         });
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSavedViewsManagement',
 };
 </script>
 
