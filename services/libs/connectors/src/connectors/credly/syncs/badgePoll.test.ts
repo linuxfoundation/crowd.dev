@@ -426,6 +426,22 @@ describe('runBadgePoll', () => {
     )
   })
 
+  it('stores and dates a badge with a pre-1970 issued_at from its created_at', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ issued_at: '0026-03-12T07:52:00Z', created_at: '2026-10-21T16:18:18Z' })]),
+    )
+    const { ctx, emitted, saved } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(types(emitted[0])).toEqual([
+      CredlyActivityType.ISSUED_BADGE,
+      CredlyActivityType.ACCEPTED_BADGE,
+    ])
+    expect(emitted[0][0]).toMatchObject({ timestamp: '2026-10-21T16:18:18.000Z' })
+    expect(saved[0]).toMatchObject({ issuedAt: '2026-10-21T16:18:18.000Z' })
+  })
+
   it('emits nothing for a known badge whose state did not change, but marks it seen', async () => {
     mockedFetchBadgesPage.mockResolvedValueOnce(
       page([badge({ state_updated_at: '2026-10-27T10:00:00.000Z' })]),
