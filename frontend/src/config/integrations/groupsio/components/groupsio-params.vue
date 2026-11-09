@@ -35,6 +35,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfGroupsioParams',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -43,10 +47,4 @@ const props = defineProps({
 });
 
 const groups = computed<{ id: string; name: string }[]>(() => props.integration.settings.groups);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGroupsioParams',
-};
 </script>

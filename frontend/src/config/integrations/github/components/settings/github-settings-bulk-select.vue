@@ -87,6 +87,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 
+defineOptions({
+  name: 'AppGithubSettingsBulkSelect',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   repositories: GithubMappingRepo[];
@@ -149,11 +153,5 @@ const mapRepos = () => {
   emit('apply', data);
   reset();
   isModalVisible.value = false;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettingsBulkSelect',
 };
 </script>

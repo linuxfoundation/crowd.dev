@@ -55,6 +55,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppGithubSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -70,10 +74,4 @@ const url = computed<string>(
 const space = computed<{ id: string; name: string; key: string } | null>(
   () => props.integration.settings?.space,
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettings',
-};
 </script>

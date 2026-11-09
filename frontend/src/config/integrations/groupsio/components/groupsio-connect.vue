@@ -26,6 +26,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfGroupsioSettingsDrawer from '@/config/integrations/groupsio/components/groupsio-settings-drawer.vue';
 
+defineOptions({
+  name: 'LfGroupsioConnect',
+});
+
 const props = defineProps<{
   integration: Integration<GroupsioSettings> | undefined,
   segmentId?: string,
@@ -33,10 +37,4 @@ const props = defineProps<{
 }>();
 
 const isSettingsDrawerOpen = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGroupsioConnect',
-};
 </script>

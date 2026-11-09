@@ -153,6 +153,10 @@ import DrawerFooterButtons from '@/modules/admin/modules/integration/components/
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 
+defineOptions({
+  name: 'LfConfluenceSettingsDrawer',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -303,11 +307,5 @@ const connect = async () => {
     .finally(() => {
       loading.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfConfluenceSettingsDrawer',
 };
 </script>

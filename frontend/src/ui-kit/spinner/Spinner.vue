@@ -3,16 +3,14 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfSpinner',
+});
+
 const props = withDefaults(defineProps<{
   size?: string,
 }>(), {
   size: '2rem',
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSpinner',
-};
 </script>

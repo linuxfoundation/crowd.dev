@@ -7,6 +7,10 @@
 <script lang="ts" setup>
 import { computed, getCurrentInstance } from 'vue';
 
+defineOptions({
+  name: 'LfTab',
+});
+
 const props = defineProps<{
   name: string,
 }>();
@@ -20,11 +24,5 @@ const isActive = computed<boolean>(() => parent.value?.props.modelValue === prop
 
 const selectTab = () => {
   parent.value?.emit('update:modelValue', props.name);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTab',
 };
 </script>
