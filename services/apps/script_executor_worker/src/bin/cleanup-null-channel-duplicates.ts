@@ -2267,29 +2267,24 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
 
 async function rollback(db: Session, log: Log, options: IRollbackOptions): Promise<number> {
   const tables = tablesFor(options.tag)
-  for (const name of [tables.raw.keys, tables.raw.backup]) {
+  for (const name of [tables.raw.keys, tables.raw.backup, tables.raw.batches]) {
     if (!(await tableExists(db, name))) {
       throw new UsageError(`Table "${name}" doesn't exist`)
     }
   }
   const columns = await activityRelationColumns(db)
   await assertBackupMatches(db, tables, columns)
-  const countBatchRows = async (): Promise<number> =>
-    (
-      await db.one(
-        `select count(*)::int as rows from ${tables.backup} where "batchId" = $(batchId)`,
-        {
-          batchId: options.batchId,
-        },
-      )
-    ).rows
-  const rows = await countBatchRows()
-  if (rows === 0) {
-    throw new UsageError(`Batch ${options.batchId} has no rows in ${tables.backup}`)
+  // the batch's own record: counting its backup rows before the index exists scans the whole table
+  const batch: { deleted: number } | null = await db.oneOrNone(
+    `select (metrics ->> 'deleted')::int as deleted from ${tables.batches} where "batchId" = $(batchId)`,
+    { batchId: options.batchId },
+  )
+  if (!batch) {
+    throw new UsageError(`Batch ${options.batchId} isn't in ${tables.batches}`)
   }
   await confirm(
     options,
-    `Put ${rows} rows of batch ${options.batchId} back into activityRelations and set its keys back to pending.`,
+    `Put the rows of batch ${options.batchId} (${batch.deleted} deleted) back into activityRelations and set its keys back to pending.`,
   )
 
   // a clean run of the same tag must not take these keys while they are restored
@@ -2298,10 +2293,12 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
   await db.none(
     `create index if not exists "ix_${tables.raw.backup}_batchId" on ${tables.backup} ("batchId")`,
   )
-  if ((await countBatchRows()) !== rows) {
-    throw new NotStartedError(
-      `Batch ${options.batchId} changed while this run waited for the run lock; start it again`,
-    )
+  const { rows }: { rows: number } = await db.one(
+    `select count(*)::int as rows from ${tables.backup} where "batchId" = $(batchId)`,
+    { batchId: options.batchId },
+  )
+  if (rows === 0) {
+    throw new UsageError(`Batch ${options.batchId} has no rows left in ${tables.backup}`)
   }
 
   // the table's own delete rules: a row whose cascade parent is gone would have been deleted
