@@ -12,8 +12,12 @@ export interface IChangeClock {
   changedKeyPrefix(): string
 }
 
+// The clock never goes below the server time in microseconds: after a reset it jumps past every
+// value read before it, so a stamp is never handed out twice
 const MARK_CHANGED = `
-local at = redis.call('incr', KEYS[1])
+local time = redis.call('time')
+local at = math.max((tonumber(redis.call('get', KEYS[1])) or 0) + 1, time[1] * 1000000 + time[2])
+redis.call('set', KEYS[1], string.format('%d', at))
 local previous = {}
 for i = 2, #KEYS do
   previous[i - 1] = tonumber(redis.call('get', KEYS[i])) or 0
