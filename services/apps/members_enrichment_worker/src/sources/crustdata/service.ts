@@ -496,7 +496,13 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
   private toScrapableLinkedinHandle(value: string | undefined): string | null {
     const handle = value?.replace(/\//g, '').trim()
-    return handle && !/\s/.test(handle) ? handle : null
+    if (!handle) return null
+
+    try {
+      return /\s/.test(decodeURIComponent(handle)) ? null : handle
+    } catch {
+      return null
+    }
   }
 
   normalize(profiles: IMemberEnrichmentDataCrustdata[]): IMemberEnrichmentDataNormalized[] {
