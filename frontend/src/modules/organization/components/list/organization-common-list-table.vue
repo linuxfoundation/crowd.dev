@@ -136,7 +136,9 @@ import { getSegmentName } from '@/utils/segments';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-type OrganizationRow = Organization & { segments?: string[] };
+defineOptions({
+  name: 'AppOrganizationComonListTable',
+});
 
 const props = defineProps<{
   sorting: string,
@@ -144,6 +146,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{(e: 'reload'): void, (e: 'update:sorting', value: string): void}>();
+
+type OrganizationRow = Organization & { segments?: string[] };
 
 const sort = computed<string>({
   get() {
@@ -213,12 +217,6 @@ const getSegments = (segments: string[]): {id: string, name: string}[] => segmen
   id: segment,
   name: getSegmentName(segment) || '',
 })).filter((s) => s.name.length > 0);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationComonListTable',
-};
 </script>
 
 <style lang="scss">

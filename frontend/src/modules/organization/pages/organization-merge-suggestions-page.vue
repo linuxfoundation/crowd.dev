@@ -206,6 +206,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import type { OrganizationMergeSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 import type { MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
 
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsPage',
+});
+
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
 const mergeSuggestions = ref<OrganizationMergeSuggestion[]>([]);
@@ -363,10 +367,4 @@ const ignore = (suggestion: OrganizationMergeSuggestion) => {
 onMounted(() => {
   getTotalCount();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationMergeSuggestionsPage',
-};
 </script>

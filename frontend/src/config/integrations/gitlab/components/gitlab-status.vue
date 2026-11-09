@@ -12,13 +12,11 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import LfSvg from '@/shared/svg/svg.vue';
 
+defineOptions({
+  name: 'LfGitlabStatus',
+});
+
 const props = defineProps<{
   integration: Integration<unknown>;
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGitlabStatus',
-};
 </script>

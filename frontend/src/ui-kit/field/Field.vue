@@ -14,6 +14,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfField',
+});
+
 const props = withDefaults(defineProps<{
   labelText?: string,
   description?: string,
@@ -25,10 +29,4 @@ const props = withDefaults(defineProps<{
   required: false,
   for: undefined,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfField',
-};
 </script>

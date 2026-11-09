@@ -147,6 +147,10 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfContributorEngagementLevel from '@/modules/contributor/components/shared/contributor-engagement-level.vue';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 
+defineOptions({
+  name: 'LfOrganizationDetailsContributors',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -235,7 +239,7 @@ const fetch = () => {
       }
       pagination.value.total = data.count;
     })
-    .catch((err) => {
+    .catch(() => {
       contributors.value = [];
       pagination.value.total = 0;
     })
@@ -271,14 +275,7 @@ onMounted(() => {
   fetch();
 });
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsContributors',
-};
 </script>

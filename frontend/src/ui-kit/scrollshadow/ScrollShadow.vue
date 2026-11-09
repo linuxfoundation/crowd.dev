@@ -11,6 +11,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 
+defineOptions({
+  name: 'LfScrollShadow',
+});
+
 const scrollContainer = ref<HTMLElement | null>(null);
 const showTopShadow = ref<boolean>(true);
 const showBottomShadow = ref<boolean>(true);
@@ -26,10 +30,4 @@ const handleScroll = () => {
 onMounted(() => {
   handleScroll();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfScrollShadow',
-};
 </script>

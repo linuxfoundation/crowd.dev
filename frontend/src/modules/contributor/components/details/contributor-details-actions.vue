@@ -102,6 +102,10 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import AppMemberUnmergeDialog from '@/modules/member/components/member-unmerge-dialog.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsActions',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -151,10 +155,4 @@ const fetchMergeSuggestions = () => {
 onMounted(() => {
   fetchMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsActions',
-};
 </script>

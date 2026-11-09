@@ -32,6 +32,10 @@ import { computed, watch } from 'vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfModal',
+});
+
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -92,10 +96,4 @@ watch(
     }
   },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfModal',
-};
 </script>

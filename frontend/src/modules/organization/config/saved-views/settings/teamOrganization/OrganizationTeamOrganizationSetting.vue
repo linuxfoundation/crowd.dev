@@ -21,6 +21,10 @@
 import { computed } from 'vue';
 import { IncludeEnum } from '@/modules/member/config/saved-views/settings/common/types/IncludeEnum';
 
+defineOptions({
+  name: 'LfMemberTeamMemberSetting',
+});
+
 const props = defineProps<{
   modelValue: IncludeEnum,
 }>();
@@ -35,10 +39,4 @@ const value = computed<IncludeEnum>({
     emit('update:modelValue', val);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMemberTeamMemberSetting',
-};
 </script>

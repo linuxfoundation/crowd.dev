@@ -144,6 +144,10 @@ import LfVerificationStatus from '@/shared/modules/verification/components/verif
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorDetailsWorkHistoryItem',
+});
+
 const props = defineProps<{
   organization: Organization,
   contributor: Contributor,
@@ -240,11 +244,5 @@ const removeWorkHistory = () => {
         ToastStore.error('Something went wrong while deleting an work experience');
       });
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsWorkHistoryItem',
 };
 </script>

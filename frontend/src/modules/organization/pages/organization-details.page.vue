@@ -159,6 +159,10 @@ import LfOrganizationSyncingActivities from '@/modules/organization/components/s
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfNotFoundPage from '@/shared/not-found-page/lf-not-found-page.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsPage',
+});
+
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
@@ -214,12 +218,6 @@ onMounted(() => {
   organization.value = null;
   getOrganization();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsPage',
-};
 </script>
 
 <style>

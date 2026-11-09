@@ -21,6 +21,10 @@ import type { ButtonType } from '@/ui-kit/button/types/ButtonType';
 import type { ButtonSize } from '@/ui-kit/button/types/ButtonSize';
 import type { ButtonNativeType } from '@/ui-kit/button/types/ButtonNativeType';
 
+defineOptions({
+  name: 'LfButton',
+});
+
 const props = withDefaults(defineProps<{
   type?: ButtonType,
   size?: ButtonSize,
@@ -38,10 +42,4 @@ const props = withDefaults(defineProps<{
   loadingText: undefined,
   disabled: false,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfButton',
-};
 </script>

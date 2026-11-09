@@ -67,6 +67,10 @@ import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 
+defineOptions({
+  name: 'LfOrganizationSelect',
+});
+
 const props = defineProps<{
   modelValue: Organization | null,
 }>();
@@ -122,10 +126,4 @@ const createOrganization = (value: string) => {
 onMounted(() => {
   fetchOrganizations({ query: '' });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationSelect',
-};
 </script>

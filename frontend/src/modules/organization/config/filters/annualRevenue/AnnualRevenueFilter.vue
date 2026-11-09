@@ -80,6 +80,10 @@ import AppFormErrors from '@/shared/form/form-errors.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/FilterIncludeSwitch.vue';
 
+defineOptions({
+  name: 'AnnualRevenueFilter',
+});
+
 const props = defineProps<{
   modelValue: NumberFilterValue,
   config: NumberFilterConfig
@@ -97,6 +101,10 @@ const defaultForm: NumberFilterValue = {
   include: true,
   operator: FilterNumberOperator.BETWEEN,
 };
+
+const isBetween = computed<boolean>(() => ([
+  FilterNumberOperator.BETWEEN,
+] as FilterNumberOperator[]).includes(form.value.operator));
 
 const rules = computed<ValidationArgs>(() => ({
   value: {
@@ -117,10 +125,6 @@ const rules = computed<ValidationArgs>(() => ({
     required,
   },
 }));
-
-const isBetween = computed<boolean>(() => ([
-  FilterNumberOperator.BETWEEN,
-] as FilterNumberOperator[]).includes(form.value.operator));
 
 const annualRevenueFilterOperators = computed(() => numberFilterOperators.filter((operator) => operator.value !== FilterNumberOperator.EQ
       && operator.value !== FilterNumberOperator.NE
@@ -148,10 +152,4 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AnnualRevenueFilter',
-};
 </script>

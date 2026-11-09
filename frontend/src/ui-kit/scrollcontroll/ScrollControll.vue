@@ -5,6 +5,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfScrollControll',
+});
+
 const emit = defineEmits<{(e: 'bottom'): void}>();
 
 const controlScroll = (e: Event) => {
@@ -12,11 +16,5 @@ const controlScroll = (e: Event) => {
   if (target.scrollTop + target.clientHeight >= target.scrollHeight - 10) {
     emit('bottom');
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfScrollControll',
 };
 </script>

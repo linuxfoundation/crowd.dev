@@ -31,6 +31,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppGithubSettings',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -39,10 +43,4 @@ const props = defineProps({
 });
 
 const forum = computed<string>(() => props.integration.settings.forumHostname);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGithubSettings',
-};
 </script>

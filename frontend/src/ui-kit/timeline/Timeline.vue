@@ -10,15 +10,13 @@
 </template>
 
 <script lang="ts" setup>
+defineOptions({
+  name: 'LfTimeline',
+});
+
 const props = withDefaults(defineProps<{
   width?: string;
 }>(), {
   width: '1rem',
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTimeline',
-};
 </script>

@@ -74,6 +74,10 @@ import useVuelidate from '@vuelidate/core';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfContributorIdentityEdit',
+});
+
 const props = defineProps<{
   modelValue: ContributorIdentity,
   contributor: Contributor,
@@ -177,11 +181,5 @@ const updateIdentity = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorIdentityEdit',
 };
 </script>

@@ -11,13 +11,11 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LfContributorAttributeUrl',
+});
+
 const props = defineProps<{
   data: string,
 }>();
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAttributeUrl',
-};
 </script>

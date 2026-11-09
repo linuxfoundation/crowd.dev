@@ -84,6 +84,10 @@ import LfOrganizationAttributeSource
   from '@/modules/organization/components/details/overview/attributes/organization-attribute-source.vue';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 
+defineOptions({
+  name: 'LfOrganizationDetailsAttributes',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -154,10 +158,4 @@ const getValue = (attribute: OrganizationEnrichmentConfig) => {
 };
 
 const affiliated = computed(() => affiliatedProfiles(props.organization));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsAttributes',
-};
 </script>

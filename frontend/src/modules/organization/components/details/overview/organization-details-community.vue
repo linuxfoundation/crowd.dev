@@ -71,6 +71,10 @@ import LfOrganizationDetailsCommunityProjectSelect
   from '@/modules/organization/components/details/overview/community/organization-details-community-project-select.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfOrganizationDetailsCommunity',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -110,9 +114,4 @@ const loadData = () => {
 onMounted(() => {
   loadData();
 });
-</script>
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsCommunity',
-};
 </script>
