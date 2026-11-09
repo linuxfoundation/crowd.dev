@@ -10,6 +10,7 @@ import type { CredlyDeps } from '../deps'
 import {
   credlyActivitySchema,
   issuedBadgeActivity,
+  plausibleIssuedAt,
   stateBadgeActivity,
   toIsoTimestamp,
 } from '../mapper'
@@ -226,7 +227,7 @@ function badgeRow(
     badgeTemplateUrl: badge.badge_template.url ?? null,
     state: badge.state,
     stateUpdatedAt: badge.state_updated_at ? toIsoTimestamp(badge.state_updated_at) : null,
-    issuedAt: toIsoTimestamp(badge.issued_at),
+    issuedAt: toIsoTimestamp(plausibleIssuedAt(badge)),
     expiresAt: badge.expires_at ? toIsoTimestamp(badge.expires_at) : null,
     replacementBadgeId: badge.replacement_badge_id ?? null,
     replacesBadgeId: badge.replaces_badge_id ?? null,

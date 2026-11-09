@@ -48,11 +48,19 @@ export type CredlyActivity = z.infer<typeof credlyActivitySchema>
 // A renewed badge is born with the dates of the badge it replaces copied onto it
 // (linuxfoundation/lfx-cdp-insights-ops#967): only created_at dates the renewal.
 export function issuedAt(badge: CredlyBadge): string {
-  return badge.replaces_badge_id && badge.created_at ? badge.created_at : badge.issued_at
+  return badge.replaces_badge_id && badge.created_at ? badge.created_at : plausibleIssuedAt(badge)
+}
+
+export function plausibleIssuedAt(badge: CredlyBadge): string {
+  return badge.created_at && isBeforeEpoch(badge.issued_at) ? badge.created_at : badge.issued_at
+}
+
+function isBeforeEpoch(raw: string): boolean {
+  return Date.parse(raw) < 0
 }
 
 export function stateChangedAt(badge: CredlyBadge): string {
-  const stateUpdatedAt = badge.state_updated_at ?? badge.issued_at
+  const stateUpdatedAt = badge.state_updated_at ?? plausibleIssuedAt(badge)
   if (!badge.created_at) return stateUpdatedAt
   return Date.parse(badge.created_at) > Date.parse(stateUpdatedAt)
     ? badge.created_at
@@ -79,7 +87,7 @@ export function expiredBadgeActivityFromRow(row: ICredlyBadgeRow): CredlyActivit
   return {
     type,
     platform: PlatformType.CREDLY,
-    timestamp: toIsoTimestamp(row.expiresAt),
+    timestamp: toActivityTimestamp(row.expiresAt),
     sourceId: row.badgeId,
     score: CREDLY_GRID[type].score,
     title: row.badgeTemplateName,
@@ -111,6 +119,14 @@ export function toIsoTimestamp(raw: string): string {
   return parsed.toISOString()
 }
 
+export function toActivityTimestamp(raw: string): string {
+  const iso = toIsoTimestamp(raw)
+  if (isBeforeEpoch(iso)) {
+    throw new Error(`credly timestamp is before 1970, which the activity store cannot hold: ${raw}`)
+  }
+  return iso
+}
+
 function badgeActivity(
   badge: CredlyBadge,
   type: CredlyActivityType,
@@ -120,7 +136,7 @@ function badgeActivity(
   return {
     type,
     platform: PlatformType.CREDLY,
-    timestamp: toIsoTimestamp(timestamp),
+    timestamp: toActivityTimestamp(timestamp),
     sourceId: badge.id,
     score: CREDLY_GRID[type].score,
     title: template.name,
