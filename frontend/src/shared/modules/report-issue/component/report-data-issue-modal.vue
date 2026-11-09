@@ -187,7 +187,6 @@ const getType = computed(() => {
 
 const entity = computed(() => props.contributor || props.organization);
 
-// Enum values go to the backend, so only the displayed label is renamed.
 const typeLabel = (type: ReportDataType) => (type === ReportDataType.ORGANIZATION_DETAILS ? 'Company details' : type);
 
 const getConfig = computed<ReportDataConfig>(() => reportDataConfig[getType.value]);

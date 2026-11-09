@@ -19,7 +19,7 @@ const OrganizationMergeSuggestionsPage = () =>
 const OrganizationsMainPage = async () => OrganizationListPage();
 
 const legacyRedirect = (to: RouteLocationNormalized) => ({
-  path: to.path.replace(/^\/organizations/, '/companies'),
+  path: to.path.replace(/^\/organizations/i, '/companies'),
   query: to.query,
   hash: to.hash,
 });
