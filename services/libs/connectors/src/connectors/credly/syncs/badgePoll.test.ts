@@ -11,6 +11,7 @@ import type { BadgesPageParams, CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps } from '../deps'
 import {
+  BACKFILL_WINDOW_MS,
   MAX_PAGES_PER_RUN,
   MAX_REPLACEMENT_HOPS,
   MAX_WINDOW_MS,
@@ -301,7 +302,7 @@ describe('runBadgePoll', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
     expect(LOG.warn).toHaveBeenCalledWith(
       expect.objectContaining({ since, until: HORIZON, halvedUntil: half }),
-      'credly badge window failed, retrying its first half',
+      'credly badge window failed, retrying a narrower head of it',
     )
   })
 
@@ -897,9 +898,9 @@ describe('runBadgePoll replacements', () => {
 })
 
 describe('runBadgePoll backfill', () => {
-  const FLOOR = '2026-10-10T00:00:00.000Z'
+  const FLOOR = '2026-07-01T00:00:00.000Z'
   const TOP = '2026-10-20T00:00:00.000Z'
-  const MID = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+  const MID = new Date(Date.parse(TOP) - BACKFILL_WINDOW_MS).toISOString()
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -969,7 +970,7 @@ describe('runBadgePoll backfill', () => {
 
   it('keeps the lowest floor reached across armings', async () => {
     mockedFetchBadgesPage.mockResolvedValue(page([]))
-    const earlier = '2026-10-01T00:00:00.000Z'
+    const earlier = '2026-06-01T00:00:00.000Z'
     const { ctx, lastWatermark } = makeCtx({
       since: HORIZON,
       historyFrom: earlier,
@@ -1019,18 +1020,22 @@ describe('runBadgePoll backfill', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
   })
 
-  it('halves a failing backfill window and walks its upper half before moving down', async () => {
+  it('shrinks a failing backfill window to the live step and walks the rest before moving down', async () => {
     const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
     mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
     const { ctx } = makeCtx({ since: HORIZON, backfill: { floor: FLOOR, top: TOP } })
 
     await runBadgePoll(ctx)
 
-    const half = new Date(Date.parse(MID) + MAX_WINDOW_MS / 2).toISOString()
+    const weeks: { min: string; max: string }[] = []
+    for (let min = Date.parse(MID); min < Date.parse(TOP); min += MAX_WINDOW_MS) {
+      const max = Math.min(min + MAX_WINDOW_MS, Date.parse(TOP))
+      weeks.push({ min: new Date(min).toISOString(), max: new Date(max).toISOString() })
+    }
+    expect(weeks.length).toBeGreaterThan(2)
     expect(requestedParams().map((p) => p.window)).toEqual([
       { min: MID, max: TOP },
-      { min: MID, max: half },
-      { min: half, max: TOP },
+      ...weeks,
       { min: FLOOR, max: MID },
     ])
   })
