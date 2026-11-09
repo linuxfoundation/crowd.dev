@@ -81,7 +81,7 @@ import type { InputInstance } from 'element-plus';
 import AppFormItem from '@/shared/form/form-item.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
 
 defineOptions({ name: 'AppLfSubProjectsListDropdown' });

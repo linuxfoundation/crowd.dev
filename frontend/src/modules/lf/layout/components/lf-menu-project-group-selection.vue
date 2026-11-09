@@ -114,7 +114,7 @@ import { queryKeys } from '@/shared/queries/keys';
 import { useDebounce } from '@vueuse/core';
 
 import { ToastStore } from '@/shared/message/notification';
-import { segmentService } from '../../segments/segments.service';
+import { queryProjectGroupsQueryFn } from '../../segments/segments.api.service';
 import type { ProjectGroup } from '../../segments/types/Segments';
 
 defineOptions({
@@ -153,7 +153,7 @@ const { trackEvent } = useProductTracking();
 
 const queryKey = computed(() => queryKeys.projectGroups.search(searchValue.value));
 
-const projectGroupsQueryFn = segmentService.queryProjectGroups(() => ({
+const projectGroupsQueryFn = queryProjectGroupsQueryFn(() => ({
   limit: 20,
   offset: 0,
   filter: {

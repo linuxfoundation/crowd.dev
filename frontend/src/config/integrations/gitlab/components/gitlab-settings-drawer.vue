@@ -200,7 +200,7 @@ import {
 } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import gitlab from '@/config/integrations/gitlab/config';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import { useRouter } from 'vue-router';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
@@ -470,7 +470,7 @@ const bulkApply = (data: Record<string, string>) => {
 const subprojects = ref<SubProject[]>([]);
 
 const fetchSubProjects = () => {
-  LfService.findSegment(props.grandparentId).then((segment: ProjectGroup) => {
+  LfService.findSegment<ProjectGroup>(props.grandparentId).then((segment: ProjectGroup) => {
     subprojects.value = (segment.projects ?? []).map((p) => p.subprojects).flat();
   });
 };
