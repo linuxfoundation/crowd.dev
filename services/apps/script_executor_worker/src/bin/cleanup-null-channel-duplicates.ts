@@ -45,11 +45,14 @@ Commands:
   snapshot Read only. Save every row (any channel) of the next --keys pending keys of one
            platform (and --segments), in the order clean takes them, to --out (JSON).
   verify   Read only. Compare the keys of a --snapshot file with what is there now, the backup
-           table, the keys table and the batches table. Exit 0 and verify.pass when clean did
-           exactly what it should, exit 1 and verify.fail with every problem otherwise.
+           rows written since the snapshot, the keys table and the batches table. Exit 0 and
+           verify.pass when clean did exactly what it should, exit 1 and verify.fail with every
+           problem otherwise, including keys clean took that the snapshot doesn't cover.
   rollback Put the deleted rows of one --batch back into activityRelations, set its keys back
-           to pending and remove the restored rows from the backup table. Kept rows keep their
-           carried fields and bumped updatedAt.
+           to pending and remove the restored rows from the backup table. Follows the table's
+           foreign keys: a row whose member or segment is gone stays in the backup, a removed
+           organization, conversation or object member is restored as NULL. Kept rows keep
+           their carried fields and bumped updatedAt.
 
 Usage:
   npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
@@ -76,7 +79,8 @@ collect options:
 snapshot options:
   --platforms p      Exactly one platform, the one the gated clean run uses
   --segments a,b     Only keys of these segment ids, as in clean
-  --keys N           How many pending keys to save (more than the clean run will take)
+  --keys N           How many pending keys to save, more than the clean run will take (max 20000)
+  --retry-deferred   Also take deferred keys, for a clean run with --retry-deferred
   --out FILE         Where to write the snapshot
 
 verify options:
@@ -194,7 +198,10 @@ const COMMAND_FLAGS: Record<string, { values: string[]; switches: string[] }> = 
     ],
   },
   status: { values: ['--tag'], switches: [] },
-  snapshot: { values: ['--tag', '--platforms', '--segments', '--keys', '--out'], switches: [] },
+  snapshot: {
+    values: ['--tag', '--platforms', '--segments', '--keys', '--out'],
+    switches: ['--retry-deferred'],
+  },
   verify: { values: ['--tag', '--snapshot'], switches: [] },
   rollback: { values: ['--tag', '--batch'], switches: ['--yes'] },
 }
@@ -228,6 +235,7 @@ interface ISnapshotOptions extends ICommonOptions {
   segmentIds: string[]
   keys: number
   out: string
+  retryDeferred: boolean
 }
 
 interface IVerifyOptions extends ICommonOptions {
@@ -248,9 +256,11 @@ interface IKeyRow {
 interface ISnapshotFile {
   tag: string
   takenAt: string
+  takenAtUs: string
   platform: string
   segmentIds: string[]
   keyIds: string[]
+  keyDeleted: Record<string, number>
   rows: IKeyRow[]
 }
 
@@ -1865,27 +1875,34 @@ async function snapshot(db: Session, log: Log, options: ISnapshotOptions): Promi
     )
   }
   const platform = options.platforms[0]
+  const statuses = options.retryDeferred ? ['pending', 'deferred'] : ['pending']
 
   const file: ISnapshotFile = await db.tx(async (t) => {
     await t.none(`set transaction isolation level repeatable read read only`)
+    await t.none(`set local timezone to 'UTC'`)
+    const takenAt: { at: string; us: string } = await t.one(
+      `select now()::text as at, (extract(epoch from now()) * 1000000)::bigint::text as us`,
+    )
     // the alias differs from the column, so order by is numeric like clean's, not by the text
-    const keys: { keyId: string }[] = await t.any(
+    const keys: { keyId: string; deleted: number | null }[] = await t.any(
       `
-        select id::text as "keyId" from ${tables.keys}
-        where status = 'pending' and platform = $(platform)
+        select id::text as "keyId", deleted from ${tables.keys}
+        where status in ($(statuses:csv)) and platform = $(platform)
           ${options.segmentIds.length > 0 ? `and "segmentId" in ($(segmentIds:csv))` : ''}
         order by id
         limit $(limit)
       `,
-      { platform, segmentIds: options.segmentIds, limit: options.keys },
+      { statuses, platform, segmentIds: options.segmentIds, limit: options.keys },
     )
     const keyIds = keys.map((k) => k.keyId)
     return {
       tag: options.tag,
-      takenAt: new Date().toISOString(),
+      takenAt: takenAt.at,
+      takenAtUs: takenAt.us,
       platform,
       segmentIds: options.segmentIds,
       keyIds,
+      keyDeleted: Object.fromEntries(keys.map((k) => [k.keyId, k.deleted ?? 0])),
       rows: await keyRows(t, tables, keyIds),
     }
   })
@@ -1894,6 +1911,7 @@ async function snapshot(db: Session, log: Log, options: ISnapshotOptions): Promi
   log.info(
     {
       out: options.out,
+      takenAt: file.takenAt,
       keys: file.keyIds.length,
       rows: file.rows.length,
       nullChannelRows: file.rows.filter((r) => r.row.channel === null).length,
@@ -1913,6 +1931,12 @@ function stableJson(value: Record<string, unknown>): string {
   )
 }
 
+function changedColumns(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+    (c) => JSON.stringify(before[c] ?? null) !== JSON.stringify(after[c] ?? null),
+  )
+}
+
 // newest first, the order clean ranks copies in
 function newer(a: IKeyRow, b: IKeyRow): boolean {
   const au = BigInt(a.updatedUs)
@@ -1924,14 +1948,28 @@ function newer(a: IKeyRow, b: IKeyRow): boolean {
   return String(a.row.activityId) > String(b.row.activityId)
 }
 
+// date_trunc('milliseconds') floors, also before 1970
+function floorToMs(us: bigint): bigint {
+  const ms = BigInt(1000)
+  const r = us % ms
+  return r < BigInt(0) ? us - r - ms : us - r
+}
+
 function auditKeys(
   snap: ISnapshotFile,
-  keyStatus: Map<string, { status: string; deleted: number | null }>,
+  keyStatus: Map<string, { status: string; deleted: number | null; error: string | null }>,
   now: IKeyRow[],
   backup: { keyId: string; keptActivityId: string; row: Record<string, unknown> }[],
-): { problems: string[]; stats: Record<string, number> } {
+): { problems: string[]; notes: string[]; stats: Record<string, number> } {
   const problems: string[] = []
-  const stats = { keysProcessed: 0, keysUntouched: 0, rowsDeleted: 0, keptUpdated: 0 }
+  const notes: string[] = []
+  const stats = {
+    keysProcessed: 0,
+    keysUntouched: 0,
+    keysDeferred: 0,
+    rowsDeleted: 0,
+    keptUpdated: 0,
+  }
   const group = <T extends { keyId: string }>(rows: T[]) => {
     const m = new Map<string, T[]>()
     for (const r of rows) m.set(r.keyId, [...(m.get(r.keyId) ?? []), r])
@@ -1941,6 +1979,21 @@ function auditKeys(
   const nowByKey = group(now)
   const backupByKey = group(backup)
   const presentIds = new Set(now.map((r) => String(r.row.activityId)))
+  const unchanged = (
+    keyId: string,
+    what: string,
+    id: string,
+    r: IKeyRow,
+    a: IKeyRow | undefined,
+  ) => {
+    if (!a) {
+      problems.push(`key ${keyId}: ${what} ${id} disappeared`)
+    } else if (stableJson(a.row) !== stableJson(r.row)) {
+      problems.push(
+        `key ${keyId}: ${what} ${id} changed in ${changedColumns(r.row, a.row).join(', ')}`,
+      )
+    }
+  }
 
   for (const keyId of snap.keyIds) {
     const before = new Map((beforeByKey.get(keyId) ?? []).map((r) => [String(r.row.activityId), r]))
@@ -1955,37 +2008,30 @@ function auditKeys(
       continue
     }
 
-    if (status.status === 'pending') {
-      stats.keysUntouched++
-      for (const [id, r] of before) {
-        const a = after.get(id)
-        if (!a || stableJson(a.row) !== stableJson(r.row)) {
-          problems.push(`key ${keyId} (pending): row ${id} changed or disappeared`)
-        }
+    if (status.status === 'pending' || status.status === 'deferred') {
+      if (status.status === 'deferred') {
+        stats.keysDeferred++
+        notes.push(`key ${keyId}: deferred by clean (${status.error ?? 'no error'}), not checked`)
+      } else {
+        stats.keysUntouched++
       }
-      if (backedUp.length > 0)
-        problems.push(`key ${keyId} (pending): ${backedUp.length} backup row(s)`)
+      for (const [id, r] of before) unchanged(keyId, 'untouched row', id, r, after.get(id))
+      if (backedUp.length > 0) {
+        problems.push(`key ${keyId} (${status.status}): ${backedUp.length} backup row(s)`)
+      }
       continue
     }
 
     stats.keysProcessed++
     const nullBefore = [...before.values()].filter((r) => r.row.channel === null)
-    const kept = nullBefore.reduce<IKeyRow | null>(
-      (best, r) => (!best || newer(r, best) ? r : best),
-      null,
-    )
+    const ranked = [...nullBefore].sort((a, b) => (newer(a, b) ? -1 : newer(b, a) ? 1 : 0))
+    const kept = ranked[0] ?? null
     const keptId = kept ? String(kept.row.activityId) : null
-    const deleted = nullBefore.filter((r) => String(r.row.activityId) !== keptId)
+    const deleted = ranked.slice(1)
 
     for (const [id, r] of before) {
-      if (r.row.channel !== null) {
-        const a = after.get(id)
-        if (!a || stableJson(a.row) !== stableJson(r.row)) {
-          problems.push(
-            `key ${keyId}: row ${id} with channel "${r.row.channel}" changed or disappeared`,
-          )
-        }
-      }
+      if (r.row.channel !== null)
+        unchanged(keyId, `row with channel "${r.row.channel}"`, id, r, after.get(id))
     }
 
     const nullLeft = [...after.values()]
@@ -2009,17 +2055,22 @@ function auditKeys(
       if (presentIds.has(id)) problems.push(`key ${keyId}: deleted row ${id} still exists`)
       const b = backupById.get(id)
       if (!b) continue
-      if (stableJson(b.row) !== stableJson(r.row))
-        problems.push(`key ${keyId}: backup row ${id} differs from the snapshot`)
-      if (b.keptActivityId !== keptId)
+      if (stableJson(b.row) !== stableJson(r.row)) {
+        problems.push(
+          `key ${keyId}: backup row ${id} differs from the snapshot in ${changedColumns(r.row, b.row).join(', ')}`,
+        )
+      }
+      if (b.keptActivityId !== keptId) {
         problems.push(
           `key ${keyId}: backup row ${id} keptActivityId ${b.keptActivityId}, expected ${keptId}`,
         )
+      }
     }
     stats.rowsDeleted += deleted.length
-    if ((status.deleted ?? 0) !== backedUp.length) {
+    const deletedNow = (status.deleted ?? 0) - (snap.keyDeleted[keyId] ?? 0)
+    if (deletedNow !== backedUp.length) {
       problems.push(
-        `key ${keyId}: keys.deleted ${status.deleted} but ${backedUp.length} backup row(s)`,
+        `key ${keyId}: keys.deleted grew by ${deletedNow} but ${backedUp.length} row(s) were backed up`,
       )
     }
 
@@ -2029,30 +2080,38 @@ function auditKeys(
       problems.push(`key ${keyId}: kept row ${keptId} is gone`)
       continue
     }
-    let changed = false
-    for (const col of new Set([...Object.keys(kept.row), ...Object.keys(keptNow.row)])) {
+    if (deleted.length > 0) {
+      // the 2 ms clean guarantees past every deleted copy, at the precision Tinybird keeps
+      const maxDeletedUs = deleted.reduce(
+        (m, r) => (BigInt(r.updatedUs) > m ? BigInt(r.updatedUs) : m),
+        BigInt(deleted[0].updatedUs),
+      )
+      if (BigInt(keptNow.updatedUs) < floorToMs(maxDeletedUs) + BigInt(2000)) {
+        problems.push(
+          `key ${keyId}: kept updatedAt ${keptNow.row.updatedAt} isn't 2 ms past every deleted copy`,
+        )
+      }
+    }
+    const columns = changedColumns(kept.row, keptNow.row)
+    // a kept row clean changed got updatedAt = now(), after the snapshot, so Tinybird merges it
+    if (columns.length > 0 && BigInt(keptNow.updatedUs) < BigInt(snap.takenAtUs)) {
+      problems.push(
+        `key ${keyId}: kept row changed in ${columns.join(', ')} but its updatedAt ${keptNow.row.updatedAt} is older than the snapshot`,
+      )
+    }
+    for (const col of columns) {
       const was = kept.row[col] ?? null
       const is = keptNow.row[col] ?? null
-      if (JSON.stringify(was) === JSON.stringify(is)) continue
-      changed = true
       if (col === 'updatedAt') {
-        const maxDeletedUs = deleted.reduce(
-          (m, r) => (BigInt(r.updatedUs) > m ? BigInt(r.updatedUs) : m),
-          BigInt(0),
-        )
-        if (
-          BigInt(keptNow.updatedUs) < BigInt(kept.updatedUs) ||
-          BigInt(keptNow.updatedUs) <= maxDeletedUs
-        ) {
-          problems.push(
-            `key ${keyId}: kept updatedAt ${is} isn't after its old value and every deleted copy`,
-          )
+        if (BigInt(keptNow.updatedUs) < BigInt(kept.updatedUs)) {
+          problems.push(`key ${keyId}: kept updatedAt went back from ${was} to ${is}`)
         }
       } else if (CARRIED_COLUMNS.includes(col)) {
-        const sources = new Set(deleted.map((r) => JSON.stringify(r.row[col] ?? null)))
-        if (was !== null || !sources.has(JSON.stringify(is))) {
+        // clean carries the value of the newest deleted copy that has one
+        const expected = deleted.find((r) => (r.row[col] ?? null) !== null)?.row[col] ?? null
+        if (was !== null || JSON.stringify(is) !== JSON.stringify(expected)) {
           problems.push(
-            `key ${keyId}: kept ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}`,
+            `key ${keyId}: kept ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}, expected ${JSON.stringify(expected)}`,
           )
         }
       } else {
@@ -2061,13 +2120,28 @@ function auditKeys(
         )
       }
     }
-    if (changed) stats.keptUpdated++
+    if (columns.length > 0) stats.keptUpdated++
   }
-  return { problems, stats }
+  return { problems, notes, stats }
+}
+
+function readSnapshot(path: string): ISnapshotFile {
+  const snap = JSON.parse(readFileSync(path, 'utf8')) as Partial<ISnapshotFile>
+  if (
+    typeof snap.tag !== 'string' ||
+    typeof snap.takenAt !== 'string' ||
+    typeof snap.takenAtUs !== 'string' ||
+    !Array.isArray(snap.keyIds) ||
+    !Array.isArray(snap.rows) ||
+    typeof snap.keyDeleted !== 'object'
+  ) {
+    throw new UsageError(`${path} isn't a snapshot file from this script's snapshot command`)
+  }
+  return snap as ISnapshotFile
 }
 
 async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<number> {
-  const snap: ISnapshotFile = JSON.parse(readFileSync(options.snapshot, 'utf8'))
+  const snap = readSnapshot(options.snapshot)
   if (snap.tag !== options.tag) {
     throw new UsageError(`The snapshot is for tag ${snap.tag}, not ${options.tag}`)
   }
@@ -2078,15 +2152,17 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
 
   const state = await db.tx(async (t) => {
     await t.none(`set transaction isolation level repeatable read read only`)
+    await t.none(`set local timezone to 'UTC'`)
     const keys: {
       keyId: string
       status: string
       deleted: number | null
-      batchId: string | null
+      error: string | null
     }[] = await t.any(
-      `select id::text as "keyId", status, deleted, "batchId" from ${tables.keys} where id in ($(keyIds:csv))`,
+      `select id::text as "keyId", status, deleted, error from ${tables.keys} where id in ($(keyIds:csv))`,
       { keyIds: snap.keyIds },
     )
+    // only what clean backed up after the snapshot: re-opened keys have older backup rows
     const backup: {
       keyId: string
       batchId: string
@@ -2094,33 +2170,40 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
       row: Record<string, unknown>
     }[] = await t.any(
       `
-          select k.id::text as "keyId", b."batchId", b."keptActivityId",
-            to_jsonb(b) - array['keptActivityId', 'batchId', 'deletedAt'] as row
-          from ${tables.keys} k
-          join ${tables.backup} b on ${KEY_COLUMNS_JOIN('b')}
-          where k.id in ($(keyIds:csv))
-        `,
-      { keyIds: snap.keyIds },
+        select k.id::text as "keyId", b."batchId", b."keptActivityId",
+          to_jsonb(b) - array['keptActivityId', 'batchId', 'deletedAt'] as row
+        from ${tables.keys} k
+        join ${tables.backup} b on ${KEY_COLUMNS_JOIN('b')}
+        where k.id in ($(keyIds:csv)) and b."deletedAt" >= $(takenAt)::timestamptz
+      `,
+      { keyIds: snap.keyIds, takenAt: snap.takenAt },
     )
     const batchIds = [...new Set(backup.map((b) => b.batchId))]
-    const batches: { batchId: string; deleted: number; backedUp: number }[] =
+    // every batch of the runs that touched these keys, so keys taken outside the snapshot show
+    const batches: { batchId: string; deleted: number; backedUp: number; outside: number }[] =
       batchIds.length === 0
         ? []
         : await t.any(
             `
               select bt."batchId", (bt.metrics ->> 'deleted')::int as deleted,
-                (select count(*)::int from ${tables.backup} x where x."batchId" = bt."batchId") as "backedUp"
+                (select count(*)::int from ${tables.backup} x where x."batchId" = bt."batchId") as "backedUp",
+                (select count(*)::int from ${tables.keys} k
+                  where k."batchId" = bt."batchId" and k.id not in ($(keyIds:csv))) as outside
               from ${tables.batches} bt
-              where bt."batchId" in ($(batchIds:csv))
+              where bt."runId" in (
+                select "runId" from ${tables.batches} where "batchId" in ($(batchIds:csv))
+              )
             `,
-            { batchIds },
+            { batchIds, keyIds: snap.keyIds },
           )
     return { keys, backup, batches, now: await keyRows(t, tables, snap.keyIds) }
   })
 
-  const { problems, stats } = auditKeys(
+  const { problems, notes, stats } = auditKeys(
     snap,
-    new Map(state.keys.map((k) => [k.keyId, { status: k.status, deleted: k.deleted }])),
+    new Map(
+      state.keys.map((k) => [k.keyId, { status: k.status, deleted: k.deleted, error: k.error }]),
+    ),
     state.now,
     state.backup,
   )
@@ -2128,6 +2211,11 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
     if (b.deleted !== b.backedUp) {
       problems.push(
         `batch ${b.batchId}: metrics.deleted ${b.deleted} but ${b.backedUp} backup rows`,
+      )
+    }
+    if (b.outside > 0) {
+      problems.push(
+        `batch ${b.batchId}: took ${b.outside} key(s) outside the snapshot, which verify didn't check (snapshot more --keys)`,
       )
     }
   }
@@ -2138,6 +2226,7 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
     keys: snap.keyIds.length,
     batches: state.batches.length,
     ...stats,
+    notes: notes.slice(0, 50),
   }
   if (problems.length > 0) {
     log.error(
@@ -2159,6 +2248,13 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
   }
   const columns = await activityRelationColumns(db)
   await assertBackupMatches(db, tables, columns)
+  // a clean run of the same tag must not take these keys while they are restored
+  await acquireRunLock(db, log, tables)
+  // without it every rollback statement scans the whole backup table
+  await db.none(
+    `create index if not exists "ix_${tables.raw.backup}_batchId" on ${tables.backup} ("batchId")`,
+  )
+
   const preview: { rows: number; keys: number } = await db.one(
     `
       select count(*)::int as rows,
@@ -2170,58 +2266,99 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
   if (preview.rows === 0) {
     throw new UsageError(`Batch ${options.batchId} has no rows in ${tables.backup}`)
   }
-
   await confirm(
     options,
-    `Put ${preview.rows} rows of batch ${options.batchId} back into activityRelations and set its ${preview.keys} keys back to pending.`,
+    `Put ${preview.rows} rows of batch ${options.batchId} back into activityRelations and set its keys back to pending.`,
   )
-  // a clean run of the same tag must not take these keys while they are restored
-  await acquireRunLock(db, log, tables)
 
-  const cols = columns.map((c) => `"${c}"`).join(', ')
+  // the table's own delete rules: a row whose cascade parent is gone would have been deleted
+  // with it, and a set-null reference that is gone would have been nulled
+  const foreignKeys: { col: string; ref: string; refCol: string; onDelete: string }[] =
+    await db.any(`
+      select a.attname as col, c.confrelid::regclass::text as ref, af.attname as "refCol",
+        c.confdeltype as "onDelete"
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+      join pg_attribute af on af.attrelid = c.confrelid and af.attnum = c.confkey[1]
+      where c.conrelid = '"activityRelations"'::regclass and c.contype = 'f'
+        and array_length(c.conkey, 1) = 1
+    `)
+  const parentExists = (fk: { col: string; ref: string; refCol: string }) =>
+    `exists (select 1 from ${fk.ref} p where p."${fk.refCol}" = b."${fk.col}")`
+  const required = foreignKeys.filter((fk) => fk.onDelete === 'c')
+  const nullable = new Map(
+    foreignKeys.filter((fk) => fk.onDelete === 'n').map((fk) => [fk.col, fk]),
+  )
+  const selectList = columns
+    .map((c) => {
+      const fk = nullable.get(c)
+      return fk ? `case when ${parentExists(fk)} then b."${c}" end` : `b."${c}"`
+    })
+    .join(', ')
+  const restorable = required
+    .map((fk) => `and (b."${fk.col}" is null or ${parentExists(fk)})`)
+    .join(' ')
+
   const result = await db.tx(async (t) => {
     await t.none(`set local lock_timeout = '${CLEAN_LOCK_TIMEOUT}'`)
     const restored = await t.result(
       `
-        insert into "activityRelations" (${cols})
-        select ${cols} from ${tables.backup} where "batchId" = $(batchId)
+        insert into "activityRelations" (${columns.map((c) => `"${c}"`).join(', ')})
+        select ${selectList} from ${tables.backup} b
+        where b."batchId" = $(batchId) ${restorable}
         on conflict ("activityId") do nothing
       `,
       { batchId: options.batchId },
     )
-    const reopened = await t.result(
+    // rows now in the table leave the backup and re-open their keys by exactly that many rows
+    const reopen: { removed: number; keys: number; reopened: number } = await t.one(
       `
-        update ${tables.keys} k set
-          status = 'pending',
-          deleted = greatest(coalesce(k.deleted, 0) - b.n, 0),
-          "batchId" = null,
-          "doneAt" = null
-        from (
+        with removed as (
+          delete from ${tables.backup} b
+          where b."batchId" = $(batchId)
+            and exists (select 1 from "activityRelations" ar where ar."activityId" = b."activityId")
+          returning "timestamp", platform, type, "sourceId", "segmentId"
+        ),
+        b as (
           select "timestamp", platform, type, "sourceId", "segmentId", count(*)::int as n
-          from ${tables.backup} where "batchId" = $(batchId)
-          group by 1, 2, 3, 4, 5
-        ) b
-        where ${KEY_COLUMNS_JOIN('b')}
+          from removed group by 1, 2, 3, 4, 5
+        ),
+        reopened as (
+          update ${tables.keys} k set
+            status = 'pending',
+            deleted = greatest(coalesce(k.deleted, 0) - b.n, 0),
+            "batchId" = null,
+            "doneAt" = null
+          from b
+          where ${KEY_COLUMNS_JOIN('b')}
+          returning 1
+        )
+        select (select count(*)::int from removed) as removed,
+          (select count(*)::int from b) as keys,
+          (select count(*)::int from reopened) as reopened
       `,
       { batchId: options.batchId },
     )
-    // restored rows leave the backup, so a later clean backs them up once and the counts agree
-    const removed = await t.result(
-      `
-        delete from ${tables.backup} b
-        where b."batchId" = $(batchId)
-          and exists (select 1 from "activityRelations" ar where ar."activityId" = b."activityId")
-      `,
-      { batchId: options.batchId },
-    )
-    return {
-      restored: restored.rowCount,
-      reopened: reopened.rowCount,
-      removedFromBackup: removed.rowCount,
+    if (reopen.reopened !== reopen.keys) {
+      throw new InvariantError(
+        `Restored rows of ${reopen.keys} keys but re-opened ${reopen.reopened} keys: rolled back`,
+      )
     }
+    return { restored: restored.rowCount, ...reopen }
   })
 
-  log.info({ batchId: options.batchId, backupRows: preview.rows, ...result }, 'rollback.done')
+  log.info(
+    {
+      batchId: options.batchId,
+      backupRows: preview.rows,
+      restored: result.restored,
+      removedFromBackup: result.removed,
+      reopenedKeys: result.reopened,
+      // their member or segment is gone: they stay in the backup
+      leftInBackup: preview.rows - result.removed,
+    },
+    'rollback.done',
+  )
   return EXIT_DONE
 }
 
@@ -2324,7 +2461,8 @@ function parseCommon(flags: Map<string, string | true>): ICommonOptions {
 }
 
 function parseSnapshot(flags: Map<string, string | true>): ISnapshotOptions {
-  const keys = parseIntFlag('--keys', value(flags, '--keys'), 1, 100_000)
+  // a JSON snapshot past ~700k rows hits V8's string limit; gates need far fewer keys
+  const keys = parseIntFlag('--keys', value(flags, '--keys'), 1, 20_000)
   const out = value(flags, '--out')
   if (keys === undefined || !out) {
     throw new UsageError('snapshot needs --keys and --out')
@@ -2334,6 +2472,7 @@ function parseSnapshot(flags: Map<string, string | true>): ISnapshotOptions {
     segmentIds: parseListFlag('--segments', value(flags, '--segments'), UUID_PATTERN) ?? [],
     keys,
     out,
+    retryDeferred: flags.has('--retry-deferred'),
   }
 }
 
