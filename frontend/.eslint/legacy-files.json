@@ -29,7 +29,6 @@
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number.vue",
     "src/modules/organization/pages/organization-form-page.vue",
-    "src/modules/settings/pages/api-keys-page.vue",
     "src/shared/avatar/avatar.vue",
     "src/shared/loading/page-loader.vue",
     "src/shared/svg/svg.vue",
@@ -49,7 +48,6 @@
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number.vue",
     "src/modules/organization/pages/organization-form-page.vue",
-    "src/modules/settings/pages/api-keys-page.vue",
     "src/shared/loading/page-loader.vue",
     "src/shared/modules/entities/Entities.vue"
   ],
