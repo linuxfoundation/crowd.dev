@@ -245,11 +245,29 @@ describe('runOrganizationProposedAction', () => {
     expect(deps.connectReposToSegment).not.toHaveBeenCalled()
   })
 
-  it('creates one project for the listed repositories of a project group without an owner', async () => {
-    const rows = ['one', 'two'].map((name) => ({
+  it('lets a project group under one owner join a project holding other repositories of that owner', async () => {
+    const rows = ['one', 'Two'].map((name) => ({
       ...project,
       id: name,
-      repoUrl: `https://github.com/kubernetes/${name}`,
+      repoUrl: `https://github.com/Kubernetes/${name}`,
+      projectName: 'Kube Tools',
+      proposedAction: 'create_segment' as const,
+      requestHints: { project: 'Kube Tools', mainRepoUrl: 'https://github.com/kubernetes/one' },
+    }))
+
+    await runOrganizationProposedAction(rows, deps)
+
+    expect(deps.onboardOrganizationProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectName: 'Kube Tools', owner: 'kubernetes' }),
+    )
+  })
+
+  it('matches a project group spread over several owners by its listed repositories only', async () => {
+    const rows = [
+      { ...project, id: 'one', repoUrl: 'https://github.com/kubernetes/one' },
+      { ...project, id: 'two', repoUrl: 'https://github.com/other/two' },
+    ].map((row) => ({
+      ...row,
       projectName: 'Kube Tools',
       proposedAction: 'create_segment' as const,
       requestHints: { project: 'Kube Tools', mainRepoUrl: 'https://github.com/kubernetes/one' },

@@ -1,3 +1,4 @@
+import { canonicalizeRepoUrl } from '@crowd/common'
 import { lockProjectCatalogOnboardingTarget } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -106,6 +107,16 @@ export async function runProposedAction(
   }
 }
 
+// A project whose repositories all live under one owner may already hold other repositories
+// of that owner, left out of the request because they were tracked already.
+function sharedOwner(projects: ProposedActionProject[]): string | null {
+  const owners = new Set(
+    projects.map((project) => canonicalizeRepoUrl(project.repoUrl)?.owner?.toLowerCase() ?? null),
+  )
+  const [owner] = owners
+  return owners.size === 1 ? owner : null
+}
+
 export async function runOrganizationProposedAction(
   projects: ProposedActionProject[],
   deps: IProposedActionDeps,
@@ -121,7 +132,7 @@ export async function runOrganizationProposedAction(
     return deps.onboardOrganizationProject({
       id: lead.id,
       projectName: lead.projectName,
-      owner: organizationOf(lead),
+      owner: organizationOf(lead) ?? sharedOwner(projects),
       repoUrls: projects.map((project) => project.repoUrl),
     })
   }

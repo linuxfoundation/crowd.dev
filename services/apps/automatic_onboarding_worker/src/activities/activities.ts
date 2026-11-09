@@ -38,7 +38,6 @@ import {
   onboardOrganizationProject,
   onboardProject,
   requestGroupKey,
-  organizationOf,
   requestGroupReviewOf,
   reportRequestOutcome,
   toReviewRequestCard,
@@ -281,7 +280,7 @@ async function onboardClaimedOrganization(
   claimed: IDbProjectCatalog[],
 ): Promise<void> {
   log.info(
-    { ids: claimed.map((project) => project.id), organization: organizationOf(claimed[0]) },
+    { ids: claimed.map((project) => project.id), group: requestGroupKey(claimed[0]) },
     'Starting the onboarding of an organization.',
   )
   try {
@@ -531,9 +530,9 @@ export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promi
   await closeOrganizationCardIfSettled(current)
 }
 
-// The last repository of an organization to fail or be skipped must still close the shared card.
+// The last repository of a group to fail or be skipped must still close the shared card.
 async function closeOrganizationCardIfSettled(stale: IDbProjectCatalog): Promise<void> {
-  if (!organizationOf(stale) || !stale.reviewMessageTs) {
+  if (!requestGroupKey(stale) || !stale.reviewMessageTs) {
     return
   }
   const qx = pgpQx(svc.postgres.writer.connection())
