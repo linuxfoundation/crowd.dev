@@ -18,7 +18,6 @@ const OrganizationMergeSuggestionsPage = () =>
 
 const OrganizationsMainPage = async () => OrganizationListPage();
 
-// Old /organizations URLs redirect to /companies, keeping params, query and hash.
 const legacyRedirect = (to: RouteLocationNormalized) => ({
   path: to.path.replace(/^\/organizations/, '/companies'),
   query: to.query,

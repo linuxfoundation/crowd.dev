@@ -209,11 +209,7 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
         secondaryDisplayName,
       );
       const between = h('span', {}, ' unmerged from ');
-      const after = h(
-        'span',
-        {},
-        '. Syncing company activities might take some time to complete.',
-      );
+      const after = h('span', {}, '. Syncing company activities might take some time to complete.');
       ToastStore.closeAll();
       ToastStore.success(
         h('div', {}, [secondaryOrganization, between, primaryOrganization, after]),

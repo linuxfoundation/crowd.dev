@@ -192,8 +192,7 @@ const en = {
     organization: {
       unmerge: {
         errors: {
-          cannotExtractSingleIdentity:
-            'Original company only has one identity, cannot extract it!',
+          cannotExtractSingleIdentity: 'Original company only has one identity, cannot extract it!',
         },
       },
     },

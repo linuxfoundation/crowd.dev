@@ -39,7 +39,7 @@
         LFX CM successfully installed
       </h4>
       <p class="text-medium text-center pb-10 max-w-148">
-        To finalize the process of connecting this GitHub company to LFX
+        To finalize the process of connecting this GitHub organization to LFX
         Community Data Platform, each repository must be mapped to its
         corresponding sub-project.
       </p>

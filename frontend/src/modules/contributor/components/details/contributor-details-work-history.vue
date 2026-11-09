@@ -46,7 +46,7 @@
                 v-if="item.memberOrganizations.affiliationOverride.isPrimaryWorkExperience"
                 :class="ii === 0 ? 'absolute -top-2 -right-2' : '-mt-0.5'"
               >
-                <lf-tooltip content="Affiliated organization/job title" placement="top-start">
+                <lf-tooltip content="Affiliated company/job title" placement="top-start">
                   <div
                     class=" border-2 border-white bg-secondary-500 rounded-full w-4.5 h-4.5 flex items-center justify-center"
                   >

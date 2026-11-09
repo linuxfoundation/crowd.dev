@@ -16,7 +16,7 @@
       Error syncing activities
     </h6>
     <p class="text-center text-medium text-gray-500">
-      An error occurred while syncing this company activities.<br>
+      An error occurred while syncing this company's activities.<br>
       Please contact our support team.
     </p>
   </div>
