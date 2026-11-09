@@ -24,7 +24,7 @@
       <!-- Merge -->
       <lf-button v-else-if="hasPermission(LfPermission.mergeOrganizations)" type="secondary" @click="isMergeDialogOpen = props.organization">
         <lf-icon name="merge" />
-        Merge organization
+        Merge company
       </lf-button>
 
       <!-- Actions -->

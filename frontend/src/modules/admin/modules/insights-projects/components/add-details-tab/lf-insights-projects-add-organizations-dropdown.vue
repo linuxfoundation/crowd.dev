@@ -117,7 +117,7 @@ function fetchOrganizations(query = '', pageNum = 0) {
     })
     .catch(() => {
       ToastStore.closeAll();
-      ToastStore.error('Failed to load  organizations');
+      ToastStore.error('Failed to load  companies');
     })
     .finally(() => {
       loading.value = false;

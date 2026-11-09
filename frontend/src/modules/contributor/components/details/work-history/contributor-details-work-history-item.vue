@@ -51,7 +51,7 @@
                 class="!w-full"
                 placement="right"
                 :disabled="!isOverlapping"
-                content="You cannot affiliate an organization/job title that overlaps with another for the same time period"
+                content="You cannot affiliate a company/job title that overlaps with another for the same time period"
               >
                 <lf-dropdown-item
                   v-if="!props.organization.memberOrganizations.affiliationOverride.isPrimaryWorkExperience"
@@ -212,9 +212,9 @@ const setAffiliation = (data: {
   })
     .then(() => {
       if (data.isPrimaryWorkExperience) {
-        ToastStore.success('Organization/job title successfully affiliated');
+        ToastStore.success('Company/job title successfully affiliated');
       } else {
-        ToastStore.success('Organization/job title affiliation successfully removed');
+        ToastStore.success('Company/job title affiliation successfully removed');
       }
       getContributorOrganizations(props.contributor.id);
     });

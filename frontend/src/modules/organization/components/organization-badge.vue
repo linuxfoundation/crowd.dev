@@ -5,7 +5,7 @@
   >
     <el-tooltip
       placement="top"
-      content="Your own organization"
+      content="Your own company"
     >
       <div class="px-2 py-0.5 flex items-center text-2xs font-medium bg-gray-200 text-gray-600 rounded-md gap-1">
         <lf-icon name="people-group" :size="12" />Team

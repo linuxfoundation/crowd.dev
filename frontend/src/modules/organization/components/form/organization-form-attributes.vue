@@ -3,7 +3,7 @@
     <div v-if="showHeader">
       <h6>Attributes</h6>
       <p class="text-gray-500 text-2xs leading-normal mt-1">
-        Data points to enhance the organization profile
+        Data points to enhance the company profile
       </p>
     </div>
     <div :class="showHeader ? 'col-span-2' : 'col-span-3'">

@@ -16,7 +16,7 @@ import OrganizationsFilter from './OrganizationsFilter.vue';
 
 const organizations: CustomFilterConfig = {
   id: 'organizations',
-  label: 'Organization',
+  label: 'Company',
   iconClass: 'building',
   type: FilterConfigType.CUSTOM,
   component: OrganizationsFilter,
@@ -71,7 +71,7 @@ const organizations: CustomFilterConfig = {
     data: MultiSelectAsyncFilterData,
   ): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT_ASYNC](
-      'Organization',
+      'Company',
       value,
       options,
       data,

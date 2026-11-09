@@ -6,7 +6,7 @@ function camelCaseToName(camelCase: string) {
 }
 
 const organizationsEditProfile: LogRenderingConfig<Record<string, unknown>> = {
-  label: 'Organization profile updated',
+  label: 'Company profile updated',
   changes: ({ oldState, newState, diff }) => {
     const additions: string[] = [];
     const removals: string[] = [];
@@ -36,7 +36,7 @@ const organizationsEditProfile: LogRenderingConfig<Record<string, unknown>> = {
   },
   description: (log) => `ID: ${log.entityId}`,
   properties: (log) => [{
-    label: 'Organization',
+    label: 'Company',
     value: `ID: ${log.entityId}</span>`,
   }],
 };

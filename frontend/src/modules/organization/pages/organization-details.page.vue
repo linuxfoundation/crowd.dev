@@ -4,8 +4,8 @@
   </div>
   <lf-not-found-page
     v-else-if="!organization?.id"
-    :back-message="'Back to organizations'"
-    :to="{ path: '/organizations' }"
+    :back-message="'Back to companies'"
+    :to="{ path: '/companies' }"
   />
   <div v-else class="-mt-5 -mb-5">
     <div class="organization-details grid grid-cols-2 grid-rows-2 px-3">
@@ -17,7 +17,7 @@
       >
         <div class="flex items-center flex-grow">
           <lf-back
-            :to="{ path: hasSegments ? '/organizations' : '/admin' }"
+            :to="{ path: hasSegments ? '/companies' : '/admin' }"
             class="mr-2"
             @mouseover.stop
             @mouseout.stop

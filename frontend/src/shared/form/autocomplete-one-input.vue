@@ -43,7 +43,7 @@
         v-if="record.id"
         :key="record.id"
         :disabled="!disableOption(record)"
-        content="Active member organizations of the Linux Foundation can't be merged into other organizations."
+        content="Active member companies of the Linux Foundation can't be merged into other companies."
         placement="top"
       >
         <span>

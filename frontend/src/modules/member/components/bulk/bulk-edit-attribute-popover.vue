@@ -274,7 +274,7 @@ const multiSelectCreateFn = computed(() => {
 
 const multiSelectPlaceholder = computed(() => {
   if (selectedAttribute.value.name === 'organizations') {
-    return 'Select or create an organization';
+    return 'Select or create a company';
   }
   return 'Enter option(s) or create one';
 });
@@ -294,7 +294,7 @@ const defaultAttributes = [
   },
   {
     name: 'organizations',
-    label: 'Organizations',
+    label: 'Companies',
     type: 'multiSelect',
   },
 ];

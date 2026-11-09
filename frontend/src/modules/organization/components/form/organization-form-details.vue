@@ -1,6 +1,6 @@
 <template>
   <div class="grid gap-x-12 grid-cols-3">
-    <h6>Organization details</h6>
+    <h6>Company details</h6>
     <div class="col-span-2 organization-details-form">
       <el-form-item
         :label="fields.displayName.label"

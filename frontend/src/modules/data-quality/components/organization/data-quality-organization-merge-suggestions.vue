@@ -32,7 +32,7 @@
         No merge suggestions
       </h5>
       <p class="text-sm text-center text-gray-600 leading-5">
-        We couldn't find any duplicated organizations
+        We couldn't find any duplicated companies
       </p>
     </div>
   </div>

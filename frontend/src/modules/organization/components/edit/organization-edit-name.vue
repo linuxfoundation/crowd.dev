@@ -73,10 +73,10 @@ const update = () => {
     },
   })
     .then(() => {
-      ToastStore.success('Organization name updated successfully!');
+      ToastStore.success('Company name updated successfully!');
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating company');
     });
 };
 </script>

@@ -17,7 +17,7 @@
               People
             </lf-tab>
             <lf-tab v-model="tab" name="organization" preserve-query>
-              Organizations
+              Companies
             </lf-tab>
           </lf-tabs>
         </div>

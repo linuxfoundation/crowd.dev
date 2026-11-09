@@ -131,7 +131,7 @@
                         <lf-svg name="source" class="h-3 w-3" />
                       </el-tooltip>
                       <div class="ml-2 text-purple-800">
-                        Organization
+                        Company
                       </div>
                     </div>
                   </lf-table-head>

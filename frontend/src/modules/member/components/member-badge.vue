@@ -40,7 +40,7 @@ const isBot = computed(() => props.member.attributes.isBot?.default);
 
 const computedTooltipContent = (tooltip: 'team' | 'bot'): string => {
   if (tooltip === 'team') {
-    return 'This person belongs to your organization';
+    return 'This person belongs to your company';
   }
   return 'Bot';
 };

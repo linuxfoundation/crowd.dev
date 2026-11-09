@@ -19,7 +19,7 @@
     </div>
     <div v-else>
       <div class="pb-4 text-small text-gray-400 -mt-4">
-        {{ pluralize('organization', totalOrganizations, true) }}
+        {{ pluralize('company', totalOrganizations, true) }}
       </div>
       <app-organization-common-list-table
         v-model:sorting="sorting"

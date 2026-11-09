@@ -21,9 +21,9 @@
                     Affiliation
                   </p>
                   <p class="text-small text-gray-500 break-normal text-left">
-                    Organization(s) that an individual represents while contributing to a project.
+                    Companies that an individual represents while contributing to a project.
                     This association indicates that the person's activities were made in the context
-                    of their role within the organization, rather than as an independent
+                    of their role within the company, rather than as an independent
                     contributor.
                   </p>
                 </div>

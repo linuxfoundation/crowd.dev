@@ -131,11 +131,11 @@ const update = () => {
     },
   })
     .then(() => {
-      ToastStore.success('Organization logo updated successfully!');
+      ToastStore.success('Company logo updated successfully!');
       isModalOpen.value = false;
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating company');
     })
     .finally(() => {
       sending.value = false;

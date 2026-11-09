@@ -60,7 +60,7 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
     log.oldState.forEach((org) => {
       if (!newStateMap.has(org.organizationId)) {
         changes.removals.push(
-          `<span>Organization:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
+          `<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
         );
       } else {
         const newOrg = newStateMap.get(org.organizationId)!;
@@ -70,7 +70,7 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
           (org.title || '') !== (newOrg.title || '')
         ) {
           changes.changes
-            .push(`<span>Organization:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}
+            .push(`<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}
             <br><s>${org.title ? `${org.title}: ` : ''}${formatDateRange(org.dateStart, org.dateEnd)}</s>
             <br>${newOrg.title ? `${org.title}: ` : ''}${formatDateRange(newOrg.dateStart, newOrg.dateEnd)}
           `);
@@ -82,7 +82,7 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
     log.newState.forEach((org) => {
       if (!oldStateMap.has(org.organizationId)) {
         changes.additions.push(
-          `<span>Organization:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
+          `<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
         );
       }
     });

@@ -11,7 +11,7 @@
     @click="markTeamOrganization(!props.organization.isTeamOrganization)"
   >
     <lf-icon name="people-group" />
-    {{ props.organization.isTeamOrganization ? 'Unmark' : 'Mark' }} as team organization
+    {{ props.organization.isTeamOrganization ? 'Unmark' : 'Mark' }} as team company
   </lf-dropdown-item>
   <lf-dropdown-item
     v-if="hasPermission(LfPermission.organizationEdit)"
@@ -25,7 +25,7 @@
     <lf-dropdown-separator />
     <lf-dropdown-item type="danger" @click="deleteOrganization()">
       <lf-icon name="trash-can" />
-      Delete organization
+      Delete company
     </lf-dropdown-item>
   </template>
 </template>
@@ -73,8 +73,8 @@ const markTeamOrganization = (teamOrganization: boolean) => {
   });
 
   doManualAction({
-    loadingMessage: 'Organization is being updated',
-    successMessage: 'Organization updated successfully',
+    loadingMessage: 'Company is being updated',
+    successMessage: 'Company updated successfully',
     errorMessage: 'Something went wrong',
     actionFn: OrganizationService.update(props.organization.id, {
       isTeamOrganization: teamOrganization,
@@ -92,8 +92,8 @@ const toggleOrganizationAffiliations = (isAffiliationBlocked: boolean) => {
   });
 
   doManualAction({
-    loadingMessage: 'Organization is being updated',
-    successMessage: 'Organization updated successfully',
+    loadingMessage: 'Company is being updated',
+    successMessage: 'Company updated successfully',
     errorMessage: 'Something went wrong',
     actionFn: OrganizationService.update(props.organization.id, {
       isAffiliationBlocked,
@@ -107,7 +107,7 @@ const toggleOrganizationAffiliations = (isAffiliationBlocked: boolean) => {
 const deleteOrganization = () => {
   ConfirmDialog({
     type: 'danger',
-    title: 'Delete organization',
+    title: 'Delete company',
     message: "Are you sure you want to proceed? You can't undo this action",
     confirmButtonText: 'Confirm',
     cancelButtonText: 'Cancel',
@@ -122,13 +122,13 @@ const deleteOrganization = () => {
     });
 
     doManualAction({
-      loadingMessage: 'Organization is being deleted',
-      successMessage: 'Organization successfully deleted',
+      loadingMessage: 'Company is being deleted',
+      successMessage: 'Company successfully deleted',
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.destroyAll([props.organization.id]),
     }).then(() => {
       router.push({
-        path: '/organizations',
+        path: '/companies',
         query: {
           projectGroup: route.query.projectGroup,
         },

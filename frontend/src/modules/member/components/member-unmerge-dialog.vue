@@ -96,7 +96,7 @@
             <template #below>
               <div v-if="props.modelValue?.organizations?.length" class="pt-8">
                 <h6 class="text-sm font-semibold text-black pb-4">
-                  Organizations
+                  Companies
                 </h6>
                 <app-member-organization-list :member="props.modelValue" />
               </div>
@@ -155,7 +155,7 @@
             <template #below>
               <div v-if="preview.primary?.organizations?.length" class="pt-8">
                 <h6 class="text-sm font-semibold text-black pb-4">
-                  Organizations
+                  Companies
                 </h6>
                 <app-member-organization-list :member="preview.primary" />
               </div>
@@ -272,7 +272,7 @@
                   class="pt-8"
                 >
                   <h6 class="text-sm font-semibold text-black pb-4">
-                    Organizations
+                    Companies
                   </h6>
                   <app-member-organization-list :member="preview.secondary" />
                 </div>
