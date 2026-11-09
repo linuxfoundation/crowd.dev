@@ -5,7 +5,7 @@
         <app-lf-page-header text-class="text-sm text-primary-600 mb-2.5" />
         <div class="flex items-center justify-between">
           <div class="flex items-center">
-            <h4>Organizations</h4>
+            <h4>Companies</h4>
           </div>
           <div class="flex items-center">
             <el-tooltip
@@ -47,12 +47,12 @@
               size="medium"
               @click="isOrganizationCreateModalOpen = true"
             >
-              Add organization
+              Add company
             </lf-button>
           </div>
         </div>
         <div class="text-xs text-gray-500">
-          List of all the organizations that relate to {{ selectedProjectGroup?.name }} projects
+          List of all the companies that relate to {{ selectedProjectGroup?.name }} projects
         </div>
       </div>
 

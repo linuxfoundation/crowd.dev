@@ -1,17 +1,17 @@
 <template>
   <article>
     <p class="text-xs font-semibold leading-5 mb-3">
-      Team organizations visibility
+      Team companies visibility
     </p>
     <el-radio-group v-model="value">
       <el-radio :label="IncludeEnum.EXCLUDE" class="!h-5">
-        <span class="text-xs">Exclude team organizations</span>
+        <span class="text-xs">Exclude team companies</span>
       </el-radio>
       <el-radio :label="IncludeEnum.INCLUDE" class="!h-5">
-        <span class="text-xs">Include team organizations</span>
+        <span class="text-xs">Include team companies</span>
       </el-radio>
       <el-radio :label="IncludeEnum.FILTER" class="!h-5">
-        <span class="text-xs">Team organizations only</span>
+        <span class="text-xs">Team companies only</span>
       </el-radio>
     </el-radio-group>
   </article>

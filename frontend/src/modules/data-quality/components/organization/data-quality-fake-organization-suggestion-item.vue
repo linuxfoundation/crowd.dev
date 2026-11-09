@@ -22,7 +22,7 @@
       </div>
       <div class="flex gap-2 items-center">
         <lf-badge type="warning" size="small" class="!font-semibold">
-          Fake organization
+          Fake company
         </lf-badge>
         <span class="text-small text-gray-500">
           {{ formatNumberToCompact(+suggestion.activityCount) }} activities

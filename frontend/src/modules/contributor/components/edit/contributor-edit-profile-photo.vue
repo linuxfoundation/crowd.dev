@@ -128,7 +128,7 @@ const update = () => {
       isModalOpen.value = false;
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating company');
     })
     .finally(() => {
       sending.value = false;

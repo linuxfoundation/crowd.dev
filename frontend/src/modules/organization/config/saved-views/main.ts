@@ -13,7 +13,7 @@ export const organizationSavedViews: SavedViewsConfig = {
     render: organizationDefaultFilterRenderer,
   },
   sorting: {
-    displayName: 'Organization',
+    displayName: 'Company',
     memberCount: '# people',
     activityCount: '# activities',
   },
@@ -22,7 +22,7 @@ export const organizationSavedViews: SavedViewsConfig = {
 export const commonOrganizationSavedViews: SavedViewsConfig = {
   defaultView: {
     id: 'common-organizations',
-    name: 'Common organizations',
+    name: 'Common companies',
     visibility: 'tenant',
     placement: 'organization',
     config: {

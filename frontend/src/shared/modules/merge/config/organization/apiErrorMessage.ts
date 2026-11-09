@@ -6,14 +6,14 @@ export default ({ error }: ApiErrorMessage) => {
 
   // shortcut: assumes the merge error carries a response, as on main. revisit: when merge errors are typed.
   if (error.response!.status === 404) {
-    ToastStore.success('Organizations already merged or deleted', {
-      message: `Sorry, the organizations you are trying to merge might have already been merged or deleted.
+    ToastStore.success('Companies already merged or deleted', {
+      message: `Sorry, the companies you are trying to merge might have already been merged or deleted.
         Please refresh to see the updated information.`,
     });
 
     return true;
   }
 
-  ToastStore.error('There was an error merging organizations');
+  ToastStore.error('There was an error merging companies');
   return false;
 };

@@ -8,7 +8,7 @@ type OrganizationIdentitiesState = Record<
 type IdentityChange = { platform: string; name: OrganizationIdentitiesState[string][number] };
 
 const organizationsEditIdentities: LogRenderingConfig<OrganizationIdentitiesState> = {
-  label: 'Organization identities updated',
+  label: 'Company identities updated',
   changes: ({ oldState, newState }) => {
     const additions: IdentityChange[] = [];
     const removals: IdentityChange[] = [];
@@ -45,7 +45,7 @@ const organizationsEditIdentities: LogRenderingConfig<OrganizationIdentitiesStat
   description: (log) => `ID: ${log.entityId}`,
   properties: (log) => [
     {
-      label: 'Organization',
+      label: 'Company',
       value: `ID: ${log.entityId}</span>`,
     },
   ],

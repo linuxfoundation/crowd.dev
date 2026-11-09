@@ -1,7 +1,7 @@
 import type { LogRenderingConfig, MergeLogState } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
 const organizationsMerge: LogRenderingConfig<MergeLogState> = {
-  label: 'Organizations unmerged',
+  label: 'Companies unmerged',
   changes: (log) => {
     const primary = log.oldState?.primary;
     const secondary = log.newState?.secondary;
@@ -28,7 +28,7 @@ const organizationsMerge: LogRenderingConfig<MergeLogState> = {
     const organization = log.newState?.primary?.displayName || log.oldState?.primary?.displayName;
     if (organization) {
       return [{
-        label: 'Organization',
+        label: 'Company',
         value: `${organization}<br><span>ID: ${log.entityId}</span>`,
       }];
     }

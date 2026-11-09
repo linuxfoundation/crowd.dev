@@ -8,7 +8,7 @@
       <template #dropdown>
         <el-tooltip
           v-if="selectedOrganizations.length === 2 && hasPermission(LfPermission.mergeOrganizations)"
-          content="Active member organizations of the Linux Foundation can't be merged into other organizations."
+          content="Active member companies of the Linux Foundation can't be merged into other companies."
           :disabled="!(!!selectedOrganizations?.[0]?.lfxMembership && !!selectedOrganizations?.[1]?.lfxMembership)"
           placement="top"
         >
@@ -24,7 +24,7 @@
               "
             >
               <lf-icon name="shuffling" :size="20" class="mr-1" />
-              Merge organizations
+              Merge companies
             </el-dropdown-item>
           </span>
         </el-tooltip>
@@ -51,7 +51,7 @@
               class="flex items-center text-red-500"
             >
               <lf-icon name="trash-can" :size="20" class="mr-2" />
-              <span>Delete organizations</span>
+              <span>Delete companies</span>
             </div>
           </el-dropdown-item>
         </template>
@@ -109,7 +109,7 @@ const markAsTeamOrganizationOptions = computed(() => {
   // shortcut: keeps main's throw without settings. revisit: when Filter.settings is required
   const isTeamView = filters.value.settings!.teamOrganization === 'filter';
   const organizationsCopy = pluralize(
-    'organization',
+    'company',
     selectedOrganizations.value.length,
     false,
   );
@@ -131,7 +131,7 @@ const markAsTeamOrganizationOptions = computed(() => {
 
 const handleDoDestroyAllWithConfirm = () => ConfirmDialog({
   type: 'danger',
-  title: 'Delete organizations',
+  title: 'Delete companies',
   message:
       "Are you sure you want to proceed? You can't undo this action",
   confirmButtonText: 'Confirm',
@@ -180,7 +180,7 @@ const handleCommand = async (command: OrganizationListToolbarCommand) => {
       },
     });
 
-    ToastStore.info('Organizations are being updated');
+    ToastStore.info('Companies are being updated');
 
     Promise.all(
       selectedOrganizations.value.map((row) => OrganizationService.update(row.id, {
@@ -190,7 +190,7 @@ const handleCommand = async (command: OrganizationListToolbarCommand) => {
       ToastStore.closeAll();
       ToastStore.success(
         `${pluralize(
-          'Organization',
+          'Company',
           selectedOrganizations.value.length,
           false,
         )} updated successfully`,
@@ -200,7 +200,7 @@ const handleCommand = async (command: OrganizationListToolbarCommand) => {
     })
       .catch(() => {
         ToastStore.closeAll();
-        ToastStore.error('Error updating organizations');
+        ToastStore.error('Error updating companies');
       });
   }
 };

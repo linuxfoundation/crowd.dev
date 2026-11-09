@@ -12,15 +12,15 @@
             class="text-gray-600 p-0"
             @click="onCancel"
           >
-            Organizations
+            Companies
           </lf-button>
           <div class="flex justify-between">
             <div class="flex items-center gap-4 mt-4 mb-6">
               <h4>
                 {{
                   isEditPage
-                    ? 'Edit organization'
-                    : 'New organization'
+                    ? 'Edit company'
+                    : 'New company'
                 }}
               </h4>
               <div
@@ -64,8 +64,8 @@
                 >
                   {{
                     isEditPage
-                      ? 'Update organization'
-                      : 'Add organization'
+                      ? 'Update company'
+                      : 'Add company'
                   }}
                 </lf-button>
               </div>
@@ -450,7 +450,7 @@ async function onSubmit() {
 
     try {
       await OrganizationService.update(payload.id, payload.values);
-      ToastStore.success('Organization successfully saved');
+      ToastStore.success('Company successfully saved');
     } catch (error) {
       if (error.response.status === 409) {
         ToastStore.error(
@@ -469,12 +469,12 @@ async function onSubmit() {
                     ToastStore.closeAll();
                   },
                 },
-                'Merge organizations',
+                'Merge companies',
               ),
             ],
           ),
           {
-            title: 'Organization was not updated because the website already exists in another organization.',
+            title: 'Company was not updated because the website already exists in another company.',
           },
         );
       } else {
@@ -494,9 +494,9 @@ async function onSubmit() {
     try {
       await OrganizationService.create(payload);
 
-      ToastStore.success('Organization successfully saved');
+      ToastStore.success('Company successfully saved');
     } catch (error) {
-      ToastStore.error('There was an error creating the organization');
+      ToastStore.error('There was an error creating the company');
       Errors.handle(error);
     }
   }

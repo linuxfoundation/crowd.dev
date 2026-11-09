@@ -73,10 +73,10 @@
     <div v-else class="py-20 flex flex-col items-center">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />
       <h5 class="text-center text-lg font-semibold mb-4">
-        No fake organization suggestions
+        No fake company suggestions
       </h5>
       <p class="text-sm text-center text-gray-600 leading-5">
-        We couldn't find any fake organization suggestions
+        We couldn't find any fake company suggestions
       </p>
     </div>
   </div>
@@ -162,7 +162,7 @@ const fetch = (page: number): Promise<void> => {
     })
     .catch(() => {
       ToastStore.error(
-        'There was an error fetching fake organization suggestion, please try again later',
+        'There was an error fetching fake company suggestion, please try again later',
       );
     })
     .finally(() => {

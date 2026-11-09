@@ -5,7 +5,7 @@
         v-model="form.organization"
         filterable
         class="w-full grow"
-        placeholder="Select organization"
+        placeholder="Select company"
       >
         <template v-if="form && (form.organization)" #prefix="{}">
           <div class="flex items-center">
@@ -96,7 +96,7 @@
         class="mt-2"
         :disabled="!form.organization"
       >
-        <span class="text-gray-500">Currently affiliated with this organization</span>
+        <span class="text-gray-500">Currently affiliated with this company</span>
       </lf-checkbox>
     </div>
   </div>

@@ -1,7 +1,7 @@
 <template>
   <lf-tooltip
     v-if="!!props.organization.lfxMembership"
-    content="Active member organization of the LF or one of its projects"
+    content="Active member company of the LF or one of its projects"
   >
     <div class="text-primary-500 flex items-center gap-1 flex-nowrap">
       <lf-icon name="circle-bookmark" />

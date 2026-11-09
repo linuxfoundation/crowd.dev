@@ -86,7 +86,7 @@ const fields = {
   founded: new IntegerField('founded', 'Founded', { filterable: true }),
   type: new OrganizationTypeField('organizationType', 'Type', { filterable: true }),
   profiles: new StringArrayField('profiles', 'Profiles'),
-  lastEnrichedAt: new BooleanField('lastEnrichedAt', 'Enriched organization', {
+  lastEnrichedAt: new BooleanField('lastEnrichedAt', 'Enriched company', {
     filterable: true,
   }),
   allSubsidiaries: new StringArrayField('allSubsidiaries', 'All Subsidiaries'),

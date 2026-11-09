@@ -27,7 +27,7 @@
     </lf-card>
     <lf-card class="flex-1 p-4 flex flex-col gap-2">
       <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold">Organizations</span>
+        <span class="text-xs font-semibold">Companies</span>
         <lf-icon name="building" type="light" class="text-gray-400" />
       </div>
       <div class="text-xl font-light">

@@ -4,7 +4,7 @@
       <lf-icon name="house-building" class="text-gray-200 account-icon text-center h-16 flex items-center" />
     </div>
     <div class="text-gray-600 text-sm text-center py-4">
-      Select the organization you want to merge with
+      Select the company you want to merge with
     </div>
     <div class="flex justify-center">
       <div class="flex w-4/5">
@@ -13,7 +13,7 @@
           v-model="computedOrganizationToMerge"
           :fetch-fn="fetchFn"
           :disable-option="disableOption"
-          placeholder="Type to search organizations"
+          placeholder="Type to search companies"
           input-class="w-full"
         >
           <template #option="{ item }">
@@ -37,7 +37,7 @@
       </div>
     </div>
     <div class="flex justify-center mt-4 text-gray-500 text-2xs">
-      <span class="font-semibold pr-1">Note:</span>Active member organizations of the Linux Foundation can't be merged into other organizations.
+      <span class="font-semibold pr-1">Note:</span>Active member companies of the Linux Foundation can't be merged into other companies.
     </div>
   </div>
 </template>

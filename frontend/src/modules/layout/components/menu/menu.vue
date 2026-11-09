@@ -24,10 +24,10 @@
       @click="onMembersClick"
     />
     <lf-menu-link
-      title="Organizations"
+      title="Companies"
       icon="building"
       :is-collapsed="isCollapsed"
-      :to="{ path: '/organizations', query: { projectGroup: selectedProjectGroup?.id } }"
+      :to="{ path: '/companies', query: { projectGroup: selectedProjectGroup?.id } }"
       :disabled="!selectedProjectGroup"
       @click="onOrganizationsClick"
     />

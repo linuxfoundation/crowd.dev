@@ -36,11 +36,11 @@
             v-else-if="props.isPrimary"
             class="bg-primary-100 rounded-full py-0.5 px-2 text-primary-800 inline-block text-xs leading-5 font-medium"
           >
-            Primary organization
+            Primary company
           </div>
           <el-tooltip
             v-else
-            content="Linux Foundation's member organization must be the primary organization."
+            content="Linux Foundation's member company must be the primary company."
             :disabled="!props.compareOrganization!.lfxMembership"
             placement="top"
           >

@@ -36,7 +36,7 @@ const fields = {
   emails: new StringArrayField('emails', 'Emails'),
   organizations: OrganizationField.relationToMany(
     'organizations',
-    'Organizations',
+    'Companies',
   ),
   joinedAt: new DateTimeField('joinedAt', 'Joined date', {
     filterable: true,

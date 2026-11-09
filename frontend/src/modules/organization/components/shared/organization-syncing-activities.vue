@@ -2,7 +2,7 @@
   <div v-if="props.organization.activitySycning?.state === MergeActionState.IN_PROGRESS" class="mr-4 z-50">
     <lf-tooltip
       placement="bottom"
-      :content="`Re-syncing all the activities as this organization was recently
+      :content="`Re-syncing all the activities as this company was recently
       ${props.organization.activitySycning?.operationType === 'merge' ? 'merged' : 'unmerged'}. This process may take some minutes.`"
     >
       <div class="flex items-center gap-1.5 cursor-default">

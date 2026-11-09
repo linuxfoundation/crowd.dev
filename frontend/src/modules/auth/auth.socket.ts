@@ -195,7 +195,7 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const primaryOrganization = h(
         'a',
         {
-          href: `${window.location.origin}/organizations/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          href: `${window.location.origin}/companies/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
           class: 'underline text-gray-600',
         },
         primaryDisplayName,
@@ -203,7 +203,7 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const secondaryOrganization = h(
         'a',
         {
-          href: `${window.location.origin}/organizations/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          href: `${window.location.origin}/companies/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
           class: 'underline text-gray-600',
         },
         secondaryDisplayName,
@@ -212,13 +212,13 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const after = h(
         'span',
         {},
-        '. Syncing organization activities might take some time to complete.',
+        '. Syncing company activities might take some time to complete.',
       );
       ToastStore.closeAll();
       ToastStore.success(
         h('div', {}, [secondaryOrganization, between, primaryOrganization, after]),
         {
-          title: 'Organizations unmerged successfully',
+          title: 'Companies unmerged successfully',
         },
       );
     } catch (error) {

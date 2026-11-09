@@ -7,7 +7,7 @@
           <span>Issue type: </span>
           <span v-if="selectedType === 'merge-suggestions'" class="font-normal">Merge suggestions</span>
           <span v-else-if="selectedType === 'bot-suggestions'" class="font-normal">Bot suggestions</span>
-          <span v-else-if="selectedType === 'fake-suggestions'" class="font-normal">Fake organization suggestions</span>
+          <span v-else-if="selectedType === 'fake-suggestions'" class="font-normal">Fake company suggestions</span>
           <span v-else class="font-normal">{{ dataIssueTypes[selectedType as DataIssueType]?.label || 'Select issue type' }}</span>
         </div>
       </lf-button>
@@ -88,7 +88,7 @@ const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 
 const suggestionTypeLabels: Record<string, string> = {
   'bot-suggestions': 'Bot suggestions',
-  'fake-suggestions': 'Fake organization suggestions',
+  'fake-suggestions': 'Fake company suggestions',
 };
 
 const selectedType = computed({

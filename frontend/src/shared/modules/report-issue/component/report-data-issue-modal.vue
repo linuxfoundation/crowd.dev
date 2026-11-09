@@ -30,7 +30,7 @@
             </div>
             <div class="w-2/3">
               <p class="text-medium">
-                {{ props.type }}
+                {{ typeLabel(props.type) }}
               </p>
             </div>
           </div>
@@ -75,7 +75,7 @@
             <el-option
               v-for="option of getConfig.types"
               :key="option"
-              :label="option"
+              :label="typeLabel(option)"
               :value="option"
             />
           </el-select>
@@ -131,7 +131,7 @@ import { ReportDataEntity } from '@/shared/modules/report-issue/constants/report
 import type { ReportDataAttribute, ReportDataConfig } from '@/shared/modules/report-issue/config';
 import { reportDataConfig, reportDataTypeDisplay } from '@/shared/modules/report-issue/config';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
-import type { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
+import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import authAxios from '@/shared/axios/auth-axios';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -186,6 +186,9 @@ const getType = computed(() => {
 });
 
 const entity = computed(() => props.contributor || props.organization);
+
+// Enum values go to the backend, so only the displayed label is renamed.
+const typeLabel = (type: ReportDataType) => (type === ReportDataType.ORGANIZATION_DETAILS ? 'Company details' : type);
 
 const getConfig = computed<ReportDataConfig>(() => reportDataConfig[getType.value]);
 

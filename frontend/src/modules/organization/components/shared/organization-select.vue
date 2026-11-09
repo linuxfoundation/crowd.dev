@@ -3,7 +3,7 @@
     :model-value="form ?? undefined"
     :fetch-fn="fetchOrganizations"
     :create-fn="createOrganization"
-    :placeholder="isCreatingOrganization ? 'Creating organization...' : 'Select organization'"
+    :placeholder="isCreatingOrganization ? 'Creating company...' : 'Select company'"
     input-class="organization-input"
     create-if-not-found
     :in-memory-filter="false"

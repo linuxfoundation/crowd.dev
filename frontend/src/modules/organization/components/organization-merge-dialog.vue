@@ -2,7 +2,7 @@
   <lf-modal
     v-if="isModalOpen"
     v-model="isModalOpen"
-    header-title="Merge organization"
+    header-title="Merge company"
     container-class="overflow-auto"
     content-class="!max-h-none"
     width="64rem"
@@ -45,7 +45,7 @@
                   :size="16"
                   class="text-primary-500 mr-2"
                 />
-                <span class="text-primary-500">Change organization</span>
+                <span class="text-primary-500">Change company</span>
               </button>
             </template>
           </app-organization-merge-suggestions-details>
@@ -67,7 +67,7 @@
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
-          Merge organizations
+          Merge companies
         </lf-button>
       </div>
     </div>
