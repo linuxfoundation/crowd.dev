@@ -145,6 +145,8 @@ const CLEAN_STATEMENT_TIMEOUT_MS = 30_000
 const CLEAN_LOCK_STATEMENT_TIMEOUT_MS = 60_000
 const RUN_LOCK_WAIT_MS = 2 * 60_000
 const SESSION_QUERY_TIMEOUT_MS = 10 * 60_000
+// rollback's first run indexes the whole backup table (25-35 GB at the end of the cleanup)
+const ROLLBACK_QUERY_TIMEOUT_MS = 60 * 60_000
 const CLEAN_LOCK_TIMEOUT = '5s'
 const IDLE_IN_TRANSACTION_TIMEOUT = '60s'
 
@@ -2106,17 +2108,20 @@ function auditKeys(
         if (BigInt(keptNow.updatedUs) < BigInt(kept.updatedUs)) {
           problems.push(`key ${keyId}: kept updatedAt went back from ${was} to ${is}`)
         }
-      } else if (CARRIED_COLUMNS.includes(col)) {
-        // clean carries the value of the newest deleted copy that has one
-        const expected = deleted.find((r) => (r.row[col] ?? null) !== null)?.row[col] ?? null
-        if (was !== null || JSON.stringify(is) !== JSON.stringify(expected)) {
-          problems.push(
-            `key ${keyId}: kept ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}, expected ${JSON.stringify(expected)}`,
-          )
-        }
-      } else {
+      } else if (!CARRIED_COLUMNS.includes(col)) {
         problems.push(
           `key ${keyId}: kept row column ${col} changed from ${JSON.stringify(was)} to ${JSON.stringify(is)}`,
+        )
+      }
+    }
+    // a kept row without a value takes the newest deleted copy's, so none is lost
+    for (const col of CARRIED_COLUMNS) {
+      const was = kept.row[col] ?? null
+      const is = keptNow.row[col] ?? null
+      const expected = was ?? deleted.find((r) => (r.row[col] ?? null) !== null)?.row[col] ?? null
+      if (JSON.stringify(is) !== JSON.stringify(expected)) {
+        problems.push(
+          `key ${keyId}: kept ${col} is ${JSON.stringify(is)} (was ${JSON.stringify(was)}), expected ${JSON.stringify(expected)}`,
         )
       }
     }
@@ -2158,8 +2163,9 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
       status: string
       deleted: number | null
       error: string | null
+      batchId: string | null
     }[] = await t.any(
-      `select id::text as "keyId", status, deleted, error from ${tables.keys} where id in ($(keyIds:csv))`,
+      `select id::text as "keyId", status, deleted, error, "batchId" from ${tables.keys} where id in ($(keyIds:csv))`,
       { keyIds: snap.keyIds },
     )
     // only what clean backed up after the snapshot: re-opened keys have older backup rows
@@ -2178,23 +2184,43 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
       `,
       { keyIds: snap.keyIds, takenAt: snap.takenAt },
     )
-    const batchIds = [...new Set(backup.map((b) => b.batchId))]
+    // a key whose copies were gone by then is done without backup rows, so its batch counts too
+    const batchIds = [
+      ...new Set([
+        ...backup.map((b) => b.batchId),
+        ...keys.flatMap((k) => (k.batchId ? [k.batchId] : [])),
+      ]),
+    ]
     // every batch of the runs that touched these keys, so keys taken outside the snapshot show
     const batches: { batchId: string; deleted: number; backedUp: number; outside: number }[] =
       batchIds.length === 0
         ? []
         : await t.any(
             `
-              select bt."batchId", (bt.metrics ->> 'deleted')::int as deleted,
-                (select count(*)::int from ${tables.backup} x where x."batchId" = bt."batchId") as "backedUp",
-                (select count(*)::int from ${tables.keys} k
-                  where k."batchId" = bt."batchId" and k.id not in ($(keyIds:csv))) as outside
-              from ${tables.batches} bt
-              where bt."runId" in (
-                select "runId" from ${tables.batches} where "batchId" in ($(batchIds:csv))
+              with run_batches as (
+                select "batchId", (metrics ->> 'deleted')::int as deleted
+                from ${tables.batches}
+                where "runId" in (
+                  select "runId" from ${tables.batches}
+                  where "batchId" in ($(batchIds:csv)) and "startedAt" >= $(takenAt)::timestamptz
+                )
+              ),
+              backed_up as (
+                select "batchId", count(*)::int as n from ${tables.backup}
+                where "batchId" in (select "batchId" from run_batches) group by 1
+              ),
+              outside as (
+                select "batchId", count(*)::int as n from ${tables.keys}
+                where "batchId" in (select "batchId" from run_batches) and id not in ($(keyIds:csv))
+                group by 1
               )
+              select rb."batchId", rb.deleted, coalesce(bu.n, 0) as "backedUp",
+                coalesce(o.n, 0) as outside
+              from run_batches rb
+              left join backed_up bu on bu."batchId" = rb."batchId"
+              left join outside o on o."batchId" = rb."batchId"
             `,
-            { batchIds, keyIds: snap.keyIds },
+            { batchIds, keyIds: snap.keyIds, takenAt: snap.takenAt },
           )
     return { keys, backup, batches, now: await keyRows(t, tables, snap.keyIds) }
   })
@@ -2248,28 +2274,35 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
   }
   const columns = await activityRelationColumns(db)
   await assertBackupMatches(db, tables, columns)
+  const countBatchRows = async (): Promise<number> =>
+    (
+      await db.one(
+        `select count(*)::int as rows from ${tables.backup} where "batchId" = $(batchId)`,
+        {
+          batchId: options.batchId,
+        },
+      )
+    ).rows
+  const rows = await countBatchRows()
+  if (rows === 0) {
+    throw new UsageError(`Batch ${options.batchId} has no rows in ${tables.backup}`)
+  }
+  await confirm(
+    options,
+    `Put ${rows} rows of batch ${options.batchId} back into activityRelations and set its keys back to pending.`,
+  )
+
   // a clean run of the same tag must not take these keys while they are restored
   await acquireRunLock(db, log, tables)
   // without it every rollback statement scans the whole backup table
   await db.none(
     `create index if not exists "ix_${tables.raw.backup}_batchId" on ${tables.backup} ("batchId")`,
   )
-
-  const preview: { rows: number; keys: number } = await db.one(
-    `
-      select count(*)::int as rows,
-        count(distinct ("timestamp", platform, type, "sourceId", "segmentId"))::int as keys
-      from ${tables.backup} where "batchId" = $(batchId)
-    `,
-    { batchId: options.batchId },
-  )
-  if (preview.rows === 0) {
-    throw new UsageError(`Batch ${options.batchId} has no rows in ${tables.backup}`)
+  if ((await countBatchRows()) !== rows) {
+    throw new NotStartedError(
+      `Batch ${options.batchId} changed while this run waited for the run lock; start it again`,
+    )
   }
-  await confirm(
-    options,
-    `Put ${preview.rows} rows of batch ${options.batchId} back into activityRelations and set its keys back to pending.`,
-  )
 
   // the table's own delete rules: a row whose cascade parent is gone would have been deleted
   // with it, and a set-null reference that is gone would have been nulled
@@ -2310,7 +2343,6 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
       `,
       { batchId: options.batchId },
     )
-    // rows now in the table leave the backup and re-open their keys by exactly that many rows
     const reopen: { removed: number; keys: number; reopened: number } = await t.one(
       `
         with removed as (
@@ -2350,12 +2382,12 @@ async function rollback(db: Session, log: Log, options: IRollbackOptions): Promi
   log.info(
     {
       batchId: options.batchId,
-      backupRows: preview.rows,
+      backupRows: rows,
       restored: result.restored,
       removedFromBackup: result.removed,
       reopenedKeys: result.reopened,
       // their member or segment is gone: they stay in the backup
-      leftInBackup: preview.rows - result.removed,
+      leftInBackup: rows - result.removed,
     },
     'rollback.done',
   )
@@ -2653,7 +2685,11 @@ async function main(): Promise<number> {
   // application_name in pg_stat_activity, so a DBA can tell this session from the worker's
   process.env.SERVICE = `cleanup-null-channel-${options.tag}`
   const timeoutMs =
-    command === 'collect' ? COLLECT_STATEMENT_TIMEOUT_MS + 60_000 : SESSION_QUERY_TIMEOUT_MS
+    command === 'collect'
+      ? COLLECT_STATEMENT_TIMEOUT_MS + 60_000
+      : command === 'rollback'
+        ? ROLLBACK_QUERY_TIMEOUT_MS
+        : SESSION_QUERY_TIMEOUT_MS
   const db = await getDbConnection(
     { ...WRITE_DB_CONFIG(), queryTimeoutMs: timeoutMs, statementTimeoutMs: timeoutMs },
     1,
