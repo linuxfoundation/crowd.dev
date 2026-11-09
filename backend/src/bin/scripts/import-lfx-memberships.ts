@@ -12,10 +12,12 @@ import { parse } from 'csv-parse/sync'
 import uniq from 'lodash/uniq'
 import moment from 'moment'
 
+import { REDIS_CONFIG } from '@/conf'
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { getCountryName } from '@crowd/common'
+import { markOrganizationsChanged } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { LfxMembership, insertLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
@@ -28,6 +30,7 @@ import {
 } from '@crowd/data-access-layer/src/organizations'
 import { findProjectGroupByName } from '@crowd/data-access-layer/src/segments'
 import { getServiceLogger } from '@crowd/logging'
+import { getRedisClient } from '@crowd/redis'
 import { SnowflakeClient } from '@crowd/snowflake'
 import { OrganizationAttributeSource } from '@crowd/types'
 
@@ -252,6 +255,7 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
     console.log('Records without a Salesforce country:', recordsWithoutCountry)
 
     const qx = SequelizeRepository.getQueryExecutor(repoOptions)
+    const redis = await getRedisClient(REDIS_CONFIG, true)
     let orgsWithCountry = 0
 
     for (const [organizationId, countryCodes] of countryCodesByOrgId) {
@@ -266,6 +270,7 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
       }
 
       await setSalesforceCountry(qx, organizationId, country)
+      await markOrganizationsChanged(redis, [organizationId], getServiceLogger())
       orgsWithCountry++
     }
 

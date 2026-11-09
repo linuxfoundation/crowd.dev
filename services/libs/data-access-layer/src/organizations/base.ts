@@ -601,7 +601,7 @@ export async function findOrCreateOrganization(
   data: IOrganization,
   integrationId?: string,
   throttleUpdatedAt = false,
-  lockOrganization?: (organizationId: string) => Promise<() => void>,
+  lockOrganization?: (organizationId: string) => Promise<(() => void) | undefined>,
   organizationId?: string,
 ): Promise<IFindOrCreateOrganizationResult | undefined> {
   if (isPlaceholderEmployerName(data.displayName)) {
@@ -702,7 +702,7 @@ export async function findOrCreateOrganization(
       )
       let plan = planOrgUpdate(data, source, existing, stored)
       if (plan.changesNothing) {
-        return { id: existing.id, created: false }
+        return { id: existing.id, created: false, changed: false }
       }
 
       const release = await lockOrganization?.(existing.id)
@@ -839,7 +839,7 @@ export async function findOrCreateOrganization(
       }
     }
 
-    return { id, created: !existing }
+    return { id, created: !existing, changed: true }
   } catch (err) {
     log.error(err, 'Error while upserting an organization!')
     throw err
