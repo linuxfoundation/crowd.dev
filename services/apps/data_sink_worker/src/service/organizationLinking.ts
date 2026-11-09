@@ -66,11 +66,7 @@ function verifiedOrgIdentityKey(
   }
 }
 
-/**
- * Returns a stable cache key for an org based on its verified identities, falling back to
- * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
- * across members in the same batch.
- */
+// Verified identities, else the display name: payloads with the same key share one lookup per batch
 function orgCacheKey(org: IOrganization): string | null {
   const verified = Array.from(
     new Set((org.identities ?? []).map((i) => verifiedOrgIdentityKey(i)?.key).filter(Boolean)),

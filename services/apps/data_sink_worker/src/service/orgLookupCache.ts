@@ -32,7 +32,7 @@ end
 return organizationId`
 
 // Shared by every data-sink pod: which organization a payload went to, for payloads applied before
-// with nothing to change. While Redis is not ready every call is a miss or a no-op, never a wait
+// with nothing to change. While Redis is not ready, lookups miss and nothing waits on it
 export interface IOrgLookupCache {
   // startedAt: the clock to look up with when there is no hit
   find(payloadKey: string): Promise<{ organizationId?: string; startedAt?: number }>
@@ -63,6 +63,14 @@ async function withinDeadline<T>(work: Promise<T>): Promise<T> {
 
 export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLookupCache {
   const clock = organizationChangeClock(redis)
+  // While reconnecting, the mark waits in the client's queue and lands once Redis is back: other
+  // pods may still be serving lookups of these organizations, so it is never dropped
+  const mark = async (organizationIds: string[]) => {
+    const marking = markOrganizationsChanged(redis, organizationIds, log)
+    if (redis.isReady) {
+      await marking
+    }
+  }
   const lookupKey = (payloadKey: string) =>
     `org-lookup:{organizations}:${createHash('sha256').update(payloadKey).digest('base64')}`
 
@@ -101,9 +109,7 @@ export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLooku
     // the loser's identities are dropped, so only a lookup that changed nothing is known to hold
     remember: async (payloadKey, result, startedAt) => {
       if (result.changed) {
-        if (redis.isReady) {
-          await markOrganizationsChanged(redis, [result.id], log)
-        }
+        await mark([result.id])
         return
       }
       if (!redis.isReady || startedAt === undefined) {
@@ -118,10 +124,6 @@ export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLooku
       }
     },
 
-    markChanged: async (organizationIds) => {
-      if (redis.isReady) {
-        await markOrganizationsChanged(redis, organizationIds, log)
-      }
-    },
+    markChanged: mark,
   }
 }
