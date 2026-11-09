@@ -3,6 +3,10 @@ import {
   mintInstallationToken,
   resolveInstallationId,
 } from '@crowd/connectors/src/connectors/github/appToken'
+import {
+  type ResolvedGithubRepo,
+  resolveRepo,
+} from '@crowd/connectors/src/connectors/github/discover'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { findActiveNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -11,6 +15,8 @@ import { findIntegrationRepositoryUrl } from '@crowd/data-access-layer/src/repos
 import { getServiceLogger } from '@crowd/logging'
 import { githubChannelName } from '@crowd/nango'
 
+import { isRenamedRepo } from '../githubLifecycle'
+import { lifecycleSkipReasonFor } from '../githubSkipReasons'
 import { onboardGithubRepo } from '../onboardGithubRepo'
 import { type RepoRef, parseRepoArg } from './repoArg'
 
@@ -48,17 +54,25 @@ async function onboardOne(
     return { ...row, outcome: 'skipped', reason: 'no mapping' }
   }
 
+  let channel: ResolvedGithubRepo
+  try {
+    channel = await resolveRepo(token, mapping.owner, mapping.repoName)
+  } catch (err) {
+    return { ...row, outcome: 'skipped', reason: lifecycleSkipReasonFor('resolve', err) }
+  }
   const mappedUrl = githubChannelName(mapping.owner, mapping.repoName)
-  const storedUrl =
-    (await findIntegrationRepositoryUrl(qx, mapping.integrationId, mappedUrl)) ?? mappedUrl
+  if (isRenamedRepo(mappedUrl.toLowerCase(), channel.channelName)) {
+    return { ...row, outcome: 'renamed', reason: `${mappedUrl} -> ${channel.channelName}` }
+  }
+  if (!(await findIntegrationRepositoryUrl(qx, mapping.integrationId, channel.channelName))) {
+    return { ...row, outcome: 'skipped', reason: 'no repository row' }
+  }
   const result = await onboardGithubRepo(
     qx,
     token,
     mapping.integrationId,
-    mappedUrl.toLowerCase(),
-    {
-      storedUrl,
-    },
+    channel.channelName.toLowerCase(),
+    { storedUrl: channel.channelName, resolved: channel },
   )
   switch (result.outcome) {
     case 'created':
