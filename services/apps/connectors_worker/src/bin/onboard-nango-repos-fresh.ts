@@ -8,12 +8,16 @@ import {
   resolveRepo,
 } from '@crowd/connectors/src/connectors/github/discover'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { findActiveNangoMappingForRepo } from '@crowd/data-access-layer/src/integrations'
+import { fetchGithubLifecycleIntegration } from '@crowd/data-access-layer/src/integrations'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { findIntegrationRepositoryUrl } from '@crowd/data-access-layer/src/repositories'
+import {
+  type IRepository,
+  findRepositoryByUrlInsensitive,
+} from '@crowd/data-access-layer/src/repositories'
 import { getServiceLogger } from '@crowd/logging'
 import { githubChannelName } from '@crowd/nango'
+import { PlatformType } from '@crowd/types'
 
 import { isRenamedRepo } from '../githubLifecycle'
 import { lifecycleSkipReasonFor } from '../githubSkipReasons'
@@ -43,47 +47,46 @@ function parseArgs(rawArgv: string[]): RepoRef[] {
   return argv.map(parseRepoArg)
 }
 
+function findLiveRepository(qx: QueryExecutor, repo: RepoRef): Promise<IRepository | null> {
+  return findRepositoryByUrlInsensitive(qx, githubChannelName(repo.owner, repo.name))
+}
+
 async function onboardOne(
   qx: QueryExecutor,
   token: string,
   repo: RepoRef,
 ): Promise<OnboardReportRow> {
   const row = { owner: repo.owner, repoName: repo.name }
-  const mapping = await findActiveNangoMappingForRepo(qx, repo.owner, repo.name)
-  if (!mapping) {
-    return { ...row, outcome: 'skipped', reason: 'no mapping' }
+  const repository = await findLiveRepository(qx, repo)
+  if (!repository?.sourceIntegrationId) {
+    return { ...row, outcome: 'skipped', reason: 'no repository row' }
+  }
+  const integration = await fetchGithubLifecycleIntegration(qx, repository.sourceIntegrationId)
+  if (integration?.platform !== PlatformType.GITHUB_NANGO || integration.deletedAt !== null) {
+    return { ...row, outcome: 'skipped', reason: 'integration is not a live github-nango one' }
   }
 
   let channel: ResolvedGithubRepo
   try {
-    channel = await resolveRepo(token, mapping.owner, mapping.repoName)
+    channel = await resolveRepo(token, repo.owner, repo.name)
   } catch (err) {
     return { ...row, outcome: 'skipped', reason: lifecycleSkipReasonFor('resolve', err) }
   }
-  const mappedUrl = githubChannelName(mapping.owner, mapping.repoName)
-  if (isRenamedRepo(mappedUrl.toLowerCase(), channel.channelName)) {
-    return { ...row, outcome: 'renamed', reason: `${mappedUrl} -> ${channel.channelName}` }
-  }
-  const storedUrl = await findIntegrationRepositoryUrl(
-    qx,
-    mapping.integrationId,
-    channel.channelName,
-  )
-  if (!storedUrl) {
-    return { ...row, outcome: 'skipped', reason: 'no repository row' }
+  if (isRenamedRepo(repository.url.toLowerCase(), channel.channelName)) {
+    return { ...row, outcome: 'renamed', reason: `${repository.url} -> ${channel.channelName}` }
   }
   const result = await onboardGithubRepo(
     qx,
     token,
-    mapping.integrationId,
+    repository.sourceIntegrationId,
     channel.channelName.toLowerCase(),
-    { storedUrl, resolved: channel },
+    { storedUrl: repository.url, resolved: channel },
   )
   switch (result.outcome) {
     case 'created':
       return { ...row, outcome: 'created', unitsInserted: result.unitsInserted }
     case 'renamed':
-      return { ...row, outcome: 'renamed', reason: `${mappedUrl} -> ${result.to}` }
+      return { ...row, outcome: 'renamed', reason: `${repository.url} -> ${result.to}` }
     case 'skipped':
       return {
         ...row,
@@ -100,11 +103,11 @@ setImmediate(async () => {
     const db = await getDbConnection(WRITE_DB_CONFIG())
     const qx = pgpQx(db)
 
-    const first = await findActiveNangoMappingForRepo(qx, repos[0].owner, repos[0].name)
-    if (!first) {
-      throw new Error(`no nango mapping for ${repos[0].owner}/${repos[0].name}`)
+    const first = await findLiveRepository(qx, repos[0])
+    if (!first?.sourceIntegrationId) {
+      throw new Error(`no live repository row for ${repos[0].owner}/${repos[0].name}`)
     }
-    const credential = await getCredential(qx, first.integrationId)
+    const credential = await getCredential(qx, first.sourceIntegrationId)
     const { token } = await mintInstallationToken(
       credential,
       await resolveInstallationId(credential),
