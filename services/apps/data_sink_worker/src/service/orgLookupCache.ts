@@ -45,6 +45,22 @@ export interface IOrgLookupCache {
   markChanged(organizationIds: string[]): Promise<void>
 }
 
+// The Redis client has no command timeout, and a lookup must never wait long on a cache
+const DEADLINE_MS = 1_000
+
+async function withinDeadline<T>(work: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Redis did not answer in time')), DEADLINE_MS)
+  })
+  work.catch(() => undefined)
+  try {
+    return await Promise.race([work, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLookupCache {
   const clock = organizationChangeClock(redis)
   const lookupKey = (payloadKey: string) =>
@@ -56,10 +72,12 @@ export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLooku
         return {}
       }
       try {
-        const found = await redis.eval(FIND, {
-          keys: [lookupKey(payloadKey), clock.clockKey()],
-          arguments: [clock.changedKeyPrefix()],
-        })
+        const found = await withinDeadline(
+          redis.eval(FIND, {
+            keys: [lookupKey(payloadKey), clock.clockKey()],
+            arguments: [clock.changedKeyPrefix()],
+          }),
+        )
         return typeof found === 'string' ? { organizationId: found } : { startedAt: Number(found) }
       } catch (err) {
         log.warn({ err }, 'Failed to look up a cached organization!')
@@ -72,28 +90,29 @@ export function createOrgLookupCache(redis: RedisClient, log: Logger): IOrgLooku
         return undefined
       }
       try {
-        return await clock.now()
+        return await withinDeadline(clock.now())
       } catch (err) {
         log.warn({ err }, 'Failed to read the organization change clock!')
         return undefined
       }
     },
 
+    // A write is marked, never cached: two pods can create the same organization at once, and
+    // the loser's identities are dropped, so only a lookup that changed nothing is known to hold
     remember: async (payloadKey, result, startedAt) => {
-      if (!redis.isReady) {
+      if (result.changed) {
+        if (redis.isReady) {
+          await markOrganizationsChanged(redis, [result.id], log)
+        }
+        return
+      }
+      if (!redis.isReady || startedAt === undefined) {
         return
       }
       try {
-        let seenAt = startedAt
-        if (result.changed) {
-          // The mark drops what every pod cached for the organization. This payload's own lookup
-          // stays valid only if nothing else changed the organization since it started
-          const { at, previous } = await clock.markChanged([result.id])
-          seenAt = startedAt !== undefined && previous[0] <= startedAt ? at : undefined
-        }
-        if (seenAt !== undefined) {
-          await redis.set(lookupKey(payloadKey), `${result.id}:${seenAt}`, { EX: TTL_SECONDS })
-        }
+        await withinDeadline(
+          redis.set(lookupKey(payloadKey), `${result.id}:${startedAt}`, { EX: TTL_SECONDS }),
+        )
       } catch (err) {
         log.warn({ err, organizationId: result.id }, 'Failed to cache an organization lookup!')
       }
