@@ -89,7 +89,8 @@ else goes through suggestions.
 - `profiles_worker` links git-only members to GitHub once a day: it asks GitHub who authored one
   of their commits, then merges them into the member that owns that GitHub account (unless the
   pair is in `memberNoMerge` or the stored GitHub ID differs), or adds the login as a verified
-  identity. Each email is looked up once, recorded in `githubEmailLookups`.
+  identity. Each email is looked up once, recorded in `githubEmailLookups`. Bots are skipped,
+  and so are commits in repos that block our GitHub App.
 
 Because activity relations live in Postgres, the rewrite replicates to Tinybird. Activity content is untouched; see [`data-flow.md`](data-flow.md).
 
