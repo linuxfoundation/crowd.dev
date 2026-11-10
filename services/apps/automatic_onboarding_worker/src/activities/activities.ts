@@ -37,6 +37,7 @@ import {
   findRequestGroupSiblings,
   onboardOrganizationProject,
   onboardProject,
+  refreshDiscussionStatusComment,
   requestGroupKey,
   requestGroupReview,
   reportRequestOutcome,
@@ -462,6 +463,9 @@ async function notifyOnboardedRequest(
   if (isSlackBotProvenance(project.provenance)) {
     await replyInBotThread(project, buildBotOnboardedContent(project, insightsProject), 'added')
   }
+  if (isGithubDiscussionRequest(project)) {
+    await refreshDiscussionStatusComment(qx, project)
+  }
   if (insightsProject) {
     await closeReviewCard(project, insightsProject.name, closedCards)
   }
@@ -511,7 +515,7 @@ export async function markProjectOnboardingFailed(
 }
 
 export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promise<void> {
-  if (!isSlackBotProvenance(project.provenance)) {
+  if (!isSlackBotProvenance(project.provenance) && !isGithubDiscussionRequest(project)) {
     return
   }
 
@@ -520,13 +524,17 @@ export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promi
   if (current?.action !== 'skip') {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, action: current?.action },
-      'Row is no longer skipped, not replying in the Slack thread.',
+      'Row is no longer skipped, not reporting it to the requester.',
     )
     return
   }
 
-  const reason = current.skipReason ?? '(no reason recorded)'
-  await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  if (isGithubDiscussionRequest(project)) {
+    await refreshDiscussionStatusComment(qx, project)
+  } else {
+    const reason = current.skipReason ?? '(no reason recorded)'
+    await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  }
   await closeOrganizationCardIfSettled(current)
 }
 
@@ -555,6 +563,7 @@ export async function notifyErroredHumanRequest(
     return
   }
 
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
   const sent = await sendSlackNotificationAsync(
     SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
     SlackPersona.ERROR_REPORTER,

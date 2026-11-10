@@ -75,7 +75,7 @@ export function parseGithubUrl(url: string): { owner: string; name: string } {
   return { owner, name }
 }
 
-async function doFetch(url: string, init: RequestInit): Promise<Response> {
+export async function doFetch(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init)
   } catch (err) {
@@ -93,7 +93,7 @@ function rateLimitResetMs(headers: Headers): number {
 }
 
 // A 401 here is our own token, never a repo signal — it must propagate, not be swallowed.
-function assertAuthenticated(response: Response, url: string): void {
+export function assertAuthenticated(response: Response, url: string): void {
   if (response.status === 401) {
     throw new GithubPublicClientError('AUTH', `401 Unauthorized calling GitHub for ${url}`)
   }
@@ -103,7 +103,7 @@ const ACCESS_DENIED_MESSAGES = ['ip allow list', 'saml enforcement', 'repository
 
 // GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also be an
 // org policy (IP allow list, SAML) or a genuine permission problem, so only 403 needs the body sniff.
-async function assertNotRateLimited(response: Response, what: string): Promise<void> {
+export async function assertNotRateLimited(response: Response, what: string): Promise<void> {
   if (response.status === 429) {
     throw new GithubPublicClientError(
       'RATE_LIMIT',
@@ -128,7 +128,7 @@ async function assertNotRateLimited(response: Response, what: string): Promise<v
   }
 }
 
-async function readJson<T>(response: Response, url: string): Promise<T> {
+export async function readJson<T>(response: Response, url: string): Promise<T> {
   try {
     return (await response.json()) as T
   } catch (err) {

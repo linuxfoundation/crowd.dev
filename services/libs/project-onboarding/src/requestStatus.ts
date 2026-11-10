@@ -176,7 +176,7 @@ function statusGroupKey(row: RequestStatusRow): string | null {
   return group ? requestGroupId(group) : null
 }
 
-function groupByRequestGroup(rows: RequestStatusRow[]): RequestStatusRow[][] {
+export function groupByRequestGroup(rows: RequestStatusRow[]): RequestStatusRow[][] {
   const entries: RequestStatusRow[][] = []
   const byKey = new Map<string, RequestStatusRow[]>()
   for (const row of rows) {

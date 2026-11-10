@@ -41,6 +41,7 @@ import {
   organizationOf,
   requestGroupReview,
   requestGroupReviewOf,
+  refreshDiscussionStatusComment,
   refreshRequestStatusMessage,
   reportRequestOutcome,
   resolveReviewCdpUrl,
@@ -299,6 +300,17 @@ async function refreshSkippedRequestStatus(
   }
 }
 
+async function refreshSharedSkipStatus(
+  qx: QueryExecutor,
+  project: IDbProjectCatalog,
+): Promise<void> {
+  if (isSlackBotProvenance(project.provenance)) {
+    await refreshSkippedRequestStatus(qx, project)
+  } else if (isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(qx, project)
+  }
+}
+
 // One evaluator call per organization: the rows after the first take its verdict.
 async function applySharedEvaluation(
   qx: QueryExecutor,
@@ -308,8 +320,8 @@ async function applySharedEvaluation(
   usage: EvaluatorUsage = NO_EVALUATOR_USAGE,
 ): Promise<IEvaluationActivityResult> {
   const updated = await finalizeProjectCatalogEvaluation(qx, project.id, shared)
-  if (updated && shared.action === 'skip' && isSlackBotProvenance(project.provenance)) {
-    await refreshSkippedRequestStatus(qx, project)
+  if (updated && shared.action === 'skip') {
+    await refreshSharedSkipStatus(qx, project)
   }
   log.info(
     {
@@ -476,6 +488,7 @@ export async function notifySkippedHumanRequest(
     return
   }
 
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
   const sent = await sendSlackNotificationAsync(
     SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
     SlackPersona.WARNING_PROPAGATOR,
@@ -702,7 +715,9 @@ export async function notifyEvaluationError(
 ): Promise<void> {
   if (isSlackBotProvenance(project.provenance)) {
     await postTryAgainInBotThread(project)
-  } else if (!isGithubDiscussionProvenance(project.provenance)) {
+  } else if (isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
+  } else {
     return
   }
 
@@ -804,6 +819,9 @@ export async function notifyReviewRequest(project: IDbProjectCatalog): Promise<v
 
   if (posted && isSlackBotProvenance(project.provenance)) {
     await replyInBotThread(project, buildBotReviewReply(project, posted.organization), 'withTeam')
+  }
+  if (posted && isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(qx, project)
   }
 }
 
