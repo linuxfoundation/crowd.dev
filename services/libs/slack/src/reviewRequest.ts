@@ -33,6 +33,8 @@ export interface IReviewOrganization {
   owner: string
   name?: string
   repositories: number
+  repoUrls?: string[]
+  confidence?: number | null
 }
 
 export function organizationLabel(owner: string): string {
@@ -193,6 +195,37 @@ function headingLines(card: IReviewRequestCard): string[] {
   return [organizationHeading(card.organization), escapeSlackText(page)]
 }
 
+const MAX_LISTED_GROUP_REPOSITORIES = 10
+
+function groupRepositoriesBlock(
+  organization: IReviewOrganization | null | undefined,
+): KnownBlock[] {
+  const repoUrls = organization?.repoUrls ?? []
+  if (repoUrls.length === 0) {
+    return []
+  }
+  const listed = repoUrls
+    .slice(0, MAX_LISTED_GROUP_REPOSITORIES)
+    .map((repoUrl) => `• ${escapeSlackText(githubRepoPath(repoUrl) ?? repoUrl)}`)
+  const more = repoUrls.length - listed.length
+  const lines = more > 0 ? [...listed, `… and ${more} more`] : listed
+  return [{ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } }]
+}
+
+function groupingConfidenceBlock(
+  organization: IReviewOrganization | null | undefined,
+): KnownBlock[] {
+  const confidence = organization?.confidence
+  if (confidence === null || confidence === undefined) {
+    return []
+  }
+  return [
+    contextBlock(
+      `Grouping confidence: *${Math.round(confidence * 100)}%* (how sure the request parser is that these repositories form one project)`,
+    ),
+  ]
+}
+
 function summaryBlocks(card: IReviewRequestCard): KnownBlock[] {
   const lines = headingLines(card)
   if (!isPostedInRequestThread(card)) {
@@ -200,6 +233,8 @@ function summaryBlocks(card: IReviewRequestCard): KnownBlock[] {
   }
   return [
     { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+    ...groupRepositoriesBlock(card.organization),
+    ...groupingConfidenceBlock(card.organization),
     ...repoContextBlock(card.organization ? null : card.repoContext),
     {
       type: 'section',

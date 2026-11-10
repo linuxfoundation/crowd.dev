@@ -132,6 +132,7 @@ export async function runOrganizationProposedAction(
     return deps.onboardOrganizationProject({
       id: lead.id,
       projectName: lead.projectName,
+      slug: lead.requestHints?.suggestedSlug ?? null,
       owner: organizationOf(lead) ?? sharedOwner(projects),
       repoUrls: projects.map((project) => project.repoUrl),
     })

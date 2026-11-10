@@ -238,6 +238,7 @@ describe('runOrganizationProposedAction', () => {
     expect(deps.onboardOrganizationProject).toHaveBeenCalledWith({
       id: 'one',
       projectName: 'Kube Tools',
+      slug: null,
       owner: 'kubernetes',
       repoUrls: ['https://github.com/kubernetes/one', 'https://github.com/kubernetes/two'],
     })
@@ -252,13 +253,21 @@ describe('runOrganizationProposedAction', () => {
       repoUrl: `https://github.com/Kubernetes/${name}`,
       projectName: 'Kube Tools',
       proposedAction: 'create_segment' as const,
-      requestHints: { project: 'Kube Tools', mainRepoUrl: 'https://github.com/kubernetes/one' },
+      requestHints: {
+        project: 'Kube Tools',
+        mainRepoUrl: 'https://github.com/kubernetes/one',
+        suggestedSlug: 'kube-tools',
+      },
     }))
 
     await runOrganizationProposedAction(rows, deps)
 
     expect(deps.onboardOrganizationProject).toHaveBeenCalledWith(
-      expect.objectContaining({ projectName: 'Kube Tools', owner: 'kubernetes' }),
+      expect.objectContaining({
+        projectName: 'Kube Tools',
+        slug: 'kube-tools',
+        owner: 'kubernetes',
+      }),
     )
   })
 

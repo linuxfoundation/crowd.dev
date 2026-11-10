@@ -57,7 +57,7 @@ function lfInCdpReviewReason({
 }: Extract<OnboardingResolution, { kind: 'lf_in_cdp' }>): string {
   return action === 'human_review'
     ? `${segment.name} still uses an older GitHub connection, so I can't add repositories to it myself`
-    : `${segment.name} is in LFX Insights, but this repo needs a quick check by the CDP team before I add it`
+    : `${segment.name} is in LFX Insights, but adding to it needs a quick check by the CDP team`
 }
 
 export function routeResolution(

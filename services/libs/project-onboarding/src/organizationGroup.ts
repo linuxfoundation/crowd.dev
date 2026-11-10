@@ -64,8 +64,10 @@ export async function findRequestGroupSiblings(
 
 export type IOrganizationReview = IReviewOrganization
 
+type GroupMemberRow = Pick<IDbProjectCatalog, 'requestHints' | 'repoUrl'>
+
 export function requestGroupReviewOf(
-  lead: Pick<IDbProjectCatalog, 'requestHints' | 'repoUrl'>,
+  lead: GroupMemberRow,
   siblings: number,
 ): IOrganizationReview | null {
   const group = requestGroupOf(lead)
@@ -77,6 +79,24 @@ export function requestGroupReviewOf(
     return { owner: group.owner, repositories }
   }
   return { owner: canonicalizeRepoUrl(lead.repoUrl)?.owner ?? '', name: group.name, repositories }
+}
+
+export function requestGroupReview(
+  lead: GroupMemberRow,
+  siblings: GroupMemberRow[],
+): IOrganizationReview | null {
+  const review = requestGroupReviewOf(lead, siblings.length)
+  if (!review) {
+    return null
+  }
+  if (!review.name) {
+    return review
+  }
+  return {
+    ...review,
+    repoUrls: [lead.repoUrl, ...siblings.map((row) => row.repoUrl)],
+    confidence: lead.requestHints?.confidence ?? null,
+  }
 }
 
 export function organizationSubject(organization: IOrganizationReview): string {

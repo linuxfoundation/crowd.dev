@@ -38,7 +38,7 @@ import {
   onboardOrganizationProject,
   onboardProject,
   requestGroupKey,
-  requestGroupReviewOf,
+  requestGroupReview,
   reportRequestOutcome,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
@@ -428,7 +428,7 @@ async function closeReviewCard(
     return
   }
 
-  const organization = requestGroupReviewOf(project, siblings.length)
+  const organization = requestGroupReview(project, siblings)
   const onboarded = members.filter((row) => row.action === 'onboarded').length
   const card = toReviewRequestCard(project, NO_REVIEW_CARD_EXTRAS, organization)
   const closed = buildReviewClosedMessage(card, {

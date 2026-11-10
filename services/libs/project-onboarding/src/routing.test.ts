@@ -46,7 +46,7 @@ describe('routeResolution', () => {
         action: 'review',
         skipReason: null,
         reviewReason:
-          'Acme is in LFX Insights, but this repo needs a quick check by the CDP team before I add it',
+          'Acme is in LFX Insights, but adding to it needs a quick check by the CDP team',
       })
       expect(routeResolution(lfInCdp(action), { autoApply: true })).toMatchObject({
         action: 'onboard',
