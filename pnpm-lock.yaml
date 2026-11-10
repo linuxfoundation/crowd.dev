@@ -2834,6 +2834,9 @@ importers:
       '@crowd/types':
         specifier: workspace:*
         version: link:../types
+      '@octokit/auth-app':
+        specifier: ^4.0.13
+        version: 4.0.13(encoding@0.1.13)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

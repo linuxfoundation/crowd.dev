@@ -6,7 +6,6 @@ import {
   canonicalizeRepoUrl,
   fetchGithubDiscussionId,
   getErrorMessage,
-  getGithubDiscussionsToken,
   parseGithubDiscussionUrl,
   updateGithubDiscussionComment,
 } from '@crowd/common'
@@ -29,6 +28,7 @@ import { describeDecisionReason, reviewGroupLabel } from '@crowd/slack'
 
 import { BotStatus, STATUS } from './botCopy'
 import { buildInsightsProjectUrl, truncateReason } from './botThreadReply'
+import { resolveDiscussionToken } from './discussionToken'
 import { findOnboardedInsightsProject } from './onboardedProjectLookup'
 import { requestGroupReviewOf } from './organizationGroup'
 import {
@@ -56,16 +56,17 @@ export interface IDiscussionCommentClient {
 }
 
 function tokenClient(): IDiscussionCommentClient {
-  const token = getGithubDiscussionsToken()
   return {
-    fetchDiscussionId: (ref) => fetchGithubDiscussionId(ref, token),
-    addComment: (discussionId, body) => addGithubDiscussionComment(discussionId, body, token),
-    updateComment: (commentId, body) => updateGithubDiscussionComment(commentId, body, token),
+    fetchDiscussionId: async (ref) => fetchGithubDiscussionId(ref, await resolveDiscussionToken()),
+    addComment: async (discussionId, body) =>
+      addGithubDiscussionComment(discussionId, body, await resolveDiscussionToken()),
+    updateComment: async (commentId, body) =>
+      updateGithubDiscussionComment(commentId, body, await resolveDiscussionToken()),
   }
 }
 
 function escapeGithubMarkdown(text: string): string {
-  return text.replace(/[\\`*_[\]<>]/g, '\\$&')
+  return text.replace(/[\\`*_[\]<>]/g, '\\$&').replace(/@/g, '&#64;')
 }
 
 function plainReason(reason: string): string {
@@ -175,7 +176,10 @@ function isMissingComment(err: unknown): boolean {
 }
 
 function isSetupError(err: unknown): boolean {
-  return err instanceof GithubPublicClientError && (err.kind === 'CONFIG' || err.kind === 'AUTH')
+  return (
+    err instanceof GithubPublicClientError &&
+    (err.kind === 'CONFIG' || err.kind === 'AUTH' || err.kind === 'ACCESS_DENIED')
+  )
 }
 
 async function editComment(
@@ -215,11 +219,28 @@ async function writeStatusComment(
   return upsertDiscussionOnboardingRequest(qx, { sourceUrl, discussionId, commentId: comment.id })
 }
 
+type InsightsProjectLookup = Awaited<ReturnType<typeof findOnboardedInsightsProject>>
+
+async function lookupInsightsProject(
+  qx: QueryExecutor,
+  row: IDbProjectCatalog,
+): Promise<InsightsProjectLookup> {
+  try {
+    return await findOnboardedInsightsProject(qx, row)
+  } catch (err) {
+    log.warn(
+      { id: row.id, repoUrl: row.repoUrl, error: getErrorMessage(err) },
+      'Insights project lookup failed, naming the project from the catalog row.',
+    )
+    return null
+  }
+}
+
 async function withInsightsProjectNames(
   qx: QueryExecutor,
   rows: IDbProjectCatalog[],
 ): Promise<DiscussionStatusRow[]> {
-  const projects = new Map<string, Awaited<ReturnType<typeof findOnboardedInsightsProject>>>()
+  const projects = new Map<string, InsightsProjectLookup>()
   const named: DiscussionStatusRow[] = []
   for (const row of rows) {
     if (row.action !== 'onboarded' || !row.matchedSegmentId) {
@@ -227,7 +248,7 @@ async function withInsightsProjectNames(
       continue
     }
     if (!projects.has(row.matchedSegmentId)) {
-      projects.set(row.matchedSegmentId, await findOnboardedInsightsProject(qx, row))
+      projects.set(row.matchedSegmentId, await lookupInsightsProject(qx, row))
     }
     const project = projects.get(row.matchedSegmentId) ?? null
     named.push({

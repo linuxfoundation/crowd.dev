@@ -156,6 +156,15 @@ describe('buildDiscussionStatusMarkdown', () => {
         }),
       ]),
     ).toContain('not added: \\[x\\] mirror of \\`acme\\_core\\`')
+    expect(
+      buildDiscussionStatusMarkdown([
+        row({
+          repoUrl: 'https://github.com/acme/one',
+          action: 'skip',
+          skipReason: 'personal fork maintained by @octocat',
+        }),
+      ]),
+    ).toContain('maintained by &#64;octocat')
     expect(markdown).not.toContain('Updated automatically')
     expect(buildDiscussionAllDoneMarkdown([row({ repoUrl: 'u', action: 'skip' })])).toBe(
       '✅ All done: 1 not added.',
@@ -214,6 +223,20 @@ describe('refreshDiscussionStatusComment', () => {
       expect.stringContaining(
         'added to **[Acme](https://insights.linuxfoundation.org/project/acme)**',
       ),
+    )
+  })
+
+  it('still writes the comment when the Insights project lookup fails', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...rows[0], matchedSegmentId: 'seg-1', matchedProjectName: 'Acme' },
+    ] as IDbProjectCatalog[])
+    vi.mocked(findOnboardedInsightsProject).mockRejectedValue(new Error('opensearch down'))
+
+    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+
+    expect(client.addComment).toHaveBeenCalledWith(
+      'D_1',
+      expect.stringContaining('added to **Acme**'),
     )
   })
 
