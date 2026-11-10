@@ -25,96 +25,84 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { computed } from 'vue';
 import AppAvatarImage from '@/shared/avatar-image/avatar-image.vue';
 import AppAvatarNewBadge from '@/shared/avatar/avatar-new-badge.vue';
 
-export default {
-  name: 'AppAvatar',
-  components: {
-    AppAvatarImage,
-    AppAvatarNewBadge,
-  },
-  props: {
-    entity: {
-      type: Object,
-      default: () => {},
-    },
-    entityName: {
-      type: String,
-      default: null,
-    },
-    size: {
-      type: String,
-      default: 'md',
-    },
-  },
-  data() {
-    return {
-      backgroundColors: ['#DBEBFE'],
-      textColors: ['#205089'],
-      sizes: {
-        xl: '4.5rem',
-        lg: '4rem',
-        md: '3rem',
-        sm: '2.5rem',
-        xs: '2rem',
-        xxs: '1.25rem',
-        xxxs: '1rem',
-      },
-    };
-  },
-  computed: {
-    isSmallAvatar() {
-      return ['xxxs', 'xxs', 'xs', 'sm'].includes(this.size);
-    },
-    computedSize() {
-      return this.sizes[this.size] ?? this.size;
-    },
-    computedBackgroundColor() {
-      return this.backgroundColors[
-        (this.entity.displayName || '').length
-          % this.backgroundColors.length
-      ];
-    },
-    computedTextColor() {
-      return this.textColors[
-        (this.entity.displayName || '').length
-          % this.textColors.length
-      ];
-    },
-    url() {
-      return this.entity.avatar ?? this.entity.attributes?.avatarUrl?.default ?? this.entity.avatarUrl ?? null;
-    },
-    computedStyle() {
-      return {
-        backgroundColor: this.computedBackgroundColor,
-        borderColor: this.computedBackgroundColor,
-        color: this.computedTextColor,
-        height: this.computedSize,
-        width: this.computedSize,
-        lineHeight: this.computedSize,
-        fontSize: `calc(${this.computedSize} * 0.44)`,
-      };
-    },
-    computedInitials() {
-      return (
-        this.entity.displayName
-        || this.entity.label
-        || ''
-      )
-        .replace(
-          // remove emojis from string
-          /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g,
-          '',
-        )
-        .split(/\s+/g)
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join('');
-    },
-  },
+interface AvatarEntity {
+  displayName?: string | null;
+  label?: string | null;
+  avatar?: string | null;
+  avatarUrl?: string | null;
+  joinedAt?: string | null;
+  attributes?: { avatarUrl?: { default?: string | null } };
+}
+
+defineOptions({ name: 'AppAvatar' });
+
+const props = withDefaults(defineProps<{
+  entity?: AvatarEntity;
+  entityName?: string | null;
+  size?: string;
+}>(), {
+  entity: undefined,
+  entityName: null,
+  size: 'md',
+});
+
+const backgroundColors = ['#DBEBFE'];
+const textColors = ['#205089'];
+const EMOJI_PATTERN = /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g;
+const sizes: Record<string, string> = {
+  xl: '4.5rem',
+  lg: '4rem',
+  md: '3rem',
+  sm: '2.5rem',
+  xs: '2rem',
+  xxs: '1.25rem',
+  xxxs: '1rem',
 };
+
+const isSmallAvatar = computed(() => ['xxxs', 'xxs', 'xs', 'sm'].includes(props.size));
+
+const computedSize = computed(() => sizes[props.size] ?? props.size);
+
+const computedBackgroundColor = computed(() => backgroundColors[
+  (props.entity?.displayName || '').length
+    % backgroundColors.length
+]);
+
+const computedTextColor = computed(() => textColors[
+  (props.entity?.displayName || '').length
+    % textColors.length
+]);
+
+const url = computed(() => props.entity?.avatar
+  ?? props.entity?.attributes?.avatarUrl?.default
+  ?? props.entity?.avatarUrl
+  ?? '');
+
+const computedStyle = computed(() => ({
+  backgroundColor: computedBackgroundColor.value,
+  borderColor: computedBackgroundColor.value,
+  color: computedTextColor.value,
+  height: computedSize.value,
+  width: computedSize.value,
+  lineHeight: computedSize.value,
+  fontSize: `calc(${computedSize.value} * 0.44)`,
+}));
+
+const computedInitials = computed(() => (
+  props.entity?.displayName
+  || props.entity?.label
+  || ''
+)
+  .replace(EMOJI_PATTERN, '')
+  .split(/\s+/g)
+  .map((n) => n[0])
+  .slice(0, 2)
+  .join(''));
 </script>
 
 <style lang="scss">

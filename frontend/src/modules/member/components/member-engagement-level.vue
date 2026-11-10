@@ -43,39 +43,39 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: 'AppCommunityEngagementLevel',
-  props: {
-    member: {
-      type: Object,
-      default: () => {},
-    },
-  },
-  computed: {
-    computedEngagementLevel() {
-      const value = this.member.score;
-      let label = '';
+<script setup lang="ts">
+import { computed } from 'vue';
+import type { Member, MemberAttribute } from '@/modules/member/types/Member';
 
-      if (value <= 1) {
-        label = 'Silent';
-      } else if (value <= 3) {
-        label = 'Quiet';
-      } else if (value <= 6) {
-        label = 'Engaged';
-      } else if (value <= 8) {
-        label = 'Fan';
-      } else if (value <= 10) {
-        label = 'Ultra';
-      }
+defineOptions({ name: 'AppCommunityEngagementLevel' });
 
-      return {
-        value,
-        label,
-      };
-    },
-  },
-};
+const props = defineProps<{
+  member: Pick<Member, 'score'> & {
+    attributes: Record<string, MemberAttribute & { crowd?: boolean }>;
+  };
+}>();
+
+const computedEngagementLevel = computed(() => {
+  const value = props.member.score;
+  let label = '';
+
+  if (value <= 1) {
+    label = 'Silent';
+  } else if (value <= 3) {
+    label = 'Quiet';
+  } else if (value <= 6) {
+    label = 'Engaged';
+  } else if (value <= 8) {
+    label = 'Fan';
+  } else if (value <= 10) {
+    label = 'Ultra';
+  }
+
+  return {
+    value,
+    label,
+  };
+});
 </script>
 
 <style lang="scss">

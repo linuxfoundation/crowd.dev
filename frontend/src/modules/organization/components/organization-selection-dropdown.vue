@@ -22,7 +22,7 @@
                 :entity="{
                   ...item,
                   displayName: item.label,
-                  avatar: item.logo,
+                  avatar: item.logo as string,
                 }"
                 entity-name="organization"
                 size="xxs"
