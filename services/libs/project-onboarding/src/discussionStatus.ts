@@ -32,6 +32,7 @@ import { resolveDiscussionToken } from './discussionToken'
 import { findOnboardedInsightsProject } from './onboardedProjectLookup'
 import { requestGroupReviewOf } from './organizationGroup'
 import {
+  MAX_LINE_REASON_LENGTH,
   RequestStatusRow,
   groupByRequestGroup,
   isRequestSettled,
@@ -43,7 +44,6 @@ const log = getServiceLogger()
 
 const TITLE = '**LFX Insights onboarding status**'
 const CLOSING_LINE = '_Updated automatically as each repository is checked._'
-const MAX_REASON_LENGTH = 160
 
 type DiscussionRequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
 
@@ -70,7 +70,7 @@ function escapeGithubMarkdown(text: string): string {
 }
 
 function plainReason(reason: string): string {
-  return escapeGithubMarkdown(truncateReason(reason, MAX_REASON_LENGTH))
+  return escapeGithubMarkdown(truncateReason(reason, MAX_LINE_REASON_LENGTH))
 }
 
 function repoMarkdown(repoUrl: string): string {
@@ -172,8 +172,8 @@ export function buildDiscussionAllDoneMarkdown(rows: RequestStatusRow[]): string
   return `${STATUS.added} All done: ${requestSummaryLine(rows)}.`
 }
 
-function isMissingComment(err: unknown): boolean {
-  return err instanceof GithubPublicClientError && err.kind === 'NOT_FOUND'
+function isUneditableComment(err: unknown): boolean {
+  return err instanceof GithubPublicClientError && (err.kind === 'NOT_FOUND' || err.kind === 'AUTH')
 }
 
 function isSetupError(err: unknown): boolean {
@@ -192,10 +192,13 @@ async function editComment(
     await client.updateComment(commentId, body)
     return true
   } catch (err) {
-    if (!isMissingComment(err)) {
+    if (!isUneditableComment(err)) {
       throw err
     }
-    log.info({ commentId }, 'Discussion status comment is gone, posting a new one.')
+    log.info(
+      { commentId, error: getErrorMessage(err) },
+      'Discussion status comment is gone or not ours to edit, posting a new one.',
+    )
     return false
   }
 }
@@ -223,11 +226,11 @@ async function writeStatusComment(
 type InsightsProjectLookup = Awaited<ReturnType<typeof findOnboardedInsightsProject>>
 
 async function lookupInsightsProject(
-  qx: QueryExecutor,
+  tx: QueryExecutor,
   row: IDbProjectCatalog,
 ): Promise<InsightsProjectLookup> {
   try {
-    return await findOnboardedInsightsProject(qx, row)
+    return await tx.tx((savepoint) => findOnboardedInsightsProject(savepoint, row))
   } catch (err) {
     log.warn(
       { id: row.id, repoUrl: row.repoUrl, error: getErrorMessage(err) },
@@ -238,7 +241,7 @@ async function lookupInsightsProject(
 }
 
 async function withInsightsProjectNames(
-  qx: QueryExecutor,
+  tx: QueryExecutor,
   rows: IDbProjectCatalog[],
 ): Promise<DiscussionStatusRow[]> {
   const projects = new Map<string, InsightsProjectLookup>()
@@ -249,7 +252,7 @@ async function withInsightsProjectNames(
       continue
     }
     if (!projects.has(row.matchedSegmentId)) {
-      projects.set(row.matchedSegmentId, await lookupInsightsProject(qx, row))
+      projects.set(row.matchedSegmentId, await lookupInsightsProject(tx, row))
     }
     const project = projects.get(row.matchedSegmentId) ?? null
     named.push({
@@ -303,7 +306,7 @@ export async function refreshDiscussionStatusComment(
       if (catalogRows.length === 0) {
         return false
       }
-      const rows = await withInsightsProjectNames(qx, catalogRows)
+      const rows = await withInsightsProjectNames(tx, catalogRows)
       const status = await writeStatusComment(
         tx,
         ref,

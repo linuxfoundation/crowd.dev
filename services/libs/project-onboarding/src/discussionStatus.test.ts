@@ -231,14 +231,17 @@ describe('refreshDiscussionStatusComment', () => {
       { ...rows[0], matchedSegmentId: 'seg-1', matchedProjectName: 'Acme' },
     ] as IDbProjectCatalog[])
     vi.mocked(findOnboardedInsightsProject).mockRejectedValue(new Error('opensearch down'))
-    const txExecutor = {} as QueryExecutor
+    const savepoint = {} as QueryExecutor
+    const transaction = {
+      tx: (fn: (tx: QueryExecutor) => Promise<unknown>) => fn(savepoint),
+    } as unknown as QueryExecutor
     const outer = {
-      tx: (fn: (tx: QueryExecutor) => Promise<unknown>) => fn(txExecutor),
+      tx: (fn: (tx: QueryExecutor) => Promise<unknown>) => fn(transaction),
     } as unknown as QueryExecutor
 
     expect(await refreshDiscussionStatusComment(outer, request, client)).toBe(true)
 
-    expect(findOnboardedInsightsProject).toHaveBeenCalledWith(outer, expect.anything())
+    expect(findOnboardedInsightsProject).toHaveBeenCalledWith(savepoint, expect.anything())
     expect(client.addComment).toHaveBeenCalledWith(
       'D_1',
       expect.stringContaining('added to **Acme**'),
@@ -321,6 +324,23 @@ describe('refreshDiscussionStatusComment', () => {
     expect(client.addComment).toHaveBeenCalledWith('D_1', expect.stringContaining('acme/one'))
     expect(replaceDiscussionOnboardingRequestComment).toHaveBeenCalledWith(qx, sourceUrl, 'DC_new')
     expect(upsertDiscussionOnboardingRequest).not.toHaveBeenCalled()
+  })
+
+  it('posts a new comment when the stored one belongs to another GitHub identity', async () => {
+    vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue({
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_pat',
+      doneNotifiedAt: null,
+    } as never)
+    vi.mocked(client.updateComment).mockRejectedValueOnce(
+      new GithubPublicClientError('AUTH', 'Resource not accessible by integration'),
+    )
+
+    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+
+    expect(client.addComment).toHaveBeenCalledWith('D_1', expect.stringContaining('acme/one'))
+    expect(replaceDiscussionOnboardingRequestComment).toHaveBeenCalledWith(qx, sourceUrl, 'DC_new')
   })
 
   it('ignores rows without a discussion origin and reports a failed GitHub call', async () => {

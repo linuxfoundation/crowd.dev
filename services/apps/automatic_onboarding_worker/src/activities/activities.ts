@@ -463,9 +463,6 @@ async function notifyOnboardedRequest(
   if (isSlackBotProvenance(project.provenance)) {
     await replyInBotThread(project, buildBotOnboardedContent(project, insightsProject), 'added')
   }
-  if (isGithubDiscussionRequest(project)) {
-    await refreshDiscussionStatusComment(qx, project)
-  }
   if (insightsProject) {
     await closeReviewCard(project, insightsProject.name, closedCards)
   }
@@ -477,6 +474,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
     await notifyOnboardedRequest(project, closedCards)
   }
 
+  const qx = pgpQx(svc.postgres.writer.connection())
   for (const group of groupGithubDiscussionRequestsBySource(projects)) {
     const sent = await sendSlackNotificationAsync(
       SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
@@ -491,6 +489,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
         'Onboarded-discussion Slack alert was not sent.',
       )
     }
+    await refreshDiscussionStatusComment(qx, group[0])
   }
 }
 

@@ -50,7 +50,7 @@ export type RequestStatusRow = Pick<
 type RequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
 
 const CLOSING_LINE = "I'll update this message as each repo is checked."
-const MAX_LINE_REASON_LENGTH = 160
+export const MAX_LINE_REASON_LENGTH = 160
 const BUTTONS_PER_BLOCK = 5
 
 export function rowStatus(row: Pick<RequestStatusRow, 'action' | 'classificationKind'>): BotStatus {
