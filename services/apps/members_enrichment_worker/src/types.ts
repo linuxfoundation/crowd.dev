@@ -59,10 +59,8 @@ export interface IEnrichmentService {
   // response will be saved to redis for 60 seconds and will be used for subsequent calls
   hasRemainingCredits(): Promise<boolean>
 
-  // SQL filter to get enrichable members for a source
-  // members table is available as "members" alias
-  // memberIdentities table is available as "mi" alias
-  // activity count is available in "membersGlobalActivityCount" alias, "membersGlobalActivityCount".total_count field
+  // SQL condition on a single member that matches when this source can be called for them.
+  // Join on "membersGlobalActivityCount"."memberId", not members.id, to keep the selection query fast.
   enrichableBySql: string
 
   // only enrich members with activity more than this number

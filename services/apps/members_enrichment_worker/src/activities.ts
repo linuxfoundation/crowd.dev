@@ -8,6 +8,7 @@ import {
   getMaxConcurrentRequests,
   getObsoleteSourcesOfMember,
   getPriorityArray,
+  hasNormalizedDataChanged,
   hasRemainingCredits,
   insertMemberEnrichmentCache,
   isCacheObsolete,
@@ -76,4 +77,5 @@ export {
   getPriorityArray as getTenantPriorityArray,
   cleanAttributeValue,
   hasRemainingCredits,
+  hasNormalizedDataChanged,
 }
