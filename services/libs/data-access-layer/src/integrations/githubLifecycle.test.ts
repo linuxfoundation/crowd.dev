@@ -125,7 +125,7 @@ describe('listGithubIntegrationsNeedingReconcile', () => {
     const listed = await listGithubIntegrationsNeedingReconcile(qx)
 
     expect(listed.filter((id) => [a, b, c, d, e, f, g, h].includes(id)).sort()).toEqual(
-      [a, b, c, d, f, h].sort(),
+      [a, b, c, d, e, f, h].sort(),
     )
     expect(new Set(listed).size).toBe(listed.length)
   })
@@ -151,7 +151,7 @@ describe('addRepoToGitIntegration', () => {
 })
 
 describe('listGithubRepoKeysUnderOwners', () => {
-  test('returns lower-cased repo and mapping keys of live github-nango integrations under the owners', async ({
+  test('returns lower-cased repo keys of live github-nango integrations under the owners, ignoring nango mappings', async ({
     qx,
   }) => {
     const segmentId = await createSegmentId(qx)
@@ -169,16 +169,13 @@ describe('listGithubRepoKeysUnderOwners', () => {
 
     const keys = await listGithubRepoKeysUnderOwners(qx, [owner])
 
-    expect(keys.sort()).toEqual([
-      `https://github.com/${owner}/mapped`,
-      `https://github.com/${owner}/own`,
-    ])
+    expect(keys).toEqual([`https://github.com/${owner}/own`])
     expect(await listGithubRepoKeysUnderOwners(qx, [])).toEqual([])
   })
 })
 
 describe('listGithubChannelsOwnedElsewhere', () => {
-  test('returns keys held by another live integration via unit or mapping, ignoring this integration and deleted ones', async ({
+  test('returns keys held by another live integration via units, ignoring nango mappings, this integration and deleted ones', async ({
     qx,
   }) => {
     const segmentId = await createSegmentId(qx)
@@ -203,7 +200,7 @@ describe('listGithubChannelsOwnedElsewhere', () => {
       url('five'),
     ])
 
-    expect(owned.sort()).toEqual([url('one'), url('two')])
+    expect(owned).toEqual([url('one')])
     expect(await listGithubChannelsOwnedElsewhere(qx, x, [])).toEqual([])
   })
 })
