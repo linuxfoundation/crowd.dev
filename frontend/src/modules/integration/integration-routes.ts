@@ -1,3 +1,7 @@
+// Copyright (c) 2026 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+
+import type { NavigationGuardNext, RouteLocationNormalized, RouteRecordRaw } from 'vue-router';
 import Layout from '@/modules/layout/components/layout.vue';
 import { PageEventKey } from '@/shared/modules/monitoring/types/event';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
@@ -9,12 +13,11 @@ const IntegrationListPage = () =>
 const IntegrationSuccessPage = () =>
   import('@/modules/integration/pages/integration-success-page.vue');
 
-export default [
+const routes: RouteRecordRaw[] = [
   {
     name: '',
     path: '',
     component: Layout,
-    exact: true,
     meta: {
       title: 'Integrations',
       eventKey: PageEventKey.INTEGRATIONS,
@@ -24,10 +27,16 @@ export default [
       {
         name: 'integrationRedirect',
         path: '/integrations',
-        exact: true,
         meta: {},
+        // RouteRecordRaw has no guard-only variant; normalizeRouteRecord defaults children to [].
+        // https://github.com/vuejs/router/blob/v4.1.6/packages/router/src/matcher/index.ts#L384
+        children: [],
         beforeEnter: [
-          (to, from, next) => {
+          (
+            to: RouteLocationNormalized,
+            from: RouteLocationNormalized,
+            next: NavigationGuardNext,
+          ): void => {
             const connectSegment = Object.keys(to.query).length ? consumeConnectSegment() : null;
             const segmentId = connectSegment?.segmentId ?? localStorage.getItem('segmentId');
             const segmentGrandparentId =
@@ -43,7 +52,8 @@ export default [
                 });
                 return;
               }
-              if (segmentId !== 'null') {
+              // 'null' is the string earlier builds stored when clearing the segment.
+              if (segmentId && segmentId !== 'null') {
                 next({
                   name: 'integration',
                   params: {
@@ -56,8 +66,8 @@ export default [
               }
             }
 
-            localStorage.setItem('segmentId', null);
-            localStorage.setItem('segmentGrandparentId', null);
+            localStorage.removeItem('segmentId');
+            localStorage.removeItem('segmentGrandparentId');
 
             next({ name: 'projectGroupsList' });
           },
@@ -67,7 +77,6 @@ export default [
         name: 'integration',
         path: '/integrations/:grandparentId/:id',
         component: IntegrationListPage,
-        exact: true,
         meta: {
           auth: true,
           paramSegmentAccess: {
@@ -83,9 +92,10 @@ export default [
     name: 'integrationSuccess',
     path: '/integrations/success',
     component: IntegrationSuccessPage,
-    exact: true,
     meta: {
       hideLfxHeader: true,
     },
   },
 ];
+
+export default routes;
