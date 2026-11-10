@@ -66,7 +66,7 @@ function tokenClient(): IDiscussionCommentClient {
 }
 
 function escapeGithubMarkdown(text: string): string {
-  return text.replace(/[\\`*_[\]<>]/g, '\\$&').replace(/@/g, '&#64;')
+  return text.replace(/[\\`*_[\]<>#~]/g, '\\$&').replace(/@/g, '&#64;')
 }
 
 function plainReason(reason: string): string {
@@ -80,8 +80,9 @@ function repoMarkdown(repoUrl: string): string {
 
 function reviewNote(note: string | null): string {
   const trimmed = note
-    ?.trim()
-    .split(/\s*\n\s*/)
+    ?.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
     .join(' ')
   return trimmed ? ` — ${escapeGithubMarkdown(trimmed)}` : ''
 }
@@ -148,7 +149,7 @@ function groupLines(rows: DiscussionStatusRow[]): string[] {
     return rows.map((row) => rowLine(row))
   }
   const shared = sharedDetail(rows)
-  const heading = `- **${reviewGroupLabel(review)}** · ${rows.length} repositories · ${shared ?? requestSummaryLine(rows)}`
+  const heading = `- **${escapeGithubMarkdown(reviewGroupLabel(review))}** · ${rows.length} repositories · ${shared ?? requestSummaryLine(rows)}`
   const members = rows.map((row) =>
     shared ? `  - ${repoMarkdown(row.repoUrl)}` : rowLine(row, '  '),
   )
@@ -302,7 +303,7 @@ export async function refreshDiscussionStatusComment(
       if (catalogRows.length === 0) {
         return false
       }
-      const rows = await withInsightsProjectNames(tx, catalogRows)
+      const rows = await withInsightsProjectNames(qx, catalogRows)
       const status = await writeStatusComment(
         tx,
         ref,

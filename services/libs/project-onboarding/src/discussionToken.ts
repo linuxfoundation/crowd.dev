@@ -1,11 +1,12 @@
 import { createAppAuth } from '@octokit/auth-app'
 
-import { GithubPublicClientError, getGithubDiscussionsToken } from '@crowd/common'
+import { GithubPublicClientError, getErrorMessage, getGithubDiscussionsToken } from '@crowd/common'
 
 const APP_ID_VAR = 'CROWD_GITHUB_ISSUE_REPORTER_APP_ID'
 const PRIVATE_KEY_VAR = 'CROWD_GITHUB_ISSUE_REPORTER_PRIVATE_KEY'
 const INSTALLATION_ID_VAR = 'CROWD_GITHUB_ISSUE_REPORTER_INSTALLATION_ID'
 const APP_VARS = [APP_ID_VAR, PRIVATE_KEY_VAR, INSTALLATION_ID_VAR] as const
+const INSTALLATION_TOKEN_TIMEOUT_MS = 10_000
 
 export interface IGithubAppInstallation {
   appId: string
@@ -59,8 +60,18 @@ function appAuthFor(app: IGithubAppInstallation): AppAuth {
   return auth
 }
 
+// @octokit/request wraps network failures in a RequestError with a status; only the JWT
+// signing of an unusable private key rejects without one.
 function installationTokenError(err: unknown, app: IGithubAppInstallation): unknown {
+  if (err instanceof GithubPublicClientError) {
+    return err
+  }
   const status = (err as { status?: number }).status
+  if (status === undefined) {
+    return configError(
+      `${PRIVATE_KEY_VAR} is not a usable key for GitHub App ${app.appId}: ${getErrorMessage(err)}`,
+    )
+  }
   if (status === 401 || status === 403) {
     return new GithubPublicClientError(
       'AUTH',
@@ -73,12 +84,29 @@ function installationTokenError(err: unknown, app: IGithubAppInstallation): unkn
   return err
 }
 
+function withTimeout<T>(promise: Promise<T>, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new GithubPublicClientError(
+            'TRANSIENT',
+            `Timed out after ${INSTALLATION_TOKEN_TIMEOUT_MS}ms ${what}`,
+          ),
+        ),
+      INSTALLATION_TOKEN_TIMEOUT_MS,
+    )
+  })
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer))
+}
+
 export async function mintInstallationToken(app: IGithubAppInstallation): Promise<string> {
   try {
-    const { token } = await appAuthFor(app)({
-      type: 'installation',
-      installationId: app.installationId,
-    })
+    const { token } = await withTimeout(
+      appAuthFor(app)({ type: 'installation', installationId: app.installationId }),
+      `minting an installation token for GitHub App ${app.appId}`,
+    )
     return token
   } catch (err) {
     throw installationTokenError(err, app)

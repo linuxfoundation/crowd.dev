@@ -87,13 +87,47 @@ describe('mintInstallationToken', () => {
       .fn()
       .mockRejectedValueOnce(Object.assign(new Error('Bad credentials'), { status: 401 }))
       .mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }))
-      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockRejectedValueOnce(Object.assign(new Error('socket hang up'), { status: 500 }))
     vi.mocked(createAppAuth).mockReturnValue(auth as never)
     const app = { appId: 'app-errors', privateKey: PEM, installationId: 777 }
 
     await expect(mintInstallationToken(app)).rejects.toMatchObject({ kind: 'AUTH' })
     await expect(mintInstallationToken(app)).rejects.toMatchObject({ kind: 'CONFIG' })
     await expect(mintInstallationToken(app)).rejects.toThrow('socket hang up')
+  })
+
+  it('reports an unusable private key as a config error', async () => {
+    const auth = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('secretOrPrivateKey must be an asymmetric key'))
+    vi.mocked(createAppAuth).mockReturnValue(auth as never)
+
+    await expect(
+      mintInstallationToken({ appId: 'app-badkey', privateKey: 'nope', installationId: 777 }),
+    ).rejects.toMatchObject({
+      kind: 'CONFIG',
+      message: expect.stringContaining('CROWD_GITHUB_ISSUE_REPORTER_PRIVATE_KEY'),
+    })
+  })
+})
+
+describe('mintInstallationToken timeout', () => {
+  it('gives up on a token request that never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const auth = vi.fn().mockReturnValue(new Promise(() => undefined))
+      vi.mocked(createAppAuth).mockReturnValue(auth as never)
+      const pending = mintInstallationToken({
+        appId: 'app-slow',
+        privateKey: PEM,
+        installationId: 777,
+      })
+      const outcome = expect(pending).rejects.toMatchObject({ kind: 'TRANSIENT' })
+      await vi.advanceTimersByTimeAsync(10_000)
+      await outcome
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

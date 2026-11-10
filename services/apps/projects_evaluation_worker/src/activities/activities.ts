@@ -488,7 +488,6 @@ export async function notifySkippedHumanRequest(
     return
   }
 
-  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
   const sent = await sendSlackNotificationAsync(
     SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
     SlackPersona.WARNING_PROPAGATOR,
@@ -502,6 +501,7 @@ export async function notifySkippedHumanRequest(
       'Skipped-discussion Slack alert was not sent.',
     )
   }
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
 }
 
 const QUESTION_LIMIT = 50
@@ -715,9 +715,7 @@ export async function notifyEvaluationError(
 ): Promise<void> {
   if (isSlackBotProvenance(project.provenance)) {
     await postTryAgainInBotThread(project)
-  } else if (isGithubDiscussionProvenance(project.provenance)) {
-    await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
-  } else {
+  } else if (!isGithubDiscussionProvenance(project.provenance)) {
     return
   }
 
@@ -729,6 +727,9 @@ export async function notifyEvaluationError(
   )
   if (!sent) {
     log.warn({ id: project.id, repoUrl: project.repoUrl }, 'Evaluation error alert was not sent.')
+  }
+  if (isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
   }
 }
 

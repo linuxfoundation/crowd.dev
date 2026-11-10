@@ -563,7 +563,6 @@ export async function notifyErroredHumanRequest(
     return
   }
 
-  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
   const sent = await sendSlackNotificationAsync(
     SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
     SlackPersona.ERROR_REPORTER,
@@ -577,6 +576,7 @@ export async function notifyErroredHumanRequest(
       'Errored-discussion Slack alert was not sent.',
     )
   }
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
 }
 
 export async function startOnboardingPipelineRun(

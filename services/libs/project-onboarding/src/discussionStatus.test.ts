@@ -231,9 +231,14 @@ describe('refreshDiscussionStatusComment', () => {
       { ...rows[0], matchedSegmentId: 'seg-1', matchedProjectName: 'Acme' },
     ] as IDbProjectCatalog[])
     vi.mocked(findOnboardedInsightsProject).mockRejectedValue(new Error('opensearch down'))
+    const txExecutor = {} as QueryExecutor
+    const outer = {
+      tx: (fn: (tx: QueryExecutor) => Promise<unknown>) => fn(txExecutor),
+    } as unknown as QueryExecutor
 
-    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+    expect(await refreshDiscussionStatusComment(outer, request, client)).toBe(true)
 
+    expect(findOnboardedInsightsProject).toHaveBeenCalledWith(outer, expect.anything())
     expect(client.addComment).toHaveBeenCalledWith(
       'D_1',
       expect.stringContaining('added to **Acme**'),

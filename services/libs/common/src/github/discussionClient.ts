@@ -1,4 +1,4 @@
-import { assertAuthenticated, assertNotRateLimited, doFetch, readJson } from './publicRepoClient'
+import { assertAuthenticated, assertNotRateLimited, doFetch, readJson } from './githubHttp'
 import { GithubPublicClientError, GithubPublicClientErrorKind } from './types'
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
