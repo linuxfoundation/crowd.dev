@@ -134,10 +134,18 @@ export async function fetchNewMembersForEnrichment(
 
   const enrichableByAnySource = sourceInputs.map((input) => `(${input.enrichableBySql})`)
 
+  // OFFSET 0 makes Postgres run this cheap check before the source lookups, instead of after.
+  // Most members near the top are already enriched, so this skips them early.
+  const hasNoEnrichmentCache = `NOT EXISTS (
+    SELECT 1 FROM "memberEnrichmentCache" mec
+    WHERE mec."memberId" = "membersGlobalActivityCount"."memberId"
+    OFFSET 0
+  )`
+
   return fetchEnrichableMembers(
     db,
     limit,
-    `NOT ${HAS_ENRICHMENT_CACHE} AND (${enrichableByAnySource.join(' OR ')})`,
+    `${hasNoEnrichmentCache} AND (${enrichableByAnySource.join(' OR ')})`,
   )
 }
 
