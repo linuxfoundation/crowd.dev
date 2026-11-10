@@ -162,8 +162,16 @@ export async function processDataset(
     })
   }
 
+  // Human requests are few and come in groups that must land together; only the bulk sources
+  // are rationed by the discovery limit.
+  const humanProvenance = isHumanProjectCatalogProvenance(source.provenance)
+    ? source.provenance
+    : null
+  const rationed = humanProvenance === null
   const accepted: IDbProjectCatalogCreate[] = []
+  const limitReached = () => rationed && accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT
   const skippedInCdp: IDbProjectCatalogCreate[] = []
+  const toPromote: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
@@ -186,16 +194,12 @@ export async function processDataset(
       unseen.map((c) => c.repoUrl),
     )
 
-    const humanProvenance = source.provenance
-    if (isHumanProjectCatalogProvenance(humanProvenance)) {
-      const alreadyCatalogued = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
-      if (alreadyCatalogued.length > 0) {
-        totalPromoted += await promoteProjectCatalogProvenance(
-          qx,
-          humanProvenance,
-          alreadyCatalogued,
-        )
-      }
+    const existing = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
+    for (const candidate of existing) {
+      seenRepoUrls.add(candidate.repoUrl)
+    }
+    if (humanProvenance) {
+      toPromote.push(...existing)
     }
 
     const fresh = unseen.filter((c) => !existingRepoUrls.has(c.repoUrl))
@@ -218,7 +222,7 @@ export async function processDataset(
         seenRepoUrls.add(candidate.repoUrl)
         continue
       }
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         break
       }
@@ -246,6 +250,8 @@ export async function processDataset(
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
       requestText: parsed.requestText ? truncateRequestText(parsed.requestText) : null,
+      projectName: parsed.projectName ?? null,
+      requestHints: parsed.requestHints ?? null,
     })
 
     if (chunk.length >= CANDIDATE_CHUNK_SIZE) {
@@ -258,7 +264,7 @@ export async function processDataset(
         skippedAlreadyInCdp: skippedInCdp.length,
       })
 
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
@@ -270,7 +276,7 @@ export async function processDataset(
   }
 
   // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+  if (chunk.length > 0 && !limitReached()) {
     await acceptNewRows(chunk)
   }
 
@@ -279,9 +285,16 @@ export async function processDataset(
     stream.destroy()
   }
 
+  // The rows of one request become visible together, or an evaluation running meanwhile
+  // posts a card for part of the group that the rest can no longer join.
   const toInsert = [...accepted, ...skippedInCdp]
-  if (toInsert.length > 0) {
-    await bulkInsertProjectCatalog(qx, toInsert)
+  if (toInsert.length > 0 || toPromote.length > 0) {
+    await qx.tx(async (tx) => {
+      if (humanProvenance) {
+        totalPromoted += await promoteProjectCatalogProvenance(tx, humanProvenance, toPromote)
+      }
+      await bulkInsertProjectCatalog(tx, toInsert)
+    })
   }
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose

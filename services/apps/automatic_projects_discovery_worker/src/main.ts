@@ -4,7 +4,11 @@ import { Options, ServiceWorker } from '@crowd/archetype-worker'
 import { scheduleProjectsDiscovery } from './schedules/scheduleProjectsDiscovery'
 
 const config: Config = {
-  envvars: ['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'],
+  envvars: [
+    'CROWD_GITHUB_PERSONAL_ACCESS_TOKENS',
+    'CROWD_AWS_BEDROCK_ACCESS_KEY_ID',
+    'CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY',
+  ],
   producer: {
     enabled: false,
   },
