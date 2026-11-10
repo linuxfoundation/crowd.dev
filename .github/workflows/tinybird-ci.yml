@@ -22,6 +22,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # tinybird-cli 5.x supports Python up to 3.13, and the runner image's default Python is newer.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
       - name: Install Tinybird CLI
         run: |
           if [ -f "${{ env.DATA_PROJECT_DIR }}/requirements.txt" ]; then
