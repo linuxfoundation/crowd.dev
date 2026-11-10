@@ -56,7 +56,7 @@ Commands:
 
 Usage:
   npx tsx src/bin/cleanup-null-channel-duplicates.ts <command> --tag <DD_MM_YYYY> [options]
-  (or pnpm run cleanup-null-channel-duplicates -- <command> ...)
+  (or pnpm run --silent cleanup-null-channel-duplicates <command> ...)
 
 Common options:
   --tag DD_MM_YYYY   Shared by every run of one cleanup. Tables: "activityRelations_<tag>"
@@ -2654,7 +2654,9 @@ function installSignalHandlers(log: Log): void {
 }
 
 async function main(): Promise<number> {
-  const [command, ...args] = process.argv.slice(2)
+  // pnpm 11 passes a `--` after the script name through to the script
+  const argv = process.argv.slice(2)
+  const [command, ...args] = argv[0] === '--' ? argv.slice(1) : argv
   if (!command || command === '--help' || command === '-h' || args.includes('--help')) {
     printHelp()
     return command ? EXIT_DONE : EXIT_USAGE
