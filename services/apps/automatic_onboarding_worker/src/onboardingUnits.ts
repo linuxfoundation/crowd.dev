@@ -2,7 +2,7 @@ import type { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-cat
 import {
   createsNewProject,
   onboardsWithOrganization,
-  organizationGroupKey,
+  requestGroupKey,
   sameReviewProposal,
 } from '@crowd/project-onboarding/src/organizationGrouping'
 
@@ -14,7 +14,7 @@ export function groupOnboardingUnits(projects: IDbProjectCatalog[]): OnboardingU
   const groupsByKey = new Map<string, IDbProjectCatalog[][]>()
   const units: OnboardingUnit[] = []
   for (const project of projects) {
-    const key = organizationGroupKey(project)
+    const key = requestGroupKey(project)
     if (!key || !onboardsWithOrganization(project)) {
       units.push({ kind: 'single', project })
       continue

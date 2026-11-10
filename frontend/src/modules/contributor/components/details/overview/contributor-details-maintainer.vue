@@ -17,6 +17,10 @@ import type { Contributor, ContributorMaintainerRole } from '@/modules/contribut
 import LfBadge from '@/ui-kit/badge/Badge.vue';
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'LfContributorDetailsMaintainer',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -27,9 +31,4 @@ const maintainer = computed<ContributorMaintainerRole[]>(
 const contributorRoles = computed<ContributorMaintainerRole[]>(
   () => props.contributor.maintainerRoles.filter((role) => role.role.includes('contributor')),
 );
-</script>
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsMaintainer',
-};
 </script>

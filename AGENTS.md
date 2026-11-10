@@ -49,6 +49,7 @@ Old and new patterns coexist. Always use the new pattern.
 - **Legacy auth -> Auth0**: Auth0 is the current auth system. Ignore old JWT patterns.
 - **Zod for validation**: Public API endpoints use Zod schemas with `validateOrThrow`. Follow this pattern for all new endpoints.
 - **Connector routing -> the channel is the mapping**: a connector record goes to the integration and segment of the sync unit that fetched it. Don't add mapping tables or routing in `integration.settings`. Read [`services/libs/connectors/README.md`](services/libs/connectors/README.md) before touching connectors or `sync_units`.
+- **Activity identity is exact**: the sink and the `activityRelations` sorting key match `channel` and `sourceId` byte for byte. Store the channel exactly as the existing activities carry it (for GitHub, the live `repositories.url`; never lowercased, never replaced by the provider's spelling), build `sourceId` from immutable ids only, and check both before replaying history another pipeline already ingested. Details in the connectors README, rule 20.
 
 ## Working with the database
 

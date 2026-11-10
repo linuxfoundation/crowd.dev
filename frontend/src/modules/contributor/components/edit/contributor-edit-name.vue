@@ -24,6 +24,10 @@ import useVuelidate from '@vuelidate/core';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorEditName',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -67,12 +71,6 @@ const update = () => {
     .catch(() => {
       ToastStore.error('There was an error updating contributor');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditName',
 };
 </script>
 

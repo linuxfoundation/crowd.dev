@@ -15,9 +15,9 @@ import {
   buildBotDoneReply,
   buildBotRejectedReply,
   resolveReviewCdpUrl,
-  findOrganizationSiblings,
+  findRequestGroupSiblings,
   needsPerson,
-  organizationReviewOf,
+  requestGroupReview,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
 import {
@@ -190,7 +190,7 @@ async function decideOrganizationSiblings(
   resolution: IDbProjectCatalogReviewResolution,
   log: IServiceOptions['log'],
 ): Promise<IDbProjectCatalog[]> {
-  const siblings = await findOrganizationSiblings(qx, lead, onSameReviewCard(lead))
+  const siblings = await findRequestGroupSiblings(qx, lead, onSameReviewCard(lead))
   const decided: IDbProjectCatalog[] = []
   for (const sibling of siblings) {
     const resolved = await resolveProjectCatalogReview(qx, sibling.id, resolution)
@@ -274,7 +274,7 @@ export async function runReviewDecisionCommand({
     await handleRefusedDecision(qx, catalogId, decision, responseUrl, actorId, log)
     return
   }
-  const organization = organizationReviewOf(resolved, siblings.length)
+  const organization = requestGroupReview(resolved, siblings)
   const catalogIds = [resolved.id, ...siblings.map((row) => row.id)]
 
   log.info(
@@ -396,8 +396,8 @@ function rejectSubject(row: IDbProjectCatalog, organization: IReviewOrganization
 }
 
 async function pendingOrganizationReview(qx: QueryExecutor, row: IDbProjectCatalog) {
-  const siblings = await findOrganizationSiblings(qx, row, onSameReviewCard(row))
-  return organizationReviewOf(row, siblings.length)
+  const siblings = await findRequestGroupSiblings(qx, row, onSameReviewCard(row))
+  return requestGroupReview(row, siblings)
 }
 
 async function replyInBotThread(

@@ -52,7 +52,7 @@
 <script setup lang="ts">
 import {
   computed,
-  defineProps, ref,
+  ref,
   watch,
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -61,6 +61,10 @@ type Attribute = {
   label: string,
   name: string,
 };
+
+defineOptions({
+  name: 'AppBulkEditAttributeDropdown',
+});
 
 const props = defineProps<{
   modelValue: {
@@ -93,12 +97,6 @@ const selectItem = (item: Attribute, source: string) => {
   emit('change', { [source]: item });
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppBulkEditAttributeDropdown',
-};
 </script>
 
 <style>

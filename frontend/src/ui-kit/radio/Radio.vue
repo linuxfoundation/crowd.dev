@@ -14,7 +14,11 @@
 
 <script setup lang="ts">
 import type { RadioSize } from '@/ui-kit/radio/types/RadioSize';
-import { computed, withDefaults } from 'vue';
+import { computed } from 'vue';
+
+defineOptions({
+  name: 'LfRadio',
+});
 
 const props = withDefaults(defineProps<{
   size?: RadioSize,
@@ -39,10 +43,4 @@ const checked = computed<string | boolean>({
     emit('update:modelValue', val);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfRadio',
-};
 </script>

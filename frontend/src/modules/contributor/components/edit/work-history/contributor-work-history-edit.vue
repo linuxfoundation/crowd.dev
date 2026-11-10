@@ -10,7 +10,7 @@
         </div>
 
         <div>
-          <lf-field label-text="Organization" required class="mb-5">
+          <lf-field label-text="Company" required class="mb-5">
             <lf-organization-select
               v-model="form.organization"
               class="w-full"
@@ -26,7 +26,7 @@
               }"
             />
             <lf-field-message v-if="hasSameOrganization" type="warning" class="!mt-2">
-              There is already a work experience associated with this organization.
+              There is already a work experience associated with this company.
               Please ensure that either the Job title or Period is different before adding this work experience.
             </lf-field-message>
           </lf-field>
@@ -68,7 +68,7 @@
             />
           </lf-field>
           <lf-checkbox v-model="form.currentlyWorking" size="small">
-            Currently working at this organization
+            Currently working at this company
           </lf-checkbox>
         </div>
       </div>
@@ -77,7 +77,7 @@
           <lf-icon name="circle-info" :size="16" class="text-gray-600" />
         </div>
         <div class="flex-grow pl-2 text-xs text-gray-500">
-          <span class="font-semibold">Activities affiliation</span> with a certain organization is automatically defined
+          <span class="font-semibold">Activities affiliation</span> with a certain company is automatically defined
           by the work experience period. Any work history updates won’t override
           manual changes to activities affiliation, both individually or per project over a specific time period.
         </div>
@@ -89,7 +89,7 @@
         <lf-tooltip
           :disabled="!hasSameOrgDetails"
           placement="top-end"
-          content="Please enter a different Job title or Period, as there is already a work experience associated with the selected organization."
+          content="Please enter a different Job title or Period, as there is already a work experience associated with the selected company."
         >
           <lf-button
             type="primary"
@@ -130,6 +130,10 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import LfFieldMessage from '@/ui-kit/field-message/FieldMessage.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
+
+defineOptions({
+  name: 'LfContributorEditWorkHistory',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -183,6 +187,15 @@ const rules = {
 
 const $v = useVuelidate(rules, form);
 
+const isModalOpen = computed<boolean>({
+  get() {
+    return props.modelValue;
+  },
+  set(value: boolean) {
+    emit('update:modelValue', value);
+  },
+});
+
 const updateWorkExperience = () => {
   const data: Partial<MemberOrganization> = {
     organizationId: (form.organization || props.organization)?.id,
@@ -227,15 +240,6 @@ const updateWorkExperience = () => {
     });
 };
 
-const isModalOpen = computed<boolean>({
-  get() {
-    return props.modelValue;
-  },
-  set(value: boolean) {
-    emit('update:modelValue', value);
-  },
-});
-
 const hasSameOrganization = computed(() => (props.contributor.organizations || []).some((o: Organization) => o.id === form.organization?.id)
     && (!isEdit.value || form.organization?.id !== props.organization?.id));
 
@@ -278,12 +282,6 @@ onMounted(() => {
     form.currentlyWorking = !form.dateEnd && !!form.dateStart;
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditWorkHistory',
-};
 </script>
 
 <style lang="scss">

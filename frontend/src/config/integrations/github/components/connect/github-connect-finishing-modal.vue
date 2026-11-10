@@ -19,6 +19,10 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'LfGithubConnectFinishingModal',
+});
+
 const props = defineProps<{
   modelValue: boolean;
 }>();
@@ -29,10 +33,4 @@ const isModalOpen = computed<boolean>({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubConnectFinishingModal',
-};
 </script>

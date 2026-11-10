@@ -58,6 +58,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 import type { InsightsProjectAddFormModel } from '../../models/insights-project-add-form.model';
 
+defineOptions({
+  name: 'LfInsightsProjectsAddCollectionDropdown',
+});
+
 const props = defineProps<{
   form: InsightsProjectAddFormModel;
 }>();
@@ -113,7 +117,7 @@ function fetchOrganizations(query = '', pageNum = 0) {
     })
     .catch(() => {
       ToastStore.closeAll();
-      ToastStore.error('Failed to load  organizations');
+      ToastStore.error('Failed to load  companies');
     })
     .finally(() => {
       loading.value = false;
@@ -175,12 +179,6 @@ onBeforeUnmount(() => {
     scrollContainer.removeEventListener('scroll', onScroll);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectsAddCollectionDropdown',
-};
 </script>
 
 <style>

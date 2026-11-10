@@ -15,7 +15,11 @@
 
 <script setup lang="ts">
 import type { CheckboxSize } from '@/ui-kit/checkbox/types/CheckboxSize';
-import { computed, withDefaults } from 'vue';
+import { computed } from 'vue';
+
+defineOptions({
+  name: 'LfCheckbox',
+});
 
 const props = withDefaults(defineProps<{
   size?: CheckboxSize,
@@ -42,10 +46,4 @@ const checked = computed<string | boolean | string[]>({
     emit('update:modelValue', val);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCheckbox',
-};
 </script>

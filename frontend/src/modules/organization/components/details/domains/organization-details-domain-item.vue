@@ -109,6 +109,10 @@ import { ReportDataType } from '@/shared/modules/report-issue/constants/report-d
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 
+defineOptions({
+  name: 'LfOrganizationDetailsDomainItem',
+});
+
 const props = defineProps<{
   domain: OrganizationIdentity & { platforms: string[] },
   organization: Organization,
@@ -141,11 +145,5 @@ const removeDomain = () => {
     .catch(() => {
       ToastStore.error('Something went wrong while deleting a domain');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsDomainItem',
 };
 </script>

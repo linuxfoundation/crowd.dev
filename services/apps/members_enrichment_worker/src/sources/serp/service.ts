@@ -8,6 +8,7 @@ import {
   IEnrichmentSourceInput,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
+import { hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IMemberEnrichmentDataSerp,
   IMemberEnrichmentSerpApiResponse,
@@ -24,8 +25,7 @@ export default class EnrichmentServiceSerpApi extends LoggerBase implements IEnr
   (members."displayName" like '% %') AND 
   (members.attributes->'location'->>'default' is not null and members.attributes->'location'->>'default' <> '') AND
   ((members.attributes->'websiteUrl'->>'default' is not null and members.attributes->'websiteUrl'->>'default' <> '') OR 
-   (mi.verified AND mi.type = 'username' and mi.platform = 'github') OR 
-   (mi.verified AND mi.type = 'email')
+   ${hasVerifiedIdentitySql(`(mi.type = 'username' AND mi.platform = 'github') OR mi.type = 'email'`)}
   )`
 
   // bust cache after 120 days

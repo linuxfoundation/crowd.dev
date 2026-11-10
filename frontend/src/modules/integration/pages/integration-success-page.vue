@@ -60,11 +60,9 @@
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfSvg from '@/shared/svg/svg.vue';
 
-const lfxImage = new URL('@/assets/images/logo/lfx.svg', import.meta.url).href;
-</script>
-
-<script lang="ts">
-export default {
+defineOptions({
   name: 'LfIntegrationSuccessPage',
-};
+});
+
+const lfxImage = new URL('@/assets/images/logo/lfx.svg', import.meta.url).href;
 </script>

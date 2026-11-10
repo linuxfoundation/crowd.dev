@@ -68,7 +68,7 @@ describe('ingestOnboardingRequest', () => {
     vi.mocked(reopenRejectedProjectCatalog).mockResolvedValue([])
   })
 
-  it('inserts auto rows carrying the request text and the Slack permalink', async () => {
+  it('inserts auto rows carrying the request text, the Slack permalink and the project group', async () => {
     const result = await ingestOnboardingRequest(qx, {
       requestText: 'please onboard Acme',
       repoUrls: ['https://github.com/acme/one', 'https://github.com/acme/two'],
@@ -88,9 +88,12 @@ describe('ingestOnboardingRequest', () => {
         requestText: 'please onboard Acme',
         projectName: 'Acme',
         requestedBy: null,
-        requestHints: null,
+        requestHints: { project: 'Acme', mainRepoUrl: 'https://github.com/acme/one' },
       },
-      expect.objectContaining({ repoUrl: 'https://github.com/acme/two' }),
+      expect.objectContaining({
+        repoUrl: 'https://github.com/acme/two',
+        requestHints: { project: 'Acme', mainRepoUrl: 'https://github.com/acme/one' },
+      }),
     ])
     expect(promoteProjectCatalogProvenance).toHaveBeenCalledWith(qx, 'slack-bot', [])
     expect(result).toEqual({
@@ -99,6 +102,19 @@ describe('ingestOnboardingRequest', () => {
       alreadyCatalogued: [],
       reopened: [],
     })
+  })
+
+  it('keeps a single repository with a project name on the per-repository path', async () => {
+    await ingestOnboardingRequest(qx, {
+      requestText: 'please onboard Acme',
+      repoUrls: ['https://github.com/acme/one'],
+      sourceUrl: 'https://acme.slack.com/archives/C1/p1',
+      projectName: 'Acme',
+    })
+
+    expect(bulkInsertProjectCatalog).toHaveBeenCalledWith(qx, [
+      expect.objectContaining({ repoUrl: 'https://github.com/acme/one', requestHints: null }),
+    ])
   })
 
   it('treats a repository inserted concurrently as already catalogued and links it', async () => {
@@ -141,6 +157,9 @@ describe('ingestOnboardingRequest', () => {
       {
         repoUrl: 'https://github.com/acme/one',
         sourceUrl: 'https://acme.slack.com/archives/C1/p1',
+        requestHints: { project: 'Acme', mainRepoUrl: 'https://github.com/acme/one' },
+        requestText: 'please onboard Acme',
+        projectName: 'Acme',
       },
     ])
     expect(bulkInsertProjectCatalog).toHaveBeenCalledWith(qx, [
@@ -184,7 +203,7 @@ describe('ingestOnboardingRequest', () => {
           requestText: 'please onboard Acme',
           projectName: 'Acme',
           requestedBy: 'U1',
-          organization: 'acme',
+          requestHints: { organization: 'acme' },
         },
       ],
       ['wrong_project', 'other'],

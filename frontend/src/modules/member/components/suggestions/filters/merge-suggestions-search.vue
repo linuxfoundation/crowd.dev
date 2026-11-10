@@ -19,6 +19,10 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import { useRouter } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppMergeSuggestionsSearch',
+});
+
 const props = defineProps<{
   modelValue: string;
   placeholder?: string;
@@ -55,11 +59,5 @@ const search = (val: string) => {
       emit('update:modelValue', val);
     }
   }, 300);
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMergeSuggestionsSearch',
 };
 </script>

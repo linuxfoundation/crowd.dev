@@ -38,6 +38,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import type { Organization, OrganizationIdentity } from '../../types/Organization';
 import { OrganizationIdentityType } from '../../types/Organization';
 
+defineOptions({
+  name: 'AppOrganizationFormEmails',
+});
+
 const props = defineProps<{
   modelValue: Organization;
 
@@ -98,11 +102,5 @@ const removeEmail = (index: number) => {
       source: 'ui',
     };
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationFormEmails',
 };
 </script>

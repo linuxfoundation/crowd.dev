@@ -34,6 +34,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import type { MemberMergeSuggestionRef } from '@/modules/member/types/MemberSuggestion';
 
+defineOptions({
+  name: 'LfMemberMergeSuggestionDropdown',
+});
+
 const props = defineProps<{
   suggestion: MemberMergeSuggestionRef,
 }>();
@@ -107,10 +111,4 @@ const ignore = (suggestion: MemberMergeSuggestionRef) => {
     });
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMemberMergeSuggestionDropdown',
-};
 </script>

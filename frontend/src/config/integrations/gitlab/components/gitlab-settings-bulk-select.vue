@@ -79,6 +79,10 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 
+defineOptions({
+  name: 'AppGitlabSettingsBulkSelect',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   repositories: Record<string, GitlabMappedProject[]>;
@@ -158,11 +162,5 @@ const applyMapping = () => {
   );
   emit('apply', data);
   closeModal();
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGitlabSettingsBulkSelect',
 };
 </script>

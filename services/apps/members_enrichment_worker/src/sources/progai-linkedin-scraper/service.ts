@@ -12,6 +12,8 @@ import {
   IMemberEnrichmentData,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
+import { SOURCES_READING_OTHER_CACHES } from '../../utils/config'
+import { hasNewCachedInputsSql, hasVerifiedIdentitySql } from '../../utils/sql'
 import { IMemberEnrichmentDataProgAI, IMemberEnrichmentDataProgAIResponse } from '../progai/types'
 import { IMemberEnrichmentDataProgAILinkedinScraper } from './types'
 
@@ -22,13 +24,9 @@ export default class EnrichmentServiceProgAILinkedinScraper
   public source: MemberEnrichmentSource = MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER
   public platform = `enrichment-${this.source}`
 
-  public alsoFindInputsInSourceCaches: MemberEnrichmentSource[] = [
-    MemberEnrichmentSource.PROGAI,
-    MemberEnrichmentSource.CLEARBIT,
-    MemberEnrichmentSource.SERP,
-  ]
+  public alsoFindInputsInSourceCaches = SOURCES_READING_OTHER_CACHES[this.source]
 
-  public enrichableBySql = `(mi.verified AND mi.type = 'username' and mi.platform = 'linkedin')`
+  public enrichableBySql = `(${hasVerifiedIdentitySql(`mi.type = 'username' AND mi.platform = 'linkedin'`)} OR ${hasNewCachedInputsSql(this.source, this.alsoFindInputsInSourceCaches)})`
 
   public cacheObsoleteAfterSeconds = 60 * 60 * 24 * 90
 

@@ -104,7 +104,9 @@ const computedOptions = computed(() => {
   ];
 });
 
-const computedLabel = computed(() => pluralize(props.module === 'member' ? 'person' : props.module, props.total, true));
+const moduleLabels: Record<string, string> = { member: 'person', organization: 'company' };
+
+const computedLabel = computed(() => pluralize(moduleLabels[props.module] ?? props.module, props.total, true));
 
 const count = computed(() => ({
   minimum:

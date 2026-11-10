@@ -195,7 +195,7 @@
           class="pb-4"
         >
           <p class="text-2xs font-medium text-gray-500 pb-1">
-            Organization
+            Company
           </p>
           <div>
             <app-member-organizations :member="member" :show-title="false" />

@@ -1536,7 +1536,7 @@ describe('promoteProjectCatalogProvenance', () => {
       {
         repoUrl: inserted.repoUrl,
         sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
-        organization: 'acme',
+        requestHints: { organization: 'acme' },
         requestText: 'onboard Acme, LF project, https://github.com/acme/',
         projectName: 'Acme',
         requestedBy: 'U1',
@@ -1554,6 +1554,35 @@ describe('promoteProjectCatalogProvenance', () => {
       requestedBy: 'U1',
       classifiedAt: null,
       evaluationAttempts: 0,
+    })
+  })
+
+  test('adopts a pending row into a project group with the group hints', async ({ qx }) => {
+    const inserted = await insertProjectCatalog(
+      qx,
+      catalogRow({
+        action: 'auto',
+        source: 'lf-criticality-score',
+        provenance: 'lf-criticality-score',
+      }),
+    )
+
+    const affected = await promoteProjectCatalogProvenance(qx, 'slack-bot', [
+      {
+        repoUrl: inserted.repoUrl,
+        sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+        requestHints: { project: 'Acme', mainRepoUrl: inserted.repoUrl },
+        requestText: 'onboard Acme',
+        projectName: 'Acme',
+      },
+    ])
+
+    expect(affected).toBe(1)
+    expect(await findProjectCatalogById(qx, inserted.id)).toMatchObject({
+      provenance: 'slack-bot',
+      sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
+      requestHints: { project: 'Acme', mainRepoUrl: inserted.repoUrl },
+      projectName: 'Acme',
     })
   })
 
@@ -1582,7 +1611,7 @@ describe('promoteProjectCatalogProvenance', () => {
       {
         repoUrl: inserted.repoUrl,
         sourceUrl: 'https://lfx.slack.com/archives/C1/p1',
-        organization: 'acme',
+        requestHints: { organization: 'acme' },
         requestText: 'onboard Acme, https://github.com/acme/',
         projectName: 'Acme',
         requestedBy: 'U1',
@@ -1760,7 +1789,7 @@ describe('reopenRejectedProjectCatalog', () => {
     requestText: 'onboard Gerrit https://github.com/gerritcodereview/gerrit',
     projectName: 'Gerrit',
     requestedBy: 'U2',
-    organization: 'gerritcodereview',
+    requestHints: { organization: 'gerritcodereview' },
   }
 
   async function rejectedRow(
@@ -1865,7 +1894,7 @@ describe('reopenRejectedProjectCatalog', () => {
 
     const reopened = await reopenRejectedProjectCatalog(
       qx,
-      [{ ...reopenRequest, requestedBy: null, organization: null }],
+      [{ ...reopenRequest, requestedBy: null, requestHints: null }],
       ['wrong_project', 'other'],
     )
 

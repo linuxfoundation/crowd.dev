@@ -24,6 +24,10 @@ import AppLfAuditLogsJson from '@/modules/lf/segments/components/logs/sections/l
 import AppLfAuditLogsProperties from '@/modules/lf/segments/components/logs/sections/log-properties.vue';
 import AppLfAuditLogsChanges from '@/modules/lf/segments/components/logs/sections/log-changes.vue';
 
+defineOptions({
+  name: 'AppLfAuditLogsDrawer',
+});
+
 const props = defineProps<{
   log: AuditLog | null
 }>();
@@ -38,10 +42,4 @@ const isDrawerOpen = computed<boolean>({
     emit('update:log', open ? props.log : null);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfAuditLogsDrawer',
-};
 </script>

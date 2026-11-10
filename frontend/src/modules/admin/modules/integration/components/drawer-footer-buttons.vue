@@ -98,6 +98,10 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import IntegrationConfirmationModal from '@/modules/admin/modules/integration/components/integration-confirmation-modal.vue';
 
+defineOptions({
+  name: 'LfDrawerFooterButtons',
+});
+
 const props = defineProps<{
   integration?: Partial<Pick<Integration<unknown>, 'id' | 'platform'>>;
   isEditMode: boolean;
@@ -113,10 +117,4 @@ const props = defineProps<{
 }>();
 
 const isDisconnectIntegrationModalOpen = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDrawerFooterButtons',
-};
 </script>

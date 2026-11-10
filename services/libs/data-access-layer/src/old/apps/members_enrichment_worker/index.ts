@@ -117,51 +117,71 @@ export async function fetchMemberDataForLLMSquashing(
   return result
 }
 
+const HAS_ENRICHMENT_CACHE = `EXISTS (
+  SELECT 1 FROM "memberEnrichmentCache" mec
+  WHERE mec."memberId" = "membersGlobalActivityCount"."memberId"
+)`
+
 /**
- * Gets enrichable members using the provided sources
- * If a member is enrichable in one source, and not enrichable in another, the member will be returned
- * Members with at least one missing or old source cache rows will be returned
- * The reason we're not checking enrichable members and cache age in the same subquery is because of linkedin scraper sources.
- * These sources also use data from other sources and it's costly to check cache data jsons.
- * This check is instead done in the application layer.
+ * Members that were never enriched by any source and can be called by at least one of them.
  */
-export async function fetchMembersForEnrichment(
+export async function fetchNewMembersForEnrichment(
   db: DbStore,
   limit: number,
   sourceInputs: IEnrichmentSourceQueryInput<MemberEnrichmentSource>[],
 ): Promise<IEnrichableMember[]> {
-  const cacheAgeInnerQueryItems = []
-  const enrichableBySqlConditions = []
+  if (sourceInputs.length === 0) return []
 
-  sourceInputs.forEach((input) => {
-    if (input.neverReenrich) {
-      cacheAgeInnerQueryItems.push(
-        `
-      ( NOT EXISTS (
-          SELECT 1 FROM "memberEnrichmentCache" mec
-          WHERE mec."memberId" = members.id
-          AND mec.source = '${input.source}')
-      )`,
-      )
-    } else {
-      cacheAgeInnerQueryItems.push(
-        `
-      ( NOT EXISTS (
-          SELECT 1 FROM "memberEnrichmentCache" mec
-          WHERE mec."memberId" = members.id
-          AND mec.source = '${input.source}'
-          AND mec."updatedAt" > now() - make_interval(secs => ${input.cacheObsoleteAfterSeconds}))
-      )`,
-      )
-    }
+  const enrichableByAnySource = sourceInputs.map((input) => `(${input.enrichableBySql})`)
 
-    enrichableBySqlConditions.push(`(${input.enrichableBySql})`)
-  })
+  return fetchEnrichableMembers(
+    db,
+    limit,
+    `NOT ${HAS_ENRICHMENT_CACHE} AND (${enrichableByAnySource.join(' OR ')})`,
+  )
+}
 
-  const enrichableBySqlJoined =
-    enrichableBySqlConditions.length > 0 ? `(${enrichableBySqlConditions.join(' OR ')})` : 'TRUE'
+/**
+ * Already enriched members with at least one source that is stale and can be called for them.
+ */
+export async function fetchMembersDueForRefresh(
+  db: DbStore,
+  limit: number,
+  sourceInputs: IEnrichmentSourceQueryInput<MemberEnrichmentSource>[],
+): Promise<IEnrichableMember[]> {
+  if (sourceInputs.length === 0) return []
 
-  // Pick top-N by activity first, then load identities for those rows only.
+  const dueSources = sourceInputs.map(
+    (input) => `(${staleCacheSql(input)} AND (${input.enrichableBySql}))`,
+  )
+
+  return fetchEnrichableMembers(
+    db,
+    limit,
+    `${HAS_ENRICHMENT_CACHE} AND (${dueSources.join(' OR ')})`,
+  )
+}
+
+function staleCacheSql(input: IEnrichmentSourceQueryInput<MemberEnrichmentSource>): string {
+  const freshnessCondition = input.neverReenrich
+    ? ''
+    : `AND mec."updatedAt" > now() - make_interval(secs => ${input.cacheObsoleteAfterSeconds})`
+
+  return `NOT EXISTS (
+    SELECT 1 FROM "memberEnrichmentCache" mec
+    WHERE mec."memberId" = "membersGlobalActivityCount"."memberId"
+      AND mec.source = '${input.source}'
+      ${freshnessCondition}
+  )`
+}
+
+// Member conditions must reference "membersGlobalActivityCount"."memberId", not members.id, so the
+// planner filters on the activity index before loading member rows (45-75s vs 9-17s on prod).
+async function fetchEnrichableMembers(
+  db: DbStore,
+  limit: number,
+  memberCondition: string,
+): Promise<IEnrichableMember[]> {
   return db.connection().query(
     `
     WITH candidates AS (
@@ -176,14 +196,7 @@ export async function fetchMembersForEnrichment(
       WHERE members."deletedAt" IS NULL
         AND coalesce((members.attributes ->'isBot'->>'default')::boolean, false) = false
         AND coalesce((members.attributes ->'isOrganization'->>'default')::boolean, false) = false
-        AND EXISTS (
-          SELECT 1
-          FROM "memberIdentities" mi
-          WHERE mi."memberId" = members.id
-            AND mi."deletedAt" IS NULL
-            AND ${enrichableBySqlJoined}
-        )
-        AND (${cacheAgeInnerQueryItems.join(' OR ')})
+        AND ${memberCondition}
       ORDER BY "membersGlobalActivityCount".total_count DESC
       LIMIT $1
     )
@@ -192,24 +205,24 @@ export async function fetchMembersForEnrichment(
          c."displayName",
          c.location,
          c.website,
-         JSON_AGG(
-           JSON_BUILD_OBJECT(
-             'platform', mi.platform,
-             'value', mi.value,
-             'type', mi.type,
-             'verified', mi.verified
-           )
+         COALESCE(
+           JSON_AGG(
+             JSON_BUILD_OBJECT(
+               'platform', mi.platform,
+               'value', mi.value,
+               'type', mi.type,
+               'verified', mi.verified
+             )
+           ) FILTER (WHERE mi.id IS NOT NULL),
+           '[]'
          ) AS identities,
          c."activityCount"
     FROM candidates c
-         INNER JOIN members ON members.id = c.id
-         INNER JOIN "memberIdentities" mi
+         LEFT JOIN "memberIdentities" mi
            ON mi."memberId" = c.id
           AND mi."deletedAt" IS NULL
-         CROSS JOIN LATERAL (
-           SELECT c."activityCount" AS total_count
-         ) AS "membersGlobalActivityCount"
-    WHERE ${enrichableBySqlJoined}
+          AND mi.verified
+          AND (mi.type = 'email' OR (mi.type = 'username' AND mi.platform IN ('github', 'linkedin')))
     GROUP BY c.id, c."displayName", c.location, c.website, c."activityCount"
     ORDER BY c."activityCount" DESC;
     `,

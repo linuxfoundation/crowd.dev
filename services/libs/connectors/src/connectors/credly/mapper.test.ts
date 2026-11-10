@@ -10,7 +10,9 @@ import {
   credlyActivitySchema,
   expiredBadgeActivity,
   issuedBadgeActivity,
+  plausibleIssuedAt,
   stateBadgeActivity,
+  toActivityTimestamp,
   toIsoTimestamp,
 } from './mapper'
 
@@ -243,6 +245,46 @@ describe('badgeUrl', () => {
 describe('toIsoTimestamp', () => {
   it('rejects a string that is not a date', () => {
     expect(() => toIsoTimestamp('yesterday')).toThrow('credly timestamp is not a valid date/time')
+  })
+
+  it('keeps a date before 1970 for stored attributes', () => {
+    expect(toIsoTimestamp('0026-03-14T00:00:00Z')).toBe('0026-03-14T00:00:00.000Z')
+  })
+})
+
+describe('toActivityTimestamp', () => {
+  it('rejects a date before 1970, which the activity store would quarantine', () => {
+    expect(() => toActivityTimestamp('0026-03-14T00:00:00.000Z')).toThrow(
+      'credly timestamp is before 1970',
+    )
+  })
+})
+
+describe('implausible issued_at', () => {
+  const MISTYPED: CredlyBadge = {
+    ...BASE_BADGE,
+    issued_at: '0026-03-12T07:52:00Z',
+    created_at: '2026-10-21T16:18:18Z',
+  }
+
+  it('dates the issue and the stored row from created_at', () => {
+    expect(plausibleIssuedAt(MISTYPED)).toBe('2026-10-21T16:18:18Z')
+    expect(issuedBadgeActivity(MISTYPED).timestamp).toBe('2026-10-21T16:18:18.000Z')
+    expect(issuedBadgeActivity(MISTYPED).attributes).toMatchObject({
+      issuedAt: '0026-03-12T07:52:00Z',
+    })
+  })
+
+  it('dates a state change without state_updated_at from created_at', () => {
+    const badge = { ...MISTYPED, state_updated_at: null }
+
+    expect(stateBadgeActivity(badge)?.timestamp).toBe('2026-10-21T16:18:18.000Z')
+  })
+
+  it('rejects the badge when there is no created_at to fall back to', () => {
+    const badge = { ...MISTYPED, created_at: null }
+
+    expect(() => issuedBadgeActivity(badge)).toThrow('credly timestamp is before 1970')
   })
 })
 

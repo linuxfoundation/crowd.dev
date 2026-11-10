@@ -12,7 +12,7 @@ export default () => {
 
   ToastStore.closeAll();
   ToastStore.info('', {
-    title: 'Organizations merging in progress',
+    title: 'Companies merging in progress',
     message: processesRunning > 1 ? `${processesRunning} processes running` : undefined,
   });
 };

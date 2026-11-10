@@ -1,6 +1,7 @@
 export type GithubPublicClientErrorKind =
   | 'CONFIG'
   | 'AUTH'
+  | 'ACCESS_DENIED'
   | 'RATE_LIMIT'
   | 'NOT_FOUND'
   | 'TRANSIENT'
@@ -29,8 +30,10 @@ export interface IGithubAccount {
 
 export type GithubCommitAuthor =
   | { status: 'found'; account: IGithubAccount }
+  | { status: 'bot-account'; account: IGithubAccount }
   | { status: 'no-github-account' }
   | { status: 'commit-not-found' }
+  | { status: 'repo-inaccessible' }
 
 export interface IPublicRepoReadme {
   content: string

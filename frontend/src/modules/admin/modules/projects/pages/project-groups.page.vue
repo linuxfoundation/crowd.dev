@@ -104,9 +104,13 @@ import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { Pagination } from '@/shared/types/Pagination';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import { queryKeys } from '@/shared/queries/keys';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { queryProjectGroupsQueryFn } from '@/modules/lf/segments/segments.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
+
+defineOptions({
+  name: 'AppLfProjectGroupsPage',
+});
 
 const authStore = useAuthStore();
 const { roles } = storeToRefs(authStore);
@@ -130,7 +134,7 @@ const isProjectAdminUser = computed(() => roles.value.includes(LfRole.projectAdm
 
 const queryKey = computed(() => queryKeys.projectGroups.adminList(isProjectAdminUser.value, searchQuery.value));
 
-const projectGroupsQueryFn = segmentService.queryProjectGroups(() => ({
+const projectGroupsQueryFn = queryProjectGroupsQueryFn(() => ({
   limit: 20,
   offset: 0,
   filter: {
@@ -212,11 +216,5 @@ const onSearchProjectGroup = (val: string) => {
   });
 
   searchQuery.value = val;
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupsPage',
 };
 </script>

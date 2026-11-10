@@ -75,6 +75,10 @@ import { useContributorStore } from '@/modules/contributor/store/contributor.sto
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorEditProfilePhoto',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   contributor: Contributor,
@@ -100,6 +104,15 @@ const $v = useVuelidate(rules, form);
 
 const sending = ref<boolean>(false);
 
+const isModalOpen = computed<boolean>({
+  get() {
+    return props.modelValue;
+  },
+  set(isOpen: boolean) {
+    emit('update:modelValue', isOpen);
+  },
+});
+
 const update = () => {
   sending.value = true;
   updateContributorAttributes(props.contributor.id, {
@@ -115,25 +128,10 @@ const update = () => {
       isModalOpen.value = false;
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating avatar');
     })
     .finally(() => {
       sending.value = false;
     });
-};
-
-const isModalOpen = computed<boolean>({
-  get() {
-    return props.modelValue;
-  },
-  set(isOpen: boolean) {
-    emit('update:modelValue', isOpen);
-  },
-});
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditProfilePhoto',
 };
 </script>

@@ -23,6 +23,10 @@ import { useIntegrationStore } from '@/modules/integration/store/integration.sto
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useRoute } from 'vue-router';
 
+defineOptions({
+  name: 'LfDiscordConnect',
+});
+
 const props = defineProps<{
   segmentId: string | null;
   grandparentId: string | null;
@@ -62,10 +66,4 @@ const finallizeDiscordConnect = () => {
 onMounted(() => {
   finallizeDiscordConnect();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDiscordConnect',
-};
 </script>

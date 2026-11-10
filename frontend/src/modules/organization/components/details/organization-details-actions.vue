@@ -24,7 +24,7 @@
       <!-- Merge -->
       <lf-button v-else-if="hasPermission(LfPermission.mergeOrganizations)" type="secondary" @click="isMergeDialogOpen = props.organization">
         <lf-icon name="merge" />
-        Merge organization
+        Merge company
       </lf-button>
 
       <!-- Actions -->
@@ -89,6 +89,10 @@ import pluralize from 'pluralize';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import AppOrganizationUnmergeDialog from '@/modules/organization/components/organization-unmerge-dialog.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsActions',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -119,10 +123,4 @@ const fetchMergeSuggestions = () => {
 onMounted(() => {
   fetchMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsActions',
-};
 </script>

@@ -56,6 +56,10 @@ import LfOrganizationEditName from '@/modules/organization/components/edit/organ
 import LfOrganizationDetailsHeaderLogo
   from '@/modules/organization/components/details/header/organization-details-header-logo.vue';
 
+defineOptions({
+  name: 'LfOrganizationDetailsHeader',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -65,10 +69,4 @@ const { website } = useOrganizationHelpers();
 const websiteCom = computed(() => website(props.organization));
 
 const hasHeaderIdentities = computed(() => props.organization.identities.some((i) => organizationDetailsHeaderProfilePlatforms.includes(i.platform)));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsHeader',
-};
 </script>

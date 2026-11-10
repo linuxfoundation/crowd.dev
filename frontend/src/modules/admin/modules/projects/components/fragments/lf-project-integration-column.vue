@@ -112,6 +112,10 @@ import { lfIntegrations } from '@/config/integrations';
 
 type Integrations = NonNullable<SubProject['integrations']>[number];
 
+defineOptions({
+  name: 'LfProjectIntegrationColumn',
+});
+
 const props = withDefaults(
   defineProps<{
     segmentId: string;
@@ -129,12 +133,6 @@ const props = withDefaults(
 const getProgress = (segmentId: string, platform: string) => (props.progress || []).find(
   (p) => p.segmentId === segmentId && p.platform === platform,
 ) || null;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfProjectIntegrationColumn',
-};
 </script>
 
 <style scoped lang="scss">

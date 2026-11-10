@@ -20,7 +20,7 @@
               <app-avatar
                 :entity="{
                   displayName: item.label,
-                  avatar: item.logo,
+                  avatar: item.logo as string,
                 }"
                 size="xs"
                 class="mr-3"

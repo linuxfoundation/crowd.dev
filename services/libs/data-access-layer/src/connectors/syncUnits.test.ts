@@ -14,6 +14,7 @@ import {
   decommissionSyncUnitsForChannels,
   deleteDrainedSyncUnits,
   findSyncUnitByChannelId,
+  getEmittingChannelNamesForIntegrations,
   hasActiveSyncUnitsForChannelElsewhere,
   hasSyncUnitsForChannel,
   listSyncUnitChannelNames,
@@ -1116,5 +1117,58 @@ describe('recordRunTimeout', () => {
     await recordRunTimeout(qx, id, 'sync run timed out (START_TO_CLOSE)', minutesAgo(10))
 
     expect((await readRun(qx, id)).status).toBe('active')
+  })
+})
+
+describe('getEmittingChannelNamesForIntegrations', () => {
+  test('returns emitting, non-decommissioned channels once per repo, per integration', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx, { platform: 'github-nango' })
+    const otherIntegrationId = await createIntegration(qx, { platform: 'github-nango' })
+
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-cd',
+      syncName: 'issues',
+      emitEnabled: true,
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-cd',
+      syncName: 'pull-requests',
+      emitEnabled: true,
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-ui',
+      syncName: 'issues',
+      emitEnabled: false,
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-helm',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'decommissioned',
+    })
+    await createSyncUnit(qx, otherIntegrationId, {
+      channelName: 'https://github.com/argoproj/argo-workflows',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'paused',
+    })
+
+    const result = await getEmittingChannelNamesForIntegrations(qx, [
+      integrationId,
+      otherIntegrationId,
+    ])
+
+    expect(result).toEqual({
+      [integrationId]: ['https://github.com/argoproj/argo-cd'],
+      [otherIntegrationId]: ['https://github.com/argoproj/argo-workflows'],
+    })
+  })
+
+  test('returns an empty object without querying when no integration ids are given', async ({
+    qx,
+  }) => {
+    expect(await getEmittingChannelNamesForIntegrations(qx, [])).toEqual({})
   })
 })

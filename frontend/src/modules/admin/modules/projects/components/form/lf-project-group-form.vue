@@ -147,7 +147,7 @@ import {
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { useMutation, useQuery } from '@tanstack/vue-query';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { createProjectGroup, findSegment, updateSegment } from '@/modules/lf/segments/segments.api.service';
 import { queryKeys } from '@/shared/queries/keys';
 import { useInvalidate } from '@/shared/queries/invalidate';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
@@ -155,6 +155,10 @@ import type { AxiosError } from 'axios';
 import { getAxiosErrorMessage } from '@/shared/helpers/error-message.helper';
 
 import { ToastStore } from '@/shared/message/notification';
+
+defineOptions({
+  name: 'AppLfProjectGroupForm',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -221,7 +225,7 @@ const {
       if (!props.id) {
         return Promise.resolve(null);
       }
-      return segmentService.getSegmentById(props.id);
+      return findSegment<ProjectGroup>(props.id);
     },
     enabled: !!props.id,
   },
@@ -242,6 +246,37 @@ onMounted(() => {
 const onCancel = () => {
   model.value = false;
 };
+
+const invalidate = useInvalidate();
+const onSuccess = () => {
+  submitLoading.value = false;
+  model.value = false;
+  invalidate.projectGroups();
+  ToastStore.success(`Project Group ${props.id ? 'updated' : 'created'} successfully`);
+};
+
+const onError = (err: AxiosError) => {
+  ToastStore.error(getAxiosErrorMessage(err, `Something went wrong while ${props.id ? 'updating' : 'creating'} the project group`));
+};
+
+const updateMutation = useMutation({
+  mutationFn: ({ id, form }: { id: string; form: ProjectGroup }) => updateSegment(
+    id,
+    form,
+  ),
+  onSuccess: () => {
+    onSuccess();
+    emit('onProjectGroupEdited');
+  },
+  onError,
+});
+
+const createMutation = useMutation({
+  mutationFn: (body: ProjectGroup) => createProjectGroup(body),
+  onSuccess,
+  onError,
+
+});
 
 const onSubmit = () => {
   submitLoading.value = true;
@@ -264,42 +299,5 @@ const onSubmit = () => {
 
     createMutation.mutate(form as ProjectGroup);
   }
-};
-
-const invalidate = useInvalidate();
-const onSuccess = () => {
-  submitLoading.value = false;
-  model.value = false;
-  invalidate.projectGroups();
-  ToastStore.success(`Project Group ${props.id ? 'updated' : 'created'} successfully`);
-};
-
-const onError = (err: AxiosError) => {
-  ToastStore.error(getAxiosErrorMessage(err, `Something went wrong while ${props.id ? 'updating' : 'creating'} the project group`));
-};
-
-const updateMutation = useMutation({
-  mutationFn: ({ id, form }: { id: string; form: ProjectGroup }) => segmentService.updateSegment(
-    id,
-    form,
-  ),
-  onSuccess: () => {
-    onSuccess();
-    emit('onProjectGroupEdited');
-  },
-  onError,
-});
-
-const createMutation = useMutation({
-  mutationFn: (body: ProjectGroup) => segmentService.createProjectGroup(body),
-  onSuccess,
-  onError,
-
-});
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupForm',
 };
 </script>

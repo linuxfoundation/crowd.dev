@@ -19,6 +19,7 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
+import { hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IEnrichmentAPICertificationProgAI,
   IEnrichmentAPIContributionProgAI,
@@ -32,7 +33,14 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
   public source: MemberEnrichmentSource = MemberEnrichmentSource.PROGAI
   public platform = `enrichment-${this.source}`
 
-  public enrichableBySql = `mi.verified and ((mi.type = 'username' AND mi.platform = 'github') OR (mi.type = 'email'))`
+  get enrichableBySql(): string {
+    const githubHandle = `mi.type = 'username' AND mi.platform = 'github'`
+    return hasVerifiedIdentitySql(
+      this.alsoUseEmailIdentitiesForEnrichment
+        ? `(${githubHandle}) OR mi.type = 'email'`
+        : githubHandle,
+    )
+  }
 
   // bust cache after 90 days
   public cacheObsoleteAfterSeconds = 60 * 60 * 24 * 90
@@ -229,8 +237,8 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
       )
     }
 
-    if (data.linkedin_url) {
-      const linkedinHandle = data.linkedin_url.split('/').pop()
+    const linkedinHandle = data.linkedin_url?.match(/\/in\/([^/?#]+)/)?.[1]?.trim()
+    if (linkedinHandle) {
       normalized = normalizeSocialIdentity(
         {
           handle: linkedinHandle,

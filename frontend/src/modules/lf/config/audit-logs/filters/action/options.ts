@@ -35,26 +35,26 @@ const options: SelectFilterOptionGroup[] = [
     ],
   },
   {
-    label: 'Organization',
+    label: 'Company',
     options: [
       {
-        label: 'Organizations merged',
+        label: 'Companies merged',
         value: 'organizations-merged',
       },
       {
-        label: 'Organizations unmerged',
+        label: 'Companies unmerged',
         value: 'organizations-unmerged',
       },
       {
-        label: 'Organization identities updated',
+        label: 'Company identities updated',
         value: 'organizations-edit-identities',
       },
       {
-        label: 'Organization profile updated',
+        label: 'Company profile updated',
         value: 'organizations-edit-profile',
       },
       {
-        label: 'Organization created',
+        label: 'Company created',
         value: 'organizations-create',
       },
     ],

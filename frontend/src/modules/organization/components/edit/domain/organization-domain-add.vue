@@ -95,6 +95,10 @@ import {
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 
+defineOptions({
+  name: 'LfOrganizationDomainAdd',
+});
+
 const props = defineProps<{
   modelValue: Partial<OrganizationIdentity> | null,
   organization: Organization,
@@ -159,11 +163,5 @@ const addDomains = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDomainAdd',
 };
 </script>

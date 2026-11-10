@@ -354,6 +354,7 @@ export function deriveOrganizationProjectNameCandidates(
 export interface IProjectCandidate {
   name: string
   slug: string
+  fallbackSlug?: string
 }
 
 export function deriveOrganizationProjectCandidates(
@@ -364,6 +365,18 @@ export function deriveOrganizationProjectCandidates(
     name,
     slug: deriveProjectSlug(name),
   }))
+}
+
+export function withSuggestedSlug(
+  candidates: IProjectCandidate[],
+  slug: string | null | undefined,
+): IProjectCandidate[] {
+  const suggested = slug ? deriveProjectSlug(slug) : ''
+  const [first, ...rest] = candidates
+  if (!suggested || !first || suggested === first.slug) {
+    return candidates
+  }
+  return [{ ...first, slug: suggested, fallbackSlug: first.slug }, ...rest]
 }
 
 function belongsToOwner(repoUrl: string, owner: string): boolean {
@@ -383,10 +396,10 @@ export async function resolveProjectSegment(
   const belongsToRequest = (url: string) =>
     requested.has(url) || (organizationOwner !== null && belongsToOwner(url, organizationOwner))
 
-  for (const { name, slug } of candidates) {
-    const existingSegmentId = await queryProjectByName(name, apiUrl, token)
+  for (const candidate of candidates) {
+    const existingSegmentId = await queryProjectByName(candidate.name, apiUrl, token)
     if (!existingSegmentId) {
-      return createProjectSegment(name, slug, apiUrl, token)
+      return createProjectSegmentWithFallback(candidate, apiUrl, token)
     }
 
     const connectedRepoUrls = await queryGithubIntegrationRepoUrls(existingSegmentId, apiUrl, token)
@@ -404,6 +417,27 @@ export async function resolveProjectSegment(
   )
 }
 
+function isSlugRejected(err: unknown): boolean {
+  return err instanceof BackendRequestError && err.status === 400
+}
+
+// Only a rejected slug may fall back to the derived one: after a timeout or a 5xx the first
+// segment may exist already, and a second POST would only add a misleading name conflict.
+async function createProjectSegmentWithFallback(
+  { name, slug, fallbackSlug }: IProjectCandidate,
+  apiUrl: string,
+  token: string,
+): Promise<string> {
+  try {
+    return await createProjectSegment(name, slug, apiUrl, token)
+  } catch (err) {
+    if (!fallbackSlug || !isSlugRejected(err)) {
+      throw err
+    }
+    return createProjectSegment(name, fallbackSlug, apiUrl, token)
+  }
+}
+
 async function createProjectSegment(
   name: string,
   slug: string,
@@ -418,8 +452,9 @@ async function createProjectSegment(
   })
 
   if (!response.ok) {
-    throw new Error(
+    throw new BackendRequestError(
       `Segment creation returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+      response.status,
     )
   }
 
@@ -692,11 +727,14 @@ export async function onboardOrganizationProject(
   let segmentId: string
   try {
     segmentId = await resolveProjectSegment(
-      deriveOrganizationProjectCandidates(repos[0].owner, input.projectName),
+      withSuggestedSlug(
+        deriveOrganizationProjectCandidates(repos[0].owner, input.projectName),
+        input.slug,
+      ),
       input.repoUrls,
       config.apiUrl,
       config.apiToken,
-      repos[0].owner,
+      input.owner,
     )
   } catch (err) {
     return errorResult((err as Error).message)

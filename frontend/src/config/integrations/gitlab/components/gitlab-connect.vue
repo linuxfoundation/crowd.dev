@@ -15,7 +15,7 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 import {
-  defineProps, computed, onMounted, ref,
+  computed, onMounted, ref,
 } from 'vue';
 import { useRoute } from 'vue-router';
 import config from '@/config';
@@ -24,6 +24,10 @@ import { AuthService } from '@/modules/auth/services/auth.service';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'LfGitlabConnect',
+});
 
 const props = defineProps<{
   integration: Integration<unknown> | undefined,
@@ -90,10 +94,4 @@ const finallizeGitlabConnect = () => {
 onMounted(() => {
   finallizeGitlabConnect();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGitlabConnect',
-};
 </script>

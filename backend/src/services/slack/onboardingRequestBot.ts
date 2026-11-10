@@ -21,12 +21,14 @@ import {
   IDbProjectCatalog,
   IDbProjectCatalogCreate,
   IDbProjectCatalogReopened,
+  IRequestHints,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   BotStatus,
   IExpandedOrganization,
   IParsedOnboardingRequest,
+  IRequestGroupInput,
   OrganizationRepoLookup,
   REQUESTER_ERROR_DECISION_REASONS,
   RepositoryLookup,
@@ -41,9 +43,12 @@ import {
   checkRepositoriesOnGithub,
   collectIngestNotes,
   expandOrganizations,
+  ingestProjectGroup,
   missingRepositoryLine,
   parseOnboardingRequest,
+  projectGroupNote,
   reopenedRequestNote,
+  requestHintsByRepoUrl,
   requestedOrganizations,
 } from '@crowd/project-onboarding'
 import { createOnboardingRequestLlm } from '@crowd/project-onboarding/src/requestLlm'
@@ -75,11 +80,10 @@ const GITHUB_REPO_CHECK_TIMEOUT_MS = 10_000
 const lookupRepository: RepositoryLookup = (repoUrl) =>
   isPublicGithubRepo(repoUrl, getGithubToken(), AbortSignal.timeout(GITHUB_REPO_CHECK_TIMEOUT_MS))
 
-export interface IOnboardingRequestIngest {
+export interface IOnboardingRequestIngest extends IRequestGroupInput {
   requestText: string
   repoUrls: string[]
   sourceUrl: string
-  projectName: string | null
   requestedBy?: string | null
   organizations?: IExpandedOrganization[]
 }
@@ -116,16 +120,10 @@ function isHelpRequest(requestText: string): boolean {
   return requestText.toLowerCase() === HELP_KEYWORD
 }
 
-function organizationByRepoUrl(organizations: IExpandedOrganization[]): Map<string, string> {
-  return new Map(
-    organizations.flatMap((org) => org.repoUrls.map((repoUrl) => [repoUrl, org.owner] as const)),
-  )
-}
-
 function toCatalogRow(
   repoUrl: string,
   { requestText, sourceUrl, projectName, requestedBy }: Omit<IOnboardingRequestIngest, 'repoUrls'>,
-  organization: string | undefined,
+  requestHints: IRequestHints | null,
 ): IDbProjectCatalogCreate | null {
   const identity = deriveProjectIdentityFromRepoUrl(repoUrl)
   if (!identity) {
@@ -142,7 +140,7 @@ function toCatalogRow(
     requestText,
     projectName,
     requestedBy: requestedBy ?? null,
-    requestHints: organization ? { organization } : null,
+    requestHints,
   }
 }
 
@@ -153,12 +151,20 @@ export async function ingestOnboardingRequest(
     repoUrls,
     sourceUrl,
     projectName,
+    suggestedSlug,
+    confidence,
+    declaredLf,
     requestedBy,
     organizations = [],
   }: IOnboardingRequestIngest,
 ): Promise<IOnboardingRequestIngestResult> {
   const existing = await findExistingProjectCatalogRepoUrls(qx, repoUrls)
-  const owners = organizationByRepoUrl(organizations)
+  const hints = requestHintsByRepoUrl(repoUrls, organizations, {
+    projectName,
+    suggestedSlug,
+    confidence,
+    declaredLf,
+  })
   const request = { requestText, sourceUrl, projectName, requestedBy }
   const reopened = await reopenRejectedProjectCatalog(
     qx,
@@ -166,13 +172,13 @@ export async function ingestOnboardingRequest(
       ...request,
       repoUrl,
       requestedBy: requestedBy ?? null,
-      organization: owners.get(repoUrl) ?? null,
+      requestHints: hints.get(repoUrl) ?? null,
     })),
     REQUESTER_ERROR_DECISION_REASONS,
   )
   const rows = repoUrls
     .filter((repoUrl) => !existing.has(repoUrl))
-    .map((repoUrl) => toCatalogRow(repoUrl, request, owners.get(repoUrl)))
+    .map((repoUrl) => toCatalogRow(repoUrl, request, hints.get(repoUrl) ?? null))
     .filter((row): row is IDbProjectCatalogCreate => row !== null)
 
   const inserted = await bulkInsertProjectCatalog(qx, rows)
@@ -184,9 +190,9 @@ export async function ingestOnboardingRequest(
     qx,
     'slack-bot',
     alreadyCatalogued.map((repoUrl) => {
-      const organization = owners.get(repoUrl)
-      return organization
-        ? { repoUrl, sourceUrl, organization, requestText, projectName, requestedBy }
+      const requestHints = hints.get(repoUrl)
+      return requestHints
+        ? { repoUrl, sourceUrl, requestHints, requestText, projectName, requestedBy }
         : { repoUrl, sourceUrl }
     }),
   )
@@ -476,6 +482,12 @@ export async function runOnboardingRequestBot({
     }
 
     const requested = repoUrls.filter((repoUrl) => !trackedUrls.has(repoUrl))
+    const projectGroup: IRequestGroupInput = {
+      projectName: parsed?.projectName ?? null,
+      suggestedSlug: parsed?.suggestedSlug ?? null,
+      confidence: parsed?.confidence ?? null,
+      declaredLf: parsed?.declaredLf ?? null,
+    }
     const notes = [
       ...missingLines,
       ...collectIngestNotes({
@@ -504,10 +516,10 @@ export async function runOnboardingRequestBot({
     }
     const knownBefore = await findProjectCatalogByRepoUrls(qx, requested)
     const result = await ingestOnboardingRequest(qx, {
+      ...projectGroup,
       requestText,
       repoUrls: requested,
       sourceUrl,
-      projectName: parsed?.projectName ?? null,
       requestedBy: actorId ?? null,
       organizations,
     })
@@ -530,11 +542,19 @@ export async function runOnboardingRequestBot({
       sourceUrl,
       log,
     )
+    const groupNote = ingestProjectGroup(
+      requestHintsByRepoUrl(requested, organizations, projectGroup),
+      [...result.queued, ...adoptedRepoUrls],
+    )
     const outcome = {
       queued: result.queued,
       alreadyRequested,
       alreadyTracked,
-      notes: [...notes, ...result.reopened.map(reopenedRequestNote)],
+      notes: [
+        ...notes,
+        ...result.reopened.map(reopenedRequestNote),
+        ...(groupNote ? [projectGroupNote(groupNote)] : []),
+      ],
     }
     // The status message must exist before the evaluation runs, or a fast outcome has nowhere to land.
     const statusTs = await reply(buildBotIngestReply(outcome, true))

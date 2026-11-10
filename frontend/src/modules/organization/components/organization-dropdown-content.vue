@@ -33,7 +33,7 @@
       type="button"
     >
       <lf-icon name="pen fa-sharp" class="text-base mr-2" />
-      <span class="text-xs">Edit organization</span>
+      <span class="text-xs">Edit company</span>
     </button>
   </router-link>
 
@@ -51,14 +51,14 @@
     "
   >
     <lf-icon name="shuffle" :size="16" class="mr-2" />
-    <span class="text-xs">Merge organization</span>
+    <span class="text-xs">Merge company</span>
   </button>
 
   <!-- Mark as Team Organization -->
   <template v-if="hasPermission(LfPermission.organizationEdit)">
     <el-tooltip
       placement="top"
-      content="Mark as team organization if it is your own organization."
+      content="Mark as team company if it is your own company."
       popper-class="max-w-[260px]"
     >
       <span>
@@ -75,7 +75,7 @@
           "
         >
           <lf-icon name="bookmark" :size="16" class="mr-2" />
-          <span class="text-xs">Mark as team organization</span>
+          <span class="text-xs">Mark as team company</span>
         </button>
       </span>
     </el-tooltip>
@@ -93,7 +93,7 @@
         })
       "
     >
-      <lf-icon name="bookmark-slash" class="mr-2" /><span class="text-xs">Unmark as team organization</span>
+      <lf-icon name="bookmark-slash" class="mr-2" /><span class="text-xs">Unmark as team company</span>
     </button>
   </template>
 
@@ -149,7 +149,7 @@
       <lf-icon name="trash-can" :size="16" class="mr-2 text-red-500" />
       <span
         class="text-xs text-red-500"
-      >Delete organization</span>
+      >Delete company</span>
     </button>
   </template>
 </template>
@@ -246,7 +246,7 @@ const handleCommand = (command: {
   if (command.action === Actions.DELETE_ORGANIZATION) {
     ConfirmDialog({
       type: 'danger',
-      title: 'Delete organization',
+      title: 'Delete company',
       message: "Are you sure you want to proceed? You can't undo this action",
       confirmButtonText: 'Confirm',
       cancelButtonText: 'Cancel',
@@ -261,8 +261,8 @@ const handleCommand = (command: {
       });
 
       doManualAction({
-        loadingMessage: 'Organization is being deleted',
-        successMessage: 'Organization successfully deleted',
+        loadingMessage: 'Company is being deleted',
+        successMessage: 'Company successfully deleted',
         errorMessage: 'Something went wrong',
         actionFn: OrganizationService.destroyAll([command.organization.id]),
       }).then(() => {
@@ -299,11 +299,11 @@ const handleCommand = (command: {
 
     doManualAction({
       loadingMessage: isSyncing
-        ? 'Organization is being synced with Hubspot'
-        : 'Organization syncing with Hubspot is being stopped',
+        ? 'Company is being synced with Hubspot'
+        : 'Company syncing with Hubspot is being stopped',
       successMessage: isSyncing
-        ? 'Organization is now syncing with HubSpot'
-        : 'Organization syncing stopped',
+        ? 'Company is now syncing with HubSpot'
+        : 'Company syncing stopped',
       errorMessage: 'Something went wrong',
       actionFn: isSyncing
         ? HubspotApiService.syncOrganization(command.organization.id)
@@ -331,8 +331,8 @@ const handleCommand = (command: {
     });
 
     doManualAction({
-      loadingMessage: 'Organization is being updated',
-      successMessage: 'Organization updated successfully',
+      loadingMessage: 'Company is being updated',
+      successMessage: 'Company updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.update(command.organization.id, {
         isTeamOrganization: command.value,
@@ -360,8 +360,8 @@ const handleCommand = (command: {
     });
 
     doManualAction({
-      loadingMessage: 'Organization is being updated',
-      successMessage: 'Organization updated successfully',
+      loadingMessage: 'Company is being updated',
+      successMessage: 'Company updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.update(command.organization.id, {
         isAffiliationBlocked: command.value,

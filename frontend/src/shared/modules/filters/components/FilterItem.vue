@@ -69,6 +69,10 @@ import useVuelidate from '@vuelidate/core';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
+defineOptions({
+  name: 'LfFilterItem',
+});
+
 const props = defineProps<{
   modelValue: Record<string, unknown>,
   open: string,
@@ -112,13 +116,13 @@ const getComponent = computed(() => {
   return filterComponentByType[props.config.type];
 });
 
+const close = () => {
+  isOpen.value = false;
+};
+
 const apply = () => {
   emit('update:modelValue', { ...form.value });
   close();
-};
-
-const close = () => {
-  isOpen.value = false;
 };
 
 const $v = useVuelidate();
@@ -130,12 +134,6 @@ watch(
   },
   { immediate: true, deep: true },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterItem',
-};
 </script>
 
 <style lang="scss">

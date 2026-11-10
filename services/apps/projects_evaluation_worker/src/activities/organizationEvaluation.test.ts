@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 
 import {
-  isOrganizationMainRepository,
-  organizationMainRepositoriesFirst,
+  isRequestGroupMainRepository,
+  mainRepositoriesFirst,
   sharedEvaluationOutcome,
   sharedOrganizationEvaluation,
 } from './organizationEvaluation'
@@ -30,19 +30,41 @@ function row(overrides: Partial<IDbProjectCatalog>): IDbProjectCatalog {
   } as IDbProjectCatalog
 }
 
-describe('isOrganizationMainRepository', () => {
+describe('isRequestGroupMainRepository', () => {
   it('recognises the repository named after its organization', () => {
-    expect(isOrganizationMainRepository(row({ repoUrl: 'https://github.com/acme/Acme' }))).toBe(
+    expect(isRequestGroupMainRepository(row({ repoUrl: 'https://github.com/acme/Acme' }))).toBe(
       true,
     )
-    expect(isOrganizationMainRepository(row({ repoUrl: 'https://github.com/acme/cli' }))).toBe(
+    expect(isRequestGroupMainRepository(row({ repoUrl: 'https://github.com/acme/cli' }))).toBe(
       false,
     )
-    expect(isOrganizationMainRepository(row({ requestHints: null }))).toBe(false)
+    expect(isRequestGroupMainRepository(row({ requestHints: null }))).toBe(false)
+  })
+
+  it('recognises the repository the request listed first in a project group', () => {
+    const hints = {
+      project: 'Apache HugeGraph',
+      mainRepoUrl: 'https://github.com/apache/hugegraph',
+    }
+    expect(
+      isRequestGroupMainRepository(
+        row({ repoUrl: 'https://github.com/apache/hugegraph', requestHints: hints }),
+      ),
+    ).toBe(true)
+    expect(
+      isRequestGroupMainRepository(
+        row({ repoUrl: 'https://github.com/apache/hugegraph-ai', requestHints: hints }),
+      ),
+    ).toBe(false)
+    expect(
+      isRequestGroupMainRepository(
+        row({ repoUrl: 'https://github.com/apache/apache', requestHints: { project: 'Apache' } }),
+      ),
+    ).toBe(false)
   })
 })
 
-describe('organizationMainRepositoriesFirst', () => {
+describe('mainRepositoriesFirst', () => {
   it('moves the main repository of each organization in front of its group and keeps the rest', () => {
     const rows = [
       row({ id: 'solo', repoUrl: 'https://github.com/solo/one', requestHints: null }),
@@ -61,7 +83,7 @@ describe('organizationMainRepositoriesFirst', () => {
       row({ id: 'a3', repoUrl: 'https://github.com/acme/cli' }),
     ]
 
-    expect(organizationMainRepositoriesFirst(rows).map((r) => r.id)).toEqual([
+    expect(mainRepositoriesFirst(rows).map((r) => r.id)).toEqual([
       'solo',
       'a2',
       'b1',
@@ -74,7 +96,7 @@ describe('organizationMainRepositoriesFirst', () => {
   it('leaves an organization without a main repository in its order', () => {
     const rows = [row({ id: 'a1' }), row({ id: 'a2', repoUrl: 'https://github.com/acme/cli' })]
 
-    expect(organizationMainRepositoriesFirst(rows)).toEqual(rows)
+    expect(mainRepositoriesFirst(rows)).toEqual(rows)
   })
 })
 

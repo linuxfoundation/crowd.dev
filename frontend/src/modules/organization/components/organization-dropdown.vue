@@ -27,33 +27,32 @@
   </el-dropdown>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue';
+import type { DropdownInstance } from 'element-plus';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 import AppOrganizationDropdownContent from './organization-dropdown-content.vue';
 
-defineProps({
-  organization: {
-    type: Object,
-    default: () => {},
-  },
-  hideEdit: {
-    type: Boolean,
-    default: false,
-  },
-  hideMerge: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({ name: 'AppOrganizationDropdown' });
+
+withDefaults(defineProps<{
+  organization?: Organization;
+  hideEdit?: boolean;
+  hideMerge?: boolean;
+}>(), {
+  organization: undefined,
+  hideEdit: false,
+  hideMerge: false,
 });
 
-const emit = defineEmits([
-  'merge',
-  'unmerge',
-  'closeDropdown',
-]);
+const emit = defineEmits<{(e: 'merge'): void, (e: 'unmerge'): void, (e: 'closeDropdown'): void }>();
+
+defineSlots<{
+  trigger?:() => unknown;
+}>();
 
 const { hasPermission } = usePermissions();
 
@@ -62,16 +61,10 @@ const hasPermissions = computed(() => [LfPermission.organizationEdit,
   LfPermission.mergeOrganizations]
   .some((permission) => hasPermission(permission)));
 
-const dropdown = ref();
+const dropdown = ref<DropdownInstance>();
 
 const onDropdownClose = () => {
   dropdown.value?.handleClose();
   emit('closeDropdown');
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationDropdown',
 };
 </script>

@@ -61,6 +61,10 @@ import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 
+defineOptions({
+  name: 'LfOrganizationDomainEdit',
+});
+
 const props = defineProps<{
   modelValue: OrganizationIdentity | null,
   organization: Organization,
@@ -139,11 +143,5 @@ const updateDomain = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDomainEdit',
 };
 </script>

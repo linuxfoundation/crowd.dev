@@ -34,12 +34,11 @@ import {
   createsNewProject,
   deriveProjectSlug,
   findOnboardedInsightsProject,
-  findOrganizationSiblings,
+  findRequestGroupSiblings,
   onboardOrganizationProject,
   onboardProject,
-  organizationGroupKey,
-  organizationOf,
-  organizationReviewOf,
+  requestGroupKey,
+  requestGroupReview,
   reportRequestOutcome,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
@@ -106,14 +105,14 @@ async function withWholeOrganizations(
   const included = new Set(batch.map((row) => row.id))
   const leads = new Map<string, IDbProjectCatalog>()
   for (const row of batch) {
-    const key = organizationGroupKey(row)
+    const key = requestGroupKey(row)
     if (key && !leads.has(key)) {
       leads.set(key, row)
     }
   }
   const completed = [...batch]
   for (const lead of leads.values()) {
-    const siblings = await findOrganizationSiblings(
+    const siblings = await findRequestGroupSiblings(
       qx,
       lead,
       (row) => isProjectCatalogOnboardingPending(row) && !included.has(row.id),
@@ -281,7 +280,7 @@ async function onboardClaimedOrganization(
   claimed: IDbProjectCatalog[],
 ): Promise<void> {
   log.info(
-    { ids: claimed.map((project) => project.id), organization: organizationOf(claimed[0]) },
+    { ids: claimed.map((project) => project.id), group: requestGroupKey(claimed[0]) },
     'Starting the onboarding of an organization.',
   )
   try {
@@ -310,7 +309,7 @@ async function claimCreationGroup(
   projects: IDbProjectCatalog[],
   outcome: IOrganizationOnboardingOutcome,
 ): Promise<IDbProjectCatalog[]> {
-  const organizationKey = organizationGroupKey(projects[0])
+  const organizationKey = requestGroupKey(projects[0])
   if (!organizationKey || !projects.every(createsNewProject)) {
     return claimOrganizationRows(qx, projects, outcome)
   }
@@ -414,7 +413,7 @@ async function closeReviewCard(
     return
   }
 
-  const siblings = await findOrganizationSiblings(
+  const siblings = await findRequestGroupSiblings(
     pgpQx(svc.postgres.writer.connection()),
     project,
     (row) => row.reviewMessageTs === project.reviewMessageTs,
@@ -429,7 +428,7 @@ async function closeReviewCard(
     return
   }
 
-  const organization = organizationReviewOf(project, siblings.length)
+  const organization = requestGroupReview(project, siblings)
   const onboarded = members.filter((row) => row.action === 'onboarded').length
   const card = toReviewRequestCard(project, NO_REVIEW_CARD_EXTRAS, organization)
   const closed = buildReviewClosedMessage(card, {
@@ -531,9 +530,9 @@ export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promi
   await closeOrganizationCardIfSettled(current)
 }
 
-// The last repository of an organization to fail or be skipped must still close the shared card.
+// The last repository of a group to fail or be skipped must still close the shared card.
 async function closeOrganizationCardIfSettled(stale: IDbProjectCatalog): Promise<void> {
-  if (!organizationOf(stale) || !stale.reviewMessageTs) {
+  if (!requestGroupKey(stale) || !stale.reviewMessageTs) {
     return
   }
   const qx = pgpQx(svc.postgres.writer.connection())

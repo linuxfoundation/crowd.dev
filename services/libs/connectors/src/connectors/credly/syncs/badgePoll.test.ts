@@ -11,6 +11,7 @@ import type { BadgesPageParams, CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
 import type { CredlyDeps } from '../deps'
 import {
+  BACKFILL_WINDOW_MS,
   MAX_PAGES_PER_RUN,
   MAX_REPLACEMENT_HOPS,
   MAX_WINDOW_MS,
@@ -301,7 +302,7 @@ describe('runBadgePoll', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
     expect(LOG.warn).toHaveBeenCalledWith(
       expect.objectContaining({ since, until: HORIZON, halvedUntil: half }),
-      'credly badge window failed, retrying its first half',
+      'credly badge window failed, retrying a narrower head of it',
     )
   })
 
@@ -423,6 +424,22 @@ describe('runBadgePoll', () => {
       expect.objectContaining({ issued: 2, pendingStored: 1, stateChanges: 0, unchanged: 0 }),
       expect.any(String),
     )
+  })
+
+  it('stores and dates a badge with a pre-1970 issued_at from its created_at', async () => {
+    mockedFetchBadgesPage.mockResolvedValueOnce(
+      page([badge({ issued_at: '0026-03-12T07:52:00Z', created_at: '2026-10-21T16:18:18Z' })]),
+    )
+    const { ctx, emitted, saved } = makeCtx()
+
+    await runBadgePoll(ctx)
+
+    expect(types(emitted[0])).toEqual([
+      CredlyActivityType.ISSUED_BADGE,
+      CredlyActivityType.ACCEPTED_BADGE,
+    ])
+    expect(emitted[0][0]).toMatchObject({ timestamp: '2026-10-21T16:18:18.000Z' })
+    expect(saved[0]).toMatchObject({ issuedAt: '2026-10-21T16:18:18.000Z' })
   })
 
   it('emits nothing for a known badge whose state did not change, but marks it seen', async () => {
@@ -897,9 +914,9 @@ describe('runBadgePoll replacements', () => {
 })
 
 describe('runBadgePoll backfill', () => {
-  const FLOOR = '2026-10-10T00:00:00.000Z'
+  const FLOOR = '2026-07-01T00:00:00.000Z'
   const TOP = '2026-10-20T00:00:00.000Z'
-  const MID = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+  const MID = new Date(Date.parse(TOP) - BACKFILL_WINDOW_MS).toISOString()
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -969,7 +986,7 @@ describe('runBadgePoll backfill', () => {
 
   it('keeps the lowest floor reached across armings', async () => {
     mockedFetchBadgesPage.mockResolvedValue(page([]))
-    const earlier = '2026-10-01T00:00:00.000Z'
+    const earlier = '2026-06-01T00:00:00.000Z'
     const { ctx, lastWatermark } = makeCtx({
       since: HORIZON,
       historyFrom: earlier,
@@ -1019,18 +1036,41 @@ describe('runBadgePoll backfill', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
   })
 
-  it('halves a failing backfill window and walks its upper half before moving down', async () => {
+  it('steps a window saved before the window grew down by a week, skipping nothing', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const weekAgo = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+    const nextMid = new Date(Date.parse(weekAgo) - BACKFILL_WINDOW_MS).toISOString()
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: weekAgo, until: TOP, page: 1 },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: weekAgo, max: TOP },
+      { min: nextMid, max: weekAgo },
+      { min: FLOOR, max: nextMid },
+    ])
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
+  })
+
+  it('shrinks a failing backfill window to the live step and walks the rest before moving down', async () => {
     const err = new ProviderUnavailableError('provider returned status 500', { status: 500 })
     mockedFetchBadgesPage.mockRejectedValueOnce(err).mockResolvedValue(page([]))
     const { ctx } = makeCtx({ since: HORIZON, backfill: { floor: FLOOR, top: TOP } })
 
     await runBadgePoll(ctx)
 
-    const half = new Date(Date.parse(MID) + MAX_WINDOW_MS / 2).toISOString()
+    const weeks: { min: string; max: string }[] = []
+    for (let min = Date.parse(MID); min < Date.parse(TOP); min += MAX_WINDOW_MS) {
+      const max = Math.min(min + MAX_WINDOW_MS, Date.parse(TOP))
+      weeks.push({ min: new Date(min).toISOString(), max: new Date(max).toISOString() })
+    }
+    expect(weeks.length).toBeGreaterThan(2)
     expect(requestedParams().map((p) => p.window)).toEqual([
       { min: MID, max: TOP },
-      { min: MID, max: half },
-      { min: half, max: TOP },
+      ...weeks,
       { min: FLOOR, max: MID },
     ])
   })
@@ -1052,7 +1092,50 @@ describe('runBadgePoll backfill', () => {
       since: HORIZON,
       until: null,
       page: 1,
-      backfill: { floor: FLOOR, top: TOP, since: MID, until: TOP, page: MAX_PAGES_PER_RUN + 1 },
+      backfill: {
+        floor: FLOOR,
+        top: TOP,
+        since: MID,
+        until: TOP,
+        page: MAX_PAGES_PER_RUN + 1,
+        nextTop: MID,
+      },
+    })
+  })
+
+  it('moves the top to the saved nextTop once an open window advanced by pages drains', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const advancedSince = '2026-09-01T00:00:00.000Z'
+    const { ctx, lastWatermark } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: advancedSince, until: TOP, page: 1, nextTop: MID },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(requestedParams().map((p) => p.window)).toEqual([
+      { min: advancedSince, max: TOP },
+      { min: FLOOR, max: MID },
+    ])
+    expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: FLOOR })
+  })
+
+  it('ignores a saved nextTop outside floor..since and steps down a week instead', async () => {
+    mockedFetchBadgesPage.mockResolvedValue(page([]))
+    const weekAgo = new Date(Date.parse(TOP) - MAX_WINDOW_MS).toISOString()
+    const { ctx, watermarks } = makeCtx({
+      since: HORIZON,
+      backfill: { floor: FLOOR, top: TOP, since: weekAgo, until: TOP, page: 1, nextTop: TOP },
+    })
+
+    await runBadgePoll(ctx)
+
+    expect(watermarks[0]?.backfill).toEqual({
+      floor: FLOOR,
+      top: weekAgo,
+      since: null,
+      until: null,
+      page: 1,
     })
   })
 

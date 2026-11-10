@@ -67,13 +67,9 @@ import {
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
-import MemberService, {
-  applyNewestOrgPayloads,
-  getEarliestMemberJoinedAt,
-  mergeIfAllowed,
-  registerOrgPayloadActivities,
-} from './member.service'
+import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
 import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
+import { applyNewestOrgPayloads, registerOrgPayloadActivities } from './organizationLinking'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -169,6 +169,10 @@ import {
 } from '../insight-project-helper';
 import LfCmSubProjectListDropdown from './lf-cm-sub-project-list-dropdown.vue';
 
+defineOptions({
+  name: 'LfInsightsProjectAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   insightsProjectId?: string;
@@ -272,39 +276,8 @@ const { isLoading, isSuccess, data } = useQuery({
   enabled: !!props.insightsProjectId,
 });
 
-const onProjectSelection = ({ project }: { project: Project }) => {
-  if (!isEditForm.value) {
-    Object.assign(form, initialFormState);
-  }
-  fetchProjectDetails(project);
-  fetchWidgets(project.id);
-
-  fetchRepositories(project.id, () => {
-    if (!isEditForm.value) {
-      form.repositories = cloneDeep(initialFormState.repositories);
-    }
-
-    form.repositories = initialFormState.repositories;
-    form.segmentId = project.id;
-  });
-};
-
 const onCancel = () => {
   model.value = false;
-};
-
-const onSubmit = () => {
-  const request = buildRequest({
-    ...form,
-  });
-  if (isEditForm.value) {
-    updateMutation.mutate({
-      id: props.insightsProjectId as string,
-      form: request,
-    });
-  } else {
-    createMutation.mutate(request);
-  }
 };
 
 const invalidate = useInvalidate();
@@ -347,37 +320,6 @@ const fetchRepositories = async (segmentId: string, callback?: () => void) => {
       callback();
     }
   });
-};
-
-const fetchProjectDetails = async (project: Project) => {
-  isLoadingProject.value = true;
-  InsightsProjectsService.getInsightsProjectDetails(project.id)
-    .then((res) => {
-      if (res) {
-        if (isEditForm.value) {
-          newForm = cloneDeep(form);
-          newForm = assignProjectDetails(res, newForm);
-          fillForm(fillIfNotExisting(form, newForm));
-          newForm = fillIfNotExisting(newForm, form);
-          oldForm = cloneDeep(form);
-        } else {
-          fillForm(assignProjectDetails(res, form));
-        }
-      } else if (isEditForm.value) {
-        form.name = project.name;
-        form.description = project.description;
-        form.logoUrl = project.url;
-      }
-    })
-    .catch((err) => {
-      form.name = project.name;
-      form.description = project.description;
-      form.logoUrl = project.url;
-      ToastStore.error(`Failed to fetch project details: ${err.message}`);
-    })
-    .finally(() => {
-      isLoadingProject.value = false;
-    });
 };
 
 const fillIfNotExisting = (
@@ -443,6 +385,68 @@ const fetchWidgets = async (segmentId: string) => {
     });
 };
 
+const fetchProjectDetails = async (project: Project) => {
+  isLoadingProject.value = true;
+  InsightsProjectsService.getInsightsProjectDetails(project.id)
+    .then((res) => {
+      if (res) {
+        if (isEditForm.value) {
+          newForm = cloneDeep(form);
+          newForm = assignProjectDetails(res, newForm);
+          fillForm(fillIfNotExisting(form, newForm));
+          newForm = fillIfNotExisting(newForm, form);
+          oldForm = cloneDeep(form);
+        } else {
+          fillForm(assignProjectDetails(res, form));
+        }
+      } else if (isEditForm.value) {
+        form.name = project.name;
+        form.description = project.description;
+        form.logoUrl = project.url;
+      }
+    })
+    .catch((err) => {
+      form.name = project.name;
+      form.description = project.description;
+      form.logoUrl = project.url;
+      ToastStore.error(`Failed to fetch project details: ${err.message}`);
+    })
+    .finally(() => {
+      isLoadingProject.value = false;
+    });
+};
+
+const onProjectSelection = ({ project }: { project: Project }) => {
+  if (!isEditForm.value) {
+    Object.assign(form, initialFormState);
+  }
+  fetchProjectDetails(project);
+  fetchWidgets(project.id);
+
+  fetchRepositories(project.id, () => {
+    if (!isEditForm.value) {
+      form.repositories = cloneDeep(initialFormState.repositories);
+    }
+
+    form.repositories = initialFormState.repositories;
+    form.segmentId = project.id;
+  });
+};
+
+const onSubmit = () => {
+  const request = buildRequest({
+    ...form,
+  });
+  if (isEditForm.value) {
+    updateMutation.mutate({
+      id: props.insightsProjectId as string,
+      form: request,
+    });
+  } else {
+    createMutation.mutate(request);
+  }
+};
+
 watch(
   data,
   () => {
@@ -461,12 +465,6 @@ watch(
   },
   { immediate: true },
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInsightsProjectAdd',
-};
 </script>
 
 <style lang="scss">

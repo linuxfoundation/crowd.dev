@@ -46,7 +46,7 @@ describe('routeResolution', () => {
         action: 'review',
         skipReason: null,
         reviewReason:
-          'Acme is in LFX Insights, but this repo needs a quick check by the CDP team before I add it',
+          'Acme is in LFX Insights, but adding to it needs a quick check by the CDP team',
       })
       expect(routeResolution(lfInCdp(action), { autoApply: true })).toMatchObject({
         action: 'onboard',
@@ -150,6 +150,30 @@ describe('routeEvaluationOutcome', () => {
     ).toContain(
       "Ai Dynamo isn't in LFX Insights yet; it would be created as a non-LF project with the 1 repository of github.com/ai-dynamo",
     )
+  })
+
+  it('names a project group after the request and counts its repositories', () => {
+    expect(
+      routeEvaluationOutcome(botRow, verdict, {
+        autoApply: false,
+        organization: { owner: 'apache', name: 'Apache HugeGraph', repositories: 5 },
+      }).reviewReason,
+    ).toBe(
+      "Apache HugeGraph isn't in LFX Insights yet; it would be created as a non-LF project with its 5 repositories, and new projects are added by the CDP team",
+    )
+  })
+
+  it('sends a grouped discussion to review even with auto apply on, a lone one to onboard', () => {
+    const discussion = { ...botRow, provenance: 'github-discussion' as const }
+    const grouped = { ...discussion, requestHints: { project: 'Acme', mainRepoUrl: 'u' } }
+
+    expect(routeEvaluationOutcome(grouped, verdict, { autoApply: true })).toMatchObject({
+      action: 'review',
+    })
+    expect(routeEvaluationOutcome(discussion, verdict, { autoApply: false })).toEqual({
+      action: 'onboard',
+      reviewReason: null,
+    })
   })
 
   it('lets the row onboard when auto apply is on or the request did not come from the bot', () => {

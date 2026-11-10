@@ -3,7 +3,7 @@
     :model-value="form ?? undefined"
     :fetch-fn="fetchOrganizations"
     :create-fn="createOrganization"
-    :placeholder="isCreatingOrganization ? 'Creating organization...' : 'Select organization'"
+    :placeholder="isCreatingOrganization ? 'Creating company...' : 'Select company'"
     input-class="organization-input"
     create-if-not-found
     :in-memory-filter="false"
@@ -67,6 +67,10 @@ import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 
+defineOptions({
+  name: 'LfOrganizationSelect',
+});
+
 const props = defineProps<{
   modelValue: Organization | null,
 }>();
@@ -122,10 +126,4 @@ const createOrganization = (value: string) => {
 onMounted(() => {
   fetchOrganizations({ query: '' });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationSelect',
-};
 </script>

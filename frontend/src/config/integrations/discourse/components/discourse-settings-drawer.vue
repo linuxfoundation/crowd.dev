@@ -211,7 +211,10 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DiscourseSettings } from '@/config/integrations/discourse/types/DiscourseSettings';
 import {
-  computed, defineEmits, defineProps, onMounted, reactive, ref,
+  computed,
+  onMounted,
+  reactive,
+  ref,
 } from 'vue';
 import type { InputInstance } from 'element-plus';
 import discourse from '@/config/integrations/discourse/config';
@@ -233,6 +236,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'LfDiscourseSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -358,6 +365,21 @@ const isVisible = computed({
   },
 });
 
+const syncData = () => {
+  if (props.integration?.settings?.forumHostname) {
+    form.discourseURL = props.integration?.settings.forumHostname;
+    form.apiKey = props.integration?.settings.apiKey;
+    webhookSecret.value = props.integration?.settings.webhookSecret;
+    payloadURL.value = `${window.location.origin}/api/webhooks/discourse`;
+    isAPIConnectionValid.value = true;
+  }
+  formSnapshot();
+};
+
+const revertChanges = () => {
+  syncData();
+};
+
 const canClose = (done: (value: boolean) => void) => {
   if (hasFormChanged.value) {
     changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
@@ -397,21 +419,6 @@ const handleCancel = () => {
     $v.value.$reset();
   }
   formSnapshot();
-};
-
-const syncData = () => {
-  if (props.integration?.settings?.forumHostname) {
-    form.discourseURL = props.integration?.settings.forumHostname;
-    form.apiKey = props.integration?.settings.apiKey;
-    webhookSecret.value = props.integration?.settings.webhookSecret;
-    payloadURL.value = `${window.location.origin}/api/webhooks/discourse`;
-    isAPIConnectionValid.value = true;
-  }
-  formSnapshot();
-};
-
-const revertChanges = () => {
-  syncData();
 };
 
 onMounted(() => {
@@ -459,11 +466,5 @@ const connect = async () => {
     });
 
   formSnapshot();
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDiscourseSettingsDrawer',
 };
 </script>

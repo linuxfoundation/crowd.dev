@@ -132,6 +132,10 @@ import {
 import LfButton from '@/ui-kit/button/Button.vue';
 import type { SubProject } from '@/modules/lf/segments/types/Segments';
 
+defineOptions({
+  name: 'AppLfSubProjectForm',
+});
+
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -261,11 +265,5 @@ const onSubmit = () => {
       model.value = false;
     });
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfSubProjectForm',
 };
 </script>

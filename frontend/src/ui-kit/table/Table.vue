@@ -26,6 +26,10 @@ import {
   ref, onMounted, onBeforeUnmount, computed,
 } from 'vue';
 
+defineOptions({
+  name: 'LfTable',
+});
+
 const props = withDefaults(defineProps<{
   type?: 'regular' | 'bordered',
   showHover?: boolean,
@@ -68,10 +72,4 @@ onBeforeUnmount(() => {
     table.value.removeEventListener('scroll', updateScrollPosition);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfTable',
-};
 </script>

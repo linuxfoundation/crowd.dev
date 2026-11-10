@@ -1,3 +1,4 @@
+import { markOrganizationsChanged } from '@crowd/common_services'
 import OrganizationRepository from '@crowd/data-access-layer/src/old/apps/script_executor_worker/organization.repo'
 import { OrganizationSyncService } from '@crowd/opensearch'
 
@@ -17,6 +18,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
   try {
     const orgRepo = new OrganizationRepository(svc.postgres.writer.connection(), svc.log)
     await orgRepo.cleanupOrganization(orgId)
+    await markOrganizationsChanged(svc.redis, [orgId], svc.log)
   } catch (error) {
     svc.log.error(error, 'Error cleaning up organization in database!')
     throw error

@@ -47,33 +47,30 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import type { IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
+import type { GitlabIntegration } from '@/config/integrations/gitlab/types/GitlabSettings';
 import { onMounted, ref } from 'vue';
 import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import pluralize from 'pluralize';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-const props = defineProps({
-  integration: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({
+  name: 'AppGitlabSettings',
 });
 
-const mappings = ref([]);
+const props = defineProps<{
+  integration: GitlabIntegration;
+}>();
 
-const repoNameFromUrl = (url) => url.split('/').at(-1);
+const mappings = ref<IntegrationMapping[]>([]);
+
+const repoNameFromUrl = (url: string): string | undefined => url.split('/').at(-1);
 
 onMounted(() => {
   IntegrationService.fetchGitLabMappings(props.integration).then((res) => {
     mappings.value = res;
   });
 });
-</script>
-
-<script>
-export default {
-  name: 'AppGitlabSettings',
-};
 </script>

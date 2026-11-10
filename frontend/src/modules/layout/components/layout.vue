@@ -28,11 +28,9 @@ import { useFooterStore } from '@/modules/layout/pinia';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { openCookieSettings } from '@/utils/transcend';
 
-const footerStore = useFooterStore();
-</script>
-
-<script lang="ts">
-export default {
+defineOptions({
   name: 'AppLayout',
-};
+});
+
+const footerStore = useFooterStore();
 </script>

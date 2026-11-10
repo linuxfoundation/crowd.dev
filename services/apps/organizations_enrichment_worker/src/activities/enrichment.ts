@@ -3,6 +3,7 @@ import axios from 'axios'
 import uniqBy from 'lodash.uniqby'
 
 import { redactNullByte } from '@crowd/common'
+import { markOrganizationsChanged } from '@crowd/common_services'
 import {
   OrganizationField,
   fetchOrganizationEnrichmentCache,
@@ -248,6 +249,8 @@ export async function applyEnrichmentToOrganization(
       data.identities.map((i) => ({ ...i, source: 'enrichment' })),
     )
   })
+
+  await markOrganizationsChanged(svc.redis, [organizationId], svc.log)
 
   await setOrganizationEnrichmentLastUpdatedAt(qx, organizationId)
 }

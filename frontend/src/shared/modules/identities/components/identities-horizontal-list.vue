@@ -54,10 +54,14 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, computed } from 'vue';
+import { computed } from 'vue';
 import pluralize from 'pluralize';
 import AppPlatform from '@/shared/modules/platform/components/platform.vue';
 import AppIdentitiesVerticalList from '@/shared/modules/identities/components/identities-vertical-list.vue';
+
+defineOptions({
+  name: 'AppIdentitiesHorizontalList',
+});
 
 const props = defineProps<{
   identities: {
@@ -109,10 +113,4 @@ const parsedIdentities = computed(() => {
 const hasIdentities = computed(
   () => Object.keys(props.identities).length,
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesHorizontalList',
-};
 </script>

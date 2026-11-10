@@ -11,6 +11,7 @@ import {
   isPlaceholderEmployerName,
   normalizeHostname,
 } from '@crowd/common'
+import { markOrganizationsChanged } from '@crowd/common_services'
 import { findOrCreateOrganization } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
 
@@ -39,7 +40,7 @@ export async function createOrganization(req: Request, res: Response): Promise<v
 
   const qx = optionsQx(req)
 
-  const organizationId = await qx.tx(async (tx) => {
+  const { organizationId, changed } = await qx.tx(async (tx) => {
     const orgSource = OrganizationAttributeSource.LFX_SERVE
 
     const result = await findOrCreateOrganization(tx, orgSource, {
@@ -78,8 +79,12 @@ export async function createOrganization(req: Request, res: Response): Promise<v
       }),
     )
 
-    return organizationId
+    return { organizationId, changed: result.changed }
   })
+
+  if (changed) {
+    await markOrganizationsChanged(req.redis, [organizationId], req.log)
+  }
 
   created(res, { id: organizationId, name, logo, domain })
 }

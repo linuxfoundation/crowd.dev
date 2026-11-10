@@ -25,6 +25,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'LfInput',
+});
+
 const props = withDefaults(defineProps<{
   modelValue: string | number,
   placeholder?: string,
@@ -48,10 +52,4 @@ const value = computed<string | number>({
     emit('update:modelValue', val);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfInput',
-};
 </script>

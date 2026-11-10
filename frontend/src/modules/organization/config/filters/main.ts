@@ -39,7 +39,7 @@ export const organizationCommonFilters: Record<string, FilterConfig> = {
 };
 
 export const organizationSearchFilter: SearchFilterConfig = {
-  placeholder: 'Search organizations',
+  placeholder: 'Search companies',
   apiFilterRenderer(value: string) {
     return [
       {

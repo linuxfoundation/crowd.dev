@@ -37,6 +37,10 @@ import {
 import type { NotificationTypes } from './notification';
 import { ToastStore as store } from './notification';
 
+defineOptions({
+  name: 'ToastContainer',
+});
+
 const props = withDefaults(
   defineProps<{
     position?: 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
@@ -83,12 +87,6 @@ function messageComponent(message: string | VNode) {
     ? message
     : h('span', null, message);
 }
-</script>
-
-<script lang="ts">
-export default {
-  name: 'ToastContainer',
-};
 </script>
 
 <style scoped>

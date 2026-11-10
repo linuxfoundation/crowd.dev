@@ -110,7 +110,7 @@ const en = {
       message: 'This activity has already been linked to this member',
     },
     OrganizationNameRequired: {
-      message: 'Organization Name is required',
+      message: 'Company Name is required',
     },
     projectNotFound: {
       message: 'Project not found',
@@ -192,8 +192,7 @@ const en = {
     organization: {
       unmerge: {
         errors: {
-          cannotExtractSingleIdentity:
-            'Original organization only has one identity, cannot extract it!',
+          cannotExtractSingleIdentity: 'Original company only has one identity, cannot extract it!',
         },
       },
     },
@@ -202,7 +201,7 @@ const en = {
   merge: {
     errors: {
       multiple: 'Cannot merge suggestions - found existing merge with {0} state',
-      lfxSecondary: 'Cannot merge LFX membership organization as a secondary one!',
+      lfxSecondary: 'Cannot merge LFX membership company as a secondary one!',
       noIdentities: 'Original member only has one identity, cannot extract it!',
       identityMismatch: 'Member does not have the identity sent to be unmerged',
     },

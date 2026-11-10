@@ -21,9 +21,9 @@
                     Affiliation
                   </p>
                   <p class="text-small text-gray-500 break-normal text-left">
-                    Organization(s) that an individual represents while contributing to a project.
+                    Companies that an individual represents while contributing to a project.
                     This association indicates that the person's activities were made in the context
-                    of their role within the organization, rather than as an independent
+                    of their role within the company, rather than as an independent
                     contributor.
                   </p>
                 </div>
@@ -151,6 +151,10 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 
+defineOptions({
+  name: 'LfContributorDetailsProjects',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -196,11 +200,5 @@ const viewActivity = (projectId: string) => {
       subProjectId: projectId,
     },
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjects',
 };
 </script>

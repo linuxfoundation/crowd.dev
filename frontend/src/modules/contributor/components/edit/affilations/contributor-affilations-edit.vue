@@ -10,9 +10,9 @@
         </lf-button>
       </div>
       <p class="text-gray-500 text-medium">
-        Manage the affiliation between activities and organizations on behalf of a project over a specific time
+        Manage the affiliation between activities and companies on behalf of a project over a specific time
         period.<br>
-        By default, activities are affiliated with organizations based on the duration of the work experience.<br>
+        By default, activities are affiliated with companies based on the duration of the work experience.<br>
         <br>
         <span class="font-semibold">Important note:</span> Work history updates won’t override manual changes to
         activities affiliations.
@@ -124,6 +124,10 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
+defineOptions({
+  name: 'LfContributorEditAffilations',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   contributor: Contributor,
@@ -220,10 +224,4 @@ onMounted(() => {
   }));
   initialForm.value = [...form.value];
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorEditAffilations',
-};
 </script>

@@ -18,6 +18,7 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
+import { hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IMemberEnrichmentClearbitAPIErrorResponse,
   IMemberEnrichmentClearbitAPIResponse,
@@ -29,7 +30,7 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
   public platform = `enrichment-${this.source}`
   public enrichMembersWithActivityMoreThan = 100
 
-  public enrichableBySql = `"membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan} AND mi.type = 'email' and mi.verified`
+  public enrichableBySql = `"membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan} AND ${hasVerifiedIdentitySql(`mi.type = 'email'`)}`
 
   public maxConcurrentRequests = 15
 

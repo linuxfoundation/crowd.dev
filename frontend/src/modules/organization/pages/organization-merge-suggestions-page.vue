@@ -3,13 +3,13 @@
     <div class="pb-40">
       <app-back-link
         :default-route="{
-          path: '/organizations',
+          path: '/companies',
           query: { projectGroup: selectedProjectGroup?.id },
         }"
         class="font-semibold"
       >
         <template #default>
-          Organizations
+          Companies
         </template>
       </app-back-link>
       <div class="flex items-center pb-6">
@@ -18,13 +18,13 @@
         </h4>
         <el-tooltip
           placement="top"
-          content="LFX is constantly checking your community for duplicate organizations. Here you can check all the merging suggestions."
+          content="LFX is constantly checking your community for duplicate companies. Here you can check all the merging suggestions."
         >
           <lf-icon name="circle-question" :size="20" class="text-gray-500 flex items-center ml-2 h-5" />
         </el-tooltip>
       </div>
 
-      <app-merge-suggestions-filters placeholder="Search organizations" @search="search" />
+      <app-merge-suggestions-filters placeholder="Search companies" @search="search" />
 
       <div
         v-if="page <= 1 && loading && mergeSuggestions.length === 0"
@@ -37,7 +37,7 @@
         <thead>
           <tr>
             <lf-table-head colspan="2">
-              Organizations
+              Companies
             </lf-table-head>
             <lf-table-head v-model="sorting" property="similarity" @update:model-value="() => loadMergeSuggestions(true)">
               Confidence level
@@ -156,7 +156,7 @@
           No merge suggestions
         </h5>
         <p class="text-sm text-center text-gray-600 leading-5">
-          We couldn’t find any duplicated organizations
+          We couldn’t find any duplicated companies
         </p>
       </div>
 
@@ -205,6 +205,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { Organization } from '@/modules/organization/types/Organization';
 import type { OrganizationMergeSuggestion } from '@/modules/organization/types/OrganizationSuggestion';
 import type { MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
+
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsPage',
+});
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
@@ -363,10 +367,4 @@ const ignore = (suggestion: OrganizationMergeSuggestion) => {
 onMounted(() => {
   getTotalCount();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationMergeSuggestionsPage',
-};
 </script>

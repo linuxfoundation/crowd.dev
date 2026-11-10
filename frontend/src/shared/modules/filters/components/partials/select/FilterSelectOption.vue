@@ -14,6 +14,10 @@
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfFilterSelectOption',
+});
+
 const props = defineProps<{
   modelValue: boolean | string,
   value: boolean | string,
@@ -27,12 +31,6 @@ const selectOption = () => {
   emit('update:modelValue', props.value);
 };
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterSelectOption',
-};
 </script>
 
 <style lang="scss" scoped>
