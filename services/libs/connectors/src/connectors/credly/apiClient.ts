@@ -4,7 +4,8 @@ import { timeout } from '@crowd/common'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
-import { ConnectorCodeError, ProviderContractError } from '../../http/errors'
+import { ConnectorCodeError, ProviderContractError, RateLimitError } from '../../http/errors'
+import { PROBE_STALENESS_MS } from '../../pool/tokenPool'
 import { credlyBadgeSchema } from './badge'
 import type { CredlyBadge, CredlyBadgeState } from './badge'
 
@@ -150,10 +151,18 @@ export async function fetchBadgeTemplatesPage(
   return parsePage<CredlyBadgeTemplateListing>(badgeTemplatesPageSchema, body, 'badge_templates')
 }
 
+// The shared per-minute budget (budget.ts) empties when two runs of one worker overlap. Its reset lands
+// within the pool's probe window, so a call waits for it once instead of ending the run as rate limited.
+const BUDGET_RESET_WAIT_MAX_MS = PROBE_STALENESS_MS
+// The pool re-probes only once `now >= resetAt`, and a timer may wake just before it.
+const BUDGET_RESET_MARGIN_MS = 1_000
+
 let lastCallAtMs = 0
+let pacing: Promise<void> = Promise.resolve()
 
 export function resetCredlyPacing(): void {
   lastCallAtMs = 0
+  pacing = Promise.resolve()
 }
 
 async function credlyGet(
@@ -162,26 +171,47 @@ async function credlyGet(
   params: Record<string, string | number>,
   log: Logger,
 ): Promise<unknown> {
+  const request = () =>
+    http.request<unknown>(
+      {
+        method: 'get',
+        url: `${CREDLY_API_BASE_URL}${path}`,
+        params,
+        headers: { Accept: 'application/json' },
+        timeout: CREDLY_API_TIMEOUT_MS,
+      },
+      log,
+      MAX_ATTEMPTS,
+    )
   await pace()
-  return http.request<unknown>(
-    {
-      method: 'get',
-      url: `${CREDLY_API_BASE_URL}${path}`,
-      params,
-      headers: { Accept: 'application/json' },
-      timeout: CREDLY_API_TIMEOUT_MS,
-    },
-    log,
-    MAX_ATTEMPTS,
-  )
+  try {
+    return await request()
+  } catch (err) {
+    const waitMs = budgetResetWaitMs(err)
+    if (waitMs === null) throw err
+    log.info({ waitMs }, 'credly call budget spent, waiting for its reset')
+    await timeout(waitMs)
+    await pace()
+    return request()
+  }
 }
 
-async function pace(): Promise<void> {
-  const waitMs = lastCallAtMs + CREDLY_MIN_CALL_INTERVAL_MS - Date.now()
-  if (waitMs > 0) {
-    await timeout(waitMs)
-  }
-  lastCallAtMs = Date.now()
+function budgetResetWaitMs(err: unknown): number | null {
+  if (!(err instanceof RateLimitError) || !err.options?.resumeAt) return null
+  const waitMs = err.options.resumeAt.getTime() - Date.now()
+  return waitMs <= BUDGET_RESET_WAIT_MAX_MS ? Math.max(waitMs, 0) + BUDGET_RESET_MARGIN_MS : null
+}
+
+function pace(): Promise<void> {
+  const turn = pacing.then(async () => {
+    const waitMs = lastCallAtMs + CREDLY_MIN_CALL_INTERVAL_MS - Date.now()
+    if (waitMs > 0) {
+      await timeout(waitMs)
+    }
+    lastCallAtMs = Date.now()
+  })
+  pacing = turn.catch(() => undefined)
+  return turn
 }
 
 // Credly ignores a filter key it does not recognise and answers with the whole organization

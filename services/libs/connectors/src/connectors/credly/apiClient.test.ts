@@ -4,7 +4,7 @@ import { timeout } from '@crowd/common'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp } from '../../http/client'
-import { ConnectorCodeError, ProviderContractError } from '../../http/errors'
+import { ConnectorCodeError, ProviderContractError, RateLimitError } from '../../http/errors'
 import {
   CREDLY_API_BASE_URL,
   CREDLY_MIN_CALL_INTERVAL_MS,
@@ -59,7 +59,8 @@ function httpReturning(body: unknown): ConnectorHttp & { request: ReturnType<typ
 
 beforeEach(() => {
   resetCredlyPacing()
-  mockedTimeout.mockClear()
+  mockedTimeout.mockReset()
+  mockedTimeout.mockResolvedValue(undefined)
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-22T10:00:00.000Z'))
 })
@@ -254,6 +255,70 @@ describe('fetchBadgesPage', () => {
 
     expect(mockedTimeout).toHaveBeenCalledTimes(1)
     expect(mockedTimeout).toHaveBeenCalledWith(CREDLY_MIN_CALL_INTERVAL_MS)
+  })
+
+  it('queues concurrent calls so that one request starts per interval', async () => {
+    mockedTimeout.mockImplementation((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    const http = httpReturning(pageOf([]))
+
+    const calls = Promise.all(
+      [1, 2, 3].map((page) =>
+        fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page }, log),
+      ),
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(http.request).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(CREDLY_MIN_CALL_INTERVAL_MS)
+    expect(http.request).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(CREDLY_MIN_CALL_INTERVAL_MS)
+    expect(http.request).toHaveBeenCalledTimes(3)
+    await calls
+  })
+
+  it('retries just after the budget reset when the token pool is exhausted', async () => {
+    mockedTimeout.mockImplementation((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    const resumeAt = new Date(Date.now() + 20_000)
+    const http = httpReturning(pageOf([]))
+    http.request.mockRejectedValueOnce(new RateLimitError('token pool exhausted', { resumeAt }))
+
+    const call = fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log)
+
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(http.request).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(http.request).toHaveBeenCalledTimes(2)
+    expect((await call).data).toEqual([])
+    expect(log.info).toHaveBeenCalledWith(
+      { waitMs: 21_000 },
+      'credly call budget spent, waiting for its reset',
+    )
+  })
+
+  it('does not wait for a reset further away than a budget window', async () => {
+    const resumeAt = new Date(Date.now() + 10 * 60_000)
+    const http = httpReturning(pageOf([]))
+    const err = new RateLimitError('token pool exhausted', { resumeAt })
+    http.request.mockRejectedValueOnce(err)
+
+    await expect(
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+    ).rejects.toBe(err)
+    expect(http.request).toHaveBeenCalledTimes(1)
+    expect(mockedTimeout).not.toHaveBeenCalledWith(10 * 60_000)
+  })
+
+  it('waits only once on a budget that does not come back', async () => {
+    const http = httpReturning(pageOf([]))
+    const err = new RateLimitError('token pool exhausted', {
+      resumeAt: new Date(Date.now() + 1_000),
+    })
+    http.request.mockRejectedValue(err)
+
+    await expect(
+      fetchBadgesPage(http, { organizationId: 'org-1', window: WINDOW, page: 1 }, log),
+    ).rejects.toBe(err)
+    expect(http.request).toHaveBeenCalledTimes(2)
   })
 })
 
