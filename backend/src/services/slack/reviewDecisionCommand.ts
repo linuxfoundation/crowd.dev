@@ -17,7 +17,7 @@ import {
   resolveReviewCdpUrl,
   findRequestGroupSiblings,
   needsPerson,
-  requestGroupReviewOf,
+  requestGroupReview,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
 import {
@@ -274,7 +274,7 @@ export async function runReviewDecisionCommand({
     await handleRefusedDecision(qx, catalogId, decision, responseUrl, actorId, log)
     return
   }
-  const organization = requestGroupReviewOf(resolved, siblings.length)
+  const organization = requestGroupReview(resolved, siblings)
   const catalogIds = [resolved.id, ...siblings.map((row) => row.id)]
 
   log.info(
@@ -397,7 +397,7 @@ function rejectSubject(row: IDbProjectCatalog, organization: IReviewOrganization
 
 async function pendingOrganizationReview(qx: QueryExecutor, row: IDbProjectCatalog) {
   const siblings = await findRequestGroupSiblings(qx, row, onSameReviewCard(row))
-  return requestGroupReviewOf(row, siblings.length)
+  return requestGroupReview(row, siblings)
 }
 
 async function replyInBotThread(

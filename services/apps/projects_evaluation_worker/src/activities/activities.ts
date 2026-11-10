@@ -39,6 +39,7 @@ import {
   classifyCatalogRow,
   findRequestGroupSiblings,
   organizationOf,
+  requestGroupReview,
   requestGroupReviewOf,
   refreshRequestStatusMessage,
   reportRequestOutcome,
@@ -775,7 +776,7 @@ export async function notifyReviewRequest(project: IDbProjectCatalog): Promise<v
       return null
     }
     const siblings = candidates.filter((row) => locked.has(row.id))
-    const organization = requestGroupReviewOf(project, siblings.length)
+    const organization = requestGroupReview(project, siblings)
     const repoContext = organization ? null : await singleRepoContext(project, preloadedRepoContext)
     const extras = { cdpUrl, repoContext }
 

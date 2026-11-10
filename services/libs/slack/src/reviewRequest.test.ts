@@ -163,6 +163,29 @@ describe('buildReviewRequestBlocks', () => {
     )
   })
 
+  it('lists the repositories of a project group and its grouping confidence', () => {
+    const repoUrls = Array.from({ length: 12 }, (_, i) => `https://github.com/apache/repo-${i}`)
+    const organization = {
+      owner: 'apache',
+      name: 'Apache HugeGraph',
+      repositories: 12,
+      repoUrls,
+      confidence: 0.857,
+    }
+    const rendered = JSON.stringify(buildReviewRequestBlocks({ ...card, organization }))
+
+    expect(rendered).toContain('• apache/repo-0\\n• apache/repo-1')
+    expect(rendered).toContain('• apache/repo-9\\n… and 2 more')
+    expect(rendered).not.toContain('apache/repo-10')
+    expect(rendered).toContain('Grouping confidence: *86%*')
+
+    const plain = JSON.stringify(
+      buildReviewRequestBlocks({ ...card, organization: { owner: 'kubernetes', repositories: 3 } }),
+    )
+    expect(plain).not.toContain('Grouping confidence')
+    expect(plain).not.toContain('• ')
+  })
+
   it('speaks in the singular when only one repository of the organization is on the card', () => {
     const organization = { owner: 'kubernetes', repositories: 1 }
     const blocks = buildReviewRequestBlocks({ ...card, organization })

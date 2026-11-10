@@ -78,11 +78,16 @@ const GITHUB_REPO_CHECK_TIMEOUT_MS = 10_000
 const lookupRepository: RepositoryLookup = (repoUrl) =>
   isPublicGithubRepo(repoUrl, getGithubToken(), AbortSignal.timeout(GITHUB_REPO_CHECK_TIMEOUT_MS))
 
-export interface IOnboardingRequestIngest {
+export interface IProjectGroupInput {
+  projectName: string | null
+  suggestedSlug?: string | null
+  confidence?: number | null
+}
+
+export interface IOnboardingRequestIngest extends IProjectGroupInput {
   requestText: string
   repoUrls: string[]
   sourceUrl: string
-  projectName: string | null
   requestedBy?: string | null
   organizations?: IExpandedOrganization[]
 }
@@ -122,7 +127,7 @@ function isHelpRequest(requestText: string): boolean {
 export function requestHintsByRepoUrl(
   repoUrls: string[],
   organizations: IExpandedOrganization[],
-  projectName: string | null,
+  { projectName, suggestedSlug, confidence }: IProjectGroupInput,
 ): Map<string, IRequestHints> {
   const hints = new Map<string, IRequestHints>(
     organizations.flatMap((org) =>
@@ -132,8 +137,14 @@ export function requestHintsByRepoUrl(
   const listed = repoUrls.filter((repoUrl) => !hints.has(repoUrl))
   const name = projectName?.trim()
   if (name && listed.length > 1) {
+    const group: IRequestHints = {
+      project: name,
+      mainRepoUrl: listed[0],
+      ...(suggestedSlug ? { suggestedSlug } : {}),
+      ...(confidence !== null && confidence !== undefined ? { confidence } : {}),
+    }
     for (const repoUrl of listed) {
-      hints.set(repoUrl, { project: name, mainRepoUrl: listed[0] })
+      hints.set(repoUrl, group)
     }
   }
   return hints
@@ -178,12 +189,18 @@ export async function ingestOnboardingRequest(
     repoUrls,
     sourceUrl,
     projectName,
+    suggestedSlug,
+    confidence,
     requestedBy,
     organizations = [],
   }: IOnboardingRequestIngest,
 ): Promise<IOnboardingRequestIngestResult> {
   const existing = await findExistingProjectCatalogRepoUrls(qx, repoUrls)
-  const hints = requestHintsByRepoUrl(repoUrls, organizations, projectName)
+  const hints = requestHintsByRepoUrl(repoUrls, organizations, {
+    projectName,
+    suggestedSlug,
+    confidence,
+  })
   const request = { requestText, sourceUrl, projectName, requestedBy }
   const reopened = await reopenRejectedProjectCatalog(
     qx,
@@ -501,7 +518,11 @@ export async function runOnboardingRequestBot({
     }
 
     const requested = repoUrls.filter((repoUrl) => !trackedUrls.has(repoUrl))
-    const projectName = parsed?.projectName ?? null
+    const projectGroup: IProjectGroupInput = {
+      projectName: parsed?.projectName ?? null,
+      suggestedSlug: parsed?.suggestedSlug ?? null,
+      confidence: parsed?.confidence ?? null,
+    }
     const notes = [
       ...missingLines,
       ...collectIngestNotes({
@@ -530,10 +551,10 @@ export async function runOnboardingRequestBot({
     }
     const knownBefore = await findProjectCatalogByRepoUrls(qx, requested)
     const result = await ingestOnboardingRequest(qx, {
+      ...projectGroup,
       requestText,
       repoUrls: requested,
       sourceUrl,
-      projectName,
       requestedBy: actorId ?? null,
       organizations,
     })
@@ -556,8 +577,8 @@ export async function runOnboardingRequestBot({
       sourceUrl,
       log,
     )
-    const projectGroup = ingestProjectGroup(
-      requestHintsByRepoUrl(requested, organizations, projectName),
+    const groupNote = ingestProjectGroup(
+      requestHintsByRepoUrl(requested, organizations, projectGroup),
       [...result.queued, ...adoptedRepoUrls],
     )
     const outcome = {
@@ -567,7 +588,7 @@ export async function runOnboardingRequestBot({
       notes: [
         ...notes,
         ...result.reopened.map(reopenedRequestNote),
-        ...(projectGroup ? [projectGroupNote(projectGroup)] : []),
+        ...(groupNote ? [projectGroupNote(groupNote)] : []),
       ],
     }
     // The status message must exist before the evaluation runs, or a fast outcome has nowhere to land.

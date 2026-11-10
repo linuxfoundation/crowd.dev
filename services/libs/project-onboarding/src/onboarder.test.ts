@@ -11,6 +11,7 @@ import {
   fetchGithubIntegration,
   mergeGithubOrgSettings,
   onboardOrganizationProject,
+  withSuggestedSlug,
   postGithubNangoConnect,
   readBackendApiConfig,
   readErrorBody,
@@ -100,6 +101,24 @@ describe('deriveOrganizationProjectNameCandidates', () => {
       'Ai Dynamo (github.com/ai-dynamo)',
     ])
     expect(deriveOrganizationProjectNameCandidates('acme', '  ')[0]).toBe('Acme')
+  })
+})
+
+describe('withSuggestedSlug', () => {
+  const candidates = [
+    { name: 'Acme', slug: 'acme' },
+    { name: 'Acme (github.com/acme)', slug: 'acme-github-com-acme' },
+  ]
+
+  it('replaces the slug of the first candidate only, sanitized', () => {
+    expect(withSuggestedSlug(candidates, 'Apache HugeGraph')).toEqual([
+      { name: 'Acme', slug: 'apache-hugegraph', fallbackSlug: 'acme' },
+      candidates[1],
+    ])
+    expect(withSuggestedSlug(candidates, null)).toBe(candidates)
+    expect(withSuggestedSlug(candidates, '---')).toBe(candidates)
+    expect(withSuggestedSlug(candidates, 'acme')).toBe(candidates)
+    expect(withSuggestedSlug([], 'acme')).toEqual([])
   })
 })
 
@@ -637,7 +656,10 @@ describe('connectRepoToSegment', () => {
 describe('onboardOrganizationProject', () => {
   const repoUrls = ['https://github.com/acme/one', 'https://github.com/acme/two']
 
-  function installOrganizationBackend(existing: IFakeSegment[]) {
+  function installOrganizationBackend(
+    existing: IFakeSegment[],
+    slugCreationStatus: Record<string, number> = {},
+  ) {
     const created: Record<string, unknown>[] = []
     const connectPayloads: Record<string, unknown>[] = []
     const segmentsByName = new Map(existing.map(({ name, id }) => [name.toLowerCase(), id]))
@@ -660,6 +682,10 @@ describe('onboardOrganizationProject', () => {
           return jsonResponse({ rows: [{ subprojects }], count: subprojects.length })
         }
         if (url.endsWith('/segment/project')) {
+          const status = slugCreationStatus[String(body.slug)]
+          if (status) {
+            return new Response('{"error":"segment creation failed"}', { status })
+          }
           created.push(body)
           segmentsByName.set(String(body.name).toLowerCase(), `created-${body.name}`)
           return jsonResponse({})
@@ -714,6 +740,54 @@ describe('onboardOrganizationProject', () => {
       mapping: { [repoUrls[0]]: 'created-Acme', [repoUrls[1]]: 'created-Acme' },
       segments: ['created-Acme'],
     })
+  })
+
+  it('uses the slug the requester suggested for the new project', async () => {
+    const { created } = installOrganizationBackend([])
+
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      slug: 'Acme_Project',
+      owner: 'acme',
+      repoUrls,
+    })
+
+    expect(result.segmentId).toBe('created-Acme')
+    expect(created[0]).toMatchObject({ name: 'Acme', slug: 'acme-project' })
+  })
+
+  it('falls back to the derived slug when the suggested one is already taken', async () => {
+    const { created } = installOrganizationBackend([], { kubernetes: 400 })
+
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      slug: 'kubernetes',
+      owner: 'acme',
+      repoUrls,
+    })
+
+    expect(result.segmentId).toBe('created-Acme')
+    expect(created).toEqual([
+      { name: 'Acme', slug: 'acme', isLF: false, parentSlug: 'lf-oss-index' },
+    ])
+  })
+
+  it('does not retry with the derived slug when the backend fails for another reason', async () => {
+    const { created } = installOrganizationBackend([], { kubernetes: 503 })
+
+    const result = await onboardOrganizationProject({
+      id: 'row',
+      projectName: 'Acme',
+      slug: 'kubernetes',
+      owner: 'acme',
+      repoUrls,
+    })
+
+    expect(result).toMatchObject({ outcome: 'error', segmentId: null })
+    expect(result.error).toContain('HTTP 503')
+    expect(created).toEqual([])
   })
 
   it('names the project after the owner when the request gave no name', async () => {

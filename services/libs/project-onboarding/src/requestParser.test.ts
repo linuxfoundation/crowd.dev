@@ -342,6 +342,37 @@ describe('parseOnboardingRequest', () => {
     expect(result).toMatchObject({ ok: true, request: { linksToFollow: [] } })
   })
 
+  it('keeps a well-formed suggested slug, clamps the confidence and ignores malformed ones', async () => {
+    const text = 'onboard Acme Tools, slug acme-tools, https://github.com/acme/one'
+    const parsed = (overrides: Record<string, unknown>) =>
+      parseOnboardingRequest(
+        text,
+        llmAnswering(
+          rawAnswer({
+            repoUrls: ['https://github.com/acme/one'],
+            projectName: 'Acme Tools',
+            ...overrides,
+          }),
+        ),
+      )
+
+    await expect(
+      parsed({ suggestedSlug: ' Acme-Tools ', confidence: 0.857 }),
+    ).resolves.toMatchObject({
+      request: { suggestedSlug: 'acme-tools', confidence: 0.86 },
+    })
+    await expect(parsed({ suggestedSlug: 'Acme Tools!', confidence: 1.7 })).resolves.toMatchObject({
+      request: { suggestedSlug: null, confidence: 1 },
+    })
+    await expect(parsed({ suggestedSlug: 42, confidence: 'high' })).resolves.toMatchObject({
+      ok: true,
+      request: { projectName: 'Acme Tools', suggestedSlug: null, confidence: null },
+    })
+    await expect(parsed({})).resolves.toMatchObject({
+      request: { suggestedSlug: null, confidence: null },
+    })
+  })
+
   it('accepts JSON wrapped in a markdown fence', async () => {
     const text = 'onboard acme/one'
     const llm = llmAnswering(

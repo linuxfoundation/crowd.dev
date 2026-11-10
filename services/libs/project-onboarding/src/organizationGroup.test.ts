@@ -13,6 +13,7 @@ import {
   organizationSubject,
   requestGroupKey,
   requestGroupOf,
+  requestGroupReview,
   requestGroupReviewOf,
   requestGroupSiblings,
   sameQuestion,
@@ -82,6 +83,27 @@ describe('organization groups', () => {
       name: 'Apache HugeGraph',
       repositories: 5,
     })
+  })
+
+  it('lists the repositories and the confidence of a project group under review', () => {
+    const lead = {
+      ...projectRows[0],
+      requestHints: { ...projectRows[0].requestHints, confidence: 0.9 },
+    }
+    expect(requestGroupReview(lead, [projectRows[1], projectRows[2]])).toEqual({
+      owner: 'apache',
+      name: 'Apache HugeGraph',
+      repositories: 3,
+      repoUrls: [
+        'https://github.com/apache/hugegraph',
+        'https://github.com/apache/hugegraph-ai',
+        'https://github.com/apache/hugegraph-doc',
+      ],
+      confidence: 0.9,
+    })
+    expect(requestGroupReview(projectRows[0], [projectRows[1]])).toMatchObject({ confidence: null })
+    expect(requestGroupReview(rows[0], [rows[1]])).toEqual({ owner: 'openbmc', repositories: 2 })
+    expect(requestGroupReview(rows[0], [])).toBeNull()
   })
 
   it('only folds siblings that carry the same proposal or the same question', () => {

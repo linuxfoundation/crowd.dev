@@ -65,6 +65,8 @@ export interface IRequestHints {
   organization?: string
   project?: string
   mainRepoUrl?: string
+  suggestedSlug?: string
+  confidence?: number
 }
 
 export type RequestQuestionKind = 'did_you_mean' | 'lf_conflict' | 'lf_confirm' | 'pick_project'
