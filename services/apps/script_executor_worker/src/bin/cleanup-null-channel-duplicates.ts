@@ -2654,7 +2654,8 @@ function installSignalHandlers(log: Log): void {
 }
 
 async function main(): Promise<number> {
-  // pnpm 11 passes a `--` after the script name through to the script
+  // pnpm passes every argument after the script name to it, a `--` too:
+  // https://pnpm.io/cli/run#options
   const argv = process.argv.slice(2)
   const [command, ...args] = argv[0] === '--' ? argv.slice(1) : argv
   if (!command || command === '--help' || command === '-h' || args.includes('--help')) {
