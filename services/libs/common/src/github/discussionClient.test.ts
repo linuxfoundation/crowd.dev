@@ -112,8 +112,9 @@ describe('discussion comments', () => {
           graphqlResponse({ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible' }] }),
         ),
     )
-    await expect(addGithubDiscussionComment('D_1', 'x', 'tok')).rejects.toThrow(
-      'Resource not accessible',
-    )
+    await expect(addGithubDiscussionComment('D_1', 'x', 'tok')).rejects.toMatchObject({
+      kind: 'AUTH',
+      message: expect.stringContaining('Resource not accessible'),
+    })
   })
 })

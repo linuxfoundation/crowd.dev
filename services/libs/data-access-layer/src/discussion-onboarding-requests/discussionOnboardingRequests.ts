@@ -30,6 +30,23 @@ export async function upsertDiscussionOnboardingRequest(
   )
 }
 
+// Replaces a comment that was deleted on GitHub without reopening the done notice.
+export async function replaceDiscussionOnboardingRequestComment(
+  qx: QueryExecutor,
+  sourceUrl: string,
+  commentId: string,
+): Promise<IDbDiscussionOnboardingRequest> {
+  return qx.selectOne(
+    `
+    UPDATE "discussionOnboardingRequests"
+    SET "commentId" = $(commentId), "updatedAt" = NOW()
+    WHERE "sourceUrl" = $(sourceUrl)
+    RETURNING ${prepareSelectColumns(COLUMNS)}
+    `,
+    { sourceUrl, commentId },
+  )
+}
+
 export async function findDiscussionOnboardingRequest(
   qx: QueryExecutor,
   sourceUrl: string,

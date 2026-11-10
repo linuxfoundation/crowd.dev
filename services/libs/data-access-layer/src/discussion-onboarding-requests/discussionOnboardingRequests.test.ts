@@ -5,6 +5,7 @@ import { withQx } from '@crowd/test-kit/db'
 import {
   claimDiscussionOnboardingRequestDone,
   findDiscussionOnboardingRequest,
+  replaceDiscussionOnboardingRequestComment,
   upsertDiscussionOnboardingRequest,
 } from './discussionOnboardingRequests'
 
@@ -52,5 +53,20 @@ describe('discussionOnboardingRequests', () => {
 
     expect(replaced.commentId).toBe('DC_2')
     expect(await claimDiscussionOnboardingRequestDone(qx, sourceUrl)).toBe(true)
+  })
+
+  test('replacing a deleted comment keeps the done notice', async ({ qx }) => {
+    await upsertDiscussionOnboardingRequest(qx, {
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+    })
+    await claimDiscussionOnboardingRequestDone(qx, sourceUrl)
+
+    const replaced = await replaceDiscussionOnboardingRequestComment(qx, sourceUrl, 'DC_2')
+
+    expect(replaced.commentId).toBe('DC_2')
+    expect(replaced.doneNotifiedAt).not.toBeNull()
+    expect(await claimDiscussionOnboardingRequestDone(qx, sourceUrl)).toBe(false)
   })
 })

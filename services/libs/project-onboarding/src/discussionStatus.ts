@@ -16,6 +16,7 @@ import {
   findDiscussionOnboardingRequest,
   findProjectCatalogBySourceUrl,
   lockDiscussionOnboardingRequest,
+  replaceDiscussionOnboardingRequestComment,
   upsertDiscussionOnboardingRequest,
 } from '@crowd/data-access-layer'
 import {
@@ -27,6 +28,8 @@ import { getServiceLogger } from '@crowd/logging'
 import { describeDecisionReason, reviewGroupLabel } from '@crowd/slack'
 
 import { BotStatus, STATUS } from './botCopy'
+import { buildInsightsProjectUrl, truncateReason } from './botThreadReply'
+import { findOnboardedInsightsProject } from './onboardedProjectLookup'
 import { requestGroupReviewOf } from './organizationGroup'
 import {
   RequestStatusRow,
@@ -44,6 +47,8 @@ const MAX_REASON_LENGTH = 160
 
 type DiscussionRequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
 
+export type DiscussionStatusRow = RequestStatusRow & { insightsSlug?: string | null }
+
 export interface IDiscussionCommentClient {
   fetchDiscussionId: (ref: IGithubDiscussionRef) => Promise<string>
   addComment: (discussionId: string, body: string) => Promise<IGithubDiscussionComment>
@@ -59,11 +64,12 @@ function tokenClient(): IDiscussionCommentClient {
   }
 }
 
+function escapeGithubMarkdown(text: string): string {
+  return text.replace(/[\\`*_[\]<>]/g, '\\$&')
+}
+
 function plainReason(reason: string): string {
-  const trimmed = reason.trim().replace(/[. ]+$/, '')
-  return trimmed.length > MAX_REASON_LENGTH
-    ? `${trimmed.slice(0, MAX_REASON_LENGTH).trimEnd()}…`
-    : trimmed
+  return escapeGithubMarkdown(truncateReason(reason, MAX_REASON_LENGTH))
 }
 
 function repoMarkdown(repoUrl: string): string {
@@ -71,24 +77,44 @@ function repoMarkdown(repoUrl: string): string {
   return canonical?.isGithub ? `[${canonical.owner}/${canonical.repo}](${canonical.url})` : repoUrl
 }
 
-function notAddedDetail(row: RequestStatusRow): string {
+function reviewNote(note: string | null): string {
+  const trimmed = note
+    ?.trim()
+    .split(/\s*\n\s*/)
+    .join(' ')
+  return trimmed ? ` — ${escapeGithubMarkdown(trimmed)}` : ''
+}
+
+function notAddedDetail(row: DiscussionStatusRow): string {
   if (row.reviewedBy && isReviewRejectionSkipReason(row.skipReason)) {
     const reason = describeDecisionReason(row.decisionReason)
-    return reason
+    const verdict = reason
       ? `the CDP team reviewed it: ${reason}`
       : 'the CDP team reviewed it and rejected the request'
+    return `${verdict}${reviewNote(row.decisionNote)}`
   }
   return plainReason(row.skipReason ?? row.evaluationReason ?? 'no reason was recorded')
 }
 
-function statusDetail(status: BotStatus, row: RequestStatusRow): string {
+function addedDetail(row: DiscussionStatusRow): string {
+  if (!row.matchedProjectName) {
+    return 'added'
+  }
+  const name = escapeGithubMarkdown(row.matchedProjectName)
+  const project = row.insightsSlug
+    ? `[${name}](${buildInsightsProjectUrl(row.insightsSlug)})`
+    : name
+  return `added to **${project}**`
+}
+
+function statusDetail(status: BotStatus, row: DiscussionStatusRow): string {
   switch (status) {
     case 'withTeam':
       return `with the CDP team${row.reviewReason ? `: ${plainReason(row.reviewReason)}` : ''}`
     case 'needsInput':
       return 'waiting for input'
     case 'added':
-      return `added${row.matchedProjectName ? ` to **${row.matchedProjectName}**` : ''}`
+      return addedDetail(row)
     case 'alreadyThere':
       return 'already in LFX Insights'
     case 'notAdded':
@@ -100,12 +126,12 @@ function statusDetail(status: BotStatus, row: RequestStatusRow): string {
   }
 }
 
-function rowLine(row: RequestStatusRow, indent = ''): string {
+function rowLine(row: DiscussionStatusRow, indent = ''): string {
   const status = rowStatus(row)
   return `${indent}- ${STATUS[status]} ${repoMarkdown(row.repoUrl)} · ${statusDetail(status, row)}`
 }
 
-function sharedDetail(rows: RequestStatusRow[]): string | null {
+function sharedDetail(rows: DiscussionStatusRow[]): string | null {
   const statuses = new Set(rows.map(rowStatus))
   if (statuses.size !== 1) {
     return null
@@ -115,7 +141,7 @@ function sharedDetail(rows: RequestStatusRow[]): string | null {
   return details.size === 1 ? `${STATUS[status]} ${[...details][0]}` : null
 }
 
-function groupLines(rows: RequestStatusRow[]): string[] {
+function groupLines(rows: DiscussionStatusRow[]): string[] {
   const review = requestGroupReviewOf(rows[0], rows.length - 1)
   if (!review) {
     return rows.map((row) => rowLine(row))
@@ -128,7 +154,7 @@ function groupLines(rows: RequestStatusRow[]): string[] {
   return [heading, ...members]
 }
 
-export function buildDiscussionStatusMarkdown(rows: RequestStatusRow[]): string {
+export function buildDiscussionStatusMarkdown(rows: DiscussionStatusRow[]): string {
   const lines = [TITLE, '', ...groupByRequestGroup(rows).flatMap(groupLines)]
   const summary = requestSummaryLine(rows)
   if (rows.length > 1 && summary) {
@@ -146,6 +172,10 @@ export function buildDiscussionAllDoneMarkdown(rows: RequestStatusRow[]): string
 
 function isMissingComment(err: unknown): boolean {
   return err instanceof GithubPublicClientError && err.kind === 'NOT_FOUND'
+}
+
+function isSetupError(err: unknown): boolean {
+  return err instanceof GithubPublicClientError && (err.kind === 'CONFIG' || err.kind === 'AUTH')
 }
 
 async function editComment(
@@ -176,23 +206,59 @@ async function writeStatusComment(
   if (status && (await editComment(client, status.commentId, body))) {
     return status
   }
-  const discussionId = status?.discussionId ?? (await client.fetchDiscussionId(ref))
+  if (status) {
+    const replacement = await client.addComment(status.discussionId, body)
+    return replaceDiscussionOnboardingRequestComment(qx, sourceUrl, replacement.id)
+  }
+  const discussionId = await client.fetchDiscussionId(ref)
   const comment = await client.addComment(discussionId, body)
   return upsertDiscussionOnboardingRequest(qx, { sourceUrl, discussionId, commentId: comment.id })
 }
 
-// Runs under the request lock, so the claim can safely follow the post: a failed post stays
-// unclaimed and is retried by the next refresh.
+async function withInsightsProjectNames(
+  qx: QueryExecutor,
+  rows: IDbProjectCatalog[],
+): Promise<DiscussionStatusRow[]> {
+  const projects = new Map<string, Awaited<ReturnType<typeof findOnboardedInsightsProject>>>()
+  const named: DiscussionStatusRow[] = []
+  for (const row of rows) {
+    if (row.action !== 'onboarded' || !row.matchedSegmentId) {
+      named.push(row)
+      continue
+    }
+    if (!projects.has(row.matchedSegmentId)) {
+      projects.set(row.matchedSegmentId, await findOnboardedInsightsProject(qx, row))
+    }
+    const project = projects.get(row.matchedSegmentId) ?? null
+    named.push({
+      ...row,
+      matchedProjectName: row.matchedProjectName ?? project?.name ?? null,
+      insightsSlug: project?.slug ?? null,
+    })
+  }
+  return named
+}
+
+// The status comment is already stored when this runs, so a failed "all done" post only logs:
+// the done claim stays open and the next refresh posts it again, without a second status comment.
 async function announceAllDone(
   qx: QueryExecutor,
   status: IDbDiscussionOnboardingRequest,
-  rows: RequestStatusRow[],
+  rows: DiscussionStatusRow[],
   client: IDiscussionCommentClient,
 ): Promise<void> {
   if (status.doneNotifiedAt) {
     return
   }
-  await client.addComment(status.discussionId, buildDiscussionAllDoneMarkdown(rows))
+  try {
+    await client.addComment(status.discussionId, buildDiscussionAllDoneMarkdown(rows))
+  } catch (err) {
+    log.warn(
+      { sourceUrl: status.sourceUrl, error: getErrorMessage(err) },
+      'All-done comment was not posted on the discussion.',
+    )
+    return
+  }
   await claimDiscussionOnboardingRequestDone(qx, status.sourceUrl)
 }
 
@@ -211,10 +277,11 @@ export async function refreshDiscussionStatusComment(
     const commentClient = client ?? tokenClient()
     return await qx.tx(async (tx) => {
       await lockDiscussionOnboardingRequest(tx, sourceUrl)
-      const rows = await findProjectCatalogBySourceUrl(tx, sourceUrl)
-      if (rows.length === 0) {
+      const catalogRows = await findProjectCatalogBySourceUrl(tx, sourceUrl)
+      if (catalogRows.length === 0) {
         return false
       }
+      const rows = await withInsightsProjectNames(tx, catalogRows)
       const status = await writeStatusComment(
         tx,
         ref,
@@ -228,10 +295,20 @@ export async function refreshDiscussionStatusComment(
       return true
     })
   } catch (err) {
-    log.warn(
-      { id: request.id, repoUrl: request.repoUrl, sourceUrl, error: getErrorMessage(err) },
-      'Discussion status comment was not updated.',
-    )
+    const context = {
+      id: request.id,
+      repoUrl: request.repoUrl,
+      sourceUrl,
+      error: getErrorMessage(err),
+    }
+    if (isSetupError(err)) {
+      log.error(
+        context,
+        'Discussion status comment was not updated: GitHub token is missing, rejected or denied access.',
+      )
+    } else {
+      log.warn(context, 'Discussion status comment was not updated.')
+    }
     return false
   }
 }

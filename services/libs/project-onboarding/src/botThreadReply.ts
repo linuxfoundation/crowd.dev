@@ -56,11 +56,13 @@ function stripTrailingPeriods(text: string): string {
   return text.slice(0, end)
 }
 
-export function formatReason(reason: string): string {
+export function truncateReason(reason: string, maxLength = MAX_REASON_LENGTH): string {
   const trimmed = stripTrailingPeriods(reason.trim())
-  const truncated =
-    trimmed.length > MAX_REASON_LENGTH ? `${trimmed.slice(0, MAX_REASON_LENGTH)}…` : trimmed
-  return escapeSlackText(truncated)
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength).trimEnd()}…` : trimmed
+}
+
+export function formatReason(reason: string): string {
+  return escapeSlackText(truncateReason(reason))
 }
 
 function reply(...lines: string[]): string {

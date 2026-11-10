@@ -7,14 +7,17 @@ vi.mock('@crowd/data-access-layer', () => ({
   findDiscussionOnboardingRequest: vi.fn(),
   findProjectCatalogBySourceUrl: vi.fn(),
   lockDiscussionOnboardingRequest: vi.fn(),
+  replaceDiscussionOnboardingRequestComment: vi.fn(),
   upsertDiscussionOnboardingRequest: vi.fn(),
 }))
+vi.mock('./onboardedProjectLookup', () => ({ findOnboardedInsightsProject: vi.fn() }))
 
 import {
   claimDiscussionOnboardingRequestDone,
   findDiscussionOnboardingRequest,
   findProjectCatalogBySourceUrl,
   lockDiscussionOnboardingRequest,
+  replaceDiscussionOnboardingRequestComment,
   upsertDiscussionOnboardingRequest,
 } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
@@ -26,6 +29,7 @@ import {
   buildDiscussionStatusMarkdown,
   refreshDiscussionStatusComment,
 } from './discussionStatus'
+import { findOnboardedInsightsProject } from './onboardedProjectLookup'
 import { RequestStatusRow } from './requestStatus'
 
 const sourceUrl = 'https://github.com/linuxfoundation/insights/discussions/2496'
@@ -119,6 +123,39 @@ describe('buildDiscussionStatusMarkdown', () => {
       '- 🚫 [acme/two](https://github.com/acme/two) · not added: it is a fork',
     )
     expect(markdown).not.toContain('<@U1>')
+    expect(
+      buildDiscussionStatusMarkdown([
+        row({
+          repoUrl: 'https://github.com/acme/one',
+          action: 'skip',
+          skipReason: 'rejected in review by U1',
+          reviewedBy: 'U1',
+          decisionReason: 'other',
+          decisionNote: 'This is a mirror,\nthe source lives on GitLab.',
+        }),
+      ]),
+    ).toContain('reviewed it: Other — This is a mirror, the source lives on GitLab.')
+    expect(
+      buildDiscussionStatusMarkdown([
+        {
+          ...row({
+            repoUrl: 'https://github.com/acme/one',
+            action: 'onboarded',
+            matchedProjectName: 'Acme',
+          }),
+          insightsSlug: 'acme',
+        },
+      ]),
+    ).toContain('added to **[Acme](https://insights.linuxfoundation.org/project/acme)**')
+    expect(
+      buildDiscussionStatusMarkdown([
+        row({
+          repoUrl: 'https://github.com/acme/one',
+          action: 'skip',
+          skipReason: '[x] mirror of `acme_core`',
+        }),
+      ]),
+    ).toContain('not added: \\[x\\] mirror of \\`acme\\_core\\`')
     expect(markdown).not.toContain('Updated automatically')
     expect(buildDiscussionAllDoneMarkdown([row({ repoUrl: 'u', action: 'skip' })])).toBe(
       '✅ All done: 1 not added.',
@@ -145,6 +182,58 @@ describe('refreshDiscussionStatusComment', () => {
     vi.clearAllMocks()
     vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue(rows)
     vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue(null)
+    vi.mocked(findOnboardedInsightsProject).mockResolvedValue(null)
+    vi.mocked(replaceDiscussionOnboardingRequestComment).mockImplementation(
+      async (_qx, url, commentId) => ({
+        sourceUrl: url,
+        discussionId: 'D_1',
+        commentId,
+        doneNotifiedAt: null,
+        createdAt: '2026-11-10T10:00:00Z',
+        updatedAt: '2026-11-10T10:00:00Z',
+      }),
+    )
+    vi.mocked(upsertDiscussionOnboardingRequest).mockImplementation(async (_qx, data) => ({
+      ...data,
+      doneNotifiedAt: null,
+      createdAt: '2026-11-10T10:00:00Z',
+      updatedAt: '2026-11-10T10:00:00Z',
+    }))
+  })
+
+  it('names a new project from its Insights project when the row has no name', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...rows[0], matchedSegmentId: 'seg-1', matchedProjectName: null },
+    ] as IDbProjectCatalog[])
+    vi.mocked(findOnboardedInsightsProject).mockResolvedValue({ name: 'Acme', slug: 'acme' })
+
+    await refreshDiscussionStatusComment(qx, request, client)
+
+    expect(client.addComment).toHaveBeenCalledWith(
+      'D_1',
+      expect.stringContaining(
+        'added to **[Acme](https://insights.linuxfoundation.org/project/acme)**',
+      ),
+    )
+  })
+
+  it('keeps the stored status comment when the all-done post fails', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...rows[0] },
+      { ...rows[1], action: 'skip' },
+    ] as IDbProjectCatalog[])
+    vi.mocked(client.addComment)
+      .mockResolvedValueOnce({ id: 'DC_new', url: 'https://github.com/c/1' })
+      .mockRejectedValueOnce(new Error('secondary rate limit'))
+
+    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+
+    expect(upsertDiscussionOnboardingRequest).toHaveBeenCalledWith(qx, {
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_new',
+    })
+    expect(claimDiscussionOnboardingRequestDone).not.toHaveBeenCalled()
   })
 
   it('creates the status comment on the first refresh and remembers it', async () => {
@@ -202,11 +291,8 @@ describe('refreshDiscussionStatusComment', () => {
 
     expect(client.fetchDiscussionId).not.toHaveBeenCalled()
     expect(client.addComment).toHaveBeenCalledWith('D_1', expect.stringContaining('acme/one'))
-    expect(upsertDiscussionOnboardingRequest).toHaveBeenCalledWith(qx, {
-      sourceUrl,
-      discussionId: 'D_1',
-      commentId: 'DC_new',
-    })
+    expect(replaceDiscussionOnboardingRequestComment).toHaveBeenCalledWith(qx, sourceUrl, 'DC_new')
+    expect(upsertDiscussionOnboardingRequest).not.toHaveBeenCalled()
   })
 
   it('ignores rows without a discussion origin and reports a failed GitHub call', async () => {

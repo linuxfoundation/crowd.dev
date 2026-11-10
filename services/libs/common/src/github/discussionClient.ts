@@ -2,6 +2,7 @@ import { assertAuthenticated, assertNotRateLimited, doFetch, readJson } from './
 import { GithubPublicClientError, GithubPublicClientErrorKind } from './types'
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
+const GITHUB_GRAPHQL_TIMEOUT_MS = 10_000
 const DISCUSSION_URL_PATTERN =
   /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/discussions\/(\d+)\/?$/
 
@@ -44,12 +45,18 @@ interface IGraphqlResponse<T> {
   errors?: IGraphqlError[]
 }
 
+const GRAPHQL_ERROR_KINDS: Record<string, GithubPublicClientErrorKind> = {
+  NOT_FOUND: 'NOT_FOUND',
+  RATE_LIMITED: 'RATE_LIMIT',
+  FORBIDDEN: 'AUTH',
+  INSUFFICIENT_SCOPES: 'AUTH',
+}
+
 function graphqlErrorKind(errors: IGraphqlError[]): GithubPublicClientErrorKind {
-  if (errors.some((error) => error.type === 'NOT_FOUND')) {
-    return 'NOT_FOUND'
-  }
-  if (errors.some((error) => error.type === 'RATE_LIMITED')) {
-    return 'RATE_LIMIT'
+  for (const [type, kind] of Object.entries(GRAPHQL_ERROR_KINDS)) {
+    if (errors.some((error) => error.type === type)) {
+      return kind
+    }
   }
   return 'TRANSIENT'
 }
@@ -62,6 +69,7 @@ async function graphql<T>(
 ): Promise<T> {
   const response = await doFetch(GITHUB_GRAPHQL_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(GITHUB_GRAPHQL_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
