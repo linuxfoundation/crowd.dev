@@ -1,8 +1,9 @@
 DESCRIPTION >
     - `cncf_organization_countries_monthly_copy.pipe` materializes `cncf_organization_countries_monthly_ds` from `cncf_collection_activities_ds`: one row per month, organization and country.
     - An organization's country comes from its place (country, else location) matched against `country_mapping_ds` names. A place can match several countries; a match whose name sits inside another match's name (Oman in Romania, Niger in Nigeria) is dropped.
+    - Organizations that can't appear in reports (`organizationListed` is 0) are left out, as in the `cncf_country_*` pipes.
     - Matching runs once per distinct place, about a thousand, instead of once per organization and period on every request.
-    - Activities dated 1980 or earlier are placeholder timestamps and are left out.
+    - Activities dated before 1980 are placeholder timestamps (the 1970 epoch) and are left out.
     - Runs daily at 11:50 UTC, after `cncf_collection_activities_copy.pipe` (11:30 UTC, about 3 minutes) refreshes its source.
     - Full-replace, since the source is itself a daily full replace.
 
@@ -49,7 +50,11 @@ SQL >
         (
             SELECT DISTINCT toStartOfMonth(timestamp) AS month, organizationId, organizationPlace
             FROM cncf_collection_activities_ds
-            WHERE organizationId != '' AND organizationPlace != '' AND timestamp > '1980-01-01'
+            WHERE
+                organizationId != ''
+                AND organizationPlace != ''
+                AND organizationListed = 1
+                AND timestamp > '1980-01-01'
         ) AS a
     INNER JOIN cncf_organization_countries_monthly_copy_places AS p ON p.place = a.organizationPlace
 
