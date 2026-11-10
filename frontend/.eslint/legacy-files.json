@@ -1,23 +1,15 @@
 {
-  "vue/component-api-style": [
-    "src/modules/activity/components/activity-link.vue",
-    "src/modules/member/components/member-engagement-level.vue",
-    "src/modules/member/components/member-last-activity.vue",
-    "src/shared/avatar/avatar.vue",
-    "src/shared/svg/svg.vue"
-  ],
+  "vue/component-api-style": ["src/modules/member/components/member-last-activity.vue"],
   "vue/block-lang": [
     "src/config/integrations/gitlab/components/gitlab-params.vue",
     "src/config/integrations/twitter/components/twitter-settings-drawer.vue",
     "src/modules/activity/components/activity-icon.vue",
-    "src/modules/activity/components/activity-link.vue",
     "src/modules/admin/modules/projects/components/lf-sub-projects-list-modal.vue",
     "src/modules/admin/modules/projects/pages/project-groups-list.page.vue",
     "src/modules/lf/segments/components/filter/lf-project-filter-button.vue",
     "src/modules/member/components/bulk/bulk-edit-attribute-popover.vue",
     "src/modules/member/components/form/member-form-attributes.vue",
     "src/modules/member/components/form/member-form-global-attributes.vue",
-    "src/modules/member/components/member-engagement-level.vue",
     "src/modules/member/components/member-last-activity.vue",
     "src/modules/member/components/member-reach.vue",
     "src/modules/organization/components/form/organization-form-attributes.vue",
@@ -28,9 +20,7 @@
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number.vue",
     "src/modules/organization/pages/organization-form-page.vue",
-    "src/shared/avatar/avatar.vue",
     "src/shared/loading/page-loader.vue",
-    "src/shared/svg/svg.vue",
     "src/shared/tag/tag-list.vue"
   ],
   "vue/prefer-define-options": [
