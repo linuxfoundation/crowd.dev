@@ -15,7 +15,7 @@ export interface IDiscussionText {
 export interface IDiscussionRequest {
   repoUrls: string[]
   bareRepoUrls: string[]
-  linkedRepoUrls: number
+  linkedRepoCount: number
   unlistedRepoUrls: string[]
   projectName: string | null
   requestText: string | null
@@ -29,31 +29,36 @@ export function discussionHints(
   if (!parsed) {
     return new Map()
   }
-  const hints = requestHintsByRepoUrl(repoUrls, [], parsed)
-  if (parsed.declaredLf !== null) {
-    for (const repoUrl of repoUrls) {
-      if (!hints.has(repoUrl)) {
-        hints.set(repoUrl, { declaredLf: parsed.declaredLf })
-      }
+  const listed = requestHintsByRepoUrl(parsed.githubRepoUrls, [], parsed)
+  const listedSet = new Set(parsed.githubRepoUrls)
+  const mainRepoUrl = repoUrls.find((repoUrl) => listed.has(repoUrl))
+  const hints = new Map<string, IRequestHints>()
+  for (const repoUrl of repoUrls) {
+    const hint = listed.get(repoUrl)
+    if (hint) {
+      hints.set(repoUrl, { ...hint, mainRepoUrl })
+    } else if (parsed.declaredLf !== null && listedSet.has(repoUrl)) {
+      hints.set(repoUrl, { declaredLf: parsed.declaredLf })
     }
   }
   return hints
 }
 
-// A question about where the project belongs is answered at classification from the text, as
-// before; a parsed request is read once and its rows carry the name and the hints instead.
+function isClassifiedFromText(request: IParsedOnboardingRequest): boolean {
+  return request.githubRepoUrls.length === 0 || request.asksAboutHierarchy
+}
+
 export function toDiscussionRequest(
   discussion: IDiscussionText,
   parsed: ParseOnboardingRequestResult | null,
 ): IDiscussionRequest {
   const linked = extractDiscussionRepoUrls(discussion).repoUrls
   const request = parsed?.ok === true ? parsed.request : null
-  const repoUrls = request?.githubRepoUrls ?? []
-  if (!request || repoUrls.length === 0 || request.asksAboutHierarchy) {
+  if (!request || isClassifiedFromText(request)) {
     return {
       repoUrls: linked,
       bareRepoUrls: [],
-      linkedRepoUrls: linked.length,
+      linkedRepoCount: linked.length,
       unlistedRepoUrls: [],
       projectName: null,
       requestText: buildDiscussionRequestText(discussion),
@@ -61,13 +66,15 @@ export function toDiscussionRequest(
     }
   }
 
+  const listed = request.githubRepoUrls
   const linkedSet = new Set(linked)
-  const listedSet = new Set(repoUrls)
+  const listedSet = new Set(listed)
+  const unlistedRepoUrls = linked.filter((repoUrl) => !listedSet.has(repoUrl))
   return {
-    repoUrls,
-    bareRepoUrls: repoUrls.filter((repoUrl) => !linkedSet.has(repoUrl)),
-    linkedRepoUrls: linked.length,
-    unlistedRepoUrls: linked.filter((repoUrl) => !listedSet.has(repoUrl)),
+    repoUrls: listed,
+    bareRepoUrls: listed.filter((repoUrl) => !linkedSet.has(repoUrl)),
+    linkedRepoCount: linked.length,
+    unlistedRepoUrls,
     projectName: request.projectName,
     requestText: null,
     parsed: request,

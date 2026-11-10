@@ -40,22 +40,23 @@ describe('toDiscussionRequest', () => {
       'https://github.com/apache/hugegraph-commons',
       'https://github.com/apache/hugegraph-tools',
     ])
-    expect(request.linkedRepoUrls).toBe(2)
+    expect(request.linkedRepoCount).toBe(2)
     expect(request.unlistedRepoUrls).toEqual([])
     expect(request.projectName).toBe('Apache HugeGraph')
     expect(request.requestText).toBeNull()
     expect(request.parsed).toBe(parsed.request)
   })
 
-  it('names the linked repositories the parser left out', () => {
+  it('names the linked repositories the parser left out and leaves them out too', () => {
     const partial = {
       ...parsed,
       request: { ...parsed.request, githubRepoUrls: ['https://github.com/apache/hugegraph'] },
     }
 
-    expect(toDiscussionRequest(discussion, partial).unlistedRepoUrls).toEqual([
-      'https://github.com/apache/hugegraph-ai',
-    ])
+    const request = toDiscussionRequest(discussion, partial)
+
+    expect(request.unlistedRepoUrls).toEqual(['https://github.com/apache/hugegraph-ai'])
+    expect(request.repoUrls).toEqual(['https://github.com/apache/hugegraph'])
   })
 
   it('falls back to the linked repositories and keeps the text when the parse failed', () => {
@@ -90,9 +91,31 @@ describe('discussionHints', () => {
     expect(hints.has('https://github.com/apache/hugegraph')).toBe(false)
   })
 
+  it('keeps the group when the GitHub check leaves a single repository of it', () => {
+    const two = {
+      ...parsed.request,
+      githubRepoUrls: [
+        'https://github.com/apache/hugegraph-old',
+        'https://github.com/apache/hugegraph',
+      ],
+    }
+
+    expect(
+      discussionHints(['https://github.com/apache/hugegraph'], two).get(
+        'https://github.com/apache/hugegraph',
+      ),
+    ).toEqual({
+      project: 'Apache HugeGraph',
+      mainRepoUrl: 'https://github.com/apache/hugegraph',
+      suggestedSlug: 'apache-hugegraph',
+      confidence: 0.9,
+      declaredLf: false,
+    })
+  })
+
   it('keeps only the LF declaration as a hint for a single repository', () => {
-    const single = { ...parsed.request, declaredLf: true }
     const repoUrl = 'https://github.com/apache/hugegraph'
+    const single = { ...parsed.request, githubRepoUrls: [repoUrl], declaredLf: true }
 
     expect(discussionHints([repoUrl], single).get(repoUrl)).toEqual({ declaredLf: true })
     expect(discussionHints([repoUrl], { ...single, declaredLf: null }).size).toBe(0)

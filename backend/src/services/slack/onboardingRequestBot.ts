@@ -486,6 +486,7 @@ export async function runOnboardingRequestBot({
       projectName: parsed?.projectName ?? null,
       suggestedSlug: parsed?.suggestedSlug ?? null,
       confidence: parsed?.confidence ?? null,
+      declaredLf: parsed?.declaredLf ?? null,
     }
     const notes = [
       ...missingLines,

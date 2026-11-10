@@ -1,7 +1,6 @@
 import https from 'https'
 import { Readable } from 'stream'
 
-import { getErrorMessage } from '@crowd/common'
 import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
 import { IRequestHints } from '@crowd/data-access-layer/src/project-catalog/types'
 import { getServiceLogger } from '@crowd/logging'
@@ -196,15 +195,13 @@ interface IDiscussionRepoUrlRef {
   requestHints: IRequestHints | null
 }
 
+// A parse the model may answer later fails the activity, so Temporal retries the whole walk
+// with backoff: falling back here would catalogue the discussion ungrouped and never revisit it.
 async function parseDiscussion(
   discussion: IDiscussionText & { number: number },
   parseRequest: DiscussionRequestParser,
 ): Promise<ParseOnboardingRequestResult | null> {
-  const parsed = await parseRequest(buildDiscussionRequestText(discussion)).catch((err) => {
-    throw new Error(
-      `Insights Discussions: parsing discussion #${discussion.number} failed: ${getErrorMessage(err)}`,
-    )
-  })
+  const parsed = await parseRequest(buildDiscussionRequestText(discussion))
   if (parsed.ok === true) {
     return parsed
   }
@@ -302,7 +299,8 @@ async function fetchAllDiscussionRepoUrls(
         request.bareRepoUrls,
         deps.lookupRepository,
       )
-      const hintsByRepoUrl = discussionHints(repoUrls, request.parsed)
+      const fresh = repoUrls.filter((repoUrl) => !refsByRepoUrl.has(repoUrl))
+      const hintsByRepoUrl = discussionHints(fresh, request.parsed)
 
       if (repoUrls.length === 0) {
         discussionsWithoutRefs++
@@ -317,24 +315,22 @@ async function fetchAllDiscussionRepoUrls(
           number: discussion.number,
           closed: discussion.closed,
           candidates: repoUrls.length,
-          linked: request.linkedRepoUrls,
+          linked: request.linkedRepoCount,
           projectName: request.projectName,
           grouped: hintsByRepoUrl.size,
         },
         'Insights Discussions: discussion processed.',
       )
 
-      for (const repoUrl of repoUrls) {
-        if (!refsByRepoUrl.has(repoUrl)) {
-          refsByRepoUrl.set(repoUrl, {
-            repoUrl,
-            discussionNumber: discussion.number,
-            discussionUrl: discussion.url,
-            requestText: request.requestText,
-            projectName: request.projectName,
-            requestHints: hintsByRepoUrl.get(repoUrl) ?? null,
-          })
-        }
+      for (const repoUrl of fresh) {
+        refsByRepoUrl.set(repoUrl, {
+          repoUrl,
+          discussionNumber: discussion.number,
+          discussionUrl: discussion.url,
+          requestText: request.requestText,
+          projectName: request.projectName,
+          requestHints: hintsByRepoUrl.get(repoUrl) ?? null,
+        })
       }
 
       deps.heartbeat({ discussionsSeen, totalUniqueUrls: refsByRepoUrl.size })

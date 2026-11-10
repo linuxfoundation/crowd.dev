@@ -59,8 +59,6 @@ export function ingestProjectGroup(
   return grouped.length > 1 ? { name: grouped[0], repositories: grouped.length } : null
 }
 
-// A discussion that listed several repositories is always decided by a person, even when only
-// one of them is left to onboard; a single-repository discussion keeps the automatic path.
 export function isReviewedDiscussionGroup(row: {
   provenance?: ProjectCatalogProvenance | null
   requestHints?: IDbProjectCatalog['requestHints']
