@@ -5,6 +5,7 @@ DESCRIPTION >
     - **When `granularity` is provided, returns time-series data** showing patchsets per review aggregated by different time periods (daily, weekly, monthly, quarterly, yearly).
     - Uses `generate_timeseries` pipe to create consistent time periods and left joins PR data to handle periods with no data.
     - Only includes Gerrit changesets with patchset data (`platform = 'gerrit'` and `isNotNull(numberOfPatchsets)`) to ensure accurate calculations.
+    - Reads only segments that have a Gerrit repository, so projects and collections without Gerrit skip their pull requests entirely.
     - Primary use case: analyzing code review iteration patterns and review efficiency specifically for Gerrit changesets.
     - Parameters:
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
@@ -18,6 +19,55 @@ DESCRIPTION >
     - With granularity: `startDate`, `endDate`, and `patchsetsPerReview` for each time period
 
 TAGS "Development metrics", "Widget", "Pull requests", "Code review", "Gerrit"
+
+NODE patchsets_per_review_gerrit_segments
+DESCRIPTION >
+    Segments with an enabled repository connected through a Gerrit integration, the only ones that hold Gerrit changesets.
+
+SQL >
+    SELECT DISTINCT r.segmentId AS segmentId
+    FROM repositories r FINAL
+    INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE i.platform = 'gerrit' AND isNull (r.deletedAt) AND r.enabled = true
+
+NODE patchsets_per_review_changesets
+DESCRIPTION >
+    Gerrit changesets with patchsets that `pull_requests_filtered` would return, read from `pull_requests_analyzed` directly so the Gerrit segment filter prunes its segment-sorted scan.
+
+SQL >
+    %
+    SELECT openedAt, numberOfPatchsets
+    FROM pull_requests_analyzed
+    WHERE
+        segmentId IN (SELECT segmentId FROM patchsets_per_review_gerrit_segments)
+        {% if defined(collectionSlug) %}
+            AND segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} AND segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
+        AND channel IN (SELECT channel FROM repos_to_channels)
+        AND platform = 'gerrit'
+        AND isNotNull(numberOfPatchsets)
+        AND numberOfPatchsets > 0
+        {% if defined(startDate) %}
+            AND openedAt
+            >= {{
+                DateTime(
+                    startDate,
+                    description="Filter changesets opened after this timestamp",
+                    required=False,
+                )
+            }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND openedAt
+            <= {{
+                DateTime(
+                    endDate,
+                    description="Filter changesets opened before this timestamp",
+                    required=False,
+                )
+            }}
+        {% end %}
 
 NODE timeseries_generation_for_patchsets_per_review
 SQL >
@@ -34,7 +84,7 @@ SQL >
             {% end %}
         FROM generate_timeseries ds
         LEFT JOIN
-            pull_requests_filtered prf
+            patchsets_per_review_changesets prf
             ON CASE
                 WHEN {{ granularity }} = 'daily'
                 THEN toDate(prf.openedAt)
@@ -48,29 +98,6 @@ SQL >
                 THEN toStartOfYear(prf.openedAt)
             END
             = ds."startDate"
-            AND prf.platform = 'gerrit'
-            AND isNotNull(prf.numberOfPatchsets)
-            AND prf.numberOfPatchsets > 0
-            {% if defined(startDate) %}
-                AND prf.openedAt
-                >= {{
-                    DateTime(
-                        startDate,
-                        description="Filter changesets opened after this timestamp",
-                        required=False,
-                    )
-                }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND prf.openedAt
-                <= {{
-                    DateTime(
-                        endDate,
-                        description="Filter changesets opened before this timestamp",
-                        required=False,
-                    )
-                }}
-            {% end %}
         GROUP BY ds."startDate", ds."endDate"
         ORDER BY ds."startDate"
     {% else %} SELECT 1
@@ -87,28 +114,6 @@ SQL >
                 round(avg(prf.numberOfPatchsets), 2) AS "patchsetsPerReview"
             {% else %} round(median(prf.numberOfPatchsets), 2) AS "patchsetsPerReview"
             {% end %}
-        FROM pull_requests_filtered prf
-        WHERE
-            prf.platform = 'gerrit' AND isNotNull(prf.numberOfPatchsets) AND prf.numberOfPatchsets > 0
-            {% if defined(startDate) %}
-                AND prf.openedAt
-                >= {{
-                    DateTime(
-                        startDate,
-                        description="Filter changesets opened after this timestamp",
-                        required=False,
-                    )
-                }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND prf.openedAt
-                <= {{
-                    DateTime(
-                        endDate,
-                        description="Filter changesets opened before this timestamp",
-                        required=False,
-                    )
-                }}
-            {% end %}
+        FROM patchsets_per_review_changesets prf
     {% else %} SELECT * FROM timeseries_generation_for_patchsets_per_review
     {% end %}
