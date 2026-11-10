@@ -38,7 +38,9 @@ The service records the status, error code and duration as a service execution w
 For the repository at the path given as the only argument, the binary:
 
 1. Reads the `origin` remote with `git remote get-url origin` and rewrites `git@`, `ssh://git@`
-   and `http://` URLs to `https://`. This URL is the key in both tables.
+   and `http://` URLs to `https://`. It drops a trailing `.git`, which the clone adds, so the URL
+   matches `repositories.url`, the column the Tinybird pipes join on. This URL is the key in both
+   tables.
 2. Runs `scc --format=short` and parses the COCOMO line "Estimated Cost to Develop" into a
    dollar amount. A cost of zero fails the run with `NO_COST_FOUND` and saves nothing.
 3. Runs `scc --format=json` for per-language counts: bytes, code bytes, lines, code, comment and
