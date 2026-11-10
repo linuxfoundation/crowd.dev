@@ -2,6 +2,7 @@ import { Readable } from 'stream'
 
 import { IDiscoverySourceCursor } from '@crowd/data-access-layer/src/discovery/types'
 import {
+  IRequestHints,
   ProjectCatalogAction,
   ProjectCatalogProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
@@ -39,7 +40,9 @@ export interface IDiscoverySourceRow {
   repoName: string
   repoUrl: string
   sourceUrl?: string
-  requestText?: string
+  requestText?: string | null
+  projectName?: string | null
+  requestHints?: IRequestHints | null
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }

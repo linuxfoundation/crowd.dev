@@ -10,6 +10,7 @@ import {
 import { IReviewOrganization, reviewGroupLabel, repositoriesWord } from '@crowd/slack'
 
 import { deriveOrganizationProjectNameCandidates } from './onboarder'
+import { isReviewedDiscussionGroup } from './requestHints'
 import { OnboardingResolution } from './requestResolver'
 
 export interface IRoutingOptions {
@@ -97,7 +98,8 @@ export interface IEvaluationRoute {
   reviewReason: string | null
 }
 
-type EvaluatedRow = Pick<IDbProjectCatalog, 'provenance' | 'projectName' | 'repoName'>
+type EvaluatedRow = Pick<IDbProjectCatalog, 'provenance' | 'projectName' | 'repoName'> &
+  Partial<Pick<IDbProjectCatalog, 'requestHints'>>
 
 interface IEvaluationVerdict {
   outcome: ProjectEvaluationOutcome
@@ -138,6 +140,10 @@ export interface IEvaluationRoutingOptions {
   organization?: IReviewOrganization | null
 }
 
+function needsPersonForNewProject(row: EvaluatedRow, autoApply: boolean): boolean {
+  return (!autoApply && isSlackBotProvenance(row.provenance)) || isReviewedDiscussionGroup(row)
+}
+
 // With autoApply off a new project must not be onboarded without a person; the evaluator's
 // own errors are kept as error so the requester can retry them.
 export function routeEvaluationOutcome(
@@ -145,7 +151,7 @@ export function routeEvaluationOutcome(
   verdict: IEvaluationVerdict,
   { autoApply, organization = null }: IEvaluationRoutingOptions,
 ): IEvaluationRoute {
-  if (verdict.outcome === 'onboard' && !autoApply && isSlackBotProvenance(row.provenance)) {
+  if (verdict.outcome === 'onboard' && needsPersonForNewProject(row, autoApply)) {
     return { action: 'review', reviewReason: newProjectReviewReason(row, organization) }
   }
   if (verdict.evaluationResult === EVALUATION_ERROR_RESULT) {

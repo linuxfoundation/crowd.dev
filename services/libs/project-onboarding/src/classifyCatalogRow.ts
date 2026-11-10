@@ -14,6 +14,7 @@ import {
   ParsedRequestSource,
   resolveParsedRequest,
 } from './classifyRequest'
+import { isReviewedDiscussionGroup } from './requestHints'
 import { IParsedOnboardingRequest, parseOnboardingRequest } from './requestParser'
 import { OnboardingResolution } from './requestResolver'
 import { IRoutingOptions, routeResolution } from './routing'
@@ -184,12 +185,13 @@ export async function classifyCatalogRow(
     { canAsk },
   )
 
+  const autoApply = deps.autoApply && !isReviewedDiscussionGroup(row)
   return {
     resolution,
     trace,
     classification: {
       projectName: resolvedProjectName(row, trace),
-      ...toCatalogClassification(resolution, { autoApply: deps.autoApply, canAsk }),
+      ...toCatalogClassification(resolution, { autoApply, canAsk }),
     },
   }
 }

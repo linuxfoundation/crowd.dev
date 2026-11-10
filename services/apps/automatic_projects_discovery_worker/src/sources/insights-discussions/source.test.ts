@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { InsightsDiscussionsSource } from './source'
 
 describe('InsightsDiscussionsSource.parseRow', () => {
-  const source = new InsightsDiscussionsSource()
+  const source = new InsightsDiscussionsSource({
+    parseRequest: vi.fn(),
+    lookupRepository: vi.fn(),
+    heartbeat: vi.fn(),
+  })
 
   it('propagates discussionUrl as sourceUrl', () => {
     const result = source.parseRow({
@@ -21,6 +25,18 @@ describe('InsightsDiscussionsSource.parseRow', () => {
     })
 
     expect(result?.requestText).toBe('Please onboard https://github.com/foo/bar')
+  })
+
+  it('propagates the project name and the group hints of a parsed discussion', () => {
+    const requestHints = { project: 'Acme', mainRepoUrl: 'https://github.com/foo/bar' }
+    const result = source.parseRow({
+      repoUrl: 'https://github.com/foo/bar',
+      requestText: null,
+      projectName: 'Acme',
+      requestHints,
+    })
+
+    expect(result).toMatchObject({ requestText: null, projectName: 'Acme', requestHints })
   })
 
   it('leaves sourceUrl undefined when discussionUrl is missing', () => {
