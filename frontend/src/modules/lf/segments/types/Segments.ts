@@ -92,3 +92,5 @@ export interface SubProjectRequest {
 export interface CreateSubProjectRequest extends SubProjectRequest {
   segments: (string | null)[];
 }
+
+export type SegmentId = string | string[] | null;

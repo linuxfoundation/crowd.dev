@@ -46,7 +46,7 @@
                 v-if="item.memberOrganizations.affiliationOverride.isPrimaryWorkExperience"
                 :class="ii === 0 ? 'absolute -top-2 -right-2' : '-mt-0.5'"
               >
-                <lf-tooltip content="Affiliated organization/job title" placement="top-start">
+                <lf-tooltip content="Affiliated company/job title" placement="top-start">
                   <div
                     class=" border-2 border-white bg-secondary-500 rounded-full w-4.5 h-4.5 flex items-center justify-center"
                   >
@@ -136,6 +136,10 @@ import LfTimeline from '@/ui-kit/timeline/Timeline.vue';
 import LfTimelineItem from '@/ui-kit/timeline/TimelineItem.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsWorkHistory',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -167,10 +171,4 @@ const orgGrouped = computed(() => {
 });
 const minimumShownGroups = 3;
 const shownGroups = computed(() => orgGrouped.value.slice(0, showMore.value ? orgGrouped.value.length : minimumShownGroups));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsWorkHistory',
-};
 </script>

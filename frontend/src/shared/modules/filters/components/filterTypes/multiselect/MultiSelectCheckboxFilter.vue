@@ -23,6 +23,10 @@ import type {
 import LfFilterMultiSelectOption
   from '@/shared/modules/filters/components/partials/multiselect/FilterMultiSelectOption.vue';
 
+defineOptions({
+  name: 'LfMultiSelectCheckboxFilter',
+});
+
 const props = defineProps<{
   modelValue: string[],
   config: MultiSelectFilterConfig
@@ -34,10 +38,4 @@ const form = computed({
   get: () => props.modelValue,
   set: (value: string[]) => emit('update:modelValue', value),
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectCheckboxFilter',
-};
 </script>

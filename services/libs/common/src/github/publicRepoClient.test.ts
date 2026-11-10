@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  fetchCommitAuthor,
   fetchPublicOrgRepos,
   fetchPublicRepoMetrics,
   fetchPublicRepoReadme,
@@ -91,6 +92,62 @@ describe('fetchPublicOrgRepos', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })))
     await expect(fetchPublicOrgRepos('openbmc', 'token', 20)).rejects.toMatchObject({
       kind: 'RATE_LIMIT',
+    })
+  })
+})
+
+describe('fetchCommitAuthor', () => {
+  const repoUrl = 'https://github.com/Skyscanner/backpack'
+  const sha = '23c7f159facb86ed8a5bb87e1eb5332e9b60b338'
+
+  it('reports the repo as inaccessible when an org IP allow list refuses our token', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(403, {
+          message:
+            'Although you appear to have the correct authorization credentials, the `Skyscanner` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.',
+        }),
+      ),
+    )
+
+    expect(await fetchCommitAuthor(repoUrl, sha, 'tok')).toEqual({ status: 'repo-inaccessible' })
+  })
+
+  it('reports a bot account separately from a person', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          author: {
+            id: 29139614,
+            node_id: 'MDM6Qm90MjkxMzk2MTQ=',
+            login: 'renovate[bot]',
+            type: 'Bot',
+          },
+        }),
+      ),
+    )
+
+    expect(await fetchCommitAuthor(repoUrl, sha, 'tok')).toEqual({
+      status: 'bot-account',
+      account: { id: '29139614', nodeId: 'MDM6Qm90MjkxMzk2MTQ=', login: 'renovate[bot]' },
+    })
+  })
+
+  it("throws AUTH with GitHub's reason for a 403 that is neither a rate limit nor an org policy", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(403, { message: 'Resource not accessible by integration' }),
+        ),
+    )
+
+    await expect(fetchCommitAuthor(repoUrl, sha, 'tok')).rejects.toMatchObject({
+      kind: 'AUTH',
+      message: expect.stringContaining('Resource not accessible by integration'),
     })
   })
 })

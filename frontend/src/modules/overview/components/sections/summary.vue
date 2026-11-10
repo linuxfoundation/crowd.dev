@@ -27,7 +27,7 @@
     </lf-card>
     <lf-card class="flex-1 p-4 flex flex-col gap-2">
       <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold">Organizations</span>
+        <span class="text-xs font-semibold">Companies</span>
         <lf-icon name="building" type="light" class="text-gray-400" />
       </div>
       <div class="text-xl font-light">
@@ -60,6 +60,10 @@ import type { OverviewTrends } from '../../types/overview.types';
 import AppLfOverviewTrendDisplay from '../fragments/trend-display.vue';
 import { OVERVIEW_API_SERVICE } from '../../services/overview.api.service';
 import { useOverviewStore } from '../../store/overview.store';
+
+defineOptions({
+  name: 'AppLfOverviewSummary',
+});
 
 const overviewStore = useOverviewStore();
 const {
@@ -100,10 +104,4 @@ watch(isError, (newVal) => {
     ToastStore.error('Failed to fetch dashboard metrics');
   }
 }, { immediate: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewSummary',
-};
 </script>

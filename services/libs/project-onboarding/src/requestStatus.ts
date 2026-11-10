@@ -22,7 +22,12 @@ import {
 import { BotStatus, STATUS, VIEW_INSIGHTS_PROJECT_ACTION_ID, repoLabel } from './botCopy'
 import { notAddedReason } from './botIngestReply'
 import { formatReason } from './botThreadReply'
-import { organizationOf } from './organizationGroup'
+import {
+  IOrganizationReview,
+  requestGroupId,
+  requestGroupOf,
+  requestGroupReviewOf,
+} from './organizationGroup'
 
 const log = getServiceLogger()
 
@@ -158,32 +163,32 @@ function sharedGroupDetail(rows: RequestStatusRow[]): string | null {
   return details.size === 1 ? [...details][0] : null
 }
 
-export function organizationStatusLine(owner: string, rows: RequestStatusRow[]): string {
-  const label = organizationHeading({ owner, repositories: rows.length })
+export function groupStatusLine(group: IOrganizationReview, rows: RequestStatusRow[]): string {
+  const label = organizationHeading(group)
   const detail = sharedGroupDetail(rows)
   return detail
     ? `${STATUS[rowStatus(rows[0])]} ${label} · ${detail}`
     : `${STATUS[mixedGroupStatus(rows)]} ${label}: ${requestSummaryLine(rows)}`
 }
 
-interface IStatusEntry {
-  owner: string | null
-  rows: RequestStatusRow[]
+function statusGroupKey(row: RequestStatusRow): string | null {
+  const group = requestGroupOf(row)
+  return group ? requestGroupId(group) : null
 }
 
-function groupByOrganization(rows: RequestStatusRow[]): IStatusEntry[] {
-  const entries: IStatusEntry[] = []
-  const byOwner = new Map<string, IStatusEntry>()
+function groupByRequestGroup(rows: RequestStatusRow[]): RequestStatusRow[][] {
+  const entries: RequestStatusRow[][] = []
+  const byKey = new Map<string, RequestStatusRow[]>()
   for (const row of rows) {
-    const owner = organizationOf(row)
-    const entry = owner ? byOwner.get(owner) : undefined
+    const key = statusGroupKey(row)
+    const entry = key ? byKey.get(key) : undefined
     if (entry) {
-      entry.rows.push(row)
+      entry.push(row)
       continue
     }
-    const created = { owner, rows: [row] }
-    if (owner) {
-      byOwner.set(owner, created)
+    const created = [row]
+    if (key) {
+      byKey.set(key, created)
     }
     entries.push(created)
   }
@@ -191,9 +196,10 @@ function groupByOrganization(rows: RequestStatusRow[]): IStatusEntry[] {
 }
 
 function statusLines(rows: RequestStatusRow[]): string[] {
-  return groupByOrganization(rows).map(({ owner, rows: group }) =>
-    owner && group.length > 1 ? organizationStatusLine(owner, group) : requestStatusLine(group[0]),
-  )
+  return groupByRequestGroup(rows).map((group) => {
+    const review = requestGroupReviewOf(group[0], group.length - 1)
+    return review ? groupStatusLine(review, group) : requestStatusLine(group[0])
+  })
 }
 
 export interface IRequestStatusInput {

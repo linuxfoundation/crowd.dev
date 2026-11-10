@@ -74,7 +74,7 @@ export default class MemberAffiliationsService extends LoggerBase {
       const policies = await fetchManyOrganizationAffiliationPolicies(qx, organizationIds)
 
       if ([...policies.values()].some((isBlocked) => isBlocked)) {
-        throw new Error400(this.options.language, 'This organization does not allow affiliations')
+        throw new Error400(this.options.language, 'This company does not allow affiliations')
       }
     }
 

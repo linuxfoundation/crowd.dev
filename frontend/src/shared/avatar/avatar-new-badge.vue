@@ -45,7 +45,7 @@ const isNew = computed(() => {
 
 const computedContent = computed(() => {
   if (props.entityName === 'organization') {
-    return `Organization since ${dateHelper(
+    return `Company since ${dateHelper(
       props.entity?.joinedAt,
     ).format('MMM DD, YYYY')}`;
   }

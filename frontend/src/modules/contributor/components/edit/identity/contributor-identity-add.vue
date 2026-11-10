@@ -119,6 +119,10 @@ import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfContributorIdentityAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   identities: Partial<ContributorIdentity>[],
@@ -168,6 +172,7 @@ const addIdentities = () => {
   sending.value = true;
   createContributorIdentities(
     props.contributor.id,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omits keys via rest sibling
     form.map(({ id, ...identity }) => identity),
   )
     .then(() => {
@@ -210,11 +215,5 @@ const addIdentities = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorIdentityAdd',
 };
 </script>

@@ -131,7 +131,7 @@ import attributeTypes from '@/jsons/member-custom-attributes.json';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
-import parseCustomAttributes from '@/shared/fields/parse-custom-attributes';
+import { parseCustomAttributes } from '@/modules/member/helpers/custom-attributes';
 import { onSelectMouseLeave } from '@/utils/select';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { storeToRefs } from 'pinia';

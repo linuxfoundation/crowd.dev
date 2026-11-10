@@ -143,6 +143,26 @@ describe('buildReviewRequestBlocks', () => {
     )
   })
 
+  it('names a project group after the requested project instead of the organization page', () => {
+    const organization = { owner: 'apache', name: 'Apache <HugeGraph>', repositories: 5 }
+    const blocks = buildReviewRequestBlocks({ ...card, organization })
+    const rendered = JSON.stringify(blocks)
+
+    expect(rendered).toContain('*Apache &lt;HugeGraph&gt;* · 5 repositories')
+    expect(rendered).not.toContain('github.com/apache')
+    expect(actionElements(blocks)[0]).toMatchObject({
+      text: { text: 'Add 5 repos to Kubernetes & co' },
+      confirm: {
+        text: {
+          text: "the 5 repositories of *Apache &lt;HugeGraph&gt;* will be added to Kubernetes &amp; co's GitHub connection.",
+        },
+      },
+    })
+    expect(buildReviewRequestText({ ...card, organization })).toBe(
+      'Review needed — Apache &lt;HugeGraph&gt; (5 repositories)',
+    )
+  })
+
   it('speaks in the singular when only one repository of the organization is on the card', () => {
     const organization = { owner: 'kubernetes', repositories: 1 }
     const blocks = buildReviewRequestBlocks({ ...card, organization })

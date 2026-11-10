@@ -55,6 +55,10 @@ import LfFilterIncludeSwitch from '@/shared/modules/filters/components/partials/
 import LfFilterSelectOption from '@/shared/modules/filters/components/partials/select/FilterSelectOption.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfSelectFilter',
+});
+
 const props = defineProps<{
   modelValue: SelectFilterValue,
   config: SelectFilterConfig
@@ -97,10 +101,4 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSelectFilter',
-};
 </script>

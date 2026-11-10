@@ -48,6 +48,10 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import type { Category } from '@/modules/admin/modules/categories/types/Category';
 
+defineOptions({
+  name: 'LfCategoryForm',
+});
+
 const props = defineProps<{
   modelValue: boolean;
   category?: Category,
@@ -106,10 +110,4 @@ const submit = () => {
 onMounted(() => {
   fillForm();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCategoryForm',
-};
 </script>

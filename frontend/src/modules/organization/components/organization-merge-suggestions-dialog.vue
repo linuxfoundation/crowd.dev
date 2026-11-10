@@ -32,6 +32,10 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsDialog',
+});
+
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -56,10 +60,4 @@ const isModalOpen = computed<boolean>({
     emit('update:modelValue', false);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationMergeSuggestionsDialog',
-};
 </script>

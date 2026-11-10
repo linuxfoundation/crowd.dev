@@ -10,6 +10,10 @@
 import { computed } from 'vue';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'AppPlatformImg',
+});
+
 const props = defineProps<{
     platform: string;
     size: string;
@@ -24,10 +28,4 @@ const imgClass = computed(() => {
 
   return 'max-h-[16px]';
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppPlatformImg',
-};
 </script>

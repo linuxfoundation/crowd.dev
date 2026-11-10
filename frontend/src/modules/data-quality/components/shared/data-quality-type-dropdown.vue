@@ -7,7 +7,7 @@
           <span>Issue type: </span>
           <span v-if="selectedType === 'merge-suggestions'" class="font-normal">Merge suggestions</span>
           <span v-else-if="selectedType === 'bot-suggestions'" class="font-normal">Bot suggestions</span>
-          <span v-else-if="selectedType === 'fake-suggestions'" class="font-normal">Fake organization suggestions</span>
+          <span v-else-if="selectedType === 'fake-suggestions'" class="font-normal">Fake company suggestions</span>
           <span v-else class="font-normal">{{ dataIssueTypes[selectedType as DataIssueType]?.label || 'Select issue type' }}</span>
         </div>
       </lf-button>
@@ -64,13 +64,17 @@
 
 <script lang="ts" setup>
 import LfButton from '@/ui-kit/button/Button.vue';
-import { computed, withDefaults } from 'vue';
+import { computed } from 'vue';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import type { DataIssueTypeMenu } from '@/modules/data-quality/config/data-issue-types';
 import { dataIssueTypes } from '@/modules/data-quality/config/data-issue-types';
 import type { DataIssueType } from '@/modules/data-quality/types/DataIssueType';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfDataQualityTypeDropdown',
+});
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -84,7 +88,7 @@ const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
 
 const suggestionTypeLabels: Record<string, string> = {
   'bot-suggestions': 'Bot suggestions',
-  'fake-suggestions': 'Fake organization suggestions',
+  'fake-suggestions': 'Fake company suggestions',
 };
 
 const selectedType = computed({
@@ -92,10 +96,4 @@ const selectedType = computed({
   set: (value: string) => emit('update:modelValue', value),
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityTypeDropdown',
-};
 </script>

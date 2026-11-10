@@ -1,7 +1,7 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
 
-import type { RouteRecordRaw } from 'vue-router';
+import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router';
 import Layout from '@/modules/layout/components/layout.vue';
 import { PermissionGuard } from '@/shared/modules/permissions/router/PermissionGuard';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
@@ -18,19 +18,27 @@ const OrganizationMergeSuggestionsPage = () =>
 
 const OrganizationsMainPage = async () => OrganizationListPage();
 
+const legacyRedirect = (to: RouteLocationNormalized) => ({
+  path: to.path.replace(/^\/organizations/i, '/companies'),
+  query: to.query,
+  hash: to.hash,
+});
+
 const routes: RouteRecordRaw[] = [
+  { path: '/organizations', redirect: legacyRedirect },
+  { path: '/organizations/:id', redirect: legacyRedirect },
   {
     name: '',
     path: '',
     component: Layout,
     meta: {
       auth: true,
-      title: 'Organizations',
+      title: 'Companies',
     },
     children: [
       {
         name: 'organization',
-        path: '/organizations',
+        path: '/companies',
         component: OrganizationsMainPage,
         meta: {
           auth: true,
@@ -46,10 +54,10 @@ const routes: RouteRecordRaw[] = [
       },
       {
         name: 'organizationView',
-        path: '/organizations/:id',
+        path: '/companies/:id',
         component: OrganizationDetailsPage,
         meta: {
-          title: 'Organization',
+          title: 'Company',
           auth: true,
           eventKey: PageEventKey.ORGANIZATION_PROFILE,
           segments: {
@@ -61,7 +69,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         name: 'organizationMergeSuggestions',
-        path: '/organizations/merge-suggestions',
+        path: '/companies/merge-suggestions',
         component: OrganizationMergeSuggestionsPage,
         meta: {
           auth: true,

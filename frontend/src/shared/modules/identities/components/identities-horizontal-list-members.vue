@@ -12,11 +12,15 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, computed } from 'vue';
+import { computed } from 'vue';
 import useMemberIdentities from '@/shared/modules/identities/config/useMemberIdentities';
 import memberOrder from '@/shared/modules/identities/config/identitiesOrder/member';
 import type { Member } from '@/modules/member/types/Member';
 import AppIdentitiesHorizontalList from '@/shared/modules/identities/components/identities-horizontal-list.vue';
+
+defineOptions({
+  name: 'AppIdentitiesHorizontalListMembers',
+});
 
 const props = defineProps<{
   member: Member;
@@ -28,10 +32,4 @@ const identities = computed(() => useMemberIdentities({
   member: props.member,
   order: memberOrder.list,
 }));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesHorizontalListMembers',
-};
 </script>

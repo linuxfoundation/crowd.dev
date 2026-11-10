@@ -200,7 +200,7 @@ import {
 } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import gitlab from '@/config/integrations/gitlab/config';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import { useRouter } from 'vue-router';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
@@ -217,6 +217,10 @@ import DrawerDescription from '@/modules/admin/modules/integration/components/dr
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import AppGitlabSettingsBulkSelect from './gitlab-settings-bulk-select.vue';
+
+defineOptions({
+  name: 'AppGitlabSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -466,7 +470,7 @@ const bulkApply = (data: Record<string, string>) => {
 const subprojects = ref<SubProject[]>([]);
 
 const fetchSubProjects = () => {
-  LfService.findSegment(props.grandparentId).then((segment: ProjectGroup) => {
+  LfService.findSegment<ProjectGroup>(props.grandparentId).then((segment: ProjectGroup) => {
     subprojects.value = (segment.projects ?? []).map((p) => p.subprojects).flat();
   });
 };
@@ -484,10 +488,4 @@ watch(form, (newForm) => {
   // Force reactivity update
   selectedRepos.value = { ...selectedRepos.value };
 }, { deep: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGitlabSettingsDrawer',
-};
 </script>

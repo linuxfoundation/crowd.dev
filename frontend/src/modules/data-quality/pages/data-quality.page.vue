@@ -17,7 +17,7 @@
               People
             </lf-tab>
             <lf-tab v-model="tab" name="organization" preserve-query>
-              Organizations
+              Companies
             </lf-tab>
           </lf-tabs>
         </div>
@@ -41,11 +41,9 @@ import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfDataQualityMember from '@/modules/data-quality/components/data-quality-member.vue';
 import LfDataQualityOrganization from '@/modules/data-quality/components/data-quality-organization.vue';
 
-const tab = ref('member');
-</script>
-
-<script lang="ts">
-export default {
+defineOptions({
   name: 'DataQualityPage',
-};
+});
+
+const tab = ref('member');
 </script>

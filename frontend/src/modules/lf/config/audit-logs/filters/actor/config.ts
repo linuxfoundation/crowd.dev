@@ -1,6 +1,6 @@
 import { FilterConfigType } from '@/shared/modules/filters/types/FilterConfig';
 import { itemLabelRendererByType } from '@/shared/modules/filters/config/itemLabelRendererByType';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import type {
   SelectAsyncFilterConfig,
   SelectAsyncFilterValue,
@@ -8,7 +8,6 @@ import type {
   SelectAsyncFilterData,
 } from '@/shared/modules/filters/types/filterTypes/SelectAsyncFilterConfig';
 import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
-import type { Actor } from '@/modules/lf/segments/types/AuditLog';
 
 const actor: SelectAsyncFilterConfig = {
   id: 'actor',
@@ -18,7 +17,7 @@ const actor: SelectAsyncFilterConfig = {
   options: {
     hideIncludeSwitch: true,
     remoteMethod: (query) =>
-      LfService.fetchUsers(query, 10).then((rows: (Actor & { label: string })[]) =>
+      LfService.fetchUsers(query, 10).then((rows) =>
         rows.map((actor) => ({
           label: actor.label,
           description: `${actor.email}`,
@@ -26,7 +25,7 @@ const actor: SelectAsyncFilterConfig = {
         })),
       ),
     remotePopulateItems: (id: string) =>
-      LfService.getUser(id).then((actor: Actor) => ({
+      LfService.getUser(id).then((actor) => ({
         label: actor.fullName,
         value: actor.id,
       })),

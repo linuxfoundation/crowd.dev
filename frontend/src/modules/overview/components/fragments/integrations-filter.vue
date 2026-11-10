@@ -81,6 +81,10 @@ import { storeToRefs } from 'pinia';
 import { useDebounce } from '@vueuse/core';
 import { useOverviewStore } from '../../store/overview.store';
 
+defineOptions({
+  name: 'AppLfIntegrationsFilter',
+});
+
 const overviewStore = useOverviewStore();
 const { selectedIntegrationId } = storeToRefs(overviewStore);
 
@@ -106,10 +110,4 @@ const selectedIntegration = computed(() => {
   return integrations.value[selectedIntegrationId.value];
 });
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfIntegrationsFilter',
-};
 </script>

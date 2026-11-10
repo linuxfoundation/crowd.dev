@@ -7,11 +7,15 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, computed } from 'vue';
+import { computed } from 'vue';
 import useOrganizationIdentities from '@/shared/modules/identities/config/useOrganizationIdentities';
 import organizationOrder from '@/shared/modules/identities/config/identitiesOrder/organization';
 import AppIdentitiesHorizontalList from '@/shared/modules/identities/components/identities-horizontal-list.vue';
 import type { Organization } from '@/modules/organization/types/Organization';
+
+defineOptions({
+  name: 'AppIdentitiesHorizontalListOrganizations',
+});
 
 const props = defineProps<{
   organization: Organization;
@@ -23,10 +27,4 @@ const identities = computed(() => useOrganizationIdentities({
   organization: props.organization,
   order: organizationOrder.list,
 }));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesHorizontalListOrganizations',
-};
 </script>

@@ -8,9 +8,12 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { GroupsioSettings } from '@/config/integrations/groupsio/types/GroupsioSettings';
-import { defineProps } from 'vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfGroupsioDropdown',
+});
 
 defineProps<{
   integration: Integration<GroupsioSettings> | undefined,
@@ -21,10 +24,4 @@ defineProps<{
 const emit = defineEmits<{(e: 'open-setting'): void;
 }>();
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGroupsioDropdown',
-};
 </script>

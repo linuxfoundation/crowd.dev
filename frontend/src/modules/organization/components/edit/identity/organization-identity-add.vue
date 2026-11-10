@@ -122,6 +122,10 @@ import LfOrganizationDetailsIdentityAddDropdown
 import { required } from '@vuelidate/validators';
 import { lfIdentities } from '@/config/identities';
 
+defineOptions({
+  name: 'LfOrganizationIdentityAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   identities: Partial<OrganizationIdentity>[],
@@ -146,7 +150,7 @@ const defaultForm: OrganizationIdentity = {
 const form = reactive<OrganizationIdentity[]>(props.identities.map((i) => ({ ...defaultForm, ...i })));
 
 const rules = computed(() => ({
-  form: form.map((item) => ({
+  form: form.map(() => ({
     value: {
       required,
     },
@@ -185,11 +189,5 @@ const addIdentities = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationIdentityAdd',
 };
 </script>

@@ -41,7 +41,7 @@ export const WIDGETS_GROUPS = [
         key: Widgets.ACTIVE_CONTRIBUTORS,
       },
       {
-        name: 'Active organization',
+        name: 'Active companies',
         key: Widgets.ACTIVE_ORGANIZATION,
       },
       {
@@ -49,7 +49,7 @@ export const WIDGETS_GROUPS = [
         key: Widgets.CONTRIBUTORS_LEADERBOARD,
       },
       {
-        name: 'Organizations leaderboard',
+        name: 'Companies leaderboard',
         key: Widgets.ORGANIZATIONS_LEADERBOARD,
       },
       {
@@ -57,7 +57,7 @@ export const WIDGETS_GROUPS = [
         key: Widgets.CONTRIBUTOR_DEPENDENCY,
       },
       {
-        name: 'Organization dependency',
+        name: 'Company dependency',
         key: Widgets.ORGANIZATION_DEPENDENCY,
       },
       {

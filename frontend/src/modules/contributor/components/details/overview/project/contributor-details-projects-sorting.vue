@@ -24,6 +24,10 @@ import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsProjectsSorting',
+});
+
 const props = defineProps<{
   sorting: string,
 }>();
@@ -33,11 +37,6 @@ const emit = defineEmits<{(e: 'update:sorting', value: string): void}>();
 const sortBy = computed({
   get: () => props.sorting,
   set: (value: string) => emit('update:sorting', value),
-});
-
-const label = computed(() => {
-  const option = options.find((o) => o.value === sortBy.value);
-  return option ? option.label : 'All';
 });
 
 interface SortOption {
@@ -50,10 +49,9 @@ const options: SortOption[] = [
   { value: 'activityCount_DESC', label: 'Most activities' },
   { value: 'createdAt_DESC', label: 'Most recent' },
 ];
-</script>
 
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsProjectsSorting',
-};
+const label = computed(() => {
+  const option = options.find((o) => o.value === sortBy.value);
+  return option ? option.label : 'All';
+});
 </script>

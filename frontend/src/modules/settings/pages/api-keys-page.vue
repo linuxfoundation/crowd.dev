@@ -61,8 +61,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue';
+import type { InputInstance } from 'element-plus';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
@@ -71,15 +72,17 @@ import { ToastStore } from '@/shared/message/notification';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const inputRef = ref();
-const showToken = ref(false);
+defineOptions({ name: 'AppApiKeysPage' });
 
-const jwtToken = computed(() => AuthService.getToken());
+const inputRef = ref<InputInstance>();
+const showToken = ref<boolean>(false);
+
+const jwtToken = computed<string | null>(() => AuthService.getToken());
 
 const { trackEvent } = useProductTracking();
 
-const copyToClipboard = async () => {
-  const toCopy = jwtToken.value;
+const copyToClipboard = async (): Promise<void> => {
+  const toCopy = jwtToken.value ?? '';
 
   trackEvent({
     key: FeatureEventKey.COPY_AUTH_TOKEN,
@@ -93,7 +96,7 @@ const copyToClipboard = async () => {
   );
 };
 
-const onShowToken = () => {
+const onShowToken = (): void => {
   trackEvent({
     key: FeatureEventKey.SHOW_AUTH_TOKEN,
     type: EventType.FEATURE,
@@ -101,12 +104,6 @@ const onShowToken = () => {
 
   showToken.value = true;
   inputRef.value.focus();
-};
-</script>
-
-<script>
-export default {
-  name: 'AppApiKeysPage',
 };
 </script>
 

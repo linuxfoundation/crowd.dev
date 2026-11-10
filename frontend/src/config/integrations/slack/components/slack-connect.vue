@@ -29,6 +29,10 @@ import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { ToastStore } from '@/shared/message/notification';
 import { rememberConnectSegment } from '@/config/integrations/connect-segment';
 
+defineOptions({
+  name: 'LfSlackConnect',
+});
+
 const props = defineProps<{
   segmentId: string | null;
   grandparentId: string | null;
@@ -97,10 +101,4 @@ const finallizeSlackConnect = () => {
 onMounted(() => {
   finallizeSlackConnect();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSlackConnect',
-};
 </script>

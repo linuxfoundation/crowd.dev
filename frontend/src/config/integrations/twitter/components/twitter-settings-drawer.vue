@@ -16,7 +16,7 @@
     </template>
     <template #content>
       <el-form label-position="top" class="form integration-twitter-form" @submit.prevent>
-        <el-form-item :label="hashtagField.label">
+        <el-form-item label="Track hashtag">
           <el-input v-model="model.hashtag" clearable class="hashtag-input">
             <template #prefix>
               <span>#</span>
@@ -55,14 +55,16 @@ import {
   ref,
 } from 'vue';
 import isEqual from 'lodash/isEqual';
-import { FormSchema } from '@/shared/form/form-schema';
-import StringField from '@/shared/fields/string-field';
 import twitter from '@/config/integrations/twitter/config';
 import config from '@/config';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfTwitterSettingsDrawer',
+});
 
 const props = defineProps({
   modelValue: {
@@ -101,28 +103,13 @@ const getConnectUrl = () => {
 const parsedHashtags = computed(() => (getHashtags().length
   ? getHashtags()[getHashtags().length - 1]
   : ''));
-const hashtagField = new StringField(
-  'hashtag',
-  'Track hashtag',
-);
-const formSchema = ref(new FormSchema([hashtagField]));
-const model = ref(
-  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-  formSchema.value.initialValues({
-    // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-    hashtag: parsedHashtags.value,
-  }),
-);
+const getInitialModel = () => (parsedHashtags.value ? { hashtag: parsedHashtags.value } : {});
+const model = ref(getInitialModel());
 
 const logoUrl = twitter.image;
 
 const hasFormChanged = computed(
-  () => !isEqual(
-    formSchema.value.initialValues({
-      hashtag: parsedHashtags.value,
-    }),
-    model.value,
-  ),
+  () => !isEqual(getInitialModel(), model.value),
 );
 
 const isVisible = computed({
@@ -149,9 +136,7 @@ const connect = () => {
 };
 
 const doReset = () => {
-  model.value = formSchema.value.initialValues({
-    hashtag: parsedHashtags.value,
-  });
+  model.value = getInitialModel();
 };
 
 const canClose = (done) => {
@@ -167,12 +152,6 @@ const canClose = (done) => {
   } else {
     done(false);
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'LfTwitterSettingsDrawer',
 };
 </script>
 

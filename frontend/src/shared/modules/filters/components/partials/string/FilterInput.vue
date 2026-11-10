@@ -18,6 +18,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+defineOptions({
+  name: 'LfFilterInput',
+});
+
 const props = defineProps<{
   modelValue: string | number | undefined,
   placeholder?: string,
@@ -37,12 +41,6 @@ const model = computed<string | number>({
     emit('update:modelValue', props.type === 'number' ? +value : value);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterInput',
-};
 </script>
 
 <style lang="scss">

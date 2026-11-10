@@ -39,7 +39,7 @@
               Integrations
             </lf-tab>
             <lf-tab v-model="activeTab" name="organizations">
-              Organizations
+              Companies
             </lf-tab>
             <lf-tab v-model="activeTab" name="api-keys">
               API Keys

@@ -78,6 +78,10 @@ import {
 } from '@/shared/modules/filters/config/constants/date.constants';
 import type { FilterTimeOptions } from '../../types/FilterTimeOptions';
 
+defineOptions({
+  name: 'LfDateFilter',
+});
+
 const props = defineProps<{
   modelValue: DateFilterValue,
   config: DateFilterConfig
@@ -174,12 +178,6 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDateFilter',
-};
 </script>
 
 <style lang="scss">

@@ -45,6 +45,10 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 
+defineOptions({
+  name: 'LfMultiSelectTagsFilter',
+});
+
 const props = defineProps<{
   modelValue: string[],
   config: MultiSelectFilterConfig
@@ -69,12 +73,6 @@ const searchOptions = (query: string) => {
 };
 
 watch(() => props.options, () => searchOptions(searchQuery.value), { immediate: true, deep: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectTagsFilter',
-};
 </script>
 
 <style lang="scss">

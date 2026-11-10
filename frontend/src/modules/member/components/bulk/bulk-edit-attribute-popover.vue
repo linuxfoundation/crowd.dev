@@ -147,13 +147,10 @@ import {
   computed, h, ref, watch,
 } from 'vue';
 import isEqual from 'lodash/isEqual';
-import { MemberModel } from '@/modules/member/member-model';
-import { FormSchema } from '@/shared/form/form-schema';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { onSelectMouseLeave } from '@/utils/select';
 import { MemberService } from '@/modules/member/services/member.api.service';
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
-import getCustomAttributes from '@/shared/fields/get-custom-attributes';
 import getParsedAttributes from '@/shared/attributes/get-parsed-attributes';
 import AppBulkEditAttributeDropdown from '@/modules/member/components/bulk/bulk-edit-attribute-dropdown.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -188,19 +185,6 @@ const { trackEvent } = useProductTracking();
 const memberStore = useMemberStore();
 const { selectedMembers, customAttributes } = storeToRefs(memberStore);
 
-const { fields } = MemberModel;
-const formSchema = computed(
-  () => new FormSchema([
-    fields.joinedAt,
-    fields.organizations,
-    fields.attributes,
-    ...getCustomAttributes({
-      customAttributes: customAttributes.value,
-      considerShowProperty: false,
-    }),
-  ]),
-);
-
 const computedVisible = computed({
   get() {
     return props.modelValue;
@@ -229,15 +213,7 @@ function filteredAttributes(attributes) {
 }
 
 function getInitialModel() {
-  return JSON.parse(
-    JSON.stringify(
-      formSchema.value.initialValues({
-        joinedAt: '',
-        attributes: {},
-        organizations: [],
-      }),
-    ),
-  );
+  return { organizations: [], attributes: {} };
 }
 
 const selectedAttribute = ref({});
@@ -274,7 +250,7 @@ const multiSelectCreateFn = computed(() => {
 
 const multiSelectPlaceholder = computed(() => {
   if (selectedAttribute.value.name === 'organizations') {
-    return 'Select or create an organization';
+    return 'Select or create a company';
   }
   return 'Enter option(s) or create one';
 });
@@ -294,7 +270,7 @@ const defaultAttributes = [
   },
   {
     name: 'organizations',
-    label: 'Organizations',
+    label: 'Companies',
     type: 'multiSelect',
   },
 ];

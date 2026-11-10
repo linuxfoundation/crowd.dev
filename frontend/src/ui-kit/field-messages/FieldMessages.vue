@@ -14,6 +14,10 @@ import { computed } from 'vue';
 import type { ErrorObject } from '@vuelidate/core';
 import LfFieldMessage from '@/ui-kit/field-message/FieldMessage.vue';
 
+defineOptions({
+  name: 'LfFieldMessages',
+});
+
 const props = withDefaults(defineProps<{
   validation: { $errors: ErrorObject[] },
   errorMessages?: Record<string, string>,
@@ -36,11 +40,5 @@ const errorMessage = (error: ErrorObject) => {
     return error.$message;
   }
   return '';
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFieldMessages',
 };
 </script>

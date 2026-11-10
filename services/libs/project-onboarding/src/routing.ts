@@ -7,7 +7,7 @@ import {
   ProjectEvaluationOutcome,
   isSlackBotProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
-import { IReviewOrganization, organizationLabel, repositoriesWord } from '@crowd/slack'
+import { IReviewOrganization, reviewGroupLabel, repositoriesWord } from '@crowd/slack'
 
 import { deriveOrganizationProjectNameCandidates } from './onboarder'
 import { OnboardingResolution } from './requestResolver'
@@ -114,8 +114,14 @@ export function newProjectReviewReason(
   organization: IReviewOrganization | null = null,
 ): string {
   if (organization) {
-    const [name] = deriveOrganizationProjectNameCandidates(organization.owner, row.projectName)
-    return `${name} isn't in LFX Insights yet; it would be created as a non-LF project with the ${organization.repositories} ${repositoriesWord(organization.repositories)} of ${organizationLabel(organization.owner)}, ${NEW_PROJECTS_BY_CDP_TEAM}`
+    const name =
+      organization.name ??
+      deriveOrganizationProjectNameCandidates(organization.owner, row.projectName)[0]
+    const repositories = `${organization.repositories} ${repositoriesWord(organization.repositories)}`
+    const scope = organization.name
+      ? `its ${repositories}`
+      : `the ${repositories} of ${reviewGroupLabel(organization)}`
+    return `${name} isn't in LFX Insights yet; it would be created as a non-LF project with ${scope}, ${NEW_PROJECTS_BY_CDP_TEAM}`
   }
   return `${row.projectName ?? row.repoName} isn't in LFX Insights yet; it would be created as a non-LF project, ${NEW_PROJECTS_BY_CDP_TEAM}`
 }

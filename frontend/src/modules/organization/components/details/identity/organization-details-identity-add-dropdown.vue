@@ -25,6 +25,10 @@ import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import type { IdentityConfig } from '@/config/identities';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 
+defineOptions({
+  name: 'LfOrganizationDetailsIdentityAddDropdown',
+});
+
 const emit = defineEmits<{(e: 'add', value: Partial<OrganizationIdentity>): void}>();
 
 const { organizationIdentities } = useIdentitiesHelpers();
@@ -32,10 +36,4 @@ const { organizationIdentities } = useIdentitiesHelpers();
 const platformValues: string[] = Object.values(Platform);
 const platformIdentities = organizationIdentities
   .filter((identity): identity is IdentityConfig & { key: Platform } => platformValues.includes(identity.key));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsIdentityAddDropdown',
-};
 </script>

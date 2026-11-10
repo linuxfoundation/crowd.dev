@@ -43,6 +43,10 @@ import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import { CategoryGroupType } from '@/modules/admin/modules/categories/types/CategoryGroup';
 
+defineOptions({
+  name: 'LfCategoryGroupTypeFilter',
+});
+
 const props = defineProps<{
   modelValue: string,
 }>();
@@ -54,10 +58,4 @@ const model = computed<string>({
   get: () => props.modelValue,
   set: (value: string) => emit('update:modelValue', value),
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfCategoryGroupTypeFilter',
-};
 </script>

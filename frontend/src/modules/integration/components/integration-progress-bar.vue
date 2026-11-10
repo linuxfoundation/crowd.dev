@@ -38,6 +38,10 @@ import type { IntegrationProgress } from '@/modules/integration/types/Integratio
 import { computed } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppIntegrationProgressBar',
+});
+
 const props = defineProps<{
   progress: IntegrationProgress | null | undefined,
   barOnly?: boolean,
@@ -51,10 +55,4 @@ const inProgress = computed(() => {
   }
   return Object.values(props.progress.data).find((p) => p.status === 'in-progress');
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIntegrationProgressBar',
-};
 </script>

@@ -10,8 +10,6 @@
   "src/modules/contributor/services/contributor.identities.api.service.ts",
   "src/modules/contributor/services/contributor.organizations.api.service.ts",
   "src/modules/data-quality/services/data-quality.api.service.ts",
-  "src/modules/lf/segments/lf-segments-service.js",
-  "src/modules/settings/settings-service.js",
   "src/shared/modules/merge/services/merge-actions.service.ts",
   "src/shared/modules/saved-views/services/saved-views.service.ts"
 ]

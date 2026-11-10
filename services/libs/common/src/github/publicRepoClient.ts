@@ -99,8 +99,10 @@ function assertAuthenticated(response: Response, url: string): void {
   }
 }
 
-// GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also
-// mean a genuine permission problem, so only 403 needs the response-body sniff.
+const ACCESS_DENIED_MESSAGES = ['ip allow list', 'saml enforcement', 'repository access blocked']
+
+// GitHub reports both primary (403) and secondary (429) rate limits; a bare 403 can also be an
+// org policy (IP allow list, SAML) or a genuine permission problem, so only 403 needs the body sniff.
 async function assertNotRateLimited(response: Response, what: string): Promise<void> {
   if (response.status === 429) {
     throw new GithubPublicClientError(
@@ -111,14 +113,18 @@ async function assertNotRateLimited(response: Response, what: string): Promise<v
   }
   if (response.status === 403) {
     const body = await response.text()
-    if (body.toLowerCase().includes('rate limit')) {
+    const lowerBody = body.toLowerCase()
+    if (lowerBody.includes('rate limit')) {
       throw new GithubPublicClientError(
         'RATE_LIMIT',
         `Rate limited ${what}`,
         rateLimitResetMs(response.headers),
       )
     }
-    throw new GithubPublicClientError('AUTH', `403 Forbidden ${what}`)
+    const kind = ACCESS_DENIED_MESSAGES.some((message) => lowerBody.includes(message))
+      ? 'ACCESS_DENIED'
+      : 'AUTH'
+    throw new GithubPublicClientError(kind, `403 Forbidden ${what}: ${body.slice(0, 200)}`)
   }
 }
 
@@ -294,7 +300,7 @@ export async function fetchPublicOrgRepos(
 }
 
 interface ICommitItem {
-  author: { id: number; node_id: string; login: string } | null
+  author: { id: number; node_id: string; login: string; type: string } | null
 }
 
 const COMMIT_NOT_FOUND_STATUSES = new Set([404, 409, 422, 451])
@@ -316,7 +322,14 @@ export async function fetchCommitAuthor(
   })
 
   assertAuthenticated(response, url)
-  await assertNotRateLimited(response, what)
+  try {
+    await assertNotRateLimited(response, what)
+  } catch (err) {
+    if (err instanceof GithubPublicClientError && err.kind === 'ACCESS_DENIED') {
+      return { status: 'repo-inaccessible' }
+    }
+    throw err
+  }
   if (COMMIT_NOT_FOUND_STATUSES.has(response.status)) {
     return { status: 'commit-not-found' }
   }
@@ -332,10 +345,8 @@ export async function fetchCommitAuthor(
     return { status: 'no-github-account' }
   }
 
-  return {
-    status: 'found',
-    account: { id: String(author.id), nodeId: author.node_id, login: author.login },
-  }
+  const account = { id: String(author.id), nodeId: author.node_id, login: author.login }
+  return { status: author.type === 'Bot' ? 'bot-account' : 'found', account }
 }
 
 export async function fetchPublicRepoReadme(

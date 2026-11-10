@@ -32,6 +32,10 @@ import LfModal from '@/ui-kit/modal/Modal.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'ChangesConfirmationModal',
+});
+
 const isModalOpen = ref(false);
 
 let resolvePromise: ((value: boolean) => void) | null = null;
@@ -59,14 +63,7 @@ const discardChanges = () => {
   }
 };
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   open,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'ChangesConfirmationModal',
-};
 </script>

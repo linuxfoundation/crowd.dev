@@ -8,9 +8,13 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { ConfluenceSettings } from '@/config/integrations/confluence/types/ConfluenceSettings';
-import { defineProps } from 'vue';
+
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'AppGitConnect',
+});
 
 defineProps<{
   integration: Integration<ConfluenceSettings> | undefined,
@@ -21,10 +25,4 @@ defineProps<{
 const emit = defineEmits<{(e: 'open-setting'): void;
 }>();
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppGitConnect',
-};
 </script>

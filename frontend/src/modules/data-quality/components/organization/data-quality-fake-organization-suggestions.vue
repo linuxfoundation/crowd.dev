@@ -39,10 +39,10 @@
     <div v-else class="flex flex-col items-center pt-16">
       <lf-icon name="shuffle" :size="160" class="text-gray-200 flex items-center mb-8" />
       <h5 class="text-center text-lg font-semibold mb-4">
-        No fake organization suggestions
+        No fake company suggestions
       </h5>
       <p class="text-sm text-center text-gray-600 leading-5">
-        We couldn't find any fake organization suggestions
+        We couldn't find any fake company suggestions
       </p>
     </div>
   </div>
@@ -71,6 +71,10 @@ import LfFakeOrganizationSuggestionDropdown
 import AppFakeOrganizationSuggestionsDialog
   from '@/modules/organization/components/fake-organization-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
+
+defineOptions({
+  name: 'LfDataQualityFakeOrganizationSuggestions',
+});
 
 const props = defineProps<{
   projectGroup: string,
@@ -144,10 +148,4 @@ watch(() => props.projectGroup, () => {
 onMounted(() => {
   loadSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityFakeOrganizationSuggestions',
-};
 </script>

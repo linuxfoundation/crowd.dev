@@ -3,15 +3,15 @@ import type { DefaultFiltersSettings } from '@/shared/modules/saved-views/types/
 
 export const organizationDefaultFilterRenderer = ({ teamOrganization }: DefaultFiltersSettings) => {
   if (teamOrganization === IncludeEnum.EXCLUDE) {
-    return 'Excl. team organizations';
+    return 'Excl. team companies';
   }
 
   if (teamOrganization === IncludeEnum.INCLUDE) {
-    return 'Incl. team organizations';
+    return 'Incl. team companies';
   }
 
   if (teamOrganization === IncludeEnum.FILTER) {
-    return 'Team organizations only';
+    return 'Team companies only';
   }
 
   return '';

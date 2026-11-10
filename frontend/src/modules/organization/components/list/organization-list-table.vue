@@ -14,16 +14,16 @@
         <app-empty-state-cta
           v-if="!hasOrganizations"
           icon="house-building"
-          title="No organizations yet"
-          :description="`We couldn't track any organizations related to all the people who interacted with ${selectedProjectGroup!.name} projects.`"
-          cta-btn="Add organization"
+          title="No companies yet"
+          :description="`We couldn't track any companies related to all the people who interacted with ${selectedProjectGroup!.name} projects.`"
+          cta-btn="Add company"
           @cta-click="onCtaClick"
         />
 
         <app-empty-state-cta
           v-else-if="hasOrganizations && !totalOrganizations"
           icon="house-building"
-          title="No organizations found"
+          title="No companies found"
           description="We couldn't find any results that match your search criteria, please try a different query."
         />
 
@@ -116,7 +116,7 @@
                       sticky
                       @update:model-value="doChangeSort($event)"
                     >
-                      Organization
+                      Company
                     </lf-table-head>
                     <lf-table-head class="!py-4 !px-3 min-w-66">
                       Website
