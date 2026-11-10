@@ -112,7 +112,7 @@ import { queryKeys } from '@/shared/queries/keys';
 import { useDebounce } from '@vueuse/core';
 
 import { ToastStore } from '@/shared/message/notification';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { findSegment, queryProjectGroupsQueryFn } from '@/modules/lf/segments/segments.api.service';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import LfxDropdownSelect from '@/ui-kit/lfx/dropdown/dropdown-select.vue';
 import LfxDropdownSelector from '@/ui-kit/lfx/dropdown/dropdown-selector.vue';
@@ -142,7 +142,7 @@ const searchValue = useDebounce(searchQuery, 300);
 
 const queryKey = computed(() => queryKeys.projectGroups.search(searchValue.value));
 
-const projectGroupsQueryFn = segmentService.queryProjectGroups(() => ({
+const projectGroupsQueryFn = queryProjectGroupsQueryFn(() => ({
   limit: 20,
   offset: 0,
   filter: {
@@ -194,7 +194,7 @@ watch(selectedProjectGroupId, async (newVal) => {
 
     if (!fromList?.projects?.length) {
       try {
-        selectedProjectGroup.value = await segmentService.getSegmentById(newVal) as ProjectGroup;
+        selectedProjectGroup.value = await findSegment<ProjectGroup>(newVal);
       } catch (e) {
         ToastStore.error('Something went wrong while loading the project group');
       }

@@ -141,7 +141,7 @@ import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import AppLfAuditLogsDrawer from '@/modules/lf/segments/components/logs/log.drawer.vue';
 import type { AuditLog } from '@/modules/lf/segments/types/AuditLog';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
   EventType,
