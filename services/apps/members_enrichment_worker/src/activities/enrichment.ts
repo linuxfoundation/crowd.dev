@@ -269,8 +269,9 @@ export async function findMemberEnrichmentCacheForAllSources(
   memberId: string,
   returnRowsWithoutData = false,
 ): Promise<IMemberEnrichmentCache<IMemberEnrichmentData>[]> {
+  // Read from the writer: dependent sources need caches written moments earlier in the same workflow.
   return findMemberEnrichmentCacheForAllSourcesDb(
-    svc.postgres.reader.connection(),
+    svc.postgres.writer.connection(),
     memberId,
     returnRowsWithoutData,
   )
