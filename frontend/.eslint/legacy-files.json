@@ -7,8 +7,6 @@
     "src/shared/svg/svg.vue"
   ],
   "vue/block-lang": [
-    "src/config/integrations/gitlab/components/gitlab-params.vue",
-    "src/config/integrations/twitter/components/twitter-settings-drawer.vue",
     "src/modules/activity/components/activity-icon.vue",
     "src/modules/activity/components/activity-link.vue",
     "src/modules/admin/modules/projects/components/lf-sub-projects-list-modal.vue",
