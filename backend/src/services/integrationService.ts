@@ -972,17 +972,6 @@ export default class IntegrationService {
         await SequelizeRepository.commitTransaction(transaction)
       }
 
-      await this.options.temporal.workflow.start('syncGithubIntegration', {
-        taskQueue: 'nango',
-        workflowId: `github-nango-sync/${integration.id}`,
-        workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
-        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
-        retry: {
-          maximumAttempts: 10,
-        },
-        args: [{ integrationId: integration.id }],
-      })
-
       await this.startGithubSyncUnitReconcile(integration.id).catch((err) =>
         this.options.log.error(
           err,

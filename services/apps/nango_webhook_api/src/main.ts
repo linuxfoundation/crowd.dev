@@ -45,6 +45,15 @@ setImmediate(async () => {
         return
       }
 
+      if (payload.providerConfigKey === NangoIntegration.GITHUB) {
+        req.log.info(
+          { connectionId: payload.connectionId, model: payload.model },
+          'Ignoring github nango webhook, github syncs run on connectors!',
+        )
+        res.sendStatus(204)
+        return
+      }
+
       req.log.info(
         { connectionId: payload.connectionId, provider: payload.providerConfigKey },
         'Received nango webhook!',
