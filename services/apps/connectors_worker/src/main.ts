@@ -10,10 +10,7 @@ import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
 import { scheduleCompletenessBackfillSweep } from './schedules/completenessBackfillSweep'
 import { scheduleDispatcher } from './schedules/dispatcher'
 import { scheduleGithubLifecycleSweep } from './schedules/githubLifecycleSweep'
-import { scheduleMirrorSweep } from './schedules/mirrorSweep'
 import { scheduleOctolensDiscovery } from './schedules/octolensDiscovery'
-import { scheduleShadowDiff } from './schedules/shadowDiff'
-import { scheduleSwitchSyncPipelineSweep } from './schedules/switchSyncPipelineSweep'
 import { scheduleWeeklyCompletenessValidation } from './schedules/weeklyCompletenessValidation'
 
 const config: Config = {
@@ -56,12 +53,9 @@ setImmediate(async () => {
   await svc.init()
 
   await scheduleDispatcher()
-  await scheduleShadowDiff()
   await scheduleWeeklyCompletenessValidation()
   await scheduleCompletenessBackfillSweep()
   await scheduleOctolensDiscovery()
-  await scheduleSwitchSyncPipelineSweep()
-  await scheduleMirrorSweep()
   await scheduleGithubLifecycleSweep()
 
   await svc.start()
