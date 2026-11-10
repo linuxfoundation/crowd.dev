@@ -3,7 +3,7 @@ import type {
   LogRenderingConfig,
 } from '@/modules/lf/config/audit-logs/log-rendering/index';
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 interface MemberAffiliationStateRow {

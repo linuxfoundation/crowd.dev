@@ -213,7 +213,7 @@ import {
 } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import github from '@/config/integrations/github/config';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import { useRoute, useRouter } from 'vue-router';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
@@ -403,7 +403,7 @@ const loading = ref(false);
 
 const fetchSubProjects = () => {
   loading.value = true;
-  LfService.findSegment(route.params.grandparentId)
+  LfService.findSegment<ProjectGroup>(route.params.grandparentId)
     .then((segment: ProjectGroup) => {
       subprojects.value = (segment.projects ?? [])
         .map((p) => p.subprojects)

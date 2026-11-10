@@ -147,7 +147,7 @@ import {
 } from '@/shared/modules/monitoring/types/event';
 import LfButton from '@/ui-kit/button/Button.vue';
 import { useMutation, useQuery } from '@tanstack/vue-query';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { createProjectGroup, findSegment, updateSegment } from '@/modules/lf/segments/segments.api.service';
 import { queryKeys } from '@/shared/queries/keys';
 import { useInvalidate } from '@/shared/queries/invalidate';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
@@ -225,7 +225,7 @@ const {
       if (!props.id) {
         return Promise.resolve(null);
       }
-      return segmentService.getSegmentById(props.id);
+      return findSegment<ProjectGroup>(props.id);
     },
     enabled: !!props.id,
   },
@@ -260,7 +260,7 @@ const onError = (err: AxiosError) => {
 };
 
 const updateMutation = useMutation({
-  mutationFn: ({ id, form }: { id: string; form: ProjectGroup }) => segmentService.updateSegment(
+  mutationFn: ({ id, form }: { id: string; form: ProjectGroup }) => updateSegment(
     id,
     form,
   ),
@@ -272,7 +272,7 @@ const updateMutation = useMutation({
 });
 
 const createMutation = useMutation({
-  mutationFn: (body: ProjectGroup) => segmentService.createProjectGroup(body),
+  mutationFn: (body: ProjectGroup) => createProjectGroup(body),
   onSuccess,
   onError,
 

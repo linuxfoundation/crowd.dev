@@ -1,6 +1,6 @@
 import { defineStore, storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { LfRole } from '@/shared/modules/permissions/types/Roles';
@@ -15,6 +15,7 @@ import type {
   CreateProjectRequest,
   SubProjectRequest,
   CreateSubProjectRequest,
+  SegmentId,
 } from '@/modules/lf/segments/types/Segments';
 
 interface Pagination {
@@ -66,8 +67,6 @@ interface ListProjectsParams {
   limit?: number | null;
   reset?: boolean;
 }
-
-type SegmentId = string | string[] | null;
 
 const initialPagination = (): Pagination => ({
   pageSize: 20,
@@ -180,7 +179,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
   }
 
   function findProjectGroup(id: SegmentId) {
-    return LfService.findSegment(id)
+    return LfService.findSegment<ProjectGroup>(id)
       .then((projectGroup: ProjectGroup) => Promise.resolve(projectGroup))
       .catch(() => {
         ToastStore.error('Something went wrong while getting the project group');
@@ -297,7 +296,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
   }
 
   function findProject(id: SegmentId) {
-    return LfService.findSegment(id)
+    return LfService.findSegment<Project>(id)
       .then((project: Project) => Promise.resolve(project))
       .catch(() => {
         ToastStore.error('Something went wrong while getting the project');
@@ -348,7 +347,7 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
   }
 
   function findSubProject(id: SegmentId) {
-    return LfService.findSegment(id)
+    return LfService.findSegment<Project>(id)
       .then((project: Project) => Promise.resolve(project))
       .catch(() => {
         ToastStore.error('Something went wrong while getting the sub-project');

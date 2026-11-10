@@ -151,7 +151,7 @@ import type { Project, ProjectRequest } from '@/modules/lf/segments/types/Segmen
 import { useMutation, useQuery } from '@tanstack/vue-query';
 import { queryKeys } from '@/shared/queries/keys';
 import { useInvalidate } from '@/shared/queries/invalidate';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { createProject, findSegment, updateSegment } from '@/modules/lf/segments/segments.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfField from '@/ui-kit/field/Field.vue';
@@ -244,7 +244,7 @@ const { isLoading, isSuccess, data } = useQuery({
     if (!props.id) {
       return Promise.resolve(null);
     }
-    return segmentService.getSegmentById(props.id);
+    return findSegment<Project>(props.id);
   },
   enabled: !!props.id,
 });
@@ -282,13 +282,13 @@ const onError = (error: AxiosError<string>) => {
 };
 
 const updateMutation = useMutation({
-  mutationFn: ({ id, project }: { id: string; project: ProjectRequest }) => segmentService.updateSegment(id, project),
+  mutationFn: ({ id, project }: { id: string; project: ProjectRequest }) => updateSegment(id, project),
   onSuccess,
   onError,
 });
 
 const createMutation = useMutation({
-  mutationFn: (req: { project: ProjectRequest; segments: string[] }) => segmentService.createProject(req),
+  mutationFn: (req: { project: ProjectRequest; segments: string[] }) => createProject({ ...req.project, segments: req.segments }),
   onSuccess,
   onError,
 });
