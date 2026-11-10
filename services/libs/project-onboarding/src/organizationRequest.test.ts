@@ -43,6 +43,9 @@ describe('expandOrganizations', () => {
         '*github.com/openbmc* has more than 20 public repositories, and for now I take up to 20 at a time.',
       ),
       reason: 'more than 20 repositories',
+      kind: 'too_large',
+      owner: 'openbmc',
+      limit: 20,
     })
 
     const combined = await expandOrganizations(
@@ -55,6 +58,8 @@ describe('expandOrganizations', () => {
     )
     expect(combined).toMatchObject({
       ok: false,
+      kind: 'too_large_together',
+      owner: 'second',
       reply: expect.stringContaining(
         'Together, these organizations have more than 20 public repositories, and for now I take up to 20 per request.',
       ),
@@ -75,6 +80,8 @@ describe('expandOrganizations', () => {
     )
     expect(empty).toMatchObject({
       ok: false,
+      kind: 'empty',
+      limit: 50,
       reply:
         '*github.com/openbmc* has no public repositories I can add: archived repositories and forks are left out.',
     })
@@ -89,6 +96,8 @@ describe('expandOrganizations', () => {
         "I couldn't find a GitHub organization called *github.com/nobody-here*",
       ),
       reason: 'not found',
+      kind: 'not_found',
+      owner: 'nobody-here',
     })
 
     const down = await expandOrganizations(
@@ -99,6 +108,7 @@ describe('expandOrganizations', () => {
       ok: false,
       reply: expect.stringContaining("GitHub isn't answering right now"),
       reason: 'network error',
+      kind: 'unavailable',
     })
   })
 })

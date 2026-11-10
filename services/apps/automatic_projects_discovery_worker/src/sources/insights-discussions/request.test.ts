@@ -140,3 +140,96 @@ describe('toDiscussionRequest with a hierarchy question', () => {
     ])
   })
 })
+
+describe('toDiscussionRequest with an organization link', () => {
+  const orgDiscussion = {
+    title: 'Onboarding request: OpenBMC',
+    body: 'Please onboard every repository of https://github.com/openbmc, non-LF.',
+  }
+
+  it('keeps the parsed request when it points at an organization and no repository', () => {
+    const request = toDiscussionRequest(orgDiscussion, {
+      ...parsed,
+      request: {
+        ...parsed.request,
+        githubRepoUrls: [],
+        linksToFollow: ['https://github.com/openbmc'],
+        projectName: 'OpenBMC',
+      },
+    })
+
+    expect(request.organizations).toEqual(['openbmc'])
+    expect(request.repoUrls).toEqual([])
+    expect(request.projectName).toBe('OpenBMC')
+    expect(request.requestText).toBeNull()
+    expect(request.parsed).not.toBeNull()
+  })
+
+  it('follows the parser on which links count, and reads the text without a parser', () => {
+    const excluded = toDiscussionRequest(orgDiscussion, {
+      ...parsed,
+      request: { ...parsed.request, githubRepoUrls: [], linksToFollow: [] },
+    })
+    expect(excluded.organizations).toEqual([])
+    expect(excluded.parsed).toBeNull()
+
+    const fallback = toDiscussionRequest(orgDiscussion, {
+      ok: false,
+      reason: 'bad shape',
+    })
+    expect(fallback.organizations).toEqual(['openbmc'])
+    expect(fallback.requestText).toContain('Please onboard every repository')
+  })
+})
+
+describe('discussionHints with organizations', () => {
+  const organizations = [
+    {
+      owner: 'openbmc',
+      repoUrls: ['https://github.com/openbmc/one', 'https://github.com/openbmc/two'],
+    },
+  ]
+
+  it('marks the organization repositories and keeps the listed ones in their project group', () => {
+    const hints = discussionHints(
+      [
+        'https://github.com/apache/hugegraph',
+        'https://github.com/apache/hugegraph-ai',
+        ...organizations[0].repoUrls,
+      ],
+      parsed.request,
+      organizations,
+    )
+
+    expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
+    expect(hints.get('https://github.com/openbmc/two')).toEqual({ organization: 'openbmc' })
+    expect(hints.get('https://github.com/apache/hugegraph-ai')).toMatchObject({
+      project: 'Apache HugeGraph',
+      mainRepoUrl: 'https://github.com/apache/hugegraph',
+    })
+  })
+
+  it('never picks a repository of the organization as the main one of the project group', () => {
+    const request = {
+      ...parsed.request,
+      githubRepoUrls: [
+        'https://github.com/openbmc/one',
+        'https://github.com/apache/hugegraph',
+        'https://github.com/apache/hugegraph-ai',
+      ],
+    }
+    const hints = discussionHints(request.githubRepoUrls, request, organizations)
+
+    expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
+    expect(hints.get('https://github.com/apache/hugegraph')).toMatchObject({
+      mainRepoUrl: 'https://github.com/apache/hugegraph',
+    })
+  })
+
+  it('marks the organization repositories even without a parsed request', () => {
+    const hints = discussionHints(organizations[0].repoUrls, null, organizations)
+
+    expect(hints.size).toBe(2)
+    expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
+  })
+})

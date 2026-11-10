@@ -237,6 +237,7 @@ export type IDbProjectCatalogCreate = Omit<
   projectName?: string | null
   requestedBy?: string | null
   requestHints?: IRequestHints | null
+  classificationKind?: ProjectCatalogClassificationKind | null
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {

@@ -6,6 +6,7 @@ import {
   claimDiscussionOnboardingRequestDone,
   findDiscussionOnboardingRequest,
   replaceDiscussionOnboardingRequestComment,
+  setDiscussionOnboardingRequestNotes,
   upsertDiscussionOnboardingRequest,
 } from './discussionOnboardingRequests'
 
@@ -23,7 +24,7 @@ describe('discussionOnboardingRequests', () => {
       commentId: 'DC_1',
     })
 
-    expect(stored).toMatchObject({ sourceUrl, discussionId: 'D_1', commentId: 'DC_1' })
+    expect(stored).toMatchObject({ sourceUrl, discussionId: 'D_1', commentId: 'DC_1', notes: [] })
     expect(stored.doneNotifiedAt).toBeNull()
     expect(await findDiscussionOnboardingRequest(qx, sourceUrl)).toMatchObject({
       commentId: 'DC_1',
@@ -68,5 +69,20 @@ describe('discussionOnboardingRequests', () => {
     expect(replaced.commentId).toBe('DC_2')
     expect(replaced.doneNotifiedAt).not.toBeNull()
     expect(await claimDiscussionOnboardingRequestDone(qx, sourceUrl)).toBe(false)
+  })
+
+  test('keeps the notes the bot adds under the repositories', async ({ qx }) => {
+    const note = '**github.com/acme** has no public repositories I can add.'
+    const stored = await upsertDiscussionOnboardingRequest(qx, {
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes: [note],
+    })
+    expect(stored.notes).toEqual([note])
+
+    const cleared = await setDiscussionOnboardingRequestNotes(qx, sourceUrl, [])
+    expect(cleared.notes).toEqual([])
+    expect((await findDiscussionOnboardingRequest(qx, sourceUrl))?.notes).toEqual([])
   })
 })
