@@ -347,6 +347,23 @@ describe('classifyCatalogRow', () => {
     })
   })
 
+  it('routes a grouped discussion to review even when auto apply is on', async () => {
+    const grouped = {
+      provenance: 'github-discussion' as const,
+      requestHints: { project: 'Acme', mainRepoUrl: 'https://github.com/acme/widget' },
+    }
+    const result = await classifyCatalogRow(
+      row(grouped),
+      deps({ candidates: [pccProject], cdpSegment: segment, autoApply: true }),
+    )
+
+    expect(result.classification).toMatchObject({
+      classificationKind: 'lf_in_cdp',
+      action: 'review',
+      proposedAction: 'create_integration',
+    })
+  })
+
   it('maps an LF owner already in CDP to a human review of an LF project in CDP', async () => {
     const result = await classifyCatalogRow(row(), deps({ lfOwners: ['acme'] }))
 

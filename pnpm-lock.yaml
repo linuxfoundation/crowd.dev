@@ -704,6 +704,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/project-onboarding':
+        specifier: workspace:*
+        version: link:../../libs/project-onboarding
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis

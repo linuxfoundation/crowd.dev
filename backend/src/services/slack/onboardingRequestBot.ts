@@ -27,8 +27,8 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   BotStatus,
   IExpandedOrganization,
-  IIngestProjectGroup,
   IParsedOnboardingRequest,
+  IRequestGroupInput,
   OrganizationRepoLookup,
   REQUESTER_ERROR_DECISION_REASONS,
   RepositoryLookup,
@@ -43,10 +43,12 @@ import {
   checkRepositoriesOnGithub,
   collectIngestNotes,
   expandOrganizations,
+  ingestProjectGroup,
   missingRepositoryLine,
   parseOnboardingRequest,
   projectGroupNote,
   reopenedRequestNote,
+  requestHintsByRepoUrl,
   requestedOrganizations,
 } from '@crowd/project-onboarding'
 import { createOnboardingRequestLlm } from '@crowd/project-onboarding/src/requestLlm'
@@ -78,12 +80,7 @@ const GITHUB_REPO_CHECK_TIMEOUT_MS = 10_000
 const lookupRepository: RepositoryLookup = (repoUrl) =>
   isPublicGithubRepo(repoUrl, getGithubToken(), AbortSignal.timeout(GITHUB_REPO_CHECK_TIMEOUT_MS))
 
-export type IProjectGroupInput = Pick<
-  IParsedOnboardingRequest,
-  'projectName' | 'suggestedSlug' | 'confidence'
->
-
-export interface IOnboardingRequestIngest extends IProjectGroupInput {
+export interface IOnboardingRequestIngest extends IRequestGroupInput {
   requestText: string
   repoUrls: string[]
   sourceUrl: string
@@ -123,40 +120,6 @@ function isHelpRequest(requestText: string): boolean {
   return requestText.toLowerCase() === HELP_KEYWORD
 }
 
-export function requestHintsByRepoUrl(
-  repoUrls: string[],
-  organizations: IExpandedOrganization[],
-  { projectName, suggestedSlug, confidence }: IProjectGroupInput,
-): Map<string, IRequestHints> {
-  const hints = new Map<string, IRequestHints>(
-    organizations.flatMap((org) =>
-      org.repoUrls.map((repoUrl) => [repoUrl, { organization: org.owner }] as const),
-    ),
-  )
-  const listed = repoUrls.filter((repoUrl) => !hints.has(repoUrl))
-  const name = projectName?.trim()
-  if (name && listed.length > 1) {
-    const group: IRequestHints = {
-      project: name,
-      mainRepoUrl: listed[0],
-      ...(suggestedSlug ? { suggestedSlug } : {}),
-      ...(confidence !== null && confidence !== undefined ? { confidence } : {}),
-    }
-    for (const repoUrl of listed) {
-      hints.set(repoUrl, group)
-    }
-  }
-  return hints
-}
-
-export function ingestProjectGroup(
-  hints: Map<string, IRequestHints>,
-  repoUrls: Iterable<string>,
-): IIngestProjectGroup | null {
-  const grouped = [...repoUrls].flatMap((repoUrl) => hints.get(repoUrl)?.project ?? [])
-  return grouped.length > 1 ? { name: grouped[0], repositories: grouped.length } : null
-}
-
 function toCatalogRow(
   repoUrl: string,
   { requestText, sourceUrl, projectName, requestedBy }: Omit<IOnboardingRequestIngest, 'repoUrls'>,
@@ -190,6 +153,7 @@ export async function ingestOnboardingRequest(
     projectName,
     suggestedSlug,
     confidence,
+    declaredLf,
     requestedBy,
     organizations = [],
   }: IOnboardingRequestIngest,
@@ -199,6 +163,7 @@ export async function ingestOnboardingRequest(
     projectName,
     suggestedSlug,
     confidence,
+    declaredLf,
   })
   const request = { requestText, sourceUrl, projectName, requestedBy }
   const reopened = await reopenRejectedProjectCatalog(
@@ -517,7 +482,7 @@ export async function runOnboardingRequestBot({
     }
 
     const requested = repoUrls.filter((repoUrl) => !trackedUrls.has(repoUrl))
-    const projectGroup: IProjectGroupInput = {
+    const projectGroup: IRequestGroupInput = {
       projectName: parsed?.projectName ?? null,
       suggestedSlug: parsed?.suggestedSlug ?? null,
       confidence: parsed?.confidence ?? null,

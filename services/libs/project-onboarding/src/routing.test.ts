@@ -163,6 +163,19 @@ describe('routeEvaluationOutcome', () => {
     )
   })
 
+  it('sends a grouped discussion to review even with auto apply on, a lone one to onboard', () => {
+    const discussion = { ...botRow, provenance: 'github-discussion' as const }
+    const grouped = { ...discussion, requestHints: { project: 'Acme', mainRepoUrl: 'u' } }
+
+    expect(routeEvaluationOutcome(grouped, verdict, { autoApply: true })).toMatchObject({
+      action: 'review',
+    })
+    expect(routeEvaluationOutcome(discussion, verdict, { autoApply: false })).toEqual({
+      action: 'onboard',
+      reviewReason: null,
+    })
+  })
+
   it('lets the row onboard when auto apply is on or the request did not come from the bot', () => {
     expect(routeEvaluationOutcome(botRow, verdict, { autoApply: true })).toEqual({
       action: 'onboard',

@@ -162,7 +162,11 @@ export async function processDataset(
     })
   }
 
+  // Human requests are few and come in groups that must land together; only the bulk sources
+  // are rationed by the discovery limit.
+  const rationed = !isHumanProjectCatalogProvenance(source.provenance)
   const accepted: IDbProjectCatalogCreate[] = []
+  const limitReached = () => rationed && accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT
   const skippedInCdp: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
   let chunk: IDbProjectCatalogCreate[] = []
@@ -218,7 +222,7 @@ export async function processDataset(
         seenRepoUrls.add(candidate.repoUrl)
         continue
       }
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         break
       }
@@ -246,6 +250,8 @@ export async function processDataset(
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
       requestText: parsed.requestText ? truncateRequestText(parsed.requestText) : null,
+      projectName: parsed.projectName ?? null,
+      requestHints: parsed.requestHints ?? null,
     })
 
     if (chunk.length >= CANDIDATE_CHUNK_SIZE) {
@@ -258,7 +264,7 @@ export async function processDataset(
         skippedAlreadyInCdp: skippedInCdp.length,
       })
 
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
@@ -270,7 +276,7 @@ export async function processDataset(
   }
 
   // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+  if (chunk.length > 0 && !limitReached()) {
     await acceptNewRows(chunk)
   }
 
