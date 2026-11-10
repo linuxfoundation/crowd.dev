@@ -1,0 +1,17 @@
+DESCRIPTION >
+    - `cncf_organization_countries_monthly_ds` lists, for each month, the CNCF organizations active that month and the countries they are placed in: one row per month, organization and country.
+    - Populated daily by `cncf_organization_countries_monthly_copy.pipe` from `cncf_collection_activities_ds` (full replace).
+    - Serves `collection_contributors_geo_distribution_over_time.pipe`, which counts distinct organizations per country and period without scanning activities.
+    - `month` is the first day of the month. Organizations whose place matches no country are left out.
+
+TAGS "Report"
+
+SCHEMA >
+    `month` Date,
+    `organizationId` String,
+    `country` LowCardinality(String),
+    `flag` LowCardinality(String),
+    `country_code` LowCardinality(String)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY month, country_code, organizationId

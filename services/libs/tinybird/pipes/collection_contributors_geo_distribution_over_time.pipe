@@ -1,0 +1,67 @@
+DESCRIPTION >
+    - `collection_contributors_geo_distribution_over_time.pipe` serves the over-time chart of the CNCF report: for each period, the organizations active in the CNCF collection, by country.
+    - Reads `cncf_organization_countries_monthly_ds`, rebuilt daily by `cncf_organization_countries_monthly_copy.pipe`; see that pipe for how organizations are placed in countries.
+    - An organization active in several months of a year counts once for that year. Periods with no placed organization are left out.
+    - Parameters:
+    - `granularity`: Required string for time period intervals ('monthly', 'yearly')
+    - `startDate`: Optional DateTime; the first period is the one containing it (e.g., '2024-01-01 00:00:00'). Defaults to the first month with activity
+    - `endDate`: Optional DateTime; only periods starting before it are returned (e.g., '2024-12-31 00:00:00'). Defaults to now
+    - Response: `startDate`, `endDate`, `country`, `flag`, `country_code`, `contributorCount` (the number of organizations)
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE collection_contributors_geo_distribution_over_time_result
+SQL >
+    %
+    SELECT
+        if(
+            {{ String(granularity, description="Time granularity: monthly or yearly", required=True) }}
+            = 'yearly',
+            toStartOfYear(month),
+            month
+        ) AS "startDate",
+        if(
+            {{ granularity }} = 'yearly',
+            toDate("startDate" + INTERVAL 1 YEAR - INTERVAL 1 DAY),
+            toDate("startDate" + INTERVAL 1 MONTH - INTERVAL 1 DAY)
+        ) AS "endDate",
+        country,
+        flag,
+        country_code,
+        uniqExact(organizationId) AS "contributorCount"
+    FROM cncf_organization_countries_monthly_ds
+    WHERE
+        "startDate"
+        < {% if defined(endDate) %}
+            toDate(
+                {{
+                    DateTime(
+                        endDate,
+                        description="Only periods starting before this date are returned",
+                        required=False,
+                    )
+                }}
+            )
+        {% else %} today()
+        {% end %}
+        {% if defined(startDate) %}
+            AND "startDate" >= if(
+                {{ granularity }} = 'yearly',
+                toStartOfYear(
+                    toDate(
+                        {{
+                            DateTime(
+                                startDate,
+                                description="The first period is the one containing this date",
+                                required=False,
+                            )
+                        }}
+                    )
+                ),
+                toStartOfMonth(toDate({{ DateTime(startDate, required=False) }}))
+            )
+        {% end %}
+    GROUP BY "startDate", "endDate", country, flag, country_code
+    ORDER BY "startDate" ASC, "contributorCount" DESC
