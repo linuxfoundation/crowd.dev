@@ -78,11 +78,10 @@ const GITHUB_REPO_CHECK_TIMEOUT_MS = 10_000
 const lookupRepository: RepositoryLookup = (repoUrl) =>
   isPublicGithubRepo(repoUrl, getGithubToken(), AbortSignal.timeout(GITHUB_REPO_CHECK_TIMEOUT_MS))
 
-export interface IProjectGroupInput {
-  projectName: string | null
-  suggestedSlug?: string | null
-  confidence?: number | null
-}
+export type IProjectGroupInput = Pick<
+  IParsedOnboardingRequest,
+  'projectName' | 'suggestedSlug' | 'confidence'
+>
 
 export interface IOnboardingRequestIngest extends IProjectGroupInput {
   requestText: string

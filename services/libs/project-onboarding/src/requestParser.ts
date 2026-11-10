@@ -234,10 +234,10 @@ function normalizeSuggestedSlug(slug: unknown): string | null {
 }
 
 function normalizeConfidence(confidence: unknown): number | null {
-  if (typeof confidence !== 'number' || !Number.isFinite(confidence)) {
+  if (typeof confidence !== 'number' || !(confidence >= 0 && confidence <= 1)) {
     return null
   }
-  return Math.round(Math.min(1, Math.max(0, confidence)) * 100) / 100
+  return Math.round(confidence * 100) / 100
 }
 
 export async function parseOnboardingRequest(

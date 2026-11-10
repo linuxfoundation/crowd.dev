@@ -342,7 +342,7 @@ describe('parseOnboardingRequest', () => {
     expect(result).toMatchObject({ ok: true, request: { linksToFollow: [] } })
   })
 
-  it('keeps a well-formed suggested slug, clamps the confidence and ignores malformed ones', async () => {
+  it('keeps a well-formed suggested slug and a confidence within range, drops the rest', async () => {
     const text = 'onboard Acme Tools, slug acme-tools, https://github.com/acme/one'
     const parsed = (overrides: Record<string, unknown>) =>
       parseOnboardingRequest(
@@ -362,8 +362,12 @@ describe('parseOnboardingRequest', () => {
       request: { suggestedSlug: 'acme-tools', confidence: 0.86 },
     })
     await expect(parsed({ suggestedSlug: 'Acme Tools!', confidence: 1.7 })).resolves.toMatchObject({
-      request: { suggestedSlug: null, confidence: 1 },
+      request: { suggestedSlug: null, confidence: null },
     })
+    await expect(parsed({ confidence: 86 })).resolves.toMatchObject({
+      request: { confidence: null },
+    })
+    await expect(parsed({ confidence: 1 })).resolves.toMatchObject({ request: { confidence: 1 } })
     await expect(parsed({ suggestedSlug: 42, confidence: 'high' })).resolves.toMatchObject({
       ok: true,
       request: { projectName: 'Acme Tools', suggestedSlug: null, confidence: null },
