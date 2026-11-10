@@ -178,7 +178,8 @@ func getGitRepositoryURL(dirPath string) (string, error) {
 		gitUrl = strings.Replace(gitUrl, "git@", "https://", 1)
 	}
 
-	return gitUrl, nil
+	// Must equal repositories.url, which has no .git suffix: Tinybird joins project_costs on it.
+	return strings.TrimSuffix(gitUrl, ".git"), nil
 }
 
 // getCost runs the scc command and parses the output to get the estimated cost.
