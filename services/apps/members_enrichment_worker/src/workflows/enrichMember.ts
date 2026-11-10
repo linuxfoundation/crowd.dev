@@ -11,9 +11,11 @@ import { IEnrichableMember, MemberEnrichmentSource } from '@crowd/types'
 import * as activities from '../activities'
 import { IEnrichmentSourceInput } from '../types'
 import { sourceHasDifferentDataComparedToCache } from '../utils/common'
+import { SOURCES_READING_OTHER_CACHES } from '../utils/config'
 import { processMemberSources } from './processMemberSources'
 
 const {
+  hasNormalizedDataChanged,
   getEnrichmentData,
   findMemberEnrichmentCache,
   insertMemberEnrichmentCache,
@@ -45,43 +47,48 @@ export async function enrichMember(
   // Fetch caches for all sources upfront to avoid redundant DB round-trips.
   const caches = await findMemberEnrichmentCache(sources, input.id)
 
-  // Fetch all sources in parallel so one slow or rate-limited source doesn't block the rest.
-  // The workflow fails fast, but source activities already in flight may still update cache.
-  const sourceResults = await Promise.all(
-    sources.map(async (source): Promise<boolean> => {
-      const cache = caches.find((c) => c.source === source)
+  const enrichFromSource = async (source: MemberEnrichmentSource): Promise<boolean> => {
+    const cache = caches.find((c) => c.source === source)
 
-      // cache is obsolete when it's not found or cache.updatedAt is older than cacheObsoleteAfterSeconds
-      if (await isCacheObsolete(source, cache)) {
-        const enrichmentInput: IEnrichmentSourceInput = await getEnrichmentInput(input)
+    // cache is obsolete when it's not found or cache.updatedAt is older than cacheObsoleteAfterSeconds
+    if (!(await isCacheObsolete(source, cache))) return false
 
-        if (!(await hasRemainingCredits(source))) {
-          // no credits remaining, throw error to fail the workflow
-          throw ApplicationFailure.create({
-            message: `No credits remaining for source ${source}`,
-            type: 'MEMBER_ENRICHMENT_NO_CREDITS',
-            nonRetryable: true,
-          })
-        }
+    const enrichmentInput: IEnrichmentSourceInput = await getEnrichmentInput(input)
 
-        const data = await getEnrichmentData(source, enrichmentInput)
+    if (!(await hasRemainingCredits(source))) {
+      // no credits remaining, throw error to fail the workflow
+      throw ApplicationFailure.create({
+        message: `No credits remaining for source ${source}`,
+        type: 'MEMBER_ENRICHMENT_NO_CREDITS',
+        nonRetryable: true,
+      })
+    }
 
-        if (!cache) {
-          await insertMemberEnrichmentCache(source, input.id, data)
-          return !!data
-        } else if (data === null && cache.data !== null) {
-          await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
-        } else if (sourceHasDifferentDataComparedToCache(cache, data)) {
-          await updateMemberEnrichmentCache(source, input.id, data)
-          return true
-        } else {
-          // data is same as cache, only update cache.updatedAt
-          await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
-        }
-      }
+    const data = await getEnrichmentData(source, enrichmentInput)
+
+    if (!cache) {
+      await insertMemberEnrichmentCache(source, input.id, data)
+      return !!data
+    }
+
+    if (data === null || !sourceHasDifferentDataComparedToCache(cache, data)) {
+      await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
       return false
-    }),
-  )
+    }
+
+    await updateMemberEnrichmentCache(source, input.id, data)
+    return hasNormalizedDataChanged(source, cache.data, data)
+  }
+
+  // Sources reading other sources' caches must start only after those caches are written.
+  // The workflow fails fast, but source activities already in flight may still update cache.
+  const independentSources = sources.filter((source) => !SOURCES_READING_OTHER_CACHES[source])
+  const dependentSources = sources.filter((source) => SOURCES_READING_OTHER_CACHES[source])
+
+  const sourceResults = [
+    ...(await Promise.all(independentSources.map(enrichFromSource))),
+    ...(await Promise.all(dependentSources.map(enrichFromSource))),
+  ]
 
   const changeInEnrichmentSourceData = sourceResults.some(Boolean)
 

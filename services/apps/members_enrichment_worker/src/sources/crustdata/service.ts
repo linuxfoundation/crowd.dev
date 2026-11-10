@@ -23,6 +23,8 @@ import {
   IMemberEnrichmentDataNormalized,
 } from '../../types'
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
+import { SOURCES_READING_OTHER_CACHES } from '../../utils/config'
+import { hasNewCachedInputsSql, hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IMemberEnrichmentCrustdataEnrichResponse,
   IMemberEnrichmentCrustdataRemainingCredits,
@@ -42,15 +44,11 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   public source: MemberEnrichmentSource = MemberEnrichmentSource.CRUSTDATA
   public platform = `enrichment-${this.source}`
 
-  public alsoFindInputsInSourceCaches: MemberEnrichmentSource[] = [
-    MemberEnrichmentSource.PROGAI,
-    MemberEnrichmentSource.CLEARBIT,
-    MemberEnrichmentSource.SERP,
-  ]
+  public alsoFindInputsInSourceCaches = SOURCES_READING_OTHER_CACHES[this.source]
 
   public enrichMembersWithActivityMoreThan = 100
 
-  public enrichableBySql = `("membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan}) AND mi.verified AND ((mi.type = 'username' AND mi.platform = 'linkedin') OR (mi.type = 'email'))`
+  public enrichableBySql = `"membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan} AND (${hasVerifiedIdentitySql(`(mi.type = 'username' AND mi.platform = 'linkedin') OR mi.type = 'email'`)} OR ${hasNewCachedInputsSql(this.source, this.alsoFindInputsInSourceCaches)})`
 
   public neverReenrich = true
 

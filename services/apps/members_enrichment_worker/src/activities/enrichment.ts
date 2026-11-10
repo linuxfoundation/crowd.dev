@@ -90,7 +90,7 @@ export async function getMaxConcurrentRequests(
   concurrencyLimit: number,
 ): Promise<number> {
   const serviceMap: Partial<Record<MemberEnrichmentSource, IEnrichmentService>> = {}
-  const currentProcessingActivityCount = members[0].activityCount
+  const currentProcessingActivityCount = Math.max(...members.map((m) => m.activityCount))
 
   let maxConcurrentRequestsInAllSources = concurrencyLimit
 
@@ -179,6 +179,17 @@ export async function normalizeEnrichmentData(
   return service.normalize(data)
 }
 
+export async function hasNormalizedDataChanged(
+  source: MemberEnrichmentSource,
+  previous: IMemberEnrichmentData | null,
+  current: IMemberEnrichmentData,
+): Promise<boolean> {
+  if (!previous) return true
+
+  const service = EnrichmentSourceServiceFactory.getEnrichmentSourceService(source, svc.log)
+  return !_.isEqual(service.normalize(previous), service.normalize(current))
+}
+
 export async function isCacheObsolete(
   source: MemberEnrichmentSource,
   cache: IMemberEnrichmentCache<IMemberEnrichmentData>,
@@ -258,8 +269,9 @@ export async function findMemberEnrichmentCacheForAllSources(
   memberId: string,
   returnRowsWithoutData = false,
 ): Promise<IMemberEnrichmentCache<IMemberEnrichmentData>[]> {
+  // Read from the writer: dependent sources need caches written moments earlier in the same workflow.
   return findMemberEnrichmentCacheForAllSourcesDb(
-    svc.postgres.reader.connection(),
+    svc.postgres.writer.connection(),
     memberId,
     returnRowsWithoutData,
   )
