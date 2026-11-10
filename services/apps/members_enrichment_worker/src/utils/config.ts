@@ -11,10 +11,6 @@ export const SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES: MemberAttributeName[] = [
   MemberAttributeName.COUNTRY,
 ]
 
-/**
- * Sources that look up their inputs (e.g. a LinkedIn handle) in other sources' cached data.
- * They run after the sources they read from, so a member's first enrichment can use them.
- */
 export const SOURCES_READING_OTHER_CACHES: Partial<
   Record<MemberEnrichmentSource, MemberEnrichmentSource[]>
 > = {
@@ -30,8 +26,4 @@ export const SOURCES_READING_OTHER_CACHES: Partial<
   ],
 }
 
-/**
- * Share of each run reserved for members that were never enriched.
- * The rest goes to refreshing existing members, and either side can use the other's unused slots.
- */
 export const NEW_MEMBERS_SHARE = 0.6

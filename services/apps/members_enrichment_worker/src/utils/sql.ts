@@ -10,9 +10,6 @@ export function hasVerifiedIdentitySql(condition: string): string {
   )`
 }
 
-/**
- * Matches when an input source has cached data that `source` hasn't already come back empty on.
- */
 export function hasNewCachedInputsSql(
   source: MemberEnrichmentSource,
   inputSources: MemberEnrichmentSource[],
