@@ -888,9 +888,7 @@ describe('recordRunTimeout', () => {
 })
 
 describe('getEmittingChannelNamesForIntegrations', () => {
-  test('returns emitting, active channels once per repo, per integration', async ({
-    qx,
-  }) => {
+  test('returns emitting, active channels once per repo, per integration', async ({ qx }) => {
     const integrationId = await createIntegration(qx, { platform: 'github-nango' })
     const otherIntegrationId = await createIntegration(qx, { platform: 'github-nango' })
 
