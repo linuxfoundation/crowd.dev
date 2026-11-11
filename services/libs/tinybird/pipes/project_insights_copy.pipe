@@ -166,6 +166,49 @@ SQL >
     INNER JOIN repositories r FINAL ON r.id = s.repositoryId
     WHERE isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
 
+NODE project_insights_copy_gerrit_mirror_repos
+DESCRIPTION >
+    GitHub repos that mirror an active Gerrit repo of the same project (lfx-cdp-insights-ops#1127).
+    A mirror has the same commits but no reviews or merged PRs, because review happens in Gerrit, so it drags the project's
+    maintainer and development medians down. Matched by name: the Gerrit project path with `/` replaced
+    by `-` (gerrit.onap.org/r/aai/aai-common -> aai-aai-common) against the GitHub repo name, ignoring the
+    `archived-` prefix FD.io uses. Only active Gerrit repos count, so a project that moved from a now
+    read-only (archived) Gerrit repo to GitHub keeps its GitHub repo. Gerrit repos are identified by
+    `integrations.platform = 'gerrit'`, the same rule as health_score_v2_maintainer.pipe.
+
+SQL >
+    SELECT gh.url AS repoUrl
+    FROM
+        (
+            SELECT
+                insightsProjectId,
+                url,
+                lower(
+                    replaceRegexpOne(extract(url, 'github\\.com/[^/]+/([^/]+)'), '^archived-', '')
+                ) AS mirrorKey
+            FROM repositories FINAL
+            WHERE deletedAt IS NULL AND insightsProjectId != '' AND domain(url) = 'github.com'
+        ) AS gh
+    INNER JOIN
+        (
+            SELECT
+                r.insightsProjectId AS insightsProjectId,
+                lower(
+                    replaceAll(replaceRegexpOne(path(r.url), '^/(r/|gerrit/)?', ''), '/', '-')
+                ) AS mirrorKey
+            FROM repositories r FINAL
+            INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+            WHERE
+                r.deletedAt IS NULL
+                AND r.insightsProjectId != ''
+                AND r.enabled = true
+                AND r.excluded = false
+                AND r.archived = false
+                AND i.platform = 'gerrit'
+        ) AS gerrit
+        ON gh.insightsProjectId = gerrit.insightsProjectId
+        AND gh.mirrorKey = gerrit.mirrorKey
+
 NODE project_insights_copy_health_v2_project
 DESCRIPTION >
     Lifecycle, Health Score v2, and Impact Score all rolled up to project level from the pre-computed
@@ -206,10 +249,15 @@ DESCRIPTION >
     healthScoreV2 guard), 100 when all 3 are covered, otherwise 100 minus the weight of the one missing
     category (Maintainer Health 40 / Security & Supply Chain 35 / Development Activity 25) — 60, 65, or
     75 respectively.
+    - GitHub mirrors of Gerrit repos (project_insights_copy_gerrit_mirror_repos,
+    lfx-cdp-insights-ops#1127) contribute only their security score: maintainer and development are
+    NULLed before the medians, since those
+    come from the Gerrit side. Security, lifecycle and impact still count, because Scorecard and the
+    security practice checks only run on GitHub.
 
 SQL >
     SELECT
-        rep.insightsProjectId AS insightsProjectId,
+        hv2.insightsProjectId AS insightsProjectId,
         if(
             (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
             + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
@@ -266,10 +314,28 @@ SQL >
         (hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
         quantileExact(0.5)
         (hv2.developmentActivityScoreV2) AS developmentActivityScoreV2
-    FROM repositories rep FINAL
-    INNER JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
-    WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
-    GROUP BY rep.insightsProjectId
+    FROM
+        (
+            SELECT
+                rep.insightsProjectId AS insightsProjectId,
+                if(
+                    rep.url IN (SELECT repoUrl FROM project_insights_copy_gerrit_mirror_repos),
+                    NULL,
+                    h.maintainerHealthScoreV2
+                ) AS maintainerHealthScoreV2,
+                h.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
+                if(
+                    rep.url IN (SELECT repoUrl FROM project_insights_copy_gerrit_mirror_repos),
+                    NULL,
+                    h.developmentActivityScoreV2
+                ) AS developmentActivityScoreV2,
+                h.lifecycleLabelV2 AS lifecycleLabelV2,
+                h.impactScore AS impactScore
+            FROM repositories rep FINAL
+            INNER JOIN health_score_v2_repo_copy_ds h ON h.repoUrl = rep.url
+            WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
+        ) AS hv2
+    GROUP BY hv2.insightsProjectId
 
 NODE project_insights_copy_project_results
 DESCRIPTION >
