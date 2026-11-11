@@ -24,12 +24,7 @@ export function workerDiscussionSourceDeps(): IDiscussionSourceDeps {
     lookupRepository: (repoUrl) =>
       isPublicGithubRepo(repoUrl, githubToken(), AbortSignal.timeout(GITHUB_LOOKUP_TIMEOUT_MS)),
     lookupOrganization: (owner, limit) =>
-      fetchPublicOrgRepos(
-        owner,
-        githubToken(),
-        limit,
-        AbortSignal.timeout(GITHUB_LOOKUP_TIMEOUT_MS),
-      ),
+      fetchPublicOrgRepos(owner, githubToken(), limit, GITHUB_LOOKUP_TIMEOUT_MS),
     noteOrganizationFailures: async (discussionUrl, notes) => {
       await refreshDiscussionStatusComment(
         pgpQx(svc.postgres.writer.connection()),

@@ -13,6 +13,11 @@ import {
 import { IParsedOnboardingRequest } from './requestParser'
 
 export const MAX_ORGANIZATION_REPOSITORIES = 50
+export const MAX_LF_ORGANIZATION_REPOSITORIES = 500
+
+export function organizationRepositoryLimit(declaredLf: boolean | null | undefined): number {
+  return declaredLf === true ? MAX_LF_ORGANIZATION_REPOSITORIES : MAX_ORGANIZATION_REPOSITORIES
+}
 
 export type OrganizationRepoLookup = (owner: string, limit: number) => Promise<IPublicOrgRepos>
 
@@ -89,7 +94,7 @@ export function organizationNote({ owner, repoUrls }: IExpandedOrganization): st
 export async function expandOrganizations(
   owners: string[],
   lookup: OrganizationRepoLookup,
-  limit = MAX_ORGANIZATION_REPOSITORIES,
+  limit: number,
 ): Promise<OrganizationExpansion> {
   const organizations: IExpandedOrganization[] = []
   const failure = (
