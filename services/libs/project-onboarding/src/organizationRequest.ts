@@ -13,9 +13,10 @@ import {
 import { IParsedOnboardingRequest } from './requestParser'
 
 export const MAX_ORGANIZATION_REPOSITORIES = 50
+export const MAX_LF_ORGANIZATION_REPOSITORIES = 500
 
 export function organizationRepositoryLimit(declaredLf: boolean | null | undefined): number {
-  return declaredLf === true ? Number.POSITIVE_INFINITY : MAX_ORGANIZATION_REPOSITORIES
+  return declaredLf === true ? MAX_LF_ORGANIZATION_REPOSITORIES : MAX_ORGANIZATION_REPOSITORIES
 }
 
 export type OrganizationRepoLookup = (owner: string, limit: number) => Promise<IPublicOrgRepos>

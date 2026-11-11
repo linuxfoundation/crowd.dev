@@ -120,7 +120,7 @@ describe('expandOrganizations', () => {
 
 describe('organizationRepositoryLimit', () => {
   it('caps only organizations the requester did not declare as LF', () => {
-    expect(organizationRepositoryLimit(true)).toBe(Number.POSITIVE_INFINITY)
+    expect(organizationRepositoryLimit(true)).toBe(500)
     expect(organizationRepositoryLimit(false)).toBe(50)
     expect(organizationRepositoryLimit(null)).toBe(50)
     expect(organizationRepositoryLimit(undefined)).toBe(50)
@@ -131,9 +131,9 @@ describe('organizationRepositoryLimit', () => {
       .fn()
       .mockResolvedValue({ repoUrls: repos('cloudforet-io', 125), exceededLimit: false })
 
-    const result = await expandOrganizations(['cloudforet-io'], lookup, Number.POSITIVE_INFINITY)
+    const result = await expandOrganizations(['cloudforet-io'], lookup, 500)
 
-    expect(lookup).toHaveBeenCalledWith('cloudforet-io', Number.POSITIVE_INFINITY)
+    expect(lookup).toHaveBeenCalledWith('cloudforet-io', 500)
     expect(result).toMatchObject({ ok: true })
     expect(result.ok && result.organizations[0].repoUrls).toHaveLength(125)
   })

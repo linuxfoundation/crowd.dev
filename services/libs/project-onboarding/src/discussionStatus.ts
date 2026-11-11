@@ -26,9 +26,14 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
-import { describeDecisionReason, reviewGroupLabel } from '@crowd/slack'
+import {
+  describeDecisionReason,
+  listedWithRemainder,
+  repositoriesWord,
+  reviewGroupLabel,
+} from '@crowd/slack'
 
-import { BotStatus, STATUS } from './botCopy'
+import { BotStatus, MAX_LISTED_REPOSITORIES, STATUS } from './botCopy'
 import { buildInsightsProjectUrl, truncateReason } from './botThreadReply'
 import { resolveDiscussionToken } from './discussionToken'
 import { escapeGithubMarkdown } from './githubMarkdown'
@@ -154,6 +159,31 @@ function sharedDetail(rows: DiscussionStatusRow[]): string | null {
   return details.size === 1 ? `${STATUS[status]} ${[...details][0]}` : null
 }
 
+function minorityStatusFirst(rows: DiscussionStatusRow[]): DiscussionStatusRow[] {
+  const statuses = rows.map(rowStatus)
+  const counts = new Map<BotStatus, number>()
+  for (const status of statuses) {
+    counts.set(status, (counts.get(status) ?? 0) + 1)
+  }
+  const dominant = [...counts.entries()].reduce((top, entry) =>
+    entry[1] > top[1] ? entry : top,
+  )[0]
+  return [
+    ...rows.filter((_, index) => statuses[index] !== dominant),
+    ...rows.filter((_, index) => statuses[index] === dominant),
+  ]
+}
+
+function groupMemberLines(rows: DiscussionStatusRow[], shared: string | null): string[] {
+  const ordered =
+    shared || rows.length <= MAX_LISTED_REPOSITORIES ? rows : minorityStatusFirst(rows)
+  const { listed, more } = listedWithRemainder(ordered, MAX_LISTED_REPOSITORIES)
+  return [
+    ...listed.map((row) => (shared ? `  - ${repoMarkdown(row.repoUrl)}` : rowLine(row, '  '))),
+    ...(more > 0 ? [`  - … and ${more} more ${repositoriesWord(more)}`] : []),
+  ]
+}
+
 function groupLines(rows: DiscussionStatusRow[]): string[] {
   const review = requestGroupReviewOf(rows[0], rows.length - 1)
   if (!review) {
@@ -161,10 +191,7 @@ function groupLines(rows: DiscussionStatusRow[]): string[] {
   }
   const shared = sharedDetail(rows)
   const heading = `- **${escapeGithubMarkdown(reviewGroupLabel(review))}** · ${rows.length} repositories · ${shared ?? requestSummaryLine(rows)}`
-  const members = rows.map((row) =>
-    shared ? `  - ${repoMarkdown(row.repoUrl)}` : rowLine(row, '  '),
-  )
-  return [heading, ...members]
+  return [heading, ...groupMemberLines(rows, shared)]
 }
 
 export function buildDiscussionStatusMarkdown(

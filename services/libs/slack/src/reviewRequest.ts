@@ -52,6 +52,11 @@ export function repositoriesWord(count: number): string {
   return count === 1 ? 'repository' : 'repositories'
 }
 
+export function listedWithRemainder<T>(items: T[], max: number): { listed: T[]; more: number } {
+  const listed = items.slice(0, max)
+  return { listed, more: items.length - listed.length }
+}
+
 export interface IReviewRequestCard {
   id: string
   repoName: string
@@ -204,11 +209,11 @@ function groupRepositoriesBlock(
   if (repoUrls.length === 0) {
     return []
   }
-  const listed = repoUrls
-    .slice(0, MAX_LISTED_GROUP_REPOSITORIES)
-    .map((repoUrl) => `• ${escapeSlackText(githubRepoPath(repoUrl) ?? repoUrl)}`)
-  const more = repoUrls.length - listed.length
-  const lines = more > 0 ? [...listed, `… and ${more} more`] : listed
+  const { listed, more } = listedWithRemainder(repoUrls, MAX_LISTED_GROUP_REPOSITORIES)
+  const repoLines = listed.map(
+    (repoUrl) => `• ${escapeSlackText(githubRepoPath(repoUrl) ?? repoUrl)}`,
+  )
+  const lines = more > 0 ? [...repoLines, `… and ${more} more`] : repoLines
   return [{ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } }]
 }
 

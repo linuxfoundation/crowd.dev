@@ -78,7 +78,7 @@ describe('collectDiscussionRefs', () => {
 
     await collectDiscussionRefs(discussion, deps, new Set())
 
-    expect(deps.lookupOrganization).toHaveBeenCalledWith('openbmc', Number.POSITIVE_INFINITY)
+    expect(deps.lookupOrganization).toHaveBeenCalledWith('openbmc', 500)
   })
 
   it('tells the discussion why an organization was not expanded and adds nothing for it', async () => {

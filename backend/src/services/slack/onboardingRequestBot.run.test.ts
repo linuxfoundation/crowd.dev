@@ -504,12 +504,7 @@ describe('runOnboardingRequestBot', () => {
 
     await run({ text: '<@U0BOT> onboard OpenBMC, LF project, <https://github.com/openbmc/>' })
 
-    expect(fetchPublicOrgRepos).toHaveBeenCalledWith(
-      'openbmc',
-      'github-token',
-      Number.POSITIVE_INFINITY,
-      10_000,
-    )
+    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 500, 10_000)
     expect(bulkInsertProjectCatalog).toHaveBeenCalledWith(expect.anything(), [
       expect.objectContaining({
         repoUrl: 'https://github.com/openbmc/bmcweb',
