@@ -888,7 +888,7 @@ describe('recordRunTimeout', () => {
 })
 
 describe('getEmittingChannelNamesForIntegrations', () => {
-  test('returns emitting, non-decommissioned channels once per repo, per integration', async ({
+  test('returns emitting, active channels once per repo, per integration', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx, { platform: 'github-nango' })
@@ -915,11 +915,28 @@ describe('getEmittingChannelNamesForIntegrations', () => {
       emitEnabled: true,
       status: 'decommissioned',
     })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-rollouts',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'paused',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-events',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'dead_letter',
+    })
     await createSyncUnit(qx, otherIntegrationId, {
       channelName: 'https://github.com/argoproj/argo-workflows',
       syncName: 'issues',
       emitEnabled: true,
-      status: 'paused',
+    })
+    await createSyncUnit(qx, otherIntegrationId, {
+      channelName: 'https://github.com/argoproj/argo-workflows',
+      syncName: 'pull-requests',
+      emitEnabled: true,
+      status: 'dead_letter',
     })
 
     const result = await getEmittingChannelNamesForIntegrations(qx, [
