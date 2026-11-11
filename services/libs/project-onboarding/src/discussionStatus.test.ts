@@ -504,6 +504,23 @@ describe('refreshDiscussionStatusComment', () => {
     expect(setDiscussionOnboardingRequestNotes).toHaveBeenCalledWith(qx, sourceUrl, [])
   })
 
+  it('never announces completion from a note refresh, which runs before the new rows land', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...rows[0] },
+      { ...rows[1], action: 'skip' },
+    ] as IDbProjectCatalog[])
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, {
+        organizationNotes: ['**github.com/acme** has no public repositories I can add.'],
+      }),
+    ).toBe(true)
+
+    expect(client.addComment).toHaveBeenCalledTimes(1)
+    expect(client.addComment).not.toHaveBeenCalledWith('D_1', expect.stringContaining('All done'))
+    expect(claimDiscussionOnboardingRequestDone).not.toHaveBeenCalled()
+  })
+
   it('does nothing for a discussion without rows when no note is pending', async () => {
     vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([])
 

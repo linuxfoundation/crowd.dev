@@ -336,7 +336,7 @@ async function withInsightsProjectNames(
 }
 
 // The status comment is already stored when this runs, so a failed "all done" post only logs:
-// the done claim stays open and the next refresh posts it again, without a second status comment.
+// the done claim stays open and the next ordinary refresh posts it again, without a second status comment.
 async function announceAllDone(
   qx: QueryExecutor,
   status: IDbDiscussionOnboardingRequest,
@@ -396,7 +396,8 @@ export async function refreshDiscussionStatusComment(
         notesChanged,
         commentClient,
       )
-      if (rows.length > 1 && isRequestSettled(rows)) {
+      const rowsStillLanding = options.organizationNotes !== undefined
+      if (!rowsStillLanding && rows.length > 1 && isRequestSettled(rows)) {
         await announceAllDone(tx, written, rows, commentClient)
       }
       return true
