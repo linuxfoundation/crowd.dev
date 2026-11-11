@@ -42,11 +42,12 @@ export function discussionHints(
   )
   const listedSet = new Set(listedRepoUrls)
   const mainRepoUrl = repoUrls.find((repoUrl) => isProjectHint(byRepoUrl.get(repoUrl)))
+  const declared = parsed && parsed.declaredLf !== null ? { declaredLf: parsed.declaredLf } : {}
   const hints = new Map<string, IRequestHints>()
   for (const repoUrl of repoUrls) {
     const hint = byRepoUrl.get(repoUrl)
     if (hint?.organization) {
-      hints.set(repoUrl, hint)
+      hints.set(repoUrl, { ...hint, ...declared })
     } else if (hint) {
       hints.set(repoUrl, { ...hint, mainRepoUrl })
     } else if (parsed && parsed.declaredLf !== null && listedSet.has(repoUrl)) {
@@ -56,13 +57,6 @@ export function discussionHints(
   return hints
 }
 
-function isClassifiedFromText(request: IParsedOnboardingRequest, organizations: string[]): boolean {
-  return (
-    request.asksAboutHierarchy ||
-    (request.githubRepoUrls.length === 0 && organizations.length === 0)
-  )
-}
-
 export function toDiscussionRequest(
   discussion: IDiscussionText,
   parsed: ParseOnboardingRequestResult | null,
@@ -70,18 +64,22 @@ export function toDiscussionRequest(
   const linked = extractDiscussionRepoUrls(discussion).repoUrls
   const requestText = buildDiscussionRequestText(discussion)
   const request = parsed?.ok === true ? parsed.request : null
+  const classifiedFromText = (organizations: string[]): IDiscussionRequest => ({
+    repoUrls: linked,
+    bareRepoUrls: [],
+    organizations,
+    linkedRepoCount: linked.length,
+    unlistedRepoUrls: [],
+    projectName: null,
+    requestText,
+    parsed: null,
+  })
+  if (request?.asksAboutHierarchy) {
+    return classifiedFromText([])
+  }
   const organizations = requestedOrganizations(requestText, request)
-  if (!request || isClassifiedFromText(request, organizations)) {
-    return {
-      repoUrls: linked,
-      bareRepoUrls: [],
-      organizations,
-      linkedRepoCount: linked.length,
-      unlistedRepoUrls: [],
-      projectName: null,
-      requestText,
-      parsed: null,
-    }
+  if (!request || (request.githubRepoUrls.length === 0 && organizations.length === 0)) {
+    return classifiedFromText(organizations)
   }
 
   const listed = request.githubRepoUrls

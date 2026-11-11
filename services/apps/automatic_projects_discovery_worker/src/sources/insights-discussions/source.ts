@@ -247,19 +247,14 @@ async function withoutMissingRepositories(
   return repoUrls.filter((repoUrl) => !missing.has(repoUrl))
 }
 
-// A failed expansion is told on the discussion and leaves no rows: the requester fixes the
-// link or lists repositories, and the edited discussion is read again at the next run.
-// GitHub being down is the exception: the walk fails so Temporal retries it, as an incremental
-// run would otherwise skip the unchanged discussion and the note would never be cleared.
+// A failed expansion only leaves a note, and the edited discussion is read again at the next run;
+// GitHub being down fails the walk instead, or an incremental run would never clear that note.
 async function expandDiscussionOrganizations(
   discussion: IDiscussionNode,
   owners: string[],
   deps: IDiscussionSourceDeps,
 ): Promise<IExpandedOrganization[]> {
-  const expansion =
-    owners.length === 0
-      ? { ok: true as const, organizations: [] }
-      : await expandOrganizations(owners, deps.lookupOrganization)
+  const expansion = await expandOrganizations(owners, deps.lookupOrganization)
   if (expansion.ok === true) {
     await deps.noteOrganizationFailures(discussion.url, [])
     return expansion.organizations

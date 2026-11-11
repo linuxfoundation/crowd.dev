@@ -280,10 +280,15 @@ function isAlreadyTracked(row: IDbProjectCatalog): boolean {
   return row.action === 'skip' && row.classificationKind === 'already_tracked'
 }
 
+interface IInsightsProjectRef {
+  name: string
+  slug: string | null
+}
+
 async function trackedProjectsByRepoUrl(
   tx: QueryExecutor,
   rows: IDbProjectCatalog[],
-): Promise<Map<string, InsightsProjectLookup>> {
+): Promise<Map<string, IInsightsProjectRef>> {
   const repoUrls = rows.filter(isAlreadyTracked).map((row) => row.repoUrl)
   if (repoUrls.length === 0) {
     return new Map()
@@ -295,7 +300,7 @@ async function trackedProjectsByRepoUrl(
   return new Map(
     tracked.map((project) => [
       project.repoUrl,
-      { name: project.projectName, slug: project.projectSlug ?? '' },
+      { name: project.projectName, slug: project.projectSlug },
     ]),
   )
 }
@@ -308,7 +313,7 @@ async function withInsightsProjectNames(
   const tracked = await trackedProjectsByRepoUrl(tx, rows)
   const named: DiscussionStatusRow[] = []
   for (const row of rows) {
-    let project: InsightsProjectLookup = null
+    let project: IInsightsProjectRef | null = null
     if (row.action === 'onboarded' && row.matchedSegmentId) {
       if (!projects.has(row.matchedSegmentId)) {
         projects.set(
@@ -325,7 +330,7 @@ async function withInsightsProjectNames(
     named.push({
       ...row,
       matchedProjectName: row.matchedProjectName ?? project?.name ?? null,
-      insightsSlug: project?.slug || null,
+      insightsSlug: project?.slug ?? null,
     })
   }
   return named

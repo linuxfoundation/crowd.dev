@@ -127,12 +127,17 @@ describe('toDiscussionRequest with a hierarchy question', () => {
   it('keeps the text so the classification can answer the question as before', () => {
     const asking = {
       ...parsed,
-      request: { ...parsed.request, asksAboutHierarchy: true },
+      request: {
+        ...parsed.request,
+        asksAboutHierarchy: true,
+        linksToFollow: ['https://github.com/openbmc'],
+      },
     }
 
     const request = toDiscussionRequest(discussion, asking)
 
     expect(request.parsed).toBeNull()
+    expect(request.organizations).toEqual([])
     expect(request.requestText).toContain('Please onboard Apache HugeGraph')
     expect(request.repoUrls).toEqual([
       'https://github.com/apache/hugegraph',
@@ -201,8 +206,14 @@ describe('discussionHints with organizations', () => {
       organizations,
     )
 
-    expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
-    expect(hints.get('https://github.com/openbmc/two')).toEqual({ organization: 'openbmc' })
+    expect(hints.get('https://github.com/openbmc/one')).toEqual({
+      organization: 'openbmc',
+      declaredLf: false,
+    })
+    expect(hints.get('https://github.com/openbmc/two')).toEqual({
+      organization: 'openbmc',
+      declaredLf: false,
+    })
     expect(hints.get('https://github.com/apache/hugegraph-ai')).toMatchObject({
       project: 'Apache HugeGraph',
       mainRepoUrl: 'https://github.com/apache/hugegraph',
@@ -220,7 +231,10 @@ describe('discussionHints with organizations', () => {
     }
     const hints = discussionHints(request.githubRepoUrls, request, organizations)
 
-    expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
+    expect(hints.get('https://github.com/openbmc/one')).toEqual({
+      organization: 'openbmc',
+      declaredLf: false,
+    })
     expect(hints.get('https://github.com/apache/hugegraph')).toMatchObject({
       mainRepoUrl: 'https://github.com/apache/hugegraph',
     })
@@ -231,5 +245,25 @@ describe('discussionHints with organizations', () => {
 
     expect(hints.size).toBe(2)
     expect(hints.get('https://github.com/openbmc/one')).toEqual({ organization: 'openbmc' })
+  })
+
+  it('carries an explicit LF declaration to the organization repositories', () => {
+    const hints = discussionHints(
+      organizations[0].repoUrls,
+      { ...parsed.request, githubRepoUrls: [], declaredLf: true },
+      organizations,
+    )
+
+    expect(hints.get('https://github.com/openbmc/two')).toEqual({
+      organization: 'openbmc',
+      declaredLf: true,
+    })
+    expect(
+      discussionHints(
+        organizations[0].repoUrls,
+        { ...parsed.request, githubRepoUrls: [], declaredLf: null },
+        organizations,
+      ).get('https://github.com/openbmc/two'),
+    ).toEqual({ organization: 'openbmc' })
   })
 })

@@ -299,7 +299,7 @@ export async function processDataset(
     })
   }
   if (humanProvenance) {
-    await tellRequestersAboutTrackedRepositories(qx, skippedInCdp)
+    await refreshDiscussionStatusComments(qx, [...toInsert, ...toPromote])
   }
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose
@@ -337,13 +337,14 @@ export async function processDataset(
   }
 }
 
-// Rows skipped here never reach the evaluation worker, so the requester hears it from discovery.
-async function tellRequestersAboutTrackedRepositories(
+// Pre-check skips never reach the evaluation worker, and a discussion is walked again the night
+// after its first ingest: refreshing here tells the requester early and retries a failed comment.
+async function refreshDiscussionStatusComments(
   qx: QueryExecutor,
-  skipped: IDbProjectCatalogCreate[],
+  rows: IDbProjectCatalogCreate[],
 ): Promise<void> {
   const bySourceUrl = new Map<string, IDbProjectCatalogCreate>()
-  for (const row of skipped) {
+  for (const row of rows) {
     if (row.sourceUrl && !bySourceUrl.has(row.sourceUrl)) {
       bySourceUrl.set(row.sourceUrl, row)
     }
