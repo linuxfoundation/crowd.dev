@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { GithubPublicClientError } from '@crowd/common'
 
 import {
+  MAX_ORGANIZATION_REPOSITORIES,
   expandOrganizations,
   organizationNote,
+  organizationRepositoryLimit,
   requestedOrganizations,
 } from './organizationRequest'
 
@@ -77,6 +79,7 @@ describe('expandOrganizations', () => {
     const empty = await expandOrganizations(
       ['openbmc'],
       vi.fn().mockResolvedValue({ repoUrls: [], exceededLimit: false }),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(empty).toMatchObject({
       ok: false,
@@ -89,6 +92,7 @@ describe('expandOrganizations', () => {
     const unknown = await expandOrganizations(
       ['nobody-here'],
       vi.fn().mockRejectedValue(new GithubPublicClientError('NOT_FOUND', 'not found')),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(unknown).toMatchObject({
       ok: false,
@@ -103,6 +107,7 @@ describe('expandOrganizations', () => {
     const down = await expandOrganizations(
       ['openbmc'],
       vi.fn().mockRejectedValue(new GithubPublicClientError('TRANSIENT', 'network error')),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(down).toMatchObject({
       ok: false,
@@ -110,6 +115,27 @@ describe('expandOrganizations', () => {
       reason: 'network error',
       kind: 'unavailable',
     })
+  })
+})
+
+describe('organizationRepositoryLimit', () => {
+  it('caps only organizations the requester did not declare as LF', () => {
+    expect(organizationRepositoryLimit(true)).toBe(Number.POSITIVE_INFINITY)
+    expect(organizationRepositoryLimit(false)).toBe(50)
+    expect(organizationRepositoryLimit(null)).toBe(50)
+    expect(organizationRepositoryLimit(undefined)).toBe(50)
+  })
+
+  it('lists every repository of an uncapped organization', async () => {
+    const lookup = vi
+      .fn()
+      .mockResolvedValue({ repoUrls: repos('cloudforet-io', 125), exceededLimit: false })
+
+    const result = await expandOrganizations(['cloudforet-io'], lookup, Number.POSITIVE_INFINITY)
+
+    expect(lookup).toHaveBeenCalledWith('cloudforet-io', Number.POSITIVE_INFINITY)
+    expect(result).toMatchObject({ ok: true })
+    expect(result.ok && result.organizations[0].repoUrls).toHaveLength(125)
   })
 })
 
