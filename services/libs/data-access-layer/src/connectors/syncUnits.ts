@@ -406,7 +406,7 @@ export async function getEmittingChannelNamesForIntegrations(
      FROM integration.sync_units
      WHERE "integrationId" IN ($(integrationIds:csv))
        AND "emitEnabled"
-       AND status <> 'decommissioned'
+       AND status = 'active'
      GROUP BY "integrationId", lower("channelName")`,
     { integrationIds },
   )
