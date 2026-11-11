@@ -21,9 +21,25 @@ export interface IExpandedOrganization {
   repoUrls: string[]
 }
 
+export type OrganizationExpansionFailureKind =
+  | 'not_found'
+  | 'unavailable'
+  | 'too_large'
+  | 'too_large_together'
+  | 'empty'
+
+export interface IOrganizationExpansionFailure {
+  ok: false
+  kind: OrganizationExpansionFailureKind
+  owner: string
+  limit: number
+  reply: string
+  reason: string
+}
+
 export type OrganizationExpansion =
   | { ok: true; organizations: IExpandedOrganization[] }
-  | { ok: false; reply: string; reason: string }
+  | IOrganizationExpansionFailure
 
 type ParsedLinks = Pick<IParsedOnboardingRequest, 'linksToFollow'>
 
@@ -76,44 +92,49 @@ export async function expandOrganizations(
   limit = MAX_ORGANIZATION_REPOSITORIES,
 ): Promise<OrganizationExpansion> {
   const organizations: IExpandedOrganization[] = []
+  const failure = (
+    owner: string,
+    kind: OrganizationExpansionFailureKind,
+    reply: string,
+    reason: string,
+  ): IOrganizationExpansionFailure => ({ ok: false, kind, owner, limit, reply, reason })
+  const tooMany = `more than ${limit} repositories`
   let remaining = limit
   for (const owner of owners) {
     if (remaining === 0) {
-      return {
-        ok: false,
-        reply: buildBotOrganizationsTooLargeReply(limit),
-        reason: `more than ${limit} repositories`,
-      }
+      return failure(
+        owner,
+        'too_large_together',
+        buildBotOrganizationsTooLargeReply(limit),
+        tooMany,
+      )
     }
     let repos: IPublicOrgRepos
     try {
       repos = await lookup(owner, remaining)
     } catch (err) {
       if (err instanceof GithubPublicClientError && err.kind === 'NOT_FOUND') {
-        return { ok: false, reply: buildBotOrganizationNotFoundReply(owner), reason: err.message }
+        return failure(owner, 'not_found', buildBotOrganizationNotFoundReply(owner), err.message)
       }
-      return {
-        ok: false,
-        reply: buildBotOrganizationUnavailableReply(owner),
-        reason: getErrorMessage(err),
-      }
+      return failure(
+        owner,
+        'unavailable',
+        buildBotOrganizationUnavailableReply(owner),
+        getErrorMessage(err),
+      )
     }
     if (repos.exceededLimit) {
-      return {
-        ok: false,
-        reply:
-          remaining === limit
-            ? buildBotOrganizationTooLargeReply(owner, limit)
-            : buildBotOrganizationsTooLargeReply(limit),
-        reason: `more than ${limit} repositories`,
-      }
+      return remaining === limit
+        ? failure(owner, 'too_large', buildBotOrganizationTooLargeReply(owner, limit), tooMany)
+        : failure(owner, 'too_large_together', buildBotOrganizationsTooLargeReply(limit), tooMany)
     }
     if (repos.repoUrls.length === 0) {
-      return {
-        ok: false,
-        reply: buildBotOrganizationEmptyReply(owner),
-        reason: 'no public repositories',
-      }
+      return failure(
+        owner,
+        'empty',
+        buildBotOrganizationEmptyReply(owner),
+        'no public repositories',
+      )
     }
     organizations.push({ owner, repoUrls: repos.repoUrls })
     remaining -= repos.repoUrls.length
