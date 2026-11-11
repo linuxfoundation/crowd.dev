@@ -6,8 +6,8 @@ import {
 import { getLLMResult } from './activities/common'
 import {
   getCountryScanWindow,
-  processMemberCountries,
-  processOrganizationCountries,
+  inferNextMemberCountries,
+  inferNextOrganizationCountries,
   saveCountryScanSyncedAt,
 } from './activities/countryInference'
 import {
@@ -69,8 +69,8 @@ export {
   calculateAllOrganizationLeafAggregates,
   getCountryScanWindow,
   saveCountryScanSyncedAt,
-  processMemberCountries,
-  processOrganizationCountries,
+  inferNextMemberCountries,
+  inferNextOrganizationCountries,
   getGitAuthorsPage,
   resolveGitAuthor,
 }
