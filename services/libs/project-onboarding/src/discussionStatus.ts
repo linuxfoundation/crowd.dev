@@ -235,6 +235,7 @@ async function writeStatusComment(
   status: IDbDiscussionOnboardingRequest | null,
   body: string,
   notes: string[],
+  notesChanged: boolean,
   client: IDiscussionCommentClient,
 ): Promise<IDbDiscussionOnboardingRequest> {
   if (!status) {
@@ -250,11 +251,9 @@ async function writeStatusComment(
   let written = status
   if (!(await editComment(client, status.commentId, body))) {
     const replacement = await client.addComment(status.discussionId, body)
-    written = await replaceDiscussionOnboardingRequestComment(qx, status.sourceUrl, replacement.id)
+    written = await replaceDiscussionOnboardingRequestComment(qx, sourceUrl, replacement.id)
   }
-  return sameNotes(status.notes, notes)
-    ? written
-    : setDiscussionOnboardingRequestNotes(qx, status.sourceUrl, notes)
+  return notesChanged ? setDiscussionOnboardingRequestNotes(qx, sourceUrl, notes) : written
 }
 
 type InsightsProjectLookup = Awaited<ReturnType<typeof findOnboardedInsightsProject>>
@@ -394,6 +393,7 @@ export async function refreshDiscussionStatusComment(
         status,
         buildDiscussionStatusMarkdown(rows, notes),
         notes,
+        notesChanged,
         commentClient,
       )
       if (rows.length > 1 && isRequestSettled(rows)) {

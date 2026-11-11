@@ -349,8 +349,10 @@ async function refreshDiscussionStatusComments(
       bySourceUrl.set(row.sourceUrl, row)
     }
   }
+  let refreshed = 0
   for (const [sourceUrl, row] of bySourceUrl) {
     await refreshDiscussionStatusComment(qx, { sourceUrl, repoUrl: row.repoUrl })
+    Context.current().heartbeat({ discussionsRefreshed: ++refreshed, of: bySourceUrl.size })
   }
 }
 
