@@ -340,26 +340,6 @@ export async function reviveDecommissionedSyncUnit(qx: QueryExecutor, id: string
   )
 }
 
-export async function hasEmittingSyncUnit(
-  qx: QueryExecutor,
-  integrationId: string,
-  channelName: string,
-  syncName: string,
-): Promise<boolean> {
-  const row = await qx.selectOne(
-    `SELECT EXISTS (
-       SELECT 1
-       FROM integration.sync_units
-       WHERE "integrationId" = $(integrationId)
-         AND lower("channelName") = lower($(channelName))
-         AND "syncName" = $(syncName)
-         AND "emitEnabled"
-     ) AS exists`,
-    { integrationId, channelName, syncName },
-  )
-  return row.exists === true
-}
-
 export async function listSyncUnitChannelNames(
   qx: QueryExecutor,
   integrationId: string,
