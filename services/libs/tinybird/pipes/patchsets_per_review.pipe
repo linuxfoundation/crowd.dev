@@ -5,7 +5,7 @@ DESCRIPTION >
     - **When `granularity` is provided, returns time-series data** showing patchsets per review aggregated by different time periods (daily, weekly, monthly, quarterly, yearly).
     - Uses `generate_timeseries` pipe to create consistent time periods and left joins PR data to handle periods with no data.
     - Only includes Gerrit changesets with patchset data (`platform = 'gerrit'` and `isNotNull(numberOfPatchsets)`) to ensure accurate calculations.
-    - Reads only segments that have a Gerrit repository, so projects and collections without Gerrit skip their pull requests entirely.
+    - When `repos` is not given, reads only segments that have a Gerrit repository, so projects and collections without Gerrit skip their pull requests entirely.
     - Primary use case: analyzing code review iteration patterns and review efficiency specifically for Gerrit changesets.
     - Parameters:
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
@@ -32,17 +32,19 @@ SQL >
 
 NODE patchsets_per_review_changesets
 DESCRIPTION >
-    Gerrit changesets with patchsets that `pull_requests_filtered` would return, read from `pull_requests_analyzed` directly so the Gerrit segment filter prunes its segment-sorted scan.
+    Gerrit changesets with patchsets that `pull_requests_filtered` would return, read from `pull_requests_analyzed` directly so, for requests without `repos`, the Gerrit segment filter prunes its segment-sorted scan.
 
 SQL >
     %
     SELECT openedAt, numberOfPatchsets
     FROM pull_requests_analyzed
     WHERE
-        segmentId IN (SELECT segmentId FROM patchsets_per_review_gerrit_segments)
         {% if defined(collectionSlug) %}
-            AND segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-        {% else %} AND segmentId = (SELECT segmentId FROM segments_filtered)
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
+        {% if not defined(repos) %}
+            AND segmentId IN (SELECT segmentId FROM patchsets_per_review_gerrit_segments)
         {% end %}
         AND channel IN (SELECT channel FROM repos_to_channels)
         AND platform = 'gerrit'
