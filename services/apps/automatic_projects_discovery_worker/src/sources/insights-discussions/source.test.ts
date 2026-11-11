@@ -66,6 +66,21 @@ describe('collectDiscussionRefs', () => {
     expect(deps.noteOrganizationFailures).toHaveBeenCalledWith(discussion.url, [])
   })
 
+  it('does not cap an organization the requester declared as LF', async () => {
+    vi.mocked(deps.parseRequest).mockResolvedValue({
+      ok: true,
+      request: { ...parsedRequest, declaredLf: true },
+    })
+    vi.mocked(deps.lookupOrganization).mockResolvedValue({
+      repoUrls: ['https://github.com/openbmc/one'],
+      exceededLimit: false,
+    })
+
+    await collectDiscussionRefs(discussion, deps, new Set())
+
+    expect(deps.lookupOrganization).toHaveBeenCalledWith('openbmc', 500)
+  })
+
   it('tells the discussion why an organization was not expanded and adds nothing for it', async () => {
     vi.mocked(deps.lookupOrganization).mockRejectedValue(
       new GithubPublicClientError('NOT_FOUND', 'GitHub organization not found: openbmc'),
