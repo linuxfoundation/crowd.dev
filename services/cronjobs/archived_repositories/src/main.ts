@@ -2,8 +2,8 @@ import { Queue } from 'bullmq'
 
 import { Config, getConfig } from './config.js'
 import { closeConnection, fetchRepositoryUrls } from './database.js'
-import { GITHUB_QUEUE_NAME, GITLAB_QUEUE_NAME } from './types'
-import { JobData, Platform } from './types.js'
+import { GERRIT_QUEUE_NAME, GITHUB_QUEUE_NAME, GITLAB_QUEUE_NAME } from './types'
+import { JobData, Platform, RepositoryToCheck } from './types.js'
 
 /**
  * Sets up the BullMQ queues for processing jobs for repository URLs, fetches all the URLs to be
@@ -30,18 +30,24 @@ async function main(config: Config) {
   const gitlabQueue = new Queue(GITLAB_QUEUE_NAME, queueOptions)
   gitlabQueue.on('error', (err) => console.error('GitLab Queue Error:', err))
 
+  const gerritQueue = new Queue(GERRIT_QUEUE_NAME, queueOptions)
+  gerritQueue.on('error', (err) => console.error('Gerrit Queue Error:', err))
+
+  const closeQueues = () =>
+    Promise.all([githubQueue.close(), gitlabQueue.close(), gerritQueue.close()])
+
   console.log(`Starting main cronjob to enqueue repository URLs`)
 
-  const repoURLs = await fetchRepositoryUrls(config)
+  const repos = await fetchRepositoryUrls(config)
 
-  if (repoURLs.length === 0) {
+  if (repos.length === 0) {
     console.log(`No repositories found, exiting.`)
-    await Promise.all([githubQueue.close(), gitlabQueue.close()])
+    await closeQueues()
     await closeConnection()
     return
   }
 
-  const { githubJobs, gitlabJobs } = prepareJobsByPlatform(repoURLs)
+  const { githubJobs, gitlabJobs, gerritJobs } = prepareJobsByPlatform(repos)
 
   // Add jobs to their respective queues
   if (githubJobs.length > 0) {
@@ -56,43 +62,56 @@ async function main(config: Config) {
     console.log(`Enqueued ${gitlabJobs.length} GitLab repos`)
   }
 
-  const totalProcessed = githubJobs.length + gitlabJobs.length
+  if (gerritJobs.length > 0) {
+    await gerritQueue.addBulk(gerritJobs)
+    gerritJobs.forEach((job) => console.log(`Enqueued Gerrit URL: ${job.data.url}`))
+    console.log(`Enqueued ${gerritJobs.length} Gerrit repos`)
+  }
+
+  const totalProcessed = githubJobs.length + gitlabJobs.length + gerritJobs.length
 
   console.log(`${totalProcessed} jobs enqueued.`)
 
-  await Promise.all([githubQueue.close(), gitlabQueue.close()])
+  await closeQueues()
   await closeConnection()
 }
 
 /**
- * prepareJobsByPlatform receives a list of repository URLs to be added to job definitions for
- * processing by BullMQ. Supports GitHub and Gitlab, while other platforms will be logged and skipped.
+ * prepareJobsByPlatform receives a list of repositories to be added to job definitions for
+ * processing by BullMQ. Supports GitHub, Gitlab and Gerrit (repositories with a Gerrit base URL),
+ * while other platforms will be logged and skipped.
  *
- * @param repoURLs The list of repository URLs.
+ * @param repos The list of repositories.
  */
-function prepareJobsByPlatform(repoURLs: string[]): {
+function prepareJobsByPlatform(repos: RepositoryToCheck[]): {
   githubJobs: JobData[]
   gitlabJobs: JobData[]
+  gerritJobs: JobData[]
 } {
   const githubJobs: JobData[] = []
   const gitlabJobs: JobData[] = []
+  const gerritJobs: JobData[] = []
 
-  repoURLs.forEach((url) => {
+  repos.forEach(({ url, gerritBaseUrl }) => {
     let platform: Platform
 
     try {
       const parsed = new URL(url)
 
-      switch (parsed.hostname) {
-        case 'github.com':
-          platform = Platform.GITHUB
-          break
-        case 'gitlab.com':
-          platform = Platform.GITLAB
-          break
-        default:
-          console.warn(`Skipping URL from unsupported platform: ${url}`)
-          return
+      if (gerritBaseUrl) {
+        platform = Platform.GERRIT
+      } else {
+        switch (parsed.hostname) {
+          case 'github.com':
+            platform = Platform.GITHUB
+            break
+          case 'gitlab.com':
+            platform = Platform.GITLAB
+            break
+          default:
+            console.warn(`Skipping URL from unsupported platform: ${url}`)
+            return
+        }
       }
     } catch (error) {
       console.warn(`Skipping URL due to error: ${error}`)
@@ -104,6 +123,7 @@ function prepareJobsByPlatform(repoURLs: string[]): {
       data: {
         url,
         platform,
+        ...(gerritBaseUrl ? { gerritBaseUrl } : {}),
       },
       opts: {
         removeOnComplete: 1000,
@@ -118,10 +138,13 @@ function prepareJobsByPlatform(repoURLs: string[]): {
       case Platform.GITLAB:
         gitlabJobs.push(jobData)
         break
+      case Platform.GERRIT:
+        gerritJobs.push(jobData)
+        break
     }
   })
 
-  return { githubJobs, gitlabJobs }
+  return { githubJobs, gitlabJobs, gerritJobs }
 }
 
 if (require.main === module) {
