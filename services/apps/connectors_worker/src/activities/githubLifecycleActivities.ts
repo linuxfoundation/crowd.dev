@@ -35,6 +35,7 @@ import {
 } from '@crowd/data-access-layer/src/repositories'
 import { PlatformType } from '@crowd/types'
 
+import { chunk } from '../chunk'
 import { type TokenSource, installationTokenSource } from '../githubInstallationToken'
 import {
   type IGithubLifecycleDiff,
@@ -53,7 +54,6 @@ import {
   renameProbeFailure,
 } from '../githubSkipReasons'
 import { svc } from '../main'
-import { chunk } from '../mirrorSweepLimits'
 import { type OnboardRepoResult, onboardGithubRepo } from '../onboardGithubRepo'
 
 const MAX_INITIAL_DELAY_SECONDS = 3600
