@@ -47,6 +47,10 @@ from crowdgit.services.maintainer.cncf_maintainers import (
     is_cncf_repo,
     parse_cncf_maintainers_yaml,
 )
+from crowdgit.services.maintainer.info_yaml_maintainers import (
+    find_info_yaml_file,
+    parse_info_yaml,
+)
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
@@ -824,6 +828,24 @@ class MaintainerService(BaseService):
                             cncf_authoritative=True,
                         )
                     )
+
+        # Same ordering as above: Gerrit repos already locked onto AUTHORS or CONTRIBUTORS
+        # switch to INFO.yaml, which is where LF Release Engineering projects list committers.
+        info_file = find_info_yaml_file(repo_path)
+        if info_file:
+            try:
+                content = await self._read_text_file(str(info_file))
+                info_maintainers = parse_info_yaml(content)
+            except Exception as e:
+                self.logger.warning(f"INFO.yaml maintainer file processing failed: {repr(e)}")
+                info_maintainers = None
+            if info_maintainers is not None:
+                return _attach_metadata(
+                    MaintainerResult(
+                        maintainer_file=info_file.name,
+                        maintainer_info=info_maintainers,
+                    )
+                )
 
         # Step 1: Try the previously saved maintainer file
         if saved_maintainer_file:
