@@ -136,11 +136,10 @@ SQL >
 
 NODE archived_excluded_repositories
 DESCRIPTION >
-    Get the archived, excluded and unavailable repositories for each segment and insightsProject
+    Get the archived, excluded and unavailable repositories for each insightsProject
 
 SQL >
     SELECT
-        segmentId,
         toString(insightsProjectId) AS insightsProjectId,
         groupArrayIf(url, archived = true) AS "archivedRepositories",
         groupArrayIf(url, excluded = true) AS "excludedRepositories",
@@ -149,7 +148,7 @@ SQL >
         ) AS "unavailableRepositories"
     FROM repositories FINAL
     WHERE archived = true OR excluded = true OR isNotNull(unavailableAt)
-    GROUP BY segmentId, insightsProjectId
+    GROUP BY insightsProjectId
 
 NODE insights_projects_populated_copy_mentions
 SQL >

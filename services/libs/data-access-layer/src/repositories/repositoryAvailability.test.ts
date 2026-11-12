@@ -55,8 +55,9 @@ async function createRepositories(qx: QueryExecutor, sourceIntegrationId: string
   await qx.result(
     `UPDATE public.repositories
      SET "deletedAt" = CASE WHEN url = $(removed) THEN NOW() END,
-         "updatedAt" = NOW() - INTERVAL '1 day'`,
-    { removed: REMOVED },
+         "updatedAt" = CASE WHEN url = $(gone) THEN NOW() + INTERVAL '1 day'
+                            ELSE NOW() - INTERVAL '1 day' END`,
+    { removed: REMOVED, gone: GONE },
   )
   await qx.result(
     `UPDATE git."repositoryProcessing" rp SET state = 'auth_required', "lockedAt" = NOW()
@@ -66,49 +67,65 @@ async function createRepositories(qx: QueryExecutor, sourceIntegrationId: string
 }
 
 interface IRepoState {
-  url: string
-  unavailable: boolean
-  touched: boolean
+  unavailableAt: string | null
+  updatedAtMicros: string
   state: string
+  lockedAt: string | null
 }
 
-async function repoStates(qx: QueryExecutor): Promise<IRepoState[]> {
-  return qx.select(
+async function repoStates(qx: QueryExecutor): Promise<Record<string, IRepoState>> {
+  const rows: (IRepoState & { url: string })[] = await qx.select(
     `SELECT r.url,
-            r."unavailableAt" IS NOT NULL AS unavailable,
-            r."updatedAt" > NOW() - INTERVAL '1 hour' AS touched,
-            rp.state
+            r."unavailableAt",
+            round(extract(epoch FROM r."updatedAt") * 1000000)::text AS "updatedAtMicros",
+            rp.state,
+            rp."lockedAt"
      FROM public.repositories r
-     JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
-     ORDER BY r.url`,
+     JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id`,
   )
+  return Object.fromEntries(rows.map(({ url, ...state }) => [url, state]))
 }
+
+const ONE_MILLISECOND_IN_MICROS = 1000
 
 describe('repository availability', () => {
-  test('flags and unflags only live repositories, bumps updatedAt once and wakes git processing', async ({
+  test('flags and unflags only live repositories, advances updatedAt on each change only and wakes git processing', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
     await createRepositories(qx, integrationId)
+    const initial = await repoStates(qx)
+    const futureVersion = Number(initial[GONE].updatedAtMicros)
 
     await expect(
       markRepositoriesUnavailable(qx, [GONE, REMOVED, GONE.toLowerCase()]),
     ).resolves.toEqual([GONE])
+    const marked = await repoStates(qx)
+    expect(marked).toEqual({
+      ...initial,
+      [GONE]: {
+        ...initial[GONE],
+        unavailableAt: expect.any(String),
+        updatedAtMicros: String(futureVersion + ONE_MILLISECOND_IN_MICROS),
+      },
+    })
     await expect(markRepositoriesUnavailable(qx, [GONE])).resolves.toEqual([])
+    await expect(repoStates(qx)).resolves.toEqual(marked)
     await expect(listUnavailableRepoUrlsForIntegration(qx, integrationId)).resolves.toEqual([GONE])
-    await expect(repoStates(qx)).resolves.toEqual([
-      { url: GONE, unavailable: true, touched: true, state: 'auth_required' },
-      { url: LIVE, unavailable: false, touched: false, state: 'pending' },
-      { url: REMOVED, unavailable: false, touched: false, state: 'pending' },
-    ])
 
     await expect(clearRepositoriesUnavailable(qx, [GONE, LIVE])).resolves.toEqual([GONE])
+    const cleared = await repoStates(qx)
+    expect(cleared).toEqual({
+      ...initial,
+      [GONE]: {
+        unavailableAt: null,
+        updatedAtMicros: String(futureVersion + 2 * ONE_MILLISECOND_IN_MICROS),
+        state: 'pending',
+        lockedAt: null,
+      },
+    })
     await expect(clearRepositoriesUnavailable(qx, [GONE])).resolves.toEqual([])
+    await expect(repoStates(qx)).resolves.toEqual(cleared)
     await expect(listUnavailableRepoUrlsForIntegration(qx, integrationId)).resolves.toEqual([])
-    await expect(repoStates(qx)).resolves.toMatchObject([
-      { url: GONE, unavailable: false, touched: true, state: 'pending' },
-      { url: LIVE, touched: false },
-      { url: REMOVED, touched: false },
-    ])
   })
 })
