@@ -4,8 +4,6 @@ import yaml
 
 from crowdgit.models.maintainer_info import MaintainerInfoItem
 
-# Project information file defined by LF Release Engineering:
-# https://github.com/lfit/releng-global-jjb/blob/master/schema/info-schema.yaml
 INFO_YAML_FILENAME = "INFO.yaml"
 
 

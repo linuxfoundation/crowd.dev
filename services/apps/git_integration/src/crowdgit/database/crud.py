@@ -452,7 +452,6 @@ async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
 
 
 async def get_maintainer_emails_for_repo(repo_id: str) -> set[str]:
-    """Return every verified email of the members behind a repo's active maintainers."""
     sql_query = """
         SELECT DISTINCT LOWER(email.value) AS value
             FROM "maintainersInternal" mi
