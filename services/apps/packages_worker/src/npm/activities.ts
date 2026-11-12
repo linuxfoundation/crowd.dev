@@ -106,8 +106,8 @@ export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
 const INGEST_4XX_ATTEMPTS = 3
 const INGEST_4XX_BACKOFF_MS = 1000
 
-// One throttled run can take about 29 minutes before it yields (pauses of 1+2+4+8+10 minutes
-// plus fetch timeouts), so 20 + 29 stays under the 1 hour startToClose.
+// Past this budget a waiting run yields once the egress has been blocked 20 minutes (see
+// downloadsThrottle.ts), so a lane ends near 42 minutes, under the 1 hour startToClose.
 const LANE_BUDGET_MS = 20 * 60_000
 
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
@@ -310,6 +310,7 @@ export async function backfillDailyLane(
             () => fetchDailyRangeHttp(pkg.name, w.start, w.end, dispatcher),
             beat,
             Context.current().cancellationSignal,
+            deadline,
           )
           // The package in progress stays unmarked, so the next run re-selects it.
           if (isDownloadsBlocked(result)) return { fetched: candidates.length, blocked: true }
@@ -466,6 +467,7 @@ async function processLast30dWindowPlans(
           ),
         () => beat('bulk', end),
         Context.current().cancellationSignal,
+        deadline,
       )
       if (isDownloadsBlocked(result)) return true
       if (isFetchError(result)) {
@@ -513,6 +515,7 @@ async function processLast30dWindowPlans(
         () => fetchPointRange(s.name, start, end, dispatcher),
         () => beat('scoped', end),
         Context.current().cancellationSignal,
+        deadline,
       )
       if (isDownloadsBlocked(result)) return true
       if (isFetchError(result)) {

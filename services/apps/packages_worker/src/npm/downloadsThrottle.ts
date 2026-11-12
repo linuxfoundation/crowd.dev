@@ -48,7 +48,12 @@ export function isDownloadsBlocked(v: unknown): v is DownloadsBlocked {
 
 export interface DownloadsThrottle {
   intervalMs(egress: string): number
-  acquire(egress: string, onWait?: () => void, signal?: AbortSignal): Promise<void>
+  acquire(
+    egress: string,
+    onWait?: () => void,
+    signal?: AbortSignal,
+    deadline?: number,
+  ): Promise<DownloadsBlocked | undefined>
   recordSuccess(egress: string): void
   recordRateLimit(egress: string): number
   run<T>(
@@ -56,6 +61,7 @@ export interface DownloadsThrottle {
     doFetch: () => Promise<T | FetchError>,
     onWait?: () => void,
     signal?: AbortSignal,
+    deadline?: number,
   ): Promise<T | FetchError | DownloadsBlocked>
 }
 
@@ -86,17 +92,29 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
 
   // The slot check and the reservation run without an await in between, so concurrent callers on
   // one egress serialize. Each wakeup re-checks because another caller may have extended the pause.
-  async function acquire(egress: string, onWait?: () => void, signal?: AbortSignal): Promise<void> {
+  async function acquire(
+    egress: string,
+    onWait?: () => void,
+    signal?: AbortSignal,
+    deadline?: number,
+  ): Promise<DownloadsBlocked | undefined> {
     const s = state(egress)
     for (;;) {
       signal?.throwIfAborted()
       const waitMs = Math.max(s.nextSlotAt, s.pausedUntil) - Date.now()
       if (waitMs <= 0) break
+      if (deadline !== undefined && s.firstRateLimitAt !== null) {
+        const now = Date.now()
+        const blockedForMs = now - s.firstRateLimitAt
+        if (now >= deadline && blockedForMs >= BLOCKED_YIELD_MS)
+          return { blocked: true, blockedForMs }
+      }
       await timeout(Math.min(waitMs, WAIT_CHUNK_MS))
       onWait?.()
     }
     signal?.throwIfAborted()
     s.nextSlotAt = Date.now() + s.intervalMs
+    return undefined
   }
 
   function recordSuccess(egress: string): void {
@@ -127,16 +145,24 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
     return now - blockedSince
   }
 
-  // Retries 429s after the egress pause and returns every other result unchanged. Once the egress
-  // has seen only 429s for 20 minutes it yields, so the workflow can wait on a durable timer.
+  // Retries 429s after the pause and returns other results unchanged. It yields once the egress has
+  // seen only 429s for 20 minutes; a caller past its lane deadline yields then without another probe.
   async function run<T>(
     egress: string,
     doFetch: () => Promise<T | FetchError>,
     onWait?: () => void,
     signal?: AbortSignal,
+    deadline?: number,
   ): Promise<T | FetchError | DownloadsBlocked> {
     for (;;) {
-      await acquire(egress, onWait, signal)
+      const blocked = await acquire(egress, onWait, signal, deadline)
+      if (blocked) {
+        log.warn(
+          { egress, blockedForMs: blocked.blockedForMs },
+          'npm downloads blocked, yielding lane',
+        )
+        return blocked
+      }
       onWait?.()
       signal?.throwIfAborted()
       const res = await doFetch()

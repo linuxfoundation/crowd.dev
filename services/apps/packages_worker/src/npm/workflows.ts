@@ -99,6 +99,10 @@ async function sleepIfBlocked(results: Array<{ blocked?: boolean }>): Promise<bo
   return true
 }
 
+// Throttled rounds can take about 45 minutes, so runs also continue as new after 12 hours; that
+// leaves room for a full activity retry cycle and the blocked sleep inside the 24 hour run timeout.
+const DOWNLOAD_RUN_BUDGET_MS = 12 * 60 * 60_000
+
 // Per lane, per round. Total packages selected per round = lanes × *_PER_LANE.
 const DAILY_PER_LANE = 20
 const DAILY_MAX_BATCHES_PER_RUN = 50
@@ -108,6 +112,7 @@ interface BackfillDailyState {
 }
 
 export async function backfillDailyDownloads(state: BackfillDailyState = {}): Promise<void> {
+  const startedAt = Date.now()
   const cutoff = state.cutoff ?? (await acts.currentTimestamp())
   const lanes = await acts.getLaneCount()
 
@@ -122,6 +127,7 @@ export async function backfillDailyDownloads(state: BackfillDailyState = {}): Pr
     if (await sleepIfBlocked(results)) break
     const total = results.reduce((sum, r) => sum + r.fetched, 0)
     if (total === 0) return
+    if (Date.now() - startedAt >= DOWNLOAD_RUN_BUDGET_MS) break
   }
 
   await continueAsNew<typeof backfillDailyDownloads>({ cutoff })
@@ -143,6 +149,7 @@ interface RefreshLatestLast30dState {
 export async function refreshLatestLast30dDownloads(
   state: RefreshLatestLast30dState = {},
 ): Promise<void> {
+  const startedAt = Date.now()
   const cutoff = state.cutoff ?? (await acts.currentTimestamp())
   const lanes = await acts.getLaneCount()
 
@@ -155,6 +162,7 @@ export async function refreshLatestLast30dDownloads(
     if (await sleepIfBlocked(results)) break
     const total = results.reduce((sum, r) => sum + r.fetched, 0)
     if (total === 0) return
+    if (Date.now() - startedAt >= DOWNLOAD_RUN_BUDGET_MS) break
   }
 
   await continueAsNew<typeof refreshLatestLast30dDownloads>({ cutoff })
@@ -172,6 +180,7 @@ const HISTORY_MAX_BATCHES_PER_RUN = 50
 // window is already present. Runs daily and continues-as-new until the whole universe's history
 // is filled; independent of the monthly breadth refresh, so it never blocks it.
 export async function backfillLast30dHistory(): Promise<void> {
+  const startedAt = Date.now()
   const lanes = await acts.getLaneCount()
 
   for (let i = 0; i < HISTORY_MAX_BATCHES_PER_RUN; i++) {
@@ -188,6 +197,7 @@ export async function backfillLast30dHistory(): Promise<void> {
     if (await sleepIfBlocked(results)) break
     const total = results.reduce((sum, r) => sum + r.fetched, 0)
     if (total === 0) return
+    if (Date.now() - startedAt >= DOWNLOAD_RUN_BUDGET_MS) break
   }
 
   await continueAsNew<typeof backfillLast30dHistory>()
