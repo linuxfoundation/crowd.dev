@@ -136,16 +136,17 @@ SQL >
 
 NODE archived_excluded_repositories
 DESCRIPTION >
-    Get the archived and excluded repositories for each segment and insightsProject
+    Get the archived, excluded and unavailable repositories for each segment and insightsProject
 
 SQL >
     SELECT
         segmentId,
         toString(insightsProjectId) AS insightsProjectId,
         groupArrayIf(url, archived = true) AS "archivedRepositories",
-        groupArrayIf(url, excluded = true) AS "excludedRepositories"
+        groupArrayIf(url, excluded = true) AS "excludedRepositories",
+        groupArrayIf(url, isNotNull(unavailableAt) AND isNull(deletedAt)) AS "unavailableRepositories"
     FROM repositories FINAL
-    WHERE archived = true OR excluded = true
+    WHERE archived = true OR excluded = true OR isNotNull(unavailableAt)
     GROUP BY segmentId, insightsProjectId
 
 NODE insights_projects_populated_copy_mentions
@@ -253,6 +254,7 @@ SQL >
         any (insights_projects_populated_copy_health_score_deduplicated.healthScore) as healthScore,
         any (archived_excluded_repositories.archivedRepositories) as archivedRepositories,
         any (archived_excluded_repositories.excludedRepositories) as excludedRepositories,
+        any (archived_excluded_repositories.unavailableRepositories) as unavailableRepositories,
         any (insights_projects_populated_copy_mentions.communityPlatforms) as communityPlatforms,
         any (insights_projects_populated_copy_mentions.communityKeywords) as communityKeywords,
         any (insights_projects_populated_copy_mentions.communityLanguages) as communityLanguages,

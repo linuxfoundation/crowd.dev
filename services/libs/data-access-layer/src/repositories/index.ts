@@ -23,6 +23,7 @@ export interface IRepository {
   deletedAt: string | null
   lastArchivedCheckAt: string | null
   licenses: string[] | null
+  unavailableAt: string | null
 }
 
 export interface ICreateRepository {
@@ -517,6 +518,77 @@ export async function softDeleteRepositoriesForIntegration(
     `,
     { sourceIntegrationId },
   )
+}
+
+export async function markRepositoriesUnavailable(
+  qx: QueryExecutor,
+  urls: string[],
+): Promise<string[]> {
+  if (urls.length === 0) {
+    return []
+  }
+  const rows: { url: string }[] = await qx.select(
+    `
+    UPDATE public.repositories
+    SET "unavailableAt" = NOW(), "updatedAt" = NOW()
+    WHERE url = ANY($(urls)::text[])
+      AND "deletedAt" IS NULL
+      AND "unavailableAt" IS NULL
+    RETURNING url
+    `,
+    { urls },
+  )
+  return rows.map((row) => row.url)
+}
+
+export async function clearRepositoriesUnavailable(
+  qx: QueryExecutor,
+  urls: string[],
+): Promise<string[]> {
+  if (urls.length === 0) {
+    return []
+  }
+  const rows: { id: string; url: string }[] = await qx.select(
+    `
+    UPDATE public.repositories
+    SET "unavailableAt" = NULL, "updatedAt" = NOW()
+    WHERE url = ANY($(urls)::text[])
+      AND "deletedAt" IS NULL
+      AND "unavailableAt" IS NOT NULL
+    RETURNING id, url
+    `,
+    { urls },
+  )
+  if (rows.length > 0) {
+    await qx.result(
+      `
+      UPDATE git."repositoryProcessing"
+      SET state = 'pending', "lockedAt" = NULL, "updatedAt" = NOW()
+      WHERE "repositoryId" = ANY($(ids)::uuid[])
+        AND state = 'auth_required'
+      `,
+      { ids: rows.map((row) => row.id) },
+    )
+  }
+  return rows.map((row) => row.url)
+}
+
+export async function listUnavailableRepoUrlsForIntegration(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+): Promise<string[]> {
+  const rows: { url: string }[] = await qx.select(
+    `
+    SELECT url
+    FROM public.repositories
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND "deletedAt" IS NULL
+      AND "unavailableAt" IS NOT NULL
+    ORDER BY url
+    `,
+    { sourceIntegrationId },
+  )
+  return rows.map((row) => row.url)
 }
 
 /**
