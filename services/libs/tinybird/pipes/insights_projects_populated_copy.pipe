@@ -136,7 +136,10 @@ SQL >
 
 NODE archived_excluded_repositories
 DESCRIPTION >
-    Get the archived, excluded and unavailable repositories for each insightsProject
+    Get the archived, excluded and unavailable repositories for each insightsProject.
+    - `archivedRepositories`: archived on the provider (read-only there). Still listed with their history; left out of Health Score and Security & Best Practices.
+    - `excludedRepositories`: left out of Health Score and security metrics on purpose, e.g. `.github` repositories or ones the archived check could not read.
+    - `unavailableRepositories`: the provider confirms the repository no longer exists or is no longer accessible (deleted, made private, legally blocked). Still listed with their history; no longer ingested. Only enabled, non-deleted repositories are included.
 
 SQL >
     SELECT
