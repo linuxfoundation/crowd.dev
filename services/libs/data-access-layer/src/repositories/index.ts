@@ -23,7 +23,6 @@ export interface IRepository {
   deletedAt: string | null
   lastArchivedCheckAt: string | null
   licenses: string[] | null
-  unavailableAt: string | null
 }
 
 export interface ICreateRepository {
@@ -530,7 +529,8 @@ export async function markRepositoriesUnavailable(
   const rows: { url: string }[] = await qx.select(
     `
     UPDATE public.repositories
-    SET "unavailableAt" = NOW(), "updatedAt" = NOW()
+    SET "unavailableAt" = clock_timestamp(),
+        "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
     WHERE url = ANY($(urls)::text[])
       AND "deletedAt" IS NULL
       AND "unavailableAt" IS NULL
@@ -548,28 +548,28 @@ export async function clearRepositoriesUnavailable(
   if (urls.length === 0) {
     return []
   }
-  const rows: { id: string; url: string }[] = await qx.select(
+  const rows: { url: string }[] = await qx.select(
     `
-    UPDATE public.repositories
-    SET "unavailableAt" = NULL, "updatedAt" = NOW()
-    WHERE url = ANY($(urls)::text[])
-      AND "deletedAt" IS NULL
-      AND "unavailableAt" IS NOT NULL
-    RETURNING id, url
+    WITH cleared AS (
+      UPDATE public.repositories
+      SET "unavailableAt" = NULL,
+          "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
+      WHERE url = ANY($(urls)::text[])
+        AND "deletedAt" IS NULL
+        AND "unavailableAt" IS NOT NULL
+      RETURNING id, url
+    ),
+    woken AS (
+      UPDATE git."repositoryProcessing" rp
+      SET state = 'pending', "lockedAt" = NULL, "updatedAt" = NOW()
+      FROM cleared
+      WHERE rp."repositoryId" = cleared.id
+        AND rp.state = 'auth_required'
+    )
+    SELECT url FROM cleared
     `,
     { urls },
   )
-  if (rows.length > 0) {
-    await qx.result(
-      `
-      UPDATE git."repositoryProcessing"
-      SET state = 'pending', "lockedAt" = NULL, "updatedAt" = NOW()
-      WHERE "repositoryId" = ANY($(ids)::uuid[])
-        AND state = 'auth_required'
-      `,
-      { ids: rows.map((row) => row.id) },
-    )
-  }
   return rows.map((row) => row.url)
 }
 
