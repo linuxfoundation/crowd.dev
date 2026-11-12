@@ -3,6 +3,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import crowdgit.services.maintainer.maintainer_service as maintainer_service_module
+from crowdgit.models import Repository
+from crowdgit.models.maintainer_info import MaintainerInfoItem
 from crowdgit.services.maintainer.info_yaml_maintainers import parse_info_yaml
 from crowdgit.services.maintainer.maintainer_service import MaintainerService
 
@@ -73,6 +76,7 @@ def test_parse_info_yaml_skips_tsc_change_log():
         "committers: []\n",
         "- just\n- a list\n",
         "key: [unclosed\n",
+        "project_lead: {}\ncommitters:\n  - 'alice@example.org'\n",
     ],
 )
 def test_parse_info_yaml_rejects_other_formats(content: str):
@@ -136,3 +140,61 @@ async def test_extract_maintainers_falls_back_when_info_yaml_is_not_lf_format(
     )
 
     assert result.not_found is True
+
+
+@pytest.mark.asyncio
+async def test_extract_maintainers_skips_rejected_saved_info_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "INFO.yaml").write_text("committers:\n  - name: 'Alice'\n")
+    service = MaintainerService()
+    try_saved = AsyncMock(return_value=(None, 0.0))
+    find_with_ai = AsyncMock(return_value=(None, 0.0))
+    monkeypatch.setattr(service, "try_saved_maintainer_file", try_saved)
+    monkeypatch.setattr(service, "_ripgrep_search", AsyncMock(return_value=[]))
+    monkeypatch.setattr(service, "_list_repo_files", AsyncMock(return_value=["INFO.yaml"]))
+    monkeypatch.setattr(
+        service, "classify_candidates_with_ai", AsyncMock(return_value=(set(), 0.0))
+    )
+    monkeypatch.setattr(service, "find_maintainer_file_with_ai", find_with_ai)
+
+    result = await service.extract_maintainers(
+        str(tmp_path),
+        saved_maintainer_file="INFO.yaml",
+        repo_url="https://gerrit.fd.io/r/vpp",
+    )
+
+    assert result.not_found is True
+    try_saved.assert_not_called()
+    ai_files = [name for name, _ in find_with_ai.call_args.args[0]]
+    assert "INFO.yaml" not in ai_files
+
+
+@pytest.mark.asyncio
+async def test_exclude_parent_repo_maintainers_matches_email_only_entries(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        maintainer_service_module,
+        "get_github_maintainer_usernames_for_repo",
+        AsyncMock(return_value=set()),
+    )
+    monkeypatch.setattr(
+        maintainer_service_module,
+        "get_maintainer_emails_for_repo",
+        AsyncMock(return_value={"openvpp@barachs.net"}),
+    )
+    parent = Repository(
+        id="11111111-1111-1111-1111-111111111111",
+        url="https://github.com/FDio/vpp",
+        state="completed",
+        priority=2,
+    )
+    extracted = [
+        MaintainerInfoItem(name="Dave Barach", email="OpenVPP@barachs.net"),
+        MaintainerInfoItem(name="Fork Owner", email="owner@example.com"),
+    ]
+
+    kept = await MaintainerService().exclude_parent_repo_maintainers(parent, extracted)
+
+    assert [m.name for m in kept] == ["Fork Owner"]

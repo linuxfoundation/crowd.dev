@@ -59,4 +59,6 @@ def parse_info_yaml(content: str) -> list[MaintainerInfoItem] | None:
         seen.add(key)
         maintainers.append(person)
 
-    return maintainers
+    # An empty result here means malformed entries, not an empty roster: accepting it would
+    # end-date every current maintainer.
+    return maintainers or None
