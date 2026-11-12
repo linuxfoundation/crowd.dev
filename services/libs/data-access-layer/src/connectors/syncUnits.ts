@@ -395,6 +395,23 @@ export async function listSyncUnitChannelsForIntegration(
   )
 }
 
+export async function listSyncUnitChannelNamesByErrorClass(
+  qx: QueryExecutor,
+  integrationId: string,
+  errorClass: string,
+): Promise<string[]> {
+  const rows: { channelName: string }[] = await qx.select(
+    `SELECT DISTINCT "channelName"
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND "lastErrorClass" = $(errorClass)
+       AND status <> 'decommissioned'
+     ORDER BY 1`,
+    { integrationId, errorClass },
+  )
+  return rows.map((row) => row.channelName)
+}
+
 export async function getEmittingChannelNamesForIntegrations(
   qx: QueryExecutor,
   integrationIds: string[],

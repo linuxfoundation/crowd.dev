@@ -6,6 +6,7 @@ import {
   PlatformType,
 } from '@crowd/types'
 
+import { REPOSITORY_NOT_FOUND_ERROR_CLASS } from '../connectors/types'
 import { QueryExecutor } from '../queryExecutor'
 import { getReposForGithubIntegration } from '../repositories'
 import { getReposBySegmentGroupedByPlatform } from '../segments'
@@ -932,6 +933,21 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
       FROM public.repositories r
       JOIN live_integrations li ON li.id = r."sourceIntegrationId"
       WHERE r."deletedAt" IS NULL
+        AND r."unavailableAt" IS NULL
+    ),
+    unavailable_repos AS (
+      SELECT DISTINCT r."sourceIntegrationId" AS "integrationId"
+      FROM public.repositories r
+      JOIN live_integrations li ON li.id = r."sourceIntegrationId"
+      WHERE r."deletedAt" IS NULL
+        AND r."unavailableAt" IS NOT NULL
+    ),
+    not_found_units AS (
+      SELECT DISTINCT su."integrationId"
+      FROM integration.sync_units su
+      JOIN live_integrations li ON li.id = su."integrationId"
+      WHERE su."lastErrorClass" = $(notFoundErrorClass)
+        AND su.status <> 'decommissioned'
     ),
     unsynced_repos AS (
       SELECT rk."integrationId"
@@ -985,8 +1001,15 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
     SELECT "integrationId" FROM full_sync
     UNION
     SELECT "integrationId" FROM decommissioned_units
+    UNION
+    SELECT "integrationId" FROM unavailable_repos
+    UNION
+    SELECT "integrationId" FROM not_found_units
     `,
-    { nangoPlatform: PlatformType.GITHUB_NANGO },
+    {
+      nangoPlatform: PlatformType.GITHUB_NANGO,
+      notFoundErrorClass: REPOSITORY_NOT_FOUND_ERROR_CLASS,
+    },
   )
   return rows.map((row) => row.id)
 }

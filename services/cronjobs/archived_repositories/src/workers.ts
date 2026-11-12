@@ -1,10 +1,11 @@
 import { Job, Worker, WorkerOptions } from 'bullmq'
 
+import { getGerritRepoStatus } from './clients/gerrit'
 import { getGithubRepoStatus } from './clients/github'
 import { getGitlabRepoStatus } from './clients/gitlab'
 import { getConfig } from './config.js'
 import { updateRepositoryStatus } from './database'
-import { GITHUB_QUEUE_NAME, GITLAB_QUEUE_NAME, Platform } from './types'
+import { GERRIT_QUEUE_NAME, GITHUB_QUEUE_NAME, GITLAB_QUEUE_NAME, Platform } from './types'
 
 const config = getConfig()
 
@@ -32,6 +33,14 @@ async function handleJob(job: Job) {
     const gitlabStatus = await getGitlabRepoStatus(job.data.url, config)
     archived = gitlabStatus.archived
     excluded = gitlabStatus.excluded
+  } else if (job.data.platform === Platform.GERRIT) {
+    if (!job.data.gerritBaseUrl) {
+      throw new Error(`Gerrit job for ${job.data.url} has no Gerrit base URL`)
+    }
+    console.log(`Processing Gerrit repo: ${job.data.url}`)
+    const gerritStatus = await getGerritRepoStatus(job.data.url, job.data.gerritBaseUrl)
+    archived = gerritStatus.archived
+    excluded = gerritStatus.excluded
   } else {
     throw new Error(`Unsupported platform: ${job.data.platform}`)
   }
@@ -68,9 +77,20 @@ const gitlabWorkerOptions: WorkerOptions = {
   },
 }
 
-// Both workers share the same job handler but they need different limiters due to the different rate limits of GitHub and GitLab APIs.
+// Gerrit instances are self-hosted by each community and publish no rate limit, so keep the load
+// low. One job is one anonymous request.
+const gerritWorkerOptions: WorkerOptions = {
+  connection: { url: config.RedisUrl },
+  concurrency: 2,
+  limiter: {
+    max: 120,
+    duration: 60000,
+  },
+}
+
 const githubWorker = new Worker(GITHUB_QUEUE_NAME, handleJob, githubWorkerOptions)
 const gitlabWorker = new Worker(GITLAB_QUEUE_NAME, handleJob, gitlabWorkerOptions)
+const gerritWorker = new Worker(GERRIT_QUEUE_NAME, handleJob, gerritWorkerOptions)
 
 githubWorker.on('failed', (job, err) => {
   console.error(`GitHub job ${job?.id || 'unknown'} has failed with message: ${err}, ${err.stack}`)
@@ -86,6 +106,13 @@ gitlabWorker.on('error', (err) => {
   console.error(`GitLab worker error: ${err}, ${err.stack}`)
 })
 
+gerritWorker.on('failed', (job, err) => {
+  console.error(`Gerrit job ${job?.id || 'unknown'} has failed with message: ${err}, ${err.stack}`)
+})
+gerritWorker.on('error', (err) => {
+  console.error(`Gerrit worker error: ${err}, ${err.stack}`)
+})
+
 // TODO: Check if there are event listeners for when we hit the rate limit, and log that, as well as for resume.
 
-export { githubWorker, gitlabWorker }
+export { githubWorker, gitlabWorker, gerritWorker }
