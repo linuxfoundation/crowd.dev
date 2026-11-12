@@ -76,13 +76,6 @@ async function main(config: Config) {
   await closeConnection()
 }
 
-/**
- * prepareJobsByPlatform receives a list of repositories to be added to job definitions for
- * processing by BullMQ. Supports GitHub, Gitlab and Gerrit (repositories with a Gerrit base URL),
- * while other platforms will be logged and skipped.
- *
- * @param repos The list of repositories.
- */
 function prepareJobsByPlatform(repos: RepositoryToCheck[]): {
   githubJobs: JobData[]
   gitlabJobs: JobData[]
