@@ -2,9 +2,9 @@
 
 This checks if git repositories are archived.
 
-Currently only GitHub and Gitlab are supported.
+GitHub, GitLab and Gerrit are supported.
 
-It gets all the repositories we have in our database, calls the GitHub and GitLab APIs to check if the
+It gets all the repositories we have in our database, calls the GitHub, GitLab and Gerrit APIs to check if the
 repositories are archived, taking care to not go over the APIs rate limits, and updates each repository in the database
 accordingly.
 
@@ -18,8 +18,8 @@ It has two main processes:
 - The main process, which is responsible for fetching the repositories from the database and adding them to the
   BullMQ queue.
 - The workers process, which is responsible for processing the jobs in the queue, which, for each queued repository,
-  involves calling the GitHub and GitLab APIs to check if the repository is archived, and updating the repositories in
-  the database.
+  involves calling the GitHub, GitLab or Gerrit API to check if the repository is archived, and updating the
+  repositories in the database.
 
 ## How it works
 
@@ -27,32 +27,49 @@ It has two main processes:
 
 Each run of the main process reads up to `ARCHIVED_REPOSITORIES_CHECKER_BATCH_SIZE` (default 10,000) URLs from
 `public.repositories`. It picks rows that are not soft-deleted, whose URL starts with `https://github.com/` or
-`https://gitlab.com/`, and that were never checked or were last checked more than 3 days ago. Rows never checked come
-first, then the ones checked longest ago.
+`https://gitlab.com/` or whose source integration is a Gerrit integration, and that were never checked or were last
+checked more than 3 days ago. Rows never checked come first, then the ones checked longest ago.
 
-It enqueues each URL into one of two BullMQ queues, `github-archived-repo-checker` or `gitlab-archived-repo-checker`.
-A failed job is retried up to 3 times with exponential backoff (4 attempts in total).
+Gerrit instances are self-hosted, so Gerrit repositories are found through their integration
+(`integrations.platform = 'gerrit'`) rather than by host, and the job carries the instance's base URL
+(`integrations.settings.remote.orgURL`).
+
+It enqueues each URL into one of three BullMQ queues, `github-archived-repo-checker`, `gitlab-archived-repo-checker` or
+`gerrit-archived-repo-checker`. A failed job is retried up to 3 times with exponential backoff (4 attempts in total).
 
 ### Rate limits
 
-Each queue has its own worker, with a concurrency of 5 and a limiter set below the provider's published limit:
+Each queue has its own worker, with a limiter set below the provider's published limit:
 
-| Queue  | Limiter               | Provider limit                          |
-| ------ | --------------------- | --------------------------------------- |
-| GitHub | 3,500 jobs per hour   | 5,000 requests per hour (authenticated) |
-| GitLab | 1,500 jobs per minute | 2,000 requests per minute               |
+| Queue  | Concurrency | Limiter               | Provider limit                              |
+| ------ | ----------- | --------------------- | ------------------------------------------- |
+| GitHub | 5           | 3,500 jobs per hour   | 5,000 requests per hour (authenticated)     |
+| GitLab | 5           | 1,500 jobs per minute | 2,000 requests per minute                   |
+| Gerrit | 2           | 120 jobs per minute   | None published; instances are community-run |
 
 The limits are set in `src/workers.ts`, not through environment variables.
 
 ### Marking archived and excluded
 
-The worker calls the GitHub or GitLab project API and sets two flags:
+For GitHub and GitLab, the worker calls the project API and sets two flags:
 
 - `archived` takes the provider's `archived` value, and `excluded` is `false`.
 - A 403 or 404 response means the repository is gone or not accessible, so the worker sets `excluded` to `true` and
   `archived` to `false`.
 - Repositories named `.github` on GitHub are always set to `excluded`, whatever their archive status.
-- Any other error fails the job, and BullMQ retries it.
+
+For Gerrit, the worker calls the public, unauthenticated `GET <base URL>/projects/<project>` endpoint. Gerrit has no
+archived flag: a project is retired by setting its state to `READ_ONLY` (or `HIDDEN`), which rejects every push and
+review, the same as an archived GitHub repository.
+
+- `archived` is `true` when the project state is `READ_ONLY` or `HIDDEN`, and `false` when it is `ACTIVE`. A project
+  set back to `ACTIVE` is unarchived on the next check.
+- A 404 response means the project was deleted or hidden, so the worker sets `excluded` to `true` and `archived` to
+  `false`.
+- A 403 response is not treated as gone, because a proxy in front of the instance may be blocking the client; the job
+  fails and is retried.
+
+Any other error fails the job, and BullMQ retries it.
 
 Each processed repository gets its `archived`, `excluded`, `lastArchivedCheckAt` and `updatedAt` columns updated in
 `public.repositories`. The table is created in
