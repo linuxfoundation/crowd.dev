@@ -82,6 +82,18 @@ describe('backfillDailyDownloads', () => {
     expect(h.log.warn).toHaveBeenCalled()
   })
 
+  it('runs another round without sleeping when a lane returns early with progress', async () => {
+    h.acts.backfillDailyLane
+      .mockResolvedValueOnce({ fetched: 20 })
+      .mockResolvedValueOnce({ fetched: 0 })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF })
+
+    expect(h.acts.backfillDailyLane).toHaveBeenCalledTimes(2)
+    expect(h.sleep).not.toHaveBeenCalled()
+    expect(h.continueAsNew).not.toHaveBeenCalled()
+  })
+
   it('finishes without sleeping when a round fetches nothing', async () => {
     h.acts.backfillDailyLane.mockResolvedValue({ fetched: 0 })
 

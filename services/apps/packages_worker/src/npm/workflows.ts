@@ -11,8 +11,8 @@ const acts = proxyActivities<typeof activities>({
   },
 })
 
-// Lanes wait out 429 pauses in-process and return after a 20 minute budget, so 1 hour
-// startToClose holds; heartbeats make a stalled lane fail in minutes and its retry skips progress.
+// Lanes wait out 429 pauses and return after a 20 minute budget, so the 1 hour startToClose
+// holds; heartbeats fail a stalled lane in minutes and its retry resumes past stored progress.
 const downloadLaneActs = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 hour',
   heartbeatTimeout: '2 minutes',

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DownloadsThrottle, downloadsFloorMs, isDownloadsBlocked } from '../downloadsThrottle'
+import { createDownloadsThrottle, downloadsFloorMs, isDownloadsBlocked } from '../downloadsThrottle'
 import { type FetchError, FetchErrorKind } from '../types'
 
 const MIN = 60_000
@@ -48,11 +48,11 @@ describe('downloadsFloorMs', () => {
 
 describe('acquire', () => {
   it('starts at the floor interval', () => {
-    expect(new DownloadsThrottle(FLOOR, makeLog()).intervalMs('direct')).toBe(FLOOR)
+    expect(createDownloadsThrottle(FLOOR, makeLog()).intervalMs('direct')).toBe(FLOOR)
   })
 
   it('spaces request starts on the same egress by the interval', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const { times, track } = settleTimes(Date.now())
 
     track(throttle.acquire('direct'))
@@ -66,7 +66,7 @@ describe('acquire', () => {
   })
 
   it('serializes concurrent callers on the same egress', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const { times, track } = settleTimes(Date.now())
 
     track(throttle.acquire('direct'))
@@ -78,7 +78,7 @@ describe('acquire', () => {
   })
 
   it('keeps different egress keys independent', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const { times, track } = settleTimes(Date.now())
 
     track(throttle.acquire('direct'))
@@ -91,7 +91,7 @@ describe('acquire', () => {
 
 describe('back off on 429', () => {
   it('doubles the interval and pauses the egress for a minute', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const { times, track } = settleTimes(Date.now())
 
     throttle.recordRateLimit('direct')
@@ -106,7 +106,7 @@ describe('back off on 429', () => {
 
   it('doubles the pause per consecutive 429 up to 10 minutes and caps the interval at 60s', async () => {
     const log = makeLog()
-    const throttle = new DownloadsThrottle(FLOOR, log)
+    const throttle = createDownloadsThrottle(FLOOR, log)
 
     for (let i = 0; i < 7; i++) throttle.recordRateLimit('direct')
 
@@ -139,7 +139,7 @@ describe('back off on 429', () => {
 
   it('restarts the pause ladder at one minute after a success', async () => {
     const log = makeLog()
-    const throttle = new DownloadsThrottle(FLOOR, log)
+    const throttle = createDownloadsThrottle(FLOOR, log)
 
     throttle.recordRateLimit('direct')
     throttle.recordRateLimit('direct')
@@ -160,7 +160,7 @@ describe('back off on 429', () => {
 describe('recovery', () => {
   it('eases the interval 10% after 10 clean minutes, at most once per 10 minutes', async () => {
     const log = makeLog()
-    const throttle = new DownloadsThrottle(FLOOR, log)
+    const throttle = createDownloadsThrottle(FLOOR, log)
 
     throttle.recordRateLimit('direct')
     expect(throttle.intervalMs('direct')).toBe(2000)
@@ -186,7 +186,7 @@ describe('recovery', () => {
   })
 
   it('never eases below the floor', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     throttle.recordRateLimit('direct')
 
     for (let i = 0; i < 20; i++) {
@@ -200,7 +200,7 @@ describe('recovery', () => {
 
 describe('run', () => {
   it('waits out the pause after a 429, retries and returns the success', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const doFetch = vi
       .fn<() => Promise<{ count: number } | FetchError>>()
       .mockResolvedValueOnce(rateLimited)
@@ -216,7 +216,7 @@ describe('run', () => {
   })
 
   it('calls onWait at least every 30 seconds while paused', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     for (let i = 0; i < 5; i++) throttle.recordRateLimit('direct')
     const start = Date.now()
     const beats: number[] = []
@@ -239,7 +239,7 @@ describe('run', () => {
     { kind: FetchErrorKind.TRANSIENT, statusCode: 503, message: 'HTTP 503' },
     { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' },
   ] as FetchError[])('returns a $kind result unchanged without retrying', async (error) => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const doFetch = vi.fn(async () => error)
 
     const result = throttle.run('direct', doFetch)
@@ -251,7 +251,7 @@ describe('run', () => {
 
   it('returns a blocked marker once only 429s have been seen for 20 minutes', async () => {
     const log = makeLog()
-    const throttle = new DownloadsThrottle(FLOOR, log)
+    const throttle = createDownloadsThrottle(FLOOR, log)
     const doFetch = vi.fn(async () => rateLimited)
 
     const result = throttle.run('direct', doFetch)
@@ -269,7 +269,7 @@ describe('run', () => {
   })
 
   it('probes once and yields again when called later during the same block', async () => {
-    const throttle = new DownloadsThrottle(FLOOR, makeLog())
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
     const doFetch = vi.fn(async () => rateLimited)
 
     const first = throttle.run('direct', doFetch)
@@ -288,5 +288,49 @@ describe('run', () => {
   it('treats plain values as not blocked', () => {
     expect(isDownloadsBlocked({ count: 1 })).toBe(false)
     expect(isDownloadsBlocked(rateLimited)).toBe(false)
+  })
+})
+
+describe('floor above the 60 second cap', () => {
+  it('keeps the interval at the floor after a 429', () => {
+    const throttle = createDownloadsThrottle(90_000, makeLog())
+
+    throttle.recordRateLimit('direct')
+
+    expect(throttle.intervalMs('direct')).toBe(90_000)
+  })
+})
+
+describe('cancellation', () => {
+  it('rejects a paused run on abort without fetching or reserving a slot', async () => {
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
+    throttle.recordRateLimit('direct')
+    const controller = new AbortController()
+    const doFetch = vi.fn(async () => ({ count: 1 }))
+    const outcome = throttle.run('direct', doFetch, undefined, controller.signal).then(
+      () => 'resolved',
+      () => 'rejected',
+    )
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    await expect(outcome).resolves.toBe('rejected')
+    expect(doFetch).not.toHaveBeenCalled()
+
+    // The pause from the 429 ends 20s from here; an aborted run must not have taken a slot.
+    const { times, track } = settleTimes(Date.now())
+    track(throttle.acquire('direct'))
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(times).toEqual([20_000])
+  })
+
+  it('rejects at once when the signal is already aborted', async () => {
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
+    const doFetch = vi.fn(async () => ({ count: 1 }))
+
+    await expect(throttle.run('direct', doFetch, undefined, AbortSignal.abort())).rejects.toThrow()
+    expect(doFetch).not.toHaveBeenCalled()
   })
 })

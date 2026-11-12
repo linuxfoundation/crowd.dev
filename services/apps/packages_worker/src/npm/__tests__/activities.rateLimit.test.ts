@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as activities from '../activities'
-import { DownloadsThrottle } from '../downloadsThrottle'
+import { createDownloadsThrottle } from '../downloadsThrottle'
 import { type FetchError, FetchErrorKind } from '../types'
 
 const h = vi.hoisted(() => ({
@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   ctx: {
     heartbeat: vi.fn(),
     info: { attempt: 1, scheduledTimestampMs: 0 },
+    cancellationSignal: undefined as AbortSignal | undefined,
   },
   dal: {
     getExistingLast30dEndDates: vi.fn(),
@@ -92,7 +93,8 @@ async function settle<T>(promise: Promise<T>, advanceMs: number) {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  h.throttle.current = new DownloadsThrottle(1000, { info: vi.fn(), warn: vi.fn() })
+  h.throttle.current = createDownloadsThrottle(1000, { info: vi.fn(), warn: vi.fn() })
+  h.ctx.cancellationSignal = undefined
   vi.setSystemTime(new Date('2026-11-12T12:00:00Z'))
   vi.stubEnv('CROWD_PACKAGES_DOWNLOAD_SLEEP_MS', '1000')
   vi.stubEnv('CROWD_PACKAGES_PROXIES_ENABLED', 'false')
@@ -291,5 +293,120 @@ describe('shared limiter', () => {
     expect(l.error).toBeUndefined()
     expect(starts).toHaveLength(2)
     expect(Math.abs(starts[1] - starts[0])).toBeGreaterThanOrEqual(1000)
+  })
+})
+
+describe('partial progress during a block', () => {
+  it('daily: the in-progress package keeps rows from earlier chunks and stays unmarked', async () => {
+    const { backfillDailyLane } = await loadActivities()
+    // 600 consecutive days split into a 540 day chunk and a 60 day chunk.
+    const dates = Array.from({ length: 600 }, (_, i) =>
+      new Date(Date.UTC(2024, 0, 1 + i)).toISOString().slice(0, 10),
+    )
+    h.dal.getMissingDownloadDates.mockResolvedValue(dates)
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('bar')])
+    h.fetch.fetchDailyRange.mockResolvedValueOnce(dailyOk).mockResolvedValue(rateLimited)
+
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 30 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 1, blocked: true })
+    expect(h.dal.insertDailyDownloads).toHaveBeenCalledTimes(1)
+    expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
+  })
+
+  it('latest: a purl settled before the block stays marked, the blocked one does not', async () => {
+    const { refreshLatestLast30dLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLatest30d.mockResolvedValue([
+      { purl: 'pkg:npm/foo', firstReleaseAt: null },
+      { purl: 'pkg:npm/%40scope/pkg', firstReleaseAt: null },
+    ])
+    h.fetch.fetchBulkPointRange.mockResolvedValue({
+      counts: new Map([['foo', 9]]),
+      start: '2026-10-02',
+      end: '2026-11-01',
+    })
+    h.fetch.fetchPointRange.mockResolvedValue(rateLimited)
+
+    const { value, error } = await settle(refreshLatestLast30dLane(CUTOFF, 128, 0, 1), 30 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 2, blocked: true })
+    expect(h.dal.upsertLast30dDownload).toHaveBeenCalledWith(
+      expect.anything(),
+      'pkg:npm/foo',
+      '2026-10-02',
+      '2026-11-01',
+      9,
+      true,
+    )
+    expect(h.dal.markLast30dProcessed).toHaveBeenCalledTimes(1)
+    expect(h.dal.markLast30dProcessed).toHaveBeenCalledWith(expect.anything(), 'pkg:npm/foo', {
+      status: 'success',
+    })
+  })
+})
+
+describe('lane time budget', () => {
+  it('daily lane returns its progress as a normal result once 20 minutes have passed', async () => {
+    const { backfillDailyLane } = await loadActivities()
+    const names = Array.from({ length: 30 }, (_, i) => `pkg${i}`)
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue(names.map((n) => candidate(n)))
+    h.fetch.fetchDailyRange.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2 * MIN))
+      return dailyOk
+    })
+
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 30, 0, 1), 40 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 30 })
+    const fetched = h.fetch.fetchDailyRange.mock.calls.length
+    expect(fetched).toBeGreaterThan(0)
+    expect(fetched).toBeLessThan(30)
+    expect(h.dal.markDailyDownloadsProcessed).toHaveBeenCalledTimes(fetched)
+    expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'pkg:npm/pkg29',
+      expect.anything(),
+    )
+  })
+
+  it('latest lane returns its progress as a normal result once 20 minutes have passed', async () => {
+    const { refreshLatestLast30dLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLatest30d.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        purl: `pkg:npm/%40scope/p${i}`,
+        firstReleaseAt: null,
+      })),
+    )
+    h.fetch.fetchPointRange.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 6 * MIN))
+      return { count: 7, start: '2026-10-02', end: '2026-11-01' }
+    })
+
+    const { value, error } = await settle(refreshLatestLast30dLane(CUTOFF, 128, 0, 1), 60 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 5 })
+    const fetched = h.fetch.fetchPointRange.mock.calls.length
+    expect(fetched).toBeGreaterThan(0)
+    expect(fetched).toBeLessThan(5)
+    expect(h.dal.markLast30dProcessed).toHaveBeenCalledTimes(fetched)
+  })
+})
+
+describe('cancellation', () => {
+  it('a cancelled lane stops before fetching', async () => {
+    const { backfillDailyLane } = await loadActivities()
+    h.ctx.cancellationSignal = AbortSignal.abort()
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
+    h.fetch.fetchDailyRange.mockResolvedValue(dailyOk)
+
+    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), MIN)
+
+    expect(error).toBeDefined()
+    expect(h.fetch.fetchDailyRange).not.toHaveBeenCalled()
+    expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
   })
 })
