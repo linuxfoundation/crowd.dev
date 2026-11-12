@@ -54,15 +54,31 @@ setImmediate(async () => {
     })
 
     const indexable = documents.filter((document) => document !== null)
+    let created = 0
+
     if (indexable.length > 0) {
-      await openSearch.bulkIndex(OpenSearchIndex.ORGANIZATIONS, indexable)
+      const { body: result } = await openSearch.client.bulk({
+        index: OpenSearchIndex.ORGANIZATIONS,
+        body: indexable.flatMap(({ id, body }) => [{ create: { _id: id } }, body]),
+      })
+
+      const failures = result.items.filter(({ create }) => create.error && create.status !== 409)
+      if (failures.length > 0) {
+        log.error({ failures }, 'Failed to index batch of organizations!')
+        throw new Error('Failed to index batch of organizations!')
+      }
+
+      created = result.items.filter(({ create }) => create.status === 201).length
     }
 
     lastOrganizationId = organizations[organizations.length - 1].id
     await checkpoint.set(CHECKPOINT_KEY, lastOrganizationId)
 
     processed += organizations.length
-    log.info({ processed, lastOrganizationId }, 'Synced batch of organizations!')
+    log.info(
+      { processed, created, skipped: organizations.length - created, lastOrganizationId },
+      'Synced batch of organizations!',
+    )
 
     organizations = await fetchOrganizationsForSearchSync(qx, BATCH_SIZE, lastOrganizationId)
   }

@@ -52,15 +52,31 @@ setImmediate(async () => {
     })
 
     const indexable = documents.filter((document) => document !== null)
+    let created = 0
+
     if (indexable.length > 0) {
-      await openSearch.bulkIndex(OpenSearchIndex.MEMBERS, indexable)
+      const { body: result } = await openSearch.client.bulk({
+        index: OpenSearchIndex.MEMBERS,
+        body: indexable.flatMap(({ id, body }) => [{ create: { _id: id } }, body]),
+      })
+
+      const failures = result.items.filter(({ create }) => create.error && create.status !== 409)
+      if (failures.length > 0) {
+        log.error({ failures }, 'Failed to index batch of members!')
+        throw new Error('Failed to index batch of members!')
+      }
+
+      created = result.items.filter(({ create }) => create.status === 201).length
     }
 
     lastMemberId = members[members.length - 1].id
     await checkpoint.set(CHECKPOINT_KEY, lastMemberId)
 
     processed += members.length
-    log.info({ processed, lastMemberId }, 'Synced batch of members!')
+    log.info(
+      { processed, created, skipped: members.length - created, lastMemberId },
+      'Synced batch of members!',
+    )
 
     members = await fetchMembersForSearchSync(qx, BATCH_SIZE, lastMemberId)
   }
