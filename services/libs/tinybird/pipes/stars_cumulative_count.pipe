@@ -8,7 +8,7 @@ DESCRIPTION >
     activities the normal way - read directly off `activityRelations_bucket_routing` /
     `activityRelations_collection_bucket_routing` (the same tables `activities_filtered.pipe`
     itself routes to), filtered `platform != 'github'`, since `activities_filtered.pipe` has no
-    platform-exclusion parameter to reuse as-is. Only segments in `stars_gitlab_segments.pipe`
+    platform-exclusion parameter to reuse as-is. Only segments in `stars_scope.pipe`
     are read, so GitHub-only projects and collections skip that scan.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
     `activities_filtered.pipe`. `bucketId` is required alongside `collectionSlug` (resolved via
@@ -68,6 +68,7 @@ DESCRIPTION >
 SQL >
     %
     {% if not defined(granularity) %}
+        WITH (SELECT scope FROM stars_scope) AS scope
         SELECT count() AS gitlabCumulativeStars
         FROM
             {% if defined(collectionSlug) %} activityRelations_collection_bucket_routing
@@ -84,7 +85,8 @@ SQL >
             {% end %}
             AND type = 'star'
             AND platform != 'github'
-            AND segmentId IN (SELECT segmentId FROM stars_gitlab_segments)
+            AND notEmpty(scope.gitlabSegmentIds)
+            AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(endDate) %}
@@ -104,6 +106,7 @@ SQL >
     %
     {% if defined(granularity) %}
         WITH
+            (SELECT scope FROM stars_scope) AS scope,
             gitlab_historical AS (
                 SELECT count() AS c
                 FROM
@@ -121,7 +124,8 @@ SQL >
                     {% end %}
                     AND type = 'star'
                     AND platform != 'github'
-                    AND segmentId IN (SELECT segmentId FROM stars_gitlab_segments)
+                    AND notEmpty(scope.gitlabSegmentIds)
+                    AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
@@ -156,7 +160,8 @@ SQL >
                             {% end %}
                             AND type = 'star'
                             AND platform != 'github'
-                            AND segmentId IN (SELECT segmentId FROM stars_gitlab_segments)
+                            AND notEmpty(scope.gitlabSegmentIds)
+                            AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                             {% if defined(repos) %}
                                 AND channel IN (SELECT channel FROM repos_to_channels)

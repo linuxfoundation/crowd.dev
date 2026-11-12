@@ -12,9 +12,9 @@ DESCRIPTION >
     - **First bucket baselines against `startDate`, not zero**: the bucketed diff can't see any
     row before the requested range, so the first bucket's "previous" total is computed
     separately (`stars_count_baseline`) as the real cumulative total as of `startDate`, the same
-    way `stars_count_summary`'s `github_at_start`/`gitlab_new` already do for the no-granularity
+    way `stars_count_summary`'s `github_new`/`gitlab_new` already do for the no-granularity
     case. Without this, the first bucket in ANY range would show the repo's entire pre-range
-    history as "new" (CM-1819). Same caveat as `github_at_start`: a repo whose first snapshot
+    history as "new" (CM-1819). Same caveat as the `startDate` total in `github_new`: a repo whose first snapshot
     postdates `startDate` (incomplete backfill) still baselines at 0 for that repo, so its
     pre-`startDate` history still shows as "new" in the first bucket - not fixed by this change.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
@@ -31,7 +31,7 @@ DESCRIPTION >
     - Response field names deliberately match `activities_count.pipe` so `stars.ts` can swap the
     pipe name with no other code changes.
     - GitHub totals as of a date come from `stars_github_as_of.pipe`. GitLab events are read only
-    from segments in `stars_gitlab_segments.pipe`, so GitHub-only scopes skip the activity scan.
+    from segments in `stars_scope.pipe`, so GitHub-only scopes skip the activity scan.
 
 TOKEN "insights-app-token" READ
 
@@ -39,7 +39,7 @@ NODE stars_count_baseline
 DESCRIPTION >
     Scalar: cumulative stars total as of `startDate`, used as the first bucket's baseline in
     `stars_count_bucketed` instead of a hardcoded 0 - mirrors `stars_count_summary`'s
-    `github_at_start`/`gitlab_new` logic (github: latest snapshot captured at or before
+    `github_new`/`gitlab_new` logic (github: latest snapshot captured at or before
     `startDate`; gitlab: event count up to and including `startDate`). 0 when `startDate` isn't
     given - an open-ended range legitimately has nothing before its first bucket.
 
@@ -47,6 +47,7 @@ SQL >
     %
     {% if defined(granularity) and defined(startDate) %}
         WITH
+            (SELECT scope FROM stars_scope) AS scope,
             github_before AS (SELECT githubStars AS total FROM stars_github_as_of WHERE kind = 'start'),
             gitlab_before AS (
                 SELECT count() AS c
@@ -65,7 +66,8 @@ SQL >
                     {% end %}
                     AND type = 'star'
                     AND platform != 'github'
-                    AND segmentId IN (SELECT segmentId FROM stars_gitlab_segments)
+                    AND notEmpty(scope.gitlabSegmentIds)
+                    AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
@@ -116,9 +118,12 @@ SQL >
     %
     {% if not defined(granularity) %}
         WITH
-            github_at_end AS (SELECT githubStars AS total FROM stars_github_as_of WHERE kind = 'end'),
-            github_at_start AS (
-                SELECT githubStars AS total FROM stars_github_as_of WHERE kind = 'start'
+            (SELECT scope FROM stars_scope) AS scope,
+            github_new AS (
+                SELECT
+                    sumIf(toInt64(githubStars), kind = 'end')
+                    - sumIf(toInt64(githubStars), kind = 'start') AS total
+                FROM stars_github_as_of
             ),
             gitlab_new AS (
                 SELECT count() AS c
@@ -137,7 +142,8 @@ SQL >
                     {% end %}
                     AND type = 'star'
                     AND platform != 'github'
-                    AND segmentId IN (SELECT segmentId FROM stars_gitlab_segments)
+                    AND notEmpty(scope.gitlabSegmentIds)
+                    AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
@@ -151,10 +157,7 @@ SQL >
                         <= {{ DateTime(endDate, description="Range end", required=False) }}
                     {% end %}
             )
-        SELECT
-            toInt64(coalesce((SELECT total FROM github_at_end), 0))
-            - toInt64(coalesce((SELECT total FROM github_at_start), 0))
-            + (SELECT c FROM gitlab_new) AS activityCount
+        SELECT (SELECT total FROM github_new) + (SELECT c FROM gitlab_new) AS activityCount
     {% else %} SELECT 0 AS activityCount
     {% end %}
 
