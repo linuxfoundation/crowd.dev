@@ -29,6 +29,7 @@ import {
   findIntegrationRepositoryUrl,
   findRepositoryByUrlInsensitive,
   findRepositoryOwnersForSegment,
+  clearRepositoriesUnavailable,
   getReposForGithubIntegration,
   listUnavailableRepoUrlsForIntegration,
   markRepositoriesUnavailable,
@@ -50,7 +51,7 @@ import {
   githubRepoKey,
 } from '../githubLifecycle'
 import { type IGithubRename, type IGithubRenamesResult, applyGithubRenames } from '../githubRenames'
-import { syncGithubRepoAvailability } from '../githubRepoAvailability'
+import { probeGithubRepoAvailability } from '../githubRepoAvailability'
 import {
   githubResolveSkipReason,
   lifecycleSkipReasonFor,
@@ -209,25 +210,30 @@ async function availableRepoUrls(qx: QueryExecutor, integrationId: string): Prom
   return repos.map((repo) => repo.url).filter((url) => !gone.has(url))
 }
 
-async function refreshRepoAvailability(qx: QueryExecutor, integrationId: string): Promise<void> {
-  const { flagged, cleared, skipped } = await syncGithubRepoAvailability(
-    qx,
-    installationTokenSource(qx, integrationId),
-    integrationId,
-  )
-  for (const url of flagged) {
+function logRepoUnavailable(integrationId: string, urls: string[]): void {
+  for (const url of urls) {
     svc.log.warn(
       { event: 'lifecycle_repo_unavailable', integrationId, url },
       'repo no longer exists on github, flagged unavailable',
     )
   }
-  for (const url of cleared) {
+}
+
+async function refreshRepoAvailability(qx: QueryExecutor, integrationId: string): Promise<void> {
+  const { gone, reachable, skipped } = await probeGithubRepoAvailability(
+    qx,
+    installationTokenSource(qx, integrationId),
+    integrationId,
+    heartbeat,
+  )
+  skipped.forEach((skip) => logRepoSkipped(integrationId, skip))
+  logRepoUnavailable(integrationId, await markRepositoriesUnavailable(qx, integrationId, gone))
+  for (const url of await clearRepositoriesUnavailable(qx, integrationId, reachable)) {
     svc.log.info(
       { event: 'lifecycle_repo_available', integrationId, url },
       'repo is reachable on github again, unavailable flag cleared',
     )
   }
-  skipped.forEach((skip) => logRepoSkipped(integrationId, skip))
 }
 
 function liveRepoKeys(urls: string[]): string[] {
@@ -874,12 +880,7 @@ async function flagMissingRepos(
     const url = storedUrls.get(key)
     return outcome.outcome === 'skipped' && outcome.reason === 'repo_not_found' && url ? [url] : []
   })
-  for (const url of await markRepositoriesUnavailable(qx, missing)) {
-    svc.log.warn(
-      { event: 'lifecycle_repo_unavailable', integrationId, url },
-      'repo no longer exists on github, flagged unavailable',
-    )
-  }
+  logRepoUnavailable(integrationId, await markRepositoriesUnavailable(qx, integrationId, missing))
 }
 
 function recordOnboardOutcomes(

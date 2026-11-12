@@ -1,3 +1,5 @@
+import { REPOSITORY_NOT_FOUND_ERROR_CLASS } from '@crowd/data-access-layer/src/connectors/types'
+
 export type ErrorClass =
   | 'provider.unavailable'
   | 'provider.rate_limit'
@@ -5,7 +7,7 @@ export type ErrorClass =
   | 'provider.access_denied'
   | 'provider.contract'
   | 'provider.repository_renamed'
-  | 'provider.repository_not_found'
+  | typeof REPOSITORY_NOT_FOUND_ERROR_CLASS
   | 'connector.code'
   | 'sink.rejected'
   | 'worker.timeout'
@@ -85,7 +87,7 @@ export class RepositoryRenamedError extends ConnectorError {
 
 export class RepositoryNotFoundError extends ConnectorError {
   constructor(message = 'repository not found', options?: ConnectorErrorOptions) {
-    super('provider.repository_not_found', message, options)
+    super(REPOSITORY_NOT_FOUND_ERROR_CLASS, message, options)
     this.name = 'RepositoryNotFoundError'
   }
 }

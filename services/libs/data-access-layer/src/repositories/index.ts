@@ -521,6 +521,7 @@ export async function softDeleteRepositoriesForIntegration(
 
 export async function markRepositoriesUnavailable(
   qx: QueryExecutor,
+  sourceIntegrationId: string,
   urls: string[],
 ): Promise<string[]> {
   if (urls.length === 0) {
@@ -531,18 +532,20 @@ export async function markRepositoriesUnavailable(
     UPDATE public.repositories
     SET "unavailableAt" = clock_timestamp(),
         "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
-    WHERE url = ANY($(urls)::text[])
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND url = ANY($(urls)::text[])
       AND "deletedAt" IS NULL
       AND "unavailableAt" IS NULL
     RETURNING url
     `,
-    { urls },
+    { sourceIntegrationId, urls },
   )
   return rows.map((row) => row.url)
 }
 
 export async function clearRepositoriesUnavailable(
   qx: QueryExecutor,
+  sourceIntegrationId: string,
   urls: string[],
 ): Promise<string[]> {
   if (urls.length === 0) {
@@ -554,7 +557,8 @@ export async function clearRepositoriesUnavailable(
       UPDATE public.repositories
       SET "unavailableAt" = NULL,
           "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
-      WHERE url = ANY($(urls)::text[])
+      WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+        AND url = ANY($(urls)::text[])
         AND "deletedAt" IS NULL
         AND "unavailableAt" IS NOT NULL
       RETURNING id, url
@@ -568,7 +572,7 @@ export async function clearRepositoriesUnavailable(
     )
     SELECT url FROM cleared
     `,
-    { urls },
+    { sourceIntegrationId, urls },
   )
   return rows.map((row) => row.url)
 }

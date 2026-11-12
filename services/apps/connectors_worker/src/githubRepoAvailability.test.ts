@@ -3,24 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { syncGithubRepoAvailability } from './githubRepoAvailability'
+import { probeGithubRepoAvailability } from './githubRepoAvailability'
 
 const mocks = vi.hoisted(() => ({
+  getReposForGithubIntegration: vi.fn(),
   listUnavailableRepoUrlsForIntegration: vi.fn(),
   listSyncUnitChannelNamesByErrorClass: vi.fn(),
-  markRepositoriesUnavailable: vi.fn(),
-  clearRepositoriesUnavailable: vi.fn(),
   resolveRepo: vi.fn(),
 }))
 
-vi.mock('@crowd/data-access-layer/src/connectors', () => ({
-  REPOSITORY_NOT_FOUND_ERROR_CLASS: 'provider.repository_not_found',
+vi.mock('@crowd/data-access-layer/src/connectors', async (importActual) => ({
+  REPOSITORY_NOT_FOUND_ERROR_CLASS: (
+    await importActual<typeof import('@crowd/data-access-layer/src/connectors')>()
+  ).REPOSITORY_NOT_FOUND_ERROR_CLASS,
   listSyncUnitChannelNamesByErrorClass: mocks.listSyncUnitChannelNamesByErrorClass,
 }))
 vi.mock('@crowd/data-access-layer/src/repositories', () => ({
+  getReposForGithubIntegration: mocks.getReposForGithubIntegration,
   listUnavailableRepoUrlsForIntegration: mocks.listUnavailableRepoUrlsForIntegration,
-  markRepositoriesUnavailable: mocks.markRepositoriesUnavailable,
-  clearRepositoriesUnavailable: mocks.clearRepositoriesUnavailable,
 }))
 vi.mock('@crowd/connectors/src/connectors/github/discover', () => ({
   resolveRepo: mocks.resolveRepo,
@@ -44,21 +44,41 @@ function githubAnswers(answers: Record<string, number>): void {
   })
 }
 
-describe('syncGithubRepoAvailability', () => {
+function tracked(names: string[], unavailable: string[], suspectChannels: string[]): void {
+  mocks.getReposForGithubIntegration.mockResolvedValue(names.map((name) => ({ url: url(name) })))
+  mocks.listUnavailableRepoUrlsForIntegration.mockResolvedValue(unavailable.map(url))
+  mocks.listSyncUnitChannelNamesByErrorClass.mockResolvedValue(suspectChannels)
+}
+
+describe('probeGithubRepoAvailability', () => {
   const token = vi.fn(async () => 'token')
+  const onProgress = vi.fn()
 
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.markRepositoriesUnavailable.mockImplementation(async (_qx, urls: string[]) => urls)
-    mocks.clearRepositoriesUnavailable.mockImplementation(async (_qx, urls: string[]) => urls)
-  })
+  beforeEach(() => vi.clearAllMocks())
 
-  it('flags suspects github confirms gone, clears flagged repos that answer again and leaves every other answer alone', async () => {
-    mocks.listUnavailableRepoUrlsForIntegration.mockResolvedValue(
-      ['StillGone', 'Back', 'FlakyFlagged'].map(url),
-    )
-    mocks.listSyncUnitChannelNamesByErrorClass.mockResolvedValue(
-      ['Deleted', 'Legal', 'Removed', 'Transient', 'Forbidden', 'StillGone'].map(url),
+  it('reports own suspects github confirms gone and flagged repos that answer again, by their stored url, and leaves every other answer alone', async () => {
+    tracked(
+      [
+        'StillGone',
+        'Back',
+        'FlakyFlagged',
+        'Deleted',
+        'Legal',
+        'Removed',
+        'Transient',
+        'Forbidden',
+      ],
+      ['StillGone', 'Back', 'FlakyFlagged'],
+      [
+        url('Deleted').toLowerCase(),
+        url('Legal'),
+        url('Removed'),
+        url('Transient'),
+        url('Forbidden'),
+        url('StillGone'),
+        url('OwnedElsewhere'),
+        'not-a-repo-url',
+      ],
     )
     githubAnswers({
       StillGone: 404,
@@ -67,11 +87,12 @@ describe('syncGithubRepoAvailability', () => {
       Legal: 451,
       Removed: 410,
       Forbidden: 403,
+      OwnedElsewhere: 404,
     })
 
-    await expect(syncGithubRepoAvailability(qx, token, 'int-1')).resolves.toEqual({
-      flagged: ['Deleted', 'Legal', 'Removed'].map(url),
-      cleared: [url('Back')],
+    await expect(probeGithubRepoAvailability(qx, token, 'int-1', onProgress)).resolves.toEqual({
+      gone: ['Deleted', 'Legal', 'Removed'].map(url),
+      reachable: [url('Back')],
       skipped: [
         { url: url('FlakyFlagged'), reason: 'github_error', message: '502' },
         { url: url('Forbidden'), reason: 'github_error', message: '403' },
@@ -83,29 +104,40 @@ describe('syncGithubRepoAvailability', () => {
       'provider.repository_not_found',
     )
     expect(mocks.resolveRepo).toHaveBeenCalledTimes(8)
-    expect(mocks.resolveRepo).toHaveBeenCalledWith('token', 'Acme', 'Back')
+    expect(mocks.resolveRepo).not.toHaveBeenCalledWith('token', 'Acme', 'OwnedElsewhere')
+    expect(onProgress).toHaveBeenCalledTimes(2)
   })
 
-  it('stops probing on a rate limit, reports a failed mint as skips and does nothing without candidates', async () => {
+  it('reports what it could not probe after a rate limit or a failed mint and keeps earlier answers', async () => {
     const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-    mocks.listUnavailableRepoUrlsForIntegration.mockResolvedValue([])
-    mocks.listSyncUnitChannelNamesByErrorClass.mockResolvedValue(names.map(url))
+    tracked(names, [], names.map(url))
     githubAnswers({ A: 404, B: 429, F: 404 })
 
-    await expect(syncGithubRepoAvailability(qx, token, 'int-1')).resolves.toEqual({
-      flagged: [url('A')],
-      cleared: [],
-      skipped: [{ url: url('B'), reason: 'rate_limited', message: '429' }],
+    await expect(probeGithubRepoAvailability(qx, token, 'int-1', onProgress)).resolves.toEqual({
+      gone: [url('A')],
+      reachable: [],
+      skipped: [
+        { url: url('B'), reason: 'rate_limited', message: '429' },
+        ...['F', 'G'].map((name) => ({
+          url: url(name),
+          reason: 'rate_limited',
+          message: 'not probed after a rate limit',
+        })),
+      ],
     })
     expect(mocks.resolveRepo).toHaveBeenCalledTimes(5)
 
-    const failedMint = vi.fn(async () => {
-      throw new Error('mint failed')
-    })
-    await expect(syncGithubRepoAvailability(qx, failedMint, 'int-1')).resolves.toEqual({
-      flagged: [],
-      cleared: [],
-      skipped: names.map((name) => ({
+    githubAnswers({ A: 404 })
+    const expiringToken = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('token')
+      .mockRejectedValue(new Error('mint failed'))
+    await expect(
+      probeGithubRepoAvailability(qx, expiringToken, 'int-1', onProgress),
+    ).resolves.toEqual({
+      gone: [url('A')],
+      reachable: [],
+      skipped: ['F', 'G'].map((name) => ({
         url: url(name),
         reason: 'token_mint_failed',
         message: 'mint failed',
@@ -113,13 +145,12 @@ describe('syncGithubRepoAvailability', () => {
     })
 
     vi.clearAllMocks()
-    mocks.listSyncUnitChannelNamesByErrorClass.mockResolvedValue([])
-    await expect(syncGithubRepoAvailability(qx, token, 'int-1')).resolves.toEqual({
-      flagged: [],
-      cleared: [],
+    tracked(names, [], [])
+    await expect(probeGithubRepoAvailability(qx, token, 'int-1', onProgress)).resolves.toEqual({
+      gone: [],
+      reachable: [],
       skipped: [],
     })
     expect(token).not.toHaveBeenCalled()
-    expect(mocks.markRepositoriesUnavailable).not.toHaveBeenCalled()
   })
 })

@@ -85,4 +85,4 @@ export interface IValidationUnit extends Pick<
   validationEnabled: boolean
 }
 
-export const REPOSITORY_NOT_FOUND_ERROR_CLASS = 'provider.repository_not_found'
+export const REPOSITORY_NOT_FOUND_ERROR_CLASS = 'provider.repository_not_found' as const

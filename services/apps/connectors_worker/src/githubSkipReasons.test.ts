@@ -17,9 +17,11 @@ describe('github skip reasons', () => {
         headers,
         data,
       } as never)
-    expect([404, 410, 451].map((status) => githubResolveSkipReason(httpError(status)))).toEqual(
-      Array(3).fill('repo_not_found'),
-    )
+    expect([404, 410, 451].map((status) => githubResolveSkipReason(httpError(status)))).toEqual([
+      'repo_not_found',
+      'github_error',
+      'github_error',
+    ])
     expect([404, 410, 451, 403, 429, 500].map((status) => isGoneError(httpError(status)))).toEqual([
       true,
       true,

@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   getReposForGithubIntegration: vi.fn(),
   listUnavailableRepoUrlsForIntegration: vi.fn(),
   markRepositoriesUnavailable: vi.fn(),
-  syncGithubRepoAvailability: vi.fn(),
+  clearRepositoriesUnavailable: vi.fn(),
+  probeGithubRepoAvailability: vi.fn(),
   upsertRepository: vi.fn(),
   softDeleteRepositoriesForIntegration: vi.fn(),
   findRepositoryOwnersForSegment: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('@crowd/data-access-layer/src/repositories', () => ({
   getReposForGithubIntegration: mocks.getReposForGithubIntegration,
   listUnavailableRepoUrlsForIntegration: mocks.listUnavailableRepoUrlsForIntegration,
   markRepositoriesUnavailable: mocks.markRepositoriesUnavailable,
+  clearRepositoriesUnavailable: mocks.clearRepositoriesUnavailable,
   upsertRepository: mocks.upsertRepository,
   softDeleteRepositoriesForIntegration: mocks.softDeleteRepositoriesForIntegration,
   findRepositoryOwnersForSegment: mocks.findRepositoryOwnersForSegment,
@@ -70,7 +72,7 @@ vi.mock('@crowd/connectors/src/connectors/github/discover', () => ({
 }))
 vi.mock('../githubRenames', () => ({ applyGithubRenames: mocks.applyGithubRenames }))
 vi.mock('../githubRepoAvailability', () => ({
-  syncGithubRepoAvailability: mocks.syncGithubRepoAvailability,
+  probeGithubRepoAvailability: mocks.probeGithubRepoAvailability,
 }))
 vi.mock('../githubInstallationToken', async (importActual) => {
   const actual = await importActual<typeof import('../githubInstallationToken')>()
@@ -132,10 +134,10 @@ describe('github lifecycle activities', () => {
     )
     mocks.listGithubRepoKeysUnderOwners.mockResolvedValue([])
     mocks.listUnavailableRepoUrlsForIntegration.mockResolvedValue([])
-    mocks.markRepositoriesUnavailable.mockImplementation(
-      async (_qx: unknown, urls: string[]) => urls,
-    )
-    mocks.syncGithubRepoAvailability.mockResolvedValue({ flagged: [], cleared: [], skipped: [] })
+    const affected = async (_qx: unknown, _integrationId: string, urls: string[]) => urls
+    mocks.markRepositoriesUnavailable.mockImplementation(affected)
+    mocks.clearRepositoriesUnavailable.mockImplementation(affected)
+    mocks.probeGithubRepoAvailability.mockResolvedValue({ gone: [], reachable: [], skipped: [] })
     mocks.resolveInstallationId.mockResolvedValue('inst-1')
     mocks.mintInstallationToken.mockImplementation(async () => ({
       token: 'token',
@@ -528,6 +530,7 @@ describe('github lifecycle activities', () => {
         channelOf(listings.neworg[2]),
       ],
       skipped: [
+        { url: key('acme', 'blocked'), reason: 'github_error', message: '451' },
         {
           url: key('acme', 'new'),
           reason: 'repo_renamed',
@@ -817,9 +820,10 @@ describe('github lifecycle activities', () => {
       },
       'repo skipped by github lifecycle',
     )
-    expect(mocks.markRepositoriesUnavailable.mock.calls.flatMap(([, urls]) => urls)).toEqual([
+    expect(mocks.markRepositoriesUnavailable.mock.calls.flatMap(([, , urls]) => urls)).toEqual([
       keys[1],
     ])
+    expect(mocks.markRepositoriesUnavailable).toHaveBeenCalledWith(mocks.qx, 'int-1', [keys[1]])
     expect(mocks.log.warn).toHaveBeenCalledWith(
       { event: 'lifecycle_repo_unavailable', integrationId: 'int-1', url: keys[1] },
       'repo no longer exists on github, flagged unavailable',
@@ -994,35 +998,41 @@ describe('github lifecycle activities', () => {
     }
   })
 
-  it('refreshes repo availability before discovery, for live integrations only, and logs each change', async () => {
+  it('refreshes repo availability before discovery, for live integrations only, writes the flags under the integration and logs each change', async () => {
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue(nangoIntegration([]))
-    mocks.syncGithubRepoAvailability.mockResolvedValue({
-      flagged: ['https://github.com/Acme/Gone'],
-      cleared: ['https://github.com/Acme/Back'],
+    mocks.probeGithubRepoAvailability.mockResolvedValue({
+      gone: ['https://github.com/Acme/Gone', 'https://github.com/Acme/AlreadyFlagged'],
+      reachable: ['https://github.com/Acme/Back'],
       skipped: [{ url: 'https://github.com/Acme/Flaky', reason: 'github_error', message: '502' }],
     })
+    mocks.markRepositoriesUnavailable.mockResolvedValue(['https://github.com/Acme/Gone'])
 
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toMatchObject({
       discovered: [],
       renameValidationComplete: true,
     })
-    expect(mocks.syncGithubRepoAvailability).toHaveBeenCalledWith(
-      mocks.qx,
-      expect.any(Function),
-      'int-1',
-    )
+    const [, , , onProgress] = mocks.probeGithubRepoAvailability.mock.calls[0]
+    onProgress()
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(1)
+    expect(mocks.markRepositoriesUnavailable).toHaveBeenCalledWith(mocks.qx, 'int-1', [
+      'https://github.com/Acme/Gone',
+      'https://github.com/Acme/AlreadyFlagged',
+    ])
+    expect(mocks.clearRepositoriesUnavailable).toHaveBeenCalledWith(mocks.qx, 'int-1', [
+      'https://github.com/Acme/Back',
+    ])
     expect(mocks.log.warn.mock.calls.map(([fields]) => fields)).toEqual([
-      {
-        event: 'lifecycle_repo_unavailable',
-        integrationId: 'int-1',
-        url: 'https://github.com/Acme/Gone',
-      },
       {
         event: 'lifecycle_repo_skipped',
         integrationId: 'int-1',
         url: 'https://github.com/Acme/Flaky',
         reason: 'github_error',
         message: '502',
+      },
+      {
+        event: 'lifecycle_repo_unavailable',
+        integrationId: 'int-1',
+        url: 'https://github.com/Acme/Gone',
       },
     ])
     expect(mocks.log.info).toHaveBeenCalledWith(
@@ -1034,13 +1044,25 @@ describe('github lifecycle activities', () => {
       'repo is reachable on github again, unavailable flag cleared',
     )
 
-    mocks.syncGithubRepoAvailability.mockClear()
+    mocks.clearRepositoriesUnavailable.mockRejectedValueOnce(new Error('db down'))
+    mocks.log.warn.mockClear()
+    await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).rejects.toThrow('db down')
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      {
+        event: 'lifecycle_repo_unavailable',
+        integrationId: 'int-1',
+        url: 'https://github.com/Acme/Gone',
+      },
+      'repo no longer exists on github, flagged unavailable',
+    )
+
+    mocks.probeGithubRepoAvailability.mockClear()
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue({
       ...nangoIntegration([]),
       deletedAt: NOW,
     })
     await discoverFullSyncRepos({ integrationId: 'int-1' })
-    expect(mocks.syncGithubRepoAvailability).not.toHaveBeenCalled()
+    expect(mocks.probeGithubRepoAvailability).not.toHaveBeenCalled()
   })
 
   it('plans the lifecycle from live repos, channels and ownership, and flags non github-nango or missing integrations', async () => {

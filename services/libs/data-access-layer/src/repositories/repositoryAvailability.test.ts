@@ -89,16 +89,18 @@ async function repoStates(qx: QueryExecutor): Promise<Record<string, IRepoState>
 const ONE_MILLISECOND_IN_MICROS = 1000
 
 describe('repository availability', () => {
-  test('flags and unflags only live repositories, advances updatedAt on each change only and wakes git processing', async ({
+  test('flags and unflags only live repositories of the given integration, advances updatedAt on each change only and wakes git processing', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
     await createRepositories(qx, integrationId)
+    const otherId = await createIntegration(qx)
     const initial = await repoStates(qx)
     const futureVersion = Number(initial[GONE].updatedAtMicros)
 
+    await expect(markRepositoriesUnavailable(qx, otherId, [GONE])).resolves.toEqual([])
     await expect(
-      markRepositoriesUnavailable(qx, [GONE, REMOVED, GONE.toLowerCase()]),
+      markRepositoriesUnavailable(qx, integrationId, [GONE, REMOVED, GONE.toLowerCase()]),
     ).resolves.toEqual([GONE])
     const marked = await repoStates(qx)
     expect(marked).toEqual({
@@ -109,11 +111,14 @@ describe('repository availability', () => {
         updatedAtMicros: String(futureVersion + ONE_MILLISECOND_IN_MICROS),
       },
     })
-    await expect(markRepositoriesUnavailable(qx, [GONE])).resolves.toEqual([])
+    await expect(markRepositoriesUnavailable(qx, integrationId, [GONE])).resolves.toEqual([])
+    await expect(clearRepositoriesUnavailable(qx, otherId, [GONE])).resolves.toEqual([])
     await expect(repoStates(qx)).resolves.toEqual(marked)
     await expect(listUnavailableRepoUrlsForIntegration(qx, integrationId)).resolves.toEqual([GONE])
 
-    await expect(clearRepositoriesUnavailable(qx, [GONE, LIVE])).resolves.toEqual([GONE])
+    await expect(clearRepositoriesUnavailable(qx, integrationId, [GONE, LIVE])).resolves.toEqual([
+      GONE,
+    ])
     const cleared = await repoStates(qx)
     expect(cleared).toEqual({
       ...initial,
@@ -124,7 +129,7 @@ describe('repository availability', () => {
         lockedAt: null,
       },
     })
-    await expect(clearRepositoriesUnavailable(qx, [GONE])).resolves.toEqual([])
+    await expect(clearRepositoriesUnavailable(qx, integrationId, [GONE])).resolves.toEqual([])
     await expect(repoStates(qx)).resolves.toEqual(cleared)
     await expect(listUnavailableRepoUrlsForIntegration(qx, integrationId)).resolves.toEqual([])
   })

@@ -63,7 +63,7 @@ export function githubResolveSkipReason(
   if (isRateLimited(err)) {
     return 'rate_limited'
   }
-  return isGoneError(err) ? 'repo_not_found' : 'github_error'
+  return axios.isAxiosError(err) && err.response?.status === 404 ? 'repo_not_found' : 'github_error'
 }
 
 export function lifecycleSkipReasonFor(
