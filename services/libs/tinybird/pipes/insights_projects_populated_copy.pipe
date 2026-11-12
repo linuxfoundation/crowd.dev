@@ -144,7 +144,7 @@ SQL >
         groupArrayIf(url, archived = true) AS "archivedRepositories",
         groupArrayIf(url, excluded = true) AS "excludedRepositories",
         groupArrayIf(
-            url, isNotNull(unavailableAt) AND isNull(deletedAt) AND enabled = true
+            url, isNotNull(unavailableAt) AND isNull (deletedAt) AND enabled = true
         ) AS "unavailableRepositories"
     FROM repositories FINAL
     WHERE archived = true OR excluded = true OR isNotNull(unavailableAt)
