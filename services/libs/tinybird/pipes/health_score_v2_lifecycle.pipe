@@ -113,9 +113,16 @@ SQL >
                 ) AS base
             LEFT JOIN
                 (
-                    SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt FROM repos GROUP BY url
+                    SELECT
+                        if(
+                            lower(domain(url)) IN ('github.com', 'gitlab.com'), lower(url), url
+                        ) AS urlKey,
+                        argMax(lastCommitAt, updatedAt) AS lastCommitAt
+                    FROM repos
+                    GROUP BY urlKey
                 ) AS rc
-                ON rc.url = base.url
+                ON rc.urlKey
+                = if(lower(domain(base.url)) IN ('github.com', 'gitlab.com'), lower(base.url), base.url)
         ) AS r
     LEFT JOIN
         (
@@ -195,7 +202,11 @@ SQL >
         ON v.repoUrl = r.url
     LEFT JOIN
         (
-            SELECT r2.url AS repoUrl, max(rd.releaseDay) AS latestReleaseDay
+            SELECT
+                if(
+                    lower(domain(r2.url)) IN ('github.com', 'gitlab.com'), lower(r2.url), r2.url
+                ) AS repoUrl,
+                max(rd.releaseDay) AS latestReleaseDay
             FROM repos r2
             INNER JOIN packageRepos pr ON pr.repoId = r2.id
             INNER JOIN
@@ -205,9 +216,9 @@ SQL >
                     WHERE publishedAt IS NOT NULL
                 ) rd
                 ON rd.packageId = pr.packageId
-            GROUP BY r2.url
+            GROUP BY repoUrl
         ) AS rl
-        ON rl.repoUrl = r.url
+        ON rl.repoUrl = if(lower(domain(r.url)) IN ('github.com', 'gitlab.com'), lower(r.url), r.url)
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_lifecycle_ds
