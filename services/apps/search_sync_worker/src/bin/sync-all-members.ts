@@ -3,6 +3,7 @@ import { fetchMembersForSearchSync, pgpQx } from '@crowd/data-access-layer'
 import { DbStore, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
 import {
+  IndexVersions,
   MemberSyncService,
   OpenSearchIndex,
   OpenSearchService,
@@ -17,6 +18,7 @@ import { DB_CONFIG, OPENSEARCH_CONFIG, REDIS_CONFIG } from '../conf'
 const BATCH_SIZE = 500
 const CONCURRENCY = 10
 const CHECKPOINT_KEY = 'members'
+const INDEX_NAME = `${OpenSearchIndex.MEMBERS}_v${IndexVersions.get(OpenSearchIndex.MEMBERS)}`
 
 const log = getServiceLogger()
 
@@ -56,7 +58,7 @@ setImmediate(async () => {
 
     if (indexable.length > 0) {
       const { body: result } = await openSearch.client.bulk({
-        index: OpenSearchIndex.MEMBERS,
+        index: INDEX_NAME,
         body: indexable.flatMap(({ id, body }) => [{ create: { _id: id } }, body]),
       })
 

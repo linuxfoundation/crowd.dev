@@ -3,6 +3,7 @@ import { fetchOrganizationsForSearchSync, pgpQx } from '@crowd/data-access-layer
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
 import {
+  IndexVersions,
   OpenSearchIndex,
   OpenSearchService,
   OrganizationSyncService,
@@ -16,6 +17,7 @@ import { DB_CONFIG, OPENSEARCH_CONFIG, REDIS_CONFIG } from '../conf'
 const BATCH_SIZE = 500
 const CONCURRENCY = 10
 const CHECKPOINT_KEY = 'organizations'
+const INDEX_NAME = `${OpenSearchIndex.ORGANIZATIONS}_v${IndexVersions.get(OpenSearchIndex.ORGANIZATIONS)}`
 
 const log = getServiceLogger()
 
@@ -58,7 +60,7 @@ setImmediate(async () => {
 
     if (indexable.length > 0) {
       const { body: result } = await openSearch.client.bulk({
-        index: OpenSearchIndex.ORGANIZATIONS,
+        index: INDEX_NAME,
         body: indexable.flatMap(({ id, body }) => [{ create: { _id: id } }, body]),
       })
 
