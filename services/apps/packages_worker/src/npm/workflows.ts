@@ -11,9 +11,8 @@ const acts = proxyActivities<typeof activities>({
   },
 })
 
-// Download lanes wait out npm 429 pauses in-process, hence the 1 hour startToClose. They
-// heartbeat before each fetch and while waiting, so a stalled lane fails in minutes and its
-// retry skips stored progress.
+// Lanes wait out 429 pauses in-process and return after a 20 minute budget, so 1 hour
+// startToClose holds; heartbeats make a stalled lane fail in minutes and its retry skips progress.
 const downloadLaneActs = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 hour',
   heartbeatTimeout: '2 minutes',

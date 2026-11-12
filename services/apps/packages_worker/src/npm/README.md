@@ -89,7 +89,8 @@ Temporal retries the lane — and because progress lives in `downloads_last_30d`
 retry skips every already-stored window instead of re-fetching. All three
 download lanes (daily included) run with a 1 hour activity timeout and a 2 minute
 heartbeat timeout; they **heartbeat** before every fetch and every 30s while the
-limiter waits, so a stall is detected in minutes.
+limiter waits, so a stall is detected in minutes. Each download lane returns after a
+20 minute budget with progress saved, and the workflow starts another round.
 
 ### 3a. `refreshLatestLast30dDownloads` — breadth (latest window)
 

@@ -78,14 +78,16 @@ export class DownloadsThrottle {
 
   // The slot check and the reservation run without an await in between, so concurrent callers on
   // one egress serialize. Each wakeup re-checks because another caller may have extended the pause.
-  async acquire(egress: string, onWait?: () => void): Promise<void> {
+  async acquire(egress: string, onWait?: () => void, signal?: AbortSignal): Promise<void> {
     const s = this.state(egress)
     for (;;) {
+      signal?.throwIfAborted()
       const waitMs = Math.max(s.nextSlotAt, s.pausedUntil) - Date.now()
       if (waitMs <= 0) break
       await timeout(Math.min(waitMs, WAIT_CHUNK_MS))
       onWait?.()
     }
+    signal?.throwIfAborted()
     s.nextSlotAt = Date.now() + s.intervalMs
   }
 
@@ -101,13 +103,12 @@ export class DownloadsThrottle {
     }
   }
 
-  // Returns how long the egress has seen only 429s.
   recordRateLimit(egress: string): number {
     const s = this.state(egress)
     const now = Date.now()
     s.consecutive += 1
     const blockedSince = (s.firstRateLimitAt ??= now)
-    s.intervalMs = Math.min(MAX_INTERVAL_MS, s.intervalMs * 2)
+    s.intervalMs = Math.min(Math.max(MAX_INTERVAL_MS, this.floorMs), s.intervalMs * 2)
     s.lastIntervalChangeAt = now
     const pauseMs = Math.min(MAX_PAUSE_MS, FIRST_PAUSE_MS * 2 ** (s.consecutive - 1))
     s.pausedUntil = Math.max(s.pausedUntil, now + pauseMs)
@@ -124,10 +125,12 @@ export class DownloadsThrottle {
     egress: string,
     doFetch: () => Promise<T | FetchError>,
     onWait?: () => void,
+    signal?: AbortSignal,
   ): Promise<T | FetchError | DownloadsBlocked> {
     for (;;) {
-      await this.acquire(egress, onWait)
+      await this.acquire(egress, onWait, signal)
       onWait?.()
+      signal?.throwIfAborted()
       const res = await doFetch()
 
       if (isFetchError(res) && res.kind === FetchErrorKind.RATE_LIMIT) {
