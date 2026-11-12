@@ -1,0 +1,19 @@
+DESCRIPTION >
+    - Segments that can hold GitLab `star` activities: segments of GitLab integrations, and of repositories hosted on GitLab or synced by a GitLab integration. Deleted integrations and repositories are included, since their activities stay in place.
+    - An activity takes the segment its repository is mapped to, which can differ from its integration's segment, so both lists are needed.
+    - GitLab is the only integration that still emits `star` activities. `stars_count.pipe` and `stars_cumulative_count.pipe` read GitLab stars only from these segments and skip the activity scan for every other project and collection.
+
+NODE stars_gitlab_segments_list
+SQL >
+    SELECT DISTINCT segmentId
+    FROM
+        (
+            SELECT segmentId
+            FROM integrations FINAL
+            WHERE platform = 'gitlab'
+            UNION ALL
+            SELECT r.segmentId AS segmentId
+            FROM repositories r FINAL
+            LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+            WHERE i.platform = 'gitlab' OR domain(r.url) LIKE '%gitlab%'
+        )
