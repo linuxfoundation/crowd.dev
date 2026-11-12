@@ -32,15 +32,12 @@ describe('parseGithubDiscussionUrl', () => {
 })
 
 describe('getGithubDiscussionsToken', () => {
-  it('prefers the dedicated token and falls back to the first shared one', () => {
+  it('reads the dedicated token and never falls back to a personal one', () => {
     vi.stubEnv('CROWD_GITHUB_DISCUSSIONS_TOKEN', 'bot-token')
     vi.stubEnv('CROWD_GITHUB_PERSONAL_ACCESS_TOKENS', 'pat-1,pat-2')
     expect(getGithubDiscussionsToken()).toBe('bot-token')
 
     vi.stubEnv('CROWD_GITHUB_DISCUSSIONS_TOKEN', '')
-    expect(getGithubDiscussionsToken()).toBe('pat-1')
-
-    vi.stubEnv('CROWD_GITHUB_PERSONAL_ACCESS_TOKENS', '')
     expect(() => getGithubDiscussionsToken()).toThrow(GithubPublicClientError)
   })
 })

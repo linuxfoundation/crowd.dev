@@ -211,7 +211,7 @@ export async function fetchPublicOrgRepos(
   owner: string,
   token: string,
   limit: number,
-  signal?: AbortSignal,
+  pageTimeoutMs?: number,
 ): Promise<IPublicOrgRepos> {
   const repoUrls: string[] = []
   for (let page = 1; ; page++) {
@@ -220,7 +220,7 @@ export async function fetchPublicOrgRepos(
       url,
       token,
       `listing repositories of ${owner}`,
-      signal,
+      pageTimeoutMs === undefined ? undefined : AbortSignal.timeout(pageTimeoutMs),
     )
     if (items === null) {
       throw new GithubPublicClientError('NOT_FOUND', `GitHub organization not found: ${owner}`)

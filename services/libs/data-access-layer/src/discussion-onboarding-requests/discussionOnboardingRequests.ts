@@ -6,6 +6,7 @@ const COLUMNS = [
   'sourceUrl',
   'discussionId',
   'commentId',
+  'notes',
   'doneNotifiedAt',
   'createdAt',
   'updatedAt',
@@ -17,16 +18,33 @@ export async function upsertDiscussionOnboardingRequest(
 ): Promise<IDbDiscussionOnboardingRequest> {
   return qx.selectOne(
     `
-    INSERT INTO "discussionOnboardingRequests" ("sourceUrl", "discussionId", "commentId")
-    VALUES ($(sourceUrl), $(discussionId), $(commentId))
+    INSERT INTO "discussionOnboardingRequests" ("sourceUrl", "discussionId", "commentId", "notes")
+    VALUES ($(sourceUrl), $(discussionId), $(commentId), $(notes)::jsonb)
     ON CONFLICT ("sourceUrl") DO UPDATE SET
       "discussionId" = EXCLUDED."discussionId",
       "commentId" = EXCLUDED."commentId",
+      "notes" = EXCLUDED."notes",
       "doneNotifiedAt" = NULL,
       "updatedAt" = NOW()
     RETURNING ${prepareSelectColumns(COLUMNS)}
     `,
-    data,
+    { ...data, notes: JSON.stringify(data.notes ?? []) },
+  )
+}
+
+export async function setDiscussionOnboardingRequestNotes(
+  qx: QueryExecutor,
+  sourceUrl: string,
+  notes: string[],
+): Promise<IDbDiscussionOnboardingRequest> {
+  return qx.selectOne(
+    `
+    UPDATE "discussionOnboardingRequests"
+    SET "notes" = $(notes)::jsonb, "updatedAt" = NOW()
+    WHERE "sourceUrl" = $(sourceUrl)
+    RETURNING ${prepareSelectColumns(COLUMNS)}
+    `,
+    { sourceUrl, notes: JSON.stringify(notes) },
   )
 }
 

@@ -6,8 +6,10 @@ vi.mock('@crowd/data-access-layer', () => ({
   claimDiscussionOnboardingRequestDone: vi.fn(),
   findDiscussionOnboardingRequest: vi.fn(),
   findProjectCatalogBySourceUrl: vi.fn(),
+  findTrackedRepoProjects: vi.fn(),
   lockDiscussionOnboardingRequest: vi.fn(),
   replaceDiscussionOnboardingRequestComment: vi.fn(),
+  setDiscussionOnboardingRequestNotes: vi.fn(),
   upsertDiscussionOnboardingRequest: vi.fn(),
 }))
 vi.mock('./onboardedProjectLookup', () => ({ findOnboardedInsightsProject: vi.fn() }))
@@ -16,8 +18,10 @@ import {
   claimDiscussionOnboardingRequestDone,
   findDiscussionOnboardingRequest,
   findProjectCatalogBySourceUrl,
+  findTrackedRepoProjects,
   lockDiscussionOnboardingRequest,
   replaceDiscussionOnboardingRequestComment,
+  setDiscussionOnboardingRequestNotes,
   upsertDiscussionOnboardingRequest,
 } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
@@ -172,6 +176,96 @@ describe('buildDiscussionStatusMarkdown', () => {
   })
 })
 
+describe('buildDiscussionStatusMarkdown with a large organization group', () => {
+  it('lists twenty repositories and counts the rest to stay within the comment limit', () => {
+    const rows = Array.from({ length: 125 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: 'review',
+        reviewReason: 'needs a look',
+      }),
+    )
+
+    const markdown = buildDiscussionStatusMarkdown(rows)
+
+    expect(markdown).toContain('· 125 repositories ·')
+    expect(markdown.match(/\n  - \[cloudforet-io/g)).toHaveLength(20)
+    expect(markdown).toContain('  - … and 105 more repositories')
+  })
+
+  it('lists the repositories whose status differs before counting the rest', () => {
+    const rows = Array.from({ length: 125 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: i === 60 || i === 110 ? 'skip' : 'onboarded',
+        skipReason: i === 60 || i === 110 ? 'it is a fork.' : null,
+      }),
+    )
+
+    const markdown = buildDiscussionStatusMarkdown(rows)
+
+    const lines = markdown.split('\n')
+    expect(lines[3]).toContain('cloudforet-io/r60')
+    expect(lines[3]).toContain('not added')
+    expect(lines[4]).toContain('cloudforet-io/r110')
+    expect(markdown.match(/\n  - /g)).toHaveLength(21)
+    expect(markdown).toContain('  - … and 105 more repositories')
+  })
+
+  it('uses the singular when one repository is left out', () => {
+    const rows = Array.from({ length: 21 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: 'onboarded',
+      }),
+    )
+
+    expect(buildDiscussionStatusMarkdown(rows)).toContain('  - … and 1 more repository')
+  })
+})
+
+describe('buildDiscussionStatusMarkdown with notes', () => {
+  it('lists the notes under the repositories and stands alone when there are no rows', () => {
+    const note = "I couldn't find a GitHub organization called **github.com/nobody**."
+
+    expect(buildDiscussionStatusMarkdown([], [note])).toBe(
+      `**LFX Insights onboarding status**\n\n- ${note}`,
+    )
+    expect(buildDiscussionStatusMarkdown([])).toBe(
+      '**LFX Insights onboarding status**\n\n_Updated automatically as each repository is checked._',
+    )
+
+    const withRows = buildDiscussionStatusMarkdown(
+      [row({ repoUrl: 'https://github.com/acme/one' })],
+      [note],
+    )
+    expect(withRows).toContain('[acme/one](https://github.com/acme/one)')
+    expect(withRows).toContain(`\n- ${note}\n`)
+    expect(withRows).toContain('_Updated automatically as each repository is checked._')
+  })
+
+  it('names the Insights project a repository already belongs to', () => {
+    expect(
+      buildDiscussionStatusMarkdown([
+        {
+          ...row({
+            repoUrl: 'https://github.com/acme/one',
+            action: 'skip',
+            classificationKind: 'already_tracked',
+            matchedProjectName: 'Acme',
+          }),
+          insightsSlug: 'acme',
+        },
+      ]),
+    ).toContain(
+      'already in LFX Insights, in **[Acme](https://insights.linuxfoundation.org/project/acme)**',
+    )
+  })
+})
+
 describe('refreshDiscussionStatusComment', () => {
   const qx = {
     tx: (fn: (tx: QueryExecutor) => Promise<unknown>) => fn(qx),
@@ -197,13 +291,25 @@ describe('refreshDiscussionStatusComment', () => {
         sourceUrl: url,
         discussionId: 'D_1',
         commentId,
+        notes: [],
         doneNotifiedAt: null,
         createdAt: '2026-11-10T10:00:00Z',
         updatedAt: '2026-11-10T10:00:00Z',
       }),
     )
+    vi.mocked(findTrackedRepoProjects).mockResolvedValue([])
+    vi.mocked(setDiscussionOnboardingRequestNotes).mockImplementation(async (_qx, url, notes) => ({
+      sourceUrl: url,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes,
+      doneNotifiedAt: null,
+      createdAt: '2026-11-10T10:00:00Z',
+      updatedAt: '2026-11-10T10:00:00Z',
+    }))
     vi.mocked(upsertDiscussionOnboardingRequest).mockImplementation(async (_qx, data) => ({
       ...data,
+      notes: data.notes ?? [],
       doneNotifiedAt: null,
       createdAt: '2026-11-10T10:00:00Z',
       updatedAt: '2026-11-10T10:00:00Z',
@@ -263,6 +369,7 @@ describe('refreshDiscussionStatusComment', () => {
       sourceUrl,
       discussionId: 'D_1',
       commentId: 'DC_new',
+      notes: [],
     })
     expect(claimDiscussionOnboardingRequestDone).not.toHaveBeenCalled()
   })
@@ -281,11 +388,18 @@ describe('refreshDiscussionStatusComment', () => {
       sourceUrl,
       discussionId: 'D_1',
       commentId: 'DC_new',
+      notes: [],
     })
   })
 
   it('edits the existing comment and announces completion once when every row is settled', async () => {
-    const status = { sourceUrl, discussionId: 'D_1', commentId: 'DC_1', doneNotifiedAt: null }
+    const status = {
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes: [],
+      doneNotifiedAt: null,
+    }
     vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue(status as never)
     vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
       { ...rows[0] },
@@ -312,6 +426,7 @@ describe('refreshDiscussionStatusComment', () => {
       sourceUrl,
       discussionId: 'D_1',
       commentId: 'DC_gone',
+      notes: [],
       doneNotifiedAt: null,
     } as never)
     vi.mocked(client.updateComment).mockRejectedValueOnce(
@@ -331,6 +446,7 @@ describe('refreshDiscussionStatusComment', () => {
       sourceUrl,
       discussionId: 'D_1',
       commentId: 'DC_pat',
+      notes: [],
       doneNotifiedAt: null,
     } as never)
     vi.mocked(client.updateComment).mockRejectedValueOnce(
@@ -358,5 +474,133 @@ describe('refreshDiscussionStatusComment', () => {
     vi.mocked(client.addComment).mockRejectedValueOnce(new Error('boom'))
     expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(false)
     expect(upsertDiscussionOnboardingRequest).not.toHaveBeenCalled()
+  })
+
+  it('posts the organization note alone, once, and persists it with the comment', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([])
+    const notes = ['**github.com/nobody** has no public repositories I can add.']
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, {
+        organizationNotes: notes,
+      }),
+    ).toBe(true)
+    expect(client.addComment).toHaveBeenCalledWith('D_1', expect.stringContaining(notes[0]))
+    expect(upsertDiscussionOnboardingRequest).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({ sourceUrl, notes }),
+    )
+
+    vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue({
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes,
+      doneNotifiedAt: null,
+    } as never)
+    vi.mocked(client.addComment).mockClear()
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, {
+        organizationNotes: notes,
+      }),
+    ).toBe(false)
+    expect(client.addComment).not.toHaveBeenCalled()
+    expect(client.updateComment).not.toHaveBeenCalled()
+  })
+
+  it('drops a stored note once the organization expands, and keeps it on an ordinary refresh', async () => {
+    const stored = {
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes: ['**github.com/acme** has more than 50 public repositories.'],
+      doneNotifiedAt: null,
+    }
+    vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue(stored as never)
+
+    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+    expect(client.updateComment).toHaveBeenCalledWith(
+      'DC_1',
+      expect.stringContaining(stored.notes[0]),
+    )
+    expect(setDiscussionOnboardingRequestNotes).not.toHaveBeenCalled()
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, { organizationNotes: [] }),
+    ).toBe(true)
+    expect(client.updateComment).toHaveBeenLastCalledWith(
+      'DC_1',
+      expect.not.stringContaining('has more than 50'),
+    )
+    expect(setDiscussionOnboardingRequestNotes).toHaveBeenCalledWith(qx, sourceUrl, [])
+  })
+
+  it('clears a stale note before the repositories of the fixed link are catalogued', async () => {
+    vi.mocked(findDiscussionOnboardingRequest).mockResolvedValue({
+      sourceUrl,
+      discussionId: 'D_1',
+      commentId: 'DC_1',
+      notes: ["I couldn't find a GitHub organization called **github.com/openbmc**."],
+      doneNotifiedAt: null,
+    } as never)
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([])
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, { organizationNotes: [] }),
+    ).toBe(true)
+    expect(client.updateComment).toHaveBeenCalledWith(
+      'DC_1',
+      expect.not.stringContaining('github.com/openbmc'),
+    )
+    expect(setDiscussionOnboardingRequestNotes).toHaveBeenCalledWith(qx, sourceUrl, [])
+  })
+
+  it('never announces completion from a note refresh, which runs before the new rows land', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      { ...rows[0] },
+      { ...rows[1], action: 'skip' },
+    ] as IDbProjectCatalog[])
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, {
+        organizationNotes: ['**github.com/acme** has no public repositories I can add.'],
+      }),
+    ).toBe(true)
+
+    expect(client.addComment).toHaveBeenCalledTimes(1)
+    expect(client.addComment).not.toHaveBeenCalledWith('D_1', expect.stringContaining('All done'))
+    expect(claimDiscussionOnboardingRequestDone).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for a discussion without rows when no note is pending', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([])
+
+    expect(
+      await refreshDiscussionStatusComment(qx, { sourceUrl }, client, { organizationNotes: [] }),
+    ).toBe(false)
+    expect(await refreshDiscussionStatusComment(qx, { sourceUrl }, client)).toBe(false)
+    expect(client.addComment).not.toHaveBeenCalled()
+  })
+
+  it('looks up the project of a repository that was already in Insights', async () => {
+    vi.mocked(findProjectCatalogBySourceUrl).mockResolvedValue([
+      {
+        ...rows[0],
+        action: 'skip',
+        classificationKind: 'already_tracked',
+        skipReason: 'repository already tracked in CDP (discovery pre-check)',
+      },
+    ] as IDbProjectCatalog[])
+    vi.mocked(findTrackedRepoProjects).mockResolvedValue([
+      { repoUrl: 'https://github.com/acme/one', projectName: 'Acme', projectSlug: 'acme' },
+    ])
+
+    expect(await refreshDiscussionStatusComment(qx, request, client)).toBe(true)
+
+    expect(findTrackedRepoProjects).toHaveBeenCalledWith(qx, ['https://github.com/acme/one'])
+    expect(client.addComment).toHaveBeenCalledWith(
+      'D_1',
+      expect.stringContaining('already in LFX Insights, in **[Acme]('),
+    )
   })
 })

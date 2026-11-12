@@ -117,5 +117,14 @@ export async function resolveDiscussionToken(
   mint: InstallationTokenMinter = mintInstallationToken,
 ): Promise<string> {
   const app = readGithubIssueReporterApp()
-  return app ? mint(app) : getGithubDiscussionsToken()
+  if (app) {
+    return mint(app)
+  }
+  try {
+    return getGithubDiscussionsToken()
+  } catch {
+    throw configError(
+      `Set ${APP_VARS.join(', ')} or CROWD_GITHUB_DISCUSSIONS_TOKEN to comment on discussions`,
+    )
+  }
 }

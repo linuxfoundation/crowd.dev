@@ -25,13 +25,9 @@ export function getGithubDiscussionsToken(): string {
   if (dedicated) {
     return dedicated
   }
-  const shared = process.env.CROWD_GITHUB_PERSONAL_ACCESS_TOKENS?.split(',')[0]?.trim()
-  if (shared) {
-    return shared
-  }
   throw new GithubPublicClientError(
     'CONFIG',
-    'Missing CROWD_GITHUB_DISCUSSIONS_TOKEN or CROWD_GITHUB_PERSONAL_ACCESS_TOKENS configuration',
+    'Missing CROWD_GITHUB_DISCUSSIONS_TOKEN configuration',
   )
 }
 

@@ -14,8 +14,10 @@ import {
   claimDiscussionOnboardingRequestDone,
   findDiscussionOnboardingRequest,
   findProjectCatalogBySourceUrl,
+  findTrackedRepoProjects,
   lockDiscussionOnboardingRequest,
   replaceDiscussionOnboardingRequestComment,
+  setDiscussionOnboardingRequestNotes,
   upsertDiscussionOnboardingRequest,
 } from '@crowd/data-access-layer'
 import {
@@ -24,11 +26,17 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
-import { describeDecisionReason, reviewGroupLabel } from '@crowd/slack'
+import {
+  describeDecisionReason,
+  listedWithRemainder,
+  repositoriesWord,
+  reviewGroupLabel,
+} from '@crowd/slack'
 
-import { BotStatus, STATUS } from './botCopy'
+import { BotStatus, MAX_LISTED_REPOSITORIES, STATUS } from './botCopy'
 import { buildInsightsProjectUrl, truncateReason } from './botThreadReply'
 import { resolveDiscussionToken } from './discussionToken'
+import { escapeGithubMarkdown } from './githubMarkdown'
 import { findOnboardedInsightsProject } from './onboardedProjectLookup'
 import { requestGroupReviewOf } from './organizationGroup'
 import {
@@ -45,7 +53,12 @@ const log = getServiceLogger()
 const TITLE = '**LFX Insights onboarding status**'
 const CLOSING_LINE = '_Updated automatically as each repository is checked._'
 
-type DiscussionRequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
+type DiscussionRequestRef = Pick<IDbProjectCatalog, 'sourceUrl'> &
+  Partial<Pick<IDbProjectCatalog, 'id' | 'repoUrl'>>
+
+export interface IDiscussionRefreshOptions {
+  organizationNotes?: string[]
+}
 
 export type DiscussionStatusRow = RequestStatusRow & { insightsSlug?: string | null }
 
@@ -63,10 +76,6 @@ function tokenClient(): IDiscussionCommentClient {
     updateComment: async (commentId, body) =>
       updateGithubDiscussionComment(commentId, body, await resolveDiscussionToken()),
   }
-}
-
-function escapeGithubMarkdown(text: string): string {
-  return text.replace(/[\\`*_[\]<>#~]/g, '\\$&').replace(/@/g, '&#64;')
 }
 
 function plainReason(reason: string): string {
@@ -98,15 +107,22 @@ function notAddedDetail(row: DiscussionStatusRow): string {
   return plainReason(row.skipReason ?? row.evaluationReason ?? 'no reason was recorded')
 }
 
-function addedDetail(row: DiscussionStatusRow): string {
+function projectMarkdown(row: DiscussionStatusRow): string | null {
   if (!row.matchedProjectName) {
-    return 'added'
+    return null
   }
   const name = escapeGithubMarkdown(row.matchedProjectName)
-  const project = row.insightsSlug
-    ? `[${name}](${buildInsightsProjectUrl(row.insightsSlug)})`
-    : name
-  return `added to **${project}**`
+  return `**${row.insightsSlug ? `[${name}](${buildInsightsProjectUrl(row.insightsSlug)})` : name}**`
+}
+
+function addedDetail(row: DiscussionStatusRow): string {
+  const project = projectMarkdown(row)
+  return project ? `added to ${project}` : 'added'
+}
+
+function alreadyThereDetail(row: DiscussionStatusRow): string {
+  const project = projectMarkdown(row)
+  return project ? `already in LFX Insights, in ${project}` : 'already in LFX Insights'
 }
 
 function statusDetail(status: BotStatus, row: DiscussionStatusRow): string {
@@ -118,7 +134,7 @@ function statusDetail(status: BotStatus, row: DiscussionStatusRow): string {
     case 'added':
       return addedDetail(row)
     case 'alreadyThere':
-      return 'already in LFX Insights'
+      return alreadyThereDetail(row)
     case 'notAdded':
       return `not added: ${notAddedDetail(row)}`
     case 'problem':
@@ -143,6 +159,31 @@ function sharedDetail(rows: DiscussionStatusRow[]): string | null {
   return details.size === 1 ? `${STATUS[status]} ${[...details][0]}` : null
 }
 
+function minorityStatusFirst(rows: DiscussionStatusRow[]): DiscussionStatusRow[] {
+  const statuses = rows.map(rowStatus)
+  const counts = new Map<BotStatus, number>()
+  for (const status of statuses) {
+    counts.set(status, (counts.get(status) ?? 0) + 1)
+  }
+  const dominant = [...counts.entries()].reduce((top, entry) =>
+    entry[1] > top[1] ? entry : top,
+  )[0]
+  return [
+    ...rows.filter((_, index) => statuses[index] !== dominant),
+    ...rows.filter((_, index) => statuses[index] === dominant),
+  ]
+}
+
+function groupMemberLines(rows: DiscussionStatusRow[], shared: string | null): string[] {
+  const ordered =
+    shared || rows.length <= MAX_LISTED_REPOSITORIES ? rows : minorityStatusFirst(rows)
+  const { listed, more } = listedWithRemainder(ordered, MAX_LISTED_REPOSITORIES)
+  return [
+    ...listed.map((row) => (shared ? `  - ${repoMarkdown(row.repoUrl)}` : rowLine(row, '  '))),
+    ...(more > 0 ? [`  - … and ${more} more ${repositoriesWord(more)}`] : []),
+  ]
+}
+
 function groupLines(rows: DiscussionStatusRow[]): string[] {
   const review = requestGroupReviewOf(rows[0], rows.length - 1)
   if (!review) {
@@ -150,22 +191,33 @@ function groupLines(rows: DiscussionStatusRow[]): string[] {
   }
   const shared = sharedDetail(rows)
   const heading = `- **${escapeGithubMarkdown(reviewGroupLabel(review))}** · ${rows.length} repositories · ${shared ?? requestSummaryLine(rows)}`
-  const members = rows.map((row) =>
-    shared ? `  - ${repoMarkdown(row.repoUrl)}` : rowLine(row, '  '),
-  )
-  return [heading, ...members]
+  return [heading, ...groupMemberLines(rows, shared)]
 }
 
-export function buildDiscussionStatusMarkdown(rows: DiscussionStatusRow[]): string {
-  const lines = [TITLE, '', ...groupByRequestGroup(rows).flatMap(groupLines)]
+export function buildDiscussionStatusMarkdown(
+  rows: DiscussionStatusRow[],
+  notes: string[] = [],
+): string {
+  const lines = [TITLE]
+  if (rows.length > 0) {
+    lines.push('', ...groupByRequestGroup(rows).flatMap(groupLines))
+  }
+  if (notes.length > 0) {
+    lines.push('', ...notes.map((note) => `- ${note}`))
+  }
   const summary = requestSummaryLine(rows)
   if (rows.length > 1 && summary) {
     lines.push('', `_${summary}_`)
   }
-  if (!isRequestSettled(rows)) {
+  const pending = rows.length === 0 ? notes.length === 0 : !isRequestSettled(rows)
+  if (pending) {
     lines.push('', CLOSING_LINE)
   }
   return lines.join('\n')
+}
+
+function sameNotes(stored: string[], notes: string[]): boolean {
+  return stored.length === notes.length && stored.every((note, index) => note === notes[index])
 }
 
 export function buildDiscussionAllDoneMarkdown(rows: RequestStatusRow[]): string {
@@ -207,37 +259,76 @@ async function writeStatusComment(
   qx: QueryExecutor,
   ref: IGithubDiscussionRef,
   sourceUrl: string,
+  status: IDbDiscussionOnboardingRequest | null,
   body: string,
+  notes: string[],
+  notesChanged: boolean,
   client: IDiscussionCommentClient,
 ): Promise<IDbDiscussionOnboardingRequest> {
-  const status = await findDiscussionOnboardingRequest(qx, sourceUrl)
-  if (status && (await editComment(client, status.commentId, body))) {
-    return status
+  if (!status) {
+    const discussionId = await client.fetchDiscussionId(ref)
+    const comment = await client.addComment(discussionId, body)
+    return upsertDiscussionOnboardingRequest(qx, {
+      sourceUrl,
+      discussionId,
+      commentId: comment.id,
+      notes,
+    })
   }
-  if (status) {
+  let written = status
+  if (!(await editComment(client, status.commentId, body))) {
     const replacement = await client.addComment(status.discussionId, body)
-    return replaceDiscussionOnboardingRequestComment(qx, sourceUrl, replacement.id)
+    written = await replaceDiscussionOnboardingRequestComment(qx, sourceUrl, replacement.id)
   }
-  const discussionId = await client.fetchDiscussionId(ref)
-  const comment = await client.addComment(discussionId, body)
-  return upsertDiscussionOnboardingRequest(qx, { sourceUrl, discussionId, commentId: comment.id })
+  return notesChanged ? setDiscussionOnboardingRequestNotes(qx, sourceUrl, notes) : written
 }
 
 type InsightsProjectLookup = Awaited<ReturnType<typeof findOnboardedInsightsProject>>
 
-async function lookupInsightsProject(
+// A failed lookup rolls back to its savepoint, so the status update itself goes on.
+async function lookupOrNull<T>(
   tx: QueryExecutor,
-  row: IDbProjectCatalog,
-): Promise<InsightsProjectLookup> {
+  context: Record<string, unknown>,
+  lookup: (savepoint: QueryExecutor) => Promise<T>,
+): Promise<T | null> {
   try {
-    return await tx.tx((savepoint) => findOnboardedInsightsProject(savepoint, row))
+    return await tx.tx(lookup)
   } catch (err) {
     log.warn(
-      { id: row.id, repoUrl: row.repoUrl, error: getErrorMessage(err) },
+      { ...context, error: getErrorMessage(err) },
       'Insights project lookup failed, naming the project from the catalog row.',
     )
     return null
   }
+}
+
+function isAlreadyTracked(row: IDbProjectCatalog): boolean {
+  return row.action === 'skip' && row.classificationKind === 'already_tracked'
+}
+
+interface IInsightsProjectRef {
+  name: string
+  slug: string | null
+}
+
+async function trackedProjectsByRepoUrl(
+  tx: QueryExecutor,
+  rows: IDbProjectCatalog[],
+): Promise<Map<string, IInsightsProjectRef>> {
+  const repoUrls = rows.filter(isAlreadyTracked).map((row) => row.repoUrl)
+  if (repoUrls.length === 0) {
+    return new Map()
+  }
+  const tracked =
+    (await lookupOrNull(tx, { repoUrls }, (savepoint) =>
+      findTrackedRepoProjects(savepoint, repoUrls),
+    )) ?? []
+  return new Map(
+    tracked.map((project) => [
+      project.repoUrl,
+      { name: project.projectName, slug: project.projectSlug },
+    ]),
+  )
 }
 
 async function withInsightsProjectNames(
@@ -245,16 +336,23 @@ async function withInsightsProjectNames(
   rows: IDbProjectCatalog[],
 ): Promise<DiscussionStatusRow[]> {
   const projects = new Map<string, InsightsProjectLookup>()
+  const tracked = await trackedProjectsByRepoUrl(tx, rows)
   const named: DiscussionStatusRow[] = []
   for (const row of rows) {
-    if (row.action !== 'onboarded' || !row.matchedSegmentId) {
-      named.push(row)
-      continue
+    let project: IInsightsProjectRef | null = null
+    if (row.action === 'onboarded' && row.matchedSegmentId) {
+      if (!projects.has(row.matchedSegmentId)) {
+        projects.set(
+          row.matchedSegmentId,
+          await lookupOrNull(tx, { id: row.id, repoUrl: row.repoUrl }, (savepoint) =>
+            findOnboardedInsightsProject(savepoint, row),
+          ),
+        )
+      }
+      project = projects.get(row.matchedSegmentId) ?? null
+    } else if (isAlreadyTracked(row)) {
+      project = tracked.get(row.repoUrl) ?? null
     }
-    if (!projects.has(row.matchedSegmentId)) {
-      projects.set(row.matchedSegmentId, await lookupInsightsProject(tx, row))
-    }
-    const project = projects.get(row.matchedSegmentId) ?? null
     named.push({
       ...row,
       matchedProjectName: row.matchedProjectName ?? project?.name ?? null,
@@ -265,7 +363,7 @@ async function withInsightsProjectNames(
 }
 
 // The status comment is already stored when this runs, so a failed "all done" post only logs:
-// the done claim stays open and the next refresh posts it again, without a second status comment.
+// the done claim stays open and the next ordinary refresh posts it again, without a second status comment.
 async function announceAllDone(
   qx: QueryExecutor,
   status: IDbDiscussionOnboardingRequest,
@@ -291,6 +389,7 @@ export async function refreshDiscussionStatusComment(
   qx: QueryExecutor,
   request: DiscussionRequestRef,
   client: IDiscussionCommentClient | null = null,
+  options: IDiscussionRefreshOptions = {},
 ): Promise<boolean> {
   const sourceUrl = request.sourceUrl
   const ref = sourceUrl ? parseGithubDiscussionUrl(sourceUrl) : null
@@ -302,20 +401,31 @@ export async function refreshDiscussionStatusComment(
     const commentClient = client ?? tokenClient()
     return await qx.tx(async (tx) => {
       await lockDiscussionOnboardingRequest(tx, sourceUrl)
+      const status = await findDiscussionOnboardingRequest(tx, sourceUrl)
+      const storedNotes = status?.notes ?? []
+      const notes = options.organizationNotes ?? storedNotes
+      const notesChanged = !sameNotes(storedNotes, notes)
+      if (options.organizationNotes && !notesChanged) {
+        return false
+      }
       const catalogRows = await findProjectCatalogBySourceUrl(tx, sourceUrl)
-      if (catalogRows.length === 0) {
+      if (catalogRows.length === 0 && notes.length === 0 && !notesChanged) {
         return false
       }
       const rows = await withInsightsProjectNames(tx, catalogRows)
-      const status = await writeStatusComment(
+      const written = await writeStatusComment(
         tx,
         ref,
         sourceUrl,
-        buildDiscussionStatusMarkdown(rows),
+        status,
+        buildDiscussionStatusMarkdown(rows, notes),
+        notes,
+        notesChanged,
         commentClient,
       )
-      if (rows.length > 1 && isRequestSettled(rows)) {
-        await announceAllDone(tx, status, rows, commentClient)
+      const rowsStillLanding = options.organizationNotes !== undefined
+      if (!rowsStillLanding && rows.length > 1 && isRequestSettled(rows)) {
+        await announceAllDone(tx, written, rows, commentClient)
       }
       return true
     })
