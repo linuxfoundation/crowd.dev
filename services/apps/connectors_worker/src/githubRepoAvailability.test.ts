@@ -56,11 +56,12 @@ describe('probeGithubRepoAvailability', () => {
 
   beforeEach(() => vi.clearAllMocks())
 
-  it('reports own suspects github confirms gone and flagged repos that answer again, by every stored spelling of their url, and leaves every other answer alone', async () => {
+  it('reports own suspects github confirms gone and flagged repos that answer again, once per repository and for every stored spelling of its url, and leaves every other answer alone', async () => {
     tracked(
       [
         'StillGone',
         'Back',
+        'back',
         'FlakyFlagged',
         'Deleted',
         'Legal',
@@ -69,7 +70,7 @@ describe('probeGithubRepoAvailability', () => {
         'Transient',
         'Forbidden',
       ],
-      ['StillGone', 'Back', 'FlakyFlagged'],
+      ['StillGone', 'Back', 'back', 'FlakyFlagged'],
       [
         url('Deleted').toLowerCase(),
         url('Legal'),
@@ -86,7 +87,7 @@ describe('probeGithubRepoAvailability', () => {
       FlakyFlagged: 502,
       Deleted: 404,
       Legal: 451,
-      legal: 451,
+      back: 502,
       Removed: 410,
       Forbidden: 403,
       OwnedElsewhere: 404,
@@ -94,7 +95,7 @@ describe('probeGithubRepoAvailability', () => {
 
     await expect(probeGithubRepoAvailability(qx, token, 'int-1', onProgress)).resolves.toEqual({
       gone: ['Deleted', 'Legal', 'legal', 'Removed'].map(url),
-      reachable: [url('Back')],
+      reachable: ['Back', 'back'].map(url),
       skipped: [
         { url: url('FlakyFlagged'), reason: 'github_error', message: '502' },
         { url: url('Forbidden'), reason: 'github_error', message: '403' },
@@ -105,7 +106,8 @@ describe('probeGithubRepoAvailability', () => {
       'int-1',
       'provider.repository_not_found',
     )
-    expect(mocks.resolveRepo).toHaveBeenCalledTimes(9)
+    expect(mocks.resolveRepo).toHaveBeenCalledTimes(8)
+    expect(mocks.resolveRepo).not.toHaveBeenCalledWith('token', 'Acme', 'back')
     expect(mocks.resolveRepo).not.toHaveBeenCalledWith('token', 'Acme', 'OwnedElsewhere')
     expect(onProgress).toHaveBeenCalledTimes(2)
   })

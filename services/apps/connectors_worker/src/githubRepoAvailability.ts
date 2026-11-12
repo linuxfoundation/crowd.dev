@@ -17,6 +17,7 @@ import {
   LIFECYCLE_RESOLVE_CONCURRENCY,
   type LifecycleSkipReason,
   githubRepoKey,
+  storedUrlsByRepoKey,
 } from './githubLifecycle'
 import { isGoneError, lifecycleSkipReasonFor } from './githubSkipReasons'
 
@@ -79,30 +80,27 @@ async function probeAll(
   return probes
 }
 
-async function candidateUrls(
-  qx: QueryExecutor,
-  integrationId: string,
-): Promise<{ flagged: Set<string>; candidates: string[] }> {
+interface ICandidateRepos {
+  flagged: Set<string>
+  spellingsByProbedUrl: Map<string, string[]>
+}
+
+async function candidateRepos(qx: QueryExecutor, integrationId: string): Promise<ICandidateRepos> {
   const [repos, unavailable, suspects] = await Promise.all([
     getReposForGithubIntegration(qx, integrationId),
     listUnavailableRepoUrlsForIntegration(qx, integrationId),
     listSyncUnitChannelNamesByErrorClass(qx, integrationId, REPOSITORY_NOT_FOUND_ERROR_CLASS),
   ])
-  const storedUrlsByKey = new Map<string, string[]>()
-  for (const { url } of repos) {
+  const storedUrlsByKey = storedUrlsByRepoKey(repos.map((repo) => repo.url))
+  const spellingsByProbedUrl = new Map<string, string[]>()
+  for (const url of [...unavailable, ...suspects]) {
     const key = githubRepoKey(url)
-    if (key !== null) {
-      storedUrlsByKey.set(key, [...(storedUrlsByKey.get(key) ?? []), url])
+    const spellings = key === null ? undefined : storedUrlsByKey.get(key)
+    if (spellings !== undefined) {
+      spellingsByProbedUrl.set(spellings[0], spellings)
     }
   }
-  const ownedSuspects = suspects.flatMap((channelName) => {
-    const key = githubRepoKey(channelName)
-    return key === null ? [] : (storedUrlsByKey.get(key) ?? [])
-  })
-  return {
-    flagged: new Set(unavailable),
-    candidates: [...new Set([...unavailable, ...ownedSuspects])],
-  }
+  return { flagged: new Set(unavailable), spellingsByProbedUrl }
 }
 
 export async function probeGithubRepoAvailability(
@@ -111,16 +109,16 @@ export async function probeGithubRepoAvailability(
   integrationId: string,
   onProgress: () => void,
 ): Promise<IRepoAvailabilityProbes> {
-  const { flagged, candidates } = await candidateUrls(qx, integrationId)
-  if (candidates.length === 0) {
+  const { flagged, spellingsByProbedUrl } = await candidateRepos(qx, integrationId)
+  if (spellingsByProbedUrl.size === 0) {
     return { gone: [], reachable: [], skipped: [] }
   }
-  const probes = await probeAll(token, candidates, onProgress)
+  const probes = await probeAll(token, [...spellingsByProbedUrl.keys()], onProgress)
+  const spellingsOf = (state: Probe['state']) =>
+    probes.flatMap((p) => (p.state === state ? (spellingsByProbedUrl.get(p.url) ?? []) : []))
   return {
-    gone: probes.filter((p) => p.state === 'gone' && !flagged.has(p.url)).map((p) => p.url),
-    reachable: probes
-      .filter((p) => p.state === 'reachable' && flagged.has(p.url))
-      .map((p) => p.url),
+    gone: spellingsOf('gone').filter((url) => !flagged.has(url)),
+    reachable: spellingsOf('reachable').filter((url) => flagged.has(url)),
     skipped: probes.flatMap((p) => (p.state === 'unknown' ? [p.skip] : [])),
   }
 }
