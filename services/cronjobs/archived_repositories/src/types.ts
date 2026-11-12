@@ -15,7 +15,6 @@ export interface RepositoryStatus {
 
 export interface RepositoryToCheck {
   url: string
-  // Base URL of the Gerrit instance (the integration's `remote.orgURL`), set for Gerrit repositories only.
   gerritBaseUrl: string | null
 }
 

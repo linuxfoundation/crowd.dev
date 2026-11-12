@@ -88,7 +88,6 @@ const gerritWorkerOptions: WorkerOptions = {
   },
 }
 
-// The workers share the same job handler but they need different limiters due to the different rate limits of each API.
 const githubWorker = new Worker(GITHUB_QUEUE_NAME, handleJob, githubWorkerOptions)
 const gitlabWorker = new Worker(GITLAB_QUEUE_NAME, handleJob, gitlabWorkerOptions)
 const gerritWorker = new Worker(GERRIT_QUEUE_NAME, handleJob, gerritWorkerOptions)
