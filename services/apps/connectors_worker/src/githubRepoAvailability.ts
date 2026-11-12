@@ -88,17 +88,16 @@ async function candidateUrls(
     listUnavailableRepoUrlsForIntegration(qx, integrationId),
     listSyncUnitChannelNamesByErrorClass(qx, integrationId, REPOSITORY_NOT_FOUND_ERROR_CLASS),
   ])
-  const storedUrlByKey = new Map<string, string>()
+  const storedUrlsByKey = new Map<string, string[]>()
   for (const { url } of repos) {
     const key = githubRepoKey(url)
-    if (key !== null && !storedUrlByKey.has(key)) {
-      storedUrlByKey.set(key, url)
+    if (key !== null) {
+      storedUrlsByKey.set(key, [...(storedUrlsByKey.get(key) ?? []), url])
     }
   }
   const ownedSuspects = suspects.flatMap((channelName) => {
     const key = githubRepoKey(channelName)
-    const storedUrl = key === null ? undefined : storedUrlByKey.get(key)
-    return storedUrl === undefined ? [] : [storedUrl]
+    return key === null ? [] : (storedUrlsByKey.get(key) ?? [])
   })
   return {
     flagged: new Set(unavailable),

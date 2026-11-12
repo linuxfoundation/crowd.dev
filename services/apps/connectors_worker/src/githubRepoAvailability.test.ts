@@ -56,7 +56,7 @@ describe('probeGithubRepoAvailability', () => {
 
   beforeEach(() => vi.clearAllMocks())
 
-  it('reports own suspects github confirms gone and flagged repos that answer again, by their stored url, and leaves every other answer alone', async () => {
+  it('reports own suspects github confirms gone and flagged repos that answer again, by every stored spelling of their url, and leaves every other answer alone', async () => {
     tracked(
       [
         'StillGone',
@@ -64,6 +64,7 @@ describe('probeGithubRepoAvailability', () => {
         'FlakyFlagged',
         'Deleted',
         'Legal',
+        'legal',
         'Removed',
         'Transient',
         'Forbidden',
@@ -85,13 +86,14 @@ describe('probeGithubRepoAvailability', () => {
       FlakyFlagged: 502,
       Deleted: 404,
       Legal: 451,
+      legal: 451,
       Removed: 410,
       Forbidden: 403,
       OwnedElsewhere: 404,
     })
 
     await expect(probeGithubRepoAvailability(qx, token, 'int-1', onProgress)).resolves.toEqual({
-      gone: ['Deleted', 'Legal', 'Removed'].map(url),
+      gone: ['Deleted', 'Legal', 'legal', 'Removed'].map(url),
       reachable: [url('Back')],
       skipped: [
         { url: url('FlakyFlagged'), reason: 'github_error', message: '502' },
@@ -103,7 +105,7 @@ describe('probeGithubRepoAvailability', () => {
       'int-1',
       'provider.repository_not_found',
     )
-    expect(mocks.resolveRepo).toHaveBeenCalledTimes(8)
+    expect(mocks.resolveRepo).toHaveBeenCalledTimes(9)
     expect(mocks.resolveRepo).not.toHaveBeenCalledWith('token', 'Acme', 'OwnedElsewhere')
     expect(onProgress).toHaveBeenCalledTimes(2)
   })
