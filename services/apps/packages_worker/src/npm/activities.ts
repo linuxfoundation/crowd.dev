@@ -31,7 +31,11 @@ import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
 import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
-import { isDownloadsBlocked, npmDownloadsThrottle } from './downloadsThrottle'
+import {
+  isDownloadsBlocked,
+  isDownloadsDeadlineExceeded,
+  npmDownloadsThrottle,
+} from './downloadsThrottle'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
 import {
   fetchBulkPointRange,
@@ -106,8 +110,8 @@ export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
 const INGEST_4XX_ATTEMPTS = 3
 const INGEST_4XX_BACKOFF_MS = 1000
 
-// Past this budget a waiting run yields once the egress has been blocked 20 minutes (see
-// downloadsThrottle.ts), so a lane ends near 42 minutes, under the 1 hour startToClose.
+// Past this budget a waiting run yields within 20 minutes (see downloadsThrottle.ts), so a lane
+// ends near 42 minutes, under the 1 hour startToClose.
 const LANE_BUDGET_MS = 20 * 60_000
 
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
@@ -314,6 +318,7 @@ export async function backfillDailyLane(
           )
           // The package in progress stays unmarked, so the next run re-selects it.
           if (isDownloadsBlocked(result)) return { fetched: candidates.length, blocked: true }
+          if (isDownloadsDeadlineExceeded(result)) return { fetched: candidates.length }
           if (isFetchError(result)) {
             if (!isClientError(result.statusCode, result.kind)) {
               throw new Error(
@@ -470,6 +475,7 @@ async function processLast30dWindowPlans(
         deadline,
       )
       if (isDownloadsBlocked(result)) return true
+      if (isDownloadsDeadlineExceeded(result)) return false
       if (isFetchError(result)) {
         if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(
@@ -518,6 +524,7 @@ async function processLast30dWindowPlans(
         deadline,
       )
       if (isDownloadsBlocked(result)) return true
+      if (isDownloadsDeadlineExceeded(result)) return false
       if (isFetchError(result)) {
         if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(

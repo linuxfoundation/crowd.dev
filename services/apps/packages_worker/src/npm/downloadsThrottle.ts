@@ -19,6 +19,10 @@ export interface DownloadsBlocked {
   blockedForMs: number
 }
 
+export interface DownloadsDeadlineExceeded {
+  deadlineExceeded: true
+}
+
 export interface ThrottleLogger {
   info: (obj: object, msg: string) => void
   warn: (obj: object, msg: string) => void
@@ -46,6 +50,14 @@ export function isDownloadsBlocked(v: unknown): v is DownloadsBlocked {
   return typeof v === 'object' && v !== null && (v as Partial<DownloadsBlocked>).blocked === true
 }
 
+export function isDownloadsDeadlineExceeded(v: unknown): v is DownloadsDeadlineExceeded {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    (v as Partial<DownloadsDeadlineExceeded>).deadlineExceeded === true
+  )
+}
+
 export interface DownloadsThrottle {
   intervalMs(egress: string): number
   acquire(
@@ -53,7 +65,7 @@ export interface DownloadsThrottle {
     onWait?: () => void,
     signal?: AbortSignal,
     deadline?: number,
-  ): Promise<DownloadsBlocked | undefined>
+  ): Promise<DownloadsBlocked | DownloadsDeadlineExceeded | undefined>
   recordSuccess(egress: string): void
   recordRateLimit(egress: string): number
   run<T>(
@@ -62,7 +74,7 @@ export interface DownloadsThrottle {
     onWait?: () => void,
     signal?: AbortSignal,
     deadline?: number,
-  ): Promise<T | FetchError | DownloadsBlocked>
+  ): Promise<T | FetchError | DownloadsBlocked | DownloadsDeadlineExceeded>
 }
 
 // Paces api.npmjs.org downloads requests per egress IP. npm's 429s carry `retry-after: 0`, so the
@@ -97,7 +109,7 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
     onWait?: () => void,
     signal?: AbortSignal,
     deadline?: number,
-  ): Promise<DownloadsBlocked | undefined> {
+  ): Promise<DownloadsBlocked | DownloadsDeadlineExceeded | undefined> {
     const s = state(egress)
     for (;;) {
       signal?.throwIfAborted()
@@ -109,6 +121,8 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
         if (now >= deadline && blockedForMs >= BLOCKED_YIELD_MS)
           return { blocked: true, blockedForMs }
       }
+      if (deadline !== undefined && Date.now() >= deadline + BLOCKED_YIELD_MS)
+        return { deadlineExceeded: true }
       await timeout(Math.min(waitMs, WAIT_CHUNK_MS))
       onWait?.()
     }
@@ -145,23 +159,27 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
     return now - blockedSince
   }
 
-  // Retries 429s after the pause and returns other results unchanged. It yields once the egress has
-  // seen only 429s for 20 minutes; a caller past its lane deadline yields then without another probe.
+  // Retries 429s after the pause and returns other results unchanged. It yields after 20 minutes of
+  // only 429s, or 20 minutes past its deadline since other flows' successes can reset that clock.
   async function run<T>(
     egress: string,
     doFetch: () => Promise<T | FetchError>,
     onWait?: () => void,
     signal?: AbortSignal,
     deadline?: number,
-  ): Promise<T | FetchError | DownloadsBlocked> {
+  ): Promise<T | FetchError | DownloadsBlocked | DownloadsDeadlineExceeded> {
     for (;;) {
-      const blocked = await acquire(egress, onWait, signal, deadline)
-      if (blocked) {
-        log.warn(
-          { egress, blockedForMs: blocked.blockedForMs },
-          'npm downloads blocked, yielding lane',
-        )
-        return blocked
+      const gate = await acquire(egress, onWait, signal, deadline)
+      if (gate) {
+        if (isDownloadsDeadlineExceeded(gate)) {
+          log.info({ egress }, 'npm downloads lane deadline passed, yielding lane')
+        } else {
+          log.warn(
+            { egress, blockedForMs: gate.blockedForMs },
+            'npm downloads blocked, yielding lane',
+          )
+        }
+        return gate
       }
       onWait?.()
       signal?.throwIfAborted()
@@ -172,6 +190,10 @@ export function createDownloadsThrottle(floorMs: number, log: ThrottleLogger): D
         if (blockedForMs >= BLOCKED_YIELD_MS) {
           log.warn({ egress, blockedForMs }, 'npm downloads blocked, yielding lane')
           return { blocked: true, blockedForMs }
+        }
+        if (deadline !== undefined && Date.now() >= deadline + BLOCKED_YIELD_MS) {
+          log.info({ egress }, 'npm downloads lane deadline passed, yielding lane')
+          return { deadlineExceeded: true }
         }
         continue
       }

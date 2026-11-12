@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as activities from '../activities'
-import { createDownloadsThrottle } from '../downloadsThrottle'
+import { createDownloadsThrottle, type DownloadsThrottle } from '../downloadsThrottle'
 import { type FetchError, FetchErrorKind } from '../types'
 
 const h = vi.hoisted(() => ({
@@ -453,5 +453,72 @@ describe('lane deadline during a long block', () => {
     expect(error).toBeUndefined()
     expect(value).toEqual({ fetched: 1, blocked: true })
     expect(h.fetch.fetchBulkPointRange).toHaveBeenCalledTimes(5)
+  })
+})
+
+describe('lane deadline while another flow succeeds', () => {
+  // Another flow's success every 30s keeps resetting the shared block clock, so the egress never
+  // counts as blocked while this lane's own probes keep getting 429s.
+  function succeedElsewhere() {
+    const throttle = h.throttle.current as DownloadsThrottle
+    return setInterval(() => throttle.recordSuccess('direct'), 30_000)
+  }
+
+  // Unlike settle, this never awaits a lane that has not finished by the end of the advance.
+  async function settleWithin<T>(promise: Promise<T>, advanceMs: number) {
+    const outcome: { done: boolean; value?: T; error?: unknown } = { done: false }
+    promise.then(
+      (value) => Object.assign(outcome, { done: true, value }),
+      (error: unknown) => Object.assign(outcome, { done: true, error }),
+    )
+    await vi.advanceTimersByTimeAsync(advanceMs)
+    return outcome
+  }
+
+  it('daily lane returns its progress without blocked within 42 minutes', async () => {
+    const { backfillDailyLane } = await loadActivities()
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
+    h.fetch.fetchDailyRange.mockResolvedValue(rateLimited)
+    const timer = succeedElsewhere()
+
+    const outcome = await settleWithin(backfillDailyLane(CUTOFF, 20, 0, 1), 42 * MIN)
+    clearInterval(timer)
+
+    expect(outcome).toEqual({ done: true, value: { fetched: 1 } })
+    expect(h.dal.insertDailyDownloads).not.toHaveBeenCalled()
+    expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
+  })
+
+  it('latest lane returns its progress without blocked on a scoped package', async () => {
+    const { refreshLatestLast30dLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLatest30d.mockResolvedValue([
+      { purl: 'pkg:npm/%40scope/pkg', firstReleaseAt: null },
+    ])
+    h.fetch.fetchPointRange.mockResolvedValue(rateLimited)
+    const timer = succeedElsewhere()
+
+    const outcome = await settleWithin(refreshLatestLast30dLane(CUTOFF, 128, 0, 1), 42 * MIN)
+    clearInterval(timer)
+
+    expect(outcome).toEqual({ done: true, value: { fetched: 1 } })
+    expect(h.dal.upsertLast30dDownload).not.toHaveBeenCalled()
+    expect(h.dal.markLast30dProcessed).not.toHaveBeenCalled()
+  })
+
+  it('history lane returns its progress without blocked on a bulk batch', async () => {
+    const { backfillLast30dHistoryLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLast30dHistory.mockResolvedValue([
+      { purl: 'pkg:npm/foo', firstReleaseAt: '2026-08-15' },
+    ])
+    h.dal.getExistingLast30dEndDates.mockResolvedValue(['2026-11-01'])
+    h.fetch.fetchBulkPointRange.mockResolvedValue(rateLimited)
+    const timer = succeedElsewhere()
+
+    const outcome = await settleWithin(backfillLast30dHistoryLane(50, 6, 0, 1), 42 * MIN)
+    clearInterval(timer)
+
+    expect(outcome).toEqual({ done: true, value: { fetched: 1 } })
+    expect(h.dal.upsertLast30dDownload).not.toHaveBeenCalled()
+    expect(h.dal.markLast30dHistoryBackfilled).not.toHaveBeenCalled()
   })
 })

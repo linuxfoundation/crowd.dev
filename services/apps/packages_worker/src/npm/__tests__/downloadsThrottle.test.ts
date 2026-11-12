@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDownloadsThrottle, downloadsFloorMs, isDownloadsBlocked } from '../downloadsThrottle'
+import {
+  createDownloadsThrottle,
+  downloadsFloorMs,
+  isDownloadsBlocked,
+  isDownloadsDeadlineExceeded,
+} from '../downloadsThrottle'
 import { type FetchError, FetchErrorKind } from '../types'
 
 const MIN = 60_000
@@ -371,5 +376,71 @@ describe('lane deadline', () => {
 
     await expect(result).resolves.toEqual({ count: 1 })
     expect(doFetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('own deadline while other flows succeed', () => {
+  // Records a run's result and the fake-clock time it settled at, without awaiting a run that may
+  // never settle.
+  function capture<T>(promise: Promise<T>) {
+    const start = Date.now()
+    const outcome: { value?: T; at?: number } = {}
+    promise.then((value) => {
+      outcome.value = value
+      outcome.at = Date.now() - start
+    })
+    return outcome
+  }
+
+  it('yields 20 minutes past its deadline while its own probes keep getting 429s', async () => {
+    const log = makeLog()
+    const throttle = createDownloadsThrottle(FLOOR, log)
+    const doFetch = vi.fn(async () => rateLimited)
+    // Another flow's success every 30s resets the shared block clock between this caller's 429s.
+    const timer = setInterval(() => throttle.recordSuccess('direct'), 30_000)
+
+    const outcome = capture(throttle.run('direct', doFetch, undefined, undefined, Date.now()))
+    await vi.advanceTimersByTimeAsync(21 * MIN)
+    clearInterval(timer)
+
+    expect(outcome.value).toEqual({ deadlineExceeded: true })
+    expect(outcome.at).toBeGreaterThanOrEqual(20 * MIN)
+    expect(outcome.at).toBeLessThanOrEqual(21 * MIN)
+    expect(log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ egress: 'direct' }),
+      'npm downloads lane deadline passed, yielding lane',
+    )
+    expect(log.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'npm downloads blocked, yielding lane',
+    )
+  })
+
+  it('stops waiting 20 minutes past its deadline when other flows keep extending the pause', async () => {
+    const throttle = createDownloadsThrottle(FLOOR, makeLog())
+    const doFetch = vi.fn(async () => ({ count: 1 }))
+    throttle.recordRateLimit('direct')
+    // Another flow's 429 extends the pause, then a third flow's success clears the block clock.
+    const timer = setInterval(() => {
+      throttle.recordRateLimit('direct')
+      throttle.recordSuccess('direct')
+    }, 50_000)
+
+    const outcome = capture(throttle.run('direct', doFetch, undefined, undefined, Date.now()))
+    await vi.advanceTimersByTimeAsync(21 * MIN)
+    clearInterval(timer)
+
+    expect(outcome.value).toEqual({ deadlineExceeded: true })
+    expect(outcome.at).toBeGreaterThanOrEqual(20 * MIN)
+    expect(outcome.at).toBeLessThanOrEqual(20 * MIN + 30_000)
+    expect(doFetch).not.toHaveBeenCalled()
+  })
+
+  it('tells the deadline marker apart from the blocked marker and plain values', () => {
+    expect(isDownloadsDeadlineExceeded({ deadlineExceeded: true })).toBe(true)
+    expect(isDownloadsDeadlineExceeded({ blocked: true, blockedForMs: 0 })).toBe(false)
+    expect(isDownloadsDeadlineExceeded({ count: 1 })).toBe(false)
+    expect(isDownloadsDeadlineExceeded(rateLimited)).toBe(false)
+    expect(isDownloadsBlocked({ deadlineExceeded: true })).toBe(false)
   })
 })

@@ -90,7 +90,9 @@ retry skips every already-stored window instead of re-fetching. All three
 download lanes (daily included) run with a 1 hour activity timeout and a 2 minute
 heartbeat timeout; they **heartbeat** before every fetch and every 30s while the
 limiter waits, so a stall is detected in minutes. Each download lane returns after a
-20 minute budget with progress saved, and the workflow starts another round.
+20 minute budget with progress saved, and the workflow starts another round. A lane whose own
+requests keep getting 429s while other flows succeed on the same egress returns the same way,
+20 minutes past its budget.
 
 ### 3a. `refreshLatestLast30dDownloads` — breadth (latest window)
 
