@@ -21,7 +21,7 @@ def _person(entry: object, title: str) -> MaintainerInfoItem | None:
         return None
     return MaintainerInfoItem(
         name=str(name) if name else None,
-        email=str(email).strip() if email else None,
+        email=str(email).strip().lower() if email else None,
         title=title,
         normalized_title="maintainer",
     )

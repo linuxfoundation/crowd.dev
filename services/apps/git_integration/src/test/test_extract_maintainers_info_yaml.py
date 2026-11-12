@@ -35,7 +35,7 @@ committers:
     - <<: *vpp_ptl
     - name: 'Dave Barach'
       company: 'cisco'
-      email: 'openvpp@barachs.net'
+      email: 'OpenVPP@Barachs.net'
       id: 'dbarach'
     - name: 'Florin Coras'
       company: 'cisco'
