@@ -1,0 +1,15 @@
+DESCRIPTION >
+    Folds every `repositoryStarSnapshots` insert into `repository_star_snapshot_bounds_ds`: first and last capture per repository and the latest star count.
+
+NODE repository_star_snapshot_bounds_MV_rows
+SQL >
+    SELECT
+        repositoryId,
+        min(capturedAt) AS firstCapturedAt,
+        max(capturedAt) AS lastCapturedAt,
+        argMaxState(starCount, (capturedAt, updatedAt)) AS lastStarCountState
+    FROM repositoryStarSnapshots
+    GROUP BY repositoryId
+
+TYPE MATERIALIZED
+DATASOURCE repository_star_snapshot_bounds_ds
