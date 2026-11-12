@@ -10,8 +10,7 @@
     "src/modules/organization/components/form/organization-form-item.vue",
     "src/modules/organization/components/form/organization-form-json.vue",
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
-    "src/modules/organization/components/form/organization-form-phone-number.vue",
-    "src/modules/organization/pages/organization-form-page.vue"
+    "src/modules/organization/components/form/organization-form-phone-number.vue"
   ],
   "vue/prefer-define-options": [
     "src/modules/member/components/bulk/bulk-edit-attribute-popover.vue",
@@ -20,8 +19,7 @@
     "src/modules/organization/components/form/organization-form-identities.vue",
     "src/modules/organization/components/form/organization-form-item.vue",
     "src/modules/organization/components/form/organization-form-phone-number-item.vue",
-    "src/modules/organization/components/form/organization-form-phone-number.vue",
-    "src/modules/organization/pages/organization-form-page.vue"
+    "src/modules/organization/components/form/organization-form-phone-number.vue"
   ],
   "@typescript-eslint/no-explicit-any": []
 }
