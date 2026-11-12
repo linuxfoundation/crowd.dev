@@ -12,6 +12,7 @@ import {
   checkRepositoriesOnGithub,
   expandOrganizations,
   organizationFailureNote,
+  organizationRepositoryLimit,
 } from '@crowd/project-onboarding'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
@@ -252,9 +253,10 @@ async function withoutMissingRepositories(
 async function expandDiscussionOrganizations(
   discussion: IDiscussionNode,
   owners: string[],
+  limit: number,
   deps: IDiscussionSourceDeps,
 ): Promise<IExpandedOrganization[]> {
-  const expansion = await expandOrganizations(owners, deps.lookupOrganization)
+  const expansion = await expandOrganizations(owners, deps.lookupOrganization, limit)
   if (expansion.ok === true) {
     await deps.noteOrganizationFailures(discussion.url, [])
     return expansion.organizations
@@ -287,7 +289,12 @@ export async function collectDiscussionRefs(
       'Insights Discussions: linked repositories were left out by the request parser.',
     )
   }
-  const organizations = await expandDiscussionOrganizations(discussion, request.organizations, deps)
+  const organizations = await expandDiscussionOrganizations(
+    discussion,
+    request.organizations,
+    organizationRepositoryLimit(request.parsed?.declaredLf),
+    deps,
+  )
   const listed = await withoutMissingRepositories(
     discussion,
     request.repoUrls,

@@ -176,6 +176,57 @@ describe('buildDiscussionStatusMarkdown', () => {
   })
 })
 
+describe('buildDiscussionStatusMarkdown with a large organization group', () => {
+  it('lists twenty repositories and counts the rest to stay within the comment limit', () => {
+    const rows = Array.from({ length: 125 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: 'review',
+        reviewReason: 'needs a look',
+      }),
+    )
+
+    const markdown = buildDiscussionStatusMarkdown(rows)
+
+    expect(markdown).toContain('· 125 repositories ·')
+    expect(markdown.match(/\n  - \[cloudforet-io/g)).toHaveLength(20)
+    expect(markdown).toContain('  - … and 105 more repositories')
+  })
+
+  it('lists the repositories whose status differs before counting the rest', () => {
+    const rows = Array.from({ length: 125 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: i === 60 || i === 110 ? 'skip' : 'onboarded',
+        skipReason: i === 60 || i === 110 ? 'it is a fork.' : null,
+      }),
+    )
+
+    const markdown = buildDiscussionStatusMarkdown(rows)
+
+    const lines = markdown.split('\n')
+    expect(lines[3]).toContain('cloudforet-io/r60')
+    expect(lines[3]).toContain('not added')
+    expect(lines[4]).toContain('cloudforet-io/r110')
+    expect(markdown.match(/\n  - /g)).toHaveLength(21)
+    expect(markdown).toContain('  - … and 105 more repositories')
+  })
+
+  it('uses the singular when one repository is left out', () => {
+    const rows = Array.from({ length: 21 }, (_, i) =>
+      row({
+        repoUrl: `https://github.com/cloudforet-io/r${i}`,
+        requestHints: { organization: 'cloudforet-io' },
+        action: 'onboarded',
+      }),
+    )
+
+    expect(buildDiscussionStatusMarkdown(rows)).toContain('  - … and 1 more repository')
+  })
+})
+
 describe('buildDiscussionStatusMarkdown with notes', () => {
   it('lists the notes under the repositories and stands alone when there are no rows', () => {
     const note = "I couldn't find a GitHub organization called **github.com/nobody**."

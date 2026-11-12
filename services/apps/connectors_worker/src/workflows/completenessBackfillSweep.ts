@@ -1,7 +1,7 @@
 import { executeChild, log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from '../activities/completenessActivities'
-import { describeChannelError } from './shadowDiff'
+import { describeChannelError } from '../describeChannelError'
 import { validateCompleteness } from './validateCompleteness'
 
 const { dueBackfillChecks, completeBackfillCheck } = proxyActivities<typeof activities>({

@@ -89,13 +89,10 @@ export function requestGroupReview(
   if (!review) {
     return null
   }
-  if (!review.name) {
-    return review
-  }
   return {
     ...review,
     repoUrls: [lead.repoUrl, ...siblings.map((row) => row.repoUrl)],
-    confidence: lead.requestHints?.confidence ?? null,
+    ...(review.name ? { confidence: lead.requestHints?.confidence ?? null } : {}),
   }
 }
 

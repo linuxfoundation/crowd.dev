@@ -3,7 +3,7 @@ import { log, proxyActivities } from '@temporalio/workflow'
 import type { IValidationUnit } from '@crowd/data-access-layer/src/connectors'
 
 import type * as activities from '../activities/completenessActivities'
-import { describeChannelError } from './shadowDiff'
+import { describeChannelError } from '../describeChannelError'
 
 const { listValidationUnits } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
