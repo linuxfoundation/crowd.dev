@@ -11,9 +11,8 @@ import type { CredlyBadge, CredlyBadgeState } from './badge'
 
 export const CREDLY_API_BASE_URL = 'https://api.credly.com/v1'
 export const CREDLY_PAGE_SIZE = 50
-// Timings and the window rule come from the hand probes of linuxfoundation/lfx-cdp-insights-ops#864:
-// a closed window answers in seconds, an unbounded scan is a 500 after ~30 s; the pace comes from the
-// ramp probe recorded in budget.ts.
+// Hand probes of linuxfoundation/lfx-cdp-insights-ops#864: a closed window answers in seconds, an
+// unbounded scan is a 500 after ~30 s. The pace comes from the ramp probe recorded in budget.ts.
 export const CREDLY_API_TIMEOUT_MS = 60_000
 export const CREDLY_MIN_CALL_INTERVAL_MS = 3_000
 const MAX_ATTEMPTS = 3
