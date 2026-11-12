@@ -30,6 +30,8 @@ import {
   findRepositoryByUrlInsensitive,
   findRepositoryOwnersForSegment,
   getReposForGithubIntegration,
+  listUnavailableRepoUrlsForIntegration,
+  markRepositoriesUnavailable,
   softDeleteRepositoriesForIntegration,
   upsertRepository,
 } from '@crowd/data-access-layer/src/repositories'
@@ -48,6 +50,7 @@ import {
   githubRepoKey,
 } from '../githubLifecycle'
 import { type IGithubRename, type IGithubRenamesResult, applyGithubRenames } from '../githubRenames'
+import { syncGithubRepoAvailability } from '../githubRepoAvailability'
 import {
   githubResolveSkipReason,
   lifecycleSkipReasonFor,
@@ -195,6 +198,36 @@ function isLiveGithubNango(
     integration.platform === PlatformType.GITHUB_NANGO &&
     integration.deletedAt === null
   )
+}
+
+async function availableRepoUrls(qx: QueryExecutor, integrationId: string): Promise<string[]> {
+  const [repos, unavailable] = await Promise.all([
+    getReposForGithubIntegration(qx, integrationId),
+    listUnavailableRepoUrlsForIntegration(qx, integrationId),
+  ])
+  const gone = new Set(unavailable)
+  return repos.map((repo) => repo.url).filter((url) => !gone.has(url))
+}
+
+async function refreshRepoAvailability(qx: QueryExecutor, integrationId: string): Promise<void> {
+  const { flagged, cleared, skipped } = await syncGithubRepoAvailability(
+    qx,
+    installationTokenSource(qx, integrationId),
+    integrationId,
+  )
+  for (const url of flagged) {
+    svc.log.warn(
+      { event: 'lifecycle_repo_unavailable', integrationId, url },
+      'repo no longer exists on github, flagged unavailable',
+    )
+  }
+  for (const url of cleared) {
+    svc.log.info(
+      { event: 'lifecycle_repo_available', integrationId, url },
+      'repo is reachable on github again, unavailable flag cleared',
+    )
+  }
+  skipped.forEach((skip) => logRepoSkipped(integrationId, skip))
 }
 
 function liveRepoKeys(urls: string[]): string[] {
@@ -698,6 +731,7 @@ export async function discoverFullSyncRepos({
   if (!isLiveGithubNango(integration)) {
     return NO_DISCOVERY
   }
+  await refreshRepoAvailability(qx, integrationId)
   const orgs = fullSyncOrgs(integration)
   if (orgs.length === 0) {
     return NO_DISCOVERY
@@ -783,11 +817,10 @@ export async function planGithubLifecycle({
     return { found: true, githubNango: false, deleted, ...nothing }
   }
 
-  const [repos, channels] = await Promise.all([
-    getReposForGithubIntegration(qx, integrationId),
+  const [repoUrls, channels] = await Promise.all([
+    availableRepoUrls(qx, integrationId),
     listSyncUnitChannelsForIntegration(qx, integrationId),
   ])
-  const repoUrls = repos.map((repo) => repo.url)
   const desiredKeys = liveRepoKeys(repoUrls)
   const ownedElsewhere = deleted
     ? []
@@ -831,6 +864,24 @@ function logRepoSkipped(integrationId: string, skip: ILifecycleSkip): void {
   )
 }
 
+async function flagMissingRepos(
+  qx: QueryExecutor,
+  integrationId: string,
+  outcomes: ReadonlyMap<string, OnboardRepoResult>,
+  storedUrls: ReadonlyMap<string, string>,
+): Promise<void> {
+  const missing = [...outcomes].flatMap(([key, outcome]) => {
+    const url = storedUrls.get(key)
+    return outcome.outcome === 'skipped' && outcome.reason === 'repo_not_found' && url ? [url] : []
+  })
+  for (const url of await markRepositoriesUnavailable(qx, missing)) {
+    svc.log.warn(
+      { event: 'lifecycle_repo_unavailable', integrationId, url },
+      'repo no longer exists on github, flagged unavailable',
+    )
+  }
+}
+
 function recordOnboardOutcomes(
   integrationId: string,
   keys: string[],
@@ -865,7 +916,7 @@ async function desiredReposIfLive(
     return null
   }
   const stored = new Map<string, string>()
-  for (const { url } of await getReposForGithubIntegration(qx, integrationId)) {
+  for (const url of await availableRepoUrls(qx, integrationId)) {
     const key = githubRepoKey(url)
     if (key !== null && !stored.has(key)) {
       stored.set(key, url)
@@ -1068,6 +1119,7 @@ export async function onboardGithubRepos({
       result,
       storedUrls,
     )
+    await flagMissingRepos(qx, integrationId, retry.outcomes, storedUrls)
     heartbeat()
     if (retry.desired === null) {
       return result

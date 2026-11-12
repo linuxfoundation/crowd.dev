@@ -84,3 +84,5 @@ export interface IValidationUnit extends Pick<
   validationCounterKeys: string[] | null
   validationEnabled: boolean
 }
+
+export const REPOSITORY_NOT_FOUND_ERROR_CLASS = 'provider.repository_not_found'

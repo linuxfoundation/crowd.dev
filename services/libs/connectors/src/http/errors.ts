@@ -5,6 +5,7 @@ export type ErrorClass =
   | 'provider.access_denied'
   | 'provider.contract'
   | 'provider.repository_renamed'
+  | 'provider.repository_not_found'
   | 'connector.code'
   | 'sink.rejected'
   | 'worker.timeout'
@@ -79,6 +80,13 @@ export class RepositoryRenamedError extends ConnectorError {
   ) {
     super('provider.repository_renamed', `repository renamed to ${currentUrl}`, options)
     this.name = 'RepositoryRenamedError'
+  }
+}
+
+export class RepositoryNotFoundError extends ConnectorError {
+  constructor(message = 'repository not found', options?: ConnectorErrorOptions) {
+    super('provider.repository_not_found', message, options)
+    this.name = 'RepositoryNotFoundError'
   }
 }
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   githubResolveSkipReason,
+  isGoneError,
   lifecycleSkipReasonFor,
   rateLimitResetAt,
   renameProbeFailure,
@@ -16,7 +17,18 @@ describe('github skip reasons', () => {
         headers,
         data,
       } as never)
-    expect(githubResolveSkipReason(httpError(404))).toBe('repo_not_found')
+    expect([404, 410, 451].map((status) => githubResolveSkipReason(httpError(status)))).toEqual(
+      Array(3).fill('repo_not_found'),
+    )
+    expect([404, 410, 451, 403, 429, 500].map((status) => isGoneError(httpError(status)))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ])
+    expect(isGoneError(new Error('timeout'))).toBe(false)
     expect(githubResolveSkipReason(httpError(500))).toBe('github_error')
     expect(githubResolveSkipReason(new Error('boom'))).toBe('github_error')
     expect(lifecycleSkipReasonFor('resolve', httpError(404))).toBe('repo_not_found')
