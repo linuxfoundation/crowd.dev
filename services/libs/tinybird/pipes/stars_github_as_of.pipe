@@ -1,64 +1,15 @@
 DESCRIPTION >
     - `stars_github_as_of.pipe` returns the GitHub star total of a project or collection as of one or more cutoffs. Shared by `stars_count.pipe` and `stars_cumulative_count.pipe`.
-    - A repository counts its latest snapshot captured at or before the cutoff, and 0 before its first snapshot.
-    - Snapshots are daily, so that latest snapshot almost always falls in the three days ending at the cutoff. Those days are read from `repository_star_snapshots_by_day_ds`, which is sorted by day, instead of each repository's full history.
-    - A repository with no snapshot in those days takes its value from `repository_star_snapshot_bounds_ds`: 0 if its first snapshot is after the cutoff, its last count if its last snapshot is before the window. A repository whose snapshots have a gap around the cutoff is looked up in `repositoryStarSnapshots`.
+    - A repository counts its latest snapshot captured at or before the cutoff, and 0 before its first snapshot. The repositories in scope come from `stars_scope.pipe`.
+    - Projects read each repository's snapshots from `repositoryStarSnapshots`, which is sorted by repository. Most projects have one repository, so the read is small and the query stays short.
+    - Collections cover thousands of repositories, so they read only the days around each cutoff. Snapshots are daily, so a repository's latest snapshot almost always falls in the three days ending at the cutoff. Those days are read from `repository_star_snapshots_by_day_ds`, which is sorted by day.
+    - In a collection, a repository with no snapshot in those days takes its value from `repository_star_snapshot_bounds_ds`: 0 if its first snapshot is after the cutoff, its last count if its last snapshot is before the window. A repository whose snapshots have a gap around the cutoff is looked up in `repositoryStarSnapshots`.
     - Cutoffs (`kind`):
     - 'bucket': each `generate_timeseries` period when `granularity` is given, at the period's last moment capped at `endDate`.
     - 'end': `endDate` without `granularity`, or now when `endDate` is absent.
     - 'start': `startDate`, when given.
     - Parameters: `project` or `collectionSlug` with `bucketId`, `repos`, `startDate`, `endDate`, `granularity`, as passed to the calling pipe.
     - Response: `kind`, `startDate` and `endDate` (the period for 'bucket' rows, the cutoff day otherwise), `cutoffAt`, `githubStars`.
-
-NODE stars_github_as_of_repo_scope
-DESCRIPTION >
-    GitHub repositories in scope, plus the optional `repos` filter. Same project and collection scoping as `activities_filtered.pipe`.
-
-SQL >
-    %
-    {% if defined(collectionSlug) %}
-        SELECT r.id AS repositoryId
-        FROM repositories r FINAL
-        WHERE
-            {% if defined(bucketId) %}
-                isNull (r.deletedAt)
-                AND r.enabled = true
-                AND r.excluded = false
-                AND r.url LIKE 'https://github.com/%'
-                AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-                {% if defined(repos) %}
-                    AND has(
-                        arrayMap(
-                            x -> lower(x),
-                            {{ Array(repos, 'String', description="Repository URLs", required=False) }}
-                        ),
-                        lower(r.url)
-                    )
-                {% end %}
-            {% else %} 1 = 0
-            {% end %}
-    {% else %}
-        SELECT r.id AS repositoryId
-        FROM repositories r FINAL
-        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
-        WHERE
-            isNull (r.deletedAt)
-            AND r.enabled = true
-            AND r.excluded = false
-            AND r.url LIKE 'https://github.com/%'
-            AND isNull (i.deletedAt)
-            AND i.enabled = 1
-            AND r.segmentId = (SELECT segmentId FROM segments_filtered)
-            {% if defined(repos) %}
-                AND has(
-                    arrayMap(
-                        x -> lower(x),
-                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
-                    ),
-                    lower(r.url)
-                )
-            {% end %}
-    {% end %}
 
 NODE stars_github_as_of_cutoffs
 DESCRIPTION >
@@ -107,12 +58,43 @@ DESCRIPTION >
 SQL >
     SELECT groupArray((kind, startDate, endDate, cutoffAt)) AS cutoffs FROM stars_github_as_of_cutoffs
 
-NODE stars_github_as_of_repo_values
+NODE stars_github_as_of_project_totals
 DESCRIPTION >
-    Star count per cutoff and in-scope repository, from the window or the bounds table. NULL marks a gap: snapshots on both sides of the window and none inside it.
+    Projects: each repository's full snapshot history as one sorted array, then per cutoff the last snapshot at or before it. Exact on its own, so the bounds and gap lookups are not needed. Building the arrays once keeps long series cheap for projects with hundreds of repositories.
 
 SQL >
-    WITH (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs
+    WITH
+        (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
+        (SELECT scope FROM stars_scope) AS scope
+    SELECT
+        c .1 AS kind,
+        c .2 AS startDate,
+        c .3 AS endDate,
+        c .4 AS cutoffAt,
+        toUInt64(arraySum(h -> arrayLast(x -> x .1 <= c .4, h) .3, r.histories)) AS githubStars
+    FROM (SELECT arrayJoin(cutoffs) AS c)
+    CROSS JOIN
+        (
+            SELECT groupArray(history) AS histories
+            FROM
+                (
+                    SELECT arraySort(groupArray((capturedAt, updatedAt, starCount))) AS history
+                    FROM repositoryStarSnapshots
+                    WHERE
+                        repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
+                        AND capturedAt <= arrayMax(arrayMap(c -> c .4, cutoffs))
+                    GROUP BY repositoryId
+                )
+        ) r
+
+NODE stars_github_as_of_repo_values
+DESCRIPTION >
+    Collections: star count per cutoff and in-scope repository, from the window or the bounds table. NULL marks a gap: snapshots on both sides of the window and none inside it.
+
+SQL >
+    WITH
+        (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
+        (SELECT scope FROM stars_scope) AS scope
     SELECT
         kind,
         cutoffAt,
@@ -149,7 +131,7 @@ SQL >
                             )
                         )
                 )
-                AND repositoryId IN (SELECT repositoryId FROM stars_github_as_of_repo_scope)
+                AND repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
             UNION ALL
             SELECT
                 'bounds' AS src,
@@ -167,7 +149,7 @@ SQL >
                         max(lastCapturedAt) AS lastCapturedAt,
                         argMaxMerge(lastStarCountState) AS lastStarCount
                     FROM repository_star_snapshot_bounds_ds
-                    WHERE repositoryId IN (SELECT repositoryId FROM stars_github_as_of_repo_scope)
+                    WHERE repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
                     GROUP BY repositoryId
                 )
                 ARRAY
@@ -214,7 +196,7 @@ SQL >
         )
     GROUP BY kind, cutoffAt
 
-NODE stars_github_as_of_totals
+NODE stars_github_as_of_collection_totals
 SQL >
     WITH
         (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
@@ -227,3 +209,24 @@ SQL >
         toUInt64(arrayFirst(x -> x .1 = c .1 AND x .2 = c .4, cutoffStars) .3 + g.stars) AS githubStars
     FROM (SELECT arrayJoin(cutoffs) AS c)
     LEFT JOIN stars_github_as_of_gaps g ON g.kind = c .1 AND g.cutoffAt = c .4
+
+NODE stars_github_as_of_totals
+DESCRIPTION >
+    The project or collection totals, packed into a scalar subquery and unpacked. `stars_count.pipe` reads this pipe twice in one query, for the buckets and the `startDate` baseline, and the scalar is computed once for both.
+
+SQL >
+    %
+    SELECT r .1 AS kind, r .2 AS startDate, r .3 AS endDate, r .4 AS cutoffAt, r .5 AS githubStars
+    FROM
+        (
+            SELECT
+                arrayJoin(
+                    (
+                        SELECT groupArray((kind, startDate, endDate, cutoffAt, githubStars))
+                        FROM
+                            {% if defined(collectionSlug) %} stars_github_as_of_collection_totals
+                            {% else %} stars_github_as_of_project_totals
+                            {% end %}
+                    )
+                ) AS r
+        )
