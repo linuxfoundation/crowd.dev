@@ -13,6 +13,7 @@ SQL >
         insights_projects_populated_ds.repositories,
         insights_projects_populated_ds.archivedRepositories,
         insights_projects_populated_ds.excludedRepositories,
+        insights_projects_populated_ds.unavailableRepositories,
         insights_projects_populated_ds.isLF,
         insights_projects_populated_ds.widgets,
         insights_projects_populated_ds.keywords,
