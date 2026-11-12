@@ -79,6 +79,7 @@ async def acquire_onboarding_repo() -> Repository | None:
         WHERE rp.state = $2
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
             AND c.count < $3
         ORDER BY rp.priority ASC, rp."createdAt" ASC
         LIMIT 1
@@ -146,6 +147,7 @@ async def acquire_recurrent_repo() -> Repository | None:
         WHERE NOT (rp.state = ANY($2))
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
             AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
                 CASE WHEN rp.state = 'failed' THEN $4::numeric ELSE $3::numeric END
             )
@@ -209,6 +211,7 @@ async def acquire_pending_reonboard_repo() -> Repository | None:
         WHERE rp.state = $1
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF rp SKIP LOCKED

@@ -330,7 +330,10 @@ increases onboarding throughput; each worker processes one repository at a time.
 the parent has a recent completed run.
 
 **A repository is `auth_required`.** The clone failed with an authentication, 401 or "Repository
-not found" error. No queue picks it again; once the repository is reachable, re-onboard it.
+not found" error. No queue picks it again; once the repository is reachable, re-onboard it. The
+one exception is a GitHub repository the connectors lifecycle flagged as gone
+(`public.repositories."unavailableAt"`): no queue acquires it while flagged, and when the
+lifecycle sees it reachable again it clears the flag and moves the row back to `pending`.
 
 **Maintainers are missing.** Look at the `Maintainer` rows in `git."serviceExecutions"`.
 `no-maintainer-file` waits `MAINTAINER_RETRY_INTERVAL_DAYS` before the next attempt,

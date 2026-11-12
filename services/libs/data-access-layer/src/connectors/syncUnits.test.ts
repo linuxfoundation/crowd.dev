@@ -17,6 +17,7 @@ import {
   hasActiveSyncUnitsForChannelElsewhere,
   listSyncUnitChannelNames,
   listDecommissionedSyncUnitChannels,
+  listSyncUnitChannelNamesByErrorClass,
   listSyncUnitChannelsForIntegration,
   alignSyncUnitChannelName,
   lockSyncUnitChannel,
@@ -323,6 +324,49 @@ describe('listSyncUnitChannelNames', () => {
 
     const names = await listSyncUnitChannelNames(qx, integrationId, 'R_1')
     expect([...names].sort()).toEqual(['https://github.com/org/New', 'https://github.com/org/old'])
+  })
+})
+
+describe('listSyncUnitChannelNamesByErrorClass', () => {
+  test('returns each channel of the integration whose live units last failed with that class', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const otherId = await createIntegration(qx)
+    const failing = async (
+      owner: string,
+      channelName: string,
+      syncName: string,
+      errorClass: string,
+      status = 'active',
+    ) => {
+      const id = await createSyncUnit(qx, owner, { channelName, syncName, status })
+      await qx.result(
+        `UPDATE integration.sync_units SET "lastErrorClass" = $(errorClass) WHERE id = $(id)`,
+        { id, errorClass },
+      )
+    }
+    const notFound = 'provider.repository_not_found'
+    await failing(integrationId, 'https://github.com/org/Gone', 'issues', notFound)
+    await failing(integrationId, 'https://github.com/org/Gone', 'forks', notFound)
+    await failing(integrationId, 'https://github.com/org/also-gone', 'issues', notFound)
+    await failing(integrationId, 'https://github.com/org/broken', 'issues', 'provider.contract')
+    await failing(
+      integrationId,
+      'https://github.com/org/leaving',
+      'issues',
+      notFound,
+      'decommissioned',
+    )
+    await failing(otherId, 'https://github.com/org/elsewhere', 'issues', notFound)
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/org/healthy',
+      syncName: 'issues',
+    })
+
+    await expect(
+      listSyncUnitChannelNamesByErrorClass(qx, integrationId, notFound),
+    ).resolves.toEqual(['https://github.com/org/Gone', 'https://github.com/org/also-gone'])
   })
 })
 

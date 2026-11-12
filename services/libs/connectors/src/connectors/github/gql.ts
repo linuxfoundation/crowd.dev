@@ -6,6 +6,7 @@ import type { ConnectorHttp } from '../../http/client'
 import {
   ProviderAccessDeniedError,
   ProviderContractError,
+  RepositoryNotFoundError,
   RepositoryRenamedError,
 } from '../../http/errors'
 import { isOrgPolicyRefusalMessage } from './interpret'
@@ -34,6 +35,11 @@ function renamedRepositoryUrl(variables: Record<string, unknown>, data: unknown)
   }
   const queried = `https://github.com/${owner}/${repo}`.toLowerCase()
   return url.toLowerCase() === queried ? null : url
+}
+
+function isRepositoryNotFound({ data, errors }: GraphqlEnvelope<unknown>): boolean {
+  const repository = (data as { repository?: unknown } | null | undefined)?.repository
+  return repository === null && (errors?.some((e) => e.type === 'NOT_FOUND') ?? false)
 }
 
 export async function githubGraphql<T>(
@@ -84,6 +90,9 @@ export async function githubGraphql<T>(
       throw new ProviderAccessDeniedError(
         `github access denied: ${policyRefusal.message}`,
       ).withContext(context)
+    }
+    if (!isForbidden && attempt >= NO_DATA_MAX_ATTEMPTS && isRepositoryNotFound(body)) {
+      throw new RepositoryNotFoundError('github repository not found').withContext(context)
     }
     if (isForbidden || attempt >= NO_DATA_MAX_ATTEMPTS) {
       throw new ProviderContractError('github graphql response has no data').withContext(context)
