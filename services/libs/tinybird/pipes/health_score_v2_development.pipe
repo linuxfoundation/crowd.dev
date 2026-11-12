@@ -158,11 +158,21 @@ SQL >
                                 ) AS base
                             LEFT JOIN
                                 (
-                                    SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+                                    SELECT
+                                        if(
+                                            lower(domain(url)) IN ('github.com', 'gitlab.com'),
+                                            lower(url),
+                                            url
+                                        ) AS urlKey,
+                                        argMax(lastCommitAt, updatedAt) AS lastCommitAt
                                     FROM repos
-                                    GROUP BY url
+                                    GROUP BY urlKey
                                 ) AS rc
-                                ON rc.url = base.url
+                                ON rc.urlKey = if(
+                                    lower(domain(base.url)) IN ('github.com', 'gitlab.com'),
+                                    lower(base.url),
+                                    base.url
+                                )
                         ) AS rp
                     LEFT JOIN
                         (
@@ -175,7 +185,11 @@ SQL >
                             FROM
                                 (
                                     SELECT
-                                        r.url AS repoUrl,
+                                        if(
+                                            lower(domain(r.url)) IN ('github.com', 'gitlab.com'),
+                                            lower(r.url),
+                                            r.url
+                                        ) AS repoUrl,
                                         arraySlice(
                                             arraySort(
                                                 x -> - toInt64(x),
@@ -193,10 +207,14 @@ SQL >
                                             WHERE publishedAt IS NOT NULL
                                         ) rd
                                         ON rd.packageId = pr.packageId
-                                    GROUP BY r.url
+                                    GROUP BY repoUrl
                                 )
                         ) AS rs
-                        ON rs.repoUrl = rp.repoUrl
+                        ON rs.repoUrl = if(
+                            lower(domain(rp.repoUrl)) IN ('github.com', 'gitlab.com'),
+                            lower(rp.repoUrl),
+                            rp.repoUrl
+                        )
                     LEFT JOIN
                         (
                             SELECT
