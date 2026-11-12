@@ -60,13 +60,57 @@ DESCRIPTION >
     runtimes in production so the buffer is very conservative, and completes 5 minutes before
     `project_insights_copy.pipe`'s hard `0 3 * * *` deadline (which reads this pipe's output).
 
+NODE project_insights_health_breakdown_gerrit_mirror_repos
+DESCRIPTION >
+    GitHub mirrors of the project's active Gerrit repos, the same match as
+    `project_insights_copy.pipe`'s `project_insights_copy_gerrit_mirror_repos` (lfx-cdp-insights-ops#1127),
+    so the breakdown describes the same repos as the project category scores.
+
+SQL >
+    SELECT gh.url AS repoUrl
+    FROM
+        (
+            SELECT
+                insightsProjectId,
+                url,
+                lower(
+                    replaceRegexpOne(
+                        replaceRegexpOne(extract(url, 'github\\.com/[^/]+/([^/]+)'), '\\.git$', ''),
+                        '^archived-',
+                        ''
+                    )
+                ) AS mirrorKey
+            FROM repositories FINAL
+            WHERE deletedAt IS NULL AND insightsProjectId != '' AND domain(url) = 'github.com'
+        ) AS gh
+    INNER JOIN
+        (
+            SELECT
+                r.insightsProjectId AS insightsProjectId,
+                lower(
+                    replaceAll(replaceRegexpOne(path(r.url), '^/(r/|gerrit/)?', ''), '/', '-')
+                ) AS mirrorKey
+            FROM repositories r FINAL
+            INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+            WHERE
+                r.deletedAt IS NULL
+                AND r.insightsProjectId != ''
+                AND r.enabled = true
+                AND r.excluded = false
+                AND r.archived = false
+                AND i.platform = 'gerrit'
+        ) AS gerrit
+        ON gh.insightsProjectId = gerrit.insightsProjectId
+        AND gh.mirrorKey = gerrit.mirrorKey
+
 NODE project_insights_health_breakdown_raw
 DESCRIPTION >
     Project-level rollup of per-repo Health Score v2 signal detail, via repositories ->
     health_score_v2_signal_detail_ds (same join mechanism and population filter as
     `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node). LEFT JOINed from
     `insightsProjects` so every project is present in the output, even one with zero enabled/
-    non-excluded repos.
+    non-excluded repos. GitHub mirrors of active Gerrit repos contribute only their security signals
+    (lfx-cdp-insights-ops#1127): their maintainer and development signals are NULLed before the rollup.
 
 SQL >
     SELECT
@@ -146,7 +190,69 @@ SQL >
         ON rep.insightsProjectId = ip.id
         AND rep.enabled = true
         AND rep.excluded = false
-    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
+    LEFT JOIN
+        (
+            SELECT
+                repoUrl,
+                if(isMirror, NULL, busFactorScore) AS busFactorScore,
+                if(isMirror, NULL, busFactorAvailable) AS busFactorAvailable,
+                if(isMirror, NULL, busFactorCount) AS busFactorCount,
+                if(isMirror, NULL, orgDiversityScore) AS orgDiversityScore,
+                if(isMirror, NULL, orgDiversityAvailable) AS orgDiversityAvailable,
+                if(isMirror, NULL, orgCount) AS orgCount,
+                if(isMirror, NULL, responsivenessScore) AS responsivenessScore,
+                if(isMirror, NULL, responsivenessAvailable) AS responsivenessAvailable,
+                if(isMirror, NULL, medianPrResponseS) AS medianPrResponseS,
+                if(isMirror, NULL, medianIssueResponseS) AS medianIssueResponseS,
+                if(isMirror, NULL, releaseCadenceScore) AS releaseCadenceScore,
+                if(isMirror, NULL, releaseCadenceAvailable) AS releaseCadenceAvailable,
+                if(isMirror, NULL, daysSinceLatest) AS daysSinceLatest,
+                if(isMirror, NULL, daysBetweenRecent) AS daysBetweenRecent,
+                if(isMirror, NULL, commitActivityScore) AS commitActivityScore,
+                if(isMirror, NULL, commitsLast6m) AS commitsLast6m,
+                if(isMirror, NULL, lastCommitAt) AS lastCommitAt,
+                if(isMirror, NULL, issueResolutionScore) AS issueResolutionScore,
+                if(isMirror, NULL, issueResolutionAvailable) AS issueResolutionAvailable,
+                if(isMirror, NULL, closed12m) AS closed12m,
+                if(isMirror, NULL, opened12m) AS opened12m,
+                if(isMirror, NULL, medianCloseS) AS medianCloseS,
+                if(isMirror, NULL, prMergeScore) AS prMergeScore,
+                if(isMirror, NULL, prMergeAvailable) AS prMergeAvailable,
+                if(isMirror, NULL, merged12m) AS merged12m,
+                if(isMirror, NULL, closedUnmerged12m) AS closedUnmerged12m,
+                if(isMirror, NULL, medianMergeS) AS medianMergeS,
+                isGerrit,
+                isExcluded,
+                openVulnScore,
+                openVulnAvailable,
+                openCriticals,
+                openHighs,
+                openModerates,
+                openUnknowns,
+                scorecardScorePts,
+                scorecardAvailable,
+                scorecardScore,
+                securityPracticesScore,
+                securityPracticesAvailable,
+                securityPolicyEnabled,
+                branchProtectionEnabled,
+                branchProtectionRequiredReviews,
+                branchProtectionRequiresStatusChecks,
+                branchProtectionAllowsForcePush,
+                dependencyHealthScore,
+                dependencyHealthAvailable,
+                vulnerableDeps
+            FROM
+                (
+                    SELECT
+                        *,
+                        repoUrl IN (
+                            SELECT repoUrl FROM project_insights_health_breakdown_gerrit_mirror_repos
+                        ) AS isMirror
+                    FROM health_score_v2_signal_detail_ds
+                )
+        ) AS sd
+        ON sd.repoUrl = rep.url
     GROUP BY ip.id, ip.slug
 
 TYPE COPY

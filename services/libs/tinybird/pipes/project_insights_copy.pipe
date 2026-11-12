@@ -172,7 +172,7 @@ DESCRIPTION >
     A mirror has the same commits but no reviews or merged PRs, because review happens in Gerrit, so it drags the project's
     maintainer and development medians down. Matched by name: the Gerrit project path with `/` replaced
     by `-` (gerrit.onap.org/r/aai/aai-common -> aai-aai-common) against the GitHub repo name, ignoring the
-    `archived-` prefix FD.io uses. Only active Gerrit repos count, so a project that moved from a now
+    `archived-` prefix FD.io uses and a `.git` suffix. Only active Gerrit repos count, so a project that moved from a now
     read-only (archived) Gerrit repo to GitHub keeps its GitHub repo. Gerrit repos are identified by
     `integrations.platform = 'gerrit'`, the same rule as health_score_v2_maintainer.pipe.
 
@@ -184,7 +184,11 @@ SQL >
                 insightsProjectId,
                 url,
                 lower(
-                    replaceRegexpOne(extract(url, 'github\\.com/[^/]+/([^/]+)'), '^archived-', '')
+                    replaceRegexpOne(
+                        replaceRegexpOne(extract(url, 'github\\.com/[^/]+/([^/]+)'), '\\.git$', ''),
+                        '^archived-',
+                        ''
+                    )
                 ) AS mirrorKey
             FROM repositories FINAL
             WHERE deletedAt IS NULL AND insightsProjectId != '' AND domain(url) = 'github.com'
