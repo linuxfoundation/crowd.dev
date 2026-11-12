@@ -139,13 +139,17 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import LfGerritSettingsEmpty from '@/config/integrations/gerrit/components/gerrit-settings-empty.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'LfGerritSettingsDrawer',
+});
 
 const props = defineProps<{
   integration: Integration<GerritSettings> | undefined;
@@ -241,6 +245,23 @@ const cancel = () => {
   isVisible.value = false;
 };
 
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping gerrit repositories');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'gerrit');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
+};
+
 const connect = async () => {
   loading.value = true;
 
@@ -275,26 +296,4 @@ const connect = async () => {
     });
 };
 
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping gerrit repositories');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'gerrit');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGerritSettingsDrawer',
-};
 </script>

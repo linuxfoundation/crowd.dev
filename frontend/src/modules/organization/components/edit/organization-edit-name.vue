@@ -25,6 +25,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 
+defineOptions({
+  name: 'LfOrganizationEditName',
+});
+
 const props = defineProps<{
   organization: Organization,
 }>();
@@ -69,17 +73,11 @@ const update = () => {
     },
   })
     .then(() => {
-      ToastStore.success('Organization name updated successfully!');
+      ToastStore.success('Company name updated successfully!');
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating company');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationEditName',
 };
 </script>
 

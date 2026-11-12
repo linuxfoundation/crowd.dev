@@ -51,8 +51,10 @@ class CommitService(BaseService):
 
     # Common strings to avoid repeated string operations
     _GIT_PLATFORM = "git"
+    _GITHUB_PLATFORM = "github"
     _USERNAME_TYPE = "username"
     _EMAIL_TYPE = "email"
+    _GITHUB_NOREPLY_SUFFIX = "@users.noreply.github.com"
 
     MAX_CHUNK_SIZE = 250
     MAX_ACTIVITY_BODY_CHARS = 10_000
@@ -255,6 +257,13 @@ class CommitService(BaseService):
         name = re.sub(r"(?i)cc:.*", "", name).strip()
         return name.strip()
 
+    def parse_github_noreply_email(self, email: str) -> str | None:
+        if not email.lower().endswith(self._GITHUB_NOREPLY_SUFFIX):
+            return None
+
+        local_part = email[: -len(self._GITHUB_NOREPLY_SUFFIX)]
+        return local_part.split("+", 1)[-1] or None
+
     def create_activity(
         self,
         remote: str,
@@ -324,6 +333,17 @@ class CommitService(BaseService):
                     "verified": False,
                 }
             )
+
+            github_username = self.parse_github_noreply_email(email)
+            if github_username:
+                identities.append(
+                    {
+                        "platform": self._GITHUB_PLATFORM,
+                        "value": github_username,
+                        "type": self._USERNAME_TYPE,
+                        "verified": True,
+                    }
+                )
 
         processed_member["identities"] = identities
 

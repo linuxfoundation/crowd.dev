@@ -83,6 +83,10 @@ import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 import type { Pagination } from '@/shared/types/Pagination';
 import AppLfStatusPill from '../fragments/lf-status-pill.vue';
 
+defineOptions({
+  name: 'AppLfProjectGroupsTable',
+});
+
 defineProps<{
   loading: boolean;
   isFetchingNextPage: boolean;
@@ -104,11 +108,5 @@ const handleRowClick = (row: ProjectGroup) => {
     name: 'adminProjects',
     params: { id: row.id },
   });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfProjectGroupsTable',
 };
 </script>

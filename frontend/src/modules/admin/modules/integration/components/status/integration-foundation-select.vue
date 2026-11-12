@@ -40,7 +40,7 @@ import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import type { Pagination } from '@/shared/types/Pagination';
 import { queryKeys } from '@/shared/queries/keys';
-import { segmentService } from '@/modules/lf/segments/segments.service';
+import { queryProjectGroupsQueryFn } from '@/modules/lf/segments/segments.api.service';
 import type { ProjectGroup } from '@/modules/lf/segments/types/Segments';
 
 defineOptions({
@@ -65,7 +65,7 @@ const model = computed({
 
 const { data, isPending } = useQuery<Pagination<ProjectGroup>>({
   queryKey: queryKeys.projectGroups.integrationFoundations,
-  queryFn: segmentService.queryProjectGroups(() => ({
+  queryFn: queryProjectGroupsQueryFn(() => ({
     limit: 500,
     offset: 0,
     filter: {},

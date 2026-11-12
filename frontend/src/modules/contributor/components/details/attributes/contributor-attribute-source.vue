@@ -9,15 +9,13 @@ import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';
 import { computed } from 'vue';
 import type { AttributeValue } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorAttributeSource',
+});
+
 const props = defineProps<{
   values: Record<string, AttributeValue>,
 }>();
 
 const source = computed(() => getAttributeSourceName(props.values));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorAttributeSource',
-};
 </script>

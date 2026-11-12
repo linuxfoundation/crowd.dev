@@ -3,13 +3,13 @@ import Sequelize, { QueryTypes } from 'sequelize'
 
 import { captureApiChange, integrationConnectAction } from '@crowd/audit-logs'
 import { DEFAULT_TENANT_ID, Error404 } from '@crowd/common'
+import { getEmittingChannelNamesForIntegrations } from '@crowd/data-access-layer/src/connectors'
 import {
   fetchGlobalIntegrations,
   fetchGlobalIntegrationsCount,
   fetchGlobalIntegrationsStatusCount,
   fetchGlobalNotConnectedIntegrations,
   fetchGlobalNotConnectedIntegrationsCount,
-  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getReposGroupedByOrgForIntegrations } from '@crowd/data-access-layer/src/repositories'
@@ -638,17 +638,14 @@ class IntegrationRepository {
       )
       .map((r) => r.id)
 
-    const [allNangoMappings, allReposByOrg] = await Promise.all([
-      getNangoMappingsForIntegrations(qx, nangoIntegrationIds),
+    const [allSyncedRepos, allReposByOrg] = await Promise.all([
+      getEmittingChannelNamesForIntegrations(qx, nangoIntegrationIds),
       getReposGroupedByOrgForIntegrations(qx, githubIntegrationIds),
     ])
 
     return records.map((output) => {
       if (output.platform === PlatformType.GITHUB_NANGO) {
-        const nangoMapping = allNangoMappings[output.id]
-        if (nangoMapping && Object.keys(nangoMapping).length > 0) {
-          output.settings = { ...output.settings, nangoMapping }
-        }
+        output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
       }
 
       if (
@@ -689,13 +686,9 @@ class IntegrationRepository {
 
     const output = record.get({ plain: true })
 
-    // For github-nango integrations, populate settings.nangoMapping from dedicated table
     if (output.platform === PlatformType.GITHUB_NANGO) {
-      const allNangoMappings = await getNangoMappingsForIntegrations(qx, [output.id])
-      const nangoMapping = allNangoMappings[output.id] || {}
-      if (Object.keys(nangoMapping).length > 0) {
-        output.settings = { ...output.settings, nangoMapping }
-      }
+      const allSyncedRepos = await getEmittingChannelNamesForIntegrations(qx, [output.id])
+      output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
     }
 
     // For both github and github-nango, populate orgs[].repos from repositories table

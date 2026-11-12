@@ -1,4 +1,4 @@
-import { Error404 } from '@crowd/common'
+import { Error404, setAttributesDefaultValues } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -9,7 +9,8 @@ import {
   pgpQx,
 } from '@crowd/data-access-layer'
 import {
-  fetchMembersForEnrichment,
+  fetchMembersDueForRefresh,
+  fetchNewMembersForEnrichment,
   getIdentitiesExistInOtherMembers as getIdentitiesExistInOthers,
   updateMemberAttributes,
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
@@ -24,6 +25,8 @@ import {
 
 import { EnrichmentSourceServiceFactory } from '../factory'
 import { svc } from '../service'
+import { NEW_MEMBERS_SHARE } from '../utils/config'
+import { getPriorityArray } from './enrichment'
 
 export async function getEnrichableMembers(
   limit: number,
@@ -46,7 +49,23 @@ export async function getEnrichableMembers(
     }
   })
 
-  return fetchMembersForEnrichment(svc.postgres.reader, limit, sourceInputs)
+  const db = svc.postgres.reader
+  const newMembersLimit = Math.round(limit * NEW_MEMBERS_SHARE)
+
+  const newMembers = await fetchNewMembersForEnrichment(db, limit, sourceInputs)
+  const refreshMembers = await fetchMembersDueForRefresh(
+    db,
+    limit - Math.min(newMembers.length, newMembersLimit),
+    sourceInputs,
+  )
+  const selectedNewMembers = newMembers.slice(0, limit - refreshMembers.length)
+
+  svc.log.info(
+    { newMembers: selectedNewMembers.length, refreshMembers: refreshMembers.length },
+    'Selected members for enrichment',
+  )
+
+  return [...selectedNewMembers, ...refreshMembers]
 }
 
 export async function getMemberById(memberId: string): Promise<boolean> {
@@ -122,7 +141,12 @@ export async function updateMemberWithEnrichmentData(
       }
     }
     if (attributes) {
-      await updateMemberAttributes(tx, memberId, attributes)
+      const priorities = await getPriorityArray()
+      await updateMemberAttributes(
+        tx,
+        memberId,
+        await setAttributesDefaultValues(attributes, priorities),
+      )
     }
   })
 }

@@ -17,6 +17,8 @@ export interface IParsedOnboardingRequest {
   projectName: string | null
   declaredLf: boolean | null
   asksAboutHierarchy: boolean
+  suggestedSlug?: string | null
+  confidence?: number | null
 }
 
 export type ParseOnboardingRequestResult =
@@ -31,6 +33,8 @@ interface IRawParsedRequest {
   projectName: string | null
   declaredLf: boolean | null
   asksAboutHierarchy: boolean
+  suggestedSlug?: unknown
+  confidence?: unknown
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -66,9 +70,11 @@ Fields:
 - projectName: the name of the project the repositories belong to, as stated or clearly implied by the requester, or null if unclear.
 - declaredLf: true only if the requester explicitly says the project belongs to the Linux Foundation or an LF foundation, false only if they explicitly say it does not, otherwise null.
 - asksAboutHierarchy: true if the requester asks about project structure, parent projects, project groups or where the project should be placed, otherwise false.
+- suggestedSlug: the URL slug the requester proposes for the project (for example "apache-hugegraph"), or null if they propose none.
+- confidence: a number from 0 to 1 for how sure you are that the repositories in repoUrls form one project named projectName. Use 1 when the request states it plainly, lower it when the name is implied, the repositories have different owners, or the request mixes several projects; 0 when repoUrls is empty or projectName is null.
 
 Respond with ONLY a JSON object, no other text, matching exactly this shape:
-{"repoUrls": string[], "linkUrls": string[], "projectName": string | null, "declaredLf": boolean | null, "asksAboutHierarchy": boolean}`
+{"repoUrls": string[], "linkUrls": string[], "projectName": string | null, "declaredLf": boolean | null, "asksAboutHierarchy": boolean, "suggestedSlug": string | null, "confidence": number}`
 }
 
 const URL_TOKEN_PATTERN =
@@ -220,6 +226,20 @@ function normalizeProjectName(projectName: string | null): string | null {
   return trimmed ? trimmed : null
 }
 
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+function normalizeSuggestedSlug(slug: unknown): string | null {
+  const trimmed = typeof slug === 'string' ? slug.trim().toLowerCase() : ''
+  return SLUG_PATTERN.test(trimmed) ? trimmed : null
+}
+
+function normalizeConfidence(confidence: unknown): number | null {
+  if (typeof confidence !== 'number' || !(confidence >= 0 && confidence <= 1)) {
+    return null
+  }
+  return Math.round(confidence * 100) / 100
+}
+
 export async function parseOnboardingRequest(
   text: string,
   queryLlm: OnboardingRequestLlm,
@@ -276,6 +296,8 @@ export async function parseOnboardingRequest(
       projectName: normalizeProjectName(parsed.projectName),
       declaredLf: parsed.declaredLf,
       asksAboutHierarchy: parsed.asksAboutHierarchy,
+      suggestedSlug: normalizeSuggestedSlug(parsed.suggestedSlug),
+      confidence: normalizeConfidence(parsed.confidence),
     },
   }
 }

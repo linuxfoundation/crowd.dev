@@ -12,7 +12,6 @@
       class="!border-t-0 !shadow-none"
       @reload="emit('reload')"
     >
-      <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
       <template #actions>
         <lf-button
           type="secondary-ghost-light"
@@ -32,6 +31,10 @@ import AppOrganizationMergeSuggestions from '@/modules/organization/components/o
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
+
+defineOptions({
+  name: 'AppOrganizationMergeSuggestionsDialog',
+});
 
 const props = withDefaults(
   defineProps<{
@@ -57,10 +60,4 @@ const isModalOpen = computed<boolean>({
     emit('update:modelValue', false);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationMergeSuggestionsDialog',
-};
 </script>

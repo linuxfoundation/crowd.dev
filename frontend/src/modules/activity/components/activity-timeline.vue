@@ -235,7 +235,11 @@ import type { Contributor } from '@/modules/contributor/types/Contributor';
 import type { Organization } from '@/modules/organization/types/Organization';
 import type { Pagination } from '@/shared/types/Pagination';
 import type { ApiFilter } from '@/shared/modules/filters/types/FilterQuery';
-import { ActivityService } from '../activity-service';
+import { ActivityService } from '../services/activity.api.service';
+
+defineOptions({
+  name: 'AppMemberViewActivities',
+});
 
 const props = defineProps({
   entityType: {
@@ -429,16 +433,9 @@ onMounted(async () => {
   await fetchActivities();
 });
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   fetchActivities,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberViewActivities',
-};
 </script>
 
 <style lang="scss">

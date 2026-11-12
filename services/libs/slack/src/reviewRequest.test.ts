@@ -143,6 +143,49 @@ describe('buildReviewRequestBlocks', () => {
     )
   })
 
+  it('names a project group after the requested project instead of the organization page', () => {
+    const organization = { owner: 'apache', name: 'Apache <HugeGraph>', repositories: 5 }
+    const blocks = buildReviewRequestBlocks({ ...card, organization })
+    const rendered = JSON.stringify(blocks)
+
+    expect(rendered).toContain('*Apache &lt;HugeGraph&gt;* · 5 repositories')
+    expect(rendered).not.toContain('github.com/apache')
+    expect(actionElements(blocks)[0]).toMatchObject({
+      text: { text: 'Add 5 repos to Kubernetes & co' },
+      confirm: {
+        text: {
+          text: "the 5 repositories of *Apache &lt;HugeGraph&gt;* will be added to Kubernetes &amp; co's GitHub connection.",
+        },
+      },
+    })
+    expect(buildReviewRequestText({ ...card, organization })).toBe(
+      'Review needed — Apache &lt;HugeGraph&gt; (5 repositories)',
+    )
+  })
+
+  it('lists the repositories of a project group and its grouping confidence', () => {
+    const repoUrls = Array.from({ length: 12 }, (_, i) => `https://github.com/apache/repo-${i}`)
+    const organization = {
+      owner: 'apache',
+      name: 'Apache HugeGraph',
+      repositories: 12,
+      repoUrls,
+      confidence: 0.857,
+    }
+    const rendered = JSON.stringify(buildReviewRequestBlocks({ ...card, organization }))
+
+    expect(rendered).toContain('• apache/repo-0\\n• apache/repo-1')
+    expect(rendered).toContain('• apache/repo-9\\n… and 2 more')
+    expect(rendered).not.toContain('apache/repo-10')
+    expect(rendered).toContain('Grouping confidence: *86%*')
+
+    const plain = JSON.stringify(
+      buildReviewRequestBlocks({ ...card, organization: { owner: 'kubernetes', repositories: 3 } }),
+    )
+    expect(plain).not.toContain('Grouping confidence')
+    expect(plain).not.toContain('• ')
+  })
+
   it('speaks in the singular when only one repository of the organization is on the card', () => {
     const organization = { owner: 'kubernetes', repositories: 1 }
     const blocks = buildReviewRequestBlocks({ ...card, organization })

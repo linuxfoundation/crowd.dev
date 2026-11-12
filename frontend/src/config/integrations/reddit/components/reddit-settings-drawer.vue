@@ -97,27 +97,29 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { RedditSettings, RedditSubredditForm } from '@/config/integrations/reddit/types/RedditSettings';
 import {
-  defineEmits,
-  defineProps,
   computed,
   ref,
   watch,
 } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
-import { useStore } from 'vuex';
 import Nango from '@nangohq/frontend';
 import isEqual from 'lodash/isEqual';
 import config from '@/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import reddit from '@/config/integrations/reddit/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfRedditSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -128,7 +130,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue']);
 
-const store = useStore();
+const { onboardReddit } = useIntegrationStore();
 
 const subreddits: RedditSubredditForm[] = props.integration?.settings?.subreddits.map((i) => ({
   value: i,
@@ -217,7 +219,7 @@ const handleSubredditValidation = async (index: number) => {
 };
 
 const callOnboard = useThrottleFn(async () => {
-  await store.dispatch('integration/doRedditOnboard', {
+  await onboardReddit({
     subreddits: model.value.map((i) => i.value),
     segmentId: props.segmentId,
     grandparentId: props.grandparentId,
@@ -256,12 +258,6 @@ watch(isVisible, (newValue, oldValue) => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfRedditSettingsDrawer',
-};
 </script>
 
 <style lang="scss">

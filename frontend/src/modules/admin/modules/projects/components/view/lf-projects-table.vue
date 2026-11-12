@@ -90,7 +90,7 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import AppLfProjectsDropdown from '@/modules/admin/modules/projects/components/lf-projects-dropdown.vue';
 import AppLfSubProjectsDropdown from '@/modules/admin/modules/projects/components/lf-sub-projects-dropdown.vue';
 import { useRoute } from 'vue-router';
@@ -102,29 +102,25 @@ import LfProjectStatusPill from '@/modules/admin/modules/projects/components/fra
 import { computed } from 'vue';
 import config from '@/config';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
+import type { Project } from '@/modules/lf/segments/types/Segments';
+import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import AppLfProjectIntegrationColumn from '../fragments/lf-project-integration-column.vue';
 
-const props = defineProps({
-  project: {
-    type: Object,
-    required: true,
-  },
-  progress: {
-    type: Array,
-    required: false,
-    default: () => [],
-  },
-  progressError: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({ name: 'AppLfProjectsTable' });
+
+const props = withDefaults(defineProps<{
+  project: Project;
+  progress?: IntegrationProgress[] | null;
+  progressError?: boolean;
+}>(), {
+  progress: () => [],
+  progressError: false,
 });
 
-const emit = defineEmits([
-  'onEditProject',
-  'onEditSubProject',
-  'onAddSubProject',
-]);
+const emit = defineEmits<{(e: 'onEditProject', id: string): void;
+  (e: 'onEditSubProject', id: string): void;
+  (e: 'onAddSubProject', project: Project): void;
+}>();
 
 const route = useRoute();
 
@@ -135,14 +131,8 @@ const userId = computed(() => authStore.user?.id);
 const teamUserIds = computed(() => config.permissions.teamUserIds);
 const env = computed(() => config.env);
 
-const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value));
+const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value as string));
 
-</script>
-
-<script>
-export default {
-  name: 'AppLfProjectsTable',
-};
 </script>
 
 <style lang="scss">

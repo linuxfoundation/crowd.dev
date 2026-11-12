@@ -18,11 +18,9 @@
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const { logout } = useAuthStore();
-</script>
-
-<script lang="ts">
-export default {
+defineOptions({
   name: 'AuthEmptyPermissionsPage',
-};
+});
+
+const { logout } = useAuthStore();
 </script>

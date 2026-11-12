@@ -10,6 +10,7 @@ export enum DataSourceName {
   TNC_COURSES = 'courses',
   MEETINGS_MEETING_ATTENDANCE = 'meeting-attendance',
   COMMITTEES_COMMITTEES = 'committees',
+  LUMA_EVENT_REGISTRATIONS = 'luma-event-registrations',
 }
 
 export interface DataSource {

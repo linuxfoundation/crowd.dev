@@ -24,8 +24,8 @@ const {
   },
 })
 
-export async function enrichMemberWithLFAuth0(token: string, member: IMember): Promise<void> {
-  const enriched = await getEnrichmentLFAuth0(token, member)
+export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
+  const enriched = await getEnrichmentLFAuth0(member)
 
   if (enriched) {
     console.log(`Member ${member.id} found in the lf auth0 enrichment db!`)
@@ -39,6 +39,18 @@ export async function enrichMemberWithLFAuth0(token: string, member: IMember): P
         avatarUrl: {
           default: enriched.picture,
           lfid: enriched.picture,
+        },
+      }
+    }
+
+    const profileCountry = enriched.user_metadata?.country
+    if (profileCountry) {
+      normalized.attributes = {
+        ...member.attributes,
+        ...normalized.attributes,
+        [MemberAttributeName.COUNTRY]: {
+          ...member.attributes?.[MemberAttributeName.COUNTRY],
+          [PlatformType.LFID]: profileCountry,
         },
       }
     }

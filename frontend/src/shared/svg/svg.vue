@@ -13,30 +13,21 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { ref } from 'vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
-export default {
-  name: 'LfSvg',
-  props: {
-    name: {
-      type: String,
-      required: true,
-    },
-    color: {
-      type: String,
-      default: '#9CA3AF',
-    },
-    hoverColor: {
-      type: String,
-      default: null,
-    },
-  },
-  data() {
-    return {
-      isHovered: false,
-      version: dateHelper().format('x'),
-    };
-  },
-};
+defineOptions({ name: 'LfSvg' });
+
+withDefaults(defineProps<{
+  name: string;
+  color?: string;
+  hoverColor?: string | null;
+}>(), {
+  color: '#9CA3AF',
+  hoverColor: null,
+});
+
+const isHovered = ref(false);
+const version = dateHelper().format('x');
 </script>

@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { personalEmailCondition } from '../../../core/personalEmail'
+
 // Main: FIVETRAN_INGEST.SFDC_CONNECTOR_PROD_PLATFORM.COMMUNITY__C
 // Joins:
 // - ANALYTICS.SILVER_DIM.COMMITTEE (committee metadata + project slug)
@@ -62,7 +64,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     ON LOWER(c.CONTACTEMAIL__C) = LOWER(su.EMAIL)
   LEFT JOIN org_accounts org
     ON c.ACCOUNT__C = org.account_id
-  WHERE c.LASTMODIFIEDDATE IS NOT NULL`
+  WHERE c.LASTMODIFIEDDATE IS NOT NULL
+    AND ${personalEmailCondition('c.CONTACTEMAIL__C')}`
 
   // Limit to a single project in non-prod to avoid exporting all project data
   if (!IS_PROD_ENV) {

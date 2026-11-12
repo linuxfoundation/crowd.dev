@@ -5,7 +5,7 @@
         <app-lf-page-header text-class="text-sm text-primary-600 mb-2.5" />
         <div class="flex items-center justify-between">
           <div class="flex items-center">
-            <h4>Organizations</h4>
+            <h4>Companies</h4>
           </div>
           <div class="flex items-center">
             <el-tooltip
@@ -47,12 +47,12 @@
               size="medium"
               @click="isOrganizationCreateModalOpen = true"
             >
-              Add organization
+              Add company
             </lf-button>
           </div>
         </div>
         <div class="text-xs text-gray-500">
-          List of all the organizations that relate to {{ selectedProjectGroup?.name }} projects
+          List of all the companies that relate to {{ selectedProjectGroup?.name }} projects
         </div>
       </div>
 
@@ -73,7 +73,10 @@
       />
       <app-organization-list-table
         v-model:pagination="pagination"
-        :has-organizations="organizationStore.totalOrganizations > 0"
+        :has-organizations="organizationsCount > 0"
+        :organizations="organizationsData?.rows ?? []"
+        :total-organizations="organizationsCount"
+        :saved-filter-body="savedFilterBody"
         :is-page-loading="loading"
         :is-table-loading="tableLoading"
         @update:pagination="onPaginationChange"
@@ -92,7 +95,9 @@ import LfOrganizationAdd from '@/modules/organization/components/edit/organizati
 import AppOrganizationListTable from '@/modules/organization/components/list/organization-list-table.vue';
 import { organizationFilters, organizationSearchFilter } from '@/modules/organization/config/filters/main';
 import { organizationSavedViews } from '@/modules/organization/config/saved-views/main';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+import { useOrganizationsQuery } from '@/modules/organization/queries/useOrganizationsQuery';
+import type { OrganizationsListParams } from '@/modules/organization/queries/useOrganizationsQuery';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import AppPageWrapper from '@/shared/layout/page-wrapper.vue';
 import LfFilter from '@/shared/modules/filters/components/Filter.vue';
@@ -137,7 +142,7 @@ const { search: initialSearch, filter: initialFilter, orderBy: initialOrderBy } 
   organizationSavedViews,
 );
 
-const queryParams = ref({
+const queryParams = ref<OrganizationsListParams>({
   search: initialSearch || '',
   filter: initialFilter,
   offset: 0,
@@ -146,34 +151,16 @@ const queryParams = ref({
   segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
 });
 
-// Create a computed query key for organizations
-const organizationsQueryKey = computed(() => queryKeys.organizations.list({
-  projectGroupId: selectedProjectGroup.value?.id,
-  search: queryParams.value.search,
-  filter: queryParams.value.filter,
-  offset: queryParams.value.offset,
-  limit: queryParams.value.limit,
-  orderBy: queryParams.value.orderBy,
-  segments: queryParams.value.segments,
-}));
-
-// Query for organizations list with caching
 const {
   data: organizationsData,
   isLoading: organizationsLoading,
   isFetching: organizationsFetching,
-} = useQuery({
-  queryKey: organizationsQueryKey,
-  queryFn: () => OrganizationService.query({
-    search: queryParams.value.search,
-    filter: queryParams.value.filter,
-    offset: queryParams.value.offset,
-    limit: queryParams.value.limit,
-    orderBy: queryParams.value.orderBy,
-    segments: queryParams.value.segments,
-  }),
-  enabled: !!selectedProjectGroup.value?.id,
-});
+  isPlaceholderData: organizationsIsPlaceholder,
+} = useOrganizationsQuery(
+  queryParams,
+  computed(() => selectedProjectGroup.value?.id),
+  !!selectedProjectGroup.value?.id,
+);
 
 // Create a computed query key for merge suggestions
 const mergeSuggestionsQueryKey = computed(() => queryKeys.organizations.mergeSuggestionsCount(selectedProjectGroup.value?.id));
@@ -187,12 +174,11 @@ const {
   enabled: !!selectedProjectGroup.value?.id,
 });
 
-// Watch for organizations data changes and update the store
+const savedFilterBody = ref<Omit<OrganizationsListParams, 'segments'> | Record<string, never>>({});
+
 watch(organizationsData, (newData) => {
-  if (newData) {
-    organizationStore.organizations = newData.rows || [];
-    organizationStore.totalOrganizations = newData.count || 0;
-    organizationStore.savedFilterBody = {
+  if (newData && !organizationsIsPlaceholder.value) {
+    savedFilterBody.value = {
       search: queryParams.value.search,
       filter: queryParams.value.filter,
       offset: queryParams.value.offset,
@@ -203,6 +189,7 @@ watch(organizationsData, (newData) => {
 }, { immediate: true });
 
 // Computed properties derived from queries
+const organizationsCount = computed(() => organizationsData.value?.count || 0);
 const organizationsToMergeCount = computed(() => mergeSuggestionsData.value?.count || 0);
 const loading = computed(() => organizationsLoading.value);
 const tableLoading = computed(() => organizationsFetching.value);

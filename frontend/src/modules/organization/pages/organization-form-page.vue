@@ -12,15 +12,15 @@
             class="text-gray-600 p-0"
             @click="onCancel"
           >
-            Organizations
+            Companies
           </lf-button>
           <div class="flex justify-between">
             <div class="flex items-center gap-4 mt-4 mb-6">
               <h4>
                 {{
                   isEditPage
-                    ? 'Edit organization'
-                    : 'New organization'
+                    ? 'Edit company'
+                    : 'New company'
                 }}
               </h4>
               <div
@@ -64,8 +64,8 @@
                 >
                   {{
                     isEditPage
-                      ? 'Update organization'
-                      : 'Add organization'
+                      ? 'Update company'
+                      : 'Add company'
                   }}
                 </lf-button>
               </div>
@@ -100,7 +100,6 @@
           >
             <app-organization-form-details
               v-model="formModel"
-              :fields="fields"
             />
             <el-divider
               class="!mb-6 !mt-8 !border-gray-200"
@@ -147,19 +146,19 @@
 
 <script setup>
 import {
-  computed, h, onMounted, onUnmounted, reactive, ref, watch,
+  computed, h, onMounted, onUnmounted, ref, watch,
 } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import isEqual from 'lodash/isEqual';
-import { OrganizationModel } from '@/modules/organization/organization-model';
-import { FormSchema } from '@/shared/form/form-schema';
+import useVuelidate from '@vuelidate/core';
+import { integer, required } from '@vuelidate/validators';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import AppOrganizationFormIdentities from '@/modules/organization/components/form/organization-form-identities.vue';
 import AppOrganizationFormDetails from '@/modules/organization/components/form/organization-form-details.vue';
 import AppOrganizationFormAttributes from '@/modules/organization/components/form/organization-form-attributes.vue';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import Errors from '@/shared/error/errors';
 
 import { ToastStore } from '@/shared/message/notification';
@@ -194,33 +193,32 @@ const ArrowPrevIcon = h(
   [],
 );
 
-const { fields } = OrganizationModel;
-const formSchema = new FormSchema([
-  fields.name,
-  fields.displayName,
-  fields.description,
-  fields.location,
-  fields.employees,
-  fields.revenueRange,
-  fields.emails,
-  fields.identities,
-  fields.type,
-  fields.size,
-  fields.industry,
-  fields.founded,
-  fields.averageEmployeeTenure,
-  fields.averageTenureByLevel,
-  fields.averageTenureByRole,
-  fields.employeeChurnRate,
-  fields.employeeCountByCountry,
-  fields.employeeCountByMonth,
-  fields.employeeGrowthRate,
-  fields.gicsSector,
-  fields.grossAdditionsByMonth,
-  fields.grossDeparturesByMonth,
-  fields.immediateParent,
-  fields.ultimateParent,
-]);
+const FORM_FIELDS = [
+  'name',
+  'displayName',
+  'description',
+  'location',
+  'employees',
+  'revenueRange',
+  'emails',
+  'identities',
+  'organizationType',
+  'size',
+  'industry',
+  'founded',
+  'averageEmployeeTenure',
+  'averageTenureByLevel',
+  'averageTenureByRole',
+  'employeeChurnRate',
+  'employeeCountByCountry',
+  'employeeCountByMonth',
+  'employeeGrowthRate',
+  'gicsSector',
+  'grossAdditionsByMonth',
+  'grossDeparturesByMonth',
+  'immediateParent',
+  'ultimateParent',
+];
 
 const { trackEvent } = useProductTracking();
 
@@ -251,21 +249,23 @@ const selectedSegments = computed(() => {
 });
 
 function getInitialModel(record) {
-  return JSON.parse(
-    JSON.stringify(
-      formSchema.initialValues({
-        ...(record || {}),
-        name: record ? record.name : '',
-        displayName: record ? record.displayName || record.name : '',
-        joinedAt: record ? record.joinedAt : '',
-        identities: record
-          ? [
-            ...record.identities,
-          ]
-          : [],
-      }),
-    ),
-  );
+  const source = {
+    ...(record || {}),
+    name: record ? record.name : '',
+    displayName: record ? record.displayName || record.name : '',
+    identities: record ? [...record.identities] : [],
+  };
+  const model = {};
+
+  FORM_FIELDS.forEach((key) => {
+    const value = key === 'emails' ? source.emails || [] : source[key];
+
+    if (value) {
+      model[key] = value;
+    }
+  });
+
+  return JSON.parse(JSON.stringify(model));
 }
 
 const record = ref(null);
@@ -276,11 +276,19 @@ const isPageLoading = ref(true);
 const isFormSubmitting = ref(false);
 const wasFormSubmittedSuccessfully = ref(false);
 
-const rules = reactive(formSchema.rules());
+const rules = {
+  displayName: [{ required: true, message: 'This field is required' }],
+};
+// $scope: false keeps child vuelidate instances (email rows) out of the Save button's validity.
+const $v = useVuelidate(
+  { displayName: { required }, founded: { integer } },
+  formModel,
+  { $scope: false },
+);
 
 // UI Validations
 const isEditPage = computed(() => !!route.params.id);
-const isFormValid = computed(() => formSchema.isValidSync(formModel.value));
+const isFormValid = computed(() => !$v.value.$invalid);
 
 const segments = computed(() => {
   if (!isEditPage.value) {
@@ -450,7 +458,7 @@ async function onSubmit() {
 
     try {
       await OrganizationService.update(payload.id, payload.values);
-      ToastStore.success('Organization successfully saved');
+      ToastStore.success('Company successfully saved');
     } catch (error) {
       if (error.response.status === 409) {
         ToastStore.error(
@@ -469,12 +477,12 @@ async function onSubmit() {
                     ToastStore.closeAll();
                   },
                 },
-                'Merge organizations',
+                'Merge companies',
               ),
             ],
           ),
           {
-            title: 'Organization was not updated because the website already exists in another organization.',
+            title: 'Company was not updated because the website already exists in another company.',
           },
         );
       } else {
@@ -494,9 +502,9 @@ async function onSubmit() {
     try {
       await OrganizationService.create(payload);
 
-      ToastStore.success('Organization successfully saved');
+      ToastStore.success('Company successfully saved');
     } catch (error) {
-      ToastStore.error('There was an error creating the organization');
+      ToastStore.error('There was an error creating the company');
       Errors.handle(error);
     }
   }

@@ -15,26 +15,19 @@
     <span v-else class="block">Open link</span></a>
 </template>
 
-<script>
+<script setup lang="ts">
+import { computed } from 'vue';
 import { lfIdentities } from '@/config/identities';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import type { Activity } from '@/shared/modules/activity/types/Activity';
 
-export default {
-  name: 'AppActivityLink',
-  components: {
-    LfIcon,
-  },
-  props: {
-    activity: {
-      type: Object,
-      required: false,
-      default: () => ({}),
-    },
-  },
-  computed: {
-    platform() {
-      return lfIdentities[this.activity.platform];
-    },
-  },
-};
+defineOptions({ name: 'AppActivityLink' });
+
+const props = withDefaults(defineProps<{
+  activity?: Activity;
+}>(), {
+  activity: () => ({} as Activity),
+});
+
+const platform = computed(() => lfIdentities[props.activity.platform]);
 </script>

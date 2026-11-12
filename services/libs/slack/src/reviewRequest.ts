@@ -31,15 +31,30 @@ export interface IReviewRepoContext {
 
 export interface IReviewOrganization {
   owner: string
+  name?: string
   repositories: number
+  repoUrls?: string[]
+  confidence?: number | null
 }
 
 export function organizationLabel(owner: string): string {
   return `github.com/${owner}`
 }
 
+export function reviewGroupLabel({
+  owner,
+  name,
+}: Pick<IReviewOrganization, 'owner' | 'name'>): string {
+  return name ?? organizationLabel(owner)
+}
+
 export function repositoriesWord(count: number): string {
   return count === 1 ? 'repository' : 'repositories'
+}
+
+export function listedWithRemainder<T>(items: T[], max: number): { listed: T[]; more: number } {
+  const listed = items.slice(0, max)
+  return { listed, more: items.length - listed.length }
 }
 
 export interface IReviewRequestCard {
@@ -94,12 +109,12 @@ function countRepositories(repositories: number): string {
   return `${repositories} ${repositoriesWord(repositories)}`
 }
 
-export function organizationSubjectText({ owner, repositories }: IReviewOrganization): string {
-  return `${organizationLabel(owner)} (${countRepositories(repositories)})`
+export function organizationSubjectText(organization: IReviewOrganization): string {
+  return `${reviewGroupLabel(organization)} (${countRepositories(organization.repositories)})`
 }
 
-export function organizationHeading({ owner, repositories }: IReviewOrganization): string {
-  return `*${escapeSlackText(organizationLabel(owner))}* · ${countRepositories(repositories)}`
+export function organizationHeading(organization: IReviewOrganization): string {
+  return `*${escapeSlackText(reviewGroupLabel(organization))}* · ${countRepositories(organization.repositories)}`
 }
 
 function reposPhrase(card: IReviewRequestCard): string {
@@ -107,7 +122,10 @@ function reposPhrase(card: IReviewRequestCard): string {
   if (!organization) {
     return formatRepoUrl(card.repoUrl)
   }
-  return `the ${countRepositories(organization.repositories)} of ${formatRepoUrl(`https://github.com/${organization.owner}`)}`
+  const subject = organization.name
+    ? `*${escapeSlackText(organization.name)}*`
+    : formatRepoUrl(`https://github.com/${organization.owner}`)
+  return `the ${countRepositories(organization.repositories)} of ${subject}`
 }
 
 function reposWord(card: IReviewRequestCard): string {
@@ -173,12 +191,44 @@ function evaluationNoteBlock(note: string | null): KnownBlock[] {
 }
 
 function headingLines(card: IReviewRequestCard): string[] {
-  return card.organization
-    ? [
-        organizationHeading(card.organization),
-        escapeSlackText(`https://github.com/${card.organization.owner}`),
-      ]
-    : [`*${escapeSlackText(card.repoName)}*`, escapeSlackText(card.repoUrl)]
+  if (!card.organization) {
+    return [`*${escapeSlackText(card.repoName)}*`, escapeSlackText(card.repoUrl)]
+  }
+  const page = card.organization.name
+    ? card.repoUrl
+    : `https://github.com/${card.organization.owner}`
+  return [organizationHeading(card.organization), escapeSlackText(page)]
+}
+
+const MAX_LISTED_GROUP_REPOSITORIES = 10
+
+function groupRepositoriesBlock(
+  organization: IReviewOrganization | null | undefined,
+): KnownBlock[] {
+  const repoUrls = organization?.repoUrls ?? []
+  if (repoUrls.length === 0) {
+    return []
+  }
+  const { listed, more } = listedWithRemainder(repoUrls, MAX_LISTED_GROUP_REPOSITORIES)
+  const repoLines = listed.map(
+    (repoUrl) => `• ${escapeSlackText(githubRepoPath(repoUrl) ?? repoUrl)}`,
+  )
+  const lines = more > 0 ? [...repoLines, `… and ${more} more`] : repoLines
+  return [{ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } }]
+}
+
+function groupingConfidenceBlock(
+  organization: IReviewOrganization | null | undefined,
+): KnownBlock[] {
+  const confidence = organization?.confidence
+  if (confidence === null || confidence === undefined) {
+    return []
+  }
+  return [
+    contextBlock(
+      `Grouping confidence: *${Math.round(confidence * 100)}%* (how sure the request parser is that these repositories form one project)`,
+    ),
+  ]
 }
 
 function summaryBlocks(card: IReviewRequestCard): KnownBlock[] {
@@ -188,6 +238,8 @@ function summaryBlocks(card: IReviewRequestCard): KnownBlock[] {
   }
   return [
     { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+    ...groupRepositoriesBlock(card.organization),
+    ...groupingConfidenceBlock(card.organization),
     ...repoContextBlock(card.organization ? null : card.repoContext),
     {
       type: 'section',

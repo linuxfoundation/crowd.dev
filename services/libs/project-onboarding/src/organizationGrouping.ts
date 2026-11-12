@@ -2,6 +2,10 @@ import type { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-cat
 
 export type OrganizationGroupRow = Pick<IDbProjectCatalog, 'id' | 'sourceUrl' | 'requestHints'>
 
+export type IRequestGroup =
+  | { kind: 'organization'; owner: string }
+  | { kind: 'project'; name: string }
+
 const REVIEW_PROPOSAL_FIELDS = [
   'classificationKind',
   'proposedAction',
@@ -31,7 +35,22 @@ export function organizationOf(row: Pick<IDbProjectCatalog, 'requestHints'>): st
   return row.requestHints?.organization ?? null
 }
 
-export function organizationGroupKey(row: OrganizationGroupRow): string | null {
+export function requestGroupOf(row: Pick<IDbProjectCatalog, 'requestHints'>): IRequestGroup | null {
   const owner = organizationOf(row)
-  return owner && row.sourceUrl ? `${row.sourceUrl}|${owner}` : null
+  if (owner) {
+    return { kind: 'organization', owner }
+  }
+  const name = row.requestHints?.project?.trim()
+  return name ? { kind: 'project', name } : null
+}
+
+export function requestGroupId(group: IRequestGroup): string {
+  return group.kind === 'organization'
+    ? `org:${group.owner}`
+    : `project:${group.name.toLowerCase()}`
+}
+
+export function requestGroupKey(row: OrganizationGroupRow): string | null {
+  const group = requestGroupOf(row)
+  return group && row.sourceUrl ? `${row.sourceUrl}|${requestGroupId(group)}` : null
 }

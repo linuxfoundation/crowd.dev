@@ -4,11 +4,7 @@ import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
-import {
-  ISyncDiffSummaryUpsert,
-  getUnitIdsWithSummary,
-  upsertSyncDiffSummary,
-} from './shadowDiffSummary'
+import { ISyncDiffSummaryUpsert, upsertSyncDiffSummary } from './shadowDiffSummary'
 
 const test = withQx(base)
 
@@ -116,41 +112,5 @@ describe('upsertSyncDiffSummary', () => {
       { unitId },
     )
     expect(rows).toHaveLength(2)
-  })
-})
-
-describe('getUnitIdsWithSummary', () => {
-  test('returns only the unit ids that already have a summary for the given day', async ({
-    qx,
-  }) => {
-    const integrationId = await createIntegration(qx)
-    const summarizedUnitId = await createSyncUnit(qx, integrationId)
-    const pendingUnitId = await createSyncUnit(qx, integrationId)
-
-    await upsertSyncDiffSummary(
-      qx,
-      baseSummary({ unitId: summarizedUnitId, integrationId, day: '2026-09-17' }),
-    )
-
-    const result = await getUnitIdsWithSummary(qx, [summarizedUnitId, pendingUnitId], '2026-09-17')
-
-    expect(result).toEqual(new Set([summarizedUnitId]))
-  })
-
-  test('ignores summaries from other days', async ({ qx }) => {
-    const integrationId = await createIntegration(qx)
-    const unitId = await createSyncUnit(qx, integrationId)
-
-    await upsertSyncDiffSummary(qx, baseSummary({ unitId, integrationId, day: '2026-09-16' }))
-
-    const result = await getUnitIdsWithSummary(qx, [unitId], '2026-09-17')
-
-    expect(result).toEqual(new Set())
-  })
-
-  test('returns an empty set when no unit ids are given', async ({ qx }) => {
-    const result = await getUnitIdsWithSummary(qx, [], '2026-09-17')
-
-    expect(result).toEqual(new Set())
   })
 })

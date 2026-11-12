@@ -83,6 +83,10 @@ import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
 
+defineOptions({
+  name: 'LfOrganizationEditLogo',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   organization: Organization,
@@ -106,6 +110,15 @@ const rules = {
 
 const $v = useVuelidate(rules, form);
 
+const isModalOpen = computed<boolean>({
+  get() {
+    return props.modelValue;
+  },
+  set(isOpen: boolean) {
+    emit('update:modelValue', isOpen);
+  },
+});
+
 const sending = ref<boolean>(false);
 const update = () => {
   sending.value = true;
@@ -118,29 +131,14 @@ const update = () => {
     },
   })
     .then(() => {
-      ToastStore.success('Organization logo updated successfully!');
+      ToastStore.success('Company logo updated successfully!');
       isModalOpen.value = false;
     })
     .catch(() => {
-      ToastStore.error('There was an error updating organization');
+      ToastStore.error('There was an error updating company');
     })
     .finally(() => {
       sending.value = false;
     });
-};
-
-const isModalOpen = computed<boolean>({
-  get() {
-    return props.modelValue;
-  },
-  set(isOpen: boolean) {
-    emit('update:modelValue', isOpen);
-  },
-});
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationEditLogo',
 };
 </script>

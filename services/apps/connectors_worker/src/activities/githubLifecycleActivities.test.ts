@@ -10,7 +10,6 @@ import {
 
 const mocks = vi.hoisted(() => ({
   fetchGithubLifecycleIntegration: vi.fn(),
-  getNangoMappingsForIntegrations: vi.fn(),
   addRepoToGitIntegration: vi.fn(),
   listGithubChannelsOwnedElsewhere: vi.fn(),
   listGithubIntegrationsNeedingReconcile: vi.fn(),
@@ -42,7 +41,6 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
 }))
 vi.mock('@crowd/data-access-layer/src/integrations', () => ({
   fetchGithubLifecycleIntegration: mocks.fetchGithubLifecycleIntegration,
-  getNangoMappingsForIntegrations: mocks.getNangoMappingsForIntegrations,
   addRepoToGitIntegration: mocks.addRepoToGitIntegration,
   listGithubChannelsOwnedElsewhere: mocks.listGithubChannelsOwnedElsewhere,
   listGithubIntegrationsNeedingReconcile: mocks.listGithubIntegrationsNeedingReconcile,
@@ -124,7 +122,6 @@ describe('github lifecycle activities', () => {
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue(
       nangoIntegration([{ name: 'acme', fullSync: true }]),
     )
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({})
     mocks.listGithubRepoKeysUnderOwners.mockResolvedValue([])
     mocks.resolveInstallationId.mockResolvedValue('inst-1')
     mocks.mintInstallationToken.mockImplementation(async () => ({
@@ -351,10 +348,10 @@ describe('github lifecycle activities', () => {
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue(
       nangoIntegration([{ name: 'broken', fullSync: true }]),
     )
-    mocks.getReposForGithubIntegration.mockResolvedValue([{ url: 'https://github.com/alice/x' }])
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({
-      'int-1': { 'conn-1': { owner: 'broken', repoName: 'widget', repositoryId: null } },
-    })
+    mocks.getReposForGithubIntegration.mockResolvedValue([
+      { url: 'https://github.com/alice/x' },
+      { url: 'https://github.com/broken/widget' },
+    ])
     mocks.resolveRepo
       .mockResolvedValueOnce({
         channelId: 'R_Y',
@@ -390,7 +387,9 @@ describe('github lifecycle activities', () => {
     ])
 
     vi.clearAllMocks()
-    mocks.getReposForGithubIntegration.mockResolvedValue([])
+    mocks.getReposForGithubIntegration.mockResolvedValue([
+      { url: 'https://github.com/broken/widget' },
+    ])
     mocks.resolveRepo.mockRejectedValueOnce(rateLimitError())
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
       renameValidationComplete: false,
@@ -414,7 +413,6 @@ describe('github lifecycle activities', () => {
       skipped: [{ url: 'broken', reason: 'repo_not_found', message: 'org not found on GitHub' }],
     })
     expect(mocks.resolveRepo).toHaveBeenCalledWith('token', 'broken', 'widget')
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({})
 
     vi.clearAllMocks()
     const forks = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'].map((name) => orgRepo(name, true))
@@ -483,12 +481,10 @@ describe('github lifecycle activities', () => {
     }
     const orgs = ['acme', 'beta', 'neworg'].map((name) => ({ name, fullSync: true }))
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue(nangoIntegration(orgs))
-    mocks.getReposForGithubIntegration.mockResolvedValue(
-      ['aaa', 'bbb', 'ccc'].map((name) => ({ url: key('oldorg', name) })),
-    )
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({
-      'int-1': { 'conn-1': { owner: 'acme', repoName: 'x', repositoryId: null } },
-    })
+    mocks.getReposForGithubIntegration.mockResolvedValue([
+      ...['aaa', 'bbb', 'ccc'].map((name) => ({ url: key('oldorg', name) })),
+      { url: key('acme', 'x') },
+    ])
     mocks.listGithubRepoKeysUnderOwners.mockResolvedValue([
       key('acme', 'x'),
       key('acme', 'old'),
@@ -559,7 +555,6 @@ describe('github lifecycle activities', () => {
     mocks.getReposForGithubIntegration.mockResolvedValue(
       Array.from({ length: 12 }, (_, i) => ({ url: key('oldorg', `a${i + 1}`) })),
     )
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({})
     mocks.listGithubRepoKeysUnderOwners.mockResolvedValue([])
     mocks.resolveRepo.mockRejectedValue(httpError(404))
     await expect(discoverFullSyncRepos({ integrationId: 'int-1' })).resolves.toEqual({
@@ -980,14 +975,11 @@ describe('github lifecycle activities', () => {
     }
   })
 
-  it('plans the lifecycle from live repos, lower-cased mapping keys, channels and ownership, and flags non github-nango or missing integrations', async () => {
+  it('plans the lifecycle from live repos, channels and ownership, and flags non github-nango or missing integrations', async () => {
     mocks.fetchGithubLifecycleIntegration.mockResolvedValue(nangoIntegration([]))
     mocks.getReposForGithubIntegration.mockResolvedValue(
       ['New', 'Kept', 'NangoOnly'].map((name) => ({ url: `https://github.com/Acme/${name}` })),
     )
-    mocks.getNangoMappingsForIntegrations.mockResolvedValue({
-      'int-1': { 'conn-1': { owner: 'Acme', repoName: 'NangoOnly', repositoryId: 'r-1' } },
-    })
     mocks.listSyncUnitChannelsForIntegration.mockResolvedValue([
       { channelName: 'https://github.com/Acme/Kept', hasDecommissioned: false, hasEmitting: true },
       {
@@ -1003,7 +995,7 @@ describe('github lifecycle activities', () => {
       githubNango: true,
       deleted: false,
       desired: 3,
-      toCreate: ['https://github.com/acme/new'],
+      toCreate: ['https://github.com/acme/new', 'https://github.com/acme/nangoonly'],
       toDeleteKeys: ['https://github.com/acme/removed'],
       invalidUrls: [],
       ownedElsewhere: [],

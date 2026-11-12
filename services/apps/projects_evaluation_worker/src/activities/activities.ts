@@ -37,9 +37,11 @@ import {
   buildBotReviewReply,
   buildBotSkippedReply,
   classifyCatalogRow,
-  findOrganizationSiblings,
+  findRequestGroupSiblings,
   organizationOf,
-  organizationReviewOf,
+  requestGroupReview,
+  requestGroupReviewOf,
+  refreshDiscussionStatusComment,
   refreshRequestStatusMessage,
   reportRequestOutcome,
   resolveReviewCdpUrl,
@@ -48,7 +50,7 @@ import {
   sameReviewProposal,
   toReviewRepoContext,
   toReviewRequestCard,
-  organizationGroupKey,
+  requestGroupKey,
 } from '@crowd/project-onboarding'
 import {
   loadBatchRepoLookups,
@@ -61,6 +63,7 @@ import {
   SlackPersona,
   postReviewRequest,
   postSlackContentInThread,
+  reviewGroupLabel,
   sendSlackNotificationAsync,
 } from '@crowd/slack'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
@@ -148,7 +151,7 @@ async function withWholeOrganizations(
   const included = new Set(batch.map((row) => row.id))
   const leads = new Map<string, IDbProjectCatalog>()
   for (const row of batch) {
-    const key = organizationGroupKey(row)
+    const key = requestGroupKey(row)
     if (key && !leads.has(key)) {
       leads.set(key, row)
     }
@@ -156,7 +159,7 @@ async function withWholeOrganizations(
   const completed = [...batch]
   const notPromoted: string[] = []
   for (const lead of leads.values()) {
-    const siblings = await findOrganizationSiblings(
+    const siblings = await findRequestGroupSiblings(
       qx,
       lead,
       (row) => awaitsEvaluation(row) && !included.has(row.id),
@@ -252,13 +255,13 @@ async function findEvaluationGroup(
   qx: QueryExecutor,
   project: IDbProjectCatalog,
 ): Promise<IEvaluationGroup> {
-  if (!organizationGroupKey(project)) {
+  if (!requestGroupKey(project)) {
     return { organization: null, siblings: [] }
   }
-  const siblings = await findOrganizationSiblings(qx, project, (row) =>
+  const siblings = await findRequestGroupSiblings(qx, project, (row) =>
     sameReviewProposal(row, project),
   )
-  return { organization: organizationReviewOf(project, siblings.length), siblings }
+  return { organization: requestGroupReviewOf(project, siblings.length), siblings }
 }
 
 type EvaluatorUsage = Pick<
@@ -297,6 +300,17 @@ async function refreshSkippedRequestStatus(
   }
 }
 
+async function refreshSharedSkipStatus(
+  qx: QueryExecutor,
+  project: IDbProjectCatalog,
+): Promise<void> {
+  if (isSlackBotProvenance(project.provenance)) {
+    await refreshSkippedRequestStatus(qx, project)
+  } else if (isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(qx, project)
+  }
+}
+
 // One evaluator call per organization: the rows after the first take its verdict.
 async function applySharedEvaluation(
   qx: QueryExecutor,
@@ -306,14 +320,14 @@ async function applySharedEvaluation(
   usage: EvaluatorUsage = NO_EVALUATOR_USAGE,
 ): Promise<IEvaluationActivityResult> {
   const updated = await finalizeProjectCatalogEvaluation(qx, project.id, shared)
-  if (updated && shared.action === 'skip' && isSlackBotProvenance(project.provenance)) {
-    await refreshSkippedRequestStatus(qx, project)
+  if (updated && shared.action === 'skip') {
+    await refreshSharedSkipStatus(qx, project)
   }
   log.info(
     {
       id: project.id,
       repoUrl: project.repoUrl,
-      organization: organization?.owner,
+      group: organization ? reviewGroupLabel(organization) : undefined,
       action: shared.action,
       evaluationResult: shared.evaluationResult,
       applied: Boolean(updated),
@@ -487,6 +501,7 @@ export async function notifySkippedHumanRequest(
       'Skipped-discussion Slack alert was not sent.',
     )
   }
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
 }
 
 const QUESTION_LIMIT = 50
@@ -508,7 +523,7 @@ async function findSiblingsOnceClassified(
   lead: IDbProjectCatalog,
   keep: (row: IDbProjectCatalog) => boolean,
 ): Promise<IDbProjectCatalog[] | null> {
-  const siblings = await findOrganizationSiblings(qx, lead, () => true)
+  const siblings = await findRequestGroupSiblings(qx, lead, () => true)
   const classifying = siblings.filter(awaitsEvaluation)
   if (classifying.length === 0) {
     return siblings.filter(keep)
@@ -584,7 +599,7 @@ export async function askRequester(project: IDbProjectCatalog): Promise<void> {
       return false
     }
     const siblings = candidates.filter((row) => locked.has(row.id))
-    const content = buildBotQuestionContent(project, organizationReviewOf(project, siblings.length))
+    const content = buildBotQuestionContent(project, requestGroupReviewOf(project, siblings.length))
     if (!content) {
       return false
     }
@@ -713,6 +728,9 @@ export async function notifyEvaluationError(
   if (!sent) {
     log.warn({ id: project.id, repoUrl: project.repoUrl }, 'Evaluation error alert was not sent.')
   }
+  if (isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
+  }
 }
 
 const REVIEW_REQUEST_LIMIT = 50
@@ -774,7 +792,7 @@ export async function notifyReviewRequest(project: IDbProjectCatalog): Promise<v
       return null
     }
     const siblings = candidates.filter((row) => locked.has(row.id))
-    const organization = organizationReviewOf(project, siblings.length)
+    const organization = requestGroupReview(project, siblings)
     const repoContext = organization ? null : await singleRepoContext(project, preloadedRepoContext)
     const extras = { cdpUrl, repoContext }
 
@@ -802,6 +820,9 @@ export async function notifyReviewRequest(project: IDbProjectCatalog): Promise<v
 
   if (posted && isSlackBotProvenance(project.provenance)) {
     await replyInBotThread(project, buildBotReviewReply(project, posted.organization), 'withTeam')
+  }
+  if (posted && isGithubDiscussionProvenance(project.provenance)) {
+    await refreshDiscussionStatusComment(qx, project)
   }
 }
 

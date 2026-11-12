@@ -2,7 +2,7 @@
   <lf-modal
     v-if="isModalOpen"
     v-model="isModalOpen"
-    header-title="Merge organization"
+    header-title="Merge company"
     container-class="overflow-auto"
     content-class="!max-h-none"
     width="64rem"
@@ -45,7 +45,7 @@
                   :size="16"
                   class="text-primary-500 mr-2"
                 />
-                <span class="text-primary-500">Change organization</span>
+                <span class="text-primary-500">Change company</span>
               </button>
             </template>
           </app-organization-merge-suggestions-details>
@@ -67,19 +67,20 @@
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
-          Merge organizations
+          Merge companies
         </lf-button>
       </div>
     </div>
   </lf-modal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppOrganizationMergeSuggestionsDetails from '@/modules/organization/components/suggestions/organization-merge-suggestions-details.vue';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { useInvalidate } from '@/shared/queries/invalidate';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import AppOrganizationSelectionDropdown from '@/modules/organization/components/organization-selection-dropdown.vue';
 import useOrganizationMergeMessage from '@/shared/modules/merge/config/useOrganizationMergeMessage';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -90,19 +91,19 @@ import {
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
+import type { Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true,
-  },
-  toMerge: {
-    type: Object,
-    default: null,
-  },
+defineOptions({ name: 'AppOrganizationMergeDialog' });
+
+const props = withDefaults(defineProps<{
+  modelValue: Organization | null;
+  toMerge?: Organization | null;
+}>(), {
+  toMerge: null,
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization | null): void;
+}>();
 
 const { trackEvent } = useProductTracking();
 
@@ -110,11 +111,12 @@ const route = useRoute();
 const router = useRouter();
 
 const organizationStore = useOrganizationStore();
+const invalidate = useInvalidate();
 
 const originalOrganizationPrimary = ref(true);
 const sendingMerge = ref(false);
 
-const organizationToMerge = ref(null);
+const organizationToMerge = ref<Organization | null>(null);
 
 const isModalOpen = computed({
   get() {
@@ -140,7 +142,7 @@ const changeOrganization = () => {
   originalOrganizationPrimary.value = true;
 };
 
-const checkPrimaryOrganization = (orgToMerge) => {
+const checkPrimaryOrganization = (orgToMerge: Organization) => {
   if (orgToMerge.lfxMembership) {
     originalOrganizationPrimary.value = false;
   }
@@ -153,12 +155,12 @@ const mergeSuggestion = () => {
 
   sendingMerge.value = true;
 
-  const primaryOrganization = originalOrganizationPrimary.value
+  const primaryOrganization = (originalOrganizationPrimary.value
     ? props.modelValue
-    : organizationToMerge.value;
-  const secondaryOrganization = originalOrganizationPrimary.value
+    : organizationToMerge.value)!;
+  const secondaryOrganization = (originalOrganizationPrimary.value
     ? organizationToMerge.value
-    : props.modelValue;
+    : props.modelValue)!;
 
   const { loadingMessage, apiErrorMessage } = useOrganizationMergeMessage;
 
@@ -185,12 +187,8 @@ const mergeSuggestion = () => {
       emit('update:modelValue', null);
 
       if (route.name === 'organizationView') {
-        const segments = route.query.segmentId
-          ? [route.query.segmentId]
-          : [route.query.projectGroup];
-
         organizationStore
-          .fetchOrganization(primaryOrganization.id, segments)
+          .fetchOrganization(primaryOrganization.id)
           .then((res) => {
             router.replace({
               params: {
@@ -199,7 +197,8 @@ const mergeSuggestion = () => {
             });
           });
       } else if (route.name === 'organization') {
-        organizationStore.fetchOrganizations({ reload: true });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       }
 
       changeOrganization();
@@ -210,11 +209,5 @@ const mergeSuggestion = () => {
     .finally(() => {
       sendingMerge.value = false;
     });
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationMergeDialog',
 };
 </script>

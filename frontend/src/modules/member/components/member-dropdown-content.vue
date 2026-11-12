@@ -67,7 +67,7 @@
   <template v-if="hasPermission(LfPermission.memberEdit)">
     <el-tooltip
       placement="top"
-      content="Mark as team member if they belong to your own organization"
+      content="Mark as team member if they belong to your own company"
       popper-class="max-w-[260px]"
     >
       <span>
@@ -151,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';

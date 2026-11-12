@@ -6,9 +6,13 @@
 import {
   onMounted, onUnmounted, ref, watch,
 } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import type { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
 import { useTimeoutPoll } from '@vueuse/core';
+
+defineOptions({
+  name: 'AppIntegrationProgressWrapper',
+});
 
 const props = withDefaults(defineProps<{
   interval?: number
@@ -26,12 +30,14 @@ const fetchUpdates = () => {
     .then((data: IntegrationProgress[]) => {
       progress.value = data;
       if (data.length === 0) {
+        // eslint-disable-next-line no-use-before-define -- pause comes from useTimeoutPoll(fetchUpdates) below
         pause();
       }
     })
     .catch(() => {
       progress.value = null;
       progressError.value = true;
+      // eslint-disable-next-line no-use-before-define -- pause comes from useTimeoutPoll(fetchUpdates) below
       pause();
     });
 };
@@ -49,10 +55,4 @@ onMounted(() => {
 onUnmounted(() => {
   pause();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIntegrationProgressWrapper',
-};
 </script>

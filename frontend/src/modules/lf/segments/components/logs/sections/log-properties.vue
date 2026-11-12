@@ -103,6 +103,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import { logRenderingConfig } from '../../../../config/audit-logs/log-rendering';
 
+defineOptions({
+  name: 'AppLfAuditLogsProperties',
+});
+
 const props = defineProps<{
   log: AuditLog
 }>();
@@ -113,12 +117,6 @@ const getEntityType = (actionType: ActionType) => {
 };
 
 const config = computed(() => logRenderingConfig[props.log.actionType]);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfAuditLogsProperties',
-};
 </script>
 
 <style lang="scss">

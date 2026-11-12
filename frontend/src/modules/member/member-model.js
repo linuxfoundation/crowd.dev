@@ -2,7 +2,6 @@ import { GenericModel } from '@/shared/model/generic-model';
 import DateTimeField from '@/shared/fields/date-time-field';
 import StringField from '@/shared/fields/string-field';
 import JsonField from '@/shared/fields/json-field';
-import { TagField } from '@/modules/tag/tag-field';
 import { OrganizationField } from '@/modules/organization/organization-field';
 import StringArrayField from '@/shared/fields/string-array-field';
 import GenericField from '@/shared/fields/generic-field';
@@ -37,7 +36,7 @@ const fields = {
   emails: new StringArrayField('emails', 'Emails'),
   organizations: OrganizationField.relationToMany(
     'organizations',
-    'Organizations',
+    'Companies',
   ),
   joinedAt: new DateTimeField('joinedAt', 'Joined date', {
     filterable: true,

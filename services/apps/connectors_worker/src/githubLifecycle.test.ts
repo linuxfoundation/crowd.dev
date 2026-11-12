@@ -44,12 +44,6 @@ describe('diffGithubLifecycle', () => {
         'https://github.com/acme/full',
         'https://github.com/acme/elsewhere',
       ],
-      mappingKeys: [
-        'https://github.com/acme/nango-only',
-        'https://github.com/acme/shadow',
-        'https://github.com/acme/partial',
-        'https://github.com/acme/full',
-      ],
       channels: [
         channel('https://github.com/acme/shadow'),
         channel('https://github.com/acme/partial'),
@@ -61,7 +55,7 @@ describe('diffGithubLifecycle', () => {
       ownedElsewhere: ['https://github.com/acme/elsewhere'],
     })
     expect(result).toEqual({
-      toCreate: ['https://github.com/acme/new'],
+      toCreate: ['https://github.com/acme/new', 'https://github.com/acme/nango-only'],
       toDeleteKeys: ['https://github.com/acme/removed'],
       invalidUrls: [],
       ownedElsewhere: ['https://github.com/acme/elsewhere'],
@@ -73,7 +67,6 @@ describe('diffGithubLifecycle', () => {
     const result = diffGithubLifecycle({
       deleted: true,
       repoUrls: ['https://github.com/acme/a', 'not-a-url'],
-      mappingKeys: [],
       channels: [channel('https://github.com/acme/a'), channel('https://github.com/acme/B')],
       ownedElsewhere: [],
     })
@@ -85,7 +78,6 @@ describe('diffGithubLifecycle', () => {
     const result = diffGithubLifecycle({
       deleted: false,
       repoUrls: ['not-a-url', 'https://github.com/acme/new', 'https://github.com/acme/back'],
-      mappingKeys: [],
       channels: [
         channel('https://github.com/acme/widget'),
         channel('https://github.com/acme/back', true),
@@ -105,7 +97,6 @@ describe('diffGithubLifecycle', () => {
     const result = diffGithubLifecycle({
       deleted: false,
       repoUrls: ['https://github.com/acme/back'],
-      mappingKeys: [],
       channels: [channel('https://github.com/acme/back', true)],
       ownedElsewhere: [],
     })
@@ -117,7 +108,6 @@ describe('diffGithubLifecycle', () => {
     const result = diffGithubLifecycle({
       deleted: false,
       repoUrls: ['https://github.com/Acme/Widget'],
-      mappingKeys: [],
       channels: [channel('https://github.com/acme/widget')],
       ownedElsewhere: [],
     })

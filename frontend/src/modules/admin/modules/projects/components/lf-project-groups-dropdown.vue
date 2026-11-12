@@ -7,26 +7,26 @@
         </lf-button>
       </template>
       <lf-dropdown-item
-        v-if="hasPermission(LfPermission.projectGroupEdit) && hasAccessToSegmentId(id)"
+        v-if="hasPermission(LfPermission.projectGroupEdit) && hasAccessToSegmentId(id ?? '')"
         @click="editProjectGroup()"
       >
         <lf-icon name="pen" />
         Edit project group
       </lf-dropdown-item>
       <lf-dropdown-item
-        v-if="hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id) && !showEditOnly"
+        v-if="hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id ?? '') && !showEditOnly"
         @click="addProject()"
       >
         <lf-icon name="plus" />
         Add project
       </lf-dropdown-item>
       <template
-        v-if="((hasPermission(LfPermission.projectGroupEdit) && hasAccessToSegmentId(id))
-          || (hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id))) && !showEditOnly"
+        v-if="((hasPermission(LfPermission.projectGroupEdit) && hasAccessToSegmentId(id ?? ''))
+          || (hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id ?? ''))) && !showEditOnly"
       >
         <lf-dropdown-separator />
         <lf-dropdown-item
-          v-if="hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id) && !showEditOnly"
+          v-if="hasPermission(LfPermission.projectCreate) && hasAccessToSegmentId(id ?? '') && !showEditOnly"
           @click="updateSelectedProjectGroup(id)"
         >
           <lf-icon name="arrow-up-right-from-square" />
@@ -37,7 +37,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
@@ -47,18 +47,19 @@ import LfButton from '@/ui-kit/button/Button.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 
-defineProps({
-  id: {
-    type: String,
-    default: null,
-  },
-  showEditOnly: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({ name: 'AppLfProjectGroupsDropdown' });
+
+withDefaults(defineProps<{
+  id?: string | null;
+  showEditOnly?: boolean;
+}>(), {
+  id: null,
+  showEditOnly: false,
 });
 
-const emit = defineEmits(['onEditProjectGroup', 'onAddProject']);
+const emit = defineEmits<{(e: 'onEditProjectGroup'): void;
+  (e: 'onAddProject'): void;
+}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { updateSelectedProjectGroup } = lsSegmentsStore;
@@ -71,11 +72,5 @@ const editProjectGroup = () => {
 
 const addProject = () => {
   emit('onAddProject');
-};
-</script>
-
-<script>
-export default {
-  name: 'AppLfProjectGroupsDropdown',
 };
 </script>

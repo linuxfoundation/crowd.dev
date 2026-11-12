@@ -7,7 +7,7 @@
     pre-title="Integration"
     :pre-title-img-src="logoUrl"
     pre-title-img-alt="X/Twitter logo"
-    close-on-click-modal="true"
+    close-on-click-modal
     :close-function="canClose"
     @close="isVisible = false"
   >
@@ -16,7 +16,7 @@
     </template>
     <template #content>
       <el-form label-position="top" class="form integration-twitter-form" @submit.prevent>
-        <el-form-item :label="hashtagField.label">
+        <el-form-item label="Track hashtag">
           <el-input v-model="model.hashtag" clearable class="hashtag-input">
             <template #prefix>
               <span>#</span>
@@ -33,8 +33,8 @@
 
     <template #footer>
       <drawer-footer-buttons
-        :integration="integration"
-        :is-edit-mode="integration.settings?.hashtags > 0"
+        :integration="integration ?? undefined"
+        :is-edit-mode="Number(integration?.settings?.hashtags) > 0"
         :has-form-changed="hasFormChanged"
         :is-loading="false"
         :is-submit-disabled="!hasFormChanged"
@@ -47,48 +47,41 @@
   <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
-<script setup>
-import {
-  defineEmits,
-  defineProps,
-  computed,
-  ref,
-} from 'vue';
+<script setup lang="ts">
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import type { TwitterSettings } from '@/config/integrations/twitter/types/TwitterSettings';
+import { computed, ref } from 'vue';
 import isEqual from 'lodash/isEqual';
-import { FormSchema } from '@/shared/form/form-schema';
-import StringField from '@/shared/fields/string-field';
 import twitter from '@/config/integrations/twitter/config';
 import config from '@/config';
 import { AuthService } from '@/modules/auth/services/auth.service';
+import AppDrawer from '@/shared/drawer/drawer.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  integration: {
-    type: Object,
-    default: null,
-  },
-  segmentId: {
-    type: String,
-    default: null,
-  },
-  grandparentId: {
-    type: String,
-    default: null,
-  },
+defineOptions({
+  name: 'LfTwitterSettingsDrawer',
 });
 
-const emit = defineEmits(['update:modelValue']);
-const changesConfirmationModalRef = ref(null);
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+  integration?: Integration<TwitterSettings> | null;
+  segmentId?: string | null;
+  grandparentId?: string | null;
+}>(), {
+  modelValue: false,
+  integration: null,
+  segmentId: null,
+  grandparentId: null,
+});
 
-const getHashtags = () => props.integration.settings?.hashtags || [];
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
-const getConnectUrl = () => {
+const getHashtags = (): string[] => props.integration?.settings?.hashtags || [];
+
+const getConnectUrl = (): string => {
   const redirectUrl = props.grandparentId && props.segmentId
     ? `${window.location.protocol}//${window.location.host}/integrations/${props.grandparentId}/${props.segmentId}?success=true`
     : `${window.location.protocol}//${window.location.host}${window.location.pathname}?success=true`;
@@ -98,38 +91,23 @@ const getConnectUrl = () => {
   }`;
 };
 
-const parsedHashtags = computed(() => (getHashtags().length
+const parsedHashtags = computed<string>(() => (getHashtags().length
   ? getHashtags()[getHashtags().length - 1]
   : ''));
-const hashtagField = new StringField(
-  'hashtag',
-  'Track hashtag',
-);
-const formSchema = ref(new FormSchema([hashtagField]));
-const model = ref(
-  // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-  formSchema.value.initialValues({
-    // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-    hashtag: parsedHashtags.value,
-  }),
-);
+const getInitialModel = (): { hashtag?: string } => (parsedHashtags.value ? { hashtag: parsedHashtags.value } : {});
+const model = ref(getInitialModel());
 
 const logoUrl = twitter.image;
 
 const hasFormChanged = computed(
-  () => !isEqual(
-    formSchema.value.initialValues({
-      hashtag: parsedHashtags.value,
-    }),
-    model.value,
-  ),
+  () => !isEqual(getInitialModel(), model.value),
 );
 
 const isVisible = computed({
   get() {
     return props.modelValue;
   },
-  set(value) {
+  set(value: boolean) {
     return emit('update:modelValue', value);
   },
 });
@@ -149,12 +127,10 @@ const connect = () => {
 };
 
 const doReset = () => {
-  model.value = formSchema.value.initialValues({
-    hashtag: parsedHashtags.value,
-  });
+  model.value = getInitialModel();
 };
 
-const canClose = (done) => {
+const canClose = (done: (cancel?: boolean) => void) => {
   if (hasFormChanged.value) {
     changesConfirmationModalRef.value?.open().then((discardChanges) => {
       if (discardChanges) {
@@ -167,12 +143,6 @@ const canClose = (done) => {
   } else {
     done(false);
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'LfTwitterSettingsDrawer',
 };
 </script>
 

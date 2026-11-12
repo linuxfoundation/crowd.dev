@@ -74,13 +74,12 @@
             :organization="props.modelValue"
             is-primary
           >
-            <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
             <template #header>
               <div class="h-13 flex justify-between items-start">
                 <div
                   class="bg-primary-500 rounded-full py-0.5 px-2 text-white inline-block text-xs leading-5 font-medium"
                 >
-                  Current organization
+                  Current company
                 </div>
               </div>
             </template>
@@ -92,13 +91,12 @@
             is-primary
             is-preview
           >
-            <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
             <template #header>
               <div class="h-13 flex justify-between items-start">
                 <div
                   class="bg-primary-500 rounded-full py-0.5 px-2 text-white inline-block text-xs leading-5 font-medium"
                 >
-                  Updated organization
+                  Updated company
                 </div>
               </div>
             </template>
@@ -119,7 +117,6 @@
               :compare-organization="preview.primary"
               is-preview
             >
-              <!-- @vue-expect-error shortcut: the child is untyped JS, so its slot is unknown. revisit: when CM-1600/1601 convert it to TypeScript -->
               <template #header>
                 <div class="h-13">
                   <div class="flex justify-between items-start">
@@ -127,7 +124,7 @@
                       class="inline-flex items-center bg-gray-100 rounded-full py-0.5 px-2 text-gray-600 text-xs leading-5 font-medium"
                     >
                       <lf-icon name="link-slash" :size="16" class="mr-1" />
-                      Unmerged organization
+                      Unmerged company
                     </div>
                     <el-dropdown placement="bottom-end" trigger="click">
                       <button
@@ -191,7 +188,7 @@
               <lf-icon name="fingerprint" :size="64" class="text-gray-200" />
             </div>
             <p class="text-center text-xs leading-5 text-gray-500">
-              Select the organization identity you want to unmerge
+              Select the company identity you want to unmerge
             </p>
             <div class="pt-4">
               <el-select
@@ -251,7 +248,7 @@
 <script setup lang="ts">import { computed, onMounted, ref } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import AppOrganizationMergeSuggestionsDetails from '@/modules/organization/components/suggestions/organization-merge-suggestions-details.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import {
@@ -270,6 +267,10 @@ import type {
   OrganizationIdentityParsed,
 } from '@/modules/organization/types/Organization';
 import LfModal from '@/ui-kit/modal/Modal.vue';
+
+defineOptions({
+  name: 'AppOrganizationUnmergeDialog',
+});
 
 const props = defineProps<{
   modelValue: Organization | null;
@@ -352,13 +353,6 @@ const identities = computed(() => {
     .map((i) => parseIdentityValues(i));
 });
 
-const changeIdentity = (identity: OrganizationIdentityParsed) => {
-  localSelectedIdentity.value = identity;
-  resetRevertPreviousMerge();
-  getCanRevertMerge(identity);
-  fetchPreview(identity);
-};
-
 const fetchPreview = (identity: OrganizationIdentityParsed) => {
   if (fetchingPreview.value) {
     return;
@@ -366,7 +360,7 @@ const fetchPreview = (identity: OrganizationIdentityParsed) => {
   fetchingPreview.value = true;
 
   OrganizationService.unmergePreview(
-    props.modelValue?.id,
+    props.modelValue!.id,
     identity,
     revertPreviousMerge.value,
   )
@@ -389,13 +383,20 @@ const resetRevertPreviousMerge = () => {
 };
 
 const getCanRevertMerge = (identity: OrganizationIdentityParsed) => {
-  OrganizationService.canRevertMerge(props.modelValue?.id, identity)
+  OrganizationService.canRevertMerge(props.modelValue!.id, identity)
     .then((res) => {
       canRevertPreviousMerge.value = res;
     })
     .catch(() => {
       canRevertPreviousMerge.value = false;
     });
+};
+
+const changeIdentity = (identity: OrganizationIdentityParsed) => {
+  localSelectedIdentity.value = identity;
+  resetRevertPreviousMerge();
+  getCanRevertMerge(identity);
+  fetchPreview(identity);
 };
 
 const unmerge = () => {
@@ -417,16 +418,16 @@ const unmerge = () => {
     .then(() => {
       getOrganizationMergeActions(props.modelValue!.id);
       ToastStore.info(
-        'We’re syncing all activities of the unmerged organization. We will let you know once the process is completed.',
+        'We’re syncing all activities of the unmerged company. We will let you know once the process is completed.',
         {
-          title: 'Organizations unmerging in progress',
+          title: 'Companies unmerging in progress',
         },
       );
       fetchOrganization(props.modelValue!.id);
       emit('update:modelValue', null);
     })
     .catch(() => {
-      ToastStore.error('There was an error unmerging organization');
+      ToastStore.error('There was an error unmerging company');
     })
     .finally(() => {
       unmerging.value = false;
@@ -440,10 +441,4 @@ onMounted(() => {
     changeIdentity(identity);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationUnmergeDialog',
-};
 </script>

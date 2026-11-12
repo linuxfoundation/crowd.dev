@@ -18,6 +18,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 
+defineOptions({
+  name: 'LfContributorSentiment',
+});
+
 const props = defineProps<{
   contributor: Contributor,
 }>();
@@ -50,10 +54,4 @@ const data = computed<{
     class: 'text-gray-400',
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorSentiment',
-};
 </script>

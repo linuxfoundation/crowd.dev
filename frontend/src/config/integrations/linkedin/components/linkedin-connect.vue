@@ -17,17 +17,21 @@ import { useThrottleFn } from '@vueuse/core';
 import config from '@/config';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'AppLinkedInConnect',
+});
 
 const props = defineProps<{
   segmentId: string;
   grandparentId: string;
 }>();
 
-const { doLinkedinConnect } = mapActions('integration');
+const { connectLinkedin } = useIntegrationStore();
 
 const callOnboard = useThrottleFn(async () => {
-  await doLinkedinConnect({
+  await connectLinkedin({
     segmentId: props.segmentId,
     grandparentId: props.grandparentId,
   });
@@ -45,11 +49,5 @@ const connect = async () => {
   } catch (e) {
     console.error(e);
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLinkedInConnect',
 };
 </script>

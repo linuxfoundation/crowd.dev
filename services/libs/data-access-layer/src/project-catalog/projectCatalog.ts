@@ -17,6 +17,7 @@ import {
   ProjectCatalogReviewDecision,
   IDbProjectCatalogReopened,
   IProjectCatalogReopenRequest,
+  IRequestHints,
   REVIEW_REJECTION_SKIP_REASON_PREFIX,
   reviewRejectionSkipReason,
 } from './types'
@@ -315,7 +316,7 @@ export async function promoteProjectCatalogProvenance(
   refs: {
     repoUrl: string
     sourceUrl?: string | null
-    organization?: string | null
+    requestHints?: IRequestHints | null
     requestText?: string | null
     projectName?: string | null
     requestedBy?: string | null
@@ -328,7 +329,7 @@ export async function promoteProjectCatalogProvenance(
   const values = refs.map((ref) => ({
     repoUrl: ref.repoUrl,
     sourceUrl: ref.sourceUrl ?? null,
-    organization: ref.organization ?? null,
+    requestHints: ref.requestHints ?? null,
     requestText: ref.requestText ?? null,
     projectName: ref.projectName ?? null,
     requestedBy: ref.requestedBy ?? null,
@@ -340,35 +341,35 @@ export async function promoteProjectCatalogProvenance(
     SET "provenance" = $(provenance),
         "sourceUrl" = COALESCE(pc."sourceUrl", v."sourceUrl"),
         "requestHints" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL
-            THEN COALESCE(pc."requestHints", '{}'::jsonb) || jsonb_build_object('organization', v."organization")
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL
+            THEN COALESCE(pc."requestHints", '{}'::jsonb) || v."requestHints"
           ELSE pc."requestHints"
         END,
         "requestText" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestText", pc."requestText")
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestText", pc."requestText")
           ELSE pc."requestText"
         END,
         "projectName" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."projectName", pc."projectName")
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."projectName", pc."projectName")
           ELSE pc."projectName"
         END,
         "requestedBy" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestedBy", pc."requestedBy")
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL THEN COALESCE(v."requestedBy", pc."requestedBy")
           ELSE pc."requestedBy"
         END,
         "classifiedAt" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN NULL
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN NULL
           ELSE pc."classifiedAt"
         END,
         "evaluationAttempts" = CASE
-          WHEN v."organization" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN 0
+          WHEN v."requestHints" IS NOT NULL AND pc."sourceUrl" IS NULL AND pc."action" IN ('auto', 'evaluate') THEN 0
           ELSE pc."evaluationAttempts"
         END,
         "updatedAt" = NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
       "repoUrl" text,
       "sourceUrl" text,
-      "organization" text,
+      "requestHints" jsonb,
       "requestText" text,
       "projectName" text,
       "requestedBy" text
@@ -403,7 +404,7 @@ export async function reopenRejectedProjectCatalog(
         "requestText" text,
         "projectName" text,
         "requestedBy" text,
-        "organization" text
+        "requestHints" jsonb
       )
     ),
     rejected AS (
@@ -425,10 +426,7 @@ export async function reopenRejectedProjectCatalog(
         "requestText" = v."requestText",
         "projectName" = v."projectName",
         "requestedBy" = v."requestedBy",
-        "requestHints" = CASE
-          WHEN v."organization" IS NOT NULL THEN jsonb_build_object('organization', v."organization")
-          ELSE NULL
-        END,
+        "requestHints" = v."requestHints",
         "classificationKind" = NULL,
         "proposedAction" = NULL,
         "pccProjectId" = NULL,
@@ -667,6 +665,7 @@ export async function bulkInsertProjectCatalog(
     projectName: item.projectName ?? null,
     requestedBy: item.requestedBy ?? null,
     requestHints: item.requestHints ?? null,
+    classificationKind: item.classificationKind ?? null,
   }))
 
   return qx.select(
@@ -685,6 +684,7 @@ export async function bulkInsertProjectCatalog(
       "projectName",
       "requestedBy",
       "requestHints",
+      "classificationKind",
       "createdAt",
       "updatedAt",
       "syncedAt"
@@ -703,6 +703,7 @@ export async function bulkInsertProjectCatalog(
       v."projectName",
       v."requestedBy",
       v."requestHints",
+      v."classificationKind",
       NOW(),
       NOW(),
       NOW()
@@ -719,7 +720,8 @@ export async function bulkInsertProjectCatalog(
       "requestText" text,
       "projectName" text,
       "requestedBy" text,
-      "requestHints" jsonb
+      "requestHints" jsonb,
+      "classificationKind" text
     )
     ON CONFLICT ("repoUrl") DO NOTHING
     RETURNING id, "repoUrl"

@@ -7,9 +7,10 @@ import {
   ProjectEvaluationOutcome,
   isSlackBotProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
-import { IReviewOrganization, organizationLabel, repositoriesWord } from '@crowd/slack'
+import { IReviewOrganization, reviewGroupLabel, repositoriesWord } from '@crowd/slack'
 
 import { deriveOrganizationProjectNameCandidates } from './onboarder'
+import { isReviewedDiscussionGroup } from './requestHints'
 import { OnboardingResolution } from './requestResolver'
 
 export interface IRoutingOptions {
@@ -57,7 +58,7 @@ function lfInCdpReviewReason({
 }: Extract<OnboardingResolution, { kind: 'lf_in_cdp' }>): string {
   return action === 'human_review'
     ? `${segment.name} still uses an older GitHub connection, so I can't add repositories to it myself`
-    : `${segment.name} is in LFX Insights, but this repo needs a quick check by the CDP team before I add it`
+    : `${segment.name} is in LFX Insights, but adding to it needs a quick check by the CDP team`
 }
 
 export function routeResolution(
@@ -97,7 +98,8 @@ export interface IEvaluationRoute {
   reviewReason: string | null
 }
 
-type EvaluatedRow = Pick<IDbProjectCatalog, 'provenance' | 'projectName' | 'repoName'>
+type EvaluatedRow = Pick<IDbProjectCatalog, 'provenance' | 'projectName' | 'repoName'> &
+  Partial<Pick<IDbProjectCatalog, 'requestHints'>>
 
 interface IEvaluationVerdict {
   outcome: ProjectEvaluationOutcome
@@ -114,8 +116,14 @@ export function newProjectReviewReason(
   organization: IReviewOrganization | null = null,
 ): string {
   if (organization) {
-    const [name] = deriveOrganizationProjectNameCandidates(organization.owner, row.projectName)
-    return `${name} isn't in LFX Insights yet; it would be created as a non-LF project with the ${organization.repositories} ${repositoriesWord(organization.repositories)} of ${organizationLabel(organization.owner)}, ${NEW_PROJECTS_BY_CDP_TEAM}`
+    const name =
+      organization.name ??
+      deriveOrganizationProjectNameCandidates(organization.owner, row.projectName)[0]
+    const repositories = `${organization.repositories} ${repositoriesWord(organization.repositories)}`
+    const scope = organization.name
+      ? `its ${repositories}`
+      : `the ${repositories} of ${reviewGroupLabel(organization)}`
+    return `${name} isn't in LFX Insights yet; it would be created as a non-LF project with ${scope}, ${NEW_PROJECTS_BY_CDP_TEAM}`
   }
   return `${row.projectName ?? row.repoName} isn't in LFX Insights yet; it would be created as a non-LF project, ${NEW_PROJECTS_BY_CDP_TEAM}`
 }
@@ -132,6 +140,10 @@ export interface IEvaluationRoutingOptions {
   organization?: IReviewOrganization | null
 }
 
+function needsPersonForNewProject(row: EvaluatedRow, autoApply: boolean): boolean {
+  return (!autoApply && isSlackBotProvenance(row.provenance)) || isReviewedDiscussionGroup(row)
+}
+
 // With autoApply off a new project must not be onboarded without a person; the evaluator's
 // own errors are kept as error so the requester can retry them.
 export function routeEvaluationOutcome(
@@ -139,7 +151,7 @@ export function routeEvaluationOutcome(
   verdict: IEvaluationVerdict,
   { autoApply, organization = null }: IEvaluationRoutingOptions,
 ): IEvaluationRoute {
-  if (verdict.outcome === 'onboard' && !autoApply && isSlackBotProvenance(row.provenance)) {
+  if (verdict.outcome === 'onboard' && needsPersonForNewProject(row, autoApply)) {
     return { action: 'review', reviewReason: newProjectReviewReason(row, organization) }
   }
   if (verdict.evaluationResult === EVALUATION_ERROR_RESULT) {

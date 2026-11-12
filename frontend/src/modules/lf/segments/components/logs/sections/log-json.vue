@@ -25,6 +25,10 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'AppLfAuditLogsJson',
+});
+
 const props = defineProps<{
   log: AuditLog
 }>();
@@ -46,11 +50,5 @@ const copy = () => {
       copied.value = false;
     }, 1000);
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfAuditLogsJson',
 };
 </script>

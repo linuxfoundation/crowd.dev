@@ -71,7 +71,7 @@
         <lf-button
           type="primary"
           size="medium"
-          :disabled="isSubmitBtnDisabled || loading"
+          :disabled="loading"
           :loading="loading"
           @click="handleSubmit"
         >
@@ -82,7 +82,7 @@
   </app-drawer>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref,
   computed,
@@ -91,29 +91,38 @@ import {
 } from 'vue';
 
 import { ToastStore } from '@/shared/message/notification';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import cloneDeep from 'lodash/cloneDeep';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Contributor } from '@/modules/contributor/types/Contributor';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true,
-  },
-});
-const emit = defineEmits(['update:modelValue']);
+interface GithubSuggestion {
+  username: string;
+  avatarUrl: string;
+  url: string;
+}
+
+defineOptions({ name: 'AppMemberFindGithbDrawer' });
+
+const props = defineProps<{
+  modelValue: Contributor;
+}>();
+const emit = defineEmits<{
+  'update:modelValue': [value: Contributor | null | false];
+}>();
 const memberStore = useMemberStore();
 const memberModel = reactive(cloneDeep(props.modelValue));
 
-const suggestions = ref([]);
-const selected = ref('');
+const suggestions = ref<GithubSuggestion[]>([]);
+const selected = ref<string>('');
+const loading = ref<boolean>(false);
 
 onMounted(async () => {
   loading.value = true;
-  suggestions.value = await MemberService.findGithub(props.modelValue.id);
+  suggestions.value = (await MemberService.findGithub(props.modelValue.id)) as GithubSuggestion[];
   loading.value = false;
 });
 
@@ -128,13 +137,11 @@ const drawerModel = computed({
 
 const title = computed(() => `Find the GitHub identity for ${props.modelValue.displayName}`);
 
-const loading = ref(false);
-
 const handleCancel = () => {
   emit('update:modelValue', false);
 };
 
-const changeSelected = (username) => {
+const changeSelected = (username: string) => {
   selected.value = username;
 };
 
@@ -170,12 +177,6 @@ const handleSubmit = async () => {
   });
 
   emit('update:modelValue', false);
-};
-</script>
-
-<script>
-export default {
-  name: 'AppMemberFindGithbDrawer',
 };
 </script>
 

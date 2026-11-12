@@ -20,8 +20,9 @@ import {
   IDbProjectCatalogCreate,
   isHumanProjectCatalogProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
-import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { refreshDiscussionStatusComment } from '@crowd/project-onboarding'
 
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
@@ -162,8 +163,16 @@ export async function processDataset(
     })
   }
 
+  // Human requests are few and come in groups that must land together; only the bulk sources
+  // are rationed by the discovery limit.
+  const humanProvenance = isHumanProjectCatalogProvenance(source.provenance)
+    ? source.provenance
+    : null
+  const rationed = humanProvenance === null
   const accepted: IDbProjectCatalogCreate[] = []
+  const limitReached = () => rationed && accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT
   const skippedInCdp: IDbProjectCatalogCreate[] = []
+  const toPromote: IDbProjectCatalogCreate[] = []
   const seenRepoUrls = new Set<string>()
   let chunk: IDbProjectCatalogCreate[] = []
   let totalRows = 0
@@ -186,16 +195,12 @@ export async function processDataset(
       unseen.map((c) => c.repoUrl),
     )
 
-    const humanProvenance = source.provenance
-    if (isHumanProjectCatalogProvenance(humanProvenance)) {
-      const alreadyCatalogued = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
-      if (alreadyCatalogued.length > 0) {
-        totalPromoted += await promoteProjectCatalogProvenance(
-          qx,
-          humanProvenance,
-          alreadyCatalogued,
-        )
-      }
+    const existing = unseen.filter((c) => existingRepoUrls.has(c.repoUrl))
+    for (const candidate of existing) {
+      seenRepoUrls.add(candidate.repoUrl)
+    }
+    if (humanProvenance) {
+      toPromote.push(...existing)
     }
 
     const fresh = unseen.filter((c) => !existingRepoUrls.has(c.repoUrl))
@@ -214,11 +219,12 @@ export async function processDataset(
           ...candidate,
           action: 'skip',
           skipReason: ALREADY_IN_CDP_SKIP_REASON,
+          classificationKind: 'already_tracked',
         })
         seenRepoUrls.add(candidate.repoUrl)
         continue
       }
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         break
       }
@@ -246,6 +252,8 @@ export async function processDataset(
       action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
       requestText: parsed.requestText ? truncateRequestText(parsed.requestText) : null,
+      projectName: parsed.projectName ?? null,
+      requestHints: parsed.requestHints ?? null,
     })
 
     if (chunk.length >= CANDIDATE_CHUNK_SIZE) {
@@ -258,7 +266,7 @@ export async function processDataset(
         skippedAlreadyInCdp: skippedInCdp.length,
       })
 
-      if (accepted.length >= DISCOVERY_NEW_PROJECTS_LIMIT) {
+      if (limitReached()) {
         truncated = true
         log.info(
           { sourceName, datasetId: dataset.id, totalRows, accepted: accepted.length },
@@ -270,7 +278,7 @@ export async function processDataset(
   }
 
   // Flush a final partial chunk, unless the limit was already hit above.
-  if (chunk.length > 0 && accepted.length < DISCOVERY_NEW_PROJECTS_LIMIT) {
+  if (chunk.length > 0 && !limitReached()) {
     await acceptNewRows(chunk)
   }
 
@@ -279,9 +287,19 @@ export async function processDataset(
     stream.destroy()
   }
 
+  // The rows of one request become visible together, or an evaluation running meanwhile
+  // posts a card for part of the group that the rest can no longer join.
   const toInsert = [...accepted, ...skippedInCdp]
-  if (toInsert.length > 0) {
-    await bulkInsertProjectCatalog(qx, toInsert)
+  if (toInsert.length > 0 || toPromote.length > 0) {
+    await qx.tx(async (tx) => {
+      if (humanProvenance) {
+        totalPromoted += await promoteProjectCatalogProvenance(tx, humanProvenance, toPromote)
+      }
+      await bulkInsertProjectCatalog(tx, toInsert)
+    })
+  }
+  if (humanProvenance) {
+    await refreshDiscussionStatusComments(qx, [...toInsert, ...toPromote])
   }
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose
@@ -316,6 +334,25 @@ export async function processDataset(
     totalAccepted: accepted.length,
     truncated,
     cursor,
+  }
+}
+
+// Pre-check skips never reach the evaluation worker, and a discussion is walked again the night
+// after its first ingest: refreshing here tells the requester early and retries a failed comment.
+async function refreshDiscussionStatusComments(
+  qx: QueryExecutor,
+  rows: IDbProjectCatalogCreate[],
+): Promise<void> {
+  const bySourceUrl = new Map<string, IDbProjectCatalogCreate>()
+  for (const row of rows) {
+    if (row.sourceUrl && !bySourceUrl.has(row.sourceUrl)) {
+      bySourceUrl.set(row.sourceUrl, row)
+    }
+  }
+  let refreshed = 0
+  for (const [sourceUrl, row] of bySourceUrl) {
+    await refreshDiscussionStatusComment(qx, { sourceUrl, repoUrl: row.repoUrl })
+    Context.current().heartbeat({ discussionsRefreshed: ++refreshed, of: bySourceUrl.size })
   }
 }
 

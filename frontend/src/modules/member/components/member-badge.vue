@@ -24,31 +24,25 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps, computed } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
+import type { Member } from '@/modules/member/types/Member';
 
-const props = defineProps({
-  member: {
-    type: Object,
-    default: () => {},
-  },
-});
+defineOptions({ name: 'AppMemberBadge' });
+
+const props = defineProps<{
+  member: Member;
+}>();
 
 const isTeam = computed(() => props.member.attributes.isTeamMember?.default);
 
 const isBot = computed(() => props.member.attributes.isBot?.default);
 
-const computedTooltipContent = (tooltip) => {
+const computedTooltipContent = (tooltip: 'team' | 'bot'): string => {
   if (tooltip === 'team') {
-    return 'This person belongs to your organization';
+    return 'This person belongs to your company';
   }
   return 'Bot';
-};
-</script>
-
-<script>
-export default {
-  name: 'AppMemberBadge',
 };
 </script>
 

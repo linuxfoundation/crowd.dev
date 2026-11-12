@@ -36,6 +36,10 @@ import { computed } from 'vue';
 import pluralize from 'pluralize';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfJiraParams',
+});
+
 const props = defineProps({
   integration: {
     type: Object,
@@ -46,10 +50,4 @@ const props = defineProps({
 const projects = computed<string[]>(
   () => props.integration.settings.projects,
 );
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfJiraParams',
-};
 </script>

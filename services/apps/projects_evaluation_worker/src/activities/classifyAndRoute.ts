@@ -8,11 +8,11 @@ import { getServiceLogger } from '@crowd/logging'
 import {
   ICatalogRowToClassify,
   OnboardingConfigurationError,
-  organizationGroupKey,
+  requestGroupKey,
 } from '@crowd/project-onboarding'
 
 import { IClassifyAndRouteResult } from '../types'
-import { organizationMainRepositoriesFirst } from './organizationEvaluation'
+import { mainRepositoriesFirst } from './organizationEvaluation'
 
 const log = getServiceLogger()
 
@@ -66,7 +66,7 @@ async function trackedGroupedRepoUrls(
   projects: IDbProjectCatalog[],
   io: Pick<IClassifyAndRouteIo, 'findTrackedRepoUrls'>,
 ): Promise<Set<string>> {
-  const grouped = projects.filter((project) => organizationGroupKey(project) !== null)
+  const grouped = projects.filter((project) => requestGroupKey(project) !== null)
   if (grouped.length === 0) {
     return new Set()
   }
@@ -145,7 +145,7 @@ export async function classifyAndRouteProjects(
   // Only a persisted classification speaks for the group, so two overlapping runs cannot
   // give one organization two different proposals.
   const shareClassified = (row: IDbProjectCatalog) => {
-    const key = organizationGroupKey(row)
+    const key = requestGroupKey(row)
     if (
       key &&
       row.classifiedAt &&
@@ -157,7 +157,7 @@ export async function classifyAndRouteProjects(
     }
   }
   const classifyRow = async (fresh: IDbProjectCatalog) => {
-    const key = organizationGroupKey(fresh)
+    const key = requestGroupKey(fresh)
     const shared = key ? classifiedByOrganization.get(key) : undefined
     return shared && !tracked.has(fresh.repoUrl) ? shared : io.classify(toRowToClassify(fresh))
   }
@@ -233,6 +233,6 @@ export async function classifyAndRouteProjects(
     record(updated, classification.action)
   }
 
-  result.remaining = organizationMainRepositoriesFirst(result.remaining)
+  result.remaining = mainRepositoriesFirst(result.remaining)
   return result
 }

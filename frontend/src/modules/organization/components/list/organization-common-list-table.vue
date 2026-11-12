@@ -4,7 +4,7 @@
       <thead>
         <tr>
           <lf-table-head v-model="sort" property="displayName" class="pl-3">
-            Organization
+            Company
           </lf-table-head>
           <lf-table-head>
             Project groups
@@ -79,7 +79,7 @@
                   @click="markAsTeamOrganization(org)"
                 >
                   <lf-icon name="people-group" />
-                  {{ org.isTeamOrganization ? 'Unmark' : 'Mark' }} as team organization
+                  {{ org.isTeamOrganization ? 'Unmark' : 'Mark' }} as team company
                 </lf-dropdown-item>
                 <lf-dropdown-item @click="toggleOrganizationAffiliations(org)">
                   <lf-icon name="ban" />
@@ -88,7 +88,7 @@
                 <lf-dropdown-separator />
                 <lf-dropdown-item type="danger" @click="deleteOrganization(org)">
                   <lf-icon name="trash-can" />
-                  Delete organization
+                  Delete company
                 </lf-dropdown-item>
               </lf-dropdown>
             </div>
@@ -109,7 +109,7 @@
   <app-empty-state-cta
     v-else
     icon="house-building"
-    title="No organizations found"
+    title="No companies found"
     description="We couldn't find any results that match your search criteria, please try a different query."
   />
 </template>
@@ -127,7 +127,7 @@ import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import { computed } from 'vue';
 import type { Organization } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
@@ -136,7 +136,9 @@ import { getSegmentName } from '@/utils/segments';
 import AppEmptyStateCta from '@/shared/empty-state/empty-state-cta.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-type OrganizationRow = Organization & { segments?: string[] };
+defineOptions({
+  name: 'AppOrganizationComonListTable',
+});
 
 const props = defineProps<{
   sorting: string,
@@ -144,6 +146,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{(e: 'reload'): void, (e: 'update:sorting', value: string): void}>();
+
+type OrganizationRow = Organization & { segments?: string[] };
 
 const sort = computed<string>({
   get() {
@@ -155,13 +159,13 @@ const sort = computed<string>({
 });
 
 const markAsTeamOrganization = (organization: Organization) => {
-  ToastStore.info('Organization is being updated');
+  ToastStore.info('Company is being updated');
   OrganizationService.update(organization.id, {
     isTeamOrganization: !organization.isTeamOrganization,
   })
     .then(() => {
       ToastStore.closeAll();
-      ToastStore.success('Organization updated successfully');
+      ToastStore.success('Company updated successfully');
       emit('reload');
     })
     .catch(() => {
@@ -171,13 +175,13 @@ const markAsTeamOrganization = (organization: Organization) => {
 };
 
 const toggleOrganizationAffiliations = (organization: Organization) => {
-  ToastStore.info('Organization is being updated');
+  ToastStore.info('Company is being updated');
   OrganizationService.update(organization.id, {
     isAffiliationBlocked: !organization.isAffiliationBlocked,
   })
     .then(() => {
       ToastStore.closeAll();
-      ToastStore.success('Organization updated successfully');
+      ToastStore.success('Company updated successfully');
       emit('reload');
     })
     .catch(() => {
@@ -189,17 +193,17 @@ const toggleOrganizationAffiliations = (organization: Organization) => {
 const deleteOrganization = (organization: Organization) => {
   ConfirmDialog({
     type: 'danger',
-    title: 'Delete organization',
+    title: 'Delete company',
     message: "Are you sure you want to proceed? You can't undo this action",
     confirmButtonText: 'Confirm',
     cancelButtonText: 'Cancel',
     icon: 'fa-trash-can fa-light',
   }).then(() => {
-    ToastStore.info('Organization is being deleted');
+    ToastStore.info('Company is being deleted');
     OrganizationService.destroyAll([organization.id])
       .then(() => {
         ToastStore.closeAll();
-        ToastStore.success('Organization successfully deleted');
+        ToastStore.success('Company successfully deleted');
         emit('reload');
       })
       .catch(() => {
@@ -213,12 +217,6 @@ const getSegments = (segments: string[]): {id: string, name: string}[] => segmen
   id: segment,
   name: getSegmentName(segment) || '',
 })).filter((s) => s.name.length > 0);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationComonListTable',
-};
 </script>
 
 <style lang="scss">

@@ -17,6 +17,10 @@ import { debounce } from 'lodash';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
+defineOptions({
+  name: 'LfSearch',
+});
+
 const props = defineProps<{
   modelValue: string | number,
   lazy?: boolean,
@@ -41,10 +45,4 @@ watch(valueProxy, (newVal) => {
 watch(() => props.modelValue, (newVal) => {
   valueProxy.value = newVal;
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfSearch',
-};
 </script>

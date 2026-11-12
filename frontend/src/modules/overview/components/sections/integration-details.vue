@@ -89,6 +89,10 @@ import { useOverviewStore } from '../../store/overview.store';
 import IntegrationRow from '../fragments/integration-row.vue';
 import IntegrationTabs from '../fragments/integration-tabs.vue';
 
+defineOptions({
+  name: 'AppLfOverviewIntegrationDetails',
+});
+
 const {
   integrationStatusCount,
   selectedIntegrationId,
@@ -165,10 +169,4 @@ watch(overviewTabs, (newValue) => {
     activeTab.value = activeTabKey;
   }
 }, { immediate: true, deep: true });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppLfOverviewIntegrationDetails',
-};
 </script>

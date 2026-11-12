@@ -7,18 +7,11 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps } from 'vue';
+<script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 
-defineProps({
-  icon: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    required: true,
-  },
-});
+defineProps<{
+  icon: string;
+  description: string;
+}>();
 </script>

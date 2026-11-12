@@ -2,6 +2,7 @@ import { Context, heartbeat } from '@temporalio/activity'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@temporalio/workflow'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { markOrganizationsChanged } from '@crowd/common_services'
 import { moveActivityRelationsToAnotherOrganization } from '@crowd/data-access-layer/src/activityRelations'
 import { moveInsightsProjectsToAnotherOrganization } from '@crowd/data-access-layer/src/collections'
 import {
@@ -20,15 +21,20 @@ import { ApiWebsocketMessage, TemporalWorkflowId } from '@crowd/types'
 
 import { svc } from '../main'
 
+// Each step commits on its own, so a failed attempt has already changed the organization
 export async function deleteOrganization(organizationId: string): Promise<void> {
-  await deleteOrganizationSegments(svc.postgres.writer, organizationId)
+  try {
+    await deleteOrganizationSegments(svc.postgres.writer, organizationId)
 
-  const qx = dbStoreQx(svc.postgres.writer)
-  await deleteOrganizationEnrichment(qx, organizationId)
-  await deleteOrganizationAttributes(qx, [organizationId])
-  await cleanupForOganization(qx, organizationId)
+    const qx = dbStoreQx(svc.postgres.writer)
+    await deleteOrganizationEnrichment(qx, organizationId)
+    await deleteOrganizationAttributes(qx, [organizationId])
+    await cleanupForOganization(qx, organizationId)
 
-  await deleteOrganizationById(svc.postgres.writer, organizationId)
+    await deleteOrganizationById(svc.postgres.writer, organizationId)
+  } finally {
+    await markOrganizationsChanged(svc.redis, [organizationId], svc.log)
+  }
 }
 
 export async function finishOrganizationMergingUpdateActivities(

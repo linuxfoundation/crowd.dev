@@ -1,6 +1,5 @@
 import isEqual from 'lodash.isequal'
 import mergeWith from 'lodash.mergewith'
-import uniqby from 'lodash.uniqby'
 
 import {
   ApplicationError,
@@ -12,7 +11,6 @@ import {
   isObjectEmpty,
   isSameMemberIdentity,
   normalizeDisplayName,
-  normalizeHostname,
   normalizeMemberIdentities,
   omitUrlValues,
   singleOrDefault,
@@ -23,13 +21,7 @@ import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
 } from '@crowd/common_services'
-import {
-  IFindOrCreateOrganizationResult,
-  QueryExecutor,
-  createMember,
-  dbStoreQx,
-  updateMember,
-} from '@crowd/data-access-layer'
+import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
   findMembersByIdentities,
@@ -50,7 +42,6 @@ import {
   IMemberData,
   IMemberIdentity,
   IOrganization,
-  IOrganizationIdSource,
   MemberAttributeName,
   MemberBotDetection,
   MemberIdentityType,
@@ -68,294 +59,14 @@ import {
 } from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
-
-type OrgPromiseCache = Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>
-
-type EmailDomainOrganization = {
-  id: string
-  source: OrganizationSource
-  created: boolean
-}
-
-// Domains after hostname normalization, like findOrCreateOrganization looks them up. The lock key
-// takes a primary domain on any platform, as the lookup's fallback does
-function verifiedOrgIdentityKey(
-  identity: NonNullable<IOrganization['identities']>[number],
-): { key: string; lockKey: string; value: string } | undefined {
-  if (!identity.verified || !identity.value) {
-    return undefined
-  }
-  const isDomain = [
-    OrganizationIdentityType.PRIMARY_DOMAIN,
-    OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-  ].includes(identity.type)
-  const value = isDomain ? normalizeHostname(identity.value, false) : identity.value
-  if (!value) {
-    return undefined
-  }
-  const key = `${identity.platform}:${identity.type}:${value.toLowerCase()}`
-  return {
-    value,
-    key,
-    lockKey:
-      identity.type === OrganizationIdentityType.PRIMARY_DOMAIN
-        ? `${identity.type}:${value.toLowerCase()}`
-        : key,
-  }
-}
-
-/**
- * Returns a stable cache key for an org based on its verified identities, falling back to
- * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
- * across members in the same batch.
- */
-function orgCacheKey(org: IOrganization): string | null {
-  const verified = Array.from(
-    new Set((org.identities ?? []).map((i) => verifiedOrgIdentityKey(i)?.key).filter(Boolean)),
-  )
-    .sort()
-    .join('|')
-  if (verified) return verified
-  if (org.displayName) return `name:${org.displayName.toLowerCase()}`
-  return null
-}
-
-// Per batch (through its org promise cache): the latest find-or-create call for each verified
-// identity. A call waits for the earlier ones that share an identity with it, so it finds the
-// organization they created instead of creating a duplicate when members are updated concurrently.
-const orgIdentityLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<unknown>>>()
-
-// The verified identities, and the name as the fallback. Without a display name, an organization
-// is created under its first verified identity's value.
-function orgLockKeys(org: IOrganization): string[] {
-  const keys: string[] = []
-  let creationName: string | undefined
-  for (const identity of org.identities ?? []) {
-    const verified = verifiedOrgIdentityKey(identity)
-    if (!verified) {
-      continue
-    }
-    creationName ??= verified.value
-    keys.push(verified.lockKey)
-  }
-
-  const name = (org.displayName || creationName)?.trim().toLowerCase()
-  if (name) {
-    keys.push(`name:${name}`)
-  }
-  return keys
-}
-
-// Per batch: the latest update of each existing organization. Calls with different identities can
-// resolve to the same organization (so the identity locks don't order them), and the data sink
-// has no transactions, so they update it one at a time.
-const orgIdLocks = new WeakMap<OrgPromiseCache, Map<string, Promise<void>>>()
-
-function lockOrganizationFor(orgPromiseCache: OrgPromiseCache) {
-  return async (organizationId: string): Promise<() => void> => {
-    const locks = orgIdLocks.get(orgPromiseCache) ?? new Map<string, Promise<void>>()
-    orgIdLocks.set(orgPromiseCache, locks)
-    const previous = locks.get(organizationId) ?? Promise.resolve()
-    let release: () => void = () => undefined
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    locks.set(
-      organizationId,
-      previous.then(() => held),
-    )
-    await previous
-    return release
-  }
-}
-
-const stableJson = (value: unknown): string =>
-  JSON.stringify(value, (_key, v) =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-      : v,
-  )
-
-// Domains are normalized like findOrCreateOrganization normalizes them in place, so the key is the
-// same before and after the payload is applied
-function orgPayloadKey(source: string, org: IOrganization): string {
-  const content: Record<string, unknown> = {
-    ...org,
-    identities: (org.identities ?? [])
-      .map((i) =>
-        [
-          OrganizationIdentityType.PRIMARY_DOMAIN,
-          OrganizationIdentityType.ALTERNATIVE_DOMAIN,
-        ].includes(i.type)
-          ? { ...i, value: i.value ? normalizeHostname(i.value, false) : i.value }
-          : i,
-      )
-      .filter((i) => i.value !== undefined),
-  }
-  // the source of the member's link to the organization, not organization data
-  delete content.source
-  return stableJson({ source, content })
-}
-
-interface IOrgPayloadActivities {
-  newestMs: number
-  count: number
-}
-
-interface IAppliedOrgPayload {
-  organizationId: string
-  source: string
-  payloadKey: string
-  activities: IOrgPayloadActivities
-  apply: () => Promise<unknown>
-}
-
-const orgPayloadsOfBatch = new WeakMap<
+import {
+  EmailDomainOrganization,
+  IOrganizationLinkDeps,
   OrgPromiseCache,
-  { activities: Map<string, IOrgPayloadActivities>; applied: IAppliedOrgPayload[] }
->()
-
-function batchOrgPayloads(orgPromiseCache: OrgPromiseCache) {
-  let payloads = orgPayloadsOfBatch.get(orgPromiseCache)
-  if (!payloads) {
-    payloads = { activities: new Map(), applied: [] }
-    orgPayloadsOfBatch.set(orgPromiseCache, payloads)
-  }
-  return payloads
-}
-
-export function registerOrgPayloadActivities(
-  orgPromiseCache: OrgPromiseCache,
-  activities: { source: string; timestamp: string; organizations?: IOrganization[] }[],
-): void {
-  const payloads = batchOrgPayloads(orgPromiseCache).activities
-  for (const { source, timestamp, organizations } of activities) {
-    const time = new Date(timestamp).getTime()
-    const ms = Number.isFinite(time) ? time : 0
-    let keys: Set<string>
-    try {
-      // an activity counts once for each payload, however many times it carries it
-      keys = new Set((organizations ?? []).map((org) => orgPayloadKey(source, org)))
-    } catch {
-      // runs before the per-member error handling, which reports a malformed organization
-      continue
-    }
-    for (const key of keys) {
-      const known = payloads.get(key)
-      payloads.set(key, {
-        newestMs: Math.max(known?.newestMs ?? ms, ms),
-        count: (known?.count ?? 0) + 1,
-      })
-    }
-  }
-}
-
-const winsOver = (a: IAppliedOrgPayload, b: IAppliedOrgPayload): boolean =>
-  a.activities.newestMs !== b.activities.newestMs
-    ? a.activities.newestMs > b.activities.newestMs
-    : a.activities.count !== b.activities.count
-      ? a.activities.count > b.activities.count
-      : a.payloadKey > b.payloadKey
-
-// The payload applied last sets the defaults of its source, and which one that is depends on timing,
-// so they are applied again from lowest ranked to the winner (newest activity, most activities)
-export async function applyNewestOrgPayloads(
-  orgPromiseCache: OrgPromiseCache,
-  log: Logger,
-): Promise<void> {
-  const byOrganizationAndSource = new Map<string, IAppliedOrgPayload[]>()
-  for (const payload of batchOrgPayloads(orgPromiseCache).applied) {
-    const key = `${payload.organizationId}#${payload.source}`
-    const payloads = byOrganizationAndSource.get(key) ?? []
-    payloads.push(payload)
-    byOrganizationAndSource.set(key, payloads)
-  }
-
-  for (const payloads of byOrganizationAndSource.values()) {
-    const distinct = Array.from(new Map(payloads.map((p) => [p.payloadKey, p])).values())
-    if (distinct.length < 2) {
-      continue
-    }
-    distinct.sort((a, b) => (winsOver(a, b) ? 1 : winsOver(b, a) ? -1 : 0))
-    for (const payload of distinct) {
-      try {
-        await payload.apply()
-      } catch (err) {
-        log.error(
-          err,
-          { organizationId: payload.organizationId, source: payload.source },
-          'Failed to apply an organization payload again!',
-        )
-      }
-    }
-  }
-}
-
-// Per batch: the organization each identity key resolved to. Later payloads with the same identities
-// go there without a lookup: an earlier payload may have unverified their identity
-const orgIdsOfIdentityKeys = new WeakMap<OrgPromiseCache, Map<string, string>>()
-
-// Payloads that share identities wait for each other, so they all land on the same organization
-// and each adds what it carries
-function findOrCreateOrgOnce(
-  orgPromiseCache: OrgPromiseCache | undefined,
-  source: string,
-  org: IOrganization,
-  findOrCreate: (
-    lockOrganization?: (organizationId: string) => Promise<() => void>,
-    organizationId?: string,
-  ) => Promise<IFindOrCreateOrganizationResult | undefined>,
-): Promise<IFindOrCreateOrganizationResult | undefined> {
-  const payloadKey = orgPayloadKey(source, org)
-  const identityKey = orgCacheKey(org)
-  const key = identityKey ? `${identityKey}#${payloadKey}` : null
-  const cached = key ? orgPromiseCache?.get(key) : undefined
-  if (cached) {
-    return cached
-  }
-  if (!orgPromiseCache) {
-    return findOrCreate()
-  }
-
-  const locks = orgIdentityLocks.get(orgPromiseCache) ?? new Map<string, Promise<unknown>>()
-  orgIdentityLocks.set(orgPromiseCache, locks)
-  const lockKeys = orgLockKeys(org)
-  const resolvedIds = orgIdsOfIdentityKeys.get(orgPromiseCache) ?? new Map<string, string>()
-  orgIdsOfIdentityKeys.set(orgPromiseCache, resolvedIds)
-  const promise = Promise.all(lockKeys.map((k) => locks.get(k)))
-    .then(() =>
-      findOrCreate(
-        lockOrganizationFor(orgPromiseCache),
-        identityKey ? resolvedIds.get(identityKey) : undefined,
-      ),
-    )
-    .then((result) => {
-      if (result) {
-        if (identityKey && !resolvedIds.has(identityKey)) {
-          resolvedIds.set(identityKey, result.id)
-        }
-        const payloads = batchOrgPayloads(orgPromiseCache)
-        payloads.applied.push({
-          organizationId: result.id,
-          source,
-          payloadKey,
-          activities: payloads.activities.get(payloadKey) ?? { newestMs: 0, count: 0 },
-          apply: () => findOrCreate(lockOrganizationFor(orgPromiseCache), result.id),
-        })
-      }
-      return result
-    })
-  const settled = promise.catch(() => undefined)
-  for (const k of lockKeys) {
-    locks.set(k, settled)
-  }
-
-  if (key) {
-    orgPromiseCache.set(key, promise)
-    promise.catch(() => orgPromiseCache.delete(key))
-  }
-  return promise
-}
+  findOrCreateOrgOnce,
+  linkMemberOrganizations,
+} from './organizationLinking'
+import { createOrgLookupCache } from './orgLookupCache'
 
 // Integrations stamp activities without a date at 1970-01-01 (e.g. Slack channel members), which is
 // never a real join date, so a date this close to the epoch never wins
@@ -412,6 +123,7 @@ export default class MemberService extends LoggerBase {
   private readonly memberRepo: MemberRepository
   private readonly pgQx: QueryExecutor
   private readonly botDetectionService: BotDetectionService
+  private readonly orgLinkDeps: Omit<IOrganizationLinkDeps, 'log'>
 
   constructor(
     private readonly store: DbStore,
@@ -423,6 +135,12 @@ export default class MemberService extends LoggerBase {
 
     this.memberRepo = new MemberRepository(store, this.log)
     this.botDetectionService = new BotDetectionService(this.log)
+    this.orgLinkDeps = {
+      store,
+      temporal,
+      orgLookups: createOrgLookupCache(redisClient, this.log),
+      assignByEmailDomain: (...args) => this.assignOrganizationByEmailDomain(...args),
+    }
     this.pgQx = dbStoreQx(this.store)
   }
 
@@ -778,106 +496,24 @@ export default class MemberService extends LoggerBase {
             await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
-          const organizations: IOrganizationIdSource[] = []
-          const orgService = new OrganizationService(this.store, this.temporal, this.log)
-          if (data.organizations) {
-            for (const org of data.organizations) {
-              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
-              // hot-row contention on the organizations table. Permanent fix is in
-              // tncTransformerBase.ts to stop emitting this org entirely.
-              if (
-                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
-              ) {
-                continue
-              }
-
-              const result = await findOrCreateOrgOnce(
-                orgPromiseCache,
-                platform,
-                org,
-                (lockOrganization, organizationId) =>
-                  logExecutionTimeV2(
-                    () =>
-                      orgService.findOrCreate(
-                        platform,
-                        integrationId,
-                        org,
-                        lockOrganization,
-                        organizationId,
-                      ),
-                    this.log,
-                    'memberService -> create -> orgService.findOrCreate',
-                  ),
-              )
-              if (result) {
-                organizations.push({
-                  id: result.id,
-                  source: org.source,
-                })
-              }
-            }
-          }
-
           const isBotMember = this.botDetectionService.isFlaggedAsBot(
             attributes as Record<string, unknown>,
           )
 
-          const emailIdentities = data.identities.filter(
-            (i) => i.type === MemberIdentityType.EMAIL && i.verified,
+          await linkMemberOrganizations(
+            { ...this.orgLinkDeps, log: this.log },
+            {
+              step: 'create',
+              memberId: effectiveMemberId,
+              segmentIds,
+              integrationId,
+              platform,
+              data,
+              orgPromiseCache,
+              activityTimestamp,
+              isBotMember,
+            },
           )
-          let fromEmailDomain: EmailDomainOrganization[] = []
-          if (emailIdentities.length > 0) {
-            fromEmailDomain = await logExecutionTimeV2(
-              () =>
-                this.assignOrganizationByEmailDomain(
-                  integrationId,
-                  emailIdentities.map((i) => i.value),
-                  orgPromiseCache,
-                  effectiveMemberId,
-                  activityTimestamp,
-                  isBotMember,
-                ),
-              this.log,
-              'memberService -> create -> assignOrganizationByEmailDomain',
-            )
-            if (fromEmailDomain.length > 0) {
-              organizations.push(...fromEmailDomain)
-            }
-          }
-
-          if (organizations.length > 0) {
-            const uniqOrgs = uniqby(organizations, 'id')
-
-            const orgsToAdd = (
-              await Promise.all(
-                uniqOrgs.map(async (org) => {
-                  // Check if the org was already added to the member in the past, including deleted ones.
-                  // If it was, we ignore this org to prevent from adding it again.
-                  const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
-                    this.log,
-                    'memberService -> create -> orgService.findMemberOrganizations',
-                  )
-                  return existingMemberOrgs.length > 0 ? null : org
-                }),
-              )
-            ).filter((org) => org !== null)
-
-            if (orgsToAdd.length > 0) {
-              await logExecutionTimeV2(
-                () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
-                this.log,
-                'memberService -> create -> orgService.addToMember',
-              )
-
-              const addedIds = new Set(orgsToAdd.map((org) => org.id))
-              for (const org of fromEmailDomain) {
-                if (org.created && addedIds.has(org.id)) {
-                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
-                }
-              }
-            }
-          }
 
           return effectiveMemberId
         } catch (err) {
@@ -1044,108 +680,20 @@ export default class MemberService extends LoggerBase {
             return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
-          const organizations: IOrganizationIdSource[] = []
-          const orgService = new OrganizationService(this.store, this.temporal, this.log)
-          if (data.organizations) {
-            for (const org of data.organizations) {
-              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
-              // hot-row contention on the organizations table. Permanent fix is in
-              // tncTransformerBase.ts to stop emitting this org entirely.
-              if (
-                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
-              ) {
-                continue
-              }
-
-              this.log.trace({ memberId: id }, 'Finding or creating organization!')
-
-              const result = await findOrCreateOrgOnce(
-                orgPromiseCache,
-                platform,
-                org,
-                (lockOrganization, organizationId) =>
-                  logExecutionTimeV2(
-                    () =>
-                      orgService.findOrCreate(
-                        platform,
-                        integrationId,
-                        org,
-                        lockOrganization,
-                        organizationId,
-                      ),
-                    this.log,
-                    'memberService -> update -> orgService.findOrCreate',
-                  ),
-              )
-              if (result) {
-                organizations.push({
-                  id: result.id,
-                  source: data.source,
-                })
-              }
-            }
-          }
-
-          const emailIdentities = data.identities.filter(
-            (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+          await linkMemberOrganizations(
+            { ...this.orgLinkDeps, log: this.log },
+            {
+              step: 'update',
+              memberId: effectiveMemberId,
+              segmentIds: [segmentId],
+              integrationId,
+              platform,
+              data,
+              orgPromiseCache,
+              activityTimestamp,
+              isBotMember,
+            },
           )
-          let fromEmailDomain: EmailDomainOrganization[] = []
-          if (emailIdentities.length > 0) {
-            this.log.trace({ memberId: id }, 'Assigning organization by email domain!')
-            fromEmailDomain = await logExecutionTimeV2(
-              () =>
-                this.assignOrganizationByEmailDomain(
-                  integrationId,
-                  emailIdentities.map((i) => i.value),
-                  orgPromiseCache,
-                  effectiveMemberId,
-                  activityTimestamp,
-                  isBotMember,
-                ),
-              this.log,
-              'memberService -> update -> assignOrganizationByEmailDomain',
-            )
-            if (fromEmailDomain.length > 0) {
-              organizations.push(...fromEmailDomain)
-            }
-          }
-
-          if (organizations.length > 0) {
-            const uniqOrgs = uniqby(organizations, 'id')
-
-            this.log.trace({ memberId: effectiveMemberId }, 'Finding member organizations!')
-            const orgsToAdd = (
-              await Promise.all(
-                uniqOrgs.map(async (org) => {
-                  // Check if the org was already added to the member in the past, including deleted ones.
-                  // If it was, we ignore this org to prevent from adding it again.
-                  const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
-                    this.log,
-                    'memberService -> update -> orgService.findMemberOrganizations',
-                  )
-                  return existingMemberOrgs.length > 0 ? null : org
-                }),
-              )
-            ).filter((org) => org !== null)
-
-            if (orgsToAdd.length > 0) {
-              this.log.trace({ memberId: effectiveMemberId }, 'Adding organizations to member!')
-              await logExecutionTimeV2(
-                () => orgService.addToMember([segmentId], effectiveMemberId, orgsToAdd),
-                this.log,
-                'memberService -> update -> orgService.addToMember',
-              )
-
-              const addedIds = new Set(orgsToAdd.map((org) => org.id))
-              for (const org of fromEmailDomain) {
-                if (org.created && addedIds.has(org.id)) {
-                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
-                }
-              }
-            }
-          }
-
           return effectiveMemberId !== id ? effectiveMemberId : undefined
         } catch (err) {
           this.log.error(err, { memberId: id }, 'Error while updating a member!')
@@ -1164,6 +712,8 @@ export default class MemberService extends LoggerBase {
     memberId?: string,
     activityTimestamp?: string | ActivityTimestampsByEmailDomain,
     isBotMember = false,
+    refresh = false,
+    createdIds?: Set<string>,
   ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
     const organizations: EmailDomainOrganization[] = []
@@ -1202,6 +752,7 @@ export default class MemberService extends LoggerBase {
         ],
       }
       const result = await findOrCreateOrgOnce(
+        this.orgLinkDeps.orgLookups,
         orgPromiseCache,
         OrganizationAttributeSource.EMAIL,
         org,
@@ -1213,7 +764,11 @@ export default class MemberService extends LoggerBase {
             lockOrganization,
             organizationId,
           ),
+        refresh,
       )
+      if (result?.created) {
+        createdIds?.add(result.id)
+      }
       if (result) {
         organizations.push({
           id: result.id,

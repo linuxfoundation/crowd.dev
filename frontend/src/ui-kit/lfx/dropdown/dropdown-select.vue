@@ -28,6 +28,10 @@ import {
 } from 'vue';
 import LfxDropdown from '@/ui-kit/lfx/dropdown/dropdown.vue';
 
+defineOptions({
+  name: 'LfxDropdownSelect',
+});
+
 const props = withDefaults(
   defineProps<{
     modelValue: string;
@@ -93,10 +97,4 @@ const selectedOption = computed(() => {
 
 provide('selectedValue', value);
 provide('selectedOptionProps', selectedOptionProps);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfxDropdownSelect',
-};
 </script>

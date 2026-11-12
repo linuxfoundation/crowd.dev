@@ -67,13 +67,9 @@ import {
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
-import MemberService, {
-  applyNewestOrgPayloads,
-  getEarliestMemberJoinedAt,
-  mergeIfAllowed,
-  registerOrgPayloadActivities,
-} from './member.service'
+import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
 import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
+import { applyNewestOrgPayloads, registerOrgPayloadActivities } from './organizationLinking'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -143,6 +139,7 @@ interface IMemberUpdateFailure {
 interface IMemberUpdateResults {
   memberIds: Record<MemberRole, Map<IActivityProcessData, string>>
   failures: Record<MemberRole, Map<IActivityProcessData, IMemberUpdateFailure>>
+  membersAfterUpdates: Map<string, IDbMember>
 }
 
 function timestampMs(timestamp: string): number {
@@ -1752,6 +1749,11 @@ export default class ActivityService extends LoggerBase {
       this.log.error(err, 'Failed to apply the newest organization payloads of the batch!')
     }
 
+    // Bot and team-member status describe the member, not one activity, so every activity follows
+    // the member it ends up under (a merge survivor) as it is after the batch's updates.
+    const memberAfterBatch = (payload: (typeof relevantPayloads)[number]) =>
+      memberUpdates.membersAfterUpdates.get(payload.memberId) ?? payload.dbMember
+
     const isBotOf = new Map<(typeof relevantPayloads)[number], boolean>()
     const affiliationRequests: {
       payload: (typeof relevantPayloads)[number]
@@ -1776,8 +1778,6 @@ export default class ActivityService extends LoggerBase {
         })
       }
 
-      // dbMember stays the row from before the batch: an activity's isBot and isTeamMember fall
-      // back to it, so a later activity in the batch can't change an earlier activity's flags
       const memberId = memberUpdates.memberIds.member.get(payload)
       if (memberId) {
         payload.memberId = memberId
@@ -1800,7 +1800,7 @@ export default class ActivityService extends LoggerBase {
         MemberAttributeName.IS_BOT,
         payload.activity.member,
         payload.platform,
-        payload.dbMember,
+        memberAfterBatch(payload),
       ) as boolean
       isBotOf.set(payload, isBot)
 
@@ -1892,7 +1892,7 @@ export default class ActivityService extends LoggerBase {
                   MemberAttributeName.IS_TEAM_MEMBER,
                   payload.activity.member,
                   payload.platform,
-                  payload.dbMember,
+                  memberAfterBatch(payload),
                 ) as boolean,
               },
               payload.activityId,
@@ -2181,6 +2181,7 @@ export default class ActivityService extends LoggerBase {
     const results: IMemberUpdateResults = {
       memberIds: { member: new Map(), objectMember: new Map() },
       failures: { member: new Map(), objectMember: new Map() },
+      membersAfterUpdates: new Map(),
     }
     const setMemberId = (updates: IPayloadMemberUpdate[], memberId: string) => {
       for (const update of updates) {
@@ -2368,6 +2369,24 @@ export default class ActivityService extends LoggerBase {
     for (const memberIds of Object.values(results.memberIds)) {
       for (const [payload, memberId] of memberIds) {
         memberIds.set(payload, followRedirects(redirects, memberId))
+      }
+    }
+
+    const finalMemberIds = Array.from(new Set(results.memberIds.member.values()))
+    if (finalMemberIds.length > 0) {
+      const members = await logExecutionTimeV2(
+        () => this.memberRepo.findByIds(finalMemberIds),
+        this.log,
+        'activityService -> updateMembers -> memberRepo.findByIds',
+      )
+      for (const member of members) {
+        results.membersAfterUpdates.set(member.id, member)
+      }
+      if (members.length < finalMemberIds.length) {
+        this.log.warn(
+          { missing: finalMemberIds.filter((id) => !results.membersAfterUpdates.has(id)) },
+          'Members disappeared after their update, their activities keep the flags from before the batch!',
+        )
       }
     }
 

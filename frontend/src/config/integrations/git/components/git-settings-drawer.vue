@@ -111,7 +111,7 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
@@ -121,6 +121,10 @@ import { lfIntegrations } from '@/config/integrations';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
+
+defineOptions({
+  name: 'LfGitSettingsDrawer',
+});
 
 const props = defineProps({
   integration: {
@@ -187,7 +191,7 @@ const isMirroredRepo = (url: string) => mirroredRepoUrls.value.has(url);
 const fetchRepoMappings = () => {
   if (!props.integration?.id) return;
 
-  IntegrationService.fetchGitMappings(props.integration)
+  IntegrationService.fetchGitMappings({ id: props.integration.id, segmentId: props.integration.segmentId })
     .then((repos: IntegrationMapping[]) => {
       // Find repos where sourceIntegrationId != gitIntegrationId (mirrored from other platforms)
       mirroredRepos.value = repos
@@ -228,6 +232,10 @@ const removeRemote = (index: number) => {
   form.remotes.splice(index, 1);
 };
 
+const revertChanges = () => {
+  form.remotes = [...originalRemotes.value];
+};
+
 const canClose = (done: (value: boolean) => void) => {
   if (hasFormChanged.value) {
     changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
@@ -245,6 +253,23 @@ const canClose = (done: (value: boolean) => void) => {
 
 const cancel = () => {
   isVisible.value = false;
+};
+
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping git repositories');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'git');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
 };
 
 const connect = async () => {
@@ -276,27 +301,6 @@ const connect = async () => {
     });
 };
 
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, 'There was an error mapping git repositories');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'git');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
-};
-
-const revertChanges = () => {
-  form.remotes = [...originalRemotes.value];
-};
-
 const getIntegrationImage = (platform: string) => allIntegrations.value[platform.replace('-nango', '')]?.image;
 
 const removeProtocolAndDomain = (url: string) => {
@@ -318,11 +322,5 @@ const removeProtocolAndDomain = (url: string) => {
     // If URL parsing fails, return the original string
     return url.replace(/^(https?:\/\/|git@)/, '').replace(/\.git$/, '');
   }
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGitSettingsDrawer',
 };
 </script>

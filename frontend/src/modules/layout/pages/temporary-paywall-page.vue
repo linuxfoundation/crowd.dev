@@ -26,9 +26,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({ name: 'AppPaywallPage' });
 
 const route = useRoute();
 
@@ -40,10 +42,4 @@ const onCtaClick = () => {
 
 const errorImage = new URL('@/assets/images/error/403.svg', import.meta.url)
   .href;
-</script>
-
-<script>
-export default {
-  name: 'AppPaywallPage',
-};
 </script>

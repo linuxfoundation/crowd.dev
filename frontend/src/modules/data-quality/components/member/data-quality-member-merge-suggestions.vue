@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts" setup>
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import {
   computed, onMounted, ref, watch,
 } from 'vue';
@@ -66,6 +66,10 @@ import AppMemberMergeSuggestionsDialog from '@/modules/member/components/member-
 import LfMemberMergeSuggestionDropdown
   from '@/modules/member/components/suggestions/member-merge-suggestion-dropdown.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
+
+defineOptions({
+  name: 'LfDataQualityMemberMergeSuggestions',
+});
 
 const props = defineProps<{
   projectGroup?: string,
@@ -123,10 +127,4 @@ watch(() => props.projectGroup, () => {
 onMounted(() => {
   loadMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMemberMergeSuggestions',
-};
 </script>

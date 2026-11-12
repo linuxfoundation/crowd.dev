@@ -5,6 +5,8 @@ import type {
   ResolvedTemplate,
   TemplateToResolve,
 } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
+import { WINDOW_LAG_MS } from '@crowd/connectors/src/connectors/credly/syncs/badgePoll'
+import { decommissionSyncUnitsForChannelIds } from '@crowd/data-access-layer/src/connectors'
 import type {
   CredlyDecisionOutcome,
   ICredlyStoredTemplateMapping,
@@ -13,16 +15,14 @@ import {
   credlyDecisionChanged,
   deactivateCredlyTemplateMapping,
   findOrCreateCredlyIntegration,
+  lockCredlyTemplateMapping,
   upsertCredlyTemplateDecision,
 } from '@crowd/data-access-layer/src/credly'
-import type {
-  ICredlyTemplateReleaseInput,
-  IUnreleasedMappedCredlyTemplate,
-} from '@crowd/data-access-layer/src/credly/releases'
-import { queueCredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegments } from '@crowd/data-access-layer/src/segments'
 import type { Logger } from '@crowd/logging'
+
+import { onboardCredlyTemplate } from './onboardCredlyTemplate'
 
 export interface CatalogueSource {
   run<T>(query: string): Promise<T[]>
@@ -82,6 +82,7 @@ export async function loadCredlyTemplates(
         name: template.name,
         badgeCount: typeof count === 'number' && Number.isFinite(count) ? count : null,
         url: template.url ?? null,
+        activityUrl: template.global_activity_url ?? null,
         createdAt: template.created_at ?? null,
       })
     }
@@ -189,7 +190,9 @@ export interface ApplyResult {
   outcomes: Record<CredlyDecisionOutcome, number>
   integrationsCreated: number
   deactivated: number
-  releasesQueued: number
+  unitsOnboarded: number
+  unitsReactivated: number
+  unitsDecommissioned: number
 }
 
 // Credly moved to its current platform in March 2019; nothing older carries a state_updated_at.
@@ -202,88 +205,141 @@ export function releaseFloor(createdAt: string | null | undefined, top: Date): s
   return new Date(Math.min(floorMs, top.getTime() - 1000)).toISOString()
 }
 
-export function releasesToQueue(
-  plan: ResolvePlan,
-  templates: TemplateToResolve[],
+// The live cursor starts where the backfill's top ends, both clamped to WINDOW_LAG_MS before `now`
+// like every live window in badgePoll.ts, so a badge Credly hasn't surfaced yet isn't missed.
+export function backfillWatermark(
+  createdAt: string | null | undefined,
   now: Date,
-): ICredlyTemplateReleaseInput[] {
-  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
-  return plan.entries
-    .filter(
-      (entry) =>
-        (entry.kind === 'changed' || entry.kind === 'new') &&
-        !entry.before?.startsWith('mapped:') &&
-        entry.after?.startsWith('mapped:'),
-    )
-    .map((entry) => ({
-      badgeTemplateId: entry.badgeTemplateId,
-      floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
-      top: now.toISOString(),
-    }))
+): Record<string, unknown> {
+  const top = new Date(now.getTime() - WINDOW_LAG_MS)
+  return {
+    since: top.toISOString(),
+    backfill: {
+      floor: releaseFloor(createdAt, top),
+      top: top.toISOString(),
+      since: null,
+      until: null,
+      page: 1,
+    },
+  }
 }
 
-// One-time catch-up for templates mapped before the release queue existed: same floor rule as a
-// normal release, lightest-first ordering left to the caller.
-export function unreleasedTemplatesToQueue(
-  templates: TemplateToResolve[],
-  unreleased: IUnreleasedMappedCredlyTemplate[],
-  now: Date,
-): ICredlyTemplateReleaseInput[] {
-  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
-  return unreleased.map((entry) => ({
-    badgeTemplateId: entry.badgeTemplateId,
-    floor: releaseFloor(createdAtById.get(entry.badgeTemplateId), now),
-    top: now.toISOString(),
-  }))
-}
-
-// A release is queued in the same transaction as the decision that frees the template: a run that
-// dies in between leaves the template held, and the next run decides it again.
+// Onboarding is attempted for every mapped decision, not only a changed one: it is a cheap no-op
+// once the unit exists, and it self-heals a run that died between the decision and the unit.
 export async function applyDecisions(
   qx: QueryExecutor,
   decisions: ResolvedTemplate[],
   missing: PlanEntry[],
+  templates: TemplateToResolve[],
+  stored: ICredlyStoredTemplateMapping[],
   log: Logger,
-  releases: ICredlyTemplateReleaseInput[] = [],
 ): Promise<ApplyResult> {
   const result: ApplyResult = {
     outcomes: { inserted: 0, updated: 0, unchanged: 0, locked: 0 },
     integrationsCreated: 0,
     deactivated: 0,
-    releasesQueued: 0,
+    unitsOnboarded: 0,
+    unitsReactivated: 0,
+    unitsDecommissioned: 0,
   }
-  const releaseById = new Map(releases.map((release) => [release.badgeTemplateId, release]))
+  const createdAtById = new Map(templates.map((template) => [template.id, template.createdAt]))
   const integrationBySegment = new Map<string, string>()
+  const now = new Date()
   for (const decision of decisions) {
+    const segmentId = decision.status === 'mapped' ? decision.segmentId : null
     let integrationId: string | null = null
-    if (decision.status === 'mapped' && decision.segmentId) {
-      integrationId = integrationBySegment.get(decision.segmentId) ?? null
+    if (segmentId) {
+      integrationId = integrationBySegment.get(segmentId) ?? null
       if (!integrationId) {
-        const integration = await findOrCreateCredlyIntegration(qx, decision.segmentId)
+        const integration = await findOrCreateCredlyIntegration(qx, segmentId)
         if (integration.created) result.integrationsCreated += 1
         integrationId = integration.id
-        integrationBySegment.set(decision.segmentId, integrationId)
+        integrationBySegment.set(segmentId, integrationId)
       }
     }
-    const release = releaseById.get(decision.badgeTemplateId)
-    const outcome = await qx.tx(async (tx) => {
-      const stored = await upsertCredlyTemplateDecision(tx, { ...decision, integrationId })
-      if (release && (stored === 'inserted' || stored === 'updated')) {
-        await queueCredlyTemplateRelease(tx, release)
-        result.releasesQueued += 1
+    // One transaction per decision: a crash between the decision write, the unit's creation and
+    // its lock must not leave the mapping pointing at an integration whose unit never landed.
+    await qx.tx(async (txQx) => {
+      const outcome = await upsertCredlyTemplateDecision(txQx, { ...decision, integrationId })
+      result.outcomes[outcome] += 1
+      if (outcome === 'locked') {
+        log.warn(
+          { badgeTemplateId: decision.badgeTemplateId, wanted: targetLabel(decision) },
+          'credly template is locked, the new decision needs a review',
+        )
+        return
       }
-      return stored
-    })
-    result.outcomes[outcome] += 1
-    if (outcome === 'locked') {
-      log.warn(
-        { badgeTemplateId: decision.badgeTemplateId, wanted: targetLabel(decision) },
-        'credly template is locked, the new decision needs a review',
+      if (!segmentId || !integrationId) return
+      const onboarded = await onboardCredlyTemplate(
+        txQx,
+        integrationId,
+        decision.badgeTemplateId,
+        decision.badgeTemplateName,
+        backfillWatermark(createdAtById.get(decision.badgeTemplateId), now),
       )
+      if (onboarded.outcome === 'created') {
+        result.unitsOnboarded += 1
+      } else if (onboarded.outcome === 'reactivated') {
+        result.unitsReactivated += 1
+      } else if (onboarded.reason !== 'already_present') {
+        log.warn(
+          { badgeTemplateId: decision.badgeTemplateId, ...onboarded },
+          'credly template onboarding skipped',
+        )
+      }
+      // A unit synced under integrationId, so the mapping is frozen on it: a later resolve that
+      // wants to move the template elsewhere gets 'locked' instead of silently orphaning the sync.
+      if (
+        onboarded.outcome === 'created' ||
+        onboarded.outcome === 'reactivated' ||
+        onboarded.reason === 'already_present'
+      ) {
+        await lockCredlyTemplateMapping(txQx, decision.badgeTemplateId, {
+          segmentId,
+          integrationId,
+        })
+      }
+    })
+  }
+  const integrationByTemplate = new Map(
+    stored.map((row) => [row.badgeTemplateId, row.integrationId]),
+  )
+  const missingChannelIdsByIntegration = new Map<string, string[]>()
+  const missingWithoutIntegration: string[] = []
+  for (const entry of missing) {
+    const integrationId = integrationByTemplate.get(entry.badgeTemplateId)
+    if (integrationId) {
+      missingChannelIdsByIntegration.set(integrationId, [
+        ...(missingChannelIdsByIntegration.get(integrationId) ?? []),
+        entry.badgeTemplateId,
+      ])
+    } else {
+      missingWithoutIntegration.push(entry.badgeTemplateId)
     }
   }
-  for (const entry of missing) {
-    result.deactivated += await deactivateCredlyTemplateMapping(qx, entry.badgeTemplateId)
+  for (const badgeTemplateId of missingWithoutIntegration) {
+    result.deactivated += await deactivateCredlyTemplateMapping(qx, badgeTemplateId)
+  }
+  // One transaction per integration: a deactivated row never comes back as 'missing' later, so a
+  // crash before decommissioning would leave that unit polling forever.
+  for (const [integrationId, channelIds] of missingChannelIdsByIntegration) {
+    await qx.tx(async (txQx) => {
+      // Only a channel actually deactivated here is decommissioned: a 0-row result means another
+      // resolve already relocked it, so its live unit must be left running, not torn down under it.
+      const deactivatedChannelIds: string[] = []
+      for (const channelId of channelIds) {
+        const deactivated = await deactivateCredlyTemplateMapping(txQx, channelId)
+        result.deactivated += deactivated
+        if (deactivated > 0) deactivatedChannelIds.push(channelId)
+      }
+      if (deactivatedChannelIds.length > 0) {
+        result.unitsDecommissioned += await decommissionSyncUnitsForChannelIds(
+          txQx,
+          integrationId,
+          deactivatedChannelIds,
+        )
+      }
+    })
   }
   return result
 }

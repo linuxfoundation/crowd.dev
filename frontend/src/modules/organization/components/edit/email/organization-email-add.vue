@@ -92,6 +92,10 @@ import { useOrganizationStore } from '@/modules/organization/store/pinia';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import { email, required } from '@vuelidate/validators';
 
+defineOptions({
+  name: 'LfOrganizationEmailAdd',
+});
+
 const props = defineProps<{
   modelValue: boolean,
   organization: Organization,
@@ -152,11 +156,5 @@ const addIdentities = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationEmailAdd',
 };
 </script>

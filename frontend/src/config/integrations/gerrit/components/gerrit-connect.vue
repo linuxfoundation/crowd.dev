@@ -21,10 +21,14 @@
 <script setup lang="ts">
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { GerritSettings } from '@/config/integrations/gerrit/types/GerritSettings';
-import { defineProps, ref } from 'vue';
+import { ref } from 'vue';
 import LfGerritSettingsDrawer from '@/config/integrations/gerrit/components/gerrit-settings-drawer.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+
+defineOptions({
+  name: 'LfGerritConnect',
+});
 
 const props = defineProps<{
   integration: Integration<GerritSettings> | undefined,
@@ -33,10 +37,4 @@ const props = defineProps<{
 }>();
 
 const isGerritConnectDrawerOpen = ref(false);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGerritConnect',
-};
 </script>

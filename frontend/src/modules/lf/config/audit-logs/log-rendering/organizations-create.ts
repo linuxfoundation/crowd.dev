@@ -1,7 +1,7 @@
 import type { LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
 
 const organizationsCreate: LogRenderingConfig<unknown, { displayName?: string }> = {
-  label: 'Organization created',
+  label: 'Company created',
   changes: () => null,
   description: (log) => {
     const organization = log.newState?.displayName;
@@ -14,7 +14,7 @@ const organizationsCreate: LogRenderingConfig<unknown, { displayName?: string }>
     const organization = log.newState?.displayName;
     if (organization) {
       return [{
-        label: 'Organization',
+        label: 'Company',
         value: `${organization}<br><span>ID: ${log.entityId}</span>`,
       }];
     }

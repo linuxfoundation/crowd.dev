@@ -13,17 +13,20 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import {
   DecisionReason,
-  ISlackMessageContent,
-  MAX_BLOCKS_PER_MESSAGE,
-  escapeSlackText,
-  linkButtonBlocks,
-  mrkdwnSections,
   describeDecisionReason,
+  escapeSlackText,
+  ISlackMessageContent,
+  linkButtonBlocks,
+  listedWithRemainder,
+  MAX_BLOCKS_PER_MESSAGE,
+  mrkdwnSections,
+  repositoriesWord,
 } from '@crowd/slack'
 
 import {
   BotStatus,
   INSIGHTS_PROJECT_URL_BASE,
+  MAX_LISTED_REPOSITORIES,
   STATUS,
   VIEW_INSIGHTS_PROJECT_ACTION_ID,
   repoLabel,
@@ -61,12 +64,21 @@ export interface IIngestOutcome {
   notes: string[]
 }
 
+export interface IIngestProjectGroup {
+  name: string
+  repositories: number
+}
+
 export interface IIngestNotesInput {
   requestText: string
   repoUrls: string[]
   nonGithubRepoUrls: string[] | null
   truncated: boolean
   organizations?: IExpandedOrganization[]
+}
+
+export function projectGroupNote({ name, repositories }: IIngestProjectGroup): string {
+  return `I'll add these ${repositories} ${repositoriesWord(repositories)} to one project, *${escapeSlackText(name)}*.`
 }
 
 const BUTTONS_PER_BLOCK = 5
@@ -369,13 +381,21 @@ export function buildIngestStatusHeader(
   }
 }
 
+function checkingLines(queued: string[]): string[] {
+  const { listed, more } = listedWithRemainder(queued, MAX_LISTED_REPOSITORIES)
+  return [
+    ...listed.map((repoUrl) => `${STATUS.checking} Checking ${repoLabel(repoUrl)}…`),
+    ...(more > 0 ? [`${STATUS.checking} Checking ${more} more ${repositoriesWord(more)}…`] : []),
+  ]
+}
+
 export function buildBotIngestReply(
   { queued, alreadyRequested, alreadyTracked, notes }: IIngestOutcome,
   evaluationStarted: boolean,
 ): ISlackMessageContent {
   const lines = [
     ...alreadyTracked.map(alreadyTrackedLine),
-    ...queued.map((repoUrl) => `${STATUS.checking} Checking ${repoLabel(repoUrl)}…`),
+    ...checkingLines(queued),
     ...alreadyRequested.map(alreadyRequestedLine),
     ...notes,
   ]

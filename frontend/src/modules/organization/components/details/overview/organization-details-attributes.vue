@@ -2,7 +2,7 @@
   <section v-bind="$attrs">
     <div class="flex items-center justify-between pb-4">
       <h6>
-        Organization details
+        Company details
       </h6>
     </div>
     <div>
@@ -60,7 +60,7 @@
       <div v-if="Object.keys(visibleAttributes).length === 0" class="pt-2 flex flex-col items-center w-full">
         <lf-icon name="rectangle-list" :size="80" class="text-gray-300" />
         <p class="text-center pt-3 text-medium text-gray-400">
-          No organization details yet
+          No company details yet
         </p>
       </div>
     </div>
@@ -83,6 +83,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfOrganizationAttributeSource
   from '@/modules/organization/components/details/overview/attributes/organization-attribute-source.vue';
 import useOrganizationHelpers from '@/modules/organization/helpers/organization.helpers';
+
+defineOptions({
+  name: 'LfOrganizationDetailsAttributes',
+});
 
 const props = defineProps<{
   organization: Organization,
@@ -154,10 +158,4 @@ const getValue = (attribute: OrganizationEnrichmentConfig) => {
 };
 
 const affiliated = computed(() => affiliatedProfiles(props.organization));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsAttributes',
-};
 </script>

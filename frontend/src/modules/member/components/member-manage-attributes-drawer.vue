@@ -110,7 +110,7 @@
   </el-drawer>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref,
   computed,
@@ -129,20 +129,21 @@ import { useRoute } from 'vue-router';
 import { useContributorStore } from '@/modules/contributor/store/contributor.store';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Contributor, ContributorAttribute } from '@/modules/contributor/types/Contributor';
 import AppMemberFormGlobalAttributes from './form/member-form-global-attributes.vue';
 import AppMemberFormAttributes from './form/member-form-attributes.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  member: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({ name: 'AppMemberManageAttributesDrawer' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+  member: Contributor;
+}>(), {
+  modelValue: false,
 });
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean];
+}>();
 
 const route = useRoute();
 const { trackEvent } = useProductTracking();
@@ -152,15 +153,15 @@ const { customAttributes } = storeToRefs(memberStore);
 
 const { updateContributorAttributes } = useContributorStore();
 
-const loading = ref(false);
-const isEditingAttributes = ref(false);
+const loading = ref<boolean>(false);
+const isEditingAttributes = ref<boolean>(false);
 
 const computedAttributes = computed(() => Object.values(customAttributes.value));
 const drawerModel = computed({
   get() {
     return props.modelValue;
   },
-  set(value) {
+  set(value: boolean) {
     emit('update:modelValue', value);
   },
 });
@@ -212,7 +213,7 @@ const handleSubmit = async () => {
 
   await updateContributorAttributes(props.member.id, {
     ...props.member.attributes,
-    ...formattedAttributes,
+    ...(formattedAttributes as Record<string, ContributorAttribute>),
   });
   ToastStore.success('Member attributes updated successfully');
   emit('update:modelValue', false);
@@ -224,12 +225,6 @@ const onOpenManageAttributes = () => {
 
 const onCloseManageAttributes = () => {
   isEditingAttributes.value = false;
-};
-</script>
-
-<script>
-export default {
-  name: 'AppMemberManageAttributesDrawer',
 };
 </script>
 

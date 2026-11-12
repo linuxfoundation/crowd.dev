@@ -11,7 +11,6 @@ const GITHUB_REPO_URL = /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$
 export interface IGithubLifecycleDiffInput {
   deleted: boolean
   repoUrls: string[]
-  mappingKeys: string[]
   channels: ILifecycleChannel[]
   ownedElsewhere: string[]
 }
@@ -75,7 +74,6 @@ export function githubRepoKey(url: string): string | null {
 
 export function diffGithubLifecycle(input: IGithubLifecycleDiffInput): IGithubLifecycleDiff {
   const owned = new Set(input.ownedElsewhere)
-  const mapped = new Set(input.mappingKeys)
   const desired = new Set<string>()
   const invalidUrls: string[] = []
   const orderedKeys: string[] = []
@@ -106,7 +104,7 @@ export function diffGithubLifecycle(input: IGithubLifecycleDiffInput): IGithubLi
 
   const toCreate = input.deleted
     ? []
-    : orderedKeys.filter((key) => !channelKeys.has(key) && !mapped.has(key) && !owned.has(key))
+    : orderedKeys.filter((key) => !channelKeys.has(key) && !owned.has(key))
 
   return {
     toCreate,

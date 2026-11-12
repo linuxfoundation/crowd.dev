@@ -32,7 +32,7 @@
         No merge suggestions
       </h5>
       <p class="text-sm text-center text-gray-600 leading-5">
-        We couldn't find any duplicated organizations
+        We couldn't find any duplicated companies
       </p>
     </div>
   </div>
@@ -54,12 +54,16 @@ import type { DataQualityOrganizationMergeSuggestion } from '@/modules/data-qual
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import LfDataQualityOrganizationMergeSuggestionsItem
   from '@/modules/data-quality/components/organization/data-quality-organization-merge-suggestions-item.vue';
 import AppOrganizationMergeSuggestionsDialog
   from '@/modules/organization/components/organization-merge-suggestions-dialog.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
+
+defineOptions({
+  name: 'LfDataQualityOrganizationMergeSuggestions',
+});
 
 const props = defineProps<{
   projectGroup?: string,
@@ -106,10 +110,4 @@ const loadMore = () => {
 onMounted(() => {
   loadMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityOrganizationMergeSuggestions',
-};
 </script>

@@ -65,6 +65,10 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
+defineOptions({
+  name: 'LfDataQualityMemberIssues',
+});
+
 const props = defineProps<{
   type: DataIssueType,
   projectGroup: string,
@@ -136,10 +140,4 @@ watch(() => props.projectGroup, () => {
 onMounted(() => {
   loadDataIssues();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDataQualityMemberIssues',
-};
 </script>

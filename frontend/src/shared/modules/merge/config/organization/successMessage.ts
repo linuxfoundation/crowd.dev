@@ -19,7 +19,7 @@ export default ({ primaryOrganization, secondaryOrganization }: SuccessMessage) 
         ToastStore.closeAll();
       },
     },
-    'View organization',
+    'View company',
   );
 
   const messageElements = [buttonElement];
@@ -45,7 +45,7 @@ export default ({ primaryOrganization, secondaryOrganization }: SuccessMessage) 
       messageElements,
     ),
     {
-      title: 'Organizations merged successfully',
+      title: 'Companies merged successfully',
     },
   );
 };

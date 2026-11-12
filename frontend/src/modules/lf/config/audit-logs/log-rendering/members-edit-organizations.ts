@@ -1,5 +1,8 @@
-import type { LogChanges, LogRenderingConfig } from '@/modules/lf/config/audit-logs/log-rendering/index';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import type {
+  LogChanges,
+  LogRenderingConfig,
+} from '@/modules/lf/config/audit-logs/log-rendering/index';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
 interface MemberOrganizationStateRow {
@@ -11,17 +14,13 @@ interface MemberOrganizationStateRow {
 
 const formatDateRange = (dateStart: string | null, dateEnd: string | null) => {
   // eslint-disable-next-line no-nested-ternary
-  const dateStartFormat = dateStart
-    ? dateHelper(dateStart)
-      .utc()
-      .format('MMMM YYYY')
-    : 'Unknown';
+  const dateStartFormat = dateStart ? dateHelper(dateStart).utc().format('MMMM YYYY') : 'Unknown';
   // eslint-disable-next-line no-nested-ternary
   const dateEndFormat = dateEnd
-    ? dateHelper(dateEnd)
-      .utc()
-      .format('MMMM YYYY')
-    : (dateStart ? 'Present' : 'Unknown');
+    ? dateHelper(dateEnd).utc().format('MMMM YYYY')
+    : dateStart
+      ? 'Present'
+      : 'Unknown';
   return `${dateStartFormat} -> ${dateEndFormat}`;
 };
 
@@ -49,21 +48,29 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
     ];
 
     const orgs: { id: string; displayName: string }[] = await OrganizationService.listByIds(orgIds);
-    const orgById = orgs.reduce<Record<string, string>>((obj, org) => ({
-      ...obj,
-      [org.id]: org.displayName,
-    }), {});
+    const orgById = orgs.reduce<Record<string, string>>(
+      (obj, org) => ({
+        ...obj,
+        [org.id]: org.displayName,
+      }),
+      {},
+    );
 
     // Check for removals and modifications
     log.oldState.forEach((org) => {
       if (!newStateMap.has(org.organizationId)) {
-        changes.removals.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}`);
+        changes.removals.push(
+          `<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
+        );
       } else {
         const newOrg = newStateMap.get(org.organizationId)!;
         if (
-          formatDateRange(org.dateStart, org.dateEnd) !== formatDateRange(newOrg.dateStart, newOrg.dateEnd)
-          || (org.title || '') !== (newOrg.title || '')) {
-          changes.changes.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}
+          formatDateRange(org.dateStart, org.dateEnd) !==
+            formatDateRange(newOrg.dateStart, newOrg.dateEnd) ||
+          (org.title || '') !== (newOrg.title || '')
+        ) {
+          changes.changes
+            .push(`<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}
             <br><s>${org.title ? `${org.title}: ` : ''}${formatDateRange(org.dateStart, org.dateEnd)}</s>
             <br>${newOrg.title ? `${org.title}: ` : ''}${formatDateRange(newOrg.dateStart, newOrg.dateEnd)}
           `);
@@ -74,17 +81,21 @@ const membersEditOrganizations: LogRenderingConfig<MemberOrganizationStateRow[]>
     // Check for additions
     log.newState.forEach((org) => {
       if (!oldStateMap.has(org.organizationId)) {
-        changes.additions.push(`<span>Organization:</span> ${org.organizationId ? (orgById[org.organizationId]) : 'Individual'}`);
+        changes.additions.push(
+          `<span>Company:</span> ${org.organizationId ? orgById[org.organizationId] : 'Individual'}`,
+        );
       }
     });
 
     return changes;
   },
   description: (log) => `ID: ${log.entityId}`,
-  properties: (log) => [{
-    label: 'Profile',
-    value: `<span>ID: ${log.entityId}</span>`,
-  }],
+  properties: (log) => [
+    {
+      label: 'Profile',
+      value: `<span>ID: ${log.entityId}</span>`,
+    },
+  ],
 };
 
 export default membersEditOrganizations;

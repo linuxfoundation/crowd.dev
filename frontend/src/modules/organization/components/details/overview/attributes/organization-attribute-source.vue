@@ -11,6 +11,10 @@ import { lfIdentities } from '@/config/identities';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import type { OrganizationAttribute } from '@/modules/organization/types/Organization';
 
+defineOptions({
+  name: 'LfOrganizationAttributeSource',
+});
+
 const props = defineProps<{
   values: OrganizationAttribute,
 }>();
@@ -45,10 +49,4 @@ const source = computed(() => {
   const selectedSource = prioritySortedSources[0];
   return getPlatformsLabel([selectedSource]);
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAttributeSource',
-};
 </script>

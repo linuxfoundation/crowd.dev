@@ -153,3 +153,11 @@ export function getBedrockCredentials(): BedrockCredentials | null {
   }
   return { accessKeyId, secretAccessKey }
 }
+
+export function getScorecardConfig() {
+  return {
+    apiBaseUrl: process.env.SCORECARD_API_BASE_URL ?? 'https://api.securityscorecards.dev',
+    concurrency: Math.max(1, parseInt(process.env.SCORECARD_API_CONCURRENCY ?? '20', 10)),
+    fetchTimeoutMs: parseInt(process.env.SCORECARD_API_FETCH_TIMEOUT_MS ?? '15000', 10),
+  }
+}

@@ -2,7 +2,7 @@
   <lf-modal v-model="isModalOpen">
     <!-- Header -->
     <section class="py-4 pr-4 pl-6 flex justify-between items-center">
-      <h5>Add organization</h5>
+      <h5>Add company</h5>
       <lf-button type="secondary-ghost-light" icon-only @click="isModalOpen = false">
         <lf-icon name="xmark" />
       </lf-button>
@@ -36,7 +36,7 @@
         </article>
         <!-- Organization name -->
         <article class="mb-5">
-          <lf-field label-text="Website" description="Organization primary domain" required>
+          <lf-field label-text="Website" description="Company primary domain" required>
             <lf-input
               v-model="form.website"
               class="h-10"
@@ -91,7 +91,7 @@
         :loading="sending"
         @click="createOrganization"
       >
-        Add organization
+        Add company
       </lf-button>
     </section>
   </lf-modal>
@@ -120,13 +120,17 @@ import {
   OrganizationIdentityType,
 } from '@/modules/organization/types/Organization';
 import { Platform } from '@/shared/modules/platform/types/Platform';
-import { OrganizationApiService } from '@/modules/organization/services/organization.api.service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import Errors from '@/shared/error/errors';
 import AppLfSubProjectsListDropdown from '@/modules/admin/modules/projects/components/lf-sub-projects-list-dropdown.vue';
 import useIdentitiesHelpers from '@/config/identities/identities.helpers';
 import { lfIdentities } from '@/config/identities';
+
+defineOptions({
+  name: 'LfOrganizationAdd',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -231,7 +235,7 @@ const createOrganization = () => {
 
   sending.value = true;
 
-  OrganizationApiService.create(data)
+  OrganizationService.create(data)
     .then((newOrg: Organization) => {
       router.push({
         name: 'organizationView',
@@ -247,7 +251,7 @@ const createOrganization = () => {
     })
     .catch((error: AxiosError) => {
       if (error.response?.status === 409) {
-        ToastStore.error('Organization was not created because the identity already exists in another profile');
+        ToastStore.error('Company was not created because the identity already exists in another profile');
       } else {
         Errors.handle(error);
       }
@@ -255,11 +259,5 @@ const createOrganization = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationAdd',
 };
 </script>

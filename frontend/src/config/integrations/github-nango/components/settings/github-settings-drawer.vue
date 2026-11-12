@@ -82,8 +82,8 @@ import useVuelidate from '@vuelidate/core';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfGithubSettingsEmpty from '@/config/integrations/github-nango/components/settings/github-settings-empty.vue';
 import LfGithubSettingsAddRepositoryModal from '@/config/integrations/github-nango/components/settings/github-settings-add-repository-modal.vue';
-import { LfService } from '@/modules/lf/segments/lf-segments-service';
-import type { Project, SubProject } from '@/modules/lf/segments/types/Segments';
+import { LfService } from '@/modules/lf/segments/segments.api.service';
+import type { Project, ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
 import type { Integration, IntegrationMapping } from '@/modules/admin/modules/integration/types/Integration';
 import type { IntegrationApiError } from '@/modules/integration/types/IntegrationApiError';
 import type {
@@ -93,7 +93,7 @@ import type {
   GitHubSettingsRepository,
 } from '@/config/integrations/github-nango/types/GithubSettings';
 import LfGithubSettingsMapping from '@/config/integrations/github-nango/components/settings/github-settings-mapping.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { ToastStore } from '@/shared/message/notification';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -110,6 +110,10 @@ import LfGithubVersionTag from '@/config/integrations/github/components/github-v
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfGithubSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -156,12 +160,12 @@ const fetchSubProjects = () => {
 
   if (props.grandparentId === EXTERNAL_OSS_SEGMENT_ID && props.segmentId) {
     // Only fetch current subproject, avoiding thousands of others
-    LfService.findSegment(props.segmentId).then((currentSubproject) => {
+    LfService.findSegment<SubProject>(props.segmentId).then((currentSubproject) => {
       subprojects.value = [currentSubproject];
     });
   } else {
-    LfService.findSegment(props.grandparentId).then((segment) => {
-      subprojects.value = segment.projects.map((p: Project) => p.subprojects).flat().filter((s: SubProject) => s !== undefined);
+    LfService.findSegment<ProjectGroup>(props.grandparentId).then((segment) => {
+      subprojects.value = segment.projects!.map((p: Project) => p.subprojects).flat().filter((s: SubProject) => s !== undefined);
     });
   }
 };
@@ -200,6 +204,25 @@ const buildSettings = (): GitHubSettings => {
     }),
   );
   return { orgs, updateMemberAttributes: true };
+};
+
+const errorHandler = (error: IntegrationApiError) => {
+  const errorMessage = error?.response?.data;
+  const parsedError = parseDuplicateRepoError(errorMessage, props.integration?.id
+    ? 'There was error updating settings'
+    : 'There was error connecting GitHub');
+
+  if (parsedError) {
+    const { repo, eId } = parsedError;
+    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
+    IntegrationService.find(eId)
+      .then((integration) => {
+        customRepoErrorMessage(integration.segment, repo, 'github');
+      })
+      .catch(() => {
+        ToastStore.error(errorMessage);
+      });
+  }
 };
 
 const connect = () => {
@@ -241,25 +264,6 @@ const connect = () => {
     .finally(() => {
       sending.value = false;
     });
-};
-
-const errorHandler = (error: IntegrationApiError) => {
-  const errorMessage = error?.response?.data;
-  const parsedError = parseDuplicateRepoError(errorMessage, props.integration?.id
-    ? 'There was error updating settings'
-    : 'There was error connecting GitHub');
-
-  if (parsedError) {
-    const { repo, eId } = parsedError;
-    // TODO: This is returning 404 error for some reason. It could be that the data returned by the error is incorrect.
-    IntegrationService.find(eId)
-      .then((integration) => {
-        customRepoErrorMessage(integration.segment, repo, 'github');
-      })
-      .catch(() => {
-        ToastStore.error(errorMessage);
-      });
-  }
 };
 
 const revertChanges = () => {
@@ -348,10 +352,4 @@ const githubImage = new URL(
   '@/assets/images/integrations/github.png',
   import.meta.url,
 ).href;
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubSettingsDrawer',
-};
 </script>

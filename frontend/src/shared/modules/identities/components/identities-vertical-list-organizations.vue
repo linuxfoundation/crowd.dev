@@ -31,8 +31,12 @@ import { computed } from 'vue';
 import type { Platform } from '@/shared/modules/platform/types/Platform';
 import type { Organization } from '@/modules/organization/types/Organization';
 
+defineOptions({
+  name: 'AppIdentitiesVerticalListOrganizations',
+});
+
 const props = defineProps<{
-  organization: Organization;
+  organization: Partial<Organization>;
   order: Platform[]
   xPadding?: number;
   displayShowMore?: boolean;
@@ -45,10 +49,4 @@ const identities = computed(() => useOrganizationIdentities({
   organization: props.organization,
   order: props.order,
 }));
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppIdentitiesVerticalListOrganizations',
-};
 </script>

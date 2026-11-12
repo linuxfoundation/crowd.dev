@@ -19,10 +19,9 @@ import AppLfOverviewSummary from '@/modules/overview/components/sections/summary
 import AppLfOverviewIntegrationStatus from '@/modules/overview/components/sections/integration-status.vue';
 import AppLfOverviewIntegrationDetails from '@/modules/overview/components/sections/integration-details.vue';
 import AppLfOverviewFilter from '@/modules/overview/components/sections/overview-filter.vue';
-</script>
 
-<script lang="ts">
-export default {
+defineOptions({
   name: 'AppLfOverviewPage',
-};
+});
+
 </script>

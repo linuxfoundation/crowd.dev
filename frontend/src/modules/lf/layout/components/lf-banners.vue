@@ -20,7 +20,7 @@
               name: 'integration',
               params: {
                 id: integrationsWithErrors[0].id,
-                grandparentId: selectedProjectGroup.id,
+                grandparentId: selectedProjectGroup!.id,
               },
             }"
           >
@@ -50,7 +50,7 @@
             :to="{
               name: 'adminProjects',
               params: {
-                id: selectedProjectGroup.id,
+                id: selectedProjectGroup!.id,
               },
             }"
           >
@@ -82,7 +82,7 @@
               name: 'integration',
               params: {
                 id: integrationsWithNoData[0].id,
-                grandparentId: selectedProjectGroup.id,
+                grandparentId: selectedProjectGroup!.id,
               },
             }"
           >
@@ -112,7 +112,7 @@
             :to="{
               name: 'adminProjects',
               params: {
-                id: selectedProjectGroup.id,
+                id: selectedProjectGroup!.id,
               },
             }"
           >
@@ -142,25 +142,31 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import Banner from '@/shared/banner/banner.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 import {
   watch, ref, computed, onUnmounted,
 } from 'vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { useRoute } from 'vue-router';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { IntegrationResponse } from '@/modules/integration/types/IntegrationResponse';
+import type { ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
+
+defineOptions({
+  name: 'AppLfBanners',
+});
 
 const ERROR_BANNER_WORKING_DAYS_DISPLAY = 3;
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup, selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
-const integrations = ref([]);
-const fetchIntegrationTimer = ref(null);
+const integrations = ref<IntegrationResponse[]>([]);
+const fetchIntegrationTimer = ref<ReturnType<typeof setInterval>>();
 const loading = ref(true);
 const subProjects = computed(() => selectedProjectGroupSubprojects.value);
 
@@ -168,8 +174,8 @@ const route = useRoute();
 
 const { hasAccessToSegmentId } = usePermissions();
 
-const integrationsWithErrors = computed(() => integrations.value.reduce((acc, integration) => {
-  if (integration.status === 'error' && isCurrentDateAfterGivenWorkingDays(integration.updatedAt, ERROR_BANNER_WORKING_DAYS_DISPLAY)) {
+const integrationsWithErrors = computed(() => integrations.value.reduce<SubProject[]>((acc, integration) => {
+  if (integration.status === 'error' && isCurrentDateAfterGivenWorkingDays(integration.updatedAt!, ERROR_BANNER_WORKING_DAYS_DISPLAY)) {
     const hasSubProject = acc.some((sp) => sp.id === integration.segmentId);
 
     if (!hasSubProject) {
@@ -184,7 +190,7 @@ const integrationsWithErrors = computed(() => integrations.value.reduce((acc, in
   return acc;
 }, []));
 
-const integrationsWithNoData = computed(() => integrations.value.reduce((acc, integration) => {
+const integrationsWithNoData = computed(() => integrations.value.reduce<SubProject[]>((acc, integration) => {
   if (integration.status === 'no-data') {
     const hasSubProject = acc.some((sp) => sp.id === integration.segmentId);
 
@@ -200,7 +206,10 @@ const integrationsWithNoData = computed(() => integrations.value.reduce((acc, in
   return acc;
 }, []));
 
-const integrationsInProgress = computed(() => integrations.value.reduce((acc, integration) => {
+const integrationsInProgress = computed(() => integrations.value.reduce<{
+  integrations: IntegrationResponse[];
+  subProjects: SubProject[];
+}>((acc, integration) => {
   if (integration.status === 'in-progress') {
     acc.integrations.push(integration);
 
@@ -224,7 +233,7 @@ const integrationsInProgress = computed(() => integrations.value.reduce((acc, in
 const showBanner = computed(() => (integrationsWithErrors.value.length
   || integrationsWithNoData.value.length) && !route.meta.hideBanner && !!selectedProjectGroup.value && !loading.value);
 
-const fetchIntegrations = (projectGroup) => {
+const fetchIntegrations = (projectGroup: ProjectGroup | null) => {
   if (projectGroup) {
     IntegrationService.list(null, null, null, null, [projectGroup.id])
       .then((response) => {
@@ -276,10 +285,4 @@ onUnmounted(() => {
   stopTimer();
 });
 
-</script>
-
-<script>
-export default {
-  name: 'AppLfBanners',
-};
 </script>

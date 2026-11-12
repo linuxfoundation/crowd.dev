@@ -8,6 +8,8 @@ export interface IOnboardingInput {
 export interface IOrganizationProjectOnboardingInput {
   id: string
   projectName: string | null
+  slug?: string | null
+  owner: string | null
   repoUrls: string[]
 }
 

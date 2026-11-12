@@ -487,9 +487,6 @@ importers:
       logrocket:
         specifier: ^3.0.1
         version: 3.0.1
-      logrocket-vuex:
-        specifier: ^0.0.3
-        version: 0.0.3
       marked:
         specifier: ^4.3.0
         version: 4.3.0
@@ -532,9 +529,6 @@ importers:
       vue3-lazyload:
         specifier: ^0.3.6
         version: 0.3.6(vue@3.3.1)
-      vuex:
-        specifier: ^4.1.0
-        version: 4.1.0(vue@3.3.1)
       yup:
         specifier: ^0.32.11
         version: 0.32.11
@@ -563,9 +557,15 @@ importers:
       '@types/node':
         specifier: ^24.19.0
         version: 24.19.0
+      '@types/nprogress':
+        specifier: ^0.2.3
+        version: 0.2.3
       '@types/pluralize':
         specifier: ^0.0.33
         version: 0.0.33
+      '@types/qs':
+        specifier: ^6.15.1
+        version: 6.15.1
       '@vitejs/plugin-vue':
         specifier: ^6.0.4
         version: 6.0.4(vite@7.3.2(@types/node@24.19.0)(jiti@2.4.2)(sass@1.92.1)(terser@5.43.1)(tsx@4.23.12)(yaml@2.8.3))(vue@3.3.1)
@@ -704,6 +704,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/project-onboarding':
+        specifier: workspace:*
+        version: link:../../libs/project-onboarding
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis
@@ -2834,6 +2837,9 @@ importers:
       '@crowd/types':
         specifier: workspace:*
         version: link:../types
+      '@octokit/auth-app':
+        specifier: ^4.0.13
+        version: 4.0.13(encoding@0.1.13)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -6553,8 +6559,14 @@ packages:
   '@types/node@24.19.0':
     resolution: {integrity: sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==}
 
+  '@types/nprogress@0.2.3':
+    resolution: {integrity: sha512-k7kRA033QNtC+gLc4VPlfnue58CM1iQLgn1IMAU8VPHGOj7oIHPp9UlhedEnD/Gl8evoCjwkZjlBORtZ3JByUA==}
+
   '@types/pluralize@0.0.33':
     resolution: {integrity: sha512-JOqsl+ZoCpP4e8TDke9W79FDcSgPAR0l6pixx2JHkhnRjvShyYiAYw2LVsnA7K08Y6DeOnaU6ujmENO4os/cYg==}
+
+  '@types/qs@6.15.1':
+    resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
 
   '@types/q@1.5.8':
     resolution: {integrity: sha512-hroOstUScF6zhIi+5+x0dzqrHA1EJi+Irri6b1fxolMTqqHIV/Cg77EtnQcZqZCu8hR3mX2BzIxN4/GzI68Kfw==}
@@ -9998,9 +10010,6 @@ packages:
     resolution: {integrity: sha512-TFYA4jnP7PVbmlBIfhlSe+WKxs9dklXMTEGcBCIvLhE/Tn3H6Gk1norupVW7m5Cnd4bLcr08AytbyV/xj7f/kQ==}
     engines: {node: '>= 12.0.0'}
 
-  logrocket-vuex@0.0.3:
-    resolution: {integrity: sha512-Xnl3pBEkc/bbtZ5JEtFwqNjVuLzVEohlBpyQHP47BlO+/6sFmSM2JcNWojysYUo4cp3IWpmWXcezax2+Cq4RsA==}
-
   logrocket@3.0.1:
     resolution: {integrity: sha512-jOWG+jEzobKVxGytzZ+4KGm2kiMQMRTHab2uDWQyVZcHfEF38BlCH1yjQVY4LCmuQUwZitP9biMzJZnyUQ0dtQ==}
 
@@ -12838,11 +12847,6 @@ packages:
 
   vue@3.3.1:
     resolution: {integrity: sha512-3Rwy4I5idbPVSDZu6I+fFh6tdDSZbauImCTqLxE7y0LpHtiDvPeY01OI7RkFPbva1nk4hoO0sv/NzosH2h60sg==}
-
-  vuex@4.1.0:
-    resolution: {integrity: sha512-hmV6UerDrPcgbSy9ORAtNXDr9M4wlNP4pEFKye4ujJF8oqgFFuxDCdOLS3eNoRTtq5O3hoBDh9Doj1bQMYHRbQ==}
-    peerDependencies:
-      vue: ^3.2.0
 
   walkdir@0.4.1:
     resolution: {integrity: sha512-3eBwRyEln6E1MSzcxcVpQIhRG8Q1jLvEqRmCZqS3dsfXEDR/AhOF4d+jHg1qvDCpYaVRZjENPQyrVxAkQqxPgQ==}
@@ -17906,7 +17910,11 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
+  '@types/nprogress@0.2.3': {}
+
   '@types/pluralize@0.0.33': {}
+
+  '@types/qs@6.15.1': {}
 
   '@types/q@1.5.8': {}
 
@@ -22069,8 +22077,6 @@ snapshots:
       safe-stable-stringify: 2.5.0
       triple-beam: 1.4.1
 
-  logrocket-vuex@0.0.3: {}
-
   logrocket@3.0.1: {}
 
   long@5.3.2: {}
@@ -25257,11 +25263,6 @@ snapshots:
       '@vue/runtime-dom': 3.3.1
       '@vue/server-renderer': 3.3.1(vue@3.3.1)
       '@vue/shared': 3.3.1
-
-  vuex@4.1.0(vue@3.3.1):
-    dependencies:
-      '@vue/devtools-api': 6.6.4
-      vue: 3.3.1
 
   walkdir@0.4.1: {}
 

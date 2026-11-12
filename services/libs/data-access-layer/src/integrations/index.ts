@@ -649,92 +649,6 @@ export async function addGithubNangoConnection(
   )
 }
 
-export async function findActiveNangoMappingForRepo(
-  qx: QueryExecutor,
-  owner: string,
-  repoName: string,
-): Promise<INangoMappingRow | null> {
-  return qx.selectOneOrNone(
-    `
-    SELECT nm.*
-    FROM integration.nango_mapping nm
-    JOIN integrations i ON i.id = nm."integrationId"
-    WHERE lower(nm.owner) = lower($(owner))
-      AND lower(nm."repoName") = lower($(repoName))
-      AND i.platform = $(nangoPlatform)
-      AND i."deletedAt" IS NULL
-    ORDER BY nm."updatedAt" DESC
-    LIMIT 1
-    `,
-    { owner, repoName, nangoPlatform: PlatformType.GITHUB_NANGO },
-  )
-}
-
-export interface IUnmirroredNangoRepo {
-  integrationId: string
-  connectionId: string
-  owner: string
-  repoName: string
-  enabled: boolean
-  archived: boolean
-  excluded: boolean
-}
-
-export async function listUnmirroredNangoRepos(qx: QueryExecutor): Promise<IUnmirroredNangoRepo[]> {
-  return qx.select(
-    `
-    SELECT
-      nm."integrationId",
-      nm."connectionId",
-      nm.owner,
-      nm."repoName",
-      COALESCE(r.enabled, true) AS enabled,
-      COALESCE(r.archived, false) AS archived,
-      COALESCE(r.excluded, false) AS excluded
-    FROM integration.nango_mapping nm
-    JOIN integrations i ON i.id = nm."integrationId"
-    LEFT JOIN repositories r ON r.id = nm."repositoryId"
-    WHERE i.platform = $(nangoPlatform)
-      AND i."deletedAt" IS NULL
-      AND i.status = 'done'
-      AND NOT EXISTS (
-        SELECT 1
-        FROM integration.sync_units su
-        WHERE su."integrationId" = nm."integrationId"
-          AND lower(su."channelName") = lower('https://github.com/' || nm.owner || '/' || nm."repoName")
-      )
-    ORDER BY nm."createdAt", nm.owner, nm."repoName"
-    `,
-    { nangoPlatform: PlatformType.GITHUB_NANGO },
-  )
-}
-
-export async function getNangoMappingForRepo(
-  qx: QueryExecutor,
-  integrationId: string,
-  owner: string,
-  repoName: string,
-): Promise<INangoMappingRow | null> {
-  const rows = await qx.select(
-    `
-    SELECT nm.*
-    FROM integration.nango_mapping nm
-    JOIN integrations nango_integration ON nango_integration.id = nm."integrationId"
-    JOIN integrations new_integration ON new_integration."segmentId" = nango_integration."segmentId"
-    WHERE new_integration.id = $(integrationId)
-      AND nango_integration.platform = $(nangoPlatform)
-      AND nango_integration."deletedAt" IS NULL
-      AND LOWER(nm.owner) = LOWER($(owner))
-      AND LOWER(nm."repoName") = LOWER($(repoName))
-    ORDER BY nm."updatedAt" DESC
-    LIMIT 1
-    `,
-    { integrationId, nangoPlatform: PlatformType.GITHUB_NANGO, owner, repoName },
-  )
-
-  return rows[0] ?? null
-}
-
 export async function addRepoToGitIntegration(
   qx: QueryExecutor,
   integrationId: string,
@@ -941,8 +855,6 @@ export async function tryLockGithubRenames(
   return row.locked
 }
 
-const NANGO_MAPPING_CHANNEL_KEY = `lower('https://github.com/' || nm.owner || '/' || nm."repoName")`
-
 export async function listGithubChannelsOwnedElsewhere(
   qx: QueryExecutor,
   integrationId: string,
@@ -962,15 +874,6 @@ export async function listGithubChannelsOwnedElsewhere(
      AND i.platform = $(nangoPlatform)
      AND i."deletedAt" IS NULL
     WHERE su."integrationId" <> $(integrationId)
-    UNION
-    SELECT DISTINCT k.key AS "channelKey"
-    FROM unnest($(channelKeys)::text[]) AS k(key)
-    JOIN integration.nango_mapping nm ON ${NANGO_MAPPING_CHANNEL_KEY} = lower(k.key)
-    JOIN integrations i
-      ON i.id = nm."integrationId"
-     AND i.platform = $(nangoPlatform)
-     AND i."deletedAt" IS NULL
-    WHERE nm."integrationId" <> $(integrationId)
     `,
     { channelKeys, integrationId, nangoPlatform: PlatformType.GITHUB_NANGO },
   )
@@ -1000,11 +903,6 @@ export async function listGithubRepoKeysUnderOwners(
      AND r."deletedAt" IS NULL
     WHERE r.url LIKE 'https://github.com/%'
       AND lower(split_part(r.url, '/', 4)) = ANY($(owners)::text[])
-    UNION
-    SELECT ${NANGO_MAPPING_CHANNEL_KEY} AS key
-    FROM live_integrations li
-    JOIN integration.nango_mapping nm ON nm."integrationId" = li.id
-    WHERE lower(nm.owner) = ANY($(owners)::text[])
     `,
     { owners, nangoPlatform: PlatformType.GITHUB_NANGO },
   )
@@ -1029,11 +927,6 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
       FROM integration.sync_units su
       JOIN nango_integrations ni ON ni.id = su."integrationId"
     ),
-    mapping_keys AS (
-      SELECT DISTINCT nm."integrationId", ${NANGO_MAPPING_CHANNEL_KEY} AS key
-      FROM integration.nango_mapping nm
-      JOIN nango_integrations ni ON ni.id = nm."integrationId"
-    ),
     repo_keys AS (
       SELECT DISTINCT r."sourceIntegrationId" AS "integrationId", lower(r.url) AS key
       FROM public.repositories r
@@ -1044,8 +937,7 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
       SELECT rk."integrationId"
       FROM repo_keys rk
       LEFT JOIN unit_keys uk ON uk."integrationId" = rk."integrationId" AND uk.key = rk.key
-      LEFT JOIN mapping_keys mk ON mk."integrationId" = rk."integrationId" AND mk.key = rk.key
-      WHERE uk.key IS NULL AND mk.key IS NULL
+      WHERE uk.key IS NULL
     ),
     orphaned_units AS (
       SELECT uk."integrationId"

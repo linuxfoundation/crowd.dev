@@ -47,6 +47,10 @@ import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
 import { lfIntegrations } from '@/config/integrations';
 import { isAdminConnectable } from '@/modules/admin/modules/integration/config/connectable-platforms';
 
+defineOptions({
+  name: 'LfAdminIntegrationPlatformSelect',
+});
+
 const props = defineProps<{
   modelValue?: string,
   connectableOnly?: boolean,
@@ -67,10 +71,4 @@ const model = computed({
     emit('update:modelValue', value);
   },
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfAdminIntegrationPlatformSelect',
-};
 </script>

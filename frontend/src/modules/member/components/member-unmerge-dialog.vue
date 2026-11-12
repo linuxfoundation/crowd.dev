@@ -96,7 +96,7 @@
             <template #below>
               <div v-if="props.modelValue?.organizations?.length" class="pt-8">
                 <h6 class="text-sm font-semibold text-black pb-4">
-                  Organizations
+                  Companies
                 </h6>
                 <app-member-organization-list :member="props.modelValue" />
               </div>
@@ -155,7 +155,7 @@
             <template #below>
               <div v-if="preview.primary?.organizations?.length" class="pt-8">
                 <h6 class="text-sm font-semibold text-black pb-4">
-                  Organizations
+                  Companies
                 </h6>
                 <app-member-organization-list :member="preview.primary" />
               </div>
@@ -272,7 +272,7 @@
                   class="pt-8"
                 >
                   <h6 class="text-sm font-semibold text-black pb-4">
-                    Organizations
+                    Companies
                   </h6>
                   <app-member-organization-list :member="preview.secondary" />
                 </div>
@@ -332,7 +332,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 
 import { ToastStore } from '@/shared/message/notification';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -351,6 +351,10 @@ import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import LfModal from '@/ui-kit/modal/Modal.vue';
 import AppMemberSuggestionsDetails from './suggestions/member-merge-suggestions-details.vue';
+
+defineOptions({
+  name: 'AppMemberUnmergeDialog',
+});
 
 const props = defineProps<{
   modelValue: Contributor;
@@ -400,13 +404,6 @@ const identities = computed(() => (props.modelValue.identities || []).sort((a, b
   return aOrder - bOrder;
 }));
 
-const changeIdentity = (identityId: string) => {
-  localSelectedIdentity.value = identityId;
-  resetRevertPreviousMerge();
-  getCanRevertMerge(identityId);
-  fetchPreview(identityId);
-};
-
 const fetchPreview = (identityId: string) => {
   if (fetchingPreview.value) {
     return;
@@ -447,6 +444,13 @@ const getCanRevertMerge = (identityId: string) => {
     });
 };
 
+const changeIdentity = (identityId: string) => {
+  localSelectedIdentity.value = identityId;
+  resetRevertPreviousMerge();
+  getCanRevertMerge(identityId);
+  fetchPreview(identityId);
+};
+
 const unmerge = () => {
   if (unmerging.value) {
     return;
@@ -480,7 +484,7 @@ const unmerge = () => {
       });
       emit('update:modelValue', null);
     })
-    .catch((error) => {
+    .catch(() => {
       ToastStore.error('There was an error unmerging profile');
     })
     .finally(() => {
@@ -493,10 +497,4 @@ onMounted(() => {
     changeIdentity(props.selectedIdentity);
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberUnmergeDialog',
-};
 </script>

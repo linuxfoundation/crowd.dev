@@ -6,7 +6,7 @@
     size="600px"
     pre-title="Integration"
     has-border
-    close-on-click-modal="true"
+    close-on-click-modal
     :close-function="canClose"
     @close="isVisible = false"
   >
@@ -132,7 +132,7 @@
     <template #footer>
       <drawer-footer-buttons
         :integration="integration"
-        :is-edit-mode="integration?.settings?.tags.length > 0"
+        :is-edit-mode="(integration?.settings?.tags.length ?? 0) > 0"
         :has-form-changed="hasFormChanged"
         :is-loading="isVolumeUpdating"
         :is-submit-disabled="!hasFormChanged || connectDisabled"
@@ -145,56 +145,68 @@
   <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed, ref, watch,
 } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
-import { useStore } from 'vuex';
 import Nango from '@nangohq/frontend';
 import isEqual from 'lodash/isEqual';
 import stackoverflow from '@/config/integrations/stackoverflow/config';
+import type { StackoverflowSettings } from '@/config/integrations/stackoverflow/types/StackoverflowSettings';
+import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import config from '@/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import AppDrawer from '@/shared/drawer/drawer.vue';
+import AppKeywordsInput from '@/shared/form/keywords-input.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  integration: {
-    type: Object,
-    default: () => {},
-  },
-  segmentId: {
-    type: String,
-    required: true,
-  },
-  grandparentId: {
-    type: String,
-    required: true,
-  },
+interface TagField {
+  id?: number;
+  // rows from addNewTag set `tag`, so `value` stays unset until the user types
+  value?: string;
+  tag?: string;
+  valid?: boolean;
+  validating?: boolean;
+  touched?: boolean;
+  volumeTooLarge?: boolean;
+  loading?: boolean;
+}
+
+defineOptions({ name: 'LfStackoverflowSettingsDrawer' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+  integration?: Integration<StackoverflowSettings>;
+  segmentId?: string;
+  grandparentId?: string;
+}>(), {
+  modelValue: false,
+  integration: undefined,
+  segmentId: undefined,
+  grandparentId: undefined,
 });
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 const MAX_STACK_OVERFLOW_QUESTIONS_PER_TAG = 350000;
 const MAX_STACK_OVERFLOW_QUESTIONS_FOR_KEYWORDS = 1100;
 
 const { trackEvent } = useProductTracking();
-const changesConfirmationModalRef = ref(null);
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
-const store = useStore();
+const { onboardStackOverflow } = useIntegrationStore();
 
-const tags = computed(() => {
-  if (props.integration?.settings?.tags?.length > 0) {
-    return props.integration?.settings?.tags.map((i) => ({
+const tags = computed<TagField[]>(() => {
+  const savedTags = props.integration?.settings?.tags;
+  if (savedTags && savedTags.length > 0) {
+    return savedTags.map((i) => ({
       value: i,
       valid: true,
       validating: false,
@@ -210,13 +222,13 @@ const tags = computed(() => {
   ];
 });
 
-const keywords = computed(
+const keywords = computed<string[]>(
   () => props.integration?.settings?.keywords || [],
 );
 
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-const model = ref(JSON.parse(JSON.stringify(tags.value)));
-const modelKeywords = ref(
+const model = ref<TagField[]>(JSON.parse(JSON.stringify(tags.value)));
+const modelKeywords = ref<string[]>(
   // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
   JSON.parse(JSON.stringify(keywords.value)),
 );
@@ -224,7 +236,7 @@ const keywordsCount = computed(
   () => modelKeywords.value.length,
 );
 
-const calculateVolume = () => IntegrationService.stackOverflowVolume(
+const calculateVolume = (): Promise<number> => IntegrationService.stackOverflowVolume(
   modelKeywords.value.join(';'),
 );
 
@@ -295,25 +307,25 @@ const isVisible = computed({
   get() {
     return props.modelValue;
   },
-  set(value) {
-    return emit('update:modelValue', value);
+  set(value: boolean) {
+    emit('update:modelValue', value);
   },
 });
 
-const maxId = computed(() => Math.max(...model.value.map((i) => i.id), 0));
+const maxId = computed(() => Math.max(...model.value.map((i) => i.id as number), 0));
 
 const isMaxTagsReached = computed(() => model.value.length >= 3);
 
-const deleteItem = (index) => {
+const deleteItem = (index: number) => {
   model.value.splice(index, 1);
 };
 
-const addNewTag = (tag) => {
+const addNewTag = (tag?: unknown) => {
   model.value.push({
     id: maxId.value + 1,
     tag:
       typeof tag === 'string' || tag instanceof String
-        ? tag
+        ? String(tag)
         : '',
     touched: false,
     valid: false,
@@ -334,7 +346,7 @@ const doCancel = () => {
   doReset();
 };
 
-const canClose = (done) => {
+const canClose = (done: (cancel?: boolean) => void) => {
   if (hasFormChanged.value) {
     changesConfirmationModalRef.value?.open().then((discardChanges) => {
       if (discardChanges) {
@@ -349,9 +361,9 @@ const canClose = (done) => {
   }
 };
 
-const handleTagValidation = async (index) => {
+const handleTagValidation = async (index: number) => {
   try {
-    const tag = model.value[index].value;
+    const tag = model.value[index].value as string;
     model.value[index].validating = true;
     const data = await IntegrationService.stackOverflowValidate(tag);
     const { count } = data.items[0];
@@ -371,26 +383,23 @@ const handleTagValidation = async (index) => {
 };
 
 const callOnboard = useThrottleFn(async () => {
+  // shortcut: every caller passes both segment ids. revisit: when stackoverflow-connect types them required
+  const segmentId = props.segmentId as string;
+  const grandparentId = props.grandparentId as string;
   if (tagsInputUntouched.value) {
-    await store.dispatch(
-      'integration/doStackOverflowOnboard',
-      {
-        tags: [],
-        keywords: modelKeywords.value,
-        segmentId: props.segmentId,
-        grandparentId: props.grandparentId,
-      },
-    );
+    await onboardStackOverflow({
+      tags: [],
+      keywords: modelKeywords.value,
+      segmentId,
+      grandparentId,
+    });
   } else {
-    await store.dispatch(
-      'integration/doStackOverflowOnboard',
-      {
-        tags: model.value.map((i) => i.value),
-        keywords: modelKeywords.value,
-        segmentId: props.segmentId,
-        grandparentId: props.grandparentId,
-      },
-    );
+    await onboardStackOverflow({
+      tags: model.value.map((i) => i.value as string),
+      keywords: modelKeywords.value,
+      segmentId,
+      grandparentId,
+    });
 
     const isUpdate = !!props.integration?.settings;
 
@@ -433,10 +442,4 @@ watch(isVisible, (newValue, oldValue) => {
     );
   }
 });
-</script>
-
-<script>
-export default {
-  name: 'LfStackoverflowSettingsDrawer',
-};
 </script>

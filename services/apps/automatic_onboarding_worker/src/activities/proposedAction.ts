@@ -1,3 +1,4 @@
+import { canonicalizeRepoUrl } from '@crowd/common'
 import { lockProjectCatalogOnboardingTarget } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -10,6 +11,7 @@ import {
   createsNewProject,
   joinsExistingProject,
   organizationOf,
+  requestGroupOf,
 } from '@crowd/project-onboarding'
 
 export interface IProposedActionDeps {
@@ -105,6 +107,16 @@ export async function runProposedAction(
   }
 }
 
+// A project whose repositories all live under one owner may already hold other repositories
+// of that owner, left out of the request because they were tracked already.
+function sharedOwner(projects: ProposedActionProject[]): string | null {
+  const owners = new Set(
+    projects.map((project) => canonicalizeRepoUrl(project.repoUrl)?.owner?.toLowerCase() ?? null),
+  )
+  const [owner] = owners
+  return owners.size === 1 ? owner : null
+}
+
 export async function runOrganizationProposedAction(
   projects: ProposedActionProject[],
   deps: IProposedActionDeps,
@@ -120,6 +132,8 @@ export async function runOrganizationProposedAction(
     return deps.onboardOrganizationProject({
       id: lead.id,
       projectName: lead.projectName,
+      slug: lead.requestHints?.suggestedSlug ?? null,
+      owner: organizationOf(lead) ?? sharedOwner(projects),
       repoUrls: projects.map((project) => project.repoUrl),
     })
   }
@@ -137,8 +151,13 @@ function sharedSegmentLockTarget(project: ProposedActionProject | undefined): st
   if (joinsExistingProject(project) && project.pccProjectId !== null) {
     return project.pccProjectId
   }
-  const owner = organizationOf(project)
-  return createsNewProject(project) && owner ? `organization:${owner.toLowerCase()}` : null
+  const group = createsNewProject(project) ? requestGroupOf(project) : null
+  if (!group) {
+    return null
+  }
+  return group.kind === 'organization'
+    ? `organization:${group.owner.toLowerCase()}`
+    : `project:${group.name.toLowerCase()}`
 }
 
 async function withSegmentLock(

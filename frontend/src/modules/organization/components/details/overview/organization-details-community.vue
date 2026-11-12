@@ -62,7 +62,7 @@ import pluralize from 'pluralize';
 import {
   computed, onMounted, ref,
 } from 'vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfLoading from '@/ui-kit/loading/Loading.vue';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
@@ -70,6 +70,10 @@ import { storeToRefs } from 'pinia';
 import LfOrganizationDetailsCommunityProjectSelect
   from '@/modules/organization/components/details/overview/community/organization-details-community-project-select.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
+
+defineOptions({
+  name: 'LfOrganizationDetailsCommunity',
+});
 
 const props = defineProps<{
   organization: Organization,
@@ -110,9 +114,4 @@ const loadData = () => {
 onMounted(() => {
   loadData();
 });
-</script>
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsCommunity',
-};
 </script>

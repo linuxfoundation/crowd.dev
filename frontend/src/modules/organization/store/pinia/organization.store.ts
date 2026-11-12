@@ -2,59 +2,23 @@
 // SPDX-License-Identifier: MIT
 import { defineStore, storeToRefs } from 'pinia';
 import { ref } from 'vue';
-import type { Pagination } from '@/shared/types/Pagination';
 import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
-import type { Organization, OrganizationQueryBody } from '@/modules/organization/types/Organization';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import type { Organization } from '@/modules/organization/types/Organization';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { MergeActionsService } from '@/shared/modules/merge/services/merge-actions.service';
 import type { MergeAction } from '@/shared/modules/merge/types/MemberActions';
 import allOrganizations from '@/modules/organization/config/saved-views/views/all-organizations';
 
-let lastRequestId = 0;
-
 export const useOrganizationStore = defineStore('organization', () => {
   const filters = ref<Filter>({ ...allOrganizations.config });
-  const savedFilterBody = ref<OrganizationQueryBody>({});
-  const organizations = ref<Organization[]>([]);
   const organization = ref<Organization | null>(null);
   const selectedOrganizations = ref<Organization[]>([]);
-  const totalOrganizations = ref(0);
   const mergedOrganizations = ref<{ [key: string]: string }>({});
   const toMergeOrganizations = ref<{ originalId: string | null; toMergeId: string | null }>({
     originalId: null,
     toMergeId: null,
   });
-
-  function fetchOrganizations({
-    body = {},
-    reload = false,
-  }: {
-    body?: OrganizationQueryBody;
-    reload?: boolean;
-  }): Promise<Pagination<Organization>> {
-    const mappedBody = reload ? { ...savedFilterBody.value, ...body } : body;
-    selectedOrganizations.value = [];
-    const currentRequestId = new Date().getTime();
-    lastRequestId = currentRequestId;
-    return OrganizationService.query(mappedBody)
-      .then((data: Pagination<Organization>) => {
-        if (lastRequestId === currentRequestId) {
-          organizations.value = data.rows;
-          totalOrganizations.value = data.count;
-          savedFilterBody.value = mappedBody;
-          return Promise.resolve(data);
-        }
-        return Promise.reject(data);
-      })
-      .catch((err: Error) => {
-        if (lastRequestId === currentRequestId) {
-          organizations.value = [];
-          totalOrganizations.value = 0;
-        }
-        return Promise.reject(err);
-      });
-  }
 
   function getOrganizationMergeActions(id: string): Promise<MergeAction[]> {
     return MergeActionsService.list(id, 'org').then((mergeActions) => {
@@ -105,20 +69,12 @@ export const useOrganizationStore = defineStore('organization', () => {
     };
   }
 
-  function getOrganizations() {
-    return organizations.value;
-  }
-
   return {
     filters,
-    savedFilterBody,
-    organizations,
     organization,
     selectedOrganizations,
-    totalOrganizations,
     mergedOrganizations,
     toMergeOrganizations,
-    fetchOrganizations,
     fetchOrganization,
     getOrganizationMergeActions,
     updateOrganization,
@@ -126,6 +82,5 @@ export const useOrganizationStore = defineStore('organization', () => {
     removeMergedOrganizations,
     addToMergeOrganizations,
     removeToMergeOrganizations,
-    getOrganizations,
   };
 });

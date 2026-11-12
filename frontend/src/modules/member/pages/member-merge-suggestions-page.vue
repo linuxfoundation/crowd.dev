@@ -135,7 +135,7 @@
 <script setup lang="ts">
 import AppBackLink from '@/shared/modules/back-link/components/back-link.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { onMounted, ref } from 'vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
@@ -152,6 +152,10 @@ import LfMemberMergeSuggestionDropdown
   from '@/modules/member/components/suggestions/member-merge-suggestion-dropdown.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import type { MemberMergeSuggestion, MemberMergeSuggestionsQuery } from '@/modules/member/types/MemberSuggestion';
+
+defineOptions({
+  name: 'AppMemberMergeSuggestionsPage',
+});
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
@@ -245,10 +249,4 @@ const loadMore = () => {
 onMounted(() => {
   getTotalCount();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberMergeSuggestionsPage',
-};
 </script>

@@ -39,7 +39,7 @@
               Integrations
             </lf-tab>
             <lf-tab v-model="activeTab" name="organizations">
-              Organizations
+              Companies
             </lf-tab>
             <lf-tab v-model="activeTab" name="api-keys">
               API Keys
@@ -130,7 +130,7 @@ const userId = computed(() => authStore.user?.id);
 const teamUserIds = computed(() => config.permissions.teamUserIds);
 const env = computed(() => config.env);
 
-const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value));
+const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value!));
 
 const changeAdminPanelView = (view: string) => {
   switch (view) {

@@ -7,16 +7,12 @@ import {
   distinctBy,
   singleOrDefault,
 } from '@crowd/common'
-import { listSyncUnitChannelsForIntegration } from '@crowd/data-access-layer/src/connectors'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   INangoIntegrationData,
-  fetchNangoCursorRowsForIntegration,
   fetchNangoIntegrationData,
-  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import {
   ALL_NANGO_INTEGRATIONS,
   NangoIntegration,
@@ -55,146 +51,51 @@ const job: IJobDefinition = {
     await initNangoCloudClient()
     const dbConnection = await getDbConnection(READ_DB_CONFIG(), 3, 0)
 
+    const nonGithubIntegrations = ALL_NANGO_INTEGRATIONS.filter(
+      (integration) => integration !== NangoIntegration.GITHUB,
+    )
+
     const allIntegrations = await fetchNangoIntegrationData(pgpQx(dbConnection), [
-      ...new Set(ALL_NANGO_INTEGRATIONS.map(nangoIntegrationToPlatform)),
+      ...new Set(nonGithubIntegrations.map(nangoIntegrationToPlatform)),
     ])
 
     const nangoConnections = await getNangoConnections()
 
     const statusMap = new Map<NangoIntegrationDataExtended, SyncStatus[]>()
 
-    const ghMissingNangoConnections: Map<string, string[]> = new Map()
-    const ghNotConnectedToNangoYet: Map<string, number> = new Map()
-    const ghNoCursorsYet: Map<string, number> = new Map()
-
-    let totalRepos = 0
     let failedStatusChecks = 0
 
     // Collect all status check operations
     const statusCheckOperations: Array<() => Promise<void>> = []
 
     for (const int of allIntegrations) {
-      if (int.platform === PlatformType.GITHUB_NANGO) {
-        // Fetch nango mappings from the dedicated table
-        const allNangoMappings = await getNangoMappingsForIntegrations(pgpQx(dbConnection), [
-          int.id,
-        ])
-        const nangoMapping = allNangoMappings[int.id] || {}
-
-        // Check which repos are connected to nango by comparing repositories table vs nango_mapping
-        const repoRows = await getReposForGithubIntegration(pgpQx(dbConnection), int.id)
-        const unitChannelKeys = new Set(
-          (await listSyncUnitChannelsForIntegration(pgpQx(dbConnection), int.id))
-            .filter((c) => c.hasEmitting)
-            .map((c) => c.channelName.toLowerCase()),
-        )
-        for (const repo of repoRows) {
-          totalRepos++
-
-          if (unitChannelKeys.has(repo.url.toLowerCase())) {
-            continue
-          }
-
-          let found = false
-          for (const mapping of Object.values(nangoMapping)) {
-            if (mapping.owner === repo.owner && mapping.repoName === repo.name) {
-              found = true
-            }
-          }
-
-          if (!found) {
-            if (ghNotConnectedToNangoYet.has(int.id)) {
-              ghNotConnectedToNangoYet.set(int.id, ghNotConnectedToNangoYet.get(int.id) + 1)
-            } else {
-              ghNotConnectedToNangoYet.set(int.id, 1)
-            }
-          }
-        }
-
-        // then collect nango connection status checks for each connection
-        const connectionIds = Object.keys(nangoMapping)
-        if (connectionIds.length > 0) {
-          const cursorRows = await fetchNangoCursorRowsForIntegration(pgpQx(dbConnection), int.id)
-          const connectionIdsWithCursors = new Set(cursorRows.map((r) => r.connectionId))
-
-          for (const connectionId of connectionIds) {
-            // check if we have cursors already for this connection
-            if (!connectionIdsWithCursors.has(connectionId)) {
-              if (ghNoCursorsYet.has(int.id)) {
-                ghNoCursorsYet.set(int.id, ghNoCursorsYet.get(int.id) + 1)
-              } else {
-                ghNoCursorsYet.set(int.id, 1)
-              }
-            }
-
-            const nangoConnection = singleOrDefault(
-              nangoConnections,
-              (c) => c.connection_id === connectionId,
-            )
-            if (nangoConnection) {
-              statusCheckOperations.push(async () => {
-                try {
-                  const results = await getNangoConnectionStatus(
-                    NangoIntegration.GITHUB,
-                    nangoConnection.connection_id,
-                  )
-
-                  if (results) {
-                    statusMap.set(
-                      {
-                        ...int,
-                        connectionId,
-                      },
-                      results,
-                    )
-                  }
-                } catch (error) {
-                  failedStatusChecks++
-                  ctx.log.error(
-                    { error, connectionId, integrationId: int.id },
-                    `Failed to get Nango connection status for ${connectionId}`,
-                  )
-                }
-              })
-            } else {
-              // repo not connected to nango anymore!
-              if (ghMissingNangoConnections.has(int.id)) {
-                ghMissingNangoConnections.get(int.id).push(connectionId)
-              } else {
-                ghMissingNangoConnections.set(int.id, [connectionId])
-              }
-            }
-          }
-        }
+      const nangoConnection = singleOrDefault(nangoConnections, (c) => c.connection_id === int.id)
+      if (!nangoConnection) {
+        ctx.log.warn(`${int.platform} integration with id "${int.id}" is not connected to Nango!`)
       } else {
-        const nangoConnection = singleOrDefault(nangoConnections, (c) => c.connection_id === int.id)
-        if (!nangoConnection) {
-          ctx.log.warn(`${int.platform} integration with id "${int.id}" is not connected to Nango!`)
-        } else {
-          statusCheckOperations.push(async () => {
-            try {
-              const results = await getNangoConnectionStatus(
-                platformToNangoIntegration(int.platform as PlatformType, int.settings),
-                nangoConnection.connection_id,
-              )
-              if (results) {
-                statusMap.set(
-                  {
-                    ...int,
-                    connectionId: nangoConnection.connection_id,
-                  },
-                  results,
-                )
-              }
-            } catch (error) {
-              failedStatusChecks++
-              ctx.log.error(
-                { error, connectionId: nangoConnection.connection_id, integrationId: int.id },
-                `Failed to get Nango connection status for ${int.platform} integration ${int.id}`,
+        statusCheckOperations.push(async () => {
+          try {
+            const results = await getNangoConnectionStatus(
+              platformToNangoIntegration(int.platform as PlatformType, int.settings),
+              nangoConnection.connection_id,
+            )
+            if (results) {
+              statusMap.set(
+                {
+                  ...int,
+                  connectionId: nangoConnection.connection_id,
+                },
+                results,
               )
             }
-          })
-        }
+          } catch (error) {
+            failedStatusChecks++
+            ctx.log.error(
+              { error, connectionId: nangoConnection.connection_id, integrationId: int.id },
+              `Failed to get Nango connection status for ${int.platform} integration ${int.id}`,
+            )
+          }
+        })
       }
     }
 
@@ -229,7 +130,7 @@ const job: IJobDefinition = {
     // Send one Slack notification per platform
     const notificationPromises: Promise<void | boolean>[] = []
 
-    for (const nangoIntegration of ALL_NANGO_INTEGRATIONS) {
+    for (const nangoIntegration of nonGithubIntegrations) {
       const integrations = Array.from(statusMap.entries()).filter(
         (i) => i[0].platform === nangoIntegrationToPlatform(nangoIntegration),
       )
@@ -240,14 +141,7 @@ const job: IJobDefinition = {
         let runningSyncs = 0
 
         const failedConnections: NangoIntegrationDataExtended[] = []
-        for (const [data, allStatuses] of integrations) {
-          // Stars are no longer synced from our end for github - Nango may still report
-          // a status for it (its own remote sync config), so ignore it here too.
-          const statuses =
-            nangoIntegration === NangoIntegration.GITHUB
-              ? allStatuses.filter((s) => s.name !== 'stars')
-              : allStatuses
-
+        for (const [data, statuses] of integrations) {
           const failed = statuses.filter((s) => s.status === 'ERROR')
           successfulSyncs += statuses.filter((s) => s.status === 'SUCCESS').length
           failedSyncs += failed.length
@@ -282,44 +176,6 @@ const job: IJobDefinition = {
           title: 'Summary',
           text: summaryText,
         })
-
-        // GitHub-specific stats
-        if (nangoIntegration === NangoIntegration.GITHUB) {
-          const githubIssues: string[] = []
-
-          if (ghMissingNangoConnections.size > 0) {
-            for (const [integrationId, connectionIds] of ghMissingNangoConnections.entries()) {
-              githubIssues.push(
-                `• Integration \`${integrationId}\` has ${connectionIds.length} missing nango connections (${connectionIds.join(',')})`,
-              )
-            }
-          }
-
-          if (ghNotConnectedToNangoYet.size > 0) {
-            let totalNotConnected = 0
-            for (const count of Array.from(ghNotConnectedToNangoYet.values())) {
-              totalNotConnected += count
-            }
-            githubIssues.push(
-              `• ${totalNotConnected} out of ${totalRepos} repos not connected to Nango yet`,
-            )
-          }
-
-          if (ghNoCursorsYet.size > 0) {
-            let totalNoCursors = 0
-            for (const count of Array.from(ghNoCursorsYet.values())) {
-              totalNoCursors += count
-            }
-            githubIssues.push(`• ${totalNoCursors} repos have no cursors yet`)
-          }
-
-          if (githubIssues.length > 0) {
-            sections.push({
-              title: 'GitHub Issues',
-              text: githubIssues.join('\n'),
-            })
-          }
-        }
 
         // Failed connections with links (limit to first 10)
         if (failedConnections.length > 0) {

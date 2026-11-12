@@ -1,9 +1,10 @@
+import { workerDiscussionSourceDeps } from './insights-discussions/deps'
 import { InsightsDiscussionsSource } from './insights-discussions/source'
 import { LfCriticalityScoreSource } from './lf-criticality-score/source'
 import { IDiscoverySource } from './types'
 
 const allSources: IDiscoverySource[] = [
-  new InsightsDiscussionsSource(),
+  new InsightsDiscussionsSource(workerDiscussionSourceDeps()),
   new LfCriticalityScoreSource(),
 ]
 

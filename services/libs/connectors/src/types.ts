@@ -79,6 +79,7 @@ export interface PoolPreparation {
 export interface DepsFactoryInput {
   qx: QueryExecutor
   integrationId: string
+  segmentId: string | null
 }
 
 export type DepsFactory<TDeps> = (input: DepsFactoryInput) => TDeps
@@ -111,6 +112,7 @@ interface ManifestBase<TDeps> {
   preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
+  runCostEstimate?: number
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may
   // belong to an integration with no segment (e.g. one org-wide poller fanning out to subprojects).

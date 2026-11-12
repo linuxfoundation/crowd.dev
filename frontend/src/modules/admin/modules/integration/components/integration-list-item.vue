@@ -164,7 +164,11 @@ import { dateHelper } from '@/shared/date-helper/date-helper';
 import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
 import IntegrationConfirmationModal from '@/modules/admin/modules/integration/components/integration-confirmation-modal.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
+
+defineOptions({
+  name: 'LfIntegrationListItem',
+});
 
 const props = defineProps<{
   config: IntegrationConfig,
@@ -225,10 +229,4 @@ onMounted(() => {
   isComponentMounted.value = true;
   fetchRepoMappings();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIntegrationListItem',
-};
 </script>

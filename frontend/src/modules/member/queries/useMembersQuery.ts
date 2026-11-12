@@ -3,7 +3,7 @@
 import { computed } from 'vue';
 import type { Ref } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import { queryKeys } from '@/shared/queries/keys';
 import type { EntityListKeyParams } from '@/shared/queries/keys';
 import type { Member } from '@/modules/member/types/Member';
@@ -26,9 +26,12 @@ export function useMembersQuery(
   }));
 
   return useQuery({
-    queryKey: computed(() => queryKeys.members.list({ projectGroupId: projectGroupId.value, ...body.value })),
+    queryKey: computed(() =>
+      queryKeys.members.list({ projectGroupId: projectGroupId.value, ...body.value }),
+    ),
     queryFn: (): Promise<Pagination<Member>> => MemberService.listMembers(body.value),
     enabled,
-    placeholderData: (previousData, previousQuery) => (previousQuery?.queryKey[1] === projectGroupId.value ? previousData : undefined),
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === projectGroupId.value ? previousData : undefined,
   });
 }

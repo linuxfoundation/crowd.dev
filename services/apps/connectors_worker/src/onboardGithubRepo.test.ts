@@ -70,6 +70,7 @@ describe('onboardGithubRepo', () => {
       'i-1',
       'R_1',
       expect.any(Date),
+      'github-nango',
     )
     const staleLockBefore: Date = mocks.hasActiveSyncUnitsForChannelElsewhere.mock.calls[0][3]
     expect(Date.now() - staleLockBefore.getTime()).toBeGreaterThanOrEqual(LIFECYCLE_STALE_LOCK_MS)

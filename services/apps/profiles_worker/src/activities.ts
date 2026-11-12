@@ -6,8 +6,8 @@ import {
 import { getLLMResult } from './activities/common'
 import {
   getCountryScanWindow,
-  processMemberCountries,
-  processOrganizationCountries,
+  inferNextMemberCountries,
+  inferNextOrganizationCountries,
   saveCountryScanSyncedAt,
 } from './activities/countryInference'
 import {
@@ -27,6 +27,7 @@ import {
   triggerMemberAffiliationsRefresh,
   updateMemberAffiliations,
 } from './activities/member/memberUpdate'
+import { getGitAuthorsPage, resolveGitAuthor } from './activities/member/resolveGitAuthors'
 import {
   createFakeOrganizationSuggestion,
   getOrganizationForFakeAnalysis,
@@ -68,6 +69,8 @@ export {
   calculateAllOrganizationLeafAggregates,
   getCountryScanWindow,
   saveCountryScanSyncedAt,
-  processMemberCountries,
-  processOrganizationCountries,
+  inferNextMemberCountries,
+  inferNextOrganizationCountries,
+  getGitAuthorsPage,
+  resolveGitAuthor,
 }

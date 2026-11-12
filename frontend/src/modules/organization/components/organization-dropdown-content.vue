@@ -33,7 +33,7 @@
       type="button"
     >
       <lf-icon name="pen fa-sharp" class="text-base mr-2" />
-      <span class="text-xs">Edit organization</span>
+      <span class="text-xs">Edit company</span>
     </button>
   </router-link>
 
@@ -51,14 +51,14 @@
     "
   >
     <lf-icon name="shuffle" :size="16" class="mr-2" />
-    <span class="text-xs">Merge organization</span>
+    <span class="text-xs">Merge company</span>
   </button>
 
   <!-- Mark as Team Organization -->
   <template v-if="hasPermission(LfPermission.organizationEdit)">
     <el-tooltip
       placement="top"
-      content="Mark as team organization if it is your own organization."
+      content="Mark as team company if it is your own company."
       popper-class="max-w-[260px]"
     >
       <span>
@@ -75,7 +75,7 @@
           "
         >
           <lf-icon name="bookmark" :size="16" class="mr-2" />
-          <span class="text-xs">Mark as team organization</span>
+          <span class="text-xs">Mark as team company</span>
         </button>
       </span>
     </el-tooltip>
@@ -93,7 +93,7 @@
         })
       "
     >
-      <lf-icon name="bookmark-slash" class="mr-2" /><span class="text-xs">Unmark as team organization</span>
+      <lf-icon name="bookmark-slash" class="mr-2" /><span class="text-xs">Unmark as team company</span>
     </button>
   </template>
 
@@ -149,7 +149,7 @@
       <lf-icon name="trash-can" :size="16" class="mr-2 text-red-500" />
       <span
         class="text-xs text-red-500"
-      >Delete organization</span>
+      >Delete company</span>
     </button>
   </template>
 </template>
@@ -159,12 +159,13 @@ import { useRoute, useRouter } from 'vue-router';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { OrganizationService } from '../organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import type { Organization } from '../types/Organization';
 
 // shortcut: undefined HubspotApiService/segments typed; both throw. revisit: refetch or HubSpot fix
@@ -198,6 +199,7 @@ const router = useRouter();
 const { trackEvent } = useProductTracking();
 
 const organizationStore = useOrganizationStore();
+const invalidate = useInvalidate();
 
 const { hasPermission } = usePermissions();
 
@@ -244,7 +246,7 @@ const handleCommand = (command: {
   if (command.action === Actions.DELETE_ORGANIZATION) {
     ConfirmDialog({
       type: 'danger',
-      title: 'Delete organization',
+      title: 'Delete company',
       message: "Are you sure you want to proceed? You can't undo this action",
       confirmButtonText: 'Confirm',
       cancelButtonText: 'Cancel',
@@ -259,14 +261,13 @@ const handleCommand = (command: {
       });
 
       doManualAction({
-        loadingMessage: 'Organization is being deleted',
-        successMessage: 'Organization successfully deleted',
+        loadingMessage: 'Company is being deleted',
+        successMessage: 'Company successfully deleted',
         errorMessage: 'Something went wrong',
         actionFn: OrganizationService.destroyAll([command.organization.id]),
       }).then(() => {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       });
     });
 
@@ -298,20 +299,19 @@ const handleCommand = (command: {
 
     doManualAction({
       loadingMessage: isSyncing
-        ? 'Organization is being synced with Hubspot'
-        : 'Organization syncing with Hubspot is being stopped',
+        ? 'Company is being synced with Hubspot'
+        : 'Company syncing with Hubspot is being stopped',
       successMessage: isSyncing
-        ? 'Organization is now syncing with HubSpot'
-        : 'Organization syncing stopped',
+        ? 'Company is now syncing with HubSpot'
+        : 'Company syncing stopped',
       errorMessage: 'Something went wrong',
       actionFn: isSyncing
         ? HubspotApiService.syncOrganization(command.organization.id)
         : HubspotApiService.stopSyncOrganization(command.organization.id),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }
@@ -331,17 +331,16 @@ const handleCommand = (command: {
     });
 
     doManualAction({
-      loadingMessage: 'Organization is being updated',
-      successMessage: 'Organization updated successfully',
+      loadingMessage: 'Company is being updated',
+      successMessage: 'Company updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.update(command.organization.id, {
         isTeamOrganization: command.value,
       }),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }
@@ -361,17 +360,16 @@ const handleCommand = (command: {
     });
 
     doManualAction({
-      loadingMessage: 'Organization is being updated',
-      successMessage: 'Organization updated successfully',
+      loadingMessage: 'Company is being updated',
+      successMessage: 'Company updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.update(command.organization.id, {
         isAffiliationBlocked: command.value,
       }),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {
-        organizationStore.fetchOrganizations({
-          reload: true,
-        });
+        organizationStore.selectedOrganizations = [];
+        invalidate.organizations();
       } else {
         (organizationStore.fetchOrganization as FetchOrganizationWithSegments)(command.organization.id, segments);
       }

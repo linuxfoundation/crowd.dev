@@ -114,6 +114,10 @@ import { useSharedStore } from '@/shared/pinia/shared.store';
 import { lfIdentities } from '@/config/identities';
 import { ReportDataType } from '@/shared/modules/report-issue/constants/report-data-type.enum';
 
+defineOptions({
+  name: 'LfOrganizationDetailsIdentityItem',
+});
+
 const props = defineProps<{
   identity: OrganizationIdentity & { handle: string; url: string },
   organization: Organization
@@ -141,11 +145,5 @@ const removeIdentity = () => {
     .catch(() => {
       ToastStore.error('Something went wrong while deleting an identity');
     });
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsIdentityItem',
 };
 </script>

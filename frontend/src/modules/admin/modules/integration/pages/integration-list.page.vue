@@ -11,7 +11,7 @@
             },
           }"
         >
-          {{ getSegmentName(grandparentId) || subproject?.grandparentName }}
+          {{ getSegmentName(grandparentId as string) || subproject?.grandparentName }}
         </router-link>
         <p v-if="subproject" class="text-gray-600">
           >
@@ -124,6 +124,10 @@ import { links } from '@/config/links';
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { Project } from '@/modules/lf/segments/types/Segments';
 
+defineOptions({
+  name: 'LfIntegrationListPage',
+});
+
 const route = useRoute();
 
 const { findSubProject } = useLfSegmentsStore();
@@ -137,7 +141,7 @@ const userId = computed(() => authStore.user?.id);
 const teamUserIds = computed(() => config.permissions.teamUserIds);
 const env = computed(() => config.env);
 
-const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value));
+const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value!));
 
 const useGitHubNango = computed(() => {
   const githubIntegration = array.value.find(
@@ -181,10 +185,4 @@ onMounted(() => {
     subproject.value = res;
   });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfIntegrationListPage',
-};
 </script>

@@ -8,7 +8,7 @@
       <template #dropdown>
         <el-tooltip
           v-if="selectedOrganizations.length === 2 && hasPermission(LfPermission.mergeOrganizations)"
-          content="Active member organizations of the Linux Foundation can't be merged into other organizations."
+          content="Active member companies of the Linux Foundation can't be merged into other companies."
           :disabled="!(!!selectedOrganizations?.[0]?.lfxMembership && !!selectedOrganizations?.[1]?.lfxMembership)"
           placement="top"
         >
@@ -24,7 +24,7 @@
               "
             >
               <lf-icon name="shuffling" :size="20" class="mr-1" />
-              Merge organizations
+              Merge companies
             </el-dropdown-item>
           </span>
         </el-tooltip>
@@ -51,7 +51,7 @@
               class="flex items-center text-red-500"
             >
               <lf-icon name="trash-can" :size="20" class="mr-2" />
-              <span>Delete organizations</span>
+              <span>Delete companies</span>
             </div>
           </el-dropdown-item>
         </template>
@@ -61,7 +61,7 @@
   <app-organization-merge-dialog v-model="isMergeDialogOpen" :to-merge="organizationToMerge" />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import pluralize from 'pluralize';
 import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
@@ -70,43 +70,46 @@ import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 
 import { ToastStore } from '@/shared/message/notification';
 import { useOrganizationStore } from '@/modules/organization/store/pinia';
-import { DEFAULT_ORGANIZATION_FILTERS } from '@/modules/organization/store/constants';
-import useOrganizationMergeMessage from '@/shared/modules/merge/config/useOrganizationMergeMessage';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { showExportDialog } from '@/modules/member/member-export-limit';
+import { useInvalidate } from '@/shared/queries/invalidate';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
+import type { Organization } from '@/modules/organization/types/Organization';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import AppOrganizationMergeDialog from '@/modules/organization/components/organization-merge-dialog.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfTableBulkActions from '@/ui-kit/table/table-bulk-actions.vue';
-import { OrganizationService } from '../../organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+
+defineOptions({ name: 'AppOrganizationListToolbar' });
 
 const { trackEvent } = useProductTracking();
 
 const route = useRoute();
-
-const lsSegmentsStore = useLfSegmentsStore();
-const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const organizationStore = useOrganizationStore();
 const {
   selectedOrganizations,
   filters,
 } = storeToRefs(organizationStore);
-const { fetchOrganizations } = organizationStore;
+const invalidate = useInvalidate();
+
+const reloadOrganizations = () => {
+  selectedOrganizations.value = [];
+  return invalidate.organizations();
+};
 
 const { hasPermission } = usePermissions();
 
-const isMergeDialogOpen = ref(null);
-const organizationToMerge = ref(null);
+const isMergeDialogOpen = ref<Organization | null>(null);
+const organizationToMerge = ref<Organization | null>(null);
 
 const markAsTeamOrganizationOptions = computed(() => {
-  const isTeamView = filters.value.settings.teamOrganization === 'filter';
+  // shortcut: keeps main's throw without settings. revisit: when Filter.settings is required
+  const isTeamView = filters.value.settings!.teamOrganization === 'filter';
   const organizationsCopy = pluralize(
-    'organization',
+    'company',
     selectedOrganizations.value.length,
     false,
   );
@@ -128,7 +131,7 @@ const markAsTeamOrganizationOptions = computed(() => {
 
 const handleDoDestroyAllWithConfirm = () => ConfirmDialog({
   type: 'danger',
-  title: 'Delete organizations',
+  title: 'Delete companies',
   message:
       "Are you sure you want to proceed? You can't undo this action",
   confirmButtonText: 'Confirm',
@@ -148,71 +151,22 @@ const handleDoDestroyAllWithConfirm = () => ConfirmDialog({
     const ids = selectedOrganizations.value.map((m) => m.id);
     return OrganizationService.destroyAll(ids);
   })
-  .then(() => fetchOrganizations({ reload: true }));
+  .then(() => reloadOrganizations());
 
 const handleMergeOrganizations = async () => {
   const [firstOrganization, secondOrganization] = selectedOrganizations.value;
-
-  const { loadingMessage, apiErrorMessage } = useOrganizationMergeMessage;
-
-  const isLfMemberOrganization = !!firstOrganization.lfxMembership || !!secondOrganization.lfxMembership;
 
   isMergeDialogOpen.value = firstOrganization;
   organizationToMerge.value = secondOrganization;
 };
 
-const handleDoExport = async () => {
-  const filter = {
-    and: [
-      ...DEFAULT_ORGANIZATION_FILTERS,
-      {
-        id: {
-          in: selectedOrganizations.value.map((o) => o.id),
-        },
-      },
-    ],
-  };
+type OrganizationListToolbarCommand =
+  | { action: 'destroyAll' }
+  | { action: 'mergeOrganizations' }
+  | { action: 'markAsTeamOrganization'; value: boolean };
 
-  try {
-    await showExportDialog({
-      badgeContent: pluralize('organization', selectedOrganizations.value.length, true),
-    });
-
-    trackEvent({
-      key: FeatureEventKey.EXPORT_ORGANIZATIONS,
-      type: EventType.FEATURE,
-      properties: {
-        path: route.path,
-        bulk: true,
-      },
-    });
-
-    await OrganizationService.export({
-      filter,
-      limit: selectedOrganizations.value.length,
-      offset: null,
-      segments: [selectedProjectGroup.value?.id],
-    });
-
-    await doRefreshCurrentUser(null);
-
-    ToastStore.success(
-      'CSV download link will be sent to your e-mail',
-    );
-  } catch (error) {
-    ToastStore.error(
-      'An error has occured while trying to export the CSV file. Please try again',
-      {
-        title: 'CSV Export failed',
-      },
-    );
-  }
-};
-
-const handleCommand = async (command) => {
-  if (command.action === 'export') {
-    await handleDoExport();
-  } else if (command.action === 'destroyAll') {
+const handleCommand = async (command: OrganizationListToolbarCommand) => {
+  if (command.action === 'destroyAll') {
     await handleDoDestroyAllWithConfirm();
   } else if (command.action === 'mergeOrganizations') {
     await handleMergeOrganizations();
@@ -226,7 +180,7 @@ const handleCommand = async (command) => {
       },
     });
 
-    ToastStore.info('Organizations are being updated');
+    ToastStore.info('Companies are being updated');
 
     Promise.all(
       selectedOrganizations.value.map((row) => OrganizationService.update(row.id, {
@@ -236,26 +190,18 @@ const handleCommand = async (command) => {
       ToastStore.closeAll();
       ToastStore.success(
         `${pluralize(
-          'Organization',
+          'Company',
           selectedOrganizations.value.length,
           false,
         )} updated successfully`,
       );
 
-      fetchOrganizations({
-        reload: true,
-      });
+      reloadOrganizations();
     })
       .catch(() => {
         ToastStore.closeAll();
-        ToastStore.error('Error updating organizations');
+        ToastStore.error('Error updating companies');
       });
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationListToolbar',
 };
 </script>

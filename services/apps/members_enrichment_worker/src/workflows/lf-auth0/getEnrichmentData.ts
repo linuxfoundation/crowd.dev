@@ -5,13 +5,11 @@ import { IMember, MemberIdentityType } from '@crowd/types'
 import * as activities from '../../activities'
 import { IGetEnrichmentDataArgs } from '../../sources/lfid/types'
 
-const { refreshToken, getEnrichmentLFAuth0 } = proxyActivities<typeof activities>({
+const { getEnrichmentLFAuth0 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '10 seconds',
 })
 
 export async function getEnrichmentData(args: IGetEnrichmentDataArgs): Promise<void> {
-  const token = await refreshToken()
-
   const mem: IMember = {
     id: '123',
     segmentId: null,
@@ -75,7 +73,7 @@ export async function getEnrichmentData(args: IGetEnrichmentDataArgs): Promise<v
     })
   }
 
-  const data = await getEnrichmentLFAuth0(token, mem)
+  const data = await getEnrichmentLFAuth0(mem)
   console.log(data)
   console.log(data.identities.find((i) => i.provider === 'github')?.profileData)
 }

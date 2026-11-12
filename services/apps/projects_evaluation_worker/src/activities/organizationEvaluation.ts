@@ -6,8 +6,8 @@ import {
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import {
   OrganizationGroupRow,
-  organizationGroupKey,
-  organizationOf,
+  requestGroupKey,
+  requestGroupOf,
   sameReviewProposal,
 } from '@crowd/project-onboarding'
 
@@ -37,21 +37,27 @@ function hasSharedVerdict(
 
 type MainRepositoryRow = Pick<IDbProjectCatalog, 'repoUrl' | 'requestHints'>
 
-export function isOrganizationMainRepository(row: MainRepositoryRow): boolean {
-  const owner = organizationOf(row)
+export function isRequestGroupMainRepository(row: MainRepositoryRow): boolean {
+  const group = requestGroupOf(row)
+  if (!group) {
+    return false
+  }
+  if (group.kind === 'project') {
+    return row.repoUrl === row.requestHints?.mainRepoUrl
+  }
   const repo = canonicalizeRepoUrl(row.repoUrl)?.repo
-  return !!owner && !!repo && repo.toLowerCase() === owner.toLowerCase()
+  return !!repo && repo.toLowerCase() === group.owner.toLowerCase()
 }
 
 // The first evaluated row of a group decides for the rest, so the main repository goes first
 // and is the one the evaluator reads.
-export function organizationMainRepositoriesFirst<
-  T extends OrganizationGroupRow & MainRepositoryRow,
->(rows: T[]): T[] {
+export function mainRepositoriesFirst<T extends OrganizationGroupRow & MainRepositoryRow>(
+  rows: T[],
+): T[] {
   const firstIndexByKey = new Map<string, number>()
   const ordered = [...rows]
   rows.forEach((row, index) => {
-    const key = organizationGroupKey(row)
+    const key = requestGroupKey(row)
     if (!key) {
       return
     }
@@ -60,7 +66,7 @@ export function organizationMainRepositoriesFirst<
       firstIndexByKey.set(key, index)
       return
     }
-    if (isOrganizationMainRepository(row) && !isOrganizationMainRepository(ordered[first])) {
+    if (isRequestGroupMainRepository(row) && !isRequestGroupMainRepository(ordered[first])) {
       ;[ordered[first], ordered[index]] = [ordered[index], ordered[first]]
     }
   })

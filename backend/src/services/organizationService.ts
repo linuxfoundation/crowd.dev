@@ -19,7 +19,12 @@ import {
   mergeObjects,
   normalizeHostname,
 } from '@crowd/common'
-import { roleExistsInArray, signalMemberUpdate, unmergeRoles } from '@crowd/common_services'
+import {
+  markOrganizationsChanged,
+  roleExistsInArray,
+  signalMemberUpdate,
+  unmergeRoles,
+} from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -104,6 +109,15 @@ const toAttributeBackup = (attributes: IOrganizationAttributeBackup[]) =>
     default: isDefault,
   }))
 
+// A nested call's commitTransaction leaves the outer transaction, and its row locks, open: work
+// that must follow the commit runs only once the outermost transaction has committed
+function afterOuterCommit(
+  transaction: { afterCommit(fn: () => Promise<void>): void },
+  work: () => Promise<void>,
+): void {
+  transaction.afterCommit(work)
+}
+
 export default class OrganizationService extends LoggerBase {
   options: IServiceOptions
 
@@ -151,7 +165,7 @@ export default class OrganizationService extends LoggerBase {
             i.verified === identity.verified,
         )
       ) {
-        throw new Error(`Organization doesn't have the identity sent to be unmerged!`)
+        throw new Error(`Company doesn't have the identity sent to be unmerged!`)
       }
 
       organization.identities = identities
@@ -165,7 +179,7 @@ export default class OrganizationService extends LoggerBase {
         )
 
         if (!mergeAction) {
-          throw new Error('No previous merge action found to revert for organization!')
+          throw new Error('No previous merge action found to revert for company!')
         }
 
         const primaryBackup = mergeAction.unmergeBackup.primary as IOrganizationUnmergeBackup
@@ -299,7 +313,7 @@ export default class OrganizationService extends LoggerBase {
             i.verified === identity.verified,
         )
       ) {
-        throw new Error(`Organization doesn't have the identity sent to be unmerged!`)
+        throw new Error(`Company doesn't have the identity sent to be unmerged!`)
       }
 
       // Check if there was a previous merge involving this identity
@@ -487,6 +501,13 @@ export default class OrganizationService extends LoggerBase {
           )
 
           // trigger entity-merging-worker to move activities in the background
+          afterOuterCommit(tx, () =>
+            markOrganizationsChanged(
+              this.options.redis,
+              [organizationId, secondaryOrganization.id],
+              this.log,
+            ),
+          )
           await SequelizeRepository.commitTransaction(tx)
 
           return { organization, secondaryOrganization }
@@ -824,6 +845,9 @@ export default class OrganizationService extends LoggerBase {
           // Drop leftover suggestions that still mention the secondary.
           await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
 
+          afterOuterCommit(tx, () =>
+            markOrganizationsChanged(this.options.redis, [originalId, toMergeId], this.log),
+          )
           await SequelizeRepository.commitTransaction(tx)
 
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
@@ -971,7 +995,7 @@ export default class OrganizationService extends LoggerBase {
     const verifiedIdentities = data.identities.filter((i) => i.verified)
 
     if (verifiedIdentities.length === 0) {
-      const message = `Missing organization identity while creating/updating organization!`
+      const message = `Missing company identity while creating/updating company!`
       this.log.error(data, message)
       throw new Error(message)
     }
@@ -1058,6 +1082,9 @@ export default class OrganizationService extends LoggerBase {
 
       const result = await OrganizationRepository.findById(record.id, txOptions)
 
+      afterOuterCommit(transaction, () =>
+        markOrganizationsChanged(this.options.redis, [record.id], this.log),
+      )
       await SequelizeRepository.commitTransaction(transaction)
 
       if (syncOptions.doSync) {
@@ -1192,6 +1219,9 @@ export default class OrganizationService extends LoggerBase {
         await deleteFakeOrganizationSuggestion(qx, record.id)
       }
 
+      afterOuterCommit(tx, () =>
+        markOrganizationsChanged(this.options.redis, [record.id], this.log),
+      )
       await SequelizeRepository.commitTransaction(tx)
 
       if (syncToOpensearch || recalculateAffiliations) {
@@ -1232,6 +1262,9 @@ export default class OrganizationService extends LoggerBase {
         )
       }
 
+      afterOuterCommit(transaction, () =>
+        markOrganizationsChanged(this.options.redis, ids, this.log),
+      )
       await SequelizeRepository.commitTransaction(transaction)
 
       const searchSyncService = new SearchSyncService(this.options, SyncMode.ASYNCHRONOUS)
@@ -1327,6 +1360,9 @@ export default class OrganizationService extends LoggerBase {
         true,
       )
 
+      afterOuterCommit(transaction, () =>
+        markOrganizationsChanged(this.options.redis, ids, this.log),
+      )
       await SequelizeRepository.commitTransaction(transaction)
 
       const searchSyncService = new SearchSyncService(this.options)

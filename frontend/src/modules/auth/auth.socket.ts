@@ -7,11 +7,15 @@ import config from '@/config';
 import { ToastStore } from '@/shared/message/notification';
 import type { User } from '@/modules/auth/types/User.type';
 import type {
+  IntegrationCompletedSocketPayload,
   OrganizationMergeSocketPayload,
   ProfileMergeSocketPayload,
+  ServerToClientEvents,
 } from '@/modules/auth/types/SocketEvents.type';
+import { queryClient } from '@/shared/queries/client';
+import { queryKeys } from '@/shared/queries/keys';
 
-let socketIoClient: Socket | null = null;
+let socketIoClient: Socket<ServerToClientEvents> | null = null;
 
 const SocketEvents = {
   connect: 'connect',
@@ -21,7 +25,7 @@ const SocketEvents = {
   memberMerge: 'member-merge',
   memberUnmerge: 'member-unmerge',
   organizationUnmerge: 'organization-unmerge',
-};
+} as const;
 
 export const isSocketConnected = () => socketIoClient && socketIoClient.connected;
 
@@ -55,8 +59,23 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
     console.info('Socket disconnected');
   });
 
-  socketIoClient.on(SocketEvents.integrationCompleted, (data: string) => {
+  socketIoClient.on(SocketEvents.integrationCompleted, async (data) => {
     console.info('Integration onboarding done', data);
+    const { integrationId }: IntegrationCompletedSocketPayload = JSON.parse(data);
+    [
+      queryKeys.overview.integrationsAll,
+      queryKeys.overview.integrationStatusCountAll,
+      queryKeys.overview.integrationProgressAll,
+    ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+    try {
+      const { useIntegrationStore } = await import('@/modules/integration/store/integration.store');
+      const integrationStore = useIntegrationStore();
+      if (integrationStore.integrations[integrationId]) {
+        await integrationStore.find(integrationId);
+      }
+    } catch (error) {
+      console.error('Socket integrationCompleted: failed to refresh the integration', error);
+    }
   });
 
   socketIoClient.on(SocketEvents.memberMerge, async (data: string) => {
@@ -74,6 +93,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       if (getUser()?.id !== userId) {
         return;
       }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.members.all });
 
       const primaryMember = h(
         'a',
@@ -118,6 +139,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       if (getUser()?.id !== userId) {
         return;
       }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.members.all });
 
       const primaryMember = h(
         'a',
@@ -167,10 +190,12 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
         return;
       }
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+
       const primaryOrganization = h(
         'a',
         {
-          href: `${window.location.origin}/organizations/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          href: `${window.location.origin}/companies/${primaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
           class: 'underline text-gray-600',
         },
         primaryDisplayName,
@@ -178,22 +203,18 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       const secondaryOrganization = h(
         'a',
         {
-          href: `${window.location.origin}/organizations/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
+          href: `${window.location.origin}/companies/${secondaryId}?projectGroup=${selectedProjectGroup.value?.id}`,
           class: 'underline text-gray-600',
         },
         secondaryDisplayName,
       );
       const between = h('span', {}, ' unmerged from ');
-      const after = h(
-        'span',
-        {},
-        '. Syncing organization activities might take some time to complete.',
-      );
+      const after = h('span', {}, '. Syncing company activities might take some time to complete.');
       ToastStore.closeAll();
       ToastStore.success(
         h('div', {}, [secondaryOrganization, between, primaryOrganization, after]),
         {
-          title: 'Organizations unmerged successfully',
+          title: 'Companies unmerged successfully',
         },
       );
     } catch (error) {
@@ -202,7 +223,8 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
   });
 
   socketIoClient.on(SocketEvents.orgMerge, async (payload: string) => {
-    const { success, userId, primaryOrgId, original, toMerge }: OrganizationMergeSocketPayload = JSON.parse(payload);
+    const { success, userId, primaryOrgId, original, toMerge }: OrganizationMergeSocketPayload =
+      JSON.parse(payload);
 
     if (getUser()?.id !== userId) {
       return;
@@ -222,6 +244,10 @@ export const connectSocket = (token: string, getUser: () => User | null) => {
       ToastStore.closeAll();
 
       organizationStore.removeMergedOrganizations(primaryOrgId);
+
+      if (success) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+      }
 
       const { default: useOrganizationMergeMessage } =
         await import('@/shared/modules/merge/config/useOrganizationMergeMessage');

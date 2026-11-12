@@ -195,7 +195,7 @@
           class="pb-4"
         >
           <p class="text-2xs font-medium text-gray-500 pb-1">
-            Organization
+            Company
           </p>
           <div>
             <app-member-organizations :member="member" :show-title="false" />
@@ -265,9 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  onMounted, ref, type PropType,
-} from 'vue';
+import { onMounted, ref } from 'vue';
 import AppMemberOrganizations from '@/modules/member/components/member-organizations.vue';
 import AppAvatar from '@/shared/avatar/avatar.vue';
 import AppCommunityEngagementLevel from '@/modules/member/components/member-engagement-level.vue';
@@ -284,41 +282,37 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-const props = defineProps({
-  member: {
-    // shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
-    type: Object as PropType<any>,
-    default: () => null,
-  },
-  compareMember: {
-    // shortcut: any — revisit: when Contributor fits this payload (null member, attributes, score)
-    type: Object as PropType<any>,
-    required: false,
-    default: () => null,
-  },
-  isPrimary: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  isPreview: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  loading: {
-    type: Boolean,
-    required: false,
-    default: false,
-  },
-  extendBio: {
-    type: Number,
-    required: false,
-    default: 0,
-  },
+defineOptions({
+  name: 'AppMemberMergeSuggestionsDetails',
+});
+
+const props = withDefaults(defineProps<{
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: callers pass Member, Contributor and partial rows. revisit: K-20 (CM-1731)
+  member?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: same as member. revisit: K-20 (CM-1731)
+  compareMember?: any;
+  isPrimary?: boolean;
+  isPreview?: boolean;
+  loading?: boolean;
+  extendBio?: number;
+}>(), {
+  member: null,
+  compareMember: null,
+  isPrimary: false,
+  isPreview: false,
+  loading: false,
+  extendBio: 0,
 });
 
 const emit = defineEmits<{(e: 'makePrimary'): void; (e: 'bioHeight', height: number): void}>();
+
+defineSlots<{
+  header?:() => unknown;
+  action?:() => unknown;
+  engagementLevel?:() => unknown;
+  property?:() => unknown;
+  below?:() => unknown;
+}>();
 
 const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
@@ -347,16 +341,9 @@ const formatJoinedDate = (date: string) => {
   return dateHelper(date).format('YYYY-MM-DD');
 };
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   more,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppMemberMergeSuggestionsDetails',
-};
 </script>
 
 <style lang="scss">

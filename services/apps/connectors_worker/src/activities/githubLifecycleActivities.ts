@@ -18,10 +18,8 @@ import {
 } from '@crowd/data-access-layer/src/connectors'
 import {
   type IGithubLifecycleIntegration,
-  type NangoMappingEntry,
   addRepoToGitIntegration,
   fetchGithubLifecycleIntegration,
-  getNangoMappingsForIntegrations,
   listGithubChannelsOwnedElsewhere,
   listGithubIntegrationsNeedingReconcile,
   listGithubRepoKeysUnderOwners,
@@ -35,9 +33,9 @@ import {
   softDeleteRepositoriesForIntegration,
   upsertRepository,
 } from '@crowd/data-access-layer/src/repositories'
-import { githubChannelName } from '@crowd/nango'
 import { PlatformType } from '@crowd/types'
 
+import { chunk } from '../chunk'
 import { type TokenSource, installationTokenSource } from '../githubInstallationToken'
 import {
   type IGithubLifecycleDiff,
@@ -56,7 +54,6 @@ import {
   renameProbeFailure,
 } from '../githubSkipReasons'
 import { svc } from '../main'
-import { chunk } from '../mirrorSweepLimits'
 import { type OnboardRepoResult, onboardGithubRepo } from '../onboardGithubRepo'
 
 const MAX_INITIAL_DELAY_SECONDS = 3600
@@ -202,15 +199,6 @@ function isLiveGithubNango(
 
 function liveRepoKeys(urls: string[]): string[] {
   return [...new Set(urls.map(githubRepoKey).filter((key): key is string => key !== null))]
-}
-
-function nangoMappingUrls(
-  mappings: Record<string, Record<string, NangoMappingEntry>>,
-  integrationId: string,
-): string[] {
-  return Object.values(mappings[integrationId] ?? {}).map(({ owner, repoName }) =>
-    githubChannelName(owner, repoName),
-  )
 }
 
 function fullSyncOrgs(integration: IGithubLifecycleIntegration): string[] {
@@ -729,12 +717,8 @@ export async function discoverFullSyncRepos({
     }
   }
 
-  const [repoRows, mappings] = await Promise.all([
-    getReposForGithubIntegration(qx, integrationId),
-    getNangoMappingsForIntegrations(qx, [integrationId]),
-  ])
+  const repoRows = await getReposForGithubIntegration(qx, integrationId)
   const repoKeys = liveRepoKeys(repoRows.map((r) => r.url))
-  const ownKeys = liveRepoKeys([...repoKeys, ...nangoMappingUrls(mappings, integrationId)])
   const token = installationTokenSource(qx, integrationId)
   const result: IDiscoverFullSyncReposResult = {
     discovered: [],
@@ -753,7 +737,7 @@ export async function discoverFullSyncRepos({
     return { ...result, renameValidationComplete: false }
   }
 
-  const renamedFrom = await renamedTargets(context, listing, ownKeys)
+  const renamedFrom = await renamedTargets(context, listing, repoKeys)
   if (!(renamedFrom instanceof Map)) {
     skipOrgs(
       listed.length > 0 ? listedOrgs : [renamedFrom.key ?? integrationId],
@@ -771,7 +755,7 @@ export async function discoverFullSyncRepos({
     context,
     listed,
     new Set([...repoKeys, ...handedOver]),
-    renameSkipMessages(unresolved, new Set(ownKeys)),
+    renameSkipMessages(unresolved, new Set(repoKeys)),
   )
   return result
 }
@@ -799,9 +783,8 @@ export async function planGithubLifecycle({
     return { found: true, githubNango: false, deleted, ...nothing }
   }
 
-  const [repos, mappings, channels] = await Promise.all([
+  const [repos, channels] = await Promise.all([
     getReposForGithubIntegration(qx, integrationId),
-    getNangoMappingsForIntegrations(qx, [integrationId]),
     listSyncUnitChannelsForIntegration(qx, integrationId),
   ])
   const repoUrls = repos.map((repo) => repo.url)
@@ -813,7 +796,6 @@ export async function planGithubLifecycle({
   const diff = diffGithubLifecycle({
     deleted,
     repoUrls,
-    mappingKeys: nangoMappingUrls(mappings, integrationId).map((url) => url.toLowerCase()),
     channels,
     ownedElsewhere,
   })

@@ -141,18 +141,14 @@ import config from '@/config';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfAvatar from '@/ui-kit/avatar/Avatar.vue';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import LfSvg from '@/shared/svg/svg.vue';
+import type { GithubInstallation } from '@/modules/integration/types/IntegrationResponse';
 
-interface GithubInstallation {
-  id: string;
-  installationId: string;
-  type: string;
-  numRepos: number;
-  login: string;
-  avatarUrl: string;
-}
+defineOptions({
+  name: 'LfGithubConnectModal',
+});
 
 const props = defineProps<{
   modelValue: boolean,
@@ -212,10 +208,4 @@ const getGithubInstallations = () => {
 onMounted(() => {
   getGithubInstallations();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfGithubConnectModal',
-};
 </script>

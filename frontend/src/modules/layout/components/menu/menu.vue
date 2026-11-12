@@ -24,10 +24,10 @@
       @click="onMembersClick"
     />
     <lf-menu-link
-      title="Organizations"
+      title="Companies"
       icon="building"
       :is-collapsed="isCollapsed"
-      :to="{ path: '/organizations', query: { projectGroup: selectedProjectGroup?.id } }"
+      :to="{ path: '/companies', query: { projectGroup: selectedProjectGroup?.id } }"
       :disabled="!selectedProjectGroup"
       @click="onOrganizationsClick"
     />
@@ -81,7 +81,7 @@
   </aside>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { watch } from 'vue';
 import { useActivityTypeStore } from '@/modules/activity/store/type';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
@@ -97,6 +97,8 @@ import usePermissions from '@/shared/modules/permissions/helpers/usePermissions'
 import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import LfMenuLink from '@/modules/layout/components/menu/menu-link.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({ name: 'LfMenu' });
 
 const layoutStore = useLayoutStore();
 const { menuCollapsed: isCollapsed } = storeToRefs(layoutStore);
@@ -134,11 +136,4 @@ watch(
   },
   { immediate: true, deep: true },
 );
-
-</script>
-
-<script>
-export default {
-  name: 'LfMenu',
-};
 </script>

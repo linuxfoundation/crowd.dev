@@ -34,12 +34,12 @@ import {
   createsNewProject,
   deriveProjectSlug,
   findOnboardedInsightsProject,
-  findOrganizationSiblings,
+  findRequestGroupSiblings,
   onboardOrganizationProject,
   onboardProject,
-  organizationGroupKey,
-  organizationOf,
-  organizationReviewOf,
+  refreshDiscussionStatusComment,
+  requestGroupKey,
+  requestGroupReview,
   reportRequestOutcome,
   toReviewRequestCard,
 } from '@crowd/project-onboarding'
@@ -106,14 +106,14 @@ async function withWholeOrganizations(
   const included = new Set(batch.map((row) => row.id))
   const leads = new Map<string, IDbProjectCatalog>()
   for (const row of batch) {
-    const key = organizationGroupKey(row)
+    const key = requestGroupKey(row)
     if (key && !leads.has(key)) {
       leads.set(key, row)
     }
   }
   const completed = [...batch]
   for (const lead of leads.values()) {
-    const siblings = await findOrganizationSiblings(
+    const siblings = await findRequestGroupSiblings(
       qx,
       lead,
       (row) => isProjectCatalogOnboardingPending(row) && !included.has(row.id),
@@ -281,7 +281,7 @@ async function onboardClaimedOrganization(
   claimed: IDbProjectCatalog[],
 ): Promise<void> {
   log.info(
-    { ids: claimed.map((project) => project.id), organization: organizationOf(claimed[0]) },
+    { ids: claimed.map((project) => project.id), group: requestGroupKey(claimed[0]) },
     'Starting the onboarding of an organization.',
   )
   try {
@@ -310,7 +310,7 @@ async function claimCreationGroup(
   projects: IDbProjectCatalog[],
   outcome: IOrganizationOnboardingOutcome,
 ): Promise<IDbProjectCatalog[]> {
-  const organizationKey = organizationGroupKey(projects[0])
+  const organizationKey = requestGroupKey(projects[0])
   if (!organizationKey || !projects.every(createsNewProject)) {
     return claimOrganizationRows(qx, projects, outcome)
   }
@@ -414,7 +414,7 @@ async function closeReviewCard(
     return
   }
 
-  const siblings = await findOrganizationSiblings(
+  const siblings = await findRequestGroupSiblings(
     pgpQx(svc.postgres.writer.connection()),
     project,
     (row) => row.reviewMessageTs === project.reviewMessageTs,
@@ -429,7 +429,7 @@ async function closeReviewCard(
     return
   }
 
-  const organization = organizationReviewOf(project, siblings.length)
+  const organization = requestGroupReview(project, siblings)
   const onboarded = members.filter((row) => row.action === 'onboarded').length
   const card = toReviewRequestCard(project, NO_REVIEW_CARD_EXTRAS, organization)
   const closed = buildReviewClosedMessage(card, {
@@ -474,6 +474,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
     await notifyOnboardedRequest(project, closedCards)
   }
 
+  const qx = pgpQx(svc.postgres.writer.connection())
   for (const group of groupGithubDiscussionRequestsBySource(projects)) {
     const sent = await sendSlackNotificationAsync(
       SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
@@ -488,6 +489,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
         'Onboarded-discussion Slack alert was not sent.',
       )
     }
+    await refreshDiscussionStatusComment(qx, group[0])
   }
 }
 
@@ -512,7 +514,7 @@ export async function markProjectOnboardingFailed(
 }
 
 export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promise<void> {
-  if (!isSlackBotProvenance(project.provenance)) {
+  if (!isSlackBotProvenance(project.provenance) && !isGithubDiscussionRequest(project)) {
     return
   }
 
@@ -521,19 +523,23 @@ export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promi
   if (current?.action !== 'skip') {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, action: current?.action },
-      'Row is no longer skipped, not replying in the Slack thread.',
+      'Row is no longer skipped, not reporting it to the requester.',
     )
     return
   }
 
-  const reason = current.skipReason ?? '(no reason recorded)'
-  await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  if (isGithubDiscussionRequest(project)) {
+    await refreshDiscussionStatusComment(qx, project)
+  } else {
+    const reason = current.skipReason ?? '(no reason recorded)'
+    await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  }
   await closeOrganizationCardIfSettled(current)
 }
 
-// The last repository of an organization to fail or be skipped must still close the shared card.
+// The last repository of a group to fail or be skipped must still close the shared card.
 async function closeOrganizationCardIfSettled(stale: IDbProjectCatalog): Promise<void> {
-  if (!organizationOf(stale) || !stale.reviewMessageTs) {
+  if (!requestGroupKey(stale) || !stale.reviewMessageTs) {
     return
   }
   const qx = pgpQx(svc.postgres.writer.connection())
@@ -569,6 +575,7 @@ export async function notifyErroredHumanRequest(
       'Errored-discussion Slack alert was not sent.',
     )
   }
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
 }
 
 export async function startOnboardingPipelineRun(

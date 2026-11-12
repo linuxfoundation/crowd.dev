@@ -1,5 +1,7 @@
 import { IS_PROD_ENV } from '@crowd/common'
 
+import { personalEmailCondition } from '../../../core/personalEmail'
+
 // Main: analytics.silver_fact.enrollments (enrollment data)
 // Joins:
 // - ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS (segment resolution)
@@ -77,7 +79,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   LEFT JOIN course_status cs
     ON LOWER(e.user_email) = LOWER(cs.user_email)
     AND e.course_id = cs.course_id
-  WHERE e.user_email IS NOT NULL`
+  WHERE ${personalEmailCondition('e.user_email')}`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { catalogueFixture } from './catalogue.fixture'
+import type { CredlyEventRule } from './eventRules'
+import { credlyEventRules } from './eventRules'
 import type { CredlyTemplateOverride } from './overrides'
 import { RULE_VERSION, resolveTemplates } from './resolver'
 import type { ResolvedTemplate, TemplateToResolve } from './resolver'
@@ -20,12 +22,14 @@ function resolveOne(
   name: string,
   overrides: readonly CredlyTemplateOverride[] = [],
   extra: Partial<TemplateToResolve> = {},
+  eventRules: readonly CredlyEventRule[] = credlyEventRules,
 ): ResolvedTemplate {
   const [decision] = resolveTemplates({
     templates: [{ id: `tpl:${name}`, name, ...extra }],
     catalogue: catalogueFixture,
     segmentIdBySlug: SEGMENTS,
     overrides,
+    eventRules,
   })
   return decision
 }
@@ -103,6 +107,7 @@ describe('resolveTemplates', () => {
       catalogue: catalogueFixture,
       segmentIdBySlug: SEGMENTS,
       overrides: [],
+      eventRules: credlyEventRules,
     })
     expect(decisions.map((d) => d.projectSlug)).toEqual(['finops', 'finops'])
   })
@@ -129,7 +134,6 @@ describe('resolveTemplates', () => {
   it.each([
     'Exam Developer: Certified Kubernetes Administrator',
     'LF Live Mentorship Series: Mentor',
-    'KubeCon + CloudNativeCon North America 2025 Speaker',
     'Zero to Merge (cohort 3)',
   ])('holds %j as no_match', (name) => {
     expect(resolveOne(name)).toMatchObject({ status: 'held', holdReason: 'no_match' })
@@ -166,6 +170,7 @@ describe('resolveTemplates', () => {
       catalogue,
       segmentIdBySlug: SEGMENTS,
       overrides: [],
+      eventRules: credlyEventRules,
     })
     expect(decision).toMatchObject({ status: 'mapped', projectSlug: 'k8s', rule: 'sku_vote' })
   })
@@ -187,6 +192,7 @@ describe('resolveTemplates', () => {
       catalogue,
       segmentIdBySlug: SEGMENTS,
       overrides: [],
+      eventRules: credlyEventRules,
     })
     expect(plain).toMatchObject({ status: 'mapped', projectSlug: 'k8s', rule: 'title' })
     expect(advanced).toMatchObject({ status: 'mapped', projectSlug: 'cncf', rule: 'title' })
@@ -236,6 +242,7 @@ describe('resolveTemplates', () => {
       catalogue,
       segmentIdBySlug: SEGMENTS,
       overrides: [],
+      eventRules: credlyEventRules,
     })
     expect(decision).toMatchObject({ status: 'mapped', projectSlug: 'k8s', rule: 'sku_vote' })
   })
@@ -258,6 +265,7 @@ describe('resolveTemplates', () => {
       catalogue,
       segmentIdBySlug: SEGMENTS,
       overrides: [],
+      eventRules: credlyEventRules,
     })
     expect(decision).toMatchObject({ status: 'held', holdReason: 'ambiguous' })
   })
@@ -270,6 +278,114 @@ describe('resolveTemplates', () => {
     const decision = resolveOne('CKA: Certified Kubernetes Administrator', [], { badgeCount: 154 })
     expect(decision.badgeCount).toBe(154)
     expect(decision.projectSlug).toBe('k8s')
+  })
+
+  describe('event rules', () => {
+    const RULES: readonly CredlyEventRule[] = [
+      {
+        id: 'kubecon',
+        nameKeyword: 'KubeCon',
+        projectSlug: 'cncf',
+        approvedBy: 'joana',
+        note: 'test',
+      },
+      {
+        id: 'kubecon-url',
+        activityUrl: 'events.linuxfoundation.org/kubecon',
+        projectSlug: 'cncf',
+        approvedBy: 'joana',
+        note: 'test',
+      },
+      {
+        id: 'oss',
+        nameKeyword: 'Open Source Summit',
+        projectSlug: 'tlf',
+        approvedBy: 'joana',
+        note: 'test',
+      },
+    ]
+
+    it('maps a template without a code through the first matching rule', () => {
+      expect(
+        resolveOne(
+          'KubeCon + CloudNativeCon + Open Source Summit China 2023 Speaker',
+          [],
+          {},
+          RULES,
+        ),
+      ).toMatchObject({
+        status: 'mapped',
+        projectSlug: 'cncf',
+        segmentId: 'seg-cncf',
+        rule: 'event',
+        matchedSku: null,
+        ruleVersion: RULE_VERSION,
+        evidence: { ruleId: 'kubecon', matched: 'KubeCon', matchedRuleIds: ['kubecon', 'oss'] },
+      })
+    })
+
+    it('maps a template through its activity URL when the name says nothing', () => {
+      const decision = resolveOne(
+        'Speaker Badge 2024',
+        [],
+        { activityUrl: 'https://events.linuxfoundation.org/kubecon-cloudnativecon-india/' },
+        RULES,
+      )
+      expect(decision).toMatchObject({
+        status: 'mapped',
+        projectSlug: 'cncf',
+        rule: 'event',
+        evidence: { ruleId: 'kubecon-url' },
+      })
+    })
+
+    it('lets the catalogue rules win over an event rule', () => {
+      expect(
+        resolveOne('CKA: Certified Kubernetes Administrator at KubeCon', [], {}, RULES),
+      ).toMatchObject({ projectSlug: 'k8s', rule: 'exact_sku' })
+      expect(resolveOne('FinOps Certified Practitioner')).toMatchObject({ rule: 'title' })
+    })
+
+    it('applies an event rule to a template whose unknown code matched nothing', () => {
+      expect(resolveOne('KCCNC: KubeCon Speaker', [], {}, RULES)).toMatchObject({
+        status: 'mapped',
+        projectSlug: 'cncf',
+        rule: 'event',
+      })
+    })
+
+    it('lets an override win over an event rule', () => {
+      const decision = resolveOne(
+        'KubeCon Speaker',
+        [
+          {
+            badgeTemplateId: 'tpl:KubeCon Speaker',
+            status: 'excluded',
+            reviewedBy: 'joana',
+            note: 'not an event badge',
+          },
+        ],
+        {},
+        RULES,
+      )
+      expect(decision.status).toBe('excluded')
+    })
+
+    it('holds an event rule whose project has no segment as no_segment', () => {
+      expect(resolveOne('Speaker: GraphQLConf 2024')).toMatchObject({
+        status: 'held',
+        holdReason: 'no_segment',
+        projectSlug: 'gql',
+        rule: 'event',
+      })
+    })
+
+    it('keeps a template no rule covers as no_match', () => {
+      expect(resolveOne('Zero to Merge - Cohort 01', [], {}, RULES)).toMatchObject({
+        status: 'held',
+        holdReason: 'no_match',
+      })
+    })
   })
 
   describe('overrides', () => {

@@ -189,17 +189,15 @@ import {
   reactive,
   onMounted,
   computed,
-  defineEmits,
-  defineProps,
   watch,
 } from 'vue';
 import { required } from '@vuelidate/validators';
 import useVuelidate from '@vuelidate/core';
 import AppDrawer from '@/shared/drawer/drawer.vue';
-import { mapActions } from '@/shared/vuex/vuex.helpers';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import AppFormItem from '@/shared/form/form-item.vue';
 import devto from '@/config/integrations/devto/config';
-import { IntegrationService } from '@/modules/integration/integration-service';
+import { IntegrationService } from '@/modules/integration/services/integration.api.service';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
@@ -211,13 +209,9 @@ import DrawerFooterButtons from '@/modules/admin/modules/integration/components/
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { DevtoSettings } from '@/config/integrations/devto/types/DevtoSettings';
 
-interface DevtoAccountRow {
-  id: number;
-  username: string;
-  touched: boolean;
-  valid: boolean;
-  validating: boolean;
-}
+defineOptions({
+  name: 'LfDevtoConnectDrawer',
+});
 
 const props = defineProps<{
   integration: Integration<DevtoSettings> | undefined;
@@ -228,7 +222,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void}>();
 
-const { doDevtoConnect } = mapActions('integration');
+interface DevtoAccountRow {
+  id: number;
+  username: string;
+  touched: boolean;
+  valid: boolean;
+  validating: boolean;
+}
+
+const { connectDevto } = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 
@@ -238,6 +240,46 @@ const organizations = ref<DevtoAccountRow[]>([]);
 const loading = ref(false);
 const isAPIConnectionValid = ref(false);
 const isValidating = ref(false);
+
+const form = reactive({
+  apiKey: '',
+});
+
+const rules = {
+  apiKey: {
+    required,
+  },
+};
+
+const $externalResults = ref({});
+
+const $v = useVuelidate(rules, form, { $externalResults, $stopPropagation: true });
+
+const { formSnapshot, hasFormChanged } = formChangeDetector(form);
+
+const isVisible = computed({
+  get() {
+    return props.modelValue;
+  },
+  set(value) {
+    return emit('update:modelValue', value);
+  },
+});
+
+const isValid = computed(() => {
+  const relevantUsers = users.value.filter((u) => !!u.username);
+
+  if (relevantUsers.some((user) => !user.valid)) {
+    return false;
+  }
+
+  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
+  if (relevantOrganizations.some((org) => !org.valid)) {
+    return false;
+  }
+
+  return relevantUsers.length + relevantOrganizations.length > 0;
+});
 
 const connectDisabled = computed(() => {
   if (!isValid.value) {
@@ -265,21 +307,6 @@ const isLastOrganization = computed(() => organizations.value.length === 1);
 
 const isLastUser = computed(() => users.value.length === 1);
 
-const isValid = computed(() => {
-  const relevantUsers = users.value.filter((u) => !!u.username);
-
-  if (relevantUsers.some((user) => !user.valid)) {
-    return false;
-  }
-
-  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
-  if (relevantOrganizations.some((org) => !org.valid)) {
-    return false;
-  }
-
-  return relevantUsers.length + relevantOrganizations.length > 0;
-});
-
 const maxId = computed(() => {
   if (users.value.length === 0 && organizations.value.length === 0) {
     return 0;
@@ -300,26 +327,6 @@ const maxId = computed(() => {
 
   return maxId;
 });
-
-const syncData = () => {
-  users.value = [];
-  organizations.value = [];
-  form.apiKey = '';
-  $v.value.$reset();
-  $v.value.$clearExternalResults();
-
-  if (props.integration && props.integration?.settings) {
-    props.integration?.settings.users.forEach((u) => addNewUser(u));
-    props.integration?.settings.organizations.forEach((o) => addNewOrganization(o));
-  }
-
-  if (users.value.length === 0) {
-    addNewUser();
-  }
-  if (organizations.value.length === 0) {
-    addNewOrganization();
-  }
-};
 
 const addNewUser = (username?: string | MouseEvent) => {
   users.value.push({
@@ -347,6 +354,26 @@ const addNewOrganization = (username?: string | MouseEvent) => {
 
 const removeOrganization = (id: number) => {
   organizations.value = organizations.value.filter((o) => o.id !== id);
+};
+
+const syncData = () => {
+  users.value = [];
+  organizations.value = [];
+  form.apiKey = '';
+  $v.value.$reset();
+  $v.value.$clearExternalResults();
+
+  if (props.integration && props.integration?.settings) {
+    props.integration?.settings.users.forEach((u) => addNewUser(u));
+    props.integration?.settings.organizations.forEach((o) => addNewOrganization(o));
+  }
+
+  if (users.value.length === 0) {
+    addNewUser();
+  }
+  if (organizations.value.length === 0) {
+    addNewOrganization();
+  }
 };
 
 const handleUserValidation = async (id: number) => {
@@ -410,42 +437,6 @@ const handleOrganizationValidation = async (id: number) => {
   }
 };
 
-const onBlurAPIKey = async () => {
-  $v.value.apiKey.$touch();
-  await validateAPIKey();
-};
-
-const cancel = () => {
-  isVisible.value = false;
-  syncData();
-};
-
-const save = async () => {
-  loading.value = true;
-
-  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
-  const relevantUsers = users.value.filter((u) => !!u.username);
-
-  await doDevtoConnect({
-    users: relevantUsers.map((u) => u.username),
-    organizations: relevantOrganizations.map((o) => o.username),
-    apiKey: form.apiKey,
-    segmentId: props.segmentId,
-    grandparentId: props.grandparentId,
-  });
-
-  const isUpdate = !!props.integration?.settings;
-
-  trackEvent({
-    key: isUpdate ? FeatureEventKey.EDIT_INTEGRATION_SETTINGS : FeatureEventKey.CONNECT_INTEGRATION,
-    type: EventType.FEATURE,
-    properties: { platform: Platform.DEVTO },
-  });
-
-  isVisible.value = false;
-  loading.value = false;
-};
-
 const validateAPIKey = async () => {
   $v.value.$clearExternalResults();
 
@@ -466,21 +457,41 @@ const validateAPIKey = async () => {
   isValidating.value = false;
 };
 
-const form = reactive({
-  apiKey: '',
-});
-
-const rules = {
-  apiKey: {
-    required,
-  },
+const onBlurAPIKey = async () => {
+  $v.value.apiKey.$touch();
+  await validateAPIKey();
 };
 
-const $externalResults = ref({});
+const cancel = () => {
+  isVisible.value = false;
+  syncData();
+};
 
-const $v = useVuelidate(rules, form, { $externalResults, $stopPropagation: true });
+const save = async () => {
+  loading.value = true;
 
-const { formSnapshot, hasFormChanged } = formChangeDetector(form);
+  const relevantOrganizations = organizations.value.filter((o) => !!o.username);
+  const relevantUsers = users.value.filter((u) => !!u.username);
+
+  await connectDevto({
+    users: relevantUsers.map((u) => u.username),
+    organizations: relevantOrganizations.map((o) => o.username),
+    apiKey: form.apiKey,
+    segmentId: props.segmentId,
+    grandparentId: props.grandparentId,
+  });
+
+  const isUpdate = !!props.integration?.settings;
+
+  trackEvent({
+    key: isUpdate ? FeatureEventKey.EDIT_INTEGRATION_SETTINGS : FeatureEventKey.CONNECT_INTEGRATION,
+    type: EventType.FEATURE,
+    properties: { platform: Platform.DEVTO },
+  });
+
+  isVisible.value = false;
+  loading.value = false;
+};
 
 watch(
   () => props.integration,
@@ -491,15 +502,6 @@ watch(
   },
 );
 
-const isVisible = computed({
-  get() {
-    return props.modelValue;
-  },
-  set(value) {
-    return emit('update:modelValue', value);
-  },
-});
-
 const revertChanges = () => {
   if (props.integration?.settings) {
     syncData();
@@ -509,12 +511,6 @@ const revertChanges = () => {
 };
 
 onMounted(syncData);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfDevtoConnectDrawer',
-};
 </script>
 
 <style lang="scss">

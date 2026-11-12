@@ -34,6 +34,10 @@ import LfMultiSelectCheckboxFilter
 import LfMultiSelectTagsFilter
   from '@/shared/modules/filters/components/filterTypes/multiselect/MultiSelectTagsFilter.vue';
 
+defineOptions({
+  name: 'LfMultiSelectFilter',
+});
+
 const props = defineProps<{
   modelValue: MultiSelectFilterValue,
   config: MultiSelectFilterConfig
@@ -67,10 +71,4 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfMultiSelectFilter',
-};
 </script>

@@ -13,7 +13,7 @@ const grossAdditionsByMonth: OrganizationEnrichmentConfig = {
     [formatDate({
       timestamp: key,
       format: 'MMMM YYYY',
-    } as unknown as Parameters<typeof formatDate>[0])]: value,
+    })]: value,
   }), {}),
 };
 

@@ -11,6 +11,10 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { router } from '@/router';
 
+defineOptions({
+  name: 'AuthCallback',
+});
+
 const { authCallback, logout } = useAuthStore();
 
 const auth0State = ref<{ returnTo?: string } | null>(null);
@@ -29,10 +33,4 @@ onMounted(() => {
       logout();
     });
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AuthCallback',
-};
 </script>

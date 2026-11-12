@@ -6,6 +6,11 @@
     "user": "CROWD_DB_USERNAME",
     "password": "CROWD_DB_PASSWORD"
   },
+  "dbTimeouts": {
+    "lockTimeoutMs": "CROWD_DB_LOCK_TIMEOUT_MS",
+    "statementTimeoutMs": "CROWD_DB_STATEMENT_TIMEOUT_MS",
+    "queryTimeoutMs": "CROWD_DB_QUERY_TIMEOUT_MS"
+  },
   "queue": {
     "brokers": "CROWD_KAFKA_BROKERS",
     "extra": "CROWD_KAFKA_EXTRA"

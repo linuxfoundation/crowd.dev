@@ -4,13 +4,11 @@ import VueClickAway from 'vue3-click-away';
 import VueGridLayout from 'vue-grid-layout';
 // @ts-ignore
 import Vue3Sanitize from 'vue-3-sanitize';
-import LogRocketClient from 'logrocket';
 import VueLazyLoad from 'vue3-lazyload';
 import { createPinia } from 'pinia';
 // Keep Element Plus CSS eager so it stays ahead of app styles (integration configs are now lazy)
 import 'element-plus/dist/index.css';
 import { createRouter } from '@/router';
-import { createStore } from '@/store';
 import modules from '@/modules';
 import config from '@/config';
 
@@ -20,7 +18,8 @@ import marked from '@/shared/plugins/marked';
 import { useLogRocket } from '@/utils/logRocket';
 import { initRUM } from '@/utils/datadog/rum';
 import { installAnalyticsStub, loadSegment, isRealSegmentKey } from '@/utils/segment';
-import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
+import { VueQueryPlugin } from '@tanstack/vue-query';
+import { queryClient } from '@/shared/queries/client';
 import type { marked as Marked } from 'marked';
 
 declare module 'vue' {
@@ -38,17 +37,12 @@ declare module 'vue' {
 (async function () {
   installAnalyticsStub();
   if (isRealSegmentKey(config.segmentKey)) {
-    loadSegment(config.segmentKey);
+    loadSegment(config.segmentKey!);
   }
 
   const pinia = createPinia();
   const app = createApp(App);
   app.use(pinia);
-
-  // Create a client
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { staleTime: 1000 * 60 * 5 } },
-  });
 
   // Install the VueQuery plugin
   app.use(VueQueryPlugin, {
@@ -58,7 +52,6 @@ declare module 'vue' {
   const { captureException } = useLogRocket();
 
   const router = await createRouter();
-  const store = await createStore(LogRocketClient);
 
   app.use(VueGridLayout);
   app.use(Vue3Sanitize, vueSanitizeOptions);
@@ -83,9 +76,10 @@ declare module 'vue' {
       });
     });
 
-  app.use(store).use(router).mount('#app');
+  app.use(router).mount('#app');
 
   if (config.env === 'production' && config.hotjarKey) {
+    // prettier-ignore
     (function (h, o, t, j, a, r) {
       // @ts-ignore
       h.hj = h.hj
@@ -117,4 +111,4 @@ declare module 'vue' {
   if (config.env === 'production' && config.datadog.rum) {
     initRUM();
   }
-}());
+})();

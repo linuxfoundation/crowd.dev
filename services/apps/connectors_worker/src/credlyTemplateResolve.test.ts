@@ -1,18 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fetchBadgeTemplatesPage } from '@crowd/connectors/src/connectors/credly/apiClient'
 import type { ResolvedTemplate } from '@crowd/connectors/src/connectors/credly/mapping/resolver'
 import type { ICredlyStoredTemplateMapping } from '@crowd/data-access-layer/src/credly'
+import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import {
-  CREDLY_HISTORY_START,
+  applyDecisions,
   buildPlan,
   loadCatalogue,
   loadCredlyTemplates,
   loadSubprojectSegments,
-  releasesToQueue,
-  unreleasedTemplatesToQueue,
 } from './credlyTemplateResolve'
+import { onboardCredlyTemplate } from './onboardCredlyTemplate'
 
 function decision(id: string, overrides: Partial<ResolvedTemplate> = {}): ResolvedTemplate {
   return {
@@ -207,7 +207,7 @@ describe('loadCredlyTemplates', () => {
   const log = {} as Parameters<typeof loadCredlyTemplates>[2]
   const http = {} as Parameters<typeof loadCredlyTemplates>[0]
   const page = (
-    data: { id: string; name: string; badges_count?: unknown }[],
+    data: { id: string; name: string; badges_count?: unknown; global_activity_url?: string }[],
     total_count: number,
   ) =>
     ({
@@ -217,15 +217,34 @@ describe('loadCredlyTemplates', () => {
 
   it('reads every page and reports the listing complete when totals and ids line up', async () => {
     vi.mocked(fetchBadgeTemplatesPage)
-      .mockResolvedValueOnce(page([{ id: 'a', name: 'A', badges_count: 3 }], 2))
+      .mockResolvedValueOnce(
+        page(
+          [
+            {
+              id: 'a',
+              name: 'A',
+              badges_count: 3,
+              global_activity_url: 'https://events.linuxfoundation.org/kubecon/',
+            },
+          ],
+          2,
+        ),
+      )
       .mockResolvedValueOnce(page([{ id: 'b', name: 'B', badges_count: null }], 2))
 
     const listing = await loadCredlyTemplates(http, 'org', log)
 
     expect(listing.complete).toBe(true)
     expect(listing.templates).toEqual([
-      { id: 'a', name: 'A', badgeCount: 3, url: null, createdAt: null },
-      { id: 'b', name: 'B', badgeCount: null, url: null, createdAt: null },
+      {
+        id: 'a',
+        name: 'A',
+        badgeCount: 3,
+        url: null,
+        activityUrl: 'https://events.linuxfoundation.org/kubecon/',
+        createdAt: null,
+      },
+      { id: 'b', name: 'B', badgeCount: null, url: null, activityUrl: null, createdAt: null },
     ])
   })
 
@@ -238,124 +257,252 @@ describe('loadCredlyTemplates', () => {
   })
 })
 
-describe('releasesToQueue', () => {
-  const now = new Date('2026-11-02T12:00:00.000Z')
-  const plan = (
-    entries: {
-      badgeTemplateId: string
-      kind: string
-      before: string | null
-      after: string | null
-    }[],
-  ) =>
-    ({
-      entries: entries.map((e) => ({ ...e, badgeTemplateName: e.badgeTemplateId })),
-      counts: {},
-    }) as never
+const applyMocks = vi.hoisted(() => ({
+  findOrCreateCredlyIntegration: vi.fn(),
+  upsertCredlyTemplateDecision: vi.fn(),
+  deactivateCredlyTemplateMapping: vi.fn(),
+  lockCredlyTemplateMapping: vi.fn(),
+  onboardCredlyTemplate: vi.fn(),
+  decommissionSyncUnitsForChannelIds: vi.fn(),
+}))
 
-  it('queues the templates that reached a project, new or released, from their creation date', () => {
-    const releases = releasesToQueue(
-      plan([
-        {
-          badgeTemplateId: 'lfc131',
-          kind: 'changed',
-          before: 'held:no_project',
-          after: 'mapped:green-software',
-        },
-        { badgeTemplateId: 'old', kind: 'changed', before: 'held:no_match', after: 'mapped:cncf' },
-        { badgeTemplateId: 'moved', kind: 'changed', before: 'mapped:k8s', after: 'mapped:cncf' },
-        {
-          badgeTemplateId: 'locked',
-          kind: 'locked',
-          before: 'held:no_match',
-          after: 'mapped:cncf',
-        },
-        { badgeTemplateId: 'excluded', kind: 'changed', before: 'held:test', after: 'excluded' },
-        {
-          badgeTemplateId: 'unexcluded',
-          kind: 'changed',
-          before: 'excluded',
-          after: 'mapped:finops',
-        },
-        { badgeTemplateId: 'fresh', kind: 'new', before: null, after: 'mapped:k8s' },
-      ]),
-      [
-        { id: 'lfc131', name: 'LFC131', createdAt: '2022-10-25T19:41:32.416Z' },
-        { id: 'old', name: 'Old', createdAt: '2018-04-19T00:00:00.000Z' },
-        { id: 'unexcluded', name: 'Unexcluded', createdAt: '2026-11-02T12:00:00.000Z' },
-        { id: 'fresh', name: 'Fresh', createdAt: '2026-11-01T09:00:00.000Z' },
-      ],
-      now,
-    )
-
-    expect(releases).toEqual([
-      {
-        badgeTemplateId: 'lfc131',
-        floor: '2022-10-25T19:41:32.416Z',
-        top: '2026-11-02T12:00:00.000Z',
-      },
-      { badgeTemplateId: 'old', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
-      {
-        badgeTemplateId: 'unexcluded',
-        floor: '2026-11-02T11:59:59.000Z',
-        top: '2026-11-02T12:00:00.000Z',
-      },
-      {
-        badgeTemplateId: 'fresh',
-        floor: '2026-11-01T09:00:00.000Z',
-        top: '2026-11-02T12:00:00.000Z',
-      },
-    ])
-  })
-
-  it('falls back to the history start when the template has no creation date', () => {
-    const releases = releasesToQueue(
-      plan([
-        { badgeTemplateId: 'x', kind: 'changed', before: 'held:no_match', after: 'mapped:k8s' },
-      ]),
-      [{ id: 'x', name: 'X', createdAt: null }],
-      now,
-    )
-
-    expect(releases[0].floor).toBe(CREDLY_HISTORY_START)
-  })
+vi.mock('@crowd/data-access-layer/src/credly', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@crowd/data-access-layer/src/credly')>()
+  return {
+    ...actual,
+    findOrCreateCredlyIntegration: applyMocks.findOrCreateCredlyIntegration,
+    upsertCredlyTemplateDecision: applyMocks.upsertCredlyTemplateDecision,
+    deactivateCredlyTemplateMapping: applyMocks.deactivateCredlyTemplateMapping,
+    lockCredlyTemplateMapping: applyMocks.lockCredlyTemplateMapping,
+  }
 })
 
-describe('unreleasedTemplatesToQueue', () => {
-  const now = new Date('2026-11-02T12:00:00.000Z')
+vi.mock('@crowd/data-access-layer/src/connectors', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@crowd/data-access-layer/src/connectors')>()
+  return {
+    ...actual,
+    decommissionSyncUnitsForChannelIds: applyMocks.decommissionSyncUnitsForChannelIds,
+  }
+})
 
-  it('queues one release per unreleased template, floored at its own creation date', () => {
-    const releases = unreleasedTemplatesToQueue(
-      [
-        { id: 'ckad', name: 'CKAD', createdAt: '2019-01-01T00:00:00.000Z' },
-        { id: 'fresh', name: 'Fresh', createdAt: '2026-11-01T09:00:00.000Z' },
-      ],
-      [
-        { badgeTemplateId: 'fresh', badgeCount: 10 },
-        { badgeTemplateId: 'ckad', badgeCount: 58312 },
-      ],
-      now,
-    )
+vi.mock('./onboardCredlyTemplate', () => ({
+  onboardCredlyTemplate: applyMocks.onboardCredlyTemplate,
+}))
 
-    expect(releases).toEqual([
-      {
-        badgeTemplateId: 'fresh',
-        floor: '2026-11-01T09:00:00.000Z',
-        top: '2026-11-02T12:00:00.000Z',
-      },
-      { badgeTemplateId: 'ckad', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
-    ])
+describe('applyDecisions', () => {
+  const qx = { tx: (fn: (txQx: QueryExecutor) => unknown) => fn(qx) } as QueryExecutor
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    applyMocks.findOrCreateCredlyIntegration.mockResolvedValue({
+      id: 'int-k8s',
+      created: false,
+      restored: false,
+    })
+    applyMocks.upsertCredlyTemplateDecision.mockResolvedValue('inserted')
+    applyMocks.onboardCredlyTemplate.mockResolvedValue({ outcome: 'created' })
+    applyMocks.lockCredlyTemplateMapping.mockResolvedValue(true)
+    applyMocks.decommissionSyncUnitsForChannelIds.mockResolvedValue(0)
   })
 
-  it('falls back to the history start for a template missing from the listing', () => {
-    const releases = unreleasedTemplatesToQueue(
+  it('onboards a sync unit for a mapped decision, seeding its backfill from the creation date', async () => {
+    const result = await applyDecisions(
+      qx,
+      [decision('cka')],
       [],
-      [{ badgeTemplateId: 'gone', badgeCount: 3 }],
-      now,
+      [
+        {
+          id: 'cka',
+          name: 'CKA',
+          createdAt: '2022-01-01T00:00:00.000Z',
+          badgeCount: null,
+          url: null,
+        },
+      ],
+      [],
+      { warn: vi.fn() } as never,
     )
 
-    expect(releases).toEqual([
-      { badgeTemplateId: 'gone', floor: CREDLY_HISTORY_START, top: '2026-11-02T12:00:00.000Z' },
+    expect(applyMocks.findOrCreateCredlyIntegration).toHaveBeenCalledWith(qx, 'seg-k8s')
+    expect(onboardCredlyTemplate).toHaveBeenCalledWith(qx, 'int-k8s', 'cka', 'cka', {
+      since: expect.any(String),
+      backfill: {
+        floor: '2022-01-01T00:00:00.000Z',
+        top: expect.any(String),
+        since: null,
+        until: null,
+        page: 1,
+      },
+    })
+    expect(result.unitsOnboarded).toBe(1)
+    expect(result.outcomes.inserted).toBe(1)
+    expect(applyMocks.lockCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'cka', {
+      segmentId: 'seg-k8s',
+      integrationId: 'int-k8s',
+    })
+  })
+
+  it('locks the mapping and counts a reactivated unit, for a template that reappeared', async () => {
+    applyMocks.onboardCredlyTemplate.mockResolvedValueOnce({ outcome: 'reactivated' })
+
+    const result = await applyDecisions(qx, [decision('cka')], [], [], [], {
+      warn: vi.fn(),
+    } as never)
+
+    expect(result.unitsReactivated).toBe(1)
+    expect(result.unitsOnboarded).toBe(0)
+    expect(applyMocks.lockCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'cka', {
+      segmentId: 'seg-k8s',
+      integrationId: 'int-k8s',
+    })
+  })
+
+  it('does not lock the mapping when onboarding found the unit under another integration', async () => {
+    applyMocks.onboardCredlyTemplate.mockResolvedValueOnce({
+      outcome: 'skipped',
+      reason: 'owned_by_other_integration',
+      message: 'units exist for CKA under another integration',
+    })
+
+    await applyDecisions(qx, [decision('cka')], [], [], [], { warn: vi.fn() } as never)
+
+    expect(applyMocks.lockCredlyTemplateMapping).not.toHaveBeenCalled()
+  })
+
+  it('reuses one integration per segment across several mapped templates', async () => {
+    await applyDecisions(qx, [decision('cka'), decision('ckad')], [], [], [], {
+      warn: vi.fn(),
+    } as never)
+
+    expect(applyMocks.findOrCreateCredlyIntegration).toHaveBeenCalledTimes(1)
+    expect(applyMocks.onboardCredlyTemplate).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not onboard a held or excluded decision', async () => {
+    const result = await applyDecisions(
+      qx,
+      [decision('held', { status: 'held', holdReason: 'no_match', segmentId: null })],
+      [],
+      [],
+      [],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.findOrCreateCredlyIntegration).not.toHaveBeenCalled()
+    expect(applyMocks.onboardCredlyTemplate).not.toHaveBeenCalled()
+    expect(result.unitsOnboarded).toBe(0)
+  })
+
+  it('skips onboarding when the decision is locked, since the stored target did not change', async () => {
+    applyMocks.upsertCredlyTemplateDecision.mockResolvedValueOnce('locked')
+    const log = { warn: vi.fn() }
+
+    const result = await applyDecisions(qx, [decision('cka')], [], [], [], log as never)
+
+    expect(applyMocks.onboardCredlyTemplate).not.toHaveBeenCalled()
+    expect(result.outcomes.locked).toBe(1)
+    expect(log.warn).toHaveBeenCalled()
+  })
+
+  it('deactivates a mapping no longer seen, regardless of its sync unit', async () => {
+    applyMocks.deactivateCredlyTemplateMapping.mockResolvedValueOnce(1)
+
+    const result = await applyDecisions(
+      qx,
+      [],
+      [
+        {
+          kind: 'missing',
+          badgeTemplateId: 'gone',
+          badgeTemplateName: 'Gone',
+          before: 'mapped:k8s',
+          after: null,
+        },
+      ],
+      [],
+      [],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.deactivateCredlyTemplateMapping).toHaveBeenCalledWith(qx, 'gone')
+    expect(result.deactivated).toBe(1)
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).not.toHaveBeenCalled()
+  })
+
+  it('decommissions the sync unit of a template a complete listing confirms is gone', async () => {
+    applyMocks.deactivateCredlyTemplateMapping.mockResolvedValueOnce(1)
+    applyMocks.decommissionSyncUnitsForChannelIds.mockResolvedValueOnce(1)
+
+    const result = await applyDecisions(
+      qx,
+      [],
+      [
+        {
+          kind: 'missing',
+          badgeTemplateId: 'gone',
+          badgeTemplateName: 'Gone',
+          before: 'mapped:k8s',
+          after: null,
+        },
+      ],
+      [],
+      [stored('gone', { integrationId: 'int-k8s' })],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).toHaveBeenCalledWith(qx, 'int-k8s', [
+      'gone',
     ])
+    expect(result.unitsDecommissioned).toBe(1)
+  })
+
+  it('leaves the unit running when another resolve relocked the mapping first', async () => {
+    applyMocks.deactivateCredlyTemplateMapping.mockResolvedValueOnce(0)
+
+    const result = await applyDecisions(
+      qx,
+      [],
+      [
+        {
+          kind: 'missing',
+          badgeTemplateId: 'gone',
+          badgeTemplateName: 'Gone',
+          before: 'mapped:k8s',
+          after: null,
+        },
+      ],
+      [],
+      [stored('gone', { integrationId: 'int-k8s' })],
+      { warn: vi.fn() } as never,
+    )
+
+    expect(applyMocks.decommissionSyncUnitsForChannelIds).not.toHaveBeenCalled()
+    expect(result.deactivated).toBe(0)
+    expect(result.unitsDecommissioned).toBe(0)
+  })
+
+  it('wraps the decision write, onboarding and mapping lock in one transaction', async () => {
+    const txQx = {} as QueryExecutor
+    const tx = vi.fn((fn: (txQx: QueryExecutor) => unknown) => fn(txQx))
+    const txAwareQx = { tx } as unknown as QueryExecutor
+
+    await applyDecisions(txAwareQx, [decision('cka')], [], [], [], { warn: vi.fn() } as never)
+
+    expect(tx).toHaveBeenCalledTimes(1)
+    expect(applyMocks.upsertCredlyTemplateDecision).toHaveBeenCalledWith(
+      txQx,
+      expect.objectContaining({ badgeTemplateId: 'cka' }),
+    )
+    expect(onboardCredlyTemplate).toHaveBeenCalledWith(
+      txQx,
+      'int-k8s',
+      'cka',
+      'cka',
+      expect.any(Object),
+    )
+    expect(applyMocks.lockCredlyTemplateMapping).toHaveBeenCalledWith(txQx, 'cka', {
+      segmentId: 'seg-k8s',
+      integrationId: 'int-k8s',
+    })
   })
 })

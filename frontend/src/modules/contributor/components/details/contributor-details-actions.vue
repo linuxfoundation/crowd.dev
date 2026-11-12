@@ -94,13 +94,17 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
 import { useMemberStore } from '@/modules/member/store/pinia';
 import { storeToRefs } from 'pinia';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import pluralize from 'pluralize';
 import LfContributorDropdown from '@/modules/contributor/components/shared/contributor-dropdown.vue';
 import { ContributorApiService } from '@/modules/contributor/services/contributor.api.service';
 import type { Contributor } from '@/modules/contributor/types/Contributor';
 import { useSharedStore } from '@/shared/pinia/shared.store';
 import AppMemberUnmergeDialog from '@/modules/member/components/member-unmerge-dialog.vue';
+
+defineOptions({
+  name: 'LfContributorDetailsActions',
+});
 
 const props = defineProps<{
   contributor: Contributor,
@@ -151,10 +155,4 @@ const fetchMergeSuggestions = () => {
 onMounted(() => {
   fetchMergeSuggestions();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsActions',
-};
 </script>

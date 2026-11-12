@@ -38,42 +38,29 @@
   </div>
 </template>
 
-<script setup>
-import { defineProps, defineEmits } from 'vue';
+<script setup lang="ts">
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 
-defineProps({
-  icon: {
-    type: String,
-    required: true,
-  },
-  iconSize: {
-    type: Number,
-    default: () => 160,
-  },
-  title: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    default: () => null,
-  },
-  ctaBtn: {
-    type: String,
-    default: () => null,
-  },
-  secondaryBtn: {
-    type: String,
-    default: () => null,
-  },
-  hasWarningIcon: {
-    type: Boolean,
-    default: () => false,
-  },
+withDefaults(defineProps<{
+  icon: string;
+  iconSize?: number;
+  title: string;
+  description?: string | null;
+  ctaBtn?: string | null;
+  secondaryBtn?: string | null;
+  hasWarningIcon?: boolean;
+}>(), {
+  iconSize: 160,
+  description: null,
+  ctaBtn: null,
+  secondaryBtn: null,
+  hasWarningIcon: false,
 });
-const emit = defineEmits(['ctaClick', 'secondaryClick']);
+
+const emit = defineEmits<{(e: 'ctaClick'): void;
+  (e: 'secondaryClick'): void;
+}>();
 </script>
 
 <style lang="scss">

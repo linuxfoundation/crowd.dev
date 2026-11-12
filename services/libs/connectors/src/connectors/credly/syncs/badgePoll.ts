@@ -1,5 +1,4 @@
 import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-layer/src/credly/badges'
-import type { ICredlyTemplateRelease } from '@crowd/data-access-layer/src/credly/releases'
 
 import { ConnectorError, ProviderUnavailableError } from '../../../http/errors'
 import { assertCredentialKind } from '../../../types'
@@ -7,10 +6,11 @@ import type { SyncContext, SyncOutcome } from '../../../types'
 import { fetchBadge, fetchBadgesPage } from '../apiClient'
 import type { CredlyPage } from '../apiClient'
 import type { CredlyBadge } from '../badge'
-import type { CredlyDeps, CredlyTemplateTarget } from '../deps'
+import type { CredlyDeps } from '../deps'
 import {
   credlyActivitySchema,
   issuedBadgeActivity,
+  plausibleIssuedAt,
   stateBadgeActivity,
   toIsoTimestamp,
 } from '../mapper'
@@ -22,6 +22,9 @@ const DAY_MS = 24 * HOUR_MS
 // Seven-day windows answered in seconds in the probes of linuxfoundation/lfx-cdp-insights-ops#864
 // while wider scans hit random 500s, so a window that still fails after the client's retries is halved.
 export const MAX_WINDOW_MS = 7 * DAY_MS
+// The backfill is filtered by template, so even the largest one holds a few thousand badges per
+// window; a wide window spares small templates a call per empty week, a failing one drops to the live step.
+export const BACKFILL_WINDOW_MS = 90 * DAY_MS
 const MIN_WINDOW_MS = HOUR_MS
 // The window never reaches "now": a state change Credly stamps just before our call can land after it.
 export const WINDOW_LAG_MS = 5 * MINUTE_MS
@@ -29,9 +32,6 @@ export const WINDOW_LAG_MS = 5 * MINUTE_MS
 // and a long catch-up advances in persisted steps.
 export const MAX_PAGES_PER_RUN = 100
 const PROGRESS_EVERY_PAGES = 10
-// A burst of near-empty templates could all complete in one run; capping completions spreads
-// the resulting writes across runs instead (linuxfoundation/lfx-cdp-insights-ops#998).
-export const MAX_RELEASES_COMPLETED_PER_RUN = 1
 const FIRST_RUN_LOOKBACK_MS = DAY_MS
 // A renewed badge keeps the old state_updated_at (linuxfoundation/lfx-cdp-insights-ops#967), so no
 // window ever lists it: it is reached only through the replaced badge's link, chain by chain.
@@ -43,14 +43,15 @@ type Window = {
   page: number
 }
 
-// Walked from `top` down to `floor` once the live cursor is caught up; a window always starts at
-// max(floor, top - MAX_WINDOW_MS), so `top` alone says where the next one goes.
+// Walked from `top` down to `floor` once the live cursor is caught up. `nextTop` is where `top` goes
+// once the open window drains; a cursor saved before the window grew lacks it, and its window was a week.
 export type CredlyBackfillCursor = {
   floor: string
   top: string
   since: string | null
   until: string | null
   page: number
+  nextTop?: string
 }
 
 export type CredlyBadgePollWatermark = {
@@ -82,13 +83,23 @@ function readBackfill(raw: unknown): CredlyBackfillCursor | undefined {
     until !== null &&
     wholeSecond(until) > wholeSecond(since) &&
     wholeSecond(until) <= wholeSecond(top)
+  const nextTop = open ? savedNextTop(cursor.nextTop, floor, since) : null
   return {
     floor,
     top,
     since: open ? since : null,
     until: open ? until : null,
     page: open ? savedPage(cursor.page) : 1,
+    ...(nextTop && { nextTop }),
   }
+}
+
+function savedNextTop(value: unknown, floor: string, since: string): string | null {
+  const nextTop = parsableIso(value)
+  if (!nextTop) return null
+  const inRange =
+    wholeSecond(nextTop) >= wholeSecond(floor) && wholeSecond(nextTop) <= wholeSecond(since)
+  return inRange ? nextTop : null
 }
 
 function readWatermark(
@@ -120,42 +131,28 @@ function openWindow(since: string, horizonMs: number): Window | null {
   }
 }
 
-function backfillWindowStart(cursor: CredlyBackfillCursor): string {
+function windowStart(cursor: CredlyBackfillCursor, widthMs: number): string {
   return new Date(
-    Math.max(Date.parse(cursor.floor), Date.parse(cursor.top) - MAX_WINDOW_MS),
+    Math.max(Date.parse(cursor.floor), Date.parse(cursor.top) - widthMs),
   ).toISOString()
 }
 
 function openBackfillWindow(cursor: CredlyBackfillCursor): CredlyBackfillCursor {
-  return { ...cursor, since: backfillWindowStart(cursor), until: cursor.top, page: 1 }
+  const nextTop = windowStart(cursor, BACKFILL_WINDOW_MS)
+  return { ...cursor, since: nextTop, until: cursor.top, page: 1, nextTop }
 }
 
+// A window ends below `top` only after it failed and was cut, so the rest is walked at the live step.
 function afterBackfillDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor | undefined {
+  const untilMs = Date.parse(cursor.until)
   if (wholeSecond(cursor.until) < wholeSecond(cursor.top)) {
-    return { ...cursor, since: cursor.until, until: cursor.top, page: 1 }
+    const until = new Date(Math.min(untilMs + MAX_WINDOW_MS, Date.parse(cursor.top))).toISOString()
+    return { ...cursor, since: cursor.until, until, page: 1 }
   }
-  const top = backfillWindowStart(cursor)
+  const top = cursor.nextTop ?? windowStart(cursor, MAX_WINDOW_MS)
   if (wholeSecond(top) <= wholeSecond(cursor.floor)) return undefined
-  return { ...cursor, top, since: null, until: null, page: 1 }
-}
-
-function afterReleaseDrain(cursor: CredlyBackfillCursor): CredlyBackfillCursor | undefined {
-  const next = afterBackfillDrain(cursor)
-  return next && !next.since ? openBackfillWindow(next) : next
-}
-
-function releaseCursor(release: ICredlyTemplateRelease): CredlyBackfillCursor | undefined {
-  const iso = (value: string | null) => {
-    const parsable = parsableIso(value)
-    return parsable === null ? null : toIsoTimestamp(parsable)
-  }
-  return readBackfill({
-    floor: iso(release.floor),
-    top: iso(release.top),
-    since: iso(release.since),
-    until: iso(release.until),
-    page: release.page,
-  })
+  const { nextTop: _drained, ...rest } = cursor
+  return { ...rest, top, since: null, until: null, page: 1 }
 }
 
 function withBackfill(
@@ -190,12 +187,12 @@ function wholeSecond(iso: string): number {
   return Math.floor(Date.parse(iso) / 1000)
 }
 
-function halveWindow(window: Window): Window | null {
+function shrinkWindow(window: Window, capMs = Number.POSITIVE_INFINITY): Window | null {
   const sinceMs = Date.parse(window.since)
   const untilMs = Date.parse(window.until)
-  const halfMs = Math.floor((untilMs - sinceMs) / 2)
-  if (halfMs < MIN_WINDOW_MS) return null
-  return { since: window.since, until: new Date(sinceMs + halfMs).toISOString(), page: 1 }
+  const spanMs = Math.min(Math.floor((untilMs - sinceMs) / 2), capMs)
+  if (spanMs < MIN_WINDOW_MS) return null
+  return { since: window.since, until: new Date(sinceMs + spanMs).toISOString(), page: 1 }
 }
 
 // A timeout or an unreachable host is also provider.unavailable, but halving does not help there.
@@ -219,7 +216,10 @@ function stateChangeActivities(badge: CredlyBadge): CredlyActivity[] {
   return state ? [credlyActivitySchema.parse(state)] : []
 }
 
-function badgeRow(badge: CredlyBadge, target: CredlyTemplateTarget): ICredlyBadgeInput {
+function badgeRow(
+  badge: CredlyBadge,
+  target: { segmentId: string; integrationId: string },
+): ICredlyBadgeInput {
   return {
     badgeId: badge.id,
     badgeTemplateId: badge.badge_template.id,
@@ -227,7 +227,7 @@ function badgeRow(badge: CredlyBadge, target: CredlyTemplateTarget): ICredlyBadg
     badgeTemplateUrl: badge.badge_template.url ?? null,
     state: badge.state,
     stateUpdatedAt: badge.state_updated_at ? toIsoTimestamp(badge.state_updated_at) : null,
-    issuedAt: toIsoTimestamp(badge.issued_at),
+    issuedAt: toIsoTimestamp(plausibleIssuedAt(badge)),
     expiresAt: badge.expires_at ? toIsoTimestamp(badge.expires_at) : null,
     replacementBadgeId: badge.replacement_badge_id ?? null,
     replacesBadgeId: badge.replaces_badge_id ?? null,
@@ -238,10 +238,6 @@ function badgeRow(badge: CredlyBadge, target: CredlyTemplateTarget): ICredlyBadg
   }
 }
 
-function storedTarget(row: ICredlyBadgeRow): CredlyTemplateTarget {
-  return { segmentId: row.segmentId, integrationId: row.integrationId, locked: true }
-}
-
 function withFirstSight(badge: CredlyBadge, stored: ICredlyBadgeRow): CredlyBadge {
   return { ...badge, recipient_email: stored.recipientEmail, issued_to: stored.issuedTo }
 }
@@ -250,18 +246,8 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   const credential = await ctx.getCredential()
   assertCredentialKind(credential, 'credly-oauth-client')
   const { organizationId } = credential.data
-
-  const loadRouting = async (fresh: boolean) => {
-    const loaded = await ctx.deps.loadTemplateRouting(fresh)
-    if (loaded.staleTemplateIds.length > 0) {
-      ctx.log.warn(
-        { badgeTemplateIds: loaded.staleTemplateIds },
-        'credly template mappings point to a deleted or moved integration, their badges are held',
-      )
-    }
-    return loaded
-  }
-  let routing = await loadRouting(false)
+  const badgeTemplateId = ctx.channel.channelId
+  const target = { segmentId: ctx.deps.segmentId, integrationId: ctx.integrationId }
 
   const startedAtMs = Date.now()
   const horizonMs = startedAtMs - WINDOW_LAG_MS
@@ -277,78 +263,47 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
   const counters = {
     pagesFetched: 0,
     badges: 0,
-    routed: 0,
-    held: 0,
+    issued: 0,
     stateChanges: 0,
     unchanged: 0,
     pendingStored: 0,
     activities: 0,
     skipped: 0,
-    locked: 0,
     windows: 0,
     splits: 0,
     replacements: 0,
     replacementsMissing: 0,
+    replacementsCrossTemplate: 0,
     backfillPages: 0,
     backfillWindows: 0,
-    releasePages: 0,
-    releases: 0,
-    releasesSkipped: 0,
-  }
-  const lockedThisRun = new Set<string>()
-
-  // A template is locked before its first real emission: the segment is part of the activity
-  // dedup key, so once badges may exist there the mapping must not move. A shadow run emits nothing.
-  const lockBeforeEmit = async (templateIds: Set<string>, target: CredlyTemplateTarget) => {
-    if (!ctx.emitEnabled) return
-    for (const templateId of templateIds) {
-      if (lockedThisRun.has(templateId) || routing.targets.get(templateId)?.locked) continue
-      lockedThisRun.add(templateId)
-      try {
-        if (await ctx.deps.lockTemplate(templateId, target)) counters.locked += 1
-        else ctx.log.warn({ badgeTemplateId: templateId }, 'credly template moved during the run')
-      } catch (err) {
-        ctx.log.warn({ badgeTemplateId: templateId, err }, 'credly template lock failed')
-      }
-    }
   }
 
   // The table is read and written only when the emit is real: a shadow run must not make badges
-  // look already emitted. A known badge keeps the member and segment of its first sight.
-  const emitPage = async (badges: CredlyBadge[]) => {
-    const lastByBadgeId = new Map(badges.map((badge) => [badge.id, badge]))
-    const routed = [...lastByBadgeId.values()].filter((badge) =>
-      routing.targets.has(badge.badge_template.id),
-    )
-    counters.held += lastByBadgeId.size - routed.length
+  // look already emitted. A known badge keeps the member of its first sight.
+  const emitPage = async (pageBadges: CredlyBadge[]) => {
+    // A badge listed twice on one page (a state change mid-walk) is saved and emitted once, as
+    // its last version.
+    const badges = [...new Map(pageBadges.map((badge) => [badge.id, badge])).values()]
     const known = new Map<string, ICredlyBadgeRow>()
-    if (ctx.emitEnabled && routed.length > 0) {
-      for (const row of await ctx.deps.findBadges(routed.map((badge) => badge.id))) {
+    if (ctx.emitEnabled && badges.length > 0) {
+      for (const row of await ctx.deps.findBadges(badges.map((badge) => badge.id))) {
         known.set(row.badgeId, row)
       }
     }
 
-    const groups = new Map<
-      string,
-      {
-        target: CredlyTemplateTarget
-        templateIds: Set<string>
-        activities: CredlyActivity[]
-        rows: ICredlyBadgeInput[]
-      }
-    >()
-    for (const badge of routed) {
+    const activities: CredlyActivity[] = []
+    const rows: ICredlyBadgeInput[] = []
+    for (const badge of badges) {
       const stored = known.get(badge.id)
-      const target = stored ? storedTarget(stored) : routing.targets.get(badge.badge_template.id)!
       const seen = stored ? withFirstSight(badge, stored) : badge
-      let activities: CredlyActivity[]
+      let batch: CredlyActivity[]
       let row: ICredlyBadgeInput
       try {
         row = badgeRow(seen, target)
         if (!stored || stored.state === 'pending') {
-          activities = seen.state === 'pending' ? [] : newBadgeActivities(seen)
+          batch = seen.state === 'pending' ? [] : newBadgeActivities(seen)
         } else {
-          activities = stored.state === seen.state ? [] : stateChangeActivities(seen)
+          batch = stored.state === seen.state ? [] : stateChangeActivities(seen)
         }
       } catch (err) {
         counters.skipped += 1
@@ -359,29 +314,17 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
         continue
       }
       if (stored) {
-        if (activities.length > 0) counters.stateChanges += 1
+        if (batch.length > 0) counters.stateChanges += 1
         else counters.unchanged += 1
-      } else if (activities.length > 0) counters.routed += 1
+      } else if (batch.length > 0) counters.issued += 1
       else counters.pendingStored += 1
 
-      const key = `${target.integrationId}:${target.segmentId}`
-      const group = groups.get(key) ?? {
-        target,
-        templateIds: new Set<string>(),
-        activities: [],
-        rows: [],
-      }
-      group.activities.push(...activities)
-      group.templateIds.add(badge.badge_template.id)
-      group.rows.push(row)
-      groups.set(key, group)
-      counters.activities += activities.length
+      activities.push(...batch)
+      rows.push(row)
+      counters.activities += batch.length
     }
-    for (const { target, templateIds, activities, rows } of groups.values()) {
-      await lockBeforeEmit(templateIds, target)
-      if (activities.length > 0) await ctx.emit(activities, target)
-      if (ctx.emitEnabled) await ctx.deps.saveBadges(rows)
-    }
+    if (activities.length > 0) await ctx.emit(activities)
+    if (ctx.emitEnabled) await ctx.deps.saveBadges(rows)
     counters.badges += badges.length
   }
 
@@ -391,9 +334,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
   const replacementIds = (badges: CredlyBadge[], seen: Set<string>): string[] =>
     unseen(
-      badges
-        .filter((badge) => routing.targets.has(badge.badge_template.id))
-        .map((badge) => badge.replacement_badge_id),
+      badges.map((badge) => badge.replacement_badge_id),
       seen,
     )
 
@@ -422,7 +363,16 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       for (const badgeId of unknown) {
         if (!ctx.hasRunBudget()) return null
         try {
-          fetched.push(await fetchBadge(ctx.http, { organizationId, badgeId }, ctx.log))
+          const replacement = await fetchBadge(ctx.http, { organizationId, badgeId }, ctx.log)
+          if (replacement.badge_template.id !== badgeTemplateId) {
+            counters.replacementsCrossTemplate += 1
+            ctx.log.warn(
+              { badgeId, replacementTemplateId: replacement.badge_template.id, badgeTemplateId },
+              'credly replacement badge belongs to a different template, skipping it here',
+            )
+            continue
+          }
+          fetched.push(replacement)
           counters.replacements += 1
         } catch (err) {
           if (!isCredlyNotFound(err)) throw err
@@ -441,7 +391,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
   const fetchOrHalve = async (
     window: Window,
-    badgeTemplateId?: string,
+    capMs?: number,
   ): Promise<{ page: CredlyPage<CredlyBadge> } | { halved: Window }> => {
     try {
       const page = await fetchBadgesPage(
@@ -463,12 +413,12 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       }
       return { page }
     } catch (err) {
-      const halved = isCredlyServerError(err) ? halveWindow(window) : null
+      const halved = isCredlyServerError(err) ? shrinkWindow(window, capMs) : null
       if (!halved) throw err
       counters.splits += 1
       ctx.log.warn(
         { since: window.since, until: window.until, halvedUntil: halved.until },
-        'credly badge window failed, retrying its first half',
+        'credly badge window failed, retrying a narrower head of it',
       )
       return { halved }
     }
@@ -506,77 +456,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     await ctx.commitWatermark(watermark)
   }
 
-  // A released template is re-read with the template filter before the global history; a write that
-  // touches 0 rows means the release was queued again underneath, so the queue is read afresh.
-  const skipRelease = async (release: ICredlyTemplateRelease, reason: string) => {
-    ctx.log.warn({ badgeTemplateId: release.badgeTemplateId }, reason)
-    counters.releasesSkipped += 1
-    await ctx.deps.completeRelease(release)
-    return ctx.deps.nextRelease()
-  }
-  const advanceRelease = async (release: ICredlyTemplateRelease, cursor: CredlyBackfillCursor) =>
-    (await ctx.deps.saveReleaseCursor(release, cursor))
-      ? { ...release, ...cursor }
-      : ctx.deps.nextRelease()
-  let release = ctx.emitEnabled && !watermark.until ? await ctx.deps.nextRelease() : null
   while (
-    release &&
-    counters.releases < MAX_RELEASES_COMPLETED_PER_RUN &&
-    counters.pagesFetched < MAX_PAGES_PER_RUN &&
-    counters.releasesSkipped < MAX_PAGES_PER_RUN &&
-    ctx.hasRunBudget()
-  ) {
-    const templateId = release.badgeTemplateId
-    if (!routing.targets.has(templateId)) routing = await loadRouting(true)
-    if (!routing.targets.has(templateId)) {
-      release = await skipRelease(release, 'credly release skipped: template not mapped')
-      continue
-    }
-    let cursor = releaseCursor(release)
-    if (!cursor) {
-      release = await skipRelease(release, 'credly release skipped: bounds unreadable')
-      continue
-    }
-    if (!cursor.since || !cursor.until) {
-      cursor = openBackfillWindow(cursor)
-      if ((await ctx.deps.saveReleaseCursor(release, cursor)) === 0) {
-        release = await ctx.deps.nextRelease()
-        continue
-      }
-    }
-    const window: Window = { since: cursor.since, until: cursor.until, page: cursor.page }
-
-    const result = await fetchOrHalve(window, templateId)
-    if ('halved' in result) {
-      release = await advanceRelease(release, { ...cursor, ...result.halved })
-      continue
-    }
-    counters.releasePages += 1
-
-    const badges = await withReplacements(result.page.data)
-    if (!badges) break
-    await emitPage(badges)
-
-    let next: CredlyBackfillCursor | undefined
-    if (drainedPage(window, result.page)) {
-      next = afterReleaseDrain(cursor)
-    } else {
-      next = { ...cursor, ...nextPage(window, result.page.data) }
-    }
-    if (!next) {
-      if (await ctx.deps.completeRelease(release)) {
-        counters.releases += 1
-        ctx.log.info({ badgeTemplateId: templateId }, 'credly template history released')
-      }
-      release = await ctx.deps.nextRelease()
-    } else {
-      release = await advanceRelease(release, next)
-    }
-  }
-  const releasePending = release !== null
-
-  while (
-    !releasePending &&
     watermark.backfill &&
     !watermark.until &&
     counters.pagesFetched < MAX_PAGES_PER_RUN &&
@@ -590,7 +470,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
     }
     const window: Window = { since: cursor.since, until: cursor.until, page: cursor.page }
 
-    const result = await fetchOrHalve(window)
+    const result = await fetchOrHalve(window, MAX_WINDOW_MS)
     if ('halved' in result) {
       watermark = withBackfill(watermark, { ...cursor, ...result.halved })
       await ctx.commitWatermark(watermark)
@@ -618,8 +498,8 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
   const caughtUp = !watermark.until && !openWindow(watermark.since, horizonMs)
   ctx.log.info(
-    { event: 'credly_badge_poll_run', ...counters, ...watermark, caughtUp },
+    { event: 'credly_badge_poll_run', badgeTemplateId, ...counters, ...watermark, caughtUp },
     'credly badge poll run',
   )
-  return { complete: caughtUp && !watermark.backfill && !releasePending }
+  return { complete: caughtUp && !watermark.backfill }
 }

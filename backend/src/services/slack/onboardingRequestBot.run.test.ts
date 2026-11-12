@@ -320,7 +320,13 @@ describe('runOnboardingRequestBot', () => {
 
     expect(upsertSlackOnboardingRequest).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ header: { lines: [], buttons: [], alreadyTracked: 0 } }),
+      expect.objectContaining({
+        header: {
+          lines: ["I'll add these 2 repositories to one project, *Acme*."],
+          buttons: [],
+          alreadyTracked: 0,
+        },
+      }),
     )
   })
 
@@ -498,7 +504,7 @@ describe('runOnboardingRequestBot', () => {
 
     await run({ text: '<@U0BOT> onboard OpenBMC, LF project, <https://github.com/openbmc/>' })
 
-    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 50)
+    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 500, 10_000)
     expect(bulkInsertProjectCatalog).toHaveBeenCalledWith(expect.anything(), [
       expect.objectContaining({
         repoUrl: 'https://github.com/openbmc/bmcweb',
@@ -547,7 +553,7 @@ describe('runOnboardingRequestBot', () => {
       {
         repoUrl: 'https://github.com/openbmc/docs',
         sourceUrl: 'https://acme.slack.com/archives/C1/p1',
-        organization: 'openbmc',
+        requestHints: { organization: 'openbmc' },
         requestText: 'onboard OpenBMC https://github.com/openbmc/',
         projectName: 'OpenBMC',
         requestedBy: 'U1',
@@ -572,6 +578,7 @@ describe('runOnboardingRequestBot', () => {
     parsedAs({
       githubRepoUrls: [],
       projectName: 'OpenBMC',
+      declaredLf: false,
       linksToFollow: ['https://github.com/openbmc'],
     })
     fetchPublicOrgRepos.mockResolvedValue({
@@ -581,6 +588,7 @@ describe('runOnboardingRequestBot', () => {
 
     await run({ text: '<@U0BOT> onboard OpenBMC https://github.com/openbmc' })
 
+    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 50, 10_000)
     expect(bulkInsertProjectCatalog).not.toHaveBeenCalled()
     expect(startWorkflow).not.toHaveBeenCalled()
     expect(postSlackMessage).toHaveBeenCalledWith(

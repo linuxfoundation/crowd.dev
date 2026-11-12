@@ -134,6 +134,10 @@ import LfContributorSyncingActivities from '@/modules/contributor/components/sha
 import { MergeActionState } from '@/shared/modules/merge/types/MemberActions';
 import LfNotFoundPage from '@/shared/not-found-page/lf-not-found-page.vue';
 
+defineOptions({
+  name: 'LfContributorDetailsPage',
+});
+
 const contributorStore = useContributorStore();
 const { getContributor } = contributorStore;
 const { contributor } = storeToRefs(contributorStore);
@@ -179,12 +183,6 @@ onMounted(() => {
   fetchContributor();
   memberStore.getMemberCustomAttributes();
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfContributorDetailsPage',
-};
 </script>
 
 <style>

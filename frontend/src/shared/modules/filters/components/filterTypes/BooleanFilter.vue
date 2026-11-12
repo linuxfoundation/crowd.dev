@@ -28,6 +28,10 @@ import { required } from '@vuelidate/validators';
 import type { ValidationArgs } from '@vuelidate/core';
 import useVuelidate from '@vuelidate/core';
 
+defineOptions({
+  name: 'LfBooleanFilter',
+});
+
 const props = defineProps<{
   modelValue: BooleanFilterValue,
   config: BooleanFilterConfig,
@@ -58,10 +62,4 @@ onMounted(() => {
     ...form.value,
   };
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfBooleanFilter',
-};
 </script>

@@ -18,13 +18,17 @@
 
 <script setup lang="ts">
 import {
-  defineProps, ref, watch,
+  ref, watch,
 } from 'vue';
 import { debounce } from 'lodash';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { useRouter } from 'vue-router';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+
+defineOptions({
+  name: 'LfFilterSearch',
+});
 
 const props = defineProps<{
   modelValue: string,
@@ -74,10 +78,4 @@ const changeValue = debounce((search: string) => {
   emit('update:modelValue', lastValue);
 }, 400);
 
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfFilterSearch',
-};
 </script>

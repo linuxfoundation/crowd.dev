@@ -28,6 +28,7 @@ let client: RedisClient | undefined
 export const getRedisClient = async (
   config: IRedisConfiguration,
   exitOnError?: boolean,
+  onError?: (err: Error) => void,
 ): Promise<RedisClient> => {
   if (config.host) {
     if (client) return client
@@ -39,6 +40,10 @@ export const getRedisClient = async (
     client = createClient({
       url: `redis://${config.username}:${config.password}@${host}:${port}`,
     }) as RedisClient
+
+    if (onError) {
+      ;(client as unknown as EventEmitter).on('error', onError)
+    }
 
     if (exitOnError) {
       ;(client as unknown as EventEmitter).on('error', async (err) => {

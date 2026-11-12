@@ -2,8 +2,10 @@ export interface SubProject {
   id: string;
   name: string;
   status: string;
+  insightsProjectId?: string | null;
+  insightsProjectName?: string | null;
   integrations?: {
-    id: string
+    id: string;
     platform: string;
     status: string;
     type?: string;
@@ -90,3 +92,5 @@ export interface SubProjectRequest {
 export interface CreateSubProjectRequest extends SubProjectRequest {
   segments: (string | null)[];
 }
+
+export type SegmentId = string | string[] | null;

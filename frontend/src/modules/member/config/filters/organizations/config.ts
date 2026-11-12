@@ -7,7 +7,7 @@ import type {
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectAsyncFilterConfig';
 import type { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import { DEFAULT_ORGANIZATION_FILTERS } from '@/modules/organization/store/constants';
-import { OrganizationService } from '@/modules/organization/organization-service';
+import { OrganizationService } from '@/modules/organization/services/organization.api.service';
 import { trimAndReduceSpaces } from '@/utils/string';
 import { queryUrlParserByType } from '@/shared/modules/filters/config/queryUrlParserByType';
 import type { Organization } from '@/modules/organization/types/Organization';
@@ -16,7 +16,7 @@ import OrganizationsFilter from './OrganizationsFilter.vue';
 
 const organizations: CustomFilterConfig = {
   id: 'organizations',
-  label: 'Organization',
+  label: 'Company',
   iconClass: 'building',
   type: FilterConfigType.CUSTOM,
   component: OrganizationsFilter,
@@ -71,7 +71,7 @@ const organizations: CustomFilterConfig = {
     data: MultiSelectAsyncFilterData,
   ): string {
     return itemLabelRendererByType[FilterConfigType.MULTISELECT_ASYNC](
-      'Organization',
+      'Company',
       value,
       options,
       data,

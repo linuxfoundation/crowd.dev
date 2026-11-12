@@ -88,14 +88,12 @@
 import type { Integration } from '@/modules/admin/modules/integration/types/Integration';
 import type { LinkedinSettings } from '@/config/integrations/linkedin/types/LinkedinSettings';
 import {
-  defineEmits,
-  defineProps,
   computed,
   ref,
   watch,
 } from 'vue';
-import { useStore } from 'vuex';
 import linkedin from '@/config/integrations/linkedin/config';
+import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
@@ -103,6 +101,10 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+
+defineOptions({
+  name: 'LfLinkedinSettingsDrawer',
+});
 
 const props = defineProps<{
   modelValue: boolean;
@@ -113,7 +115,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue']);
 
-const store = useStore();
+const { onboardLinkedin } = useIntegrationStore();
 
 const { trackEvent } = useProductTracking();
 const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
@@ -171,14 +173,11 @@ const canClose = (done: (value: boolean) => void) => {
 const connect = async () => {
   loading.value = true;
 
-  await store.dispatch(
-    'integration/doLinkedinOnboard',
-    {
-      organizationId: model.value,
-      segmentId: props.segmentId,
-      grandparentId: props.grandparentId,
-    },
-  );
+  await onboardLinkedin({
+    organizationId: model.value,
+    segmentId: props.segmentId,
+    grandparentId: props.grandparentId,
+  });
 
   const isUpdate = (props.integration?.settings?.organizations.length ?? 0) > 0;
 
@@ -205,10 +204,4 @@ watch(isVisible, (newValue, oldValue) => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfLinkedinSettingsDrawer',
-};
 </script>

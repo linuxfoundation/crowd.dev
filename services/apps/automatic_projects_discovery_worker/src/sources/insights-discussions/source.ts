@@ -2,12 +2,42 @@ import https from 'https'
 import { Readable } from 'stream'
 
 import { deriveProjectIdentityFromRepoUrl } from '@crowd/data-access-layer'
+import { IRequestHints } from '@crowd/data-access-layer/src/project-catalog/types'
 import { getServiceLogger } from '@crowd/logging'
+import {
+  IExpandedOrganization,
+  OrganizationRepoLookup,
+  ParseOnboardingRequestResult,
+  RepositoryLookup,
+  checkRepositoriesOnGithub,
+  expandOrganizations,
+  organizationFailureNote,
+  organizationRepositoryLimit,
+} from '@crowd/project-onboarding'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
-import { buildDiscussionRequestText, extractDiscussionRepoUrls } from './parse'
+import { buildDiscussionRequestText } from './parse'
+import { IDiscussionText, discussionHints, toDiscussionRequest } from './request'
 
 const log = getServiceLogger()
+
+export type DiscussionRequestParser = (text: string) => Promise<ParseOnboardingRequestResult>
+
+export interface IDiscussionSourceDeps {
+  parseRequest: DiscussionRequestParser
+  lookupRepository: RepositoryLookup
+  lookupOrganization: OrganizationRepoLookup
+  noteOrganizationFailures: (discussionUrl: string, notes: string[]) => Promise<void>
+  heartbeat: (details: Record<string, unknown>) => void
+}
+
+export function githubToken(): string {
+  const raw = process.env.CROWD_GITHUB_PERSONAL_ACCESS_TOKENS
+  if (!raw) {
+    throw new Error('CROWD_GITHUB_PERSONAL_ACCESS_TOKENS environment variable is not set')
+  }
+  return raw.split(',')[0].trim()
+}
 
 const CATEGORY_SLUG = 'project-onboardings'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
@@ -19,18 +49,16 @@ interface GraphQLResponse<T> {
   errors?: Array<{ message: string }>
 }
 
-interface DiscussionNode {
+export interface IDiscussionNode extends IDiscussionText {
   number: number
-  title: string
   url: string
-  body: string
   closed: boolean
   updatedAt: string
 }
 
 interface DiscussionsPage {
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
-  nodes: DiscussionNode[]
+  nodes: IDiscussionNode[]
 }
 
 interface DiscussionsData {
@@ -40,12 +68,7 @@ interface DiscussionsData {
 }
 
 async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const raw = process.env.CROWD_GITHUB_PERSONAL_ACCESS_TOKENS
-  if (!raw) {
-    throw new Error('CROWD_GITHUB_PERSONAL_ACCESS_TOKENS environment variable is not set')
-  }
-  const token = raw.split(',')[0].trim()
-
+  const token = githubToken()
   const body = JSON.stringify({ query, variables })
 
   return new Promise((resolve, reject) => {
@@ -168,14 +191,154 @@ async function fetchDiscussionsPage(
   return data.repository.discussions
 }
 
-interface IDiscussionRepoUrlRef {
+export interface IDiscussionRepoUrlRef {
   repoUrl: string
   discussionNumber: number
   discussionUrl: string
-  requestText: string
+  requestText: string | null
+  projectName: string | null
+  requestHints: IRequestHints | null
 }
 
-async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRepoUrlRef[]> {
+// A parse the model may answer later fails the activity, so Temporal retries the whole walk
+// with backoff: falling back here would catalogue the discussion ungrouped and never revisit it.
+async function parseDiscussion(
+  discussion: IDiscussionNode,
+  parseRequest: DiscussionRequestParser,
+): Promise<ParseOnboardingRequestResult | null> {
+  const parsed = await parseRequest(buildDiscussionRequestText(discussion))
+  if (parsed.ok === true) {
+    return parsed
+  }
+  if (parsed.retryable) {
+    throw new Error(
+      `Insights Discussions: parsing discussion #${discussion.number} failed: ${parsed.reason}`,
+    )
+  }
+  log.warn(
+    { number: discussion.number, reason: parsed.reason },
+    'Insights Discussions: request could not be parsed, falling back to the linked repositories.',
+  )
+  return null
+}
+
+async function withoutMissingRepositories(
+  discussion: { number: number },
+  repoUrls: string[],
+  bareRepoUrls: string[],
+  lookupRepository: RepositoryLookup,
+): Promise<string[]> {
+  if (bareRepoUrls.length === 0) {
+    return repoUrls
+  }
+  const check = await checkRepositoriesOnGithub(bareRepoUrls, lookupRepository)
+  for (const { repoUrl, reason } of check.unchecked) {
+    log.warn(
+      { number: discussion.number, repoUrl, reason },
+      'Insights Discussions: repository could not be checked on GitHub, keeping it.',
+    )
+  }
+  if (check.missing.length > 0) {
+    log.warn(
+      { number: discussion.number, missing: check.missing },
+      'Insights Discussions: repositories named without a link were not found on GitHub.',
+    )
+  }
+  const missing = new Set(check.missing)
+  return repoUrls.filter((repoUrl) => !missing.has(repoUrl))
+}
+
+// A failed expansion only leaves a note, and the edited discussion is read again at the next run;
+// GitHub being down fails the walk instead, or an incremental run would never clear that note.
+async function expandDiscussionOrganizations(
+  discussion: IDiscussionNode,
+  owners: string[],
+  limit: number,
+  deps: IDiscussionSourceDeps,
+): Promise<IExpandedOrganization[]> {
+  const expansion = await expandOrganizations(owners, deps.lookupOrganization, limit)
+  if (expansion.ok === true) {
+    await deps.noteOrganizationFailures(discussion.url, [])
+    return expansion.organizations
+  }
+  log.info(
+    { number: discussion.number, owners, reason: expansion.reason },
+    'Insights Discussions: organization request was not expanded.',
+  )
+  await deps.noteOrganizationFailures(discussion.url, [organizationFailureNote(expansion)])
+  if (expansion.kind === 'unavailable') {
+    throw new Error(
+      `Insights Discussions: expanding organizations of discussion #${discussion.number} failed: ${expansion.reason}`,
+    )
+  }
+  return []
+}
+
+export async function collectDiscussionRefs(
+  discussion: IDiscussionNode,
+  deps: IDiscussionSourceDeps,
+  known: { has(repoUrl: string): boolean },
+): Promise<IDiscussionRepoUrlRef[]> {
+  const request = toDiscussionRequest(
+    discussion,
+    await parseDiscussion(discussion, deps.parseRequest),
+  )
+  if (request.unlistedRepoUrls.length > 0) {
+    log.warn(
+      { number: discussion.number, unlisted: request.unlistedRepoUrls },
+      'Insights Discussions: linked repositories were left out by the request parser.',
+    )
+  }
+  const organizations = await expandDiscussionOrganizations(
+    discussion,
+    request.organizations,
+    organizationRepositoryLimit(request.parsed?.declaredLf),
+    deps,
+  )
+  const listed = await withoutMissingRepositories(
+    discussion,
+    request.repoUrls,
+    request.bareRepoUrls,
+    deps.lookupRepository,
+  )
+  const repoUrls = [...new Set([...listed, ...organizations.flatMap((org) => org.repoUrls)])]
+  const fresh = repoUrls.filter((repoUrl) => !known.has(repoUrl))
+  const hintsByRepoUrl = discussionHints(fresh, request.parsed, organizations)
+
+  if (repoUrls.length === 0) {
+    log.warn(
+      { number: discussion.number, url: discussion.url },
+      'Insights Discussions: open discussion produced no repo references.',
+    )
+  }
+
+  log.info(
+    {
+      number: discussion.number,
+      closed: discussion.closed,
+      candidates: repoUrls.length,
+      linked: request.linkedRepoCount,
+      organizations: organizations.map((org) => org.owner),
+      projectName: request.projectName,
+      grouped: hintsByRepoUrl.size,
+    },
+    'Insights Discussions: discussion processed.',
+  )
+
+  return fresh.map((repoUrl) => ({
+    repoUrl,
+    discussionNumber: discussion.number,
+    discussionUrl: discussion.url,
+    requestText: request.requestText,
+    projectName: request.projectName,
+    requestHints: hintsByRepoUrl.get(repoUrl) ?? null,
+  }))
+}
+
+async function fetchAllDiscussionRepoUrls(
+  deps: IDiscussionSourceDeps,
+  since?: string,
+): Promise<IDiscussionRepoUrlRef[]> {
   const categoryId = await getDiscussionCategoryId()
   log.info(
     { categoryId, owner: OWNER, repo: REPO, since: since ?? 'none (full walk)' },
@@ -212,37 +375,15 @@ async function fetchAllDiscussionRepoUrls(since?: string): Promise<IDiscussionRe
         continue
       }
 
-      const refs = extractDiscussionRepoUrls(discussion)
-
-      if (refs.repoUrls.length === 0) {
+      const refs = await collectDiscussionRefs(discussion, deps, refsByRepoUrl)
+      if (refs.length === 0) {
         discussionsWithoutRefs++
-        log.warn(
-          { number: discussion.number, url: discussion.url },
-          'Insights Discussions: open discussion produced no repo references.',
-        )
+      }
+      for (const ref of refs) {
+        refsByRepoUrl.set(ref.repoUrl, ref)
       }
 
-      log.info(
-        {
-          number: discussion.number,
-          closed: discussion.closed,
-          candidates: refs.repoUrls.length,
-          fromTitle: refs.fromTitle,
-          fromBody: refs.fromBody,
-        },
-        'Insights Discussions: discussion processed.',
-      )
-
-      for (const repoUrl of refs.repoUrls) {
-        if (!refsByRepoUrl.has(repoUrl)) {
-          refsByRepoUrl.set(repoUrl, {
-            repoUrl,
-            discussionNumber: discussion.number,
-            discussionUrl: discussion.url,
-            requestText: buildDiscussionRequestText(discussion),
-          })
-        }
-      }
+      deps.heartbeat({ discussionsSeen, totalUniqueUrls: refsByRepoUrl.size })
     }
 
     hasNextPage = page.pageInfo.hasNextPage
@@ -278,6 +419,8 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
   public readonly provenance = 'github-discussion' as const
   public readonly format = 'json' as const
 
+  constructor(private readonly deps: IDiscussionSourceDeps) {}
+
   async listAvailableDatasets(options?: { since?: string }): Promise<IDatasetDescriptor[]> {
     const today = new Date().toISOString().slice(0, 10)
     return [
@@ -296,7 +439,7 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
       'Insights Discussions: fetching discussion repo URLs.',
     )
 
-    const refs = await fetchAllDiscussionRepoUrls(dataset.since)
+    const refs = await fetchAllDiscussionRepoUrls(this.deps, dataset.since)
 
     log.info(
       { datasetId: dataset.id, count: refs.length },
@@ -314,14 +457,18 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
     if (!identity) return null
 
     const discussionUrl = rawRow['discussionUrl'] as string | undefined
-    const requestText = rawRow['requestText'] as string | undefined
+    const requestText = rawRow['requestText'] as string | null | undefined
+    const projectName = rawRow['projectName'] as string | null | undefined
+    const requestHints = rawRow['requestHints'] as IRequestHints | null | undefined
 
     return {
       projectSlug: identity.projectSlug,
       repoName: identity.repoName,
       repoUrl,
       sourceUrl: discussionUrl,
-      requestText,
+      requestText: requestText ?? null,
+      projectName: projectName ?? null,
+      requestHints: requestHints ?? null,
     }
   }
 }

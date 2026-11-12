@@ -129,7 +129,7 @@ import LfFilter from '@/shared/modules/filters/components/Filter.vue';
 import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useMemberStore } from '@/modules/member/store/pinia';
-import { MemberService } from '@/modules/member/member-service';
+import { MemberService } from '@/modules/member/services/member.api.service';
 import type { FilterQuery } from '@/shared/modules/filters/types/FilterQuery';
 import type { Filter } from '@/shared/modules/filters/types/FilterConfig';
 import type { Pagination } from '@/shared/types/Pagination';
@@ -146,6 +146,10 @@ import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfContributorEngagementLevel from '@/modules/contributor/components/shared/contributor-engagement-level.vue';
 import useContributorHelpers from '@/modules/contributor/helpers/contributor.helpers';
+
+defineOptions({
+  name: 'LfOrganizationDetailsContributors',
+});
 
 const props = defineProps<{
   organization: Organization,
@@ -235,7 +239,7 @@ const fetch = () => {
       }
       pagination.value.total = data.count;
     })
-    .catch((err) => {
+    .catch(() => {
       contributors.value = [];
       pagination.value.total = 0;
     })
@@ -271,14 +275,7 @@ onMounted(() => {
   fetch();
 });
 
-// eslint-disable-next-line vue/define-macros-order -- plain <script> below counts as last, https://eslint.vuejs.org/rules/define-macros-order.html
 defineExpose({
   loadMore,
 });
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfOrganizationDetailsContributors',
-};
 </script>

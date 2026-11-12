@@ -237,6 +237,10 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import { useIntegrationStore } from '@/modules/integration/store/integration.store';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 
+defineOptions({
+  name: 'LfAdminIntegrationStatus',
+});
+
 const loading = ref(true);
 
 const platform = ref('');
@@ -379,11 +383,5 @@ const disconnectIntegration = async (integration: IntegrationStatus) => {
   });
   await integrationStore.destroy(integration.id);
   fetchGlobalIntegrations();
-};
-</script>
-
-<script lang="ts">
-export default {
-  name: 'LfAdminIntegrationStatus',
 };
 </script>
