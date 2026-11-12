@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   backfillDailyDownloads,
@@ -147,4 +147,57 @@ describe('download lane activity options', () => {
       })
     },
   )
+})
+
+describe('elapsed time budget', () => {
+  const HOUR = 60 * 60_000
+
+  // Each lane call moves workflow time forward 5 hours, so the third round crosses 12 hours.
+  function laneTakingFiveHours() {
+    return async () => {
+      vi.setSystemTime(Date.now() + 5 * HOUR)
+      return { fetched: 20 }
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-12T00:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('daily: continues as new with the same cutoff after 12 hours of rounds', async () => {
+    h.acts.backfillDailyLane.mockImplementation(laneTakingFiveHours())
+
+    await backfillDailyDownloads({ cutoff: CUTOFF })
+
+    expect(h.acts.backfillDailyLane).toHaveBeenCalledTimes(3)
+    expect(h.sleep).not.toHaveBeenCalled()
+    expect(h.continueAsNew).toHaveBeenCalledTimes(1)
+    expect(h.continueAsNew).toHaveBeenCalledWith({ cutoff: CUTOFF })
+  })
+
+  it('latest: continues as new with the same cutoff after 12 hours of rounds', async () => {
+    h.acts.refreshLatestLast30dLane.mockImplementation(laneTakingFiveHours())
+
+    await refreshLatestLast30dDownloads({ cutoff: CUTOFF })
+
+    expect(h.acts.refreshLatestLast30dLane).toHaveBeenCalledTimes(3)
+    expect(h.sleep).not.toHaveBeenCalled()
+    expect(h.continueAsNew).toHaveBeenCalledWith({ cutoff: CUTOFF })
+  })
+
+  it('history: continues as new after 12 hours of rounds', async () => {
+    h.acts.backfillLast30dHistoryLane.mockImplementation(laneTakingFiveHours())
+
+    await backfillLast30dHistory()
+
+    expect(h.acts.backfillLast30dHistoryLane).toHaveBeenCalledTimes(3)
+    expect(h.sleep).not.toHaveBeenCalled()
+    expect(h.continueAsNew).toHaveBeenCalledTimes(1)
+    expect(h.continueAsNew.mock.calls[0]).toEqual([])
+  })
 })

@@ -334,3 +334,42 @@ describe('cancellation', () => {
     expect(doFetch).not.toHaveBeenCalled()
   })
 })
+
+describe('lane deadline', () => {
+  // Five 429s start the block clock and pause the egress for 10 minutes; later 429s from another
+  // flow keep extending the pause, so the waiting caller never gets a probe of its own.
+  async function waitOnSharedBlock(deadlineOffsetMs: number) {
+    const log = makeLog()
+    const throttle = createDownloadsThrottle(FLOOR, log)
+    const start = Date.now()
+    for (let i = 0; i < 5; i++) throttle.recordRateLimit('direct')
+    const doFetch = vi.fn(async () => ({ count: 1 }))
+
+    const result = throttle.run('direct', doFetch, undefined, undefined, start + deadlineOffsetMs)
+    await vi.advanceTimersByTimeAsync(9 * MIN)
+    throttle.recordRateLimit('direct')
+    await vi.advanceTimersByTimeAsync(9 * MIN)
+    throttle.recordRateLimit('direct')
+    return { log, doFetch, result }
+  }
+
+  it('yields a caller past its deadline once the shared block clock reaches 20 minutes', async () => {
+    const { log, doFetch, result } = await waitOnSharedBlock(0)
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+
+    await expect(result).resolves.toEqual({ blocked: true, blockedForMs: 20 * MIN })
+    expect(doFetch).not.toHaveBeenCalled()
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ egress: 'direct', blockedForMs: 20 * MIN }),
+      'npm downloads blocked, yielding lane',
+    )
+  })
+
+  it('keeps a caller before its deadline waiting until the pause ends, then probes', async () => {
+    const { doFetch, result } = await waitOnSharedBlock(60 * MIN)
+    await vi.advanceTimersByTimeAsync(12 * MIN)
+
+    await expect(result).resolves.toEqual({ count: 1 })
+    expect(doFetch).toHaveBeenCalledTimes(1)
+  })
+})

@@ -410,3 +410,48 @@ describe('cancellation', () => {
     expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
   })
 })
+
+describe('lane deadline during a long block', () => {
+  // 429s land at about 0, 1, 3, 7 and 15 minutes. Past its 20 minute budget the lane yields on the
+  // next wait wake-up, before the probe it would otherwise send at 25 minutes.
+  it('daily lane yields at its budget instead of probing again', async () => {
+    const { backfillDailyLane } = await loadActivities()
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
+    h.fetch.fetchDailyRange.mockResolvedValue(rateLimited)
+
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 30 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 1, blocked: true })
+    expect(h.fetch.fetchDailyRange).toHaveBeenCalledTimes(5)
+  })
+
+  it('latest lane yields at its budget instead of probing again', async () => {
+    const { refreshLatestLast30dLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLatest30d.mockResolvedValue([
+      { purl: 'pkg:npm/foo', firstReleaseAt: null },
+    ])
+    h.fetch.fetchBulkPointRange.mockResolvedValue(rateLimited)
+
+    const { value, error } = await settle(refreshLatestLast30dLane(CUTOFF, 128, 0, 1), 30 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 1, blocked: true })
+    expect(h.fetch.fetchBulkPointRange).toHaveBeenCalledTimes(5)
+  })
+
+  it('history lane yields at its budget instead of probing again', async () => {
+    const { backfillLast30dHistoryLane } = await loadActivities()
+    h.dal.getNpmPurlsDueForLast30dHistory.mockResolvedValue([
+      { purl: 'pkg:npm/foo', firstReleaseAt: '2026-08-15' },
+    ])
+    h.dal.getExistingLast30dEndDates.mockResolvedValue(['2026-11-01'])
+    h.fetch.fetchBulkPointRange.mockResolvedValue(rateLimited)
+
+    const { value, error } = await settle(backfillLast30dHistoryLane(50, 6, 0, 1), 30 * MIN)
+
+    expect(error).toBeUndefined()
+    expect(value).toEqual({ fetched: 1, blocked: true })
+    expect(h.fetch.fetchBulkPointRange).toHaveBeenCalledTimes(5)
+  })
+})
