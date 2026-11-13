@@ -247,6 +247,7 @@ export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.MEETINGS,
   OrganizationAttributeSource.COMMITTEES,
   OrganizationAttributeSource.LUMA,
+  OrganizationAttributeSource.SCHED,
   // legacy - keeping this for backward compatibility
   OrganizationAttributeSource.ENRICHMENT,
   OrganizationAttributeSource.GITHUB,

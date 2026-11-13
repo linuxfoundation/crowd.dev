@@ -56,5 +56,6 @@ export * from './credly/types'
 export * from './meetings/types'
 export * from './committees/types'
 export * from './luma/types'
+export * from './sched/types'
 
 export * from './activityDisplayService'

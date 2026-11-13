@@ -30,6 +30,7 @@ export enum PlatformType {
   TNC = 'tnc',
   MEETINGS = 'meetings',
   LUMA = 'luma',
+  SCHED = 'sched',
   GITLAB = 'gitlab',
   FACEBOOK = 'facebook',
   OTHER = 'other',
