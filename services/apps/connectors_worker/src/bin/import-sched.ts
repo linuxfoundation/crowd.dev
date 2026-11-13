@@ -67,6 +67,7 @@ async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
     throw new Error('pipe the events and keys on stdin')
   }
+  process.stdin.setEncoding('utf8')
   let input = ''
   for await (const chunk of process.stdin) {
     input += chunk
