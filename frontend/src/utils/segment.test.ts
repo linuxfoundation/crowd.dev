@@ -33,6 +33,7 @@ const fakeLibrary = {
   page: async (name?: string) => record('page', name),
   identify: async (userId: string | null, traits?: Record<string, unknown>) =>
     record('identify', userId, traits),
+  reset: async () => record('reset'),
 };
 
 // loadSegment keeps module-level state, so each test imports a fresh copy after vi.resetModules().
@@ -98,6 +99,7 @@ describe('segment', () => {
       analytics.page('Members'),
       analytics.track('Custom view created', { viewName: 'All' }),
       analytics.identify('user-1', { email: 'user@example.org' }),
+      analytics.reset(),
     ]);
     libraryLoads();
     await sent;
@@ -107,6 +109,7 @@ describe('segment', () => {
       'page Members',
       'track Custom view created {"viewName":"All"}',
       'identify user-1 {"email":"user@example.org"}',
+      'reset',
     ]);
   });
 

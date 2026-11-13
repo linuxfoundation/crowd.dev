@@ -1,4 +1,5 @@
 import config from '@/config';
+import { analytics } from '@/utils/segment';
 import type { RedirectLoginOptions } from '@auth0/auth0-spa-js';
 import { Auth0Client } from '@auth0/auth0-spa-js';
 
@@ -56,6 +57,8 @@ class Auth0ServiceClass {
   }
 
   public logout() {
+    // Not awaited, so sign-out never waits on analytics. A loaded library resets in microtasks, before the redirect unloads the page.
+    analytics.reset();
     return this.webAuth.logout();
   }
 

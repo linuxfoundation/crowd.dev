@@ -11,6 +11,7 @@ interface LfxSegmentsAnalytics {
   track: (event: string, properties?: EventProperties) => Promise<void>;
   page: (name?: string, properties?: EventProperties) => Promise<void>;
   identify: (userId: string | null, traits?: EventProperties) => Promise<void>;
+  reset: () => Promise<void>;
 }
 
 declare global {
@@ -61,6 +62,7 @@ export const analytics = {
   page: (name: string) => withAnalytics((instance) => instance.page(name)),
   identify: (userId: string, traits: EventProperties) =>
     withAnalytics((instance) => instance.identify(userId, traits)),
+  reset: () => withAnalytics((instance) => instance.reset()),
 };
 
 export const isRealSegmentKey = (key?: string): boolean => {
