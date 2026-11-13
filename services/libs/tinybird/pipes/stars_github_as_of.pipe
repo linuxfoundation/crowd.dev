@@ -1,0 +1,232 @@
+DESCRIPTION >
+    - `stars_github_as_of.pipe` returns the GitHub star total of a project or collection as of one or more cutoffs. Shared by `stars_count.pipe` and `stars_cumulative_count.pipe`.
+    - A repository counts its latest snapshot captured at or before the cutoff, and 0 before its first snapshot. The repositories in scope come from `stars_scope.pipe`.
+    - Projects read each repository's snapshots from `repositoryStarSnapshots`, which is sorted by repository. Most projects have one repository, so the read is small and the query stays short.
+    - Collections cover thousands of repositories, so they read only the days around each cutoff. Snapshots are daily, so a repository's latest snapshot almost always falls in the three days ending at the cutoff. Those days are read from `repository_star_snapshots_by_day_ds`, which is sorted by day.
+    - In a collection, a repository with no snapshot in those days takes its value from `repository_star_snapshot_bounds_ds`: 0 if its first snapshot is after the cutoff, its last count if its last snapshot is before the window. A repository whose snapshots have a gap around the cutoff is looked up in `repositoryStarSnapshots`.
+    - Cutoffs (`kind`):
+    - 'bucket': each `generate_timeseries` period when `granularity` is given, at the period's last moment capped at `endDate`.
+    - 'end': `endDate` without `granularity`, or now when `endDate` is absent.
+    - 'start': `startDate`, when given.
+    - Parameters: `project` or `collectionSlug` with `bucketId`, `repos`, `startDate`, `endDate`, `granularity`, as passed to the calling pipe.
+    - Response: `kind`, `startDate` and `endDate` (the period for 'bucket' rows, the cutoff day otherwise), `cutoffAt`, `githubStars`.
+
+NODE stars_github_as_of_cutoffs
+DESCRIPTION >
+    One row per cutoff. A period's cutoff is its last millisecond, so a snapshot counts toward the period it was captured in.
+
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            'bucket' AS kind,
+            startDate,
+            endDate,
+            {% if defined(endDate) %}
+                least(
+                    toDateTime64(assumeNotNull(endDate) + 1, 3) - INTERVAL 1 MILLISECOND,
+                    toDateTime64({{ DateTime(endDate, description="Range end", required=False) }}, 3)
+                )
+            {% else %} toDateTime64(assumeNotNull(endDate) + 1, 3) - INTERVAL 1 MILLISECOND
+            {% end %} AS cutoffAt
+        FROM generate_timeseries
+    {% else %}
+        SELECT
+            'end' AS kind,
+            toDate(cutoffAt) AS startDate,
+            toDate(cutoffAt) AS endDate,
+            {% if defined(endDate) %}
+                toDateTime64({{ DateTime(endDate, description="Range end", required=False) }}, 3)
+            {% else %} now64(3)
+            {% end %} AS cutoffAt
+    {% end %}
+    {% if defined(startDate) %}
+        UNION ALL
+        SELECT
+            'start' AS kind,
+            toDate(cutoffAt) AS startDate,
+            toDate(cutoffAt) AS endDate,
+            toDateTime64(
+                {{ DateTime(startDate, description="Range start", required=False) }}, 3
+            ) AS cutoffAt
+    {% end %}
+
+NODE stars_github_as_of_cutoff_list
+DESCRIPTION >
+    All cutoffs in one array. Every node below reads it through the same scalar subquery, which ClickHouse evaluates once per query, so `generate_timeseries` runs once.
+
+SQL >
+    SELECT groupArray((kind, startDate, endDate, cutoffAt)) AS cutoffs FROM stars_github_as_of_cutoffs
+
+NODE stars_github_as_of_project_totals
+DESCRIPTION >
+    Projects: each repository's full snapshot history as one sorted array, then per cutoff the last snapshot at or before it. Exact on its own, so the bounds and gap lookups are not needed. Building the arrays once keeps long series cheap for projects with hundreds of repositories.
+
+SQL >
+    WITH
+        (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
+        (SELECT scope FROM stars_scope) AS scope
+    SELECT
+        c .1 AS kind,
+        c .2 AS startDate,
+        c .3 AS endDate,
+        c .4 AS cutoffAt,
+        toUInt64(arraySum(h -> arrayLast(x -> x .1 <= c .4, h) .3, r.histories)) AS githubStars
+    FROM (SELECT arrayJoin(cutoffs) AS c)
+    CROSS JOIN
+        (
+            SELECT groupArray(history) AS histories
+            FROM
+                (
+                    SELECT arraySort(groupArray((capturedAt, updatedAt, starCount))) AS history
+                    FROM repositoryStarSnapshots
+                    WHERE
+                        repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
+                        AND capturedAt <= arrayMax(arrayMap(c -> c .4, cutoffs))
+                    GROUP BY repositoryId
+                )
+        ) r
+
+NODE stars_github_as_of_repo_values
+DESCRIPTION >
+    Collections: star count per cutoff and in-scope repository, from the window or the bounds table. NULL marks a gap: snapshots on both sides of the window and none inside it.
+
+SQL >
+    WITH
+        (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
+        (SELECT scope FROM stars_scope) AS scope
+    SELECT
+        kind,
+        cutoffAt,
+        repositoryId,
+        if(
+            countIf(src = 'window') > 0,
+            argMaxIf(starCount, (capturedAt, updatedAt), src = 'window'),
+            if(
+                anyIf(capturedAt, src = 'bounds') < toDateTime64(toDate(cutoffAt) - 2, 3),
+                anyIf(starCount, src = 'bounds'),
+                NULL
+            )
+        ) AS starCount
+    FROM
+        (
+            SELECT
+                'window' AS src,
+                cutoff .1 AS kind,
+                cutoff .4 AS cutoffAt,
+                repositoryId,
+                capturedAt,
+                updatedAt,
+                starCount
+            FROM repository_star_snapshots_by_day_ds ARRAY
+            JOIN arrayFilter(c -> day >= toDate(c .4) - 2 AND capturedAt <= c .4, cutoffs) AS cutoff
+            WHERE
+                day IN (
+                    SELECT
+                        arrayJoin(
+                            arrayFlatten(
+                                arrayMap(
+                                    c -> [toDate(c .4) - 2, toDate(c .4) - 1, toDate(c .4)], cutoffs
+                                )
+                            )
+                        )
+                )
+                AND repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
+            UNION ALL
+            SELECT
+                'bounds' AS src,
+                cutoff .1 AS kind,
+                cutoff .4 AS cutoffAt,
+                repositoryId,
+                lastCapturedAt AS capturedAt,
+                lastCapturedAt AS updatedAt,
+                lastStarCount AS starCount
+            FROM
+                (
+                    SELECT
+                        repositoryId,
+                        min(firstCapturedAt) AS firstCapturedAt,
+                        max(lastCapturedAt) AS lastCapturedAt,
+                        argMaxMerge(lastStarCountState) AS lastStarCount
+                    FROM repository_star_snapshot_bounds_ds
+                    WHERE repositoryId IN (SELECT arrayJoin(scope.githubRepositoryIds))
+                    GROUP BY repositoryId
+                )
+                ARRAY
+            JOIN arrayFilter(c -> firstCapturedAt <= c .4, cutoffs) AS cutoff
+        )
+    GROUP BY kind, cutoffAt, repositoryId
+    HAVING countIf(src = 'bounds') > 0
+
+NODE stars_github_as_of_cutoff_stars
+DESCRIPTION >
+    Per cutoff: the stars known from the window and bounds, and the repositories in a gap. Read as one scalar subquery, so the window is grouped once.
+
+SQL >
+    SELECT groupArray((kind, cutoffAt, knownStars, gapRepositoryIds)) AS cutoffStars
+    FROM
+        (
+            SELECT
+                kind,
+                cutoffAt,
+                sum(ifNull(starCount, 0)) AS knownStars,
+                groupArrayIf(repositoryId, isNull (starCount)) AS gapRepositoryIds
+            FROM stars_github_as_of_repo_values
+            GROUP BY kind, cutoffAt
+        )
+
+NODE stars_github_as_of_gaps
+DESCRIPTION >
+    Repositories in a gap, looked up in `repositoryStarSnapshots`. Usually there are none and nothing is read.
+
+SQL >
+    WITH (SELECT cutoffStars FROM stars_github_as_of_cutoff_stars) AS cutoffStars
+    SELECT kind, cutoffAt, sum(starCount) AS stars
+    FROM
+        (
+            SELECT
+                gap .1 AS kind,
+                gap .2 AS cutoffAt,
+                repositoryId,
+                argMax(starCount, (capturedAt, updatedAt)) AS starCount
+            FROM repositoryStarSnapshots ARRAY
+            JOIN arrayFilter(x -> has(x .4, repositoryId) AND capturedAt <= x .2, cutoffStars) AS gap
+            WHERE repositoryId IN (SELECT arrayJoin(arrayFlatten(arrayMap(x -> x .4, cutoffStars))))
+            GROUP BY kind, cutoffAt, repositoryId
+        )
+    GROUP BY kind, cutoffAt
+
+NODE stars_github_as_of_collection_totals
+SQL >
+    WITH
+        (SELECT cutoffs FROM stars_github_as_of_cutoff_list) AS cutoffs,
+        (SELECT cutoffStars FROM stars_github_as_of_cutoff_stars) AS cutoffStars
+    SELECT
+        c .1 AS kind,
+        c .2 AS startDate,
+        c .3 AS endDate,
+        c .4 AS cutoffAt,
+        toUInt64(arrayFirst(x -> x .1 = c .1 AND x .2 = c .4, cutoffStars) .3 + g.stars) AS githubStars
+    FROM (SELECT arrayJoin(cutoffs) AS c)
+    LEFT JOIN stars_github_as_of_gaps g ON g.kind = c .1 AND g.cutoffAt = c .4
+
+NODE stars_github_as_of_totals
+DESCRIPTION >
+    The project or collection totals, packed into a scalar subquery and unpacked. `stars_count.pipe` reads this pipe twice in one query, for the buckets and the `startDate` baseline, and the scalar is computed once for both.
+
+SQL >
+    %
+    SELECT r .1 AS kind, r .2 AS startDate, r .3 AS endDate, r .4 AS cutoffAt, r .5 AS githubStars
+    FROM
+        (
+            SELECT
+                arrayJoin(
+                    (
+                        SELECT groupArray((kind, startDate, endDate, cutoffAt, githubStars))
+                        FROM
+                            {% if defined(collectionSlug) %} stars_github_as_of_collection_totals
+                            {% else %} stars_github_as_of_project_totals
+                            {% end %}
+                    )
+                ) AS r
+        )

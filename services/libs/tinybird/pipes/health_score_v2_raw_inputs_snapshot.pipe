@@ -156,7 +156,7 @@ SQL >
     LEFT JOIN
         (
             SELECT
-                url AS repoUrl,
+                if(lower(domain(url)) IN ('github.com', 'gitlab.com'), lower(url), url) AS repoUrl,
                 argMax(scorecardScore, updatedAt) AS scorecardScore,
                 argMax(securityPolicyEnabled, updatedAt) AS securityPolicyEnabled,
                 argMax(branchProtectionEnabled, updatedAt) AS branchProtectionEnabled,
@@ -166,12 +166,20 @@ SQL >
                 ) AS branchProtectionRequiresStatusChecks,
                 argMax(branchProtectionAllowsForcePush, updatedAt) AS branchProtectionAllowsForcePush
             FROM repos
-            GROUP BY url
+            GROUP BY repoUrl
         ) AS repoMeta
-        ON repoMeta.repoUrl = allRepos.repoUrl
+        ON repoMeta.repoUrl = if(
+            lower(domain(allRepos.repoUrl)) IN ('github.com', 'gitlab.com'),
+            lower(allRepos.repoUrl),
+            allRepos.repoUrl
+        )
     LEFT JOIN
         (
-            SELECT r2.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
+            SELECT
+                if(
+                    lower(domain(r2.url)) IN ('github.com', 'gitlab.com'), lower(r2.url), r2.url
+                ) AS repoUrl,
+                count(DISTINCT pd.dependsOnId) AS vulnerableDeps
             FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
             INNER JOIN packageRepos pr ON pr.repoId = r2.id
             INNER JOIN packageDependencies pd ON pd.packageId = pr.packageId
@@ -182,9 +190,13 @@ SQL >
                     INNER JOIN advisories a ON a.id = ap.advisoryId
                     WHERE a.severity IN ('HIGH', 'CRITICAL')
                 )
-            GROUP BY r2.url
+            GROUP BY repoUrl
         ) AS deps
-        ON deps.repoUrl = allRepos.repoUrl
+        ON deps.repoUrl = if(
+            lower(domain(allRepos.repoUrl)) IN ('github.com', 'gitlab.com'),
+            lower(allRepos.repoUrl),
+            allRepos.repoUrl
+        )
     LEFT JOIN
         (
             SELECT
@@ -194,7 +206,9 @@ SQL >
             FROM
                 (
                     SELECT
-                        r2.url AS repoUrl,
+                        if(
+                            lower(domain(r2.url)) IN ('github.com', 'gitlab.com'), lower(r2.url), r2.url
+                        ) AS repoUrl,
                         arraySlice(
                             arraySort(x -> - toInt64(x), arrayDistinct(groupArray(rd.releaseDay))), 1, 2
                         ) AS top2
@@ -207,10 +221,14 @@ SQL >
                             WHERE publishedAt IS NOT NULL
                         ) rd
                         ON rd.packageId = pr.packageId
-                    GROUP BY r2.url
+                    GROUP BY repoUrl
                 )
         ) AS rl
-        ON rl.repoUrl = allRepos.repoUrl
+        ON rl.repoUrl = if(
+            lower(domain(allRepos.repoUrl)) IN ('github.com', 'gitlab.com'),
+            lower(allRepos.repoUrl),
+            allRepos.repoUrl
+        )
     LEFT JOIN
         (
             SELECT
@@ -228,11 +246,17 @@ SQL >
         ON c.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT url AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+            SELECT
+                if(lower(domain(url)) IN ('github.com', 'gitlab.com'), lower(url), url) AS repoUrl,
+                argMax(lastCommitAt, updatedAt) AS lastCommitAt
             FROM repos
-            GROUP BY url
+            GROUP BY repoUrl
         ) AS rc
-        ON rc.repoUrl = allRepos.repoUrl
+        ON rc.repoUrl = if(
+            lower(domain(allRepos.repoUrl)) IN ('github.com', 'gitlab.com'),
+            lower(allRepos.repoUrl),
+            allRepos.repoUrl
+        )
     LEFT JOIN
         (
             SELECT
@@ -296,12 +320,20 @@ SQL >
         ON upw.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT r2.url AS repoUrl, count(DISTINCT pr.packageId) AS trackedPackageCount
+            SELECT
+                if(
+                    lower(domain(r2.url)) IN ('github.com', 'gitlab.com'), lower(r2.url), r2.url
+                ) AS repoUrl,
+                count(DISTINCT pr.packageId) AS trackedPackageCount
             FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
             INNER JOIN packageRepos pr ON pr.repoId = r2.id
-            GROUP BY r2.url
+            GROUP BY repoUrl
         ) AS pkgs
-        ON pkgs.repoUrl = allRepos.repoUrl
+        ON pkgs.repoUrl = if(
+            lower(domain(allRepos.repoUrl)) IN ('github.com', 'gitlab.com'),
+            lower(allRepos.repoUrl),
+            allRepos.repoUrl
+        )
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_raw_inputs_snapshot_ds
