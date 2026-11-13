@@ -22,9 +22,11 @@ import instagram from './instagram/config';
 import jira from './jira/config';
 import lfid from './lfx/config';
 import linkedin from './linkedin/config';
+import luma from './luma/config';
 import mailinglist from './mailinglist/config';
 import n8n from './n8n/config';
 import reddit from './reddit/config';
+import sched from './sched/config';
 import slack from './slack/config';
 import stackoverflow from './stackoverflow/config';
 import tiktok from './tiktok/config';
@@ -96,4 +98,6 @@ export const lfIdentities: Record<string, IdentityConfig> = {
   tiktok,
   instagram,
   credly,
+  luma,
+  sched,
 };
