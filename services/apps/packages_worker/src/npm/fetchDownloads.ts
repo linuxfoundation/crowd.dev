@@ -1,7 +1,8 @@
 import type { Dispatcher } from 'undici'
 
+import { BULK_MAX_NAMES } from './downloadGaps'
 import { combineSignals } from './signals'
-import { type FetchError, FetchErrorKind } from './types'
+import { type FetchError, FetchErrorKind, isFetchError } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
@@ -204,4 +205,102 @@ export async function fetchDailyRange(
       .filter((d) => typeof d.day === 'string' && typeof d.downloads === 'number')
       .map((d) => ({ day: d.day as string, downloads: d.downloads as number })),
   }
+}
+
+// Shared request and status mapping for the downloads API; resolves to the parsed body.
+async function getDownloadsJson(
+  url: string,
+  notFoundMessage: string,
+  dispatcher?: Dispatcher,
+  signal?: AbortSignal,
+): Promise<{ json: unknown } | FetchError> {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 30_000)
+  let res: Response
+  try {
+    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
+  } catch (err) {
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (res.status === 404)
+    return { kind: FetchErrorKind.NOT_FOUND, message: notFoundMessage, statusCode: 404 }
+  if (res.status === 429) {
+    const headers: Record<string, string> = {}
+    for (const [k, v] of res.headers.entries()) headers[k] = v
+    const body = await res.text().catch(() => '')
+    return {
+      kind: FetchErrorKind.RATE_LIMIT,
+      message: `rate limited by npm downloads API, headers: ${JSON.stringify(headers)} body: ${body}`,
+      statusCode: 429,
+    }
+  }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
+
+  try {
+    return { json: await res.json() }
+  } catch {
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
+  }
+}
+
+// GET api.npmjs.org/downloads/point/last-day: the newest day npm has published counts for.
+export async function fetchLastPublishedDay(
+  dispatcher?: Dispatcher,
+  signal?: AbortSignal,
+): Promise<{ day: string } | FetchError> {
+  const res = await getDownloadsJson(
+    'https://api.npmjs.org/downloads/point/last-day',
+    'last-day not found',
+    dispatcher,
+    signal,
+  )
+  if (isFetchError(res)) return res
+  const end = (res.json as { end?: unknown } | null)?.end
+  if (typeof end !== 'string') return { kind: FetchErrorKind.MALFORMED, message: 'missing end day' }
+  return { day: end }
+}
+
+export interface BulkDailyRangeResult {
+  downloads: Map<string, Array<{ day: string; downloads: number }>> // absent = not found
+}
+
+// GET api.npmjs.org/downloads/range/<start>:<end>/<pkg1>,<pkg2>,... for 2 to 128 unscoped names.
+// npm answers a single name in the single-package shape, so one name is rejected.
+export async function fetchBulkDailyRange(
+  names: string[],
+  start: string,
+  end: string,
+  dispatcher?: Dispatcher,
+  signal?: AbortSignal,
+): Promise<BulkDailyRangeResult | FetchError> {
+  if (names.length < 2 || names.length > BULK_MAX_NAMES)
+    throw new Error(
+      `fetchBulkDailyRange: expected 2 to ${BULK_MAX_NAMES} names, got ${names.length}`,
+    )
+  const res = await getDownloadsJson(
+    `https://api.npmjs.org/downloads/range/${start}:${end}/${names.join(',')}`,
+    'bulk request not found',
+    dispatcher,
+    signal,
+  )
+  if (isFetchError(res)) return res
+  if (typeof res.json !== 'object' || res.json === null || Array.isArray(res.json))
+    return { kind: FetchErrorKind.MALFORMED, message: 'expected object response' }
+
+  const downloads = new Map<string, Array<{ day: string; downloads: number }>>()
+  for (const [name, entry] of Object.entries(res.json as Record<string, unknown>)) {
+    const rows = (entry as { downloads?: unknown } | null)?.downloads
+    if (!Array.isArray(rows)) continue
+    downloads.set(
+      name,
+      (rows as Array<{ day: unknown; downloads: unknown }>)
+        .filter((d) => typeof d.day === 'string' && typeof d.downloads === 'number')
+        .map((d) => ({ day: d.day as string, downloads: d.downloads as number })),
+    )
+  }
+  return { downloads }
 }
