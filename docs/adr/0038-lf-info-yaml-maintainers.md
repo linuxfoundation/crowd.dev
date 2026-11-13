@@ -1,4 +1,4 @@
-# ADR-0037: LF Release Engineering `INFO.yaml` as authoritative maintainer source
+# ADR-0038: LF Release Engineering `INFO.yaml` as authoritative maintainer source
 
 **Date**: 2026-11-12
 **Status**: accepted
