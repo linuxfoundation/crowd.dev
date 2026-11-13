@@ -460,6 +460,8 @@ async def get_maintainer_emails_for_repo(repo_id: str) -> set[str]:
         WHERE mi."repoId" = $1
           AND mi."endDate" IS NULL
           AND mi."role" != 'emeritus'
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
           -- Git ingestion stores the commit email as a verified git username; the email
           -- identity itself stays unverified.
           AND (email.type = 'email' OR (email.platform = 'git' AND email.type = 'username'))
