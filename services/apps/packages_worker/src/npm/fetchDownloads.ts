@@ -216,34 +216,46 @@ async function getDownloadsJson(
 ): Promise<{ json: unknown } | FetchError> {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
-  let res: Response
   try {
-    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
-  } catch (err) {
-    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
+    let res: Response
+    try {
+      res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
+    } catch (err) {
+      return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
+    }
+
+    if (res.status === 404)
+      return { kind: FetchErrorKind.NOT_FOUND, message: notFoundMessage, statusCode: 404 }
+    if (res.status === 429) {
+      const headers: Record<string, string> = {}
+      for (const [k, v] of res.headers.entries()) headers[k] = v
+      const body = await res.text().catch(() => '')
+      return {
+        kind: FetchErrorKind.RATE_LIMIT,
+        message: `rate limited by npm downloads API, headers: ${JSON.stringify(headers)} body: ${body}`,
+        statusCode: 429,
+      }
+    }
+    if (!res.ok)
+      return {
+        kind: FetchErrorKind.TRANSIENT,
+        message: `HTTP ${res.status}`,
+        statusCode: res.status,
+      }
+
+    let text: string
+    try {
+      text = await res.text()
+    } catch (err) {
+      return { kind: FetchErrorKind.TRANSIENT, message: `body read failed: ${String(err)}` }
+    }
+    try {
+      return { json: JSON.parse(text) }
+    } catch {
+      return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
+    }
   } finally {
     clearTimeout(timer)
-  }
-
-  if (res.status === 404)
-    return { kind: FetchErrorKind.NOT_FOUND, message: notFoundMessage, statusCode: 404 }
-  if (res.status === 429) {
-    const headers: Record<string, string> = {}
-    for (const [k, v] of res.headers.entries()) headers[k] = v
-    const body = await res.text().catch(() => '')
-    return {
-      kind: FetchErrorKind.RATE_LIMIT,
-      message: `rate limited by npm downloads API, headers: ${JSON.stringify(headers)} body: ${body}`,
-      statusCode: 429,
-    }
-  }
-  if (!res.ok)
-    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
-
-  try {
-    return { json: await res.json() }
-  } catch {
-    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 }
 

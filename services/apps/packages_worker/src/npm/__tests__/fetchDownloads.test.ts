@@ -47,6 +47,14 @@ describe('fetchLastPublishedDay', () => {
     expect(result).toMatchObject({ kind: FetchErrorKind.TRANSIENT, statusCode: 503 })
   })
 
+  it('reports a body that is not JSON as malformed', async () => {
+    respond(200, 'not json')
+
+    const result = await fetchLastPublishedDay()
+
+    expect(result).toMatchObject({ kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' })
+  })
+
   it('reports a body without an end day as malformed', async () => {
     respond(200, { downloads: 1 })
 
@@ -152,4 +160,30 @@ describe('fetchBulkDailyRange', () => {
     await expect(fetchBulkDailyRange(tooMany, '2026-11-10', '2026-11-11')).rejects.toThrow()
     expect(fetchMock).not.toHaveBeenCalled()
   })
+})
+
+describe('request timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('gives up on a body that stalls past the 30 second request timeout', async () => {
+    vi.useFakeTimers()
+    fetchMock.mockImplementation(
+      async (_url: string, init: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init.signal?.addEventListener('abort', () => controller.error(new Error('aborted')))
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const pending = fetchLastPublishedDay()
+    await vi.advanceTimersByTimeAsync(31_000)
+
+    await expect(pending).resolves.toMatchObject({ kind: FetchErrorKind.TRANSIENT })
+  }, 2_000)
 })
