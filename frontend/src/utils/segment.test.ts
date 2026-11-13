@@ -17,6 +17,8 @@ const AIRGAP_URL = 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa
 
 const injected: FakeScript[] = [];
 const calls: string[] = [];
+const stored = new Map<string, string>();
+const cookieWrites: string[] = [];
 
 const record = (method: string, ...args: unknown[]) => {
   const parts = args
@@ -50,10 +52,18 @@ beforeEach(() => {
   fakeLibrary.init.mockClear();
   fakeLibrary.track.mockClear();
   vi.resetModules();
-  vi.stubGlobal('window', {});
+  stored.clear();
+  cookieWrites.length = 0;
+  vi.stubGlobal('window', {
+    location: { hostname: 'cm.lfx.dev' },
+    localStorage: { removeItem: (key: string) => stored.delete(key) },
+  });
   vi.stubGlobal('document', {
     createElement: () => ({}),
     head: { appendChild: (script: FakeScript) => injected.push(script) },
+    set cookie(value: string) {
+      cookieWrites.push(value);
+    },
   });
 });
 
@@ -163,6 +173,34 @@ describe('segment', () => {
 
     await expect(sent).resolves.toBeUndefined();
     expect(calls).toEqual([]);
+  });
+
+  it('clears the stored Segment identity at sign-out, before the library has loaded', async () => {
+    const { analytics, loadSegment } = await freshSegment();
+    [
+      'ajs_user_id',
+      'ajs_user_traits',
+      'ajs_anonymous_id',
+      'ajs_group_id',
+      'ajs_group_properties',
+    ].forEach((key) => stored.set(key, 'previous user'));
+    stored.set('unrelated', 'kept');
+
+    loadSegment('write-key');
+    const reset = analytics.reset();
+
+    expect([...stored.keys()]).toEqual(['unrelated']);
+    expect(cookieWrites).toEqual(
+      expect.arrayContaining([
+        'ajs_user_id=; Path=/; Max-Age=0',
+        'ajs_user_id=; Path=/; Max-Age=0; Domain=.cm.lfx.dev',
+        'ajs_user_id=; Path=/; Max-Age=0; Domain=.lfx.dev',
+        'ajs_anonymous_id=; Path=/; Max-Age=0; Domain=.lfx.dev',
+      ]),
+    );
+    libraryLoads();
+    await reset;
+    expect(calls).toContain('reset');
   });
 });
 

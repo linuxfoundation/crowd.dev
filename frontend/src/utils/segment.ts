@@ -56,13 +56,45 @@ const withAnalytics = (send: (instance: LfxSegmentsAnalytics) => Promise<void>):
     .then((instance) => (instance ? send(instance) : undefined))
     .catch((error: unknown) => console.error('Segment call failed', error));
 
+// The visitor identity analytics.js stores, as the LFX library purges it: these cookies on the host and every parent
+// domain, and these localStorage keys.
+const SEGMENT_IDENTITY_COOKIES = ['ajs_anonymous_id', 'ajs_user_id', 'ajs_group_id'];
+const SEGMENT_IDENTITY_STORAGE_KEYS = [
+  ...SEGMENT_IDENTITY_COOKIES,
+  'ajs_user_traits',
+  'ajs_group_properties',
+];
+
+// Sign-out can't wait for the library: one still loading resets only after the Auth0 redirect has left the page, and
+// releases before v0.0.14 can't reset before their SDK is up.
+const forgetStoredSegmentIdentity = (): void => {
+  try {
+    SEGMENT_IDENTITY_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // Storage is blocked, so nothing was stored there.
+  }
+  const labels = window.location.hostname.split('.');
+  const domains = [''];
+  for (let i = 0; i < labels.length - 1; i += 1) {
+    domains.push(`; Domain=.${labels.slice(i).join('.')}`);
+  }
+  SEGMENT_IDENTITY_COOKIES.forEach((name) => {
+    domains.forEach((domain) => {
+      document.cookie = `${name}=; Path=/; Max-Age=0${domain}`;
+    });
+  });
+};
+
 export const analytics = {
   track: (event: string, properties?: EventProperties) =>
     withAnalytics((instance) => instance.track(event, properties)),
   page: (name: string) => withAnalytics((instance) => instance.page(name)),
   identify: (userId: string, traits: EventProperties) =>
     withAnalytics((instance) => instance.identify(userId, traits)),
-  reset: () => withAnalytics((instance) => instance.reset()),
+  reset: () => {
+    forgetStoredSegmentIdentity();
+    return withAnalytics((instance) => instance.reset());
+  },
 };
 
 export const isRealSegmentKey = (key?: string): boolean => {

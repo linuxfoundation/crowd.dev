@@ -57,7 +57,7 @@ class Auth0ServiceClass {
   }
 
   public logout() {
-    // Not awaited, so sign-out never waits on analytics. A loaded library resets in microtasks, before the redirect unloads the page.
+    // Not awaited: the stored Segment identity is cleared synchronously, and a loaded library resets in microtasks.
     analytics.reset();
     return this.webAuth.logout();
   }
