@@ -31,6 +31,10 @@ import { OpenSearchService } from './opensearch.service'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+function toIsoDate(value: Date | string | null | undefined): string | null {
+  return value ? new Date(value).toISOString() : null
+}
+
 export async function buildFullMemberForMergeSuggestions(
   qx: QueryExecutor,
   member: IMemberBaseForMergeSuggestions,
@@ -346,8 +350,8 @@ export class MemberSyncService {
         string_displayName: organization.displayName,
         obj_memberOrganizations: {
           string_title: organization?.title || null,
-          date_dateStart: organization?.dateStart || null,
-          date_dateEnd: organization?.dateEnd || null,
+          date_dateStart: toIsoDate(organization?.dateStart),
+          date_dateEnd: toIsoDate(organization?.dateEnd),
           string_source: organization?.source || null,
         },
       })
