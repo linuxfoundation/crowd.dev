@@ -10,7 +10,7 @@ LF events move from Sched to Sessionize in 2027, so CDP will not build an ongoin
 
 ## Decision
 
-Import Sched history with a one-time, re-runnable crowd.dev script that reads each event from the Sched API and sends activities to the data sink with `DataSinkWorkerEmitter.createAndProcessActivityResult`, the path the Snowflake connectors use; from there activities and relations reach Tinybird and Snowflake as described in [activity-pipeline.md](../design/activity-pipeline.md). Events and their CDP projects live in a reviewed mapping file in the repo. Each event's existing key is collected once by a browser script that reads it from the event's Control Panel (it never generates or changes a key) and stored in one 1Password item, one concealed field per subdomain. Before a run, an operator loads that item into a short-lived Kubernetes secret by piping `op item get` into `kubectl create secret`, so no key touches disk; the job mounts it and the secret is deleted after the run. Source ids include the event (`{subdomain}:{username}:{sessionKey}` for `registered-session`, `{subdomain}:speaker:{username}:{sessionId}` for `spoke-at-session`) and the channel is the subdomain, so a re-run updates activities in place as long as timestamp, type, source id, channel and segment stay the same.
+Import Sched history with a one-time, re-runnable crowd.dev script that reads each event from the Sched API and sends activities to the data sink with `DataSinkWorkerEmitter.createAndProcessActivityResult`, the path the Snowflake connectors use; from there activities and relations reach Tinybird and Snowflake as described in [activity-pipeline.md](../design/activity-pipeline.md), with events and their CDP projects in a reviewed mapping file in the repo. Each event's key is kept in one 1Password item, one concealed field per subdomain, and reaches the job only through a Kubernetes secret loaded for the run and deleted after it. Source ids include the event (`{subdomain}:{username}:{sessionKey}` for `registered-session`, `{subdomain}:speaker:{username}:{sessionId}` for `spoke-at-session`) and the channel is the subdomain, so a re-run updates activities in place as long as timestamp, type, source id, channel and segment stay the same.
 
 ## Alternatives Considered
 
@@ -45,12 +45,13 @@ Import Sched history with a one-time, re-runnable crowd.dev script that reads ea
 - No new long-running service: deduplication, member matching by verified email and email-domain organizations work as they do for every source.
 - Runs can be filtered by event, date range and data type, with a key check, a dry run and per-event resume; repeated runs update instead of duplicating.
 - No new infrastructure for keys: they sit in the 1Password vault the team already uses, and they are in the cluster only while a run lasts.
+- Keys are collected once by a browser script that reads each event's existing key from its Control Panel; it never generates or changes a key.
 
 ### Negative
 
 - A new `sched` platform: `PlatformType` entry, activity-type migration and scores.
 - Progress tracking, pacing and streaming the 50 MB response are the script's own code.
-- Each run needs an operator with 1Password and cluster access to load the secret and delete it afterwards.
+- Each run needs an operator with 1Password and cluster access to load the secret (piping `op item get` into `kubectl create secret`, so no key touches disk) and delete it afterwards.
 - A new event's key has to be added to the 1Password item before it can be imported.
 - Re-running after 2027 depends on Sched sites and keys still working; no raw copy is kept.
 
