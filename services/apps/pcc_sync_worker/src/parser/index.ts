@@ -1,8 +1,2 @@
 export { parsePccRow } from './rowParser'
-export type {
-  CdpHierarchyTarget,
-  MappingRule,
-  ParseResult,
-  ParsedPccProject,
-  PccParquetRow,
-} from './types'
+export type { CdpHierarchyTarget, ParseResult, ParsedPccProject, PccParquetRow } from './types'
