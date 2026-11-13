@@ -47,8 +47,11 @@ export const loadSegment = (writeKey: string): void => {
   lfxAnalytics = loadLfxAnalytics(writeKey).catch(() => null);
 };
 
+// No call site awaits or catches these calls, so a failure is logged here instead of becoming an unhandled rejection.
 const withAnalytics = (send: (instance: LfxSegmentsAnalytics) => Promise<void>): Promise<void> =>
-  lfxAnalytics.then((instance) => (instance ? send(instance) : undefined));
+  lfxAnalytics
+    .then((instance) => (instance ? send(instance) : undefined))
+    .catch((error: unknown) => console.error('Segment call failed', error));
 
 export const analytics = {
   track: (event: string, properties?: EventProperties) =>

@@ -18,19 +18,22 @@ const AIRGAP_URL = 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa
 const injected: FakeScript[] = [];
 const calls: string[] = [];
 
+// Records the method and every argument it received, so a dropped payload fails the assertion.
+const record = (method: string, ...args: unknown[]) => {
+  const parts = args
+    .filter((arg) => arg !== undefined)
+    .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)));
+  calls.push([method, ...parts].join(' '));
+};
+
 const fakeLibrary = {
-  init: vi.fn(async (writeKey?: string) => {
-    calls.push(`init ${writeKey}`);
-  }),
-  track: async (event: string) => {
-    calls.push(`track ${event}`);
-  },
-  page: async (name?: string) => {
-    calls.push(`page ${name}`);
-  },
-  identify: async (userId: string | null) => {
-    calls.push(`identify ${userId}`);
-  },
+  init: vi.fn(async (writeKey?: string) => record('init', writeKey)),
+  track: vi.fn(async (event: string, properties?: Record<string, unknown>) =>
+    record('track', event, properties),
+  ),
+  page: async (name?: string) => record('page', name),
+  identify: async (userId: string | null, traits?: Record<string, unknown>) =>
+    record('identify', userId, traits),
 };
 
 // loadSegment keeps module-level state, so each test imports a fresh copy after vi.resetModules().
@@ -45,6 +48,7 @@ beforeEach(() => {
   injected.length = 0;
   calls.length = 0;
   fakeLibrary.init.mockClear();
+  fakeLibrary.track.mockClear();
   vi.resetModules();
   vi.stubGlobal('window', {});
   vi.stubGlobal('document', {
@@ -102,8 +106,8 @@ describe('segment', () => {
     expect(calls).toEqual([
       'init write-key',
       'page Members',
-      'track Custom view created',
-      'identify user-1',
+      'track Custom view created {"viewName":"All"}',
+      'identify user-1 {"email":"user@example.org"}',
     ]);
   });
 
@@ -118,6 +122,21 @@ describe('segment', () => {
 
     expect(calls).toEqual(['track Upgrade Plan Contact']);
     expect(console.error).toHaveBeenCalledWith('Segment failed to load', expect.any(Error));
+  });
+
+  it('contains a failing call, because no call site awaits or catches it', async () => {
+    const { analytics, loadSegment } = await freshSegment();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // The shape a renamed or removed method on latest/ would take.
+    fakeLibrary.track.mockImplementationOnce(() => {
+      throw new TypeError('instance.track is not a function');
+    });
+
+    loadSegment('write-key');
+    libraryLoads();
+
+    await expect(analytics.track('Custom view created')).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith('Segment call failed', expect.any(TypeError));
   });
 
   it('sends nothing when the library is blocked', async () => {
@@ -135,9 +154,10 @@ describe('segment', () => {
 describe('index.html', () => {
   it('loads Transcend airgap.js synchronously before any other script', () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-    const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map(([tag]) => tag);
+    // HTML tag and attribute names are case-insensitive.
+    const scripts = [...html.matchAll(/<script\b[^>]*>/gi)].map(([tag]) => tag);
 
     expect(scripts[0]).toContain(`src="${AIRGAP_URL}"`);
-    expect(scripts[0]).not.toMatch(/\b(async|defer)\b|type="module"/);
+    expect(scripts[0]).not.toMatch(/\b(async|defer)\b|\btype\s*=\s*["']?module\b/i);
   });
 });
