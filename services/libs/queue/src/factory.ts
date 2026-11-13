@@ -1,5 +1,5 @@
 /* eslint-disable no-case-declarations */
-import { Admin, Kafka } from 'kafkajs'
+import { Admin, GroupDescription, Kafka } from 'kafkajs'
 
 import { SERVICE } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
@@ -19,6 +19,7 @@ export class QueueFactory {
 
 export type KafkaClient = Kafka
 export type KafkaAdmin = Admin
+export type KafkaGroupDescription = GroupDescription
 export { AssignerProtocol as KafkaAssignerProtocol } from 'kafkajs'
 
 export const getKafkaClient = (config: IQueueClientConfig): Kafka => {

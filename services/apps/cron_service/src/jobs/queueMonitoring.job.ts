@@ -5,6 +5,7 @@ import { Logger } from '@crowd/logging'
 import {
   KafkaAdmin,
   KafkaAssignerProtocol,
+  KafkaGroupDescription,
   QUEUE_CONFIG,
   getKafkaClient,
   getKafkaMessageCounts,
@@ -19,13 +20,16 @@ const STALL_SNAPSHOT_KEY_PREFIX = 'queue-monitoring:partitions'
 const STALL_SNAPSHOT_TTL_SECONDS = 2 * 60 * 60
 const REDIS_OPERATION_TIMEOUT_MS = 5000
 
-interface IPartitionSnapshot {
+interface IPartitionOffsets {
   committed: number
   lag: number
+}
+
+interface IPartitionSnapshot extends IPartitionOffsets {
   stalledSince?: number
 }
 
-interface IGroupSnapshot {
+interface ITopicSnapshot {
   at: number
   partitions: Record<string, IPartitionSnapshot>
 }
@@ -36,132 +40,120 @@ const job: IJobDefinition = {
   timeout: 30 * 60,
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
-    const toIgnore = (
-      process.env.CROWD_KAFKA_STREAMS_TO_IGNORE_ON_MONITORING?.split(',') ?? []
-    ).map((s) => s.trim())
-
-    ctx.log.info(`To ignore: ${toIgnore.join(', ')}`)
-
-    const kafkaClient = getKafkaClient(QUEUE_CONFIG())
-    const admin = kafkaClient.admin()
+    const admin = getKafkaClient(QUEUE_CONFIG()).admin()
     await admin.connect()
 
-    const map = await getTopicsAndConsumerGroups(ctx.log, admin)
-    const redis = await connectRedis(ctx.log)
+    try {
+      const alerts = await checkQueues(ctx.log, admin)
 
-    let msg = ``
-
-    if (!redis) {
-      msg += `Stall check skipped: Redis is unavailable!\n`
-    }
-
-    for (const [topic, groups] of map) {
-      const totalMessages = await getTopicMessageCount(ctx.log, admin, topic)
-      telemetry.gauge(`kafka.${topic}.total`, totalMessages)
-
-      if (groups.length === 0) {
-        if (toIgnore.includes(topic.trim())) {
-          ctx.log.info(`Ignoring topic ${topic}!`)
-        } else {
-          msg += `No consumer groups found for topic ${topic}! Total messages in topic: ${totalMessages}\n`
-        }
-      }
-
-      for (const group of groups) {
-        const counts = await getKafkaMessageCounts(ctx.log, admin, topic, group)
-        ctx.log.info(
-          `Topic ${topic} group ${group} has ${counts.total} total messages, ${counts.consumed} consumed, ${counts.unconsumed} unconsumed!`,
+      if (alerts.length > 0) {
+        await sendSlackNotificationAsync(
+          SlackChannel.CDP_CRITICAL_ALERTS,
+          SlackPersona.WARNING_PROPAGATOR,
+          'Queue Monitoring Alert',
+          alerts.join('\n'),
         )
-
-        telemetry.gauge(`kafka.${topic}.${group}.consumed`, counts.consumed)
-        telemetry.gauge(`kafka.${topic}.${group}.unconsumed`, counts.unconsumed)
+        ctx.log.info({ alerts: alerts.length }, 'Queue monitoring alert sent to Slack!')
       }
-
-      const consumedByWorker = groups.includes(topic)
-      if (redis && consumedByWorker && !toIgnore.includes(topic.trim())) {
-        const stalled = await findStalledPartitions(ctx.log, admin, redis, topic)
-        if (stalled) {
-          msg += `${stalled}\n`
-        }
-      }
-    }
-
-    if (msg && msg.trim().length > 0) {
-      await sendSlackNotificationAsync(
-        SlackChannel.CDP_CRITICAL_ALERTS,
-        SlackPersona.WARNING_PROPAGATOR,
-        'Queue Monitoring Alert',
-        msg,
-      )
-      ctx.log.info('Queue monitoring alert sent to Slack')
+    } finally {
+      await admin.disconnect()
     }
 
     telemetry.flush()
-
-    // sleep for 30 seconds to properly flush the metrics
+    // metrics are sent asynchronously after flush, so give them time before the job exits
     await timeout(30000)
   },
 }
 
-async function connectRedis(log: Logger): Promise<RedisClient | undefined> {
-  try {
-    // without a listener a dropped connection is an unhandled 'error' event that kills the job
-    return await withTimeout(
-      getRedisClient(REDIS_CONFIG(), false, (err) =>
-        log.warn(err, 'Redis client error during queue monitoring!'),
-      ),
-    )
-  } catch (err) {
-    log.error(err, 'Failed to connect to Redis, skipping the consumer stall check!')
-    return undefined
-  }
-}
+async function checkQueues(log: Logger, admin: KafkaAdmin): Promise<string[]> {
+  const ignoredTopics = getIgnoredTopics()
+  const groupsByTopic = await findConsumerGroupsByTopic(admin)
+  const redis = await connectRedis(log)
+  const alerts = redis ? [] : ['Stall check skipped: Redis is unavailable!']
 
-async function withTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('Redis operation timed out!')),
-          REDIS_OPERATION_TIMEOUT_MS,
-        )
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
+  for (const [topic, groups] of groupsByTopic) {
+    const totalMessages = await countTopicMessages(admin, topic)
+    telemetry.gauge(`kafka.${topic}.total`, totalMessages)
 
-async function readPartitionOffsets(
-  admin: KafkaAdmin,
-  topic: string,
-): Promise<Record<string, { committed: number; lag: number }>> {
-  const topicOffsets = await admin.fetchTopicOffsets(topic)
-  const groupOffsets = await admin.fetchOffsets({ groupId: topic, topics: [topic] })
+    for (const group of groups) {
+      const { consumed, unconsumed } = await getKafkaMessageCounts(log, admin, topic, group)
+      telemetry.gauge(`kafka.${topic}.${group}.consumed`, consumed)
+      telemetry.gauge(`kafka.${topic}.${group}.unconsumed`, unconsumed)
+    }
 
-  const result: Record<string, { committed: number; lag: number }> = {}
-  for (const { partition, offset } of groupOffsets[0]?.partitions ?? []) {
-    const topicOffset = topicOffsets.find((o) => o.partition === partition)
-    if (!topicOffset || offset === '-1') {
+    if (ignoredTopics.has(topic)) {
       continue
     }
 
-    const high = Number(topicOffset.offset)
-    const committed = Number(offset)
-    result[partition] = {
-      committed,
-      lag: Math.max(0, high - Math.max(committed, Number(topicOffset.low))),
+    if (groups.length === 0) {
+      alerts.push(
+        `No consumer groups found for topic ${topic}! Total messages in topic: ${totalMessages}`,
+      )
+    }
+
+    const consumedByWorker = groups.includes(topic)
+    if (redis && consumedByWorker) {
+      const stalled = await findStalledPartitions(log, admin, redis, topic)
+      if (stalled) {
+        alerts.push(stalled)
+      }
     }
   }
 
-  return result
+  return alerts
 }
 
-function formatDuration(ms: number): string {
-  const minutes = Math.round(ms / 60000)
-  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+function getIgnoredTopics(): Set<string> {
+  const topics = process.env.CROWD_KAFKA_STREAMS_TO_IGNORE_ON_MONITORING?.split(',') ?? []
+  return new Set(topics.map((topic) => topic.trim()))
+}
+
+async function findConsumerGroupsByTopic(admin: KafkaAdmin): Promise<Map<string, string[]>> {
+  const topics = await admin.listTopics()
+  const { groups } = await admin.listGroups()
+  const { groups: descriptions } = await admin.describeGroups(
+    distinct(groups.map(({ groupId }) => groupId)),
+  )
+
+  const groupsByTopic = new Map(topics.map((topic) => [topic, [] as string[]]))
+  for (const group of descriptions) {
+    for (const topic of await findGroupTopics(admin, group, topics)) {
+      groupsByTopic.get(topic)?.push(group.groupId)
+    }
+  }
+
+  return groupsByTopic
+}
+
+async function findGroupTopics(
+  admin: KafkaAdmin,
+  group: KafkaGroupDescription,
+  topics: string[],
+): Promise<string[]> {
+  if (group.state === 'Dead') {
+    return []
+  }
+
+  if (group.protocolType === 'consumer' && group.members.length > 0) {
+    return distinct(
+      group.members.flatMap(
+        ({ memberMetadata }) => KafkaAssignerProtocol.MemberMetadata.decode(memberMetadata).topics,
+      ),
+    )
+  }
+
+  const offsets = await admin.fetchOffsets({ groupId: group.groupId, topics })
+  return offsets
+    .filter(({ partitions }) => partitions.some(({ offset }) => offset !== '-1'))
+    .map(({ topic }) => topic)
+}
+
+async function countTopicMessages(admin: KafkaAdmin, topic: string): Promise<number> {
+  const partitions = await admin.fetchTopicOffsets(topic)
+  return partitions.reduce(
+    (total, { offset, low }) => total + Math.max(0, Number(offset) - Number(low)),
+    0,
+  )
 }
 
 async function findStalledPartitions(
@@ -172,16 +164,14 @@ async function findStalledPartitions(
 ): Promise<string | undefined> {
   try {
     const key = `${STALL_SNAPSHOT_KEY_PREFIX}:${topic}`
-    const previousValue = await withTimeout(redis.get(key))
-    const previous: IGroupSnapshot | undefined = previousValue
-      ? JSON.parse(previousValue)
-      : undefined
+    const stored = await withRedisTimeout(redis.get(key))
+    const previous: ITopicSnapshot | undefined = stored ? JSON.parse(stored) : undefined
 
     const now = Date.now()
-    const current: IGroupSnapshot = { at: now, partitions: {} }
+    const current: ITopicSnapshot = { at: now, partitions: {} }
+    const stalledPartitions: string[] = []
     let stalledLag = 0
     let stalledSince = now
-    const stalledPartitions: string[] = []
 
     for (const [partition, offsets] of Object.entries(await readPartitionOffsets(admin, topic))) {
       const before = previous?.partitions[partition]
@@ -201,16 +191,18 @@ async function findStalledPartitions(
       current.partitions[partition] = snapshot
     }
 
-    await withTimeout(redis.set(key, JSON.stringify(current), { EX: STALL_SNAPSHOT_TTL_SECONDS }))
+    await withRedisTimeout(
+      redis.set(key, JSON.stringify(current), { EX: STALL_SNAPSHOT_TTL_SECONDS }),
+    )
 
     if (stalledPartitions.length === 0) {
       return undefined
     }
 
     log.warn({ topic, stalledPartitions, stalledLag }, 'Consumer group stopped consuming!')
-    const total = Object.keys(current.partitions).length
+    const totalPartitions = Object.keys(current.partitions).length
     return (
-      `Consumer group ${topic}: ${stalledPartitions.length} of ${total} partitions consumed ` +
+      `Consumer group ${topic}: ${stalledPartitions.length} of ${totalPartitions} partitions consumed ` +
       `nothing since ${new Date(stalledSince).toISOString()} (${formatDuration(now - stalledSince)}) ` +
       `while ${stalledLag.toLocaleString('en-US')} messages wait on them!`
     )
@@ -220,123 +212,62 @@ async function findStalledPartitions(
   }
 }
 
-async function getTopicsAndConsumerGroups(
-  log: Logger,
+async function readPartitionOffsets(
   admin: KafkaAdmin,
-): Promise<Map<string, string[]>> {
-  const topics = await admin.listTopics()
+  topic: string,
+): Promise<Record<string, IPartitionOffsets>> {
+  const topicOffsets = await admin.fetchTopicOffsets(topic)
+  const groupOffsets = await admin.fetchOffsets({ groupId: topic, topics: [topic] })
 
-  const topicConsumerMap = new Map<string, string[]>()
-
-  const groupsResponse = await admin.listGroups()
-  const consumerGroups = distinct(groupsResponse.groups.map((g) => g.groupId))
-
-  for (const topic of topics) {
-    if (topicConsumerMap.has(topic)) {
+  const offsets: Record<string, IPartitionOffsets> = {}
+  for (const { partition, offset } of groupOffsets[0]?.partitions ?? []) {
+    const topicOffset = topicOffsets.find((o) => o.partition === partition)
+    if (!topicOffset || offset === '-1') {
       continue
     }
 
-    log.debug(`Checking topic ${topic} consumer groups!`)
-    const consumers = []
-    for (const group of consumerGroups) {
-      log.debug(`Checking group ${group} if it is listening to topic ${topic}!`)
-      if (await isConsumerListeningToTopic(log, admin, group, topic)) {
-        log.debug(`Group ${group} is listening to topic ${topic}!`)
-        consumers.push(group)
-      }
-    }
-    topicConsumerMap.set(topic, consumers)
+    const committed = Number(offset)
+    const high = Number(topicOffset.offset)
+    const low = Number(topicOffset.low)
+    offsets[partition] = { committed, lag: Math.max(0, high - Math.max(committed, low)) }
   }
 
-  return topicConsumerMap
+  return offsets
 }
 
-async function isConsumerListeningToTopic(
-  log: Logger,
-  admin: KafkaAdmin,
-  groupId: string,
-  topic: string,
-): Promise<boolean> {
-  try {
-    // Method 1: Check subscriptions via group description (most accurate)
-    try {
-      const groupDetails = await admin.describeGroups([groupId])
-
-      // Skip empty or Dead groups
-      if (!groupDetails.groups[0] || groupDetails.groups[0].state === 'Dead') {
-        log.debug(`Group ${groupId} is dead!`)
-        return false
-      }
-
-      // Check if any member is subscribed to the topic
-      if (groupDetails.groups[0].protocolType === 'consumer') {
-        for (const member of groupDetails.groups[0].members) {
-          const { topics } = KafkaAssignerProtocol.MemberMetadata.decode(member.memberMetadata)
-          if (topics.includes(topic)) {
-            log.debug(`Group ${groupId} is listening to topic ${topic}!`)
-            return true
-          }
-        }
-      }
-    } catch (describeErr) {
-      // Group might not exist or other error occurred
-      // Fall through to alternative method
-      log.error(describeErr, `Error describing group ${groupId}`)
-    }
-
-    // Method 2: Check committed offsets (less accurate but works as fallback)
-    try {
-      const offsetsResponse = await admin.fetchOffsets({
-        groupId: groupId,
-        topics: [topic],
-      })
-
-      // No data returned
-      if (offsetsResponse.length === 0 || !offsetsResponse[0].partitions) {
-        log.debug(`Group ${groupId} is not listening to topic ${topic}!`)
-        return false
-      }
-
-      // Check if any partition has a valid offset
-      const hasConsumedPartitions = offsetsResponse[0].partitions.some((partition) => {
-        // An offset of -1 means the consumer has never committed an offset
-        // Any other value means it has consumed from this topic
-        log.debug(
-          `Group ${groupId} Partition ${partition.partition} has offset ${partition.offset}!`,
-        )
-        return partition.offset !== '-1'
-      })
-
-      return hasConsumedPartitions
-    } catch (offsetErr) {
-      // Likely means this consumer doesn't consume this topic
-      log.error(offsetErr, `Group ${groupId} is not listening to topic ${topic}!`)
-      return false
-    }
-  } catch (error) {
-    // Log the error but don't crash the application
-    log.error(error, `Error checking if group ${groupId} listens to topic ${topic}`)
-    return false
-  }
+function formatDuration(ms: number): string {
+  const minutes = Math.round(ms / 60000)
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
-async function getTopicMessageCount(
-  log: Logger,
-  admin: KafkaAdmin,
-  topic: string,
-): Promise<number> {
+async function connectRedis(log: Logger): Promise<RedisClient | undefined> {
   try {
-    const topicOffsets = await admin.fetchTopicOffsets(topic)
-
-    // Sum (high - low) per partition — actual messages currently in the topic.
-    const totalMessages = topicOffsets.reduce((sum, partition) => {
-      return sum + Math.max(0, Number(partition.offset) - Number(partition.low))
-    }, 0)
-
-    return totalMessages
+    // without a listener a dropped connection is an unhandled 'error' event that kills the job
+    return await withRedisTimeout(
+      getRedisClient(REDIS_CONFIG(), false, (err) =>
+        log.warn(err, 'Redis client error during queue monitoring!'),
+      ),
+    )
   } catch (err) {
-    log.error(err, `Failed to get message count for topic ${topic}!`)
-    throw err
+    log.error(err, 'Failed to connect to Redis, skipping the consumer stall check!')
+    return undefined
+  }
+}
+
+async function withRedisTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Redis operation timed out!')),
+          REDIS_OPERATION_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
