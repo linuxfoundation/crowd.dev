@@ -6,9 +6,9 @@ import type { SchedEventData } from './api'
 import { SchedEvent, buildEventActivities } from './transform'
 
 const event: SchedEvent = {
-  subdomain: 'kccnceu2021',
-  name: 'KubeCon + CloudNativeCon Europe 2021 Virtual',
-  segment: { slug: 'cncf', sourceId: 'a0941000002wBz4AAE' },
+  subdomain: 'testevent2021',
+  name: 'Test Event 2021',
+  segment: { slug: 'test-project', sourceId: 'src-1' },
 }
 
 const SESSION_ID = '0123456789abcdef0123456789abcdef'
@@ -53,17 +53,17 @@ describe('buildEventActivities', () => {
     expect(registration).toMatchObject({
       type: 'registered-session',
       platform: PlatformType.SCHED,
-      channel: 'kccnceu2021',
-      sourceId: 'kccnceu2021:jdoe:297',
-      sourceParentId: 'kccnceu2021:297',
-      url: `https://kccnceu2021.sched.com/event/${SESSION_ID}`,
+      channel: 'testevent2021',
+      sourceId: 'testevent2021:jdoe:297',
+      sourceParentId: 'testevent2021:297',
+      url: `https://testevent2021.sched.com/event/${SESSION_ID}`,
       score: 3,
     })
     expect(speaker).toMatchObject({
       type: 'spoke-at-session',
-      channel: 'kccnceu2021',
-      sourceId: `kccnceu2021:speaker:jdoe:${SESSION_ID}`,
-      sourceParentId: `kccnceu2021:${SESSION_ID}`,
+      channel: 'testevent2021',
+      sourceId: `testevent2021:speaker:jdoe:${SESSION_ID}`,
+      sourceParentId: `testevent2021:${SESSION_ID}`,
       score: 8,
     })
   })

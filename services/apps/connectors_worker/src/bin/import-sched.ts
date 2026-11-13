@@ -1,6 +1,3 @@
-import { readFileSync } from 'fs'
-import path from 'path'
-
 import { DataSinkWorkerEmitter } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
@@ -16,14 +13,14 @@ import { PlatformType } from '@crowd/types'
 
 import { readEvent, readUsers } from '../sched/api'
 import { SchedCallError, SchedRateLimitError } from '../sched/client'
+import { parseRunInput, selectEvents } from '../sched/input'
 import { SchedEvent, buildEventActivities } from '../sched/transform'
 
 const log = getServiceLogger()
 
-const USAGE = `usage: pnpm run script:import-sched --keys-stdin [--events a,b] [--check-keys | --dry-run]
-  keys come on stdin as "subdomain=key" lines; events default to every event in src/sched/events.json`
-
-const EVENTS_FILE = path.join(__dirname, '../sched/events.json')
+const USAGE = `usage: pnpm run script:import-sched --stdin [--events a,b] [--check-keys | --dry-run]
+  stdin carries one JSON line per event ({"subdomain","name","slug","sourceId"}) and one
+  "subdomain=key" line per key; events default to every event received`
 
 interface Args {
   events: string[] | null
@@ -39,11 +36,11 @@ interface Outcome {
 
 function parseArgs(argv: string[]): Args {
   const args: Args = { events: null, checkKeys: false, dryRun: false }
-  let keysStdin = false
+  let stdin = false
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === '--keys-stdin') {
-      keysStdin = true
+    if (arg === '--stdin') {
+      stdin = true
     } else if (arg === '--check-keys') {
       args.checkKeys = true
     } else if (arg === '--dry-run') {
@@ -57,8 +54,8 @@ function parseArgs(argv: string[]): Args {
       throw new Error(`unknown argument: ${arg}`)
     }
   }
-  if (!keysStdin) {
-    throw new Error('--keys-stdin is required')
+  if (!stdin) {
+    throw new Error('--stdin is required')
   }
   if (args.checkKeys && args.dryRun) {
     throw new Error('use --check-keys or --dry-run, not both')
@@ -66,34 +63,15 @@ function parseArgs(argv: string[]): Args {
   return args
 }
 
-function selectEvents(all: SchedEvent[], wanted: string[] | null): SchedEvent[] {
-  if (!wanted) {
-    return all
-  }
-  const bySubdomain = new Map(all.map((event) => [event.subdomain, event]))
-  const unknown = wanted.filter((subdomain) => !bySubdomain.has(subdomain))
-  if (unknown.length > 0) {
-    throw new Error(`events not in events.json: ${unknown.join(', ')}`)
-  }
-  return wanted.map((subdomain) => bySubdomain.get(subdomain) as SchedEvent)
-}
-
-async function readKeys(): Promise<Map<string, string>> {
+async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
-    throw new Error('pipe the keys on stdin, one "subdomain=key" line each')
+    throw new Error('pipe the events and keys on stdin')
   }
   let input = ''
   for await (const chunk of process.stdin) {
     input += chunk
   }
-  const keys = new Map<string, string>()
-  for (const line of input.split('\n')) {
-    const separator = line.indexOf('=')
-    if (separator > 0) {
-      keys.set(line.slice(0, separator).trim(), line.slice(separator + 1).trim())
-    }
-  }
-  return keys
+  return input
 }
 
 async function checkKey(event: SchedEvent, key: string): Promise<Outcome> {
@@ -123,6 +101,7 @@ async function importEvent(
   const { activities, skipped } = buildEventActivities(event, data)
   const counts = {
     subdomain: event.subdomain,
+    project: event.segment.slug,
     sessions: data.sessions.length,
     people: data.users.length,
     emails: data.users.filter((user) => user.email).length,
@@ -167,9 +146,12 @@ function summarize(outcomes: Outcome[]): Record<string, string[]> {
 setImmediate(async () => {
   let args: Args
   let events: SchedEvent[]
+  let keys: Map<string, string>
   try {
     args = parseArgs(process.argv.slice(2))
-    events = selectEvents(JSON.parse(readFileSync(EVENTS_FILE, 'utf8')), args.events)
+    const input = parseRunInput(await readStdin())
+    events = selectEvents(input.events, args.events)
+    keys = input.keys
   } catch (err) {
     log.error((err as Error).message)
     log.error(USAGE)
@@ -179,7 +161,6 @@ setImmediate(async () => {
   const outcomes: Outcome[] = []
   let rateLimited = false
   try {
-    const keys = await readKeys()
     const qx = args.checkKeys ? null : pgpQx(await getDbConnection(WRITE_DB_CONFIG()))
     const emitter = args.checkKeys || args.dryRun ? null : await createEmitter()
 
