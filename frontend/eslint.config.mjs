@@ -140,7 +140,7 @@ export default [
       },
     },
     {
-      files: ['eslint.config.mjs', 'vite.config.ts', 'scripts/**'],
+      files: ['eslint.config.mjs', 'vite.config.ts', 'vitest.config.ts', 'scripts/**', 'src/**/*.test.ts'],
       rules: {
         'import/no-extraneous-dependencies': [
           'error',

@@ -1,10 +1,11 @@
 import { useLogRocket } from '@/utils/logRocket';
 import type { User } from '@/modules/auth/types/User.type';
+import { analytics } from '@/utils/segment';
 
 export default function identify(user: User): void {
   const { identify } = useLogRocket();
 
-  window.analytics.identify(user.id, {
+  analytics.identify(user.id, {
     name: user.fullName,
     firstName: user.firstName,
     lastName: user.lastName,
