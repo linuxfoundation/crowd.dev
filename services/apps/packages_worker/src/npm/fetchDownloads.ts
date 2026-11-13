@@ -293,8 +293,11 @@ export async function fetchBulkDailyRange(
 
   const downloads = new Map<string, Array<{ day: string; downloads: number }>>()
   for (const [name, entry] of Object.entries(res.json as Record<string, unknown>)) {
-    const rows = (entry as { downloads?: unknown } | null)?.downloads
-    if (!Array.isArray(rows)) continue
+    if (entry === null) continue
+    const rows =
+      typeof entry === 'object' ? (entry as { downloads?: unknown }).downloads : undefined
+    if (!Array.isArray(rows))
+      return { kind: FetchErrorKind.MALFORMED, message: `unexpected bulk entry for ${name}` }
     downloads.set(
       name,
       (rows as Array<{ day: unknown; downloads: unknown }>)

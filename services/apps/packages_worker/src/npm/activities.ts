@@ -305,7 +305,6 @@ const TRAILING_REFETCH_DAYS = 7
 
 interface DailyPlan {
   pkg: DailyBackfillCandidate
-  // Days still to fetch, already bounded by the first release and the published day.
   needed: string[]
   settled: boolean
 }
@@ -362,8 +361,10 @@ export async function backfillDailyLane(
   )
   if (candidates.length === 0) return { fetched: 0 }
 
+  const beat = (): void => Context.current().heartbeat({ laneIndex, phase: 'daily' })
   const plans: DailyPlan[] = []
   for (const pkg of candidates) {
+    beat()
     const lower = latestDay(NPM_EARLIEST, pkg.firstReleaseAt?.slice(0, 10), refetchFrom)
     const needed = await dailyNeeds(qx, pkg.id, lower, upperBound, !!refetchFrom)
     plans.push({ pkg, needed, settled: false })
@@ -378,7 +379,6 @@ export async function backfillDailyLane(
   const egress = proxy?.host ?? 'direct'
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
   const throttle = npmDownloadsThrottle()
-  const beat = (): void => Context.current().heartbeat({ laneIndex, phase: 'daily' })
   const totals = { inserted: 0, overwritten: 0 }
 
   const persist = async (
@@ -436,10 +436,14 @@ export async function backfillDailyLane(
           { start, end: upperBound, statusCode: result.statusCode, kind: result.kind },
           'npm bulk daily downloads 4xx, marking batch processed and skipping',
         )
-        for (const p of batch) await settle(p, clientErrorResult(result))
+        for (const p of batch) {
+          beat()
+          await settle(p, clientErrorResult(result))
+        }
         continue
       }
       for (const p of batch) {
+        beat()
         const rows = result.downloads.get(p.pkg.name)
         if (!rows) {
           log.warn({ purl: p.pkg.purl }, 'npm bulk daily downloads: package missing, skipping')

@@ -686,3 +686,58 @@ describe('backfillDailyLane: bulk path budget and heartbeat', () => {
     )
   })
 })
+
+describe('backfillDailyLane: heartbeats while planning', () => {
+  it('heartbeats once per package before any fetch', async () => {
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([
+      scoped('a', '2026-11-12'),
+      scoped('b', '2026-11-12'),
+      scoped('c', '2026-11-12'),
+    ])
+
+    const { error } = await settle(activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER), MIN)
+
+    expect(error).toBeUndefined()
+    expect(h.fetch.fetchDailyRange).not.toHaveBeenCalled()
+    expect(h.ctx.heartbeat.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(h.ctx.heartbeat).toHaveBeenCalledWith({ laneIndex: 0, phase: 'daily' })
+    expect(markedWith('pkg:npm/%40scope/c')).toEqual([{ status: 'success' }])
+  })
+})
+
+describe('backfillDailyLane: heartbeats while handling a bulk result', () => {
+  const names = ['a', 'b', 'c']
+
+  // Heartbeats sent before and during the bulk request are cleared, so only the result loops count.
+  function bulkThen(result: unknown) {
+    h.fetch.fetchBulkDailyRange.mockImplementation(async () => {
+      h.ctx.heartbeat.mockClear()
+      return result
+    })
+  }
+
+  beforeEach(() => {
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue(names.map((n) => unscoped(n)))
+    storedState(
+      Object.fromEntries(names.map((n) => [`id-${n}`, { newest: '2026-11-10', missing: [UPPER] }])),
+    )
+  })
+
+  it('heartbeats once per package while writing bulk rows', async () => {
+    bulkThen({ downloads: new Map(names.map((n) => [n, rows('2026-11-04', UPPER)])) })
+
+    const { error } = await settle(activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER), MIN)
+
+    expect(error).toBeUndefined()
+    expect(h.ctx.heartbeat.mock.calls.length).toBeGreaterThanOrEqual(names.length)
+  })
+
+  it('heartbeats once per package while marking a bulk 4xx batch', async () => {
+    bulkThen({ kind: FetchErrorKind.TRANSIENT, statusCode: 400, message: 'HTTP 400' })
+
+    const { error } = await settle(activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER), MIN)
+
+    expect(error).toBeUndefined()
+    expect(h.ctx.heartbeat.mock.calls.length).toBeGreaterThanOrEqual(names.length)
+  })
+})

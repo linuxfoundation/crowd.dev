@@ -10,7 +10,6 @@ export function addDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-// Every YYYY-MM-DD from start to end, inclusive.
 export function daysBetween(start: string, end: string): string[] {
   const out: string[] = []
   for (let d = start; d <= end; d = addDays(d, 1)) out.push(d)

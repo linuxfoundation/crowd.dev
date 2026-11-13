@@ -108,6 +108,35 @@ describe('fetchBulkDailyRange', () => {
     expect(result).toMatchObject({ kind: FetchErrorKind.RATE_LIMIT, statusCode: 429 })
   })
 
+  it('reports an entry without a downloads array as malformed instead of treating it as missing', async () => {
+    respond(200, {
+      react: { start: '2026-11-10', end: '2026-11-11', package: 'react', downloads: 123 },
+      lodash: {
+        start: '2026-11-10',
+        end: '2026-11-11',
+        package: 'lodash',
+        downloads: [{ day: '2026-11-10', downloads: 3 }],
+      },
+    })
+
+    const result = await fetchBulkDailyRange(['react', 'lodash'], '2026-11-10', '2026-11-11')
+
+    expect(result).toMatchObject({ kind: FetchErrorKind.MALFORMED })
+  })
+
+  it('reports a single-package-shaped body as malformed', async () => {
+    respond(200, {
+      start: '2026-11-10',
+      end: '2026-11-11',
+      package: 'react',
+      downloads: [{ day: '2026-11-10', downloads: 10 }],
+    })
+
+    const result = await fetchBulkDailyRange(['react', 'lodash'], '2026-11-10', '2026-11-11')
+
+    expect(result).toMatchObject({ kind: FetchErrorKind.MALFORMED })
+  })
+
   it('reports a non-object body as malformed', async () => {
     respond(200, '[1, 2]')
 
