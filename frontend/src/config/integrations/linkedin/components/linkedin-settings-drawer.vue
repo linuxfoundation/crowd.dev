@@ -101,6 +101,7 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { analytics } from '@/utils/segment';
 
 defineOptions({
   name: 'LfLinkedinSettingsDrawer',
@@ -193,13 +194,11 @@ const connect = async () => {
 
 watch(isVisible, (newValue, oldValue) => {
   if (newValue) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
-    (window as any).analytics.track('LinkedIn: settings drawer', {
+    analytics.track('LinkedIn: settings drawer', {
       action: 'open',
     });
   } else if (newValue === false && oldValue) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: window.analytics is untyped. revisit: Window.analytics gets a global declaration
-    (window as any).analytics.track('LinkedIn: settings drawer', {
+    analytics.track('LinkedIn: settings drawer', {
       action: 'close',
     });
   }

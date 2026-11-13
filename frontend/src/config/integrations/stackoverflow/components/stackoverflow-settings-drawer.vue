@@ -168,6 +168,7 @@ import AppKeywordsInput from '@/shared/form/keywords-input.vue';
 import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
 import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
+import { analytics } from '@/utils/segment';
 
 interface TagField {
   id?: number;
@@ -427,14 +428,14 @@ const connect = async () => {
 
 watch(isVisible, (newValue, oldValue) => {
   if (newValue) {
-    window.analytics.track(
+    analytics.track(
       'Stack Ooverflow: connect drawer',
       {
         action: 'open',
       },
     );
   } else if (newValue === false && oldValue) {
-    window.analytics.track(
+    analytics.track(
       'Stack Overflow: connect drawer',
       {
         action: 'close',

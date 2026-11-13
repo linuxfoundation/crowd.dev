@@ -1,4 +1,5 @@
 import config from '@/config';
+import { analytics } from '@/utils/segment';
 import type { RedirectLoginOptions } from '@auth0/auth0-spa-js';
 import { Auth0Client } from '@auth0/auth0-spa-js';
 
@@ -56,6 +57,8 @@ class Auth0ServiceClass {
   }
 
   public logout() {
+    // Not awaited: the stored Segment identity is cleared synchronously, and a loaded library resets in microtasks.
+    analytics.reset();
     return this.webAuth.logout();
   }
 

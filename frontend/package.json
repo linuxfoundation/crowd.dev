@@ -11,6 +11,7 @@
     "lint:cycles": "node scripts/check-cycles.mjs",
     "lint:cycles:update": "node scripts/check-cycles.mjs --update",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "build": "vite build",
     "build:localhost": "vite build --mode localhost",
     "build:production": "vite build --mode prod",
@@ -111,6 +112,7 @@
     "typescript-eslint": "^8.71.0",
     "unplugin-vue-components": "^32.1.0",
     "vite": "^7.3.2",
+    "vitest": "4.1.11",
     "vue-tsc": "^3.3.11"
   }
 }
