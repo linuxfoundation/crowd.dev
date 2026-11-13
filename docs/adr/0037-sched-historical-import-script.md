@@ -6,11 +6,11 @@
 
 ## Context
 
-LF events move from Sched to Sessionize in 2027, so CDP will not build an ongoing Sched connector, but the history of LF's 112 Sched events is still wanted for identity resolution and company data ([spec](https://linuxfoundation-dxwx.dsp.so/4hh3fAU8-sched-connector-scope)). Every Sched event is its own site with its own API key, the API allows under 30 calls a minute and revokes keys that go over, and the largest registration call returns 48–56 MB in one unpaged response. Neither ingestion path we have fits: Sched data is not in Snowflake, and the v2 connector framework runs on a cadence with one environment credential per platform ([`credentials.ts`](../../services/libs/connectors/src/credentials.ts)). CDP runs on Oracle Cloud, but nothing in crowd.dev reads from Oracle Vault yet.
+LF events move from Sched to Sessionize in 2027, so CDP will not build an ongoing Sched connector, but the history of LF's past Sched events (658 that LF staff administer, 2016–2026) is still wanted for identity resolution and company data ([spec](https://linuxfoundation-dxwx.dsp.so/4hh3fAU8-sched-connector-scope)). Every Sched event is its own site with its own API key, shown only on that event's Control Panel; the API allows under 30 calls a minute and revokes keys that go over, and the largest registration call returns 48–56 MB in one unpaged response. Neither ingestion path we have fits: Sched data is not in Snowflake, and the v2 connector framework runs on a cadence with one environment credential per platform ([`credentials.ts`](../../services/libs/connectors/src/credentials.ts)).
 
 ## Decision
 
-Import Sched history with a one-time, re-runnable crowd.dev script that reads each event from the Sched API and sends activities to the data sink with `DataSinkWorkerEmitter.createAndProcessActivityResult`, the path the Snowflake connectors use; from there activities and relations reach Tinybird and Snowflake as described in [activity-pipeline.md](../design/activity-pipeline.md). Events and their CDP projects live in a reviewed mapping file in the repo, and each event's key is an Oracle Vault secret named `sched-<subdomain>`, read at run time by the job's own identity and deleted after the import. Source ids include the event (`{subdomain}:{username}:{sessionKey}` for `registered-session`, `{subdomain}:speaker:{username}:{sessionId}` for `spoke-at-session`) and the channel is the subdomain, so a re-run updates activities in place as long as timestamp, type, source id, channel and segment stay the same.
+Import Sched history with a one-time, re-runnable crowd.dev script that reads each event from the Sched API and sends activities to the data sink with `DataSinkWorkerEmitter.createAndProcessActivityResult`, the path the Snowflake connectors use; from there activities and relations reach Tinybird and Snowflake as described in [activity-pipeline.md](../design/activity-pipeline.md). Events and their CDP projects live in a reviewed mapping file in the repo. Each event's existing key is collected once by a browser script that reads it from the event's Control Panel (it never generates or changes a key) and stored in one 1Password item, one concealed field per subdomain. Before a run, an operator loads that item into a short-lived Kubernetes secret by piping `op item get` into `kubectl create secret`, so no key touches disk; the job mounts it and the secret is deleted after the run. Source ids include the event (`{subdomain}:{username}:{sessionKey}` for `registered-session`, `{subdomain}:speaker:{username}:{sessionId}` for `spoke-at-session`) and the channel is the subdomain, so a re-run updates activities in place as long as timestamp, type, source id, channel and segment stay the same.
 
 ## Alternatives Considered
 
@@ -26,11 +26,17 @@ Import Sched history with a one-time, re-runnable crowd.dev script that reads ea
 - **Cons**: needs per-event credential storage the framework doesn't have, and it has no run-once mode: units reschedule on their cadence, so a one-off means seeding units and pausing them by hand.
 - **Why not**: the largest build, for a connector we decided not to keep.
 
-### Keys in a Kubernetes secret or AWS Secrets Manager, mounted as a file
+### Keys in Oracle Vault, one secret per event
 
-- **Pros**: a familiar mount; `lfx-secrets-management` already delivers to AWS ([ADR-0016](./0016-akrites-cdp-public-api-authentication.md)).
-- **Cons**: CDP runs on Oracle Cloud; all 112 keys would sit in one hand-edited file for the life of the job.
-- **Why not**: Oracle Vault sits where CDP runs, takes keys one at a time as they are collected, and lets the job read each key by identity without writing it to disk.
+- **Pros**: sits where CDP runs; the job reads each key with its own identity, so no key is stored in the cluster.
+- **Cons**: nothing in crowd.dev uses Oracle Vault yet, so the vault, access policy and workload identity would all be new, plus one secret per event.
+- **Why not**: that setup outweighs a one-time import, and the team already keeps credentials in 1Password.
+
+### The job reads 1Password directly with a service account
+
+- **Pros**: no operator step and no Kubernetes secret, even for a short time.
+- **Cons**: needs a 1Password admin to create the service account, and its token still has to reach the cluster.
+- **Why not**: not available to the team today; a secret that lives only for the run gives the same result. The job reads a mounted secret either way, so switching later changes no code.
 
 ## Consequences
 
@@ -38,13 +44,14 @@ Import Sched history with a one-time, re-runnable crowd.dev script that reads ea
 
 - No new long-running service: deduplication, member matching by verified email and email-domain organizations work as they do for every source.
 - Runs can be filtered by event, date range and data type, with a key check, a dry run and per-event resume; repeated runs update instead of duplicating.
-- The first Oracle Vault use gives CDP a pattern for per-integration secrets, which the connector framework lacks today.
+- No new infrastructure for keys: they sit in the 1Password vault the team already uses, and they are in the cluster only while a run lasts.
 
 ### Negative
 
 - A new `sched` platform: `PlatformType` entry, activity-type migration and scores.
 - Progress tracking, pacing and streaming the 50 MB response are the script's own code.
-- We own the Vault setup (vault, access policy, workload identity for the job).
+- Each run needs an operator with 1Password and cluster access to load the secret and delete it afterwards.
+- A new event's key has to be added to the 1Password item before it can be imported.
 - Re-running after 2027 depends on Sched sites and keys still working; no raw copy is kept.
 
 ### Risks
@@ -53,5 +60,5 @@ Import Sched history with a one-time, re-runnable crowd.dev script that reads ea
 - Bad keys return HTTP 200 with `ERR: Authorization failed.`: check the body, not only the status.
 - `site/sync` echoes the API key in its response: never log raw responses.
 - A timestamp that changes between runs, or an event moved to another project, creates duplicates: the registration-time choice is still an open product question.
-- Read/Write keys can change event data: the script calls read endpoints only, and secrets are deleted after the import.
+- Read/Write keys can change event data: the script calls read endpoints only, the Kubernetes secret is deleted after each run, and the 1Password item is archived once the import is done.
 - Organizations and the product sign-off (key type, activity types and scores, registration time, project per event) are open with Jonathan and Nirav; this ADR covers the technical approach only.
