@@ -7,17 +7,14 @@
  *
  * Pure function — no DB access, no I/O.
  *
- * Mapping rules (effective_depth = max HIERARCHY_LEVEL - 1, stripping TLF root):
- *   Rule 1 (eff=1): group=level[1], project=level[1], subproject=level[1]
- *   Rule 2 (eff=2): group=level[2], project=level[1], subproject=level[1]
- *   Rule 3 (eff=3): group=level[3], project=level[2], subproject=level[1]
- *   Rule 4 (eff=4): group=level[3], project=level[2], subproject=level[1]  (level[4] intermediate dropped)
- *
- * Effective depth > 4: SCHEMA_MISMATCH — surfaced to pcc_projects_sync_errors.
+ * Mapping rules (HIERARCHY_LEVEL 1 is the leaf, the highest level is the top ancestor):
+ *   group      = top ancestor (The Linux Foundation for Community Projects)
+ *   project    = level just below the top ancestor, or the top ancestor when it is the leaf
+ *   subproject = leaf
  */
 import { SegmentStatus } from '@crowd/types'
 
-import type { MappingRule, ParseResult, PccParquetRow } from './types'
+import type { CdpHierarchyTarget, ParseResult, PccParquetRow } from './types'
 
 /**
  * PCC PROJECT_STATUS → CDP SegmentStatus enum.
@@ -67,7 +64,7 @@ function trimOrNull(value: unknown): string | null {
  *
  * Each call receives all rows that share the same PROJECT_ID (one row per
  * hierarchy level from the PROJECT_SPINE JOIN). Returns ok=false with
- * SCHEMA_MISMATCH if the group is malformed or has an unsupported depth (> 4).
+ * SCHEMA_MISMATCH if the group is malformed or has no usable hierarchy rows.
  */
 export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   if (rawRows.length === 0) {
@@ -95,8 +92,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   }
 
   // Parse HIERARCHY_LEVEL for each row and sort ascending (level=1 is the leaf).
-  // Filter out rows with non-finite levels before sorting to avoid NaN in the comparator,
-  // which would violate the sort contract and produce unpredictable ordering.
+  // A leaf missing from PROJECT_SPINE comes through the LEFT JOIN with a null level, which
+  // parses to 0, so levels below 1 are dropped together with non-integer ones.
   const levelRows = rawRows
     .map((r) => {
       const row = r as Partial<PccParquetRow>
@@ -106,7 +103,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
         slug: trimOrNull(row.MAPPED_PROJECT_SLUG),
       }
     })
-    .filter((r) => Number.isFinite(r.level) && Number.isInteger(r.level))
+    .filter((r) => Number.isSafeInteger(r.level) && r.level >= 1)
     .sort((a, b) => a.level - b.level)
 
   if (levelRows.length === 0) {
@@ -120,53 +117,24 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   }
 
   const maxLevel = levelRows[levelRows.length - 1].level
-  const effectiveDepth = maxLevel - 1
   // Slug of the leaf project itself (hierarchy_level=1 row). Select by level rather
   // than array position — if the level-1 row was filtered out, we want null, not an
   // ancestor's slug.
   const leafSlug = levelRows.find((r) => r.level === 1)?.slug ?? null
 
-  if (
-    !Number.isFinite(effectiveDepth) ||
-    !Number.isInteger(effectiveDepth) ||
-    effectiveDepth < 1 ||
-    effectiveDepth > 4
-  ) {
-    const depthReason =
-      !Number.isFinite(effectiveDepth) || !Number.isInteger(effectiveDepth)
-        ? 'invalid hierarchy level (non-finite or fractional depth)'
-        : effectiveDepth < 1
-          ? 'unexpected root node (maxHierarchyLevel≤1)'
-          : 'unsupported depth > 4'
-    return {
-      ok: false,
-      errorType: 'SCHEMA_MISMATCH',
-      pccProjectId: String(projectId),
-      pccSlug: leafSlug,
-      details: {
-        reason: depthReason,
-        maxLevel,
-        effectiveDepth,
-        projectId,
-        name,
-      },
-    }
-  }
-
-  // Build hierarchy_level → MAPPED_PROJECT_NAME lookup.
   const nameAt: Record<number, string | null> = {}
   for (const row of levelRows) {
     nameAt[row.level] = row.name
   }
 
-  const cdpTargetResult = buildCdpTarget(effectiveDepth as MappingRule, nameAt)
+  const cdpTargetResult = buildCdpTarget(maxLevel, nameAt)
   if (cdpTargetResult.ok === false) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
       pccProjectId: String(projectId),
       pccSlug: leafSlug,
-      details: { reason: cdpTargetResult.reason, maxLevel, effectiveDepth, projectId, name },
+      details: { reason: cdpTargetResult.reason, maxLevel, projectId, name },
     }
   }
 
@@ -184,53 +152,27 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       description: trimOrNull(firstRaw.DESCRIPTION),
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
       segmentIdFromSnowflake: trimOrNull(firstRaw.SEGMENT_ID),
-      effectiveDepth,
-      mappingRule: effectiveDepth as MappingRule,
       cdpTarget: cdpTargetResult.target,
     },
   }
 }
 
 function buildCdpTarget(
-  effectiveDepth: MappingRule,
+  maxLevel: number,
   nameAt: Record<number, string | null>,
-):
-  | { ok: true; target: { group: string; project: string; subproject: string } }
-  | { ok: false; reason: string } {
-  switch (effectiveDepth) {
-    case 1: {
-      // TLF at level 2 (stripped), leaf at level 1 → all three CDP levels share the leaf.
-      const n1 = nameAt[1]
-      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
-      return { ok: true, target: { group: n1, project: n1, subproject: n1 } }
-    }
-    case 2: {
-      // TLF at level 3, group at level 2, leaf at level 1.
-      const n2 = nameAt[2]
-      const n1 = nameAt[1]
-      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
-      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
-      return { ok: true, target: { group: n2, project: n1, subproject: n1 } }
-    }
-    case 3: {
-      // TLF at level 4, group at level 3, project at level 2, leaf at level 1.
-      const n3 = nameAt[3]
-      const n2 = nameAt[2]
-      const n1 = nameAt[1]
-      if (!n3) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=3' }
-      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
-      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
-      return { ok: true, target: { group: n3, project: n2, subproject: n1 } }
-    }
-    case 4: {
-      // TLF at level 5, intermediate at level 4 (dropped), group at level 3, project at level 2, leaf at level 1.
-      const n3 = nameAt[3]
-      const n2 = nameAt[2]
-      const n1 = nameAt[1]
-      if (!n3) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=3' }
-      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
-      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
-      return { ok: true, target: { group: n3, project: n2, subproject: n1 } }
-    }
-  }
+): { ok: true; target: CdpHierarchyTarget } | { ok: false; reason: string } {
+  const projectLevel = Math.max(maxLevel - 1, 1)
+  const group = nameAt[maxLevel]
+  const project = nameAt[projectLevel]
+  const subproject = nameAt[1]
+
+  if (!group) return missingNameAt(maxLevel)
+  if (!project) return missingNameAt(projectLevel)
+  if (!subproject) return missingNameAt(1)
+
+  return { ok: true, target: { group, project, subproject } }
+}
+
+function missingNameAt(level: number): { ok: false; reason: string } {
+  return { ok: false, reason: `missing MAPPED_PROJECT_NAME at hierarchy_level=${level}` }
 }

@@ -42,9 +42,6 @@ export interface CdpHierarchyTarget {
   subproject: string
 }
 
-/** Which depth-mapping rule was applied (effective depth 1–4). */
-export type MappingRule = 1 | 2 | 3 | 4
-
 /** Structured result after parsing and transforming a single Parquet row. */
 export interface ParsedPccProject {
   pccProjectId: string
@@ -58,8 +55,6 @@ export interface ParsedPccProject {
   logoUrl: string | null
   /** segment_id from Snowflake ACTIVE_SEGMENTS JOIN — used for step-1 matching. */
   segmentIdFromSnowflake: string | null
-  effectiveDepth: number
-  mappingRule: MappingRule
   cdpTarget: CdpHierarchyTarget
 }
 
@@ -69,8 +64,8 @@ export type ParseResult =
       ok: false
       errorType: 'SCHEMA_MISMATCH'
       details: Record<string, unknown>
-      /** Present when the row had a valid PROJECT_ID (depth-range errors). Used for segment lookup. */
+      /** Present when the row had a valid PROJECT_ID. Used for segment lookup. */
       pccProjectId?: string
-      /** Present when the row had a valid SLUG (depth-range errors). Used for segment lookup. */
+      /** Present when the row had a valid SLUG. Used for segment lookup. */
       pccSlug?: string | null
     }
