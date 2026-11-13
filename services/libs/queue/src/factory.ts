@@ -19,6 +19,7 @@ export class QueueFactory {
 
 export type KafkaClient = Kafka
 export type KafkaAdmin = Admin
+export { AssignerProtocol as KafkaAssignerProtocol } from 'kafkajs'
 
 export const getKafkaClient = (config: IQueueClientConfig): Kafka => {
   const kafkaClient = new Kafka({

@@ -2,14 +2,19 @@ import CronTime from 'cron-time-generator'
 
 import { IS_PROD_ENV, distinct, timeout } from '@crowd/common'
 import { Logger } from '@crowd/logging'
-import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient, getKafkaMessageCounts } from '@crowd/queue'
+import {
+  KafkaAdmin,
+  KafkaAssignerProtocol,
+  QUEUE_CONFIG,
+  getKafkaClient,
+  getKafkaMessageCounts,
+} from '@crowd/queue'
 import { REDIS_CONFIG, RedisClient, getRedisClient } from '@crowd/redis'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import telemetry from '@crowd/telemetry'
 
 import { IJobDefinition } from '../types'
 
-const STALL_CHECKED_TOPIC_PREFIX = 'data-sink-worker-'
 const STALL_SNAPSHOT_KEY_PREFIX = 'queue-monitoring:partitions'
 const STALL_SNAPSHOT_TTL_SECONDS = 2 * 60 * 60
 const REDIS_OPERATION_TIMEOUT_MS = 5000
@@ -46,6 +51,10 @@ const job: IJobDefinition = {
 
     let msg = ``
 
+    if (!redis) {
+      msg += `Stall check skipped: Redis is unavailable!\n`
+    }
+
     for (const [topic, groups] of map) {
       const totalMessages = await getTopicMessageCount(ctx.log, admin, topic)
       telemetry.gauge(`kafka.${topic}.total`, totalMessages)
@@ -68,14 +77,11 @@ const job: IJobDefinition = {
         telemetry.gauge(`kafka.${topic}.${group}.unconsumed`, counts.unconsumed)
       }
 
-      if (topic.startsWith(STALL_CHECKED_TOPIC_PREFIX) && !toIgnore.includes(topic.trim())) {
-        if (!redis) {
-          msg += `Stall check for topic ${topic} skipped: Redis is unavailable!\n`
-        } else if (groups.includes(topic)) {
-          const stalled = await findStalledPartitions(ctx.log, admin, redis, topic)
-          if (stalled) {
-            msg += `${stalled}\n`
-          }
+      const consumedByWorker = groups.includes(topic)
+      if (redis && consumedByWorker && !toIgnore.includes(topic.trim())) {
+        const stalled = await findStalledPartitions(ctx.log, admin, redis, topic)
+        if (stalled) {
+          msg += `${stalled}\n`
         }
       }
     }
@@ -263,25 +269,12 @@ async function isConsumerListeningToTopic(
       }
 
       // Check if any member is subscribed to the topic
-      for (const member of groupDetails.groups[0].members) {
-        if (member.memberMetadata) {
-          try {
-            // Parse member metadata which contains subscription info
-            const metadata = JSON.parse(member.memberMetadata.toString())
-
-            // Check if topic is in the subscription list
-            if (metadata.subscription && Array.isArray(metadata.subscription)) {
-              if (metadata.subscription.includes(topic)) {
-                log.debug(`Group ${groupId} is listening to topic ${topic}!`)
-                return true
-              }
-            }
-          } catch {
-            // log.error(
-            //   metadataErr,
-            //   `Failed to parse metadata for group ${groupId}! - "${member.memberMetadata.toString()}"`,
-            // )
-            // Failed to parse metadata, try alternative approach
+      if (groupDetails.groups[0].protocolType === 'consumer') {
+        for (const member of groupDetails.groups[0].members) {
+          const { topics } = KafkaAssignerProtocol.MemberMetadata.decode(member.memberMetadata)
+          if (topics.includes(topic)) {
+            log.debug(`Group ${groupId} is listening to topic ${topic}!`)
+            return true
           }
         }
       }
