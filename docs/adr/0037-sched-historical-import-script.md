@@ -36,7 +36,7 @@ Import Sched history with a one-time, re-runnable crowd.dev script that reads ea
 
 - **Pros**: no operator step and no Kubernetes secret, even for a short time.
 - **Cons**: needs a 1Password admin to create the service account, and its token still has to reach the cluster.
-- **Why not**: not available to the team today; a secret that lives only for the run gives the same result. The job reads a mounted secret either way, so switching later changes no code.
+- **Why not**: not available to the team today; a secret that lives only for the run gives the same result. Switching later keeps the importer unchanged only if an init container fetches the item and writes the same mounted file; otherwise the importer needs its own 1Password login.
 
 ## Consequences
 
