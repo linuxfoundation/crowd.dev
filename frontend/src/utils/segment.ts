@@ -35,11 +35,13 @@ const injectScript = (src: string): Promise<void> =>
 
 const loadLfxAnalytics = async (writeKey: string): Promise<LfxSegmentsAnalytics | null> => {
   await injectScript(LFX_SEGMENT_URL);
-  const instance = window.LfxAnalytics?.LfxSegmentsAnalytics?.getInstance() ?? null;
+  const instance = window.LfxAnalytics?.LfxSegmentsAnalytics?.getInstance();
+  if (!instance) {
+    console.error('Segment library loaded without LfxSegmentsAnalytics');
+    return null;
+  }
   // init() must be called before any queued call reaches the instance, or that call is dropped as held.
-  instance
-    ?.init(writeKey)
-    .catch((error: unknown) => console.error('Segment failed to load', error));
+  instance.init(writeKey).catch((error: unknown) => console.error('Segment failed to load', error));
   return instance;
 };
 

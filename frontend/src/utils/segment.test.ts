@@ -18,7 +18,6 @@ const AIRGAP_URL = 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa
 const injected: FakeScript[] = [];
 const calls: string[] = [];
 
-// Records the method and every argument it received, so a dropped payload fails the assertion.
 const record = (method: string, ...args: unknown[]) => {
   const parts = args
     .filter((arg) => arg !== undefined)
@@ -124,10 +123,9 @@ describe('segment', () => {
     expect(console.error).toHaveBeenCalledWith('Segment failed to load', expect.any(Error));
   });
 
-  it('contains a failing call, because no call site awaits or catches it', async () => {
+  it('contains a call to a method latest/ no longer has, because no call site awaits or catches it', async () => {
     const { analytics, loadSegment } = await freshSegment();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    // The shape a renamed or removed method on latest/ would take.
     fakeLibrary.track.mockImplementationOnce(() => {
       throw new TypeError('instance.track is not a function');
     });
@@ -137,6 +135,20 @@ describe('segment', () => {
 
     await expect(analytics.track('Custom view created')).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith('Segment call failed', expect.any(TypeError));
+  });
+
+  it('reports a library that loads without the LfxSegmentsAnalytics global, and sends nothing', async () => {
+    const { analytics, loadSegment } = await freshSegment();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    loadSegment('write-key');
+    injected[0].onload?.();
+
+    await expect(analytics.track('Custom view created')).resolves.toBeUndefined();
+    expect(calls).toEqual([]);
+    expect(console.error).toHaveBeenCalledWith(
+      'Segment library loaded without LfxSegmentsAnalytics',
+    );
   });
 
   it('sends nothing when the library is blocked', async () => {
@@ -154,7 +166,6 @@ describe('segment', () => {
 describe('index.html', () => {
   it('loads Transcend airgap.js synchronously before any other script', () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-    // HTML tag and attribute names are case-insensitive.
     const scripts = [...html.matchAll(/<script\b[^>]*>/gi)].map(([tag]) => tag);
 
     expect(scripts[0]).toContain(`src="${AIRGAP_URL}"`);

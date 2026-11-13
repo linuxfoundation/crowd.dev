@@ -9,8 +9,9 @@ by the LF `ui-kit` (`src/ui-kit/`) as part of the frontend modernization epic (s
 This app is a thin client over the CDP backend (`../backend/`) — it does not talk to the database
 directly. In the browser it does call a few third parties itself: Auth0 for login, plus Segment,
 Datadog RUM and Hotjar for analytics and telemetry when their keys are configured. Segment loads
-through the LFX Segments library (`src/utils/segment.ts`), and only once the visitor has given
-Transcend Analytics consent.
+through the LFX Segments library (`src/utils/segment.ts`) and only when Transcend allows the
+Analytics purpose: opt-in regimes wait for the visitor's choice, and `US_DNSS` (opt-out) loads it
+unless the visitor opts out.
 
 ## Prerequisites
 
