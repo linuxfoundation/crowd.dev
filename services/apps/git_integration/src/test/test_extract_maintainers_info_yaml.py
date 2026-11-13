@@ -77,6 +77,8 @@ def test_parse_info_yaml_skips_tsc_change_log():
         "- just\n- a list\n",
         "key: [unclosed\n",
         "project_lead: {}\ncommitters:\n  - 'alice@example.org'\n",
+        "project_lead: {name: 'Lead', email: 'lead@example.org'}\n"
+        "committers:\n  - name: 'Alice'\n    email: 'alice@example.org'\n  - 'bob@example.org'\n",
     ],
 )
 def test_parse_info_yaml_rejects_other_formats(content: str):

@@ -46,17 +46,18 @@ def parse_info_yaml(content: str) -> list[MaintainerInfoItem] | None:
     people = [_person(project_lead, "Project Lead")]
     people.extend(_person(entry, "Committer") for entry in committers)
 
+    # The roster is authoritative, so a person we can't read would be end-dated: reject the
+    # whole file instead and let the normal detection run.
+    if any(person is None for person in people):
+        return None
+
     maintainers: list[MaintainerInfoItem] = []
     seen: set[str] = set()
     for person in people:
-        if person is None:
-            continue
         key = (person.email or person.name or "").lower()
         if key in seen:
             continue
         seen.add(key)
         maintainers.append(person)
 
-    # An empty result here means malformed entries, not an empty roster: accepting it would
-    # end-date every current maintainer.
-    return maintainers or None
+    return maintainers
