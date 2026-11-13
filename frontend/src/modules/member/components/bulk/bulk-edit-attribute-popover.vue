@@ -141,7 +141,7 @@
   </lf-modal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import {
   computed, h, ref, watch,
@@ -151,6 +151,7 @@ import { useMemberStore } from '@/modules/member/store/pinia';
 import { onSelectMouseLeave } from '@/utils/select';
 import { MemberService } from '@/modules/member/services/member.api.service';
 import { OrganizationService } from '@/modules/organization/services/organization.api.service';
+import type { OrganizationAutocompleteParams } from '@/modules/organization/services/organization.api.service';
 import getParsedAttributes from '@/shared/attributes/get-parsed-attributes';
 import AppBulkEditAttributeDropdown from '@/modules/member/components/bulk/bulk-edit-attribute-dropdown.vue';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
@@ -162,15 +163,38 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfModal from '@/ui-kit/modal/Modal.vue';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import type { ContributorAttribute } from '@/modules/contributor/types/Contributor';
+import type { MemberOrganization, Organization } from '@/modules/organization/types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
+type AttributeOption = Pick<FilterCustomAttribute, 'name' | 'label'>;
+
+type EditableAttribute = AttributeOption & Partial<Pick<FilterCustomAttribute, 'id' | 'options'>> & {
+  type: string;
+};
+
+type OrganizationOption = Pick<Organization, 'id' | 'name'> & {
+  memberOrganizations?: Partial<Pick<MemberOrganization, 'title' | 'dateStart' | 'dateEnd'>>;
+};
+
+interface BulkEditFormModel {
+  organizations: OrganizationOption[];
+  attributes: Record<string, ContributorAttribute>;
+  joinedAt?: string | null;
+  [key: string]: unknown;
+}
+
+defineOptions({ name: 'AppBulkEditAttributePopover' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+}>(), {
+  modelValue: false,
 });
 
-const emits = defineEmits(['reload', 'update:modelValue']);
+const emits = defineEmits<{(e: 'reload', value: boolean): void;
+  (e: 'update:modelValue', value: boolean): void;
+}>();
 
 const CalendarIcon = h(
   'i', // type
@@ -194,7 +218,7 @@ const computedVisible = computed({
   },
 });
 
-function filteredAttributes(attributes) {
+function filteredAttributes(attributes: FilterCustomAttribute[]): FilterCustomAttribute[] {
   return attributes.filter(
     ({ name }) => ![
       'bio',
@@ -212,12 +236,12 @@ function filteredAttributes(attributes) {
   );
 }
 
-function getInitialModel() {
+function getInitialModel(): BulkEditFormModel {
   return { organizations: [], attributes: {} };
 }
 
-const selectedAttribute = ref({});
-const formModel = ref(getInitialModel());
+const selectedAttribute = ref<EditableAttribute | Record<string, never>>({});
+const formModel = ref<BulkEditFormModel>(getInitialModel());
 const hasFormChanged = computed(
   () => !isEqual(getInitialModel(), formModel.value),
 );
@@ -232,20 +256,64 @@ watch(
   },
 );
 
+const fetchOrganizationsFn = ({
+  query,
+  limit,
+}: Pick<OrganizationAutocompleteParams, 'query' | 'limit'>) => OrganizationService.listOrganizationsAutocomplete({
+  query,
+  limit,
+});
+
+const createOrganizationFn = (value: string) => OrganizationService.create({
+  name: value,
+})
+  .then((newOrganization) => ({
+    id: newOrganization.id,
+    label: newOrganization.displayName || newOrganization.name,
+    displayName: newOrganization.displayName || newOrganization.name,
+    name: newOrganization.displayName || newOrganization.name,
+    memberOrganizations: {
+      title: '',
+      dateStart: '',
+      dateEnd: '',
+    },
+  }))
+  .catch(() => null);
+
+const fetchCustomAttribute = (id: string) => MemberService.getCustomAttribute(id)
+  .then((response) => response.options.sort().map((o) => ({
+    id: o,
+    label: o,
+  })))
+  .catch(() => []);
+
+const updateCustomAttribute = (attribute: Pick<EditableAttribute, 'id' | 'options'>, value: string) => {
+  const options = [...attribute.options!];
+
+  options.push(value);
+
+  return MemberService.updateCustomAttribute(attribute.id!, {
+    options,
+  }).then(() => ({
+    id: value,
+    label: value,
+  }));
+};
+
 // since we have multi-select input for both the organizations and custom attributes,
 // need to dynamically set the appropriate methods based on the context.
 const multiSelectFetchFn = computed(() => {
   if (selectedAttribute.value.name === 'organizations') {
     return fetchOrganizationsFn;
   }
-  return () => fetchCustomAttribute(selectedAttribute.value.id);
+  return () => fetchCustomAttribute(selectedAttribute.value.id!);
 });
 
 const multiSelectCreateFn = computed(() => {
   if (selectedAttribute.value.name === 'organizations') {
     return createOrganizationFn;
   }
-  return (value) => updateCustomAttribute(selectedAttribute.value, value);
+  return (value: string) => updateCustomAttribute(selectedAttribute.value, value);
 });
 
 const multiSelectPlaceholder = computed(() => {
@@ -262,7 +330,7 @@ const multiSelectClassName = computed(() => {
   return 'w-full multi-select-field';
 });
 
-const defaultAttributes = [
+const defaultAttributes: EditableAttribute[] = [
   {
     name: 'joinedAt',
     label: 'Joined at',
@@ -278,69 +346,28 @@ const defaultAttributes = [
 const computedCustomAttributes = computed(() => filteredAttributes(customAttributes.value));
 
 // map attributes to name and label
-const mapAttributes = (attributes) => attributes.map(({ name, label }) => ({ name, label }));
+const mapAttributes = (attributes: AttributeOption[]): AttributeOption[] => attributes.map(({ name, label }) => ({ name, label }));
 
 const attributesData = computed(() => ({
   default: mapAttributes(defaultAttributes),
   custom: mapAttributes(computedCustomAttributes.value),
 }));
 
-const handleDropdownChange = (value) => {
+const handleDropdownChange = (value: { default?: AttributeOption; custom?: AttributeOption }) => {
   // clear form when attribute is changed
   formModel.value = getInitialModel();
 
   if (value.default) {
     const selected = defaultAttributes.find(
-      (attribute) => attribute.name === value.default.name,
+      (attribute) => attribute.name === value.default!.name,
     );
-    selectedAttribute.value = selected;
+    selectedAttribute.value = selected!;
   } else if (value.custom) {
     const selected = computedCustomAttributes.value.find(
-      (attribute) => attribute.name === value.custom.name,
+      (attribute) => attribute.name === value.custom!.name,
     );
-    selectedAttribute.value = selected;
+    selectedAttribute.value = selected!;
   }
-};
-
-const fetchOrganizationsFn = ({ query, limit }) => OrganizationService.listOrganizationsAutocomplete({
-  query,
-  limit,
-});
-
-const createOrganizationFn = (value) => OrganizationService.create({
-  name: value,
-})
-  .then((newOrganization) => ({
-    id: newOrganization.id,
-    label: newOrganization.displayName || newOrganization.name,
-    displayName: newOrganization.displayName || newOrganization.name,
-    name: newOrganization.displayName || newOrganization.name,
-    memberOrganizations: {
-      title: '',
-      dateStart: '',
-      dateEnd: '',
-    },
-  }))
-  .catch(() => null);
-
-const fetchCustomAttribute = (id) => MemberService.getCustomAttribute(id)
-  .then((response) => response.options.sort().map((o) => ({
-    id: o,
-    label: o,
-  })))
-  .catch(() => []);
-
-const updateCustomAttribute = (attribute, value) => {
-  const options = [...attribute.options];
-
-  options.push(value);
-
-  return MemberService.updateCustomAttribute(attribute.id, {
-    options,
-  }).then(() => ({
-    id: value,
-    label: value,
-  }));
 };
 
 const handleSubmit = async () => {
@@ -407,14 +434,8 @@ const handleDropdownClear = () => {
 
 const handleCancel = () => {
   // clear form
-  formModel.value = {};
+  formModel.value = {} as BulkEditFormModel;
   computedVisible.value = false;
-};
-</script>
-
-<script>
-export default {
-  name: 'AppBulkEditAttributePopover',
 };
 </script>
 
