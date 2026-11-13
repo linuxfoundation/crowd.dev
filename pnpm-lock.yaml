@@ -842,6 +842,9 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../../libs/common
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../../libs/common_services
       '@crowd/connectors':
         specifier: workspace:*
         version: link:../../libs/connectors
@@ -851,6 +854,9 @@ importers:
       '@crowd/database':
         specifier: workspace:*
         version: link:../../libs/database
+      '@crowd/integrations':
+        specifier: workspace:*
+        version: link:../../libs/integrations
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
@@ -860,6 +866,9 @@ importers:
       '@crowd/project-onboarding':
         specifier: workspace:*
         version: link:../../libs/project-onboarding
+      '@crowd/queue':
+        specifier: workspace:*
+        version: link:../../libs/queue
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis
@@ -887,6 +896,9 @@ importers:
       axios:
         specifier: 'catalog:'
         version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      moment-timezone:
+        specifier: ^0.5.34
+        version: 0.5.45
       tsx:
         specifier: ^4.7.1
         version: 4.23.12

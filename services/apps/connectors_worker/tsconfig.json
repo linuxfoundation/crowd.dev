@@ -12,6 +12,9 @@
       "path": "../../libs/common"
     },
     {
+      "path": "../../libs/common_services"
+    },
+    {
       "path": "../../libs/connectors"
     },
     {
@@ -21,6 +24,9 @@
       "path": "../../libs/database"
     },
     {
+      "path": "../../libs/integrations"
+    },
+    {
       "path": "../../libs/logging"
     },
     {
@@ -28,6 +34,9 @@
     },
     {
       "path": "../../libs/project-onboarding"
+    },
+    {
+      "path": "../../libs/queue"
     },
     {
       "path": "../../libs/redis"

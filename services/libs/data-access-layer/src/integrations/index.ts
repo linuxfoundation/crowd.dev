@@ -1,8 +1,10 @@
+import { DEFAULT_TENANT_ID, generateUUIDv4 } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
 import {
   AUTO_MANAGED_INTEGRATION_PLATFORMS,
   IGithubIntegrationSettings,
   IIntegration,
+  IntegrationState,
   PlatformType,
 } from '@crowd/types'
 
@@ -611,6 +613,41 @@ export async function fetchIntegrationsForSegment(
     `,
     { segmentId },
   )
+}
+
+export async function findSegmentIntegrationId(
+  qx: QueryExecutor,
+  segmentId: string,
+  platform: PlatformType,
+): Promise<string | null> {
+  const row = await qx.selectOneOrNone(
+    `
+      SELECT id
+      FROM "integrations"
+      WHERE "segmentId" = $(segmentId)
+        AND platform = $(platform)
+        AND "deletedAt" IS NULL
+      LIMIT 1
+    `,
+    { segmentId, platform },
+  )
+  return row?.id ?? null
+}
+
+export async function createSegmentIntegration(
+  qx: QueryExecutor,
+  segmentId: string,
+  platform: PlatformType,
+): Promise<string> {
+  const id = generateUUIDv4()
+  await qx.result(
+    `
+      INSERT INTO "integrations" (id, platform, status, "segmentId", "tenantId", "createdAt", "updatedAt")
+      VALUES ($(id), $(platform), $(status), $(segmentId), $(tenantId), now(), now())
+    `,
+    { id, platform, status: IntegrationState.DONE, segmentId, tenantId: DEFAULT_TENANT_ID },
+  )
+  return id
 }
 
 export async function removeGithubNangoConnection(
