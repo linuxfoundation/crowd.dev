@@ -31,6 +31,11 @@ import { proxyUrl } from '../proxies'
 import { isClientError } from '../utils/isClientError'
 import { bumpDeclaredOwnershipCounts, emptyDeclaredOwnershipCounts } from '../utils/ownershipMatch'
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
+import {
+  isDownloadsBlocked,
+  isDownloadsDeadlineExceeded,
+  npmDownloadsThrottle,
+} from './downloadsThrottle'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
 import {
   fetchBulkPointRange,
@@ -104,6 +109,10 @@ export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
 // server-stated Retry-After window instead.
 const INGEST_4XX_ATTEMPTS = 3
 const INGEST_4XX_BACKOFF_MS = 1000
+
+// Past this budget a waiting run yields within 20 minutes (see downloadsThrottle.ts), so a lane
+// ends near 42 minutes, under the 1 hour startToClose.
+const LANE_BUDGET_MS = 20 * 60_000
 
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
 // packages row; the npm registry name (for the HTTP fetch) is derived from it.
@@ -253,16 +262,20 @@ export async function currentTimestamp(): Promise<string> {
   return new Date().toISOString()
 }
 
-// One daily-downloads lane. Self-selects a disjoint hash-shard of the due packages
-// (laneIndex/laneCount) and fetches their missing daily ranges through this lane's
-// proxy IP. A transient fetch error throws so Temporal retries the lane; the
-// watermark is bumped per package only after its windows are persisted.
+export interface DownloadLaneResult {
+  fetched: number
+  blocked?: boolean
+}
+
+// The watermark is bumped only after a package's windows persist; 429s wait in the shared
+// limiter (see downloadsThrottle.ts).
 export async function backfillDailyLane(
   cutoff: string,
   batchSize: number,
   laneIndex: number,
   lanes: number,
-): Promise<{ fetched: number }> {
+): Promise<DownloadLaneResult> {
+  const deadline = Date.now() + LANE_BUDGET_MS
   const qx = await getPackagesDb()
   const candidates = await getNpmPackagesNeedingDailyBackfill(
     qx,
@@ -275,7 +288,10 @@ export async function backfillDailyLane(
 
   const yesterday = utcYesterday()
   const proxy = proxyForLane(laneIndex)
+  const egress = proxy?.host ?? 'direct'
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
+  const throttle = npmDownloadsThrottle()
+  const beat = (): void => Context.current().heartbeat({ laneIndex, phase: 'daily' })
 
   try {
     for (const pkg of candidates) {
@@ -286,14 +302,23 @@ export async function backfillDailyLane(
 
       // Outcome recorded on the watermark row. A client error (404/4xx — e.g. a bogus
       // deps.dev dependency-chain name that leaked into `packages`) flips this to error
-      // and the package is skipped, not retried. 429/5xx/network still throw below.
+      // and the package is skipped, not retried. 5xx/network still throw below.
       let runResult: DailyDownloadsRunResult = { status: 'success' }
 
       if (lower <= yesterday) {
         const missingDates = await getMissingDownloadDates(qx, pkg.id, lower, yesterday)
         for (const w of computeChunks(missingDates)) {
-          await sleep(downloadSleepMs())
-          const result = await fetchDailyRangeHttp(pkg.name, w.start, w.end, dispatcher)
+          if (Date.now() >= deadline) return { fetched: candidates.length }
+          const result = await throttle.run(
+            egress,
+            () => fetchDailyRangeHttp(pkg.name, w.start, w.end, dispatcher),
+            beat,
+            Context.current().cancellationSignal,
+            deadline,
+          )
+          // The package in progress stays unmarked, so the next run re-selects it.
+          if (isDownloadsBlocked(result)) return { fetched: candidates.length, blocked: true }
+          if (isDownloadsDeadlineExceeded(result)) return { fetched: candidates.length }
           if (isFetchError(result)) {
             if (!isClientError(result.statusCode, result.kind)) {
               throw new Error(
@@ -324,17 +349,8 @@ export async function backfillDailyLane(
     await dispatcher?.close()
   }
 
-  log.info(
-    { laneIndex, count: candidates.length, exit: proxy?.host ?? 'direct' },
-    'Backfilled daily downloads lane',
-  )
+  log.info({ laneIndex, count: candidates.length, exit: egress }, 'Backfilled daily downloads lane')
   return { fetched: candidates.length }
-}
-
-function downloadSleepMs(): number {
-  const raw = process.env.CROWD_PACKAGES_DOWNLOAD_SLEEP_MS
-  const n = parseInt(raw ?? '1000', 10)
-  return Number.isFinite(n) && n >= 0 ? n : 1000
 }
 
 function sleep(ms: number): Promise<void> {
@@ -370,15 +386,17 @@ interface Last30dPlan {
 async function processLast30dWindowPlans(
   qx: QueryExecutor,
   dispatcher: Dispatcher | undefined,
+  egress: string,
   plans: Last30dPlan[],
   laneIndex: number,
+  deadline: number,
   onSettled: (purl: string, result: Last30dRunResult) => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const work: Last30dWorkItem[] = []
   for (const p of plans) {
     for (const window of p.windows) work.push({ purl: p.purl, name: p.name, window })
   }
-  if (work.length === 0) return
+  if (work.length === 0) return false
 
   // Group (purl, window) work by window so each window's unscoped packages bulk.
   const byWindow = new Map<string, Last30dWorkItem[]>()
@@ -424,15 +442,13 @@ async function processLast30dWindowPlans(
     await onSettled(purl, res)
   }
 
-  // Heartbeat before every fetch (not just once per window). A rate-limited proxy IP tarpits
-  // requests — each hangs to the 30s fetch timeout instead of returning a fast 429 — so a lane
-  // can sit silent for minutes inside a single window. Beating at each fetch boundary bounds the
-  // gap between heartbeats to one throttle sleep + one fetch (~31s), well under the heartbeat
-  // timeout, so a slow-but-alive lane is no longer killed mid-flight (and a genuinely stalled one
-  // is still detected promptly).
+  // A rate-limited proxy IP can tarpit each request to the 30s fetch timeout, so the throttle
+  // beats before every fetch and every 30s while it waits, keeping a slow lane alive.
   const beat = (phase: string, end: string): void => {
     Context.current().heartbeat({ laneIndex, phase, window: end })
   }
+
+  const throttle = npmDownloadsThrottle()
 
   for (const items of groups) {
     const { start, end, isLatest } = items[0].window
@@ -444,14 +460,22 @@ async function processLast30dWindowPlans(
         .slice(i, i + 128)
         .filter((b) => results.get(b.purl)?.status !== 'error')
       if (batch.length === 0) continue
-      beat('bulk', end)
-      await sleep(downloadSleepMs())
-      const result = await fetchBulkPointRange(
-        batch.map((b) => b.name),
-        start,
-        end,
-        dispatcher,
+      if (Date.now() >= deadline) return false
+      const result = await throttle.run(
+        egress,
+        () =>
+          fetchBulkPointRange(
+            batch.map((b) => b.name),
+            start,
+            end,
+            dispatcher,
+          ),
+        () => beat('bulk', end),
+        Context.current().cancellationSignal,
+        deadline,
       )
+      if (isDownloadsBlocked(result)) return true
+      if (isDownloadsDeadlineExceeded(result)) return false
       if (isFetchError(result)) {
         if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(
@@ -491,9 +515,16 @@ async function processLast30dWindowPlans(
       // Skip names already known bad (404'd in an earlier, more recent window) so a
       // bogus package isn't re-fetched once per historical window.
       if (results.get(s.purl)?.status === 'error') continue
-      beat('scoped', end)
-      await sleep(downloadSleepMs())
-      const result = await fetchPointRange(s.name, start, end, dispatcher)
+      if (Date.now() >= deadline) return false
+      const result = await throttle.run(
+        egress,
+        () => fetchPointRange(s.name, start, end, dispatcher),
+        () => beat('scoped', end),
+        Context.current().cancellationSignal,
+        deadline,
+      )
+      if (isDownloadsBlocked(result)) return true
+      if (isDownloadsDeadlineExceeded(result)) return false
       if (isFetchError(result)) {
         if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(
@@ -529,6 +560,7 @@ async function processLast30dWindowPlans(
     // already-stored windows are skipped.
     beat('window-done', end)
   }
+  return false
 }
 
 // BREADTH lane. Self-selects a disjoint hash-shard of packages due for the current latest
@@ -542,7 +574,8 @@ export async function refreshLatestLast30dLane(
   batchSize: number,
   laneIndex: number,
   lanes: number,
-): Promise<{ fetched: number }> {
+): Promise<DownloadLaneResult> {
+  const deadline = Date.now() + LANE_BUDGET_MS
   const qx = await getPackagesDb()
   const due = await getNpmPurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
@@ -555,22 +588,29 @@ export async function refreshLatestLast30dLane(
   }))
 
   const proxy = proxyForLane(laneIndex)
+  const egress = proxy?.host ?? 'direct'
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
 
   let marked = 0
   try {
-    await processLast30dWindowPlans(qx, dispatcher, plans, laneIndex, async (purl, result) => {
-      marked++
-      await markLast30dProcessed(qx, purl, result)
-    })
+    const blocked = await processLast30dWindowPlans(
+      qx,
+      dispatcher,
+      egress,
+      plans,
+      laneIndex,
+      deadline,
+      async (purl, result) => {
+        marked++
+        await markLast30dProcessed(qx, purl, result)
+      },
+    )
+    if (blocked) return { fetched: due.length, blocked }
   } finally {
     await dispatcher?.close()
   }
 
-  log.info(
-    { laneIndex, due: due.length, marked, exit: proxy?.host ?? 'direct' },
-    'Refreshed latest last-30d window',
-  )
+  log.info({ laneIndex, due: due.length, marked, exit: egress }, 'Refreshed latest last-30d window')
   return { fetched: due.length }
 }
 
@@ -589,7 +629,8 @@ export async function backfillLast30dHistoryLane(
   windowCap: number,
   laneIndex: number,
   lanes: number,
-): Promise<{ fetched: number }> {
+): Promise<DownloadLaneResult> {
+  const deadline = Date.now() + LANE_BUDGET_MS
   const qx = await getPackagesDb()
   const due = await getNpmPurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
@@ -622,25 +663,32 @@ export async function backfillLast30dHistoryLane(
   }
 
   const proxy = proxyForLane(laneIndex)
+  const egress = proxy?.host ?? 'direct'
   const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
 
   let marked = settledEmpty.length
   try {
-    await processLast30dWindowPlans(qx, dispatcher, plans, laneIndex, async (purl, result) => {
-      // Stamp the depth watermark only when the purl's whole backlog has drained (or it was
-      // given up on via a client error); otherwise leave it for the next round to continue.
-      if (result.status === 'error' || complete.get(purl)) {
-        marked++
-        await markLast30dHistoryBackfilled(qx, purl, result)
-      }
-    })
+    const blocked = await processLast30dWindowPlans(
+      qx,
+      dispatcher,
+      egress,
+      plans,
+      laneIndex,
+      deadline,
+      async (purl, result) => {
+        // Stamp the depth watermark only when the purl's whole backlog has drained (or it was
+        // given up on via a client error); otherwise leave it for the next round to continue.
+        if (result.status === 'error' || complete.get(purl)) {
+          marked++
+          await markLast30dHistoryBackfilled(qx, purl, result)
+        }
+      },
+    )
+    if (blocked) return { fetched: due.length, blocked }
   } finally {
     await dispatcher?.close()
   }
 
-  log.info(
-    { laneIndex, due: due.length, marked, exit: proxy?.host ?? 'direct' },
-    'Backfilled last-30d history lane',
-  )
+  log.info({ laneIndex, due: due.length, marked, exit: egress }, 'Backfilled last-30d history lane')
   return { fetched: due.length }
 }
