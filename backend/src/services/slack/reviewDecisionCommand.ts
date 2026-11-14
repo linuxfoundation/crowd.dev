@@ -4,12 +4,14 @@ import { findProjectCatalogById, resolveProjectCatalogReview } from '@crowd/data
 import {
   IDbProjectCatalog,
   IDbProjectCatalogReviewResolution,
+  isGithubDiscussionProvenance,
   isSlackBotProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   NO_REVIEW_CARD_EXTRAS,
   applyRequestStatus,
+  refreshDiscussionStatusComment,
   refreshRequestStatusMessage,
   reportRequestOutcome,
   buildBotDoneReply,
@@ -323,6 +325,9 @@ export async function runReviewDecisionCommand({
     )
   } else if (decision === 'done') {
     await replyInBotThread(qx, resolved, buildBotDoneReply(resolved, organization), 'added', log)
+  }
+  if (isGithubDiscussionProvenance(resolved.provenance)) {
+    await refreshDiscussionStatusComment(qx, resolved)
   }
 }
 

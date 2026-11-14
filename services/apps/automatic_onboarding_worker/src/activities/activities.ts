@@ -37,6 +37,7 @@ import {
   findRequestGroupSiblings,
   onboardOrganizationProject,
   onboardProject,
+  refreshDiscussionStatusComment,
   requestGroupKey,
   requestGroupReview,
   reportRequestOutcome,
@@ -473,6 +474,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
     await notifyOnboardedRequest(project, closedCards)
   }
 
+  const qx = pgpQx(svc.postgres.writer.connection())
   for (const group of groupGithubDiscussionRequestsBySource(projects)) {
     const sent = await sendSlackNotificationAsync(
       SlackChannel.CDP_PROJECT_CATALOG_SKIP_ALERTS,
@@ -487,6 +489,7 @@ export async function notifyOnboardedHumanRequests(projects: IDbProjectCatalog[]
         'Onboarded-discussion Slack alert was not sent.',
       )
     }
+    await refreshDiscussionStatusComment(qx, group[0])
   }
 }
 
@@ -511,7 +514,7 @@ export async function markProjectOnboardingFailed(
 }
 
 export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promise<void> {
-  if (!isSlackBotProvenance(project.provenance)) {
+  if (!isSlackBotProvenance(project.provenance) && !isGithubDiscussionRequest(project)) {
     return
   }
 
@@ -520,13 +523,17 @@ export async function notifySkippedBotRequest(project: IDbProjectCatalog): Promi
   if (current?.action !== 'skip') {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, action: current?.action },
-      'Row is no longer skipped, not replying in the Slack thread.',
+      'Row is no longer skipped, not reporting it to the requester.',
     )
     return
   }
 
-  const reason = current.skipReason ?? '(no reason recorded)'
-  await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  if (isGithubDiscussionRequest(project)) {
+    await refreshDiscussionStatusComment(qx, project)
+  } else {
+    const reason = current.skipReason ?? '(no reason recorded)'
+    await replyInBotThread(project, buildBotSkippedReply(project, reason), skippedStatus(current))
+  }
   await closeOrganizationCardIfSettled(current)
 }
 
@@ -568,6 +575,7 @@ export async function notifyErroredHumanRequest(
       'Errored-discussion Slack alert was not sent.',
     )
   }
+  await refreshDiscussionStatusComment(pgpQx(svc.postgres.writer.connection()), project)
 }
 
 export async function startOnboardingPipelineRun(

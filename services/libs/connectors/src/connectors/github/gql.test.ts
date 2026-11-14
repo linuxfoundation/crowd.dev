@@ -6,6 +6,7 @@ import type { ConnectorHttp } from '../../http/client'
 import {
   ProviderAccessDeniedError,
   ProviderContractError,
+  RepositoryNotFoundError,
   RepositoryRenamedError,
 } from '../../http/errors'
 import { githubGraphql } from './gql'
@@ -58,15 +59,23 @@ describe('githubGraphql', () => {
     expect(http.request).toHaveBeenCalledTimes(2)
   })
 
-  it('throws a provider contract error once the null-root retries are exhausted', async () => {
-    const http = httpReturning([notFound])
+  it('throws once the null-root retries are exhausted: repository not found for a missing repo, contract otherwise', async () => {
+    const outcomeOf = async (response: unknown) => {
+      const http = httpReturning([response])
+      const outcome = githubGraphql(http, 'query', {}, log).catch((err) => err)
+      await vi.runAllTimersAsync()
+      expect(http.request).toHaveBeenCalledTimes(5)
+      return outcome
+    }
 
-    const pending = githubGraphql(http, 'query', {}, log)
-    const outcome = pending.catch((err) => err)
-    await vi.runAllTimersAsync()
+    const missingRepo = await outcomeOf(notFound)
+    expect(missingRepo).toBeInstanceOf(RepositoryNotFoundError)
+    expect(missingRepo).toMatchObject({ errorClass: 'provider.repository_not_found' })
 
-    await expect(outcome).resolves.toBeInstanceOf(ProviderContractError)
-    expect(http.request).toHaveBeenCalledTimes(5)
+    const missingNode = { data: { node: null }, errors: notFound.errors }
+    await expect(outcomeOf(missingNode)).resolves.toBeInstanceOf(ProviderContractError)
+    const serverError = { data: { repository: null }, errors: [{ type: 'INTERNAL' }] }
+    await expect(outcomeOf(serverError)).resolves.toBeInstanceOf(ProviderContractError)
   })
 
   it('returns partial data when at least one root field resolved', async () => {

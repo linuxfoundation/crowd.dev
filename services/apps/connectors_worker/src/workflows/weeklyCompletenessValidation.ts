@@ -4,7 +4,7 @@ import type { CountWindow, IValidationChannel } from '@crowd/data-access-layer/s
 
 import type * as activities from '../activities/completenessActivities'
 import { previousValidationWeek } from '../completenessWindow'
-import { describeChannelError } from './shadowDiff'
+import { describeChannelError } from '../describeChannelError'
 import { validateCompleteness } from './validateCompleteness'
 
 const { listValidationChannels } = proxyActivities<typeof activities>({

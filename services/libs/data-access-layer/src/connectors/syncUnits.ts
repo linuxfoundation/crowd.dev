@@ -3,8 +3,6 @@ import { truncateErrorMessage } from '../utils'
 import type {
   IClaimedUnit,
   ILifecycleChannel,
-  IShadowDiffUnit,
-  IShadowDiffUnitsPage,
   ISyncRunProgress,
   ISyncRunSuccess,
   ISyncUnit,
@@ -297,26 +295,6 @@ export async function getUnitById(qx: QueryExecutor, id: string): Promise<ISyncU
   )
 }
 
-export async function findSyncUnitByChannelName(
-  qx: QueryExecutor,
-  integrationId: string,
-  platform: string,
-  channelName: string,
-  syncName: string,
-): Promise<ISyncUnit | null> {
-  return qx.selectOneOrNone(
-    `SELECT *
-     FROM integration.sync_units
-     WHERE "integrationId" = $(integrationId)
-       AND platform = $(platform)
-       AND "syncName" = $(syncName)
-       AND lower("channelName") = lower($(channelName))
-     ORDER BY "updatedAt" DESC
-     LIMIT 1`,
-    { integrationId, platform, channelName, syncName },
-  )
-}
-
 export async function findSyncUnitByChannelId(
   qx: QueryExecutor,
   integrationId: string,
@@ -333,43 +311,6 @@ export async function findSyncUnitByChannelId(
        AND "syncName" = $(syncName)`,
     { integrationId, platform, channelId, syncName },
   )
-}
-
-export async function setSyncUnitEmitEnabled(
-  qx: QueryExecutor,
-  id: string,
-  emitEnabled: boolean,
-): Promise<number> {
-  return qx.result(
-    `UPDATE integration.sync_units
-     SET "emitEnabled" = $(emitEnabled), "updatedAt" = now()
-     WHERE id = $(id) AND "emitEnabled" <> $(emitEnabled)`,
-    { id, emitEnabled },
-  )
-}
-
-export async function takeOverSyncUnit(
-  qx: QueryExecutor,
-  id: string,
-  since: string | null,
-): Promise<number> {
-  return qx.tx(async (tx) => {
-    const flipped = await tx.result(
-      `UPDATE integration.sync_units
-       SET "emitEnabled" = true,
-           watermark = CASE
-             WHEN $(since)::text IS NULL THEN watermark
-             ELSE jsonb_build_object(
-               'phase', 'incremental', 'since', $(since)::text, 'cursor', null, 'coveredWindows', '[]'::jsonb
-             )
-           END,
-           "updatedAt" = now()
-       WHERE id = $(id) AND "emitEnabled" = false`,
-      { id, since },
-    )
-    await tx.result(`DELETE FROM integration.sync_shadow_records WHERE "unitId" = $(id)`, { id })
-    return flipped
-  })
 }
 
 // Keys already in the watermark are left alone and a running unit is skipped: the run holds the
@@ -390,24 +331,6 @@ export async function mergeSyncUnitWatermark(
   )
 }
 
-export async function pauseSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
-  return qx.result(
-    `UPDATE integration.sync_units
-     SET status = 'paused', "updatedAt" = now()
-     WHERE id = $(id) AND status = 'active'`,
-    { id },
-  )
-}
-
-export async function activateSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
-  return qx.result(
-    `UPDATE integration.sync_units
-     SET status = 'active', "nextRunAt" = now(), "updatedAt" = now()
-     WHERE id = $(id) AND status = 'paused'`,
-    { id },
-  )
-}
-
 export async function reviveDecommissionedSyncUnit(qx: QueryExecutor, id: string): Promise<number> {
   return qx.result(
     `UPDATE integration.sync_units
@@ -415,118 +338,6 @@ export async function reviveDecommissionedSyncUnit(qx: QueryExecutor, id: string
      WHERE id = $(id) AND status = 'decommissioned'`,
     { id },
   )
-}
-
-export async function isSyncUnitLocked(qx: QueryExecutor, id: string): Promise<boolean> {
-  const row = await qx.selectOneOrNone(
-    `SELECT "lockedAt" IS NOT NULL AS locked
-     FROM integration.sync_units
-     WHERE id = $(id)`,
-    { id },
-  )
-  return row?.locked === true
-}
-
-export async function hasEmittingSyncUnit(
-  qx: QueryExecutor,
-  integrationId: string,
-  channelName: string,
-  syncName: string,
-): Promise<boolean> {
-  const row = await qx.selectOne(
-    `SELECT EXISTS (
-       SELECT 1
-       FROM integration.sync_units
-       WHERE "integrationId" = $(integrationId)
-         AND lower("channelName") = lower($(channelName))
-         AND "syncName" = $(syncName)
-         AND "emitEnabled"
-     ) AS exists`,
-    { integrationId, channelName, syncName },
-  )
-  return row.exists === true
-}
-
-const SHADOW_DIFF_UNIT_FILTER = `su."emitEnabled" = false
-       AND su.status = 'active'
-       AND su.platform = 'github'
-       AND su.watermark->>'phase' = 'incremental'
-       AND EXISTS (
-         SELECT 1
-         FROM public.integrations i
-         WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
-       )`
-
-export async function listShadowDiffUnits(qx: QueryExecutor): Promise<IShadowDiffUnit[]> {
-  return qx.select(
-    `SELECT su.id, su."integrationId", su."channelName", su."syncName"
-     FROM integration.sync_units su
-     WHERE ${SHADOW_DIFF_UNIT_FILTER}
-     ORDER BY su."channelName", su."syncName"`,
-  )
-}
-
-export async function listShadowDiffUnitsPage(
-  qx: QueryExecutor,
-  page: IShadowDiffUnitsPage,
-): Promise<IShadowDiffUnit[]> {
-  const afterClause = page.after
-    ? `AND (su."channelName", su."integrationId") > ($(afterChannelName), $(afterIntegrationId))`
-    : ''
-
-  return qx.select(
-    `WITH channels AS (
-       SELECT DISTINCT su."integrationId", su."channelName"
-       FROM integration.sync_units su
-       WHERE ${SHADOW_DIFF_UNIT_FILTER}
-         ${afterClause}
-       ORDER BY su."channelName", su."integrationId"
-       LIMIT $(channelLimit)
-     )
-     SELECT su.id, su."integrationId", su."channelName", su."syncName"
-     FROM integration.sync_units su
-     JOIN channels c ON c."integrationId" = su."integrationId" AND c."channelName" = su."channelName"
-     WHERE ${SHADOW_DIFF_UNIT_FILTER}
-     ORDER BY su."channelName", su."integrationId", su."syncName"`,
-    {
-      channelLimit: page.channelLimit,
-      afterChannelName: page.after?.channelName,
-      afterIntegrationId: page.after?.integrationId,
-    },
-  )
-}
-
-export async function countShadowRepos(qx: QueryExecutor): Promise<number> {
-  const row = await qx.selectOne(
-    `SELECT COUNT(DISTINCT (su."integrationId", su."channelId"))::int AS count
-     FROM integration.sync_units su
-     WHERE platform = 'github'
-       AND "emitEnabled" IS NOT TRUE
-       AND status <> 'decommissioned'
-       AND EXISTS (
-         SELECT 1
-         FROM public.integrations i
-         WHERE i.id = su."integrationId" AND i."deletedAt" IS NULL
-       )`,
-  )
-  return row.count
-}
-
-export async function hasSyncUnitsForChannel(
-  qx: QueryExecutor,
-  integrationId: string,
-  channelId: string,
-): Promise<boolean> {
-  const row = await qx.selectOne(
-    `SELECT EXISTS (
-       SELECT 1
-       FROM integration.sync_units
-       WHERE "integrationId" = $(integrationId)
-         AND "channelId" = $(channelId)
-     ) AS exists`,
-    { integrationId, channelId },
-  )
-  return row.exists === true
 }
 
 export async function listSyncUnitChannelNames(
@@ -584,6 +395,23 @@ export async function listSyncUnitChannelsForIntegration(
   )
 }
 
+export async function listSyncUnitChannelNamesByErrorClass(
+  qx: QueryExecutor,
+  integrationId: string,
+  errorClass: string,
+): Promise<string[]> {
+  const rows: { channelName: string }[] = await qx.select(
+    `SELECT DISTINCT "channelName"
+     FROM integration.sync_units
+     WHERE "integrationId" = $(integrationId)
+       AND "lastErrorClass" = $(errorClass)
+       AND status <> 'decommissioned'
+     ORDER BY 1`,
+    { integrationId, errorClass },
+  )
+  return rows.map((row) => row.channelName)
+}
+
 export async function getEmittingChannelNamesForIntegrations(
   qx: QueryExecutor,
   integrationIds: string[],
@@ -595,7 +423,7 @@ export async function getEmittingChannelNamesForIntegrations(
      FROM integration.sync_units
      WHERE "integrationId" IN ($(integrationIds:csv))
        AND "emitEnabled"
-       AND status <> 'decommissioned'
+       AND status = 'active'
      GROUP BY "integrationId", lower("channelName")`,
     { integrationIds },
   )
