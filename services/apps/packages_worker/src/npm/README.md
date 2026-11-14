@@ -18,7 +18,12 @@ Shared design notes:
   blocks the feed.
 - **Error handling.** 4xx/404 (e.g. bogus deps.dev names that leaked into
   `packages`) → skip the package, mark it processed/scanned, don't retry.
-  429/5xx/network → throw and ride Temporal's exponential activity retry.
+  5xx/network → throw and ride Temporal's exponential activity retry. A
+  downloads API 429 pauses the shared per-egress limiter
+  (`src/npm/downloadsThrottle.ts`), which backs off and retries; after 20
+  minutes of only 429s the lane yields and the workflow sleeps 1 hour, then
+  continues as new. Metadata ingest still throws on 429. The limiter lives in
+  the worker process, so run a single npm-worker replica.
 - **purl is the key.** The purl from the DB row is the source of truth; the npm
   registry name used for HTTP fetches is derived from it.
 
@@ -79,11 +84,15 @@ Both share one fetch engine (`processLast30dWindowPlans`): work is grouped **by
 window**, most recent first; unscoped packages are bulk-fetched 128 at a time per
 window, scoped (`@scope/...`) individually; an upsert mirrors to
 `packages.downloads_last_30d` only when the window is the latest. Client errors
-(404/4xx) skip the package and record an error; transient errors (429/5xx/network)
-throw so
+(404/4xx) skip the package and record an error; 5xx/network errors throw so
 Temporal retries the lane — and because progress lives in `downloads_last_30d`, a
-retry skips every already-stored window instead of re-fetching. Each lane
-**heartbeats** after every window so a stall is detected in minutes.
+retry skips every already-stored window instead of re-fetching. All three
+download lanes (daily included) run with a 1 hour activity timeout and a 2 minute
+heartbeat timeout; they **heartbeat** before every fetch and every 30s while the
+limiter waits, so a stall is detected in minutes. Each download lane returns after a
+20 minute budget with progress saved, and the workflow starts another round. A lane whose own
+requests keep getting 429s while other flows succeed on the same egress returns the same way,
+20 minutes past its budget.
 
 ### 3a. `refreshLatestLast30dDownloads` — breadth (latest window)
 
@@ -149,5 +158,5 @@ temporal workflow start \
 | `CROWD_PACKAGES_PROXIES_ENABLED`    | `false` | Master switch for the proxy/lane layer. Off = single direct lane.                 |
 | `CROWD_PACKAGES_PROXIES`            | —       | Comma-separated `host:port:user:pass` proxy list; lane count = number of entries. |
 | `CROWD_PACKAGES_INGEST_SLEEP_MS`    | `1200`  | Per-package throttle in the metadata ingest lane.                                 |
-| `CROWD_PACKAGES_DOWNLOAD_SLEEP_MS`  | `1000`  | Per-fetch throttle in the download lanes.                                         |
+| `CROWD_PACKAGES_DOWNLOAD_SLEEP_MS`  | `1000`  | Minimum spacing between downloads API requests per egress (shared limiter floor). |
 | `CROWD_PACKAGES_TEMPORAL_NAMESPACE` | —       | Temporal namespace the worker connects to.                                        |

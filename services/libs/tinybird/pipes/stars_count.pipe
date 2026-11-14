@@ -12,9 +12,9 @@ DESCRIPTION >
     - **First bucket baselines against `startDate`, not zero**: the bucketed diff can't see any
     row before the requested range, so the first bucket's "previous" total is computed
     separately (`stars_count_baseline`) as the real cumulative total as of `startDate`, the same
-    way `stars_count_summary`'s `github_at_start`/`gitlab_new` already do for the no-granularity
+    way `stars_count_summary`'s `github_new`/`gitlab_new` already do for the no-granularity
     case. Without this, the first bucket in ANY range would show the repo's entire pre-range
-    history as "new" (CM-1819). Same caveat as `github_at_start`: a repo whose first snapshot
+    history as "new" (CM-1819). Same caveat as the `startDate` total in `github_new`: a repo whose first snapshot
     postdates `startDate` (incomplete backfill) still baselines at 0 for that repo, so its
     pre-`startDate` history still shows as "new" in the first bucket - not fixed by this change.
     - Exactly one of `project` / `collectionSlug` must be given, same contract as
@@ -30,65 +30,16 @@ DESCRIPTION >
     - With granularity: `startDate`, `endDate`, `activityCount` per bucket
     - Response field names deliberately match `activities_count.pipe` so `stars.ts` can swap the
     pipe name with no other code changes.
+    - GitHub totals as of a date come from `stars_github_as_of.pipe`. GitLab events are read only
+    from segments in `stars_scope.pipe`, so GitHub-only scopes skip the activity scan.
 
 TOKEN "insights-app-token" READ
-
-NODE stars_count_repo_scope
-DESCRIPTION >
-    Same GitHub repo scoping as `stars_cumulative_count.pipe`'s `stars_repo_scope` node,
-    duplicated here since Tinybird nodes only see their own pipe file.
-
-SQL >
-    %
-    {% if defined(collectionSlug) %}
-        SELECT r.id AS repositoryId
-        FROM repositories r FINAL
-        WHERE
-            {% if defined(bucketId) %}
-                isNull (r.deletedAt)
-                AND r.enabled = true
-                AND r.excluded = false
-                AND r.url LIKE 'https://github.com/%'
-                AND r.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-                {% if defined(repos) %}
-                    AND has(
-                        arrayMap(
-                            x -> lower(x),
-                            {{ Array(repos, 'String', description="Repository URLs", required=False) }}
-                        ),
-                        lower(r.url)
-                    )
-                {% end %}
-            {% else %} 1 = 0
-            {% end %}
-    {% else %}
-        SELECT r.id AS repositoryId
-        FROM repositories r FINAL
-        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
-        WHERE
-            isNull (r.deletedAt)
-            AND r.enabled = true
-            AND r.excluded = false
-            AND r.url LIKE 'https://github.com/%'
-            AND isNull (i.deletedAt)
-            AND i.enabled = 1
-            AND r.segmentId = (SELECT segmentId FROM segments_filtered)
-            {% if defined(repos) %}
-                AND has(
-                    arrayMap(
-                        x -> lower(x),
-                        {{ Array(repos, 'String', description="Repository URLs", required=False) }}
-                    ),
-                    lower(r.url)
-                )
-            {% end %}
-    {% end %}
 
 NODE stars_count_baseline
 DESCRIPTION >
     Scalar: cumulative stars total as of `startDate`, used as the first bucket's baseline in
     `stars_count_bucketed` instead of a hardcoded 0 - mirrors `stars_count_summary`'s
-    `github_at_start`/`gitlab_new` logic (github: latest snapshot captured at or before
+    `github_new`/`gitlab_new` logic (github: latest snapshot captured at or before
     `startDate`; gitlab: event count up to and including `startDate`). 0 when `startDate` isn't
     given - an open-ended range legitimately has nothing before its first bucket.
 
@@ -96,19 +47,8 @@ SQL >
     %
     {% if defined(granularity) and defined(startDate) %}
         WITH
-            github_before AS (
-                SELECT sum(starCount) AS total
-                FROM
-                    (
-                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
-                        FROM repositoryStarSnapshots
-                        WHERE
-                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
-                            AND capturedAt
-                            <= {{ DateTime(startDate, description="Range start", required=False) }}
-                        GROUP BY repositoryId
-                    )
-            ),
+            (SELECT scope FROM stars_scope) AS scope,
+            github_before AS (SELECT githubStars AS total FROM stars_github_as_of WHERE kind = 'start'),
             gitlab_before AS (
                 SELECT count() AS c
                 FROM
@@ -126,6 +66,8 @@ SQL >
                     {% end %}
                     AND type = 'star'
                     AND platform != 'github'
+                    AND notEmpty(scope.gitlabSegmentIds)
+                    AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
@@ -176,36 +118,12 @@ SQL >
     %
     {% if not defined(granularity) %}
         WITH
-            github_at_end AS (
-                SELECT sum(starCount) AS total
-                FROM
-                    (
-                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
-                        FROM repositoryStarSnapshots
-                        WHERE
-                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
-                            {% if defined(endDate) %}
-                                AND capturedAt
-                                <= {{ DateTime(endDate, description="Range end", required=False) }}
-                            {% end %}
-                        GROUP BY repositoryId
-                    )
-            ),
-            github_at_start AS (
-                SELECT sum(starCount) AS total
-                FROM
-                    (
-                        SELECT argMax(starCount, (capturedAt, updatedAt)) AS starCount
-                        FROM repositoryStarSnapshots
-                        WHERE
-                            repositoryId IN (SELECT repositoryId FROM stars_count_repo_scope)
-                            {% if defined(startDate) %}
-                                AND capturedAt
-                                <= {{ DateTime(startDate, description="Range start", required=False) }}
-                            {% else %} AND 1 = 0
-                            {% end %}
-                        GROUP BY repositoryId
-                    )
+            (SELECT scope FROM stars_scope) AS scope,
+            github_new AS (
+                SELECT
+                    sumIf(toInt64(githubStars), kind = 'end')
+                    - sumIf(toInt64(githubStars), kind = 'start') AS total
+                FROM stars_github_as_of
             ),
             gitlab_new AS (
                 SELECT count() AS c
@@ -224,6 +142,8 @@ SQL >
                     {% end %}
                     AND type = 'star'
                     AND platform != 'github'
+                    AND notEmpty(scope.gitlabSegmentIds)
+                    AND segmentId IN (SELECT arrayJoin(scope.gitlabSegmentIds))
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
@@ -237,10 +157,7 @@ SQL >
                         <= {{ DateTime(endDate, description="Range end", required=False) }}
                     {% end %}
             )
-        SELECT
-            toInt64(coalesce((SELECT total FROM github_at_end), 0))
-            - toInt64(coalesce((SELECT total FROM github_at_start), 0))
-            + (SELECT c FROM gitlab_new) AS activityCount
+        SELECT (SELECT total FROM github_new) + (SELECT c FROM gitlab_new) AS activityCount
     {% else %} SELECT 0 AS activityCount
     {% end %}
 

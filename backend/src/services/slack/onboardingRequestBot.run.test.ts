@@ -504,7 +504,7 @@ describe('runOnboardingRequestBot', () => {
 
     await run({ text: '<@U0BOT> onboard OpenBMC, LF project, <https://github.com/openbmc/>' })
 
-    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 50)
+    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 500, 10_000)
     expect(bulkInsertProjectCatalog).toHaveBeenCalledWith(expect.anything(), [
       expect.objectContaining({
         repoUrl: 'https://github.com/openbmc/bmcweb',
@@ -578,6 +578,7 @@ describe('runOnboardingRequestBot', () => {
     parsedAs({
       githubRepoUrls: [],
       projectName: 'OpenBMC',
+      declaredLf: false,
       linksToFollow: ['https://github.com/openbmc'],
     })
     fetchPublicOrgRepos.mockResolvedValue({
@@ -587,6 +588,7 @@ describe('runOnboardingRequestBot', () => {
 
     await run({ text: '<@U0BOT> onboard OpenBMC https://github.com/openbmc' })
 
+    expect(fetchPublicOrgRepos).toHaveBeenCalledWith('openbmc', 'github-token', 50, 10_000)
     expect(bulkInsertProjectCatalog).not.toHaveBeenCalled()
     expect(startWorkflow).not.toHaveBeenCalled()
     expect(postSlackMessage).toHaveBeenCalledWith(

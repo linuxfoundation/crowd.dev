@@ -102,7 +102,11 @@ describe('organization groups', () => {
       confidence: 0.9,
     })
     expect(requestGroupReview(projectRows[0], [projectRows[1]])).toMatchObject({ confidence: null })
-    expect(requestGroupReview(rows[0], [rows[1]])).toEqual({ owner: 'openbmc', repositories: 2 })
+    expect(requestGroupReview(rows[0], [rows[1]])).toEqual({
+      owner: 'openbmc',
+      repositories: 2,
+      repoUrls: [rows[0].repoUrl, rows[1].repoUrl],
+    })
     expect(requestGroupReview(rows[0], [])).toBeNull()
   })
 

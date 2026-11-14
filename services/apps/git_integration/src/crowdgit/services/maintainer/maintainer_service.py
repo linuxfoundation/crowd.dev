@@ -14,6 +14,7 @@ from crowdgit.database.crud import (
     find_maintainer_identity_by_email,
     find_project_repo_sibling,
     get_github_maintainer_usernames_for_repo,
+    get_maintainer_emails_for_repo,
     get_maintainers_for_repo,
     save_service_execution,
     set_maintainer_end_date,
@@ -46,6 +47,10 @@ from crowdgit.services.maintainer.cncf_maintainers import (
     find_cncf_maintainers_file,
     is_cncf_repo,
     parse_cncf_maintainers_yaml,
+)
+from crowdgit.services.maintainer.info_yaml_maintainers import (
+    find_info_yaml_file,
+    parse_info_yaml,
 )
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
@@ -825,8 +830,30 @@ class MaintainerService(BaseService):
                         )
                     )
 
+        # Same ordering as above: Gerrit repos already locked onto AUTHORS or CONTRIBUTORS
+        # switch to INFO.yaml, which is where LF Release Engineering projects list committers.
+        info_file = find_info_yaml_file(repo_path)
+        # A rejected INFO.yaml must not reach the LLM either: it would read removed committers
+        # out of the tsc change log.
+        rejected_files: set[str] = set()
+        if info_file:
+            try:
+                content = await self._read_text_file(str(info_file))
+                info_maintainers = parse_info_yaml(content)
+            except Exception as e:
+                self.logger.warning(f"INFO.yaml maintainer file processing failed: {repr(e)}")
+                info_maintainers = None
+            if info_maintainers is not None:
+                return _attach_metadata(
+                    MaintainerResult(
+                        maintainer_file=info_file.name,
+                        maintainer_info=info_maintainers,
+                    )
+                )
+            rejected_files.add(info_file.name)
+
         # Step 1: Try the previously saved maintainer file
-        if saved_maintainer_file:
+        if saved_maintainer_file and saved_maintainer_file not in rejected_files:
             self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
             result, cost = await self.try_saved_maintainer_file(
                 repo_path, saved_maintainer_file, repo_url
@@ -853,7 +880,7 @@ class MaintainerService(BaseService):
         candidate_files = [(path, score) for path, _, score in all_candidates][:100]
 
         # Step 3: Try root-level files first (in score order), then top subdirectory file
-        failed_candidates: set[str] = set()
+        failed_candidates: set[str] = set(rejected_files)
 
         if not all_candidates:
             self.logger.warning("No candidate files found via search, trying AI file detection")
@@ -1009,16 +1036,17 @@ class MaintainerService(BaseService):
         # identity type (email-linked rows included), but this filter compares against
         # extracted github_username values, so we must narrow to platform='github'/type='username'.
         parent_github_usernames = await get_github_maintainer_usernames_for_repo(parent_repo.id)
-        if not parent_github_usernames:
-            self.logger.info(
-                f"No github-username maintainers found for parent repo {parent_repo.url}"
-            )
+        # Email-only entries (INFO.yaml, most AUTHORS files) carry no username to compare.
+        parent_emails = await get_maintainer_emails_for_repo(parent_repo.id)
+        if not parent_github_usernames and not parent_emails:
+            self.logger.info(f"No maintainers found for parent repo {parent_repo.url}")
             return extracted_maintainers
 
         fork_only_maintainers = [
             maintainer
             for maintainer in extracted_maintainers
             if maintainer.github_username not in parent_github_usernames
+            and (maintainer.email or "").lower() not in parent_emails
         ]
 
         filtered_count = len(extracted_maintainers) - len(fork_only_maintainers)

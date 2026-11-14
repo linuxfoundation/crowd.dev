@@ -193,6 +193,14 @@ describe('onboardGithubRepo', () => {
       reason: 'repo_not_found',
       message: 'Not Found',
     })
+    for (const status of [410, 451]) {
+      mocks.resolveRepo.mockRejectedValue(
+        new axios.AxiosError('Gone', String(status), undefined, undefined, { status } as never),
+      )
+      await expect(
+        onboardGithubRepo(qx, 'tok', 'i-1', key, { storedUrl: key }),
+      ).resolves.toMatchObject({ outcome: 'skipped', reason: 'repo_not_found' })
+    }
 
     vi.useFakeTimers({ now: new Date('2026-10-22T10:00:00Z'), toFake: ['Date'] })
     mocks.resolveRepo.mockRejectedValue(
