@@ -49,7 +49,7 @@
             >
               <el-input
                 v-model="attribute.label"
-                @input="(e) => onInputChange(e, attribute)"
+                @input="(e: string) => onInputChange(e, attribute)"
               /><template #error>
                 <div class="el-form-item__error">
                   Name is required
@@ -116,10 +116,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
-  defineProps,
-  defineEmits,
   computed,
   reactive,
   ref,
@@ -139,26 +137,36 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: () => false,
-  },
+interface AttributeField extends Partial<Pick<FilterCustomAttribute, 'id' | 'canDelete'>> {
+  name: string | number;
+  type: string;
+  label: string | null;
+}
+
+defineOptions({ name: 'AppMemberFormGlobalAttributes' });
+
+const props = withDefaults(defineProps<{
+  modelValue?: boolean;
+}>(), {
+  modelValue: false,
 });
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean];
+}>();
 const { trackEvent } = useProductTracking();
 
 const memberStore = useMemberStore();
 const { customAttributes } = storeToRefs(memberStore);
 
 // Arrays used to make the requests on form submission
-const editedFields = reactive([]);
-const addedFields = reactive([]);
-const deletedFields = reactive([]);
+const editedFields = reactive<AttributeField[]>([]);
+const addedFields = reactive<AttributeField[]>([]);
+const deletedFields = reactive<AttributeField[]>([]);
 
 // Form models
-const initialModel = ref(
+const initialModel = ref<Record<string, AttributeField>>(
   cloneDeep(
     parseCustomAttributes(
       customAttributes.value,
@@ -166,7 +174,7 @@ const initialModel = ref(
   ),
 );
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss -- intentional initial snapshot
-const model = ref(cloneDeep(initialModel.value));
+const model = ref<Record<string, AttributeField>>(cloneDeep(initialModel.value));
 
 const isFormInvalid = computed(() => Object.entries(model.value).some(
   ([, value]) => !value.label,
@@ -176,7 +184,7 @@ const isDrawerOpen = computed({
   get() {
     return props.modelValue;
   },
-  set(drawerVisibility) {
+  set(drawerVisibility: boolean) {
     emit('update:modelValue', drawerVisibility);
   },
 });
@@ -204,7 +212,7 @@ async function onSubmit() {
       });
 
       const ids = deletedFields.map(
-        (deletedField) => deletedField.id,
+        (deletedField) => deletedField.id!,
       );
 
       memberStore
@@ -231,7 +239,7 @@ async function onSubmit() {
       try {
         await memberStore.createCustomAttribute({
           type,
-          label,
+          label: label!,
         });
       } catch (e) {
         hasErrorOccurred = true;
@@ -251,7 +259,7 @@ async function onSubmit() {
 
     editedFields.forEach(async ({ id, label }) => {
       try {
-        await memberStore.updateCustomAttribute(id, {
+        await memberStore.updateCustomAttribute(id!, {
           label,
         });
       } catch (e) {
@@ -270,7 +278,7 @@ async function onSubmit() {
   }
 }
 
-function onInputChange(newValue, attribute) {
+function onInputChange(newValue: string, attribute: AttributeField) {
   // Logic for edited attributes
   if (
     model.value[attribute.name].canDelete
@@ -301,7 +309,7 @@ function onReset() {
 }
 
 function addAttribute() {
-  const newAttribute = {
+  const newAttribute: AttributeField = {
     name: Date.now(),
     type: 'string',
     label: null,
@@ -311,7 +319,7 @@ function addAttribute() {
   model.value[newAttribute.name] = newAttribute;
 }
 
-function deleteAttribute(key) {
+function deleteAttribute(key: string | number) {
   if (
     model.value[key].canDelete
     && !deletedFields.some((field) => field.name === key)
