@@ -1990,7 +1990,8 @@ export default class ActivityService extends LoggerBase {
       this.log.trace(
         `[ACTIVITY] Upserting ${relationsToUpsert.length} activity relations (filtered from ${preparedForUpsert.length}, skipped ${skippedCount})`,
       )
-      // A NULL channel never hits ON CONFLICT on the dedup key, so found rows are updated by id.
+      // Found rows are updated by id. New rows upsert on the dedup key, or with a NULL channel on
+      // its partial unique index (createOrUpdateRelations splits them).
       await logExecutionTimeV2(
         async () =>
           createOrUpdateRelations(

@@ -444,6 +444,9 @@ export async function createOrUpdateRelations(
   const checkedSegments = new Map<string, boolean>() // id -> exists
   const checkedConversations = new Map<string, boolean>() // id -> exists
   const valueList: string[] = []
+  // ix_unique_activity_relations_dedup_key treats NULL channels as distinct, so a NULL-channel row
+  // never conflicts there. These rows conflict on the partial index for NULL channels instead.
+  const nullChannelValueList: string[] = []
   for (const data of relations) {
     if (data.username === undefined || data.username === null) {
       continue
@@ -695,7 +698,9 @@ export async function createOrUpdateRelations(
     params[isContributionParam] = false
     params[pullRequestReviewStateParam] = data.pullRequestReviewState ?? null
 
-    valueList.push(
+    const values =
+      conflictOn === 'dedupKey' && params[channelParam] === null ? nullChannelValueList : valueList
+    values.push(
       `
         (
           $(${activityIdParam}), 
@@ -725,8 +730,27 @@ export async function createOrUpdateRelations(
     )
   }
 
-  await qe.result(
-    `
+  const statements: [string[], string][] = [
+    [
+      valueList,
+      conflictOn === 'activityId'
+        ? '("activityId")'
+        : '("timestamp", "platform", "type", "sourceId", "channel", "segmentId")',
+    ],
+    // matches the partial index ix_unique_activity_relations_dedup_key_null_channel
+    [
+      nullChannelValueList,
+      '("timestamp", "platform", "type", "sourceId", "segmentId") WHERE "channel" IS NULL',
+    ],
+  ]
+
+  for (const [values, conflictTarget] of statements) {
+    if (values.length === 0) {
+      continue
+    }
+
+    await qe.result(
+      `
     INSERT INTO "activityRelations" (
             "activityId", 
             "memberId", 
@@ -751,14 +775,10 @@ export async function createOrUpdateRelations(
             "pullRequestReviewState",
             "createdAt", 
             "updatedAt")
-    VALUES ${valueList.join(',')}
+    VALUES ${values.join(',')}
 
-    ON CONFLICT ${
-      conflictOn === 'activityId'
-        ? '("activityId")'
-        : '("timestamp", "platform", "type", "sourceId", "channel", "segmentId")'
-    }
-    DO UPDATE 
+    ON CONFLICT ${conflictTarget}
+    DO UPDATE
     SET 
         "updatedAt" = EXCLUDED."updatedAt",
         "memberId" = EXCLUDED."memberId",
@@ -779,8 +799,9 @@ export async function createOrUpdateRelations(
         "isContribution" = EXCLUDED."isContribution",
         "pullRequestReviewState" = EXCLUDED."pullRequestReviewState";
     `,
-    params,
-  )
+      params,
+    )
+  }
 }
 
 export async function updateActivityRelationsById(
