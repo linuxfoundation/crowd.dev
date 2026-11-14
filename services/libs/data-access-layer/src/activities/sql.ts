@@ -424,17 +424,39 @@ export async function getLastActivitiesForMembers(
   return activities.rows
 }
 
+function relationDedupKey(relation: {
+  timestamp: string | Date
+  platform: string
+  type: string | null
+  sourceId: string | null
+  channel: string | null
+  segmentId: string
+}): string {
+  return JSON.stringify([
+    new Date(relation.timestamp).toISOString(),
+    relation.platform,
+    relation.type ?? null,
+    relation.sourceId ?? null,
+    relation.channel ?? null,
+    relation.segmentId,
+  ])
+}
+
+// Returns input activityId -> stored activityId for rows that hit an existing dedup key: the
+// caller must publish the activity content under the stored id.
 export async function createOrUpdateRelations(
   qe: QueryExecutor,
   relations: IActivityRelationCreateOrUpdateData[],
   skipChecks = false,
   conflictOn: 'dedupKey' | 'activityId' = 'dedupKey',
-): Promise<void> {
+): Promise<Map<string, string>> {
+  const storedActivityIds = new Map<string, string>()
   if (relations.length === 0) {
-    return
+    return storedActivityIds
   }
 
   const params: Record<string, unknown> = {}
+  const writtenKeys: { activityId: string; key: string }[] = []
   let index = 0
 
   const activityIds = new Set<string>()
@@ -698,6 +720,20 @@ export async function createOrUpdateRelations(
     params[isContributionParam] = false
     params[pullRequestReviewStateParam] = data.pullRequestReviewState ?? null
 
+    if (conflictOn === 'dedupKey') {
+      writtenKeys.push({
+        activityId: data.activityId,
+        key: relationDedupKey({
+          timestamp: data.timestamp,
+          platform: data.platform,
+          type: data.type ?? null,
+          sourceId: data.sourceId ?? null,
+          channel: data.channel ?? null,
+          segmentId: data.segmentId,
+        }),
+      })
+    }
+
     const values =
       conflictOn === 'dedupKey' && params[channelParam] === null ? nullChannelValueList : valueList
     values.push(
@@ -744,12 +780,21 @@ export async function createOrUpdateRelations(
     ],
   ]
 
+  const storedIdsByKey = new Map<string, string>()
   for (const [values, conflictTarget] of statements) {
     if (values.length === 0) {
       continue
     }
 
-    await qe.result(
+    const stored: {
+      activityId: string
+      timestamp: Date
+      platform: string
+      type: string | null
+      sourceId: string | null
+      channel: string | null
+      segmentId: string
+    }[] = await qe.select(
       `
     INSERT INTO "activityRelations" (
             "activityId", 
@@ -797,11 +842,27 @@ export async function createOrUpdateRelations(
         "gitDeletions" = COALESCE(EXCLUDED."gitDeletions", "activityRelations"."gitDeletions"),
         "score" = EXCLUDED."score",
         "isContribution" = EXCLUDED."isContribution",
-        "pullRequestReviewState" = EXCLUDED."pullRequestReviewState";
+        "pullRequestReviewState" = EXCLUDED."pullRequestReviewState"
+    RETURNING "activityId", "timestamp", "platform", "type", "sourceId", "channel", "segmentId";
     `,
       params,
     )
+
+    if (conflictOn === 'dedupKey') {
+      for (const row of stored) {
+        storedIdsByKey.set(relationDedupKey(row), row.activityId)
+      }
+    }
   }
+
+  for (const { activityId, key } of writtenKeys) {
+    const storedId = storedIdsByKey.get(key)
+    if (storedId && storedId !== activityId) {
+      storedActivityIds.set(activityId, storedId)
+    }
+  }
+
+  return storedActivityIds
 }
 
 export async function updateActivityRelationsById(
