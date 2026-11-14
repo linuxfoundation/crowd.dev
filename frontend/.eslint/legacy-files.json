@@ -1,10 +1,6 @@
 {
   "vue/component-api-style": [],
   "vue/block-lang": [
-    "src/modules/activity/components/activity-icon.vue",
-    "src/modules/admin/modules/projects/components/lf-sub-projects-list-modal.vue",
-    "src/modules/admin/modules/projects/pages/project-groups-list.page.vue",
-    "src/modules/lf/segments/components/filter/lf-project-filter-button.vue",
     "src/modules/member/components/bulk/bulk-edit-attribute-popover.vue",
     "src/modules/member/components/form/member-form-attributes.vue",
     "src/modules/member/components/form/member-form-global-attributes.vue",
@@ -18,10 +14,6 @@
     "src/modules/organization/pages/organization-form-page.vue"
   ],
   "vue/prefer-define-options": [
-    "src/modules/activity/components/activity-icon.vue",
-    "src/modules/admin/modules/projects/components/lf-sub-projects-list-modal.vue",
-    "src/modules/admin/modules/projects/pages/project-groups-list.page.vue",
-    "src/modules/lf/segments/components/filter/lf-project-filter-button.vue",
     "src/modules/member/components/bulk/bulk-edit-attribute-popover.vue",
     "src/modules/organization/components/form/organization-form-attributes.vue",
     "src/modules/organization/components/form/organization-form-emails-item.vue",

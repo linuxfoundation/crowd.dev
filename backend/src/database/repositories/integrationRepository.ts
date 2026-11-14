@@ -10,7 +10,6 @@ import {
   fetchGlobalIntegrationsStatusCount,
   fetchGlobalNotConnectedIntegrations,
   fetchGlobalNotConnectedIntegrationsCount,
-  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getReposGroupedByOrgForIntegrations } from '@crowd/data-access-layer/src/repositories'
@@ -639,18 +638,13 @@ class IntegrationRepository {
       )
       .map((r) => r.id)
 
-    const [allNangoMappings, allSyncedRepos, allReposByOrg] = await Promise.all([
-      getNangoMappingsForIntegrations(qx, nangoIntegrationIds),
+    const [allSyncedRepos, allReposByOrg] = await Promise.all([
       getEmittingChannelNamesForIntegrations(qx, nangoIntegrationIds),
       getReposGroupedByOrgForIntegrations(qx, githubIntegrationIds),
     ])
 
     return records.map((output) => {
       if (output.platform === PlatformType.GITHUB_NANGO) {
-        const nangoMapping = allNangoMappings[output.id]
-        if (nangoMapping && Object.keys(nangoMapping).length > 0) {
-          output.settings = { ...output.settings, nangoMapping }
-        }
         output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
       }
 
@@ -692,16 +686,8 @@ class IntegrationRepository {
 
     const output = record.get({ plain: true })
 
-    // For github-nango integrations, populate settings.nangoMapping from dedicated table
     if (output.platform === PlatformType.GITHUB_NANGO) {
-      const [allNangoMappings, allSyncedRepos] = await Promise.all([
-        getNangoMappingsForIntegrations(qx, [output.id]),
-        getEmittingChannelNamesForIntegrations(qx, [output.id]),
-      ])
-      const nangoMapping = allNangoMappings[output.id] || {}
-      if (Object.keys(nangoMapping).length > 0) {
-        output.settings = { ...output.settings, nangoMapping }
-      }
+      const allSyncedRepos = await getEmittingChannelNamesForIntegrations(qx, [output.id])
       output.settings = { ...output.settings, syncedRepos: allSyncedRepos[output.id] || [] }
     }
 

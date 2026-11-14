@@ -11,6 +11,7 @@ import { getServiceChildLogger, logExecutionTimeV2 } from '@crowd/logging'
 import {
   IMemberOrganization,
   IOrganization,
+  IOrganizationBaseForMergeSuggestions,
   IOrganizationIdSource,
   IOrganizationIdentity,
   IQueryTimeseriesParams,
@@ -892,6 +893,24 @@ export async function findOrgById<T extends OrganizationField>(
   fields: T[],
 ): Promise<QueryResult<T>> {
   return queryTableById(qx, 'organizations', Object.values(OrganizationField), orgId, fields)
+}
+
+export async function fetchOrganizationsForSearchSync(
+  qx: QueryExecutor,
+  limit: number,
+  afterId?: string,
+): Promise<IOrganizationBaseForMergeSuggestions[]> {
+  return qx.select(
+    `
+      SELECT o.id, o."displayName", o.location, o.industry
+      FROM organizations o
+      WHERE o."deletedAt" IS NULL
+        ${afterId ? 'AND o.id > $(afterId)' : ''}
+      ORDER BY o.id
+      LIMIT $(limit)
+    `,
+    { limit, afterId },
+  )
 }
 
 export async function findNonExistingOrganizationIds(

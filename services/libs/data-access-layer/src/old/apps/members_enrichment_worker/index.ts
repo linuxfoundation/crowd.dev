@@ -134,10 +134,18 @@ export async function fetchNewMembersForEnrichment(
 
   const enrichableByAnySource = sourceInputs.map((input) => `(${input.enrichableBySql})`)
 
+  // OFFSET 0 makes Postgres run this cheap check before the source lookups, instead of after.
+  // Most members near the top are already enriched, so this skips them early.
+  const hasNoEnrichmentCache = `NOT EXISTS (
+    SELECT 1 FROM "memberEnrichmentCache" mec
+    WHERE mec."memberId" = "membersGlobalActivityCount"."memberId"
+    OFFSET 0
+  )`
+
   return fetchEnrichableMembers(
     db,
     limit,
-    `NOT ${HAS_ENRICHMENT_CACHE} AND (${enrichableByAnySource.join(' OR ')})`,
+    `${hasNoEnrichmentCache} AND (${enrichableByAnySource.join(' OR ')})`,
   )
 }
 
@@ -190,14 +198,15 @@ async function fetchEnrichableMembers(
            members."displayName",
            members.attributes->'location'->>'default' AS location,
            members.attributes->'websiteUrl'->>'default' AS website,
-           coalesce("membersGlobalActivityCount".total_count, 0) AS "activityCount"
+           coalesce("membersGlobalActivityCount".total_count, 0) AS "activityCount",
+           coalesce(members.attributes->'country'->>'default', '') = '' AS "hasNoCountry"
       FROM "membersGlobalActivityCount"
            INNER JOIN members ON members.id = "membersGlobalActivityCount"."memberId"
       WHERE members."deletedAt" IS NULL
         AND coalesce((members.attributes ->'isBot'->>'default')::boolean, false) = false
         AND coalesce((members.attributes ->'isOrganization'->>'default')::boolean, false) = false
         AND ${memberCondition}
-      ORDER BY "membersGlobalActivityCount".total_count DESC
+      ORDER BY "membersGlobalActivityCount".total_count DESC, "hasNoCountry" DESC
       LIMIT $1
     )
     SELECT
@@ -223,8 +232,8 @@ async function fetchEnrichableMembers(
           AND mi."deletedAt" IS NULL
           AND mi.verified
           AND (mi.type = 'email' OR (mi.type = 'username' AND mi.platform IN ('github', 'linkedin')))
-    GROUP BY c.id, c."displayName", c.location, c.website, c."activityCount"
-    ORDER BY c."activityCount" DESC;
+    GROUP BY c.id, c."displayName", c.location, c.website, c."activityCount", c."hasNoCountry"
+    ORDER BY c."activityCount" DESC, c."hasNoCountry" DESC;
     `,
     [limit],
   )

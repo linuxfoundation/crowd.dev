@@ -8,13 +8,13 @@ import type {
   IGithubLifecyclePlan,
   IOwnedGithubRename,
 } from '../activities/githubLifecycleActivities'
+import { chunk } from '../chunk'
 import {
   type IGithubLifecycleSummary,
   type ILifecycleSkip,
   githubRepoKey,
 } from '../githubLifecycle'
 import type { IGithubRename } from '../githubRenames'
-import { chunk } from '../mirrorSweepLimits'
 import { pollUntilDrained } from './drain'
 
 const activity = proxyActivities<typeof activities>({

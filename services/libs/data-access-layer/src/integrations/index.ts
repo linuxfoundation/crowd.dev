@@ -6,6 +6,7 @@ import {
   PlatformType,
 } from '@crowd/types'
 
+import { REPOSITORY_NOT_FOUND_ERROR_CLASS } from '../connectors/types'
 import { QueryExecutor } from '../queryExecutor'
 import { getReposForGithubIntegration } from '../repositories'
 import { getReposBySegmentGroupedByPlatform } from '../segments'
@@ -649,92 +650,6 @@ export async function addGithubNangoConnection(
   )
 }
 
-export async function findActiveNangoMappingForRepo(
-  qx: QueryExecutor,
-  owner: string,
-  repoName: string,
-): Promise<INangoMappingRow | null> {
-  return qx.selectOneOrNone(
-    `
-    SELECT nm.*
-    FROM integration.nango_mapping nm
-    JOIN integrations i ON i.id = nm."integrationId"
-    WHERE lower(nm.owner) = lower($(owner))
-      AND lower(nm."repoName") = lower($(repoName))
-      AND i.platform = $(nangoPlatform)
-      AND i."deletedAt" IS NULL
-    ORDER BY nm."updatedAt" DESC
-    LIMIT 1
-    `,
-    { owner, repoName, nangoPlatform: PlatformType.GITHUB_NANGO },
-  )
-}
-
-export interface IUnmirroredNangoRepo {
-  integrationId: string
-  connectionId: string
-  owner: string
-  repoName: string
-  enabled: boolean
-  archived: boolean
-  excluded: boolean
-}
-
-export async function listUnmirroredNangoRepos(qx: QueryExecutor): Promise<IUnmirroredNangoRepo[]> {
-  return qx.select(
-    `
-    SELECT
-      nm."integrationId",
-      nm."connectionId",
-      nm.owner,
-      nm."repoName",
-      COALESCE(r.enabled, true) AS enabled,
-      COALESCE(r.archived, false) AS archived,
-      COALESCE(r.excluded, false) AS excluded
-    FROM integration.nango_mapping nm
-    JOIN integrations i ON i.id = nm."integrationId"
-    LEFT JOIN repositories r ON r.id = nm."repositoryId"
-    WHERE i.platform = $(nangoPlatform)
-      AND i."deletedAt" IS NULL
-      AND i.status = 'done'
-      AND NOT EXISTS (
-        SELECT 1
-        FROM integration.sync_units su
-        WHERE su."integrationId" = nm."integrationId"
-          AND lower(su."channelName") = lower('https://github.com/' || nm.owner || '/' || nm."repoName")
-      )
-    ORDER BY nm."createdAt", nm.owner, nm."repoName"
-    `,
-    { nangoPlatform: PlatformType.GITHUB_NANGO },
-  )
-}
-
-export async function getNangoMappingForRepo(
-  qx: QueryExecutor,
-  integrationId: string,
-  owner: string,
-  repoName: string,
-): Promise<INangoMappingRow | null> {
-  const rows = await qx.select(
-    `
-    SELECT nm.*
-    FROM integration.nango_mapping nm
-    JOIN integrations nango_integration ON nango_integration.id = nm."integrationId"
-    JOIN integrations new_integration ON new_integration."segmentId" = nango_integration."segmentId"
-    WHERE new_integration.id = $(integrationId)
-      AND nango_integration.platform = $(nangoPlatform)
-      AND nango_integration."deletedAt" IS NULL
-      AND LOWER(nm.owner) = LOWER($(owner))
-      AND LOWER(nm."repoName") = LOWER($(repoName))
-    ORDER BY nm."updatedAt" DESC
-    LIMIT 1
-    `,
-    { integrationId, nangoPlatform: PlatformType.GITHUB_NANGO, owner, repoName },
-  )
-
-  return rows[0] ?? null
-}
-
 export async function addRepoToGitIntegration(
   qx: QueryExecutor,
   integrationId: string,
@@ -1018,6 +933,21 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
       FROM public.repositories r
       JOIN live_integrations li ON li.id = r."sourceIntegrationId"
       WHERE r."deletedAt" IS NULL
+        AND r."unavailableAt" IS NULL
+    ),
+    unavailable_repos AS (
+      SELECT DISTINCT r."sourceIntegrationId" AS "integrationId"
+      FROM public.repositories r
+      JOIN live_integrations li ON li.id = r."sourceIntegrationId"
+      WHERE r."deletedAt" IS NULL
+        AND r."unavailableAt" IS NOT NULL
+    ),
+    not_found_units AS (
+      SELECT DISTINCT su."integrationId"
+      FROM integration.sync_units su
+      JOIN live_integrations li ON li.id = su."integrationId"
+      WHERE su."lastErrorClass" = $(notFoundErrorClass)
+        AND su.status <> 'decommissioned'
     ),
     unsynced_repos AS (
       SELECT rk."integrationId"
@@ -1071,8 +1001,15 @@ export async function listGithubIntegrationsNeedingReconcile(qx: QueryExecutor):
     SELECT "integrationId" FROM full_sync
     UNION
     SELECT "integrationId" FROM decommissioned_units
+    UNION
+    SELECT "integrationId" FROM unavailable_repos
+    UNION
+    SELECT "integrationId" FROM not_found_units
     `,
-    { nangoPlatform: PlatformType.GITHUB_NANGO },
+    {
+      nangoPlatform: PlatformType.GITHUB_NANGO,
+      notFoundErrorClass: REPOSITORY_NOT_FOUND_ERROR_CLASS,
+    },
   )
   return rows.map((row) => row.id)
 }

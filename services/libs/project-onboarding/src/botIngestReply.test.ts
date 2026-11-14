@@ -272,6 +272,22 @@ describe('buildBotIngestReply', () => {
   })
 })
 
+describe('buildBotIngestReply with many repositories', () => {
+  it('lists the first twenty and counts the rest so the message stays within Slack limits', () => {
+    const queued = Array.from({ length: 125 }, (_, i) => `https://github.com/cloudforet-io/r${i}`)
+
+    const { text } = buildBotIngestReply(
+      { queued, alreadyRequested: [], alreadyTracked: [], notes: [] },
+      true,
+    )
+
+    expect(text.split('Checking ')).toHaveLength(22)
+    expect(text).toContain('cloudforet-io/r19')
+    expect(text).toContain('Checking 105 more repositories…')
+    expect(text).not.toContain('cloudforet-io/r20')
+  })
+})
+
 describe('collectIngestNotes', () => {
   it('explains duplicates, folder links, skipped hosts and truncation', () => {
     expect(
