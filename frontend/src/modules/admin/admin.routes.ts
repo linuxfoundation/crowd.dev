@@ -5,9 +5,6 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 
 const OverviewPage = () => import('@/modules/overview/pages/overview.vue');
 
-// const ProjectGroupsListPage = () =>
-//   import('@/modules/admin/modules/projects/pages/project-groups-list.page.vue')
-
 const ProjectsPage = () => import('@/modules/admin/modules/projects/pages/projects.page.vue');
 
 const AdminPanelPage = () => import('@/modules/admin/pages/admin-panel.page.vue');
@@ -32,16 +29,6 @@ export default [
           eventKey: PageEventKey.OVERVIEW,
         },
       },
-      // {
-      //   name: 'projectGroupsList',
-      //   path: '/project-groups',
-      //   component: ProjectGroupsListPage,
-      //   meta: {
-      //     auth: true,
-      //     title: 'Project Groups',
-      //     eventKey: PageEventKey.PROJECT_GROUPS,
-      //   },
-      // },
       {
         name: 'adminPanel',
         path: '/admin',
