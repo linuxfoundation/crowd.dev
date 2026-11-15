@@ -23,6 +23,7 @@ import {
   CommonMemberService,
   IAffiliationRequest,
   SearchSyncWorkerEmitter,
+  getEarliestMemberJoinedAt,
 } from '@crowd/common_services'
 import {
   IFindOrCreateOrganizationResult,
@@ -67,7 +68,7 @@ import {
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
-import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
+import MemberService, { mergeIfAllowed } from './member.service'
 import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { applyNewestOrgPayloads, registerOrgPayloadActivities } from './organizationLinking'
 import { IProcessActivityResult } from './types'
