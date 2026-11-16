@@ -8,12 +8,13 @@
  * a single failing row would lose all diagnostic breadcrumbs for the batch.
  */
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
+import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
+import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
 
@@ -32,6 +33,8 @@ export class PccProjectConsumer {
   // claim so nothing is persisted, which means the same "oldest pending" job
   // would otherwise be re-claimed on every loop iteration → endless reprocessing.
   private readonly dryRunProcessedJobIds = new Set<number>()
+  private syncErrorWriteFailed = false
+  private readonly exportsWithUnrecordedSyncErrors = new Set<number>()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -97,6 +100,7 @@ export class PccProjectConsumer {
     log.info({ jobId: job.id, s3Path: job.s3Path, dryRun: this.dryRun }, 'Processing PCC job')
 
     const startTime = Date.now()
+    this.syncErrorWriteFailed = false
     let totalCount = 0
     let upsertedCount = 0
     let skippedCount = 0
@@ -232,6 +236,7 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
+        await this.resolveSyncErrorsNotReportedBy(job)
       }
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC job failed')
@@ -251,6 +256,26 @@ export class PccProjectConsumer {
           log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
         }
       }
+    }
+  }
+
+  private async resolveSyncErrorsNotReportedBy(job: SnowflakeExportJob): Promise<void> {
+    if (!job.exportStartedAt) return
+    const exportKey = job.exportStartedAt.getTime()
+    if (this.syncErrorWriteFailed) this.exportsWithUnrecordedSyncErrors.add(exportKey)
+    if (this.exportsWithUnrecordedSyncErrors.has(exportKey)) {
+      log.warn({ jobId: job.id }, 'Skipped resolving PCC sync errors: some were not recorded')
+      return
+    }
+    try {
+      const resolved = await resolveSyncErrorsNotReportedByExport(
+        pgpQx(this.db),
+        PLATFORM,
+        job.exportStartedAt,
+      )
+      log.info({ jobId: job.id, resolved }, 'Resolved PCC sync errors no longer reported')
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to resolve PCC sync errors no longer reported')
     }
   }
 
@@ -425,6 +450,7 @@ export class PccProjectConsumer {
     try {
       await insertSyncError(this.db, externalProjectId, externalProjectSlug, errorType, details)
     } catch (err) {
+      this.syncErrorWriteFailed = true
       log.error(
         { err, externalProjectId, externalProjectSlug, errorType },
         'Failed to record sync error (best-effort)',

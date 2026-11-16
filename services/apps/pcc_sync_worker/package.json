@@ -27,6 +27,7 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
+    "@crowd/test-kit": "workspace:*",
     "nodemon": "^3.0.1"
   }
 }

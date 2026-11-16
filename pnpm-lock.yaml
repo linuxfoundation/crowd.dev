@@ -1758,6 +1758,9 @@ importers:
         specifier: 'catalog:'
         version: 4.23.12
     devDependencies:
+      '@crowd/test-kit':
+        specifier: workspace:*
+        version: link:../../libs/test-kit
       nodemon:
         specifier: ^3.0.1
         version: 3.1.0
