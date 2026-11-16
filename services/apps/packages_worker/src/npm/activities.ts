@@ -322,8 +322,8 @@ function latestDay(...days: Array<string | null | undefined>): string {
   return days.reduce<string>((max, d) => (d && d > max ? d : max), '')
 }
 
-// A package without a known first release fetches one bulk span; once the registry ingest
-// records the date, the next pass fills the older days.
+// Older days of a package without a first release are fetched by a later pass, once the
+// registry ingest records the date.
 function dailyLowerBound(
   firstReleaseAt: string | null,
   upperBound: string,
