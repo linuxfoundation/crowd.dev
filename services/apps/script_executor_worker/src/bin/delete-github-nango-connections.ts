@@ -60,6 +60,8 @@ function parseOptions(argv: string[]): Options {
   const options: Options = { census: false, execute: false, limit: 0, delayMs: 300 }
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
+      case '--':
+        break
       case '--census':
         options.census = true
         break
