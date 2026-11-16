@@ -12,46 +12,6 @@ export interface ISyncDiffSummaryUpsert {
   highSeverityCount: number
 }
 
-export interface ISyncDiffDayCounts {
-  day: string
-  missingInShadowCount: number
-  unsupportedSyncCount: number
-}
-
-export async function getSyncDiffCountsForDays(
-  qx: QueryExecutor,
-  unitId: string,
-  days: string[],
-): Promise<ISyncDiffDayCounts[]> {
-  if (days.length === 0) {
-    return []
-  }
-
-  return qx.select(
-    `SELECT to_char(day, 'YYYY-MM-DD') AS day, "missingInShadowCount", "unsupportedSyncCount"
-     FROM integration.sync_diff_summary
-     WHERE "unitId" = $(unitId) AND day = ANY($(days)::date[])`,
-    { unitId, days },
-  )
-}
-
-export async function getUnitIdsWithSummary(
-  qx: QueryExecutor,
-  unitIds: string[],
-  day: string,
-): Promise<Set<string>> {
-  if (unitIds.length === 0) {
-    return new Set()
-  }
-
-  const rows = await qx.select(
-    `SELECT "unitId" FROM integration.sync_diff_summary WHERE "unitId" = ANY($(unitIds)::uuid[]) AND day = $(day)`,
-    { unitIds, day },
-  )
-
-  return new Set(rows.map((row) => row.unitId))
-}
-
 export async function upsertSyncDiffSummary(
   qx: QueryExecutor,
   summary: ISyncDiffSummaryUpsert,

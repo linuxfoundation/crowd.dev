@@ -10,7 +10,8 @@
     "@crowd/logging": "workspace:*",
     "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",
-    "@crowd/types": "workspace:*"
+    "@crowd/types": "workspace:*",
+    "@octokit/auth-app": "^4.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:"

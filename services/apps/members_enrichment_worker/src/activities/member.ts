@@ -1,4 +1,4 @@
-import { Error404 } from '@crowd/common'
+import { Error404, setAttributesDefaultValues } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -26,6 +26,7 @@ import {
 import { EnrichmentSourceServiceFactory } from '../factory'
 import { svc } from '../service'
 import { NEW_MEMBERS_SHARE } from '../utils/config'
+import { getPriorityArray } from './enrichment'
 
 export async function getEnrichableMembers(
   limit: number,
@@ -140,7 +141,12 @@ export async function updateMemberWithEnrichmentData(
       }
     }
     if (attributes) {
-      await updateMemberAttributes(tx, memberId, attributes)
+      const priorities = await getPriorityArray()
+      await updateMemberAttributes(
+        tx,
+        memberId,
+        await setAttributesDefaultValues(attributes, priorities),
+      )
     }
   })
 }

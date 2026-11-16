@@ -519,6 +519,82 @@ export async function softDeleteRepositoriesForIntegration(
   )
 }
 
+export async function markRepositoriesUnavailable(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+  urls: string[],
+): Promise<string[]> {
+  if (urls.length === 0) {
+    return []
+  }
+  const rows: { url: string }[] = await qx.select(
+    `
+    UPDATE public.repositories
+    SET "unavailableAt" = clock_timestamp(),
+        "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND url = ANY($(urls)::text[])
+      AND "deletedAt" IS NULL
+      AND "unavailableAt" IS NULL
+    RETURNING url
+    `,
+    { sourceIntegrationId, urls },
+  )
+  return rows.map((row) => row.url)
+}
+
+export async function clearRepositoriesUnavailable(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+  urls: string[],
+): Promise<string[]> {
+  if (urls.length === 0) {
+    return []
+  }
+  const rows: { url: string }[] = await qx.select(
+    `
+    WITH cleared AS (
+      UPDATE public.repositories
+      SET "unavailableAt" = NULL,
+          "updatedAt" = GREATEST(clock_timestamp(), "updatedAt" + interval '1 millisecond')
+      WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+        AND url = ANY($(urls)::text[])
+        AND "deletedAt" IS NULL
+        AND "unavailableAt" IS NOT NULL
+      RETURNING id, url
+    ),
+    woken AS (
+      UPDATE git."repositoryProcessing" rp
+      SET state = 'pending', "lockedAt" = NULL, "updatedAt" = NOW()
+      FROM cleared
+      WHERE rp."repositoryId" = cleared.id
+        AND rp.state = 'auth_required'
+    )
+    SELECT url FROM cleared
+    `,
+    { sourceIntegrationId, urls },
+  )
+  return rows.map((row) => row.url)
+}
+
+export async function listUnavailableRepoUrlsForIntegration(
+  qx: QueryExecutor,
+  sourceIntegrationId: string,
+): Promise<string[]> {
+  const rows: { url: string }[] = await qx.select(
+    `
+    SELECT url
+    FROM public.repositories
+    WHERE "sourceIntegrationId" = $(sourceIntegrationId)
+      AND "deletedAt" IS NULL
+      AND "unavailableAt" IS NOT NULL
+    ORDER BY url
+    `,
+    { sourceIntegrationId },
+  )
+  return rows.map((row) => row.url)
+}
+
 /**
  * Restores soft-deleted and/or updated repositories and resets their processing state
  * Updates fields in public.repositories and resets git.repositoryProcessing for re-onboarding

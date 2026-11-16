@@ -165,8 +165,8 @@ export async function findActivityRelationsByDedupKeys(
 
   const columns = ALL_ACTIVITY_RELATION_COLUMNS.map((c) => `ar."${c}"`).join(', ')
 
-  // The dedup index treats NULL channels as distinct, so a key with a NULL channel can match
-  // several copies. Return one row per key: the latest copy.
+  // A NULL channel is matched with "is not distinct from". The partial unique index on NULL-channel
+  // keys keeps one row per key; distinct on still returns the latest copy if two ever exist.
   return qx.select(
     `
       select distinct on (k.ts, k.platform, k.type, k."sourceId", k.channel, k."segmentId") ${columns}

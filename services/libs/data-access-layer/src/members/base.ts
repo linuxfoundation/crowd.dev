@@ -15,6 +15,7 @@ import { getServiceLogger } from '@crowd/logging'
 import { RedisClient, acquireLock, releaseLock, withSingleFlight } from '@crowd/redis'
 import {
   ALL_PLATFORM_TYPES,
+  IMemberBaseForMergeSuggestions,
   IMemberContribution,
   MemberAttributeType,
   MemberDbInsert,
@@ -763,6 +764,32 @@ export async function findMemberById<T extends MemberField>(
   fields: T[],
 ): Promise<QueryResult<T>> {
   return queryTableById(qx, 'members', Object.values(MemberField), memberId, fields)
+}
+
+export async function fetchMembersForSearchSync(
+  qx: QueryExecutor,
+  limit: number,
+  afterId?: string,
+): Promise<IMemberBaseForMergeSuggestions[]> {
+  return qx.select(
+    `
+      SELECT m.id, m."displayName", m.attributes
+      FROM members m
+      WHERE m."deletedAt" IS NULL
+        ${afterId ? 'AND m.id > $(afterId)' : ''}
+        AND EXISTS (
+          SELECT 1 FROM "memberIdentities" mi
+          WHERE mi."memberId" = m.id AND mi."deletedAt" IS NULL
+        )
+        AND (
+          m."manuallyCreated"
+          OR EXISTS (SELECT 1 FROM "activityRelations" ar WHERE ar."memberId" = m.id)
+        )
+      ORDER BY m.id
+      LIMIT $(limit)
+    `,
+    { limit, afterId },
+  )
 }
 
 export async function moveAffiliationsBetweenMembers(

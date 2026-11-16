@@ -7,7 +7,6 @@ import { withQx } from '@crowd/test-kit/db'
 import { recordShadowRecords } from './shadowRecords'
 import {
   claimDueUnits,
-  countShadowRepos,
   countUndrainedDecommissionedSyncUnits,
   decommissionAllSyncUnits,
   decommissionSyncUnitsForChannelIds,
@@ -16,11 +15,9 @@ import {
   findSyncUnitByChannelId,
   getEmittingChannelNamesForIntegrations,
   hasActiveSyncUnitsForChannelElsewhere,
-  hasSyncUnitsForChannel,
   listSyncUnitChannelNames,
-  listShadowDiffUnits,
-  listShadowDiffUnitsPage,
   listDecommissionedSyncUnitChannels,
+  listSyncUnitChannelNamesByErrorClass,
   listSyncUnitChannelsForIntegration,
   alignSyncUnitChannelName,
   lockSyncUnitChannel,
@@ -30,7 +27,6 @@ import {
   recordRunTimeout,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
-  takeOverSyncUnit,
   upsertSyncUnits,
 } from './syncUnits'
 
@@ -100,125 +96,6 @@ async function readUnitById(
 ): Promise<{ watermark: Record<string, unknown> | null }> {
   return qx.selectOne(`SELECT watermark FROM integration.sync_units WHERE id = $(id)`, { id })
 }
-
-describe('listShadowDiffUnits', () => {
-  test('returns only active, shadow-mode units in the incremental phase', async ({ qx }) => {
-    const integrationId = await createIntegration(qx)
-
-    const eligibleId = await createSyncUnit(qx, integrationId, {
-      channelName: 'https://github.com/kubernetes/kubernetes',
-      syncName: 'issues',
-      watermark: { phase: 'incremental' },
-    })
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'https://github.com/kubernetes/kubernetes',
-      syncName: 'forks',
-      emitEnabled: true,
-      watermark: { phase: 'incremental' },
-    })
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'https://github.com/torvalds/linux',
-      syncName: 'issues',
-      status: 'paused',
-      watermark: { phase: 'incremental' },
-    })
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'https://github.com/rust-lang/rust',
-      syncName: 'issues',
-      watermark: { phase: 'backfill' },
-    })
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'https://github.com/nodejs/node',
-      syncName: 'issues',
-      watermark: null,
-    })
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'dummy-channel',
-      syncName: 'issues',
-      watermark: { phase: 'incremental' },
-      platform: 'dummy',
-    })
-
-    const result = await listShadowDiffUnits(qx)
-
-    expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({
-      id: eligibleId,
-      integrationId,
-      channelName: 'https://github.com/kubernetes/kubernetes',
-      syncName: 'issues',
-    })
-  })
-
-  test('excludes units whose parent integration was soft-deleted', async ({ qx }) => {
-    const deletedIntegrationId = await createIntegration(qx, {
-      deletedAt: '2026-09-01T00:00:00.000Z',
-    })
-
-    await createSyncUnit(qx, deletedIntegrationId, {
-      channelName: 'https://github.com/kubernetes/kubernetes',
-      syncName: 'issues',
-      watermark: { phase: 'incremental' },
-    })
-
-    const result = await listShadowDiffUnits(qx)
-
-    expect(result).toHaveLength(0)
-  })
-})
-
-describe('listShadowDiffUnitsPage', () => {
-  test('walks eligible channels in pages so a large fleet never comes back in one result', async ({
-    qx,
-  }) => {
-    const integrationId = await createIntegration(qx)
-    const channels = ['a/one', 'b/two', 'c/three'].map((repo) => `https://github.com/${repo}`)
-    for (const channelName of channels) {
-      for (const syncName of ['issues', 'forks']) {
-        await createSyncUnit(qx, integrationId, {
-          channelName,
-          syncName,
-          watermark: { phase: 'incremental' },
-        })
-      }
-    }
-    await createSyncUnit(qx, integrationId, {
-      channelName: channels[0],
-      syncName: 'pull-requests',
-      emitEnabled: true,
-      watermark: { phase: 'incremental' },
-    })
-
-    const first = await listShadowDiffUnitsPage(qx, { channelLimit: 2 })
-    expect(first.map((unit) => [unit.channelName, unit.syncName])).toEqual([
-      [channels[0], 'forks'],
-      [channels[0], 'issues'],
-      [channels[1], 'forks'],
-      [channels[1], 'issues'],
-    ])
-
-    const last = first[first.length - 1]
-    const second = await listShadowDiffUnitsPage(qx, {
-      channelLimit: 2,
-      after: { channelName: last.channelName, integrationId: last.integrationId },
-    })
-    expect(second.map((unit) => [unit.channelName, unit.syncName])).toEqual([
-      [channels[2], 'forks'],
-      [channels[2], 'issues'],
-    ])
-
-    const third = await listShadowDiffUnitsPage(qx, {
-      channelLimit: 2,
-      after: { channelName: channels[2], integrationId },
-    })
-    expect(third).toEqual([])
-  })
-})
 
 async function readUnit(
   qx: QueryExecutor,
@@ -385,47 +262,6 @@ describe('mergeSyncUnitWatermark', () => {
   })
 })
 
-describe('countShadowRepos and hasSyncUnitsForChannel', () => {
-  test('counts repos with a live shadow unit, and finds units by channel id', async ({ qx }) => {
-    const integrationId = await createIntegration(qx)
-
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'org/emitting',
-      syncName: 'issues',
-      emitEnabled: true,
-    })
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'org/emitting',
-      syncName: 'forks',
-      emitEnabled: true,
-    })
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'org/mixed',
-      syncName: 'issues',
-      emitEnabled: true,
-    })
-    await createSyncUnit(qx, integrationId, {
-      channelName: 'org/retired',
-      syncName: 'issues',
-      status: 'decommissioned',
-    })
-    await createSyncUnit(qx, integrationId, { channelName: 'org/mixed', syncName: 'forks' })
-    await createSyncUnit(qx, integrationId, { channelName: 'org/shadow', syncName: 'issues' })
-    await createSyncUnit(qx, integrationId, { channelName: 'org/shadow', syncName: 'forks' })
-    const deletedIntegrationId = await createIntegration(qx, {
-      deletedAt: '2026-09-01T00:00:00.000Z',
-    })
-    await createSyncUnit(qx, deletedIntegrationId, {
-      channelName: 'org/orphan',
-      syncName: 'issues',
-    })
-
-    expect(await countShadowRepos(qx)).toBe(2)
-    expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/shadow')).toBe(true)
-    expect(await hasSyncUnitsForChannel(qx, integrationId, 'org/unknown')).toBe(false)
-  })
-})
-
 describe('findSyncUnitByChannelId', () => {
   test('finds the unit of that channel and sync, scoped to the integration, platform and sync name', async ({
     qx,
@@ -488,6 +324,49 @@ describe('listSyncUnitChannelNames', () => {
 
     const names = await listSyncUnitChannelNames(qx, integrationId, 'R_1')
     expect([...names].sort()).toEqual(['https://github.com/org/New', 'https://github.com/org/old'])
+  })
+})
+
+describe('listSyncUnitChannelNamesByErrorClass', () => {
+  test('returns each channel of the integration whose live units last failed with that class', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const otherId = await createIntegration(qx)
+    const failing = async (
+      owner: string,
+      channelName: string,
+      syncName: string,
+      errorClass: string,
+      status = 'active',
+    ) => {
+      const id = await createSyncUnit(qx, owner, { channelName, syncName, status })
+      await qx.result(
+        `UPDATE integration.sync_units SET "lastErrorClass" = $(errorClass) WHERE id = $(id)`,
+        { id, errorClass },
+      )
+    }
+    const notFound = 'provider.repository_not_found'
+    await failing(integrationId, 'https://github.com/org/Gone', 'issues', notFound)
+    await failing(integrationId, 'https://github.com/org/Gone', 'forks', notFound)
+    await failing(integrationId, 'https://github.com/org/also-gone', 'issues', notFound)
+    await failing(integrationId, 'https://github.com/org/broken', 'issues', 'provider.contract')
+    await failing(
+      integrationId,
+      'https://github.com/org/leaving',
+      'issues',
+      notFound,
+      'decommissioned',
+    )
+    await failing(otherId, 'https://github.com/org/elsewhere', 'issues', notFound)
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/org/healthy',
+      syncName: 'issues',
+    })
+
+    await expect(
+      listSyncUnitChannelNamesByErrorClass(qx, integrationId, notFound),
+    ).resolves.toEqual(['https://github.com/org/Gone', 'https://github.com/org/also-gone'])
   })
 })
 
@@ -736,74 +615,6 @@ describe('reassertUnitClaim', () => {
 
     expect(await reassertUnitClaim(qx, id)).toBe(false)
     expect((await readClaimState(qx, id)).lockedAgoSeconds).toBeNull()
-  })
-})
-
-describe('takeOverSyncUnit', () => {
-  test('flips the unit to emit, rewinds a since walk, keeps a cursor walk, and drops every shadow row', async ({
-    qx,
-  }) => {
-    const integrationId = await createIntegration(qx)
-    const sinceWalk = await createSyncUnit(qx, integrationId, {
-      channelName: 'repo',
-      syncName: 'issues',
-      watermark: {
-        phase: 'incremental',
-        since: '2026-10-19T09:00:00Z',
-        cursor: 'c1',
-        coveredWindows: [{ confirmedThrough: 'a', coveredUntil: 'b' }],
-      },
-    })
-    const cursorWalk = await createSyncUnit(qx, integrationId, {
-      channelName: 'repo',
-      syncName: 'forks',
-      watermark: { phase: 'incremental', since: '2026-10-19T09:00:00Z', cursor: 'c2' },
-    })
-    await recordShadowRecords(qx, sinceWalk, [
-      {
-        type: 'issues-opened',
-        sourceId: 's1',
-        occurredAt: '2026-10-19T09:30:00Z',
-        data: {},
-        segmentId: generateUUIDv1(),
-        integrationId,
-      },
-    ])
-
-    expect(await takeOverSyncUnit(qx, sinceWalk, '2026-10-19T08:00:00.000Z')).toBe(1)
-    expect(await takeOverSyncUnit(qx, cursorWalk, null)).toBe(1)
-    expect(await takeOverSyncUnit(qx, sinceWalk, '2026-10-19T07:00:00.000Z')).toBe(0)
-
-    const units = await qx.select(
-      `SELECT id, "emitEnabled", watermark
-       FROM integration.sync_units
-       WHERE id IN ($(sinceWalk), $(cursorWalk))
-       ORDER BY "syncName"`,
-      { sinceWalk, cursorWalk },
-    )
-    expect(units).toEqual([
-      {
-        id: cursorWalk,
-        emitEnabled: true,
-        watermark: { phase: 'incremental', since: '2026-10-19T09:00:00Z', cursor: 'c2' },
-      },
-      {
-        id: sinceWalk,
-        emitEnabled: true,
-        watermark: {
-          phase: 'incremental',
-          since: '2026-10-19T08:00:00.000Z',
-          cursor: null,
-          coveredWindows: [],
-        },
-      },
-    ])
-    expect(
-      await qx.selectOne(
-        `SELECT count(*)::int AS n FROM integration.sync_shadow_records WHERE "unitId" = $(id)`,
-        { id: sinceWalk },
-      ),
-    ).toEqual({ n: 0 })
   })
 })
 
@@ -1121,9 +932,7 @@ describe('recordRunTimeout', () => {
 })
 
 describe('getEmittingChannelNamesForIntegrations', () => {
-  test('returns emitting, non-decommissioned channels once per repo, per integration', async ({
-    qx,
-  }) => {
+  test('returns emitting, active channels once per repo, per integration', async ({ qx }) => {
     const integrationId = await createIntegration(qx, { platform: 'github-nango' })
     const otherIntegrationId = await createIntegration(qx, { platform: 'github-nango' })
 
@@ -1148,11 +957,28 @@ describe('getEmittingChannelNamesForIntegrations', () => {
       emitEnabled: true,
       status: 'decommissioned',
     })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-rollouts',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'paused',
+    })
+    await createSyncUnit(qx, integrationId, {
+      channelName: 'https://github.com/argoproj/argo-events',
+      syncName: 'issues',
+      emitEnabled: true,
+      status: 'dead_letter',
+    })
     await createSyncUnit(qx, otherIntegrationId, {
       channelName: 'https://github.com/argoproj/argo-workflows',
       syncName: 'issues',
       emitEnabled: true,
-      status: 'paused',
+    })
+    await createSyncUnit(qx, otherIntegrationId, {
+      channelName: 'https://github.com/argoproj/argo-workflows',
+      syncName: 'pull-requests',
+      emitEnabled: true,
+      status: 'dead_letter',
     })
 
     const result = await getEmittingChannelNamesForIntegrations(qx, [

@@ -7,11 +7,11 @@ import {
 } from '@temporalio/workflow'
 
 import type * as activities from '../activities/githubLifecycleActivities'
+import { chunk } from '../chunk'
 import {
   LIFECYCLE_SWEEP_CONCURRENCY,
   reconcileGithubIntegrationWorkflowId,
 } from '../githubLifecycle'
-import { chunk } from '../mirrorSweepLimits'
 import { reconcileGithubIntegration } from './reconcileGithubIntegration'
 
 const ALREADY_STARTED_ERROR = 'WorkflowExecutionAlreadyStartedError'

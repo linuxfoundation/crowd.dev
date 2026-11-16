@@ -1,0 +1,13 @@
+DESCRIPTION >
+    - `repository_star_snapshot_bounds_ds` keeps, per repository, its first and last star snapshot and the star count of the last one.
+    - Populated by `repository_star_snapshot_bounds_MV.pipe` on every insert into `repositoryStarSnapshots`.
+    - Read by `stars_github_as_of.pipe` for repositories with no snapshot in the days before a cutoff: 0 before the first snapshot, the last count after the last one.
+
+SCHEMA >
+    `repositoryId` String,
+    `firstCapturedAt` SimpleAggregateFunction(min, DateTime64(3)),
+    `lastCapturedAt` SimpleAggregateFunction(max, DateTime64(3)),
+    `lastStarCountState` AggregateFunction(argMax, Int32, Tuple(DateTime64(3), DateTime64(3)))
+
+ENGINE AggregatingMergeTree
+ENGINE_SORTING_KEY repositoryId

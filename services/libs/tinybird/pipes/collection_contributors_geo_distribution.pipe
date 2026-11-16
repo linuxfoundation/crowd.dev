@@ -1,0 +1,53 @@
+DESCRIPTION >
+    - `collection_contributors_geo_distribution.pipe` serves the pie chart of the CNCF report: the organizations active in the CNCF collection over a date range, by country.
+    - Reads `cncf_organization_countries_monthly_ds`, rebuilt daily by `cncf_organization_countries_monthly_copy.pipe`; see that pipe for how organizations are placed in countries.
+    - An organization active in several months of the range counts once per country. One placed in several countries counts in each, and `contributorPercentage` is a share of the sum of all counts.
+    - Dates resolve to whole months, which fits the ranges the report sends.
+    - Parameters:
+    - `startDate`: Optional DateTime; the range starts with the month containing it (e.g., '2025-11-01 00:00:00'). Defaults to the first month with activity
+    - `endDate`: Optional DateTime; only months starting before it are counted (e.g., '2026-10-31 00:00:00'). Defaults to now
+    - Response: `country`, `flag`, `country_code`, `contributorCount` (the number of organizations), `contributorPercentage` (rounded, in percent)
+
+TOKEN "insights-app-token" READ
+
+TAGS "Report"
+
+NODE collection_contributors_geo_distribution_result
+SQL >
+    %
+    SELECT
+        country,
+        flag,
+        country_code,
+        uniqExact(organizationId) AS "contributorCount",
+        round("contributorCount" / sum("contributorCount") OVER () * 100) AS "contributorPercentage"
+    FROM cncf_organization_countries_monthly_ds
+    WHERE
+        month
+        < {% if defined(endDate) %}
+            toDate(
+                {{
+                    DateTime(
+                        endDate,
+                        description="Only months starting before this date are counted",
+                        required=False,
+                    )
+                }}
+            )
+        {% else %} today()
+        {% end %}
+        {% if defined(startDate) %}
+            AND month >= toStartOfMonth(
+                toDate(
+                    {{
+                        DateTime(
+                            startDate,
+                            description="The range starts with the month containing this date",
+                            required=False,
+                        )
+                    }}
+                )
+            )
+        {% end %}
+    GROUP BY country, flag, country_code
+    ORDER BY "contributorCount" DESC

@@ -120,6 +120,7 @@ const REVIEW_CASE_COPY: Record<ReviewCase, IReviewCaseTemplate> = {
 }
 
 export const MAX_BUTTON_TEXT_LENGTH = 75
+export const MAX_LISTED_REPOSITORIES = 20
 
 type TechnicalRow = Pick<IDbProjectCatalog, 'classificationKind' | 'proposedAction'>
 

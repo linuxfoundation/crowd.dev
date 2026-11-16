@@ -84,7 +84,7 @@ export function matchEventRules(
 }
 
 const REVIEW =
-  'mapping review https://claude.ai/artifact/7p4tERK9DVU5xnQeJPxkV9, decided 2026-10-27'
+  'decided 2026-10-27 (https://claude.ai/artifact/7p4tERK9DVU5xnQeJPxkV9), awaiting confirmation on sheet 1 of the 2026-11-10 mapping review'
 
 const PROPOSED = 'proposed 2026-11-04 from the production held queue, awaiting reviewer approval'
 
@@ -93,11 +93,11 @@ const rule = (
   match: { activityUrl: string } | { nameKeyword: string; caseSensitive?: boolean },
   projectSlug: string,
   note = REVIEW,
-  approvedBy = 'joana',
+  approvedBy = 'pending',
 ): CredlyEventRule => ({ id, projectSlug, approvedBy, note, ...match })
 
 const proposed = (id: string, nameKeyword: string, projectSlug: string): CredlyEventRule =>
-  rule(id, { nameKeyword }, projectSlug, PROPOSED, 'pending')
+  rule(id, { nameKeyword }, projectSlug, PROPOSED)
 
 // Ordered: the first matching rule wins, so event-specific rules sit above the LF-wide ones
 // that co-located events ("KubeCon + Open Source Summit China") would also match.
@@ -192,13 +192,7 @@ export const credlyEventRules: readonly CredlyEventRule[] = [
   proposed('soss', 'SOSS', 'openssf'),
   proposed('hyperledger', 'Hyperledger', 'lf-decentralized-trust'),
   proposed('lfdt', 'LFDT', 'lf-decentralized-trust'),
-  rule(
-    'user-conference',
-    { nameKeyword: 'useR!', caseSensitive: true },
-    'rcons',
-    PROPOSED,
-    'pending',
-  ),
+  rule('user-conference', { nameKeyword: 'useR!', caseSensitive: true }, 'rcons', PROPOSED),
   proposed('r-medicine', 'R/Medicine', 'rcons'),
   proposed('hpsf', 'HPSF', 'hpsf'),
   proposed('jupyter', 'Jupyter', 'jupyter'),

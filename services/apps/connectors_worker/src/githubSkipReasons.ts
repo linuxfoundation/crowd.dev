@@ -52,6 +52,11 @@ export function rateLimitResetAt(err: unknown): Date | null {
   return null
 }
 
+export function isGoneError(err: unknown): boolean {
+  const status = axios.isAxiosError(err) ? err.response?.status : undefined
+  return status !== undefined && GONE_STATUSES.has(status)
+}
+
 export function githubResolveSkipReason(
   err: unknown,
 ): 'repo_not_found' | 'rate_limited' | 'github_error' {
@@ -72,6 +77,5 @@ export function renameProbeFailure(err: unknown): 'gone' | 'rate_limited' | 'unk
   if (isRateLimited(err)) {
     return 'rate_limited'
   }
-  const status = axios.isAxiosError(err) ? err.response?.status : undefined
-  return status !== undefined && GONE_STATUSES.has(status) ? 'gone' : 'unknown'
+  return isGoneError(err) ? 'gone' : 'unknown'
 }

@@ -122,10 +122,36 @@ describe('listGithubIntegrationsNeedingReconcile', () => {
     await createLiveRepository(qx, segmentId, h, `https://github.com/acme/${h}`)
     await createSyncUnit(qx, h, `https://github.com/acme/${h}`, 'decommissioned')
 
+    const synced = async (): Promise<string> => {
+      const id = await createIntegration(qx, 'github-nango', segmentId)
+      await createLiveRepository(qx, segmentId, id, `https://github.com/acme/${id}`)
+      await createSyncUnit(qx, id, `https://github.com/acme/${id}`)
+      return id
+    }
+    const failWith = (integrationId: string, errorClass: string) =>
+      qx.result(
+        `UPDATE integration.sync_units SET "lastErrorClass" = $(errorClass)
+         WHERE "integrationId" = $(integrationId)`,
+        { integrationId, errorClass },
+      )
+
+    const inSync = await synced()
+    const contractFailure = await synced()
+    await failWith(contractFailure, 'provider.contract')
+    const notFound = await synced()
+    await failWith(notFound, 'provider.repository_not_found')
+    const unavailable = await createIntegration(qx, 'github-nango', segmentId)
+    await createLiveRepository(qx, segmentId, unavailable, `https://github.com/acme/${unavailable}`)
+    await qx.result(
+      `UPDATE public.repositories SET "unavailableAt" = NOW() WHERE "sourceIntegrationId" = $(id)`,
+      { id: unavailable },
+    )
+
     const listed = await listGithubIntegrationsNeedingReconcile(qx)
 
-    expect(listed.filter((id) => [a, b, c, d, e, f, g, h].includes(id)).sort()).toEqual(
-      [a, b, c, d, e, f, h].sort(),
+    const created = [a, b, c, d, e, f, g, h, inSync, contractFailure, notFound, unavailable]
+    expect(listed.filter((id) => created.includes(id)).sort()).toEqual(
+      [a, b, c, d, e, f, h, notFound, unavailable].sort(),
     )
     expect(new Set(listed).size).toBe(listed.length)
   })

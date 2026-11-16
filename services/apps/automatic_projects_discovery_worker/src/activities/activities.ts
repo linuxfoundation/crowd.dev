@@ -20,8 +20,9 @@ import {
   IDbProjectCatalogCreate,
   isHumanProjectCatalogProvenance,
 } from '@crowd/data-access-layer/src/project-catalog/types'
-import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
+import { refreshDiscussionStatusComment } from '@crowd/project-onboarding'
 
 import { svc } from '../main'
 import { getAvailableSourceNames, getSource } from '../sources/registry'
@@ -218,6 +219,7 @@ export async function processDataset(
           ...candidate,
           action: 'skip',
           skipReason: ALREADY_IN_CDP_SKIP_REASON,
+          classificationKind: 'already_tracked',
         })
         seenRepoUrls.add(candidate.repoUrl)
         continue
@@ -296,6 +298,9 @@ export async function processDataset(
       await bulkInsertProjectCatalog(tx, toInsert)
     })
   }
+  if (humanProvenance) {
+    await refreshDiscussionStatusComments(qx, [...toInsert, ...toPromote])
+  }
 
   // On truncation the cap can hit mid-page, dropping candidates from the page whose
   // rows are already marked consumed — roll the cursor back one page so it's replayed.
@@ -329,6 +334,25 @@ export async function processDataset(
     totalAccepted: accepted.length,
     truncated,
     cursor,
+  }
+}
+
+// Pre-check skips never reach the evaluation worker, and a discussion is walked again the night
+// after its first ingest: refreshing here tells the requester early and retries a failed comment.
+async function refreshDiscussionStatusComments(
+  qx: QueryExecutor,
+  rows: IDbProjectCatalogCreate[],
+): Promise<void> {
+  const bySourceUrl = new Map<string, IDbProjectCatalogCreate>()
+  for (const row of rows) {
+    if (row.sourceUrl && !bySourceUrl.has(row.sourceUrl)) {
+      bySourceUrl.set(row.sourceUrl, row)
+    }
+  }
+  let refreshed = 0
+  for (const [sourceUrl, row] of bySourceUrl) {
+    await refreshDiscussionStatusComment(qx, { sourceUrl, repoUrl: row.repoUrl })
+    Context.current().heartbeat({ discussionsRefreshed: ++refreshed, of: bySourceUrl.size })
   }
 }
 

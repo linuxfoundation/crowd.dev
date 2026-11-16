@@ -17,6 +17,7 @@ import {
   escapeSlackText,
   ISlackMessageContent,
   linkButtonBlocks,
+  listedWithRemainder,
   MAX_BLOCKS_PER_MESSAGE,
   mrkdwnSections,
   repositoriesWord,
@@ -25,6 +26,7 @@ import {
 import {
   BotStatus,
   INSIGHTS_PROJECT_URL_BASE,
+  MAX_LISTED_REPOSITORIES,
   STATUS,
   VIEW_INSIGHTS_PROJECT_ACTION_ID,
   repoLabel,
@@ -379,13 +381,21 @@ export function buildIngestStatusHeader(
   }
 }
 
+function checkingLines(queued: string[]): string[] {
+  const { listed, more } = listedWithRemainder(queued, MAX_LISTED_REPOSITORIES)
+  return [
+    ...listed.map((repoUrl) => `${STATUS.checking} Checking ${repoLabel(repoUrl)}…`),
+    ...(more > 0 ? [`${STATUS.checking} Checking ${more} more ${repositoriesWord(more)}…`] : []),
+  ]
+}
+
 export function buildBotIngestReply(
   { queued, alreadyRequested, alreadyTracked, notes }: IIngestOutcome,
   evaluationStarted: boolean,
 ): ISlackMessageContent {
   const lines = [
     ...alreadyTracked.map(alreadyTrackedLine),
-    ...queued.map((repoUrl) => `${STATUS.checking} Checking ${repoLabel(repoUrl)}…`),
+    ...checkingLines(queued),
     ...alreadyRequested.map(alreadyRequestedLine),
     ...notes,
   ]

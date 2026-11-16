@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { GithubPublicClientError } from '@crowd/common'
 
 import {
+  MAX_ORGANIZATION_REPOSITORIES,
   expandOrganizations,
   organizationNote,
+  organizationRepositoryLimit,
   requestedOrganizations,
 } from './organizationRequest'
 
@@ -43,6 +45,9 @@ describe('expandOrganizations', () => {
         '*github.com/openbmc* has more than 20 public repositories, and for now I take up to 20 at a time.',
       ),
       reason: 'more than 20 repositories',
+      kind: 'too_large',
+      owner: 'openbmc',
+      limit: 20,
     })
 
     const combined = await expandOrganizations(
@@ -55,6 +60,8 @@ describe('expandOrganizations', () => {
     )
     expect(combined).toMatchObject({
       ok: false,
+      kind: 'too_large_together',
+      owner: 'second',
       reply: expect.stringContaining(
         'Together, these organizations have more than 20 public repositories, and for now I take up to 20 per request.',
       ),
@@ -72,9 +79,12 @@ describe('expandOrganizations', () => {
     const empty = await expandOrganizations(
       ['openbmc'],
       vi.fn().mockResolvedValue({ repoUrls: [], exceededLimit: false }),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(empty).toMatchObject({
       ok: false,
+      kind: 'empty',
+      limit: 50,
       reply:
         '*github.com/openbmc* has no public repositories I can add: archived repositories and forks are left out.',
     })
@@ -82,6 +92,7 @@ describe('expandOrganizations', () => {
     const unknown = await expandOrganizations(
       ['nobody-here'],
       vi.fn().mockRejectedValue(new GithubPublicClientError('NOT_FOUND', 'not found')),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(unknown).toMatchObject({
       ok: false,
@@ -89,17 +100,42 @@ describe('expandOrganizations', () => {
         "I couldn't find a GitHub organization called *github.com/nobody-here*",
       ),
       reason: 'not found',
+      kind: 'not_found',
+      owner: 'nobody-here',
     })
 
     const down = await expandOrganizations(
       ['openbmc'],
       vi.fn().mockRejectedValue(new GithubPublicClientError('TRANSIENT', 'network error')),
+      MAX_ORGANIZATION_REPOSITORIES,
     )
     expect(down).toMatchObject({
       ok: false,
       reply: expect.stringContaining("GitHub isn't answering right now"),
       reason: 'network error',
+      kind: 'unavailable',
     })
+  })
+})
+
+describe('organizationRepositoryLimit', () => {
+  it('caps only organizations the requester did not declare as LF', () => {
+    expect(organizationRepositoryLimit(true)).toBe(500)
+    expect(organizationRepositoryLimit(false)).toBe(50)
+    expect(organizationRepositoryLimit(null)).toBe(50)
+    expect(organizationRepositoryLimit(undefined)).toBe(50)
+  })
+
+  it('lists every repository of an uncapped organization', async () => {
+    const lookup = vi
+      .fn()
+      .mockResolvedValue({ repoUrls: repos('cloudforet-io', 125), exceededLimit: false })
+
+    const result = await expandOrganizations(['cloudforet-io'], lookup, 500)
+
+    expect(lookup).toHaveBeenCalledWith('cloudforet-io', 500)
+    expect(result).toMatchObject({ ok: true })
+    expect(result.ok && result.organizations[0].repoUrls).toHaveLength(125)
   })
 })
 

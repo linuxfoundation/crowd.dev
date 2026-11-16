@@ -226,21 +226,6 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
       .finally(() => Promise.resolve());
   }
 
-  function searchProjectGroup(
-    search: string | null,
-    limit?: number | null,
-    adminOnly?: boolean,
-    page?: number,
-  ) {
-    projectGroups.value.pagination.currentPage = page !== undefined ? page : 1;
-    listProjectGroups({
-      search,
-      limit,
-      offset: page !== undefined ? undefined : 0,
-      adminOnly: adminOnly !== undefined ? adminOnly : isAdminOnly(),
-    });
-  }
-
   function listProjects({
     parentSlug = null,
     search = null,
@@ -492,7 +477,6 @@ export const useLfSegmentsStore = defineStore('lf-segments', () => {
     createProjectGroup,
     updateProjectGroup,
     updateProjectGroupList,
-    searchProjectGroup,
     listProjects,
     findProject,
     createProject,

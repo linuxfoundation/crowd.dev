@@ -50,7 +50,7 @@ export type RequestStatusRow = Pick<
 type RequestRef = Pick<IDbProjectCatalog, 'id' | 'repoUrl' | 'sourceUrl'>
 
 const CLOSING_LINE = "I'll update this message as each repo is checked."
-const MAX_LINE_REASON_LENGTH = 160
+export const MAX_LINE_REASON_LENGTH = 160
 const BUTTONS_PER_BLOCK = 5
 
 export function rowStatus(row: Pick<RequestStatusRow, 'action' | 'classificationKind'>): BotStatus {
@@ -176,7 +176,7 @@ function statusGroupKey(row: RequestStatusRow): string | null {
   return group ? requestGroupId(group) : null
 }
 
-function groupByRequestGroup(rows: RequestStatusRow[]): RequestStatusRow[][] {
+export function groupByRequestGroup(rows: RequestStatusRow[]): RequestStatusRow[][] {
   const entries: RequestStatusRow[][] = []
   const byKey = new Map<string, RequestStatusRow[]>()
   for (const row of rows) {

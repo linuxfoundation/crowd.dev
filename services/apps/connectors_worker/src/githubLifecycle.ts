@@ -72,6 +72,17 @@ export function githubRepoKey(url: string): string | null {
   return repoSegment === '.' || repoSegment === '..' ? null : url.toLowerCase()
 }
 
+export function storedUrlsByRepoKey(urls: string[]): Map<string, string[]> {
+  const byKey = new Map<string, string[]>()
+  for (const url of urls) {
+    const key = githubRepoKey(url)
+    if (key !== null) {
+      byKey.set(key, [...(byKey.get(key) ?? []), url])
+    }
+  }
+  return byKey
+}
+
 export function diffGithubLifecycle(input: IGithubLifecycleDiffInput): IGithubLifecycleDiff {
   const owned = new Set(input.ownedElsewhere)
   const desired = new Set<string>()

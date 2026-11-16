@@ -1,0 +1,10 @@
+DESCRIPTION >
+    Copies every `repositoryStarSnapshots` insert into `repository_star_snapshots_by_day_ds`, keyed by capture day.
+
+NODE repository_star_snapshots_by_day_MV_rows
+SQL >
+    SELECT toDate(capturedAt) AS day, repositoryId, capturedAt, starCount, updatedAt
+    FROM repositoryStarSnapshots
+
+TYPE MATERIALIZED
+DATASOURCE repository_star_snapshots_by_day_ds

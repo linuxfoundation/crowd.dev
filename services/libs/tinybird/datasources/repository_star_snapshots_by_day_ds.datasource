@@ -1,0 +1,18 @@
+DESCRIPTION >
+    - `repository_star_snapshots_by_day_ds` holds the rows of `repositoryStarSnapshots` sorted by capture day first, so a "stars as of a date" lookup reads only the days just before that date instead of each repository's full history.
+    - Populated by `repository_star_snapshots_by_day_MV.pipe` on every insert into `repositoryStarSnapshots`.
+    - Read by `stars_github_as_of.pipe`. Versions of one snapshot collapse on merge by `updatedAt`; readers still pick the latest with `argMax`.
+    - Small granules keep a lookup for a few repositories close to their own rows: one day holds a row per repository, about 30K rows.
+
+SCHEMA >
+    `day` Date,
+    `repositoryId` String,
+    `capturedAt` DateTime64(3),
+    `starCount` Int32,
+    `updatedAt` DateTime64(3)
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(day)
+ENGINE_SETTINGS index_granularity = 1024
+ENGINE_SORTING_KEY day, repositoryId, capturedAt
+ENGINE_VER updatedAt

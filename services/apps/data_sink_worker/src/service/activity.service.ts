@@ -23,6 +23,7 @@ import {
   CommonMemberService,
   IAffiliationRequest,
   SearchSyncWorkerEmitter,
+  getEarliestMemberJoinedAt,
 } from '@crowd/common_services'
 import {
   IFindOrCreateOrganizationResult,
@@ -67,7 +68,7 @@ import {
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
 import { ActivityTimestampsByEmailDomain, IMemberUpdateData } from './member.data'
-import MemberService, { getEarliestMemberJoinedAt, mergeIfAllowed } from './member.service'
+import MemberService, { mergeIfAllowed } from './member.service'
 import MemberAttributeService, { isEmptyAttributeValue } from './memberAttribute.service'
 import { applyNewestOrgPayloads, registerOrgPayloadActivities } from './organizationLinking'
 import { IProcessActivityResult } from './types'
@@ -1930,16 +1931,6 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    const toUpsert = preparedForUpsert.map((a) => a.payload)
-    if (toUpsert.length > 0) {
-      this.log.trace(`[ACTIVITY] Upserting ${toUpsert.length} activities!`)
-      await logExecutionTimeV2(
-        async () => insertActivities(this.client, toUpsert),
-        this.log,
-        'activityService -> processActivities -> insertActivities',
-      )
-    }
-
     // Filter out relations that don't need updates to avoid unnecessary database writes
     let skippedCount = 0
     const relationsToUpsert = preparedForUpsert
@@ -1986,11 +1977,11 @@ export default class ActivityService extends LoggerBase {
       })
       .map((d) => d.relation)
 
+    let storedActivityIds = new Map<string, string>()
     if (relationsToUpsert.length > 0) {
       this.log.trace(
         `[ACTIVITY] Upserting ${relationsToUpsert.length} activity relations (filtered from ${preparedForUpsert.length}, skipped ${skippedCount})`,
       )
-      // A NULL channel never hits ON CONFLICT on the dedup key, so found rows are updated by id.
       await logExecutionTimeV2(
         async () =>
           createOrUpdateRelations(
@@ -2002,7 +1993,7 @@ export default class ActivityService extends LoggerBase {
         this.log,
         'activityService -> processActivities -> createOrUpdateRelations (existing)',
       )
-      await logExecutionTimeV2(
+      storedActivityIds = await logExecutionTimeV2(
         async () =>
           createOrUpdateRelations(
             this.pgQx,
@@ -2015,6 +2006,31 @@ export default class ActivityService extends LoggerBase {
     } else {
       this.log.trace(
         `[ACTIVITY] No activity relations need updating (all ${preparedForUpsert.length} would only update updatedAt)`,
+      )
+    }
+
+    // Relations are written first so a racing duplicate's content lands under the stored id,
+    // and a failed send is retried under the same id instead of leaving an orphaned activity.
+    for (const prepared of preparedForUpsert) {
+      const storedId = storedActivityIds.get(prepared.payload.id)
+      if (storedId) {
+        prepared.payload.id = storedId
+      }
+    }
+    if (storedActivityIds.size > 0) {
+      this.log.info(
+        { count: storedActivityIds.size },
+        'New activities matched relations written concurrently, sending them under the stored ids',
+      )
+    }
+
+    const toUpsert = preparedForUpsert.map((a) => a.payload)
+    if (toUpsert.length > 0) {
+      this.log.trace(`[ACTIVITY] Upserting ${toUpsert.length} activities!`)
+      await logExecutionTimeV2(
+        async () => insertActivities(this.client, toUpsert),
+        this.log,
+        'activityService -> processActivities -> insertActivities',
       )
     }
 

@@ -45,15 +45,6 @@ export type IClaimedUnit = Pick<
   'id' | 'integrationId' | 'platform' | 'syncName' | 'channelId' | 'channelName'
 > & { leaseLapsed: boolean }
 
-export type IShadowDiffUnit = Pick<ISyncUnit, 'id' | 'integrationId' | 'channelName' | 'syncName'>
-
-export type IShadowDiffChannelCursor = Pick<ISyncUnit, 'integrationId' | 'channelName'>
-
-export interface IShadowDiffUnitsPage {
-  channelLimit: number
-  after?: IShadowDiffChannelCursor
-}
-
 export interface ILifecycleChannel {
   channelName: string
   hasDecommissioned: boolean
@@ -93,3 +84,5 @@ export interface IValidationUnit extends Pick<
   validationCounterKeys: string[] | null
   validationEnabled: boolean
 }
+
+export const REPOSITORY_NOT_FOUND_ERROR_CLASS = 'provider.repository_not_found' as const

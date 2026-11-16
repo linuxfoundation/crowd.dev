@@ -2209,9 +2209,12 @@ async function verify(db: Session, log: Log, options: IVerifyOptions): Promise<n
                 select "batchId", count(*)::int as n from ${tables.backup}
                 where "batchId" in (select "batchId" from run_batches) group by 1
               ),
+              -- NOT IN over a long list isn't hashed before PostgreSQL 15, so every key would be
+              -- compared with every snapshot id; the anti-join only checks this run's keys
               outside as (
-                select "batchId", count(*)::int as n from ${tables.keys}
-                where "batchId" in (select "batchId" from run_batches) and id not in ($(keyIds:csv))
+                select k."batchId", count(*)::int as n from ${tables.keys} k
+                where k."batchId" in (select "batchId" from run_batches)
+                  and not exists (select 1 from unnest($(keyIds)::bigint[]) as s(id) where s.id = k.id)
                 group by 1
               )
               select rb."batchId", rb.deleted, coalesce(bu.n, 0) as "backedUp",

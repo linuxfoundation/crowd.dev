@@ -14,6 +14,7 @@ DESCRIPTION >
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
     - `deletedAt` is set when the repository is soft-deleted.
     - `lastArchivedCheckAt` is the timestamp of the last check for repository archived status.
+    - `unavailableAt` is set when the provider confirms the repository no longer exists or is no longer accessible (NULL while it exists). The repository stays visible with its history but is no longer ingested.
 
 TAGS "Repositories"
 
@@ -32,7 +33,8 @@ SCHEMA >
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
     `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`,
     `lastArchivedCheckAt` Nullable(DateTime64(3)) `json:$.record.lastArchivedCheckAt`,
-    `licenses` Array(String) `json:$.record.licenses[:]` DEFAULT []
+    `licenses` Array(String) `json:$.record.licenses[:]` DEFAULT [],
+    `unavailableAt` Nullable(DateTime64(3)) `json:$.record.unavailableAt`
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

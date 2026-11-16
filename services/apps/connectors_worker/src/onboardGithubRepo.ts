@@ -14,7 +14,7 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { PlatformType } from '@crowd/types'
 
 import { LIFECYCLE_STALE_LOCK_MS, type LifecycleSkipReason, isRenamedRepo } from './githubLifecycle'
-import { lifecycleSkipReasonFor, rateLimitResetAt } from './githubSkipReasons'
+import { isGoneError, lifecycleSkipReasonFor, rateLimitResetAt } from './githubSkipReasons'
 
 export type OnboardRepoResult =
   | { outcome: 'created'; unitsInserted: number }
@@ -22,7 +22,7 @@ export type OnboardRepoResult =
   | { outcome: 'skipped'; reason: LifecycleSkipReason; message?: string; resetAt?: string }
 
 function resolveSkip(err: unknown): OnboardRepoResult {
-  const reason = lifecycleSkipReasonFor('resolve', err)
+  const reason = isGoneError(err) ? 'repo_not_found' : lifecycleSkipReasonFor('resolve', err)
   const resetAt = reason === 'rate_limited' ? rateLimitResetAt(err) : null
   return {
     outcome: 'skipped',

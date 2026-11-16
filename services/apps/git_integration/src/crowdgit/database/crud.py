@@ -79,6 +79,7 @@ async def acquire_onboarding_repo() -> Repository | None:
         WHERE rp.state = $2
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
             AND c.count < $3
         ORDER BY rp.priority ASC, rp."createdAt" ASC
         LIMIT 1
@@ -146,6 +147,7 @@ async def acquire_recurrent_repo() -> Repository | None:
         WHERE NOT (rp.state = ANY($2))
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
             AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
                 CASE WHEN rp.state = 'failed' THEN $4::numeric ELSE $3::numeric END
             )
@@ -209,6 +211,7 @@ async def acquire_pending_reonboard_repo() -> Repository | None:
         WHERE rp.state = $1
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
+            AND r."unavailableAt" IS NULL
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF rp SKIP LOCKED
@@ -443,6 +446,27 @@ async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
           AND mem.type = 'username'
           AND mem."verified" = TRUE
           AND mem."deletedAt" is null
+        """
+    rows = await query(sql_query, (repo_id,))
+    return {row["value"] for row in rows}
+
+
+async def get_maintainer_emails_for_repo(repo_id: str) -> set[str]:
+    sql_query = """
+        SELECT DISTINCT LOWER(email.value) AS value
+            FROM "maintainersInternal" mi
+            JOIN "memberIdentities" mem ON mi."identityId" = mem.id
+            JOIN "memberIdentities" email ON email."memberId" = mem."memberId"
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND mi."role" != 'emeritus'
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
+          -- Git ingestion stores the commit email as a verified git username; the email
+          -- identity itself stays unverified.
+          AND (email.type = 'email' OR (email.platform = 'git' AND email.type = 'username'))
+          AND email."verified" = TRUE
+          AND email."deletedAt" is null
         """
     rows = await query(sql_query, (repo_id,))
     return {row["value"] for row in rows}

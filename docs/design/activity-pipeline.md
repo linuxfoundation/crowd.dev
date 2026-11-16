@@ -136,9 +136,10 @@ re-queues the pending result IDs.
 ## Inside the data sink
 
 For each batch, `data_sink_worker` resolves members and organizations before it writes anything,
-then writes the full activity to Kafka before it writes the relation row to Postgres. A failure
-between those two writes leaves an activity in Tinybird's `activities` with no relation row in
-Postgres yet.
+then writes the relation row to Postgres before it writes the full activity to Kafka, under the
+`activityId` the relation was stored with. A failure between those two writes leaves a relation row
+without its content in Tinybird until the result is retried, and the retry reuses that
+`activityId`.
 
 ```mermaid
 sequenceDiagram
@@ -151,8 +152,8 @@ sequenceDiagram
     Q->>DS: result
     DS->>PG: resolve member (create or merge)
     DS->>PG: findAffiliation
-    DS->>K: insertActivities to "activities" topic
     DS->>PG: createOrUpdateRelations into activityRelations
+    DS->>K: insertActivities to "activities" topic
     DS->>SS: triggerMembersSync
 ```
 

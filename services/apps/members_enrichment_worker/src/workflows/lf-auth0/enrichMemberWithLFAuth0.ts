@@ -43,6 +43,18 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
       }
     }
 
+    const profileCountry = enriched.user_metadata?.country
+    if (profileCountry) {
+      normalized.attributes = {
+        ...member.attributes,
+        ...normalized.attributes,
+        [MemberAttributeName.COUNTRY]: {
+          ...member.attributes?.[MemberAttributeName.COUNTRY],
+          [PlatformType.LFID]: profileCountry,
+        },
+      }
+    }
+
     // find identities that doesn't exist in current member, and check if these identities already
     // exist in some other member
     const identitiesToCheck = []

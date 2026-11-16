@@ -11,6 +11,7 @@ DESCRIPTION >
     - `repositories` array contains the list of repository URLs associated with the project.
     - `archivedRepositories` a list of archived repositories for the project, which is used to show archived repos in the frontend.
     - `excludedRepositories` a list of excluded repositories for the project; excluded repos are not used in health score and security metrics calculations.
+    - `unavailableRepositories` a list of repositories of the project that no longer exist or are no longer accessible on their provider; they stay listed with their history but are no longer ingested.
     - `enabled` and `isLF` are flags for project status and Linux Foundation association (UInt8 boolean).
     - `keywords` array contains searchable keywords and tags for the project.
     - `collectionsSlugs` array contains slugs of collections this project belongs to.
@@ -74,7 +75,8 @@ SCHEMA >
     `healthScoreV2` Nullable(UInt8),
     `healthLabel` Nullable(String),
     `healthScoreV2Normalized` Nullable(Float64),
-    `healthMaxScore` Nullable(UInt8)
+    `healthMaxScore` Nullable(UInt8),
+    `unavailableRepositories` Array(String)
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

@@ -48,6 +48,7 @@ import {
   parseOnboardingRequest,
   projectGroupNote,
   reopenedRequestNote,
+  organizationRepositoryLimit,
   requestHintsByRepoUrl,
   requestedOrganizations,
 } from '@crowd/project-onboarding'
@@ -72,10 +73,10 @@ const HELP_KEYWORD = 'help'
 
 const reserveDailyLlmCall = createDailyLlmCap()
 
-const lookupOrganizationRepos: OrganizationRepoLookup = (owner, limit) =>
-  fetchPublicOrgRepos(owner, getGithubToken(), limit)
-
 const GITHUB_REPO_CHECK_TIMEOUT_MS = 10_000
+
+const lookupOrganizationRepos: OrganizationRepoLookup = (owner, limit) =>
+  fetchPublicOrgRepos(owner, getGithubToken(), limit, GITHUB_REPO_CHECK_TIMEOUT_MS)
 
 const lookupRepository: RepositoryLookup = (repoUrl) =>
   isPublicGithubRepo(repoUrl, getGithubToken(), AbortSignal.timeout(GITHUB_REPO_CHECK_TIMEOUT_MS))
@@ -437,7 +438,11 @@ export async function runOnboardingRequestBot({
     const owners = requestedOrganizations(requestText, parsed)
     let organizations: IExpandedOrganization[] = []
     if (owners.length > 0) {
-      const expansion = await expandOrganizations(owners, lookupOrganizationRepos)
+      const expansion = await expandOrganizations(
+        owners,
+        lookupOrganizationRepos,
+        organizationRepositoryLimit(parsed?.declaredLf),
+      )
       if (expansion.ok === false) {
         log.info(
           { channelId, threadTs, owners, reason: expansion.reason },

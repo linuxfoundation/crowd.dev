@@ -63,12 +63,15 @@ describe('fetchPublicOrgRepos', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await fetchPublicOrgRepos('openbmc', 'token', 500)
+    const result = await fetchPublicOrgRepos('openbmc', 'token', 500, 10_000)
 
     expect(result.exceededLimit).toBe(false)
     expect(result.repoUrls).toHaveLength(101)
     expect(result.repoUrls[100]).toBe('https://github.com/openbmc/extra')
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    const signals = fetchMock.mock.calls.map((call) => call[1].signal)
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true)
+    expect(signals[0]).not.toBe(signals[1])
     expect(fetchMock.mock.calls[0][0]).toBe(
       'https://api.github.com/orgs/openbmc/repos?type=public&per_page=100&page=1',
     )

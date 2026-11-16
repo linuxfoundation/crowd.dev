@@ -26,7 +26,6 @@ import {
 import { getChildLogger } from '@crowd/logging'
 import {
   ALL_NANGO_INTEGRATIONS,
-  NANGO_INTEGRATION_CONFIG,
   NangoIntegration,
   deleteNangoConnection,
   getNangoCloudRecords,
@@ -36,7 +35,6 @@ import {
 import { RedisCache } from '@crowd/redis'
 import { IntegrationResultType, PlatformType } from '@crowd/types'
 
-import { isSwitchedToConnectors } from '../connectorSwitchGuard'
 import { svc } from '../main'
 import {
   IGithubIntegrationSyncInstructions,
@@ -72,11 +70,8 @@ export async function processNangoWebhook(
     return
   }
 
-  if (
-    args.providerConfigKey === NangoIntegration.GITHUB &&
-    args.model === NANGO_INTEGRATION_CONFIG[NangoIntegration.GITHUB].models.STAR
-  ) {
-    logger.info('Skipping GithubStar records!')
+  if (args.providerConfigKey === NangoIntegration.GITHUB) {
+    logger.info('Skipping GitHub records: GitHub syncs through the connectors pipeline')
     return
   }
 
@@ -96,25 +91,6 @@ export async function processNangoWebhook(
   logger = getChildLogger(processNangoWebhook.name, logger, {
     integrationId: integration.id,
   })
-
-  if (
-    args.providerConfigKey === NangoIntegration.GITHUB &&
-    (await isSwitchedToConnectors(
-      dbStoreQx(svc.postgres.writer),
-      integration.id,
-      args.connectionId,
-      args.model,
-    ))
-  ) {
-    logger.info('Skipping records: sync is switched to the connectors pipeline')
-    await updateNangoCursorLastCheckedAt(
-      dbStoreQx(svc.postgres.writer),
-      integration.id,
-      args.connectionId,
-      args.model,
-    )
-    return
-  }
 
   let cursor = args.nextPageCursor
   let existingCursor = false
