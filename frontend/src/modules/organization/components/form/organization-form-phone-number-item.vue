@@ -13,33 +13,32 @@
   </article>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed,
 } from 'vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({
+  name: 'AppOrganizationFormPhoneNumberItem',
 });
 
-const emit = defineEmits(['update:modelValue']);
+const props = defineProps<{
+  modelValue: string;
+}>();
+
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void }>();
+
+defineSlots<{
+  actions?:() => unknown;
+}>();
 
 const model = computed({
   get() {
     return props.modelValue;
   },
-  set(contact) {
+  set(contact: string) {
     emit('update:modelValue', contact);
   },
 });
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationFormPhoneNumberItem',
-};
 </script>

@@ -29,13 +29,14 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 import LfButton from '@/ui-kit/button/Button.vue';
+import { analytics } from '@/utils/segment';
 
 defineOptions({ name: 'AppPaywallPage' });
 
 const route = useRoute();
 
 const onCtaClick = () => {
-  window.analytics.track('Upgrade Plan Contact', {
+  analytics.track('Upgrade Plan Contact', {
     route: route.path,
   });
 };

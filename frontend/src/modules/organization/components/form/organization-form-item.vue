@@ -23,29 +23,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import LfSvg from '@/shared/svg/svg.vue';
 
-defineProps({
-  label: {
-    type: String,
-    default: null,
-  },
-  type: {
-    type: String,
-    default: null,
-  },
-  isEnrichmentField: {
-    type: Boolean,
-    default: false,
-  },
-});
-</script>
-
-<script>
-export default {
+defineOptions({
   name: 'AppOrganizationFormItem',
-};
+});
+
+withDefaults(defineProps<{
+  label?: string | null;
+  type?: string | null;
+  isEnrichmentField?: boolean;
+}>(), {
+  label: null,
+  type: null,
+  isEnrichmentField: false,
+});
 </script>
 
 <style lang="scss">

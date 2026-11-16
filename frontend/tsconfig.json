@@ -28,6 +28,7 @@
     "src/**/*.d.ts",
     "src/**/*.vue",
     "vite.config.*",
+    "vitest.config.*",
     ".storybook/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "storybook-static"]

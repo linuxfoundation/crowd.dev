@@ -8,7 +8,10 @@ by the LF `ui-kit` (`src/ui-kit/`) as part of the frontend modernization epic (s
 
 This app is a thin client over the CDP backend (`../backend/`) — it does not talk to the database
 directly. In the browser it does call a few third parties itself: Auth0 for login, plus Segment,
-Datadog RUM and Hotjar for analytics and telemetry when their keys are configured.
+Datadog RUM and Hotjar for analytics and telemetry when their keys are configured. Segment loads
+through the LFX Segments library (`src/utils/segment.ts`) and only when Transcend allows the
+Analytics purpose: opt-in regimes wait for the visitor's choice, and `US_DNSS` (opt-out) loads it
+unless the visitor opts out.
 
 ## Prerequisites
 
@@ -71,7 +74,8 @@ All scripts run from `frontend/` via `pnpm run <script>`.
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lint`                 | ESLint over `src/**/*.{js,ts,vue}`, fails on any warning (`--max-warnings=0`)                                                                                                           |
 | `lint:fix`             | Same as `lint`, with `--fix`                                                                                                                                                            |
-| `typecheck`            | `vue-tsc --noEmit -p tsconfig.json`. Exits non-zero while existing type errors remain; CI does not run it yet                                                                           |
+| `typecheck`            | `vue-tsc --noEmit -p tsconfig.json`                                                                                                                                                     |
+| `test`                 | Vitest unit tests (`src/**/*.test.ts`)                                                                                                                                                  |
 | `lint:cycles`          | Fails on any cycle madge reports that is not listed in `cycles-allowlist.json`, and on any listed cycle madge no longer reports                                                         |
 | `lint:cycles:update`   | Regenerates `cycles-allowlist.json`; run it after breaking a cycle and commit the result                                                                                                |
 | `format`               | Prettier `--write` over the frontend (`.vue` files are ignored by Prettier)                                                                                                             |
@@ -99,11 +103,12 @@ All scripts run from `frontend/` via `pnpm run <script>`.
   enumerate every cycle: a new import between modules that are already in cycles can slip through,
   and removing an import can re-route other entries. Run `pnpm run lint:cycles:update` and review
   the diff.
+- `pnpm run test` — must pass.
 - `pnpm run build:localhost` (or `build:staging`/`build:production`) — must succeed.
 
-CI (`.github/workflows/frontend-checks.yml`) runs `pnpm run lint`, `pnpm run lint:cycles`, a
-production build and a Storybook build on pull requests that touch `frontend/**`. It does not yet
-run a type check.
+CI (`.github/workflows/frontend-checks.yml`) runs `pnpm run lint`, `pnpm run lint:cycles`,
+`pnpm run test`, `pnpm run typecheck`, a production build and a Storybook build on pull requests
+that touch `frontend/**`.
 
 The root pre-commit hook (`.husky/pre-commit`) runs `pnpm --filter frontend exec lint-staged` whenever
 a staged file matches `frontend/.+\.(js|ts|vue|scss|html|css|json|md|yml|yaml)$`. `lint-staged`

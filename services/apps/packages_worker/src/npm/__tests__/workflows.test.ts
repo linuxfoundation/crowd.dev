@@ -10,6 +10,7 @@ const h = vi.hoisted(() => {
   const acts = {
     getLaneCount: vi.fn(),
     currentTimestamp: vi.fn(),
+    getNpmLastPublishedDay: vi.fn(),
     backfillDailyLane: vi.fn(),
     refreshLatestLast30dLane: vi.fn(),
     backfillLast30dHistoryLane: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('@temporalio/workflow', () => ({
 }))
 
 const CUTOFF = '2026-11-12T00:30:00.000Z'
+const UPPER = '2026-11-10'
 
 beforeEach(() => {
   for (const fn of Object.values(h.acts)) fn.mockReset()
@@ -55,6 +57,7 @@ beforeEach(() => {
   for (const fn of Object.values(h.log)) fn.mockClear()
   h.acts.getLaneCount.mockResolvedValue(1)
   h.acts.currentTimestamp.mockResolvedValue(CUTOFF)
+  h.acts.getNpmLastPublishedDay.mockResolvedValue({ day: UPPER })
 })
 
 function expectSleepThenContinue(state?: unknown) {
@@ -199,5 +202,81 @@ describe('elapsed time budget', () => {
     expect(h.sleep).not.toHaveBeenCalled()
     expect(h.continueAsNew).toHaveBeenCalledTimes(1)
     expect(h.continueAsNew.mock.calls[0]).toEqual([])
+  })
+})
+
+describe('backfillDailyDownloads: published-day bound and repair', () => {
+  const REFETCH_FROM = '2025-11-11'
+
+  it('asks npm for its latest published day once per run and passes it to every lane', async () => {
+    h.acts.getLaneCount.mockResolvedValue(2)
+    h.acts.backfillDailyLane
+      .mockResolvedValueOnce({ fetched: 128 })
+      .mockResolvedValueOnce({ fetched: 128 })
+      .mockResolvedValue({ fetched: 0 })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF })
+
+    expect(h.acts.getNpmLastPublishedDay).toHaveBeenCalledTimes(1)
+    expect(h.acts.backfillDailyLane.mock.calls.map((c) => c.slice(0, 5))).toEqual([
+      [CUTOFF, 128, 0, 2, UPPER],
+      [CUTOFF, 128, 1, 2, UPPER],
+      [CUTOFF, 128, 0, 2, UPPER],
+      [CUTOFF, 128, 1, 2, UPPER],
+    ])
+    for (const call of h.acts.backfillDailyLane.mock.calls) expect(call[5]).toBeUndefined()
+  })
+
+  it('passes refetchFrom from the run state to every lane', async () => {
+    h.acts.backfillDailyLane.mockResolvedValue({ fetched: 0 })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+
+    expect(h.acts.backfillDailyLane).toHaveBeenCalledWith(CUTOFF, 128, 0, 1, UPPER, REFETCH_FROM)
+  })
+
+  it('sleeps an hour and continues as new with the same state when the lookup is blocked', async () => {
+    h.acts.getNpmLastPublishedDay.mockResolvedValue({ blocked: true })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+
+    expect(h.acts.backfillDailyLane).not.toHaveBeenCalled()
+    expectSleepThenContinue({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+    expect(h.log.warn).toHaveBeenCalled()
+  })
+
+  it('carries refetchFrom through continue-as-new after a blocked lane', async () => {
+    h.acts.backfillDailyLane.mockResolvedValue({ fetched: 128, blocked: true })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+
+    expectSleepThenContinue({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+  })
+
+  it('carries refetchFrom through continue-as-new after 12 hours of rounds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-12T00:00:00Z'))
+    h.acts.backfillDailyLane.mockImplementation(async () => {
+      vi.setSystemTime(Date.now() + 5 * 60 * 60_000)
+      return { fetched: 128 }
+    })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+    vi.useRealTimers()
+
+    expect(h.acts.backfillDailyLane).toHaveBeenCalledTimes(3)
+    expect(h.continueAsNew).toHaveBeenCalledWith({ cutoff: CUTOFF, refetchFrom: REFETCH_FROM })
+  })
+
+  it('runs the published-day lookup with the download lane timeouts', async () => {
+    h.acts.backfillDailyLane.mockResolvedValue({ fetched: 0 })
+
+    await backfillDailyDownloads({ cutoff: CUTOFF })
+
+    const proxy = h.proxyCalls.find((call) => call.activities.has('getNpmLastPublishedDay'))
+    expect(proxy?.options).toMatchObject({
+      startToCloseTimeout: '1 hour',
+      heartbeatTimeout: '2 minutes',
+    })
   })
 })

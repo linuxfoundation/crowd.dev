@@ -103,25 +103,42 @@ async function sleepIfBlocked(results: Array<{ blocked?: boolean }>): Promise<bo
 // leaves room for a full activity retry cycle and the blocked sleep inside the 24 hour run timeout.
 const DOWNLOAD_RUN_BUDGET_MS = 12 * 60 * 60_000
 
-// Per lane, per round. Total packages selected per round = lanes × *_PER_LANE.
-const DAILY_PER_LANE = 20
+// Per lane, per round; 128 fills one bulk request for unscoped packages.
+const DAILY_PER_LANE = 128
 const DAILY_MAX_BATCHES_PER_RUN = 50
 
 interface BackfillDailyState {
   cutoff?: string
+  // Refetches every day from this YYYY-MM-DD for every critical package, to repair stored history.
+  refetchFrom?: string
 }
 
 export async function backfillDailyDownloads(state: BackfillDailyState = {}): Promise<void> {
   const startedAt = Date.now()
   const cutoff = state.cutoff ?? (await acts.currentTimestamp())
+  const { refetchFrom } = state
   const lanes = await acts.getLaneCount()
+
+  const published = await downloadLaneActs.getNpmLastPublishedDay()
+  if ('blocked' in published) {
+    await sleepIfBlocked([published])
+    await continueAsNew<typeof backfillDailyDownloads>({ cutoff, refetchFrom })
+    return
+  }
 
   // Each round fans out one self-selecting lane per proxy IP; lanes drain disjoint
   // hash-shards of the due set. A round with no work across all lanes means done.
   for (let i = 0; i < DAILY_MAX_BATCHES_PER_RUN; i++) {
     const results = await Promise.all(
       Array.from({ length: lanes }, (_, lane) =>
-        downloadLaneActs.backfillDailyLane(cutoff, DAILY_PER_LANE, lane, lanes),
+        downloadLaneActs.backfillDailyLane(
+          cutoff,
+          DAILY_PER_LANE,
+          lane,
+          lanes,
+          published.day,
+          refetchFrom,
+        ),
       ),
     )
     if (await sleepIfBlocked(results)) break
@@ -130,7 +147,7 @@ export async function backfillDailyDownloads(state: BackfillDailyState = {}): Pr
     if (Date.now() - startedAt >= DOWNLOAD_RUN_BUDGET_MS) break
   }
 
-  await continueAsNew<typeof backfillDailyDownloads>({ cutoff })
+  await continueAsNew<typeof backfillDailyDownloads>({ cutoff, refetchFrom })
 }
 
 // ── Breadth: latest-window refresh (monthly) ──────────────────────────────────────────────

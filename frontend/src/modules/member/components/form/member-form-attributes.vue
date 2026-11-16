@@ -61,7 +61,7 @@
               </div>
               <span
                 class="text-2xs text-gray-500 leading-none"
-              >{{ AttributeType[attribute.type.toUpperCase()] }}</span>
+              >{{ attributeTypeLabels[attribute.type.toUpperCase()] }}</span>
             </div>
             <el-form-item class="grow">
               <el-date-picker
@@ -106,7 +106,7 @@
                   () => fetchCustomAttribute(attribute.id)
                 "
                 :create-fn="
-                  (value) =>
+                  (value: string) =>
                     updateCustomAttribute(attribute, value)
                 "
                 placeholder="Select an option or create one"
@@ -168,10 +168,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
-  defineProps,
-  defineEmits,
   computed,
   h,
   watch,
@@ -187,30 +185,29 @@ import { AttributeType } from '@/modules/organization/types/Attributes';
 import { getAttributeSourceName } from '@/shared/helpers/attribute.helpers';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import AppAutocompleteManyInput from '@/shared/form/autocomplete-many-input.vue';
+import type { FilterCustomAttribute } from '@/shared/modules/filters/types/FilterCustomAttribute';
+import type { AttributeValue, Contributor } from '@/modules/contributor/types/Contributor';
 
-const props = defineProps({
-  attributes: {
-    type: Array,
-    default: () => [],
-  },
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
-  showHeader: {
-    type: Boolean,
-    default: true,
-  },
-  record: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({ name: 'AppMemberFormAttributes' });
+
+const props = withDefaults(defineProps<{
+  attributes?: FilterCustomAttribute[];
+  modelValue: Record<string, AttributeValue>;
+  showHeader?: boolean;
+  record?: Contributor;
+}>(), {
+  attributes: () => [],
+  showHeader: true,
+  record: undefined,
 });
 
-const emit = defineEmits([
-  'update:modelValue',
-  'openDrawer',
-]);
+const emit = defineEmits<{
+  'update:modelValue': [value: Record<string, AttributeValue>];
+  openDrawer: [];
+}>();
+
+const attributeTypeLabels: Partial<Record<string, AttributeType>> = AttributeType;
 
 const CalendarIcon = h(
   'i', // type
@@ -267,9 +264,9 @@ const customAttributes = computed(() => props.attributes
       if (a.canDelete === b.canDelete) {
         return bEnrichment - aEnrichment;
       }
-      return b.canDelete - a.canDelete;
+      return Number(b.canDelete) - Number(a.canDelete);
     }
-    return b.show - a.show;
+    return Number(b.show) - Number(a.show);
   }));
 
 const firstHiddenAttributeIndex = computed(() => customAttributes.value.findIndex(
@@ -282,7 +279,7 @@ watch(model, (newModel) => {
   emit('update:modelValue', newModel);
 }, { deep: true });
 
-const updateAttribute = (id, data) => {
+const updateAttribute = (id: string, data: { show: boolean }) => {
   ConfirmDialog({
     type: 'danger',
     title: `${data.show ? 'Show' : 'Hide'} attribute`,
@@ -301,7 +298,7 @@ const updateAttribute = (id, data) => {
 
 // Get a custom attribute by id and parse the attribute options
 // into an object format with id and label
-const fetchCustomAttribute = (id) => MemberService.getCustomAttribute(id)
+const fetchCustomAttribute = (id: string) => MemberService.getCustomAttribute(id)
   .then((response) => response.options.sort().map((o) => ({
     id: o,
     label: o,
@@ -310,7 +307,7 @@ const fetchCustomAttribute = (id) => MemberService.getCustomAttribute(id)
 
 // Create a new option for the custom attribute and
 // return the new option in an object format with id and label
-const updateCustomAttribute = (attribute, value) => {
+const updateCustomAttribute = (attribute: FilterCustomAttribute, value: string) => {
   const options = [...attribute.options];
 
   options.push(value);
