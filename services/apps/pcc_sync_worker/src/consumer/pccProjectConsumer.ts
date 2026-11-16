@@ -151,9 +151,9 @@ export class PccProjectConsumer {
             schemaMismatchCount++
             const errorDetails: Record<string, unknown> = { ...parsed.details }
 
-            // If the row had identifiable fields (depth-range errors), attempt a segment
-            // match so the error record reflects whether a CDP segment exists for this
-            // project — useful for triage even when the depth rule is unsupported.
+            // If the row had identifiable fields, attempt a segment match so the error
+            // record reflects whether a CDP segment exists for this project — useful for
+            // triage even when the hierarchy could not be mapped.
             if (parsed.pccProjectId) {
               const matched = await findSegmentBySourceId(tx, parsed.pccProjectId)
               if (isAmbiguousMatch(matched)) {
@@ -503,10 +503,10 @@ async function upsertSegment(
 ): Promise<void> {
   // Update all CDP segments whose sourceId equals this PCC PROJECT_ID.
   // Each PCC node has its own PROJECT_ID. In CDP, how many segment levels share this
-  // sourceId depends on the effective depth:
-  //   eff=1 → group+project+subproject all share the same PROJECT_ID (same name for all)
-  //   eff=2 → project+subproject share the leaf's PROJECT_ID; group has a different one
-  //   eff=3 or 4 → only the subproject segment carries this PROJECT_ID
+  // sourceId depends on how many PCC levels the leaf has:
+  //   1 (standalone) → group+project+subproject all share the same PROJECT_ID (same name for all)
+  //   2 → project+subproject share the leaf's PROJECT_ID; group has a different one
+  //   3 or more → only the subproject segment carries this PROJECT_ID
   // So this UPDATE always writes the correct name and never touches unrelated levels.
   await db.none(
     `UPDATE segments
@@ -595,7 +595,7 @@ async function upsertInsightsProject(
   // INSERT path. Two guards before writing:
   //
   // 1. Same-family skip: a group/project-level segment sharing this sourceId already holds the
-  //    canonical name (shallow eff=1/2 hierarchy). The family is already represented — skip the
+  //    canonical name (leaf with one or two PCC levels). The family is already represented — skip the
   //    INSERT without recording a conflict.
   const sameFamilyNameHolder = await db.oneOrNone(
     `SELECT 1
