@@ -18,21 +18,19 @@
   </div>
 </template>
 
-<script setup>
-import { defineEmits, defineProps, computed } from 'vue';
+<script setup lang="ts">
+import { computed } from 'vue';
+import type { Organization } from '../../types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
-});
-const emit = defineEmits(['update:modelValue']);
+const props = defineProps<{
+  modelValue: Organization;
+}>();
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
 const model = computed({
   get() {
     return props.modelValue;
   },
-  set(newModel) {
+  set(newModel: Organization) {
     emit('update:modelValue', newModel);
   },
 });
