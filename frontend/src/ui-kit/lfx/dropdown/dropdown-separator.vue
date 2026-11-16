@@ -6,8 +6,8 @@ SPDX-License-Identifier: MIT
   <div class="lfx-c-dropdown__separator" />
 </template>
 
-<script lang="ts">
-export default {
+<script setup lang="ts">
+defineOptions({
   name: 'LfxDropdownSeparator',
-};
+});
 </script>
