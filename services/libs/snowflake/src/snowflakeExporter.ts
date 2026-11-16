@@ -10,7 +10,7 @@ import { SnowflakeClient } from './client'
 
 const log = getServiceChildLogger('snowflakeExporter')
 
-const DEFAULT_BATCH_SIZE = 10_000
+export const DEFAULT_BATCH_SIZE = 10_000
 
 export type OnBatchComplete = (
   s3Path: string,
