@@ -118,11 +118,19 @@ have no operation type there and only write to the logs.
   `MAINTAINER_RETRY_INTERVAL_DAYS` if not. Detection order:
   1. A CNCF `.project` repository uses its `maintainers.yaml` (or `.yml`) directly, without the
      LLM.
-  2. The file saved in `maintainerFile`, if it still exists.
-  3. Candidate files found by name (`MAINTAINERS`, `CODEOWNERS`, `OWNERS`, `GOVERNANCE.md` and
+  2. A root `INFO.yaml` in the
+     [LF Release Engineering format](https://github.com/lfit/releng-global-jjb/blob/master/schema/info-schema.yaml)
+     (a `project_lead` and a `committers` list), used by LF-hosted Gerrit projects such as ONAP,
+     OpenDaylight, FD.io and O-RAN-SC. It is parsed directly, without the LLM: the project lead
+     and every committer are maintainers, and the `tsc` change log is ignored.
+  3. The file saved in `maintainerFile`, if it still exists.
+  4. Candidate files found by name (`MAINTAINERS`, `CODEOWNERS`, `OWNERS`, `GOVERNANCE.md` and
      similar), scored, then filtered by an LLM classifier. Root-level candidates are parsed first
      and their results combined; otherwise the top subdirectory candidate is tried.
-  4. As a last resort, the LLM picks a file from the repository's file list.
+  5. As a last resort, the LLM picks a file from the repository's file list.
+
+  Steps 1 and 2 run before the saved file, so a repository that settled on another file earlier
+  (for example `AUTHORS` in a Gerrit repository) switches on its next run.
 
   Maintainers resolve to verified `memberIdentities` by GitHub username, then by email. The
   service upserts new `(identity, role)` pairs into `maintainersInternal` and sets `endDate` on

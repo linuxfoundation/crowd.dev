@@ -19,10 +19,11 @@
     }
 
     // Danger type
-    &--danger{
+    &--danger {
       @apply text-red-600;
 
-      [class^="fa-"], .c-icon{
+      [class^='fa-'],
+      .c-icon {
         @apply text-red-600;
       }
     }
@@ -38,10 +39,6 @@
 
   &__separator {
     @apply w-full border-b border-neutral-100 h-0;
-  }
-
-  &__group-title {
-    @apply px-3 pt-1 text-xs font-semibold leading-5 text-neutral-400;
   }
 
   &__selector {

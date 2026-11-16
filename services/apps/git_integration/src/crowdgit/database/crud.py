@@ -451,6 +451,27 @@ async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
     return {row["value"] for row in rows}
 
 
+async def get_maintainer_emails_for_repo(repo_id: str) -> set[str]:
+    sql_query = """
+        SELECT DISTINCT LOWER(email.value) AS value
+            FROM "maintainersInternal" mi
+            JOIN "memberIdentities" mem ON mi."identityId" = mem.id
+            JOIN "memberIdentities" email ON email."memberId" = mem."memberId"
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND mi."role" != 'emeritus'
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
+          -- Git ingestion stores the commit email as a verified git username; the email
+          -- identity itself stays unverified.
+          AND (email.type = 'email' OR (email.platform = 'git' AND email.type = 'username'))
+          AND email."verified" = TRUE
+          AND email."deletedAt" is null
+        """
+    rows = await query(sql_query, (repo_id,))
+    return {row["value"] for row in rows}
+
+
 async def set_maintainer_end_date(
     repo_id: str, identity_id: str, role: str, change_date: datetime
 ):
