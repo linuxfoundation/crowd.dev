@@ -48,10 +48,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const isTokenConnection = (connectionId: string) =>
   connectionId.toLowerCase().startsWith('github-token-')
 
-function parsePositiveInt(flag: string, value: string | undefined): number {
+function parseInteger(flag: string, value: string | undefined, min: number): number {
   const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(`${flag} needs a non-negative integer, got ${value}`)
+  if (!Number.isInteger(parsed) || parsed < min) {
+    throw new Error(`${flag} needs an integer of at least ${min}, got ${value}`)
   }
   return parsed
 }
@@ -67,10 +67,10 @@ function parseOptions(argv: string[]): Options {
         options.execute = true
         break
       case '--limit':
-        options.limit = parsePositiveInt('--limit', argv[++i])
+        options.limit = parseInteger('--limit', argv[++i], 1)
         break
       case '--delay-ms':
-        options.delayMs = parsePositiveInt('--delay-ms', argv[++i])
+        options.delayMs = parseInteger('--delay-ms', argv[++i], 0)
         break
       default:
         console.error(USAGE)
