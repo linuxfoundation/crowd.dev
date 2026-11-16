@@ -24,7 +24,7 @@
     "auth0": "^4.3.1",
     "axios": "catalog:",
     "lodash": "~4.17.21",
-    "moment": "~2.29.4",
+    "moment": "~2.31.0",
     "tsx": "catalog:"
   },
   "devDependencies": {
