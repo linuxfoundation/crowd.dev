@@ -4,7 +4,7 @@ import { DEFAULT_BATCH_SIZE } from '@crowd/snowflake'
 export async function resolveSyncErrorsNotReportedByExport(
   qx: QueryExecutor,
   platform: string,
-  exportStartedAt: Date,
+  exportStartedAt: Date | string,
 ): Promise<number> {
   return qx.result(
     `

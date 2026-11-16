@@ -34,7 +34,7 @@ export class PccProjectConsumer {
   // would otherwise be re-claimed on every loop iteration → endless reprocessing.
   private readonly dryRunProcessedJobIds = new Set<number>()
   private syncErrorWriteFailed = false
-  private readonly exportsWithUnrecordedSyncErrors = new Set<number>()
+  private readonly exportsWithUnrecordedSyncErrors = new Set<string>()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -261,7 +261,7 @@ export class PccProjectConsumer {
 
   private async resolveSyncErrorsNotReportedBy(job: SnowflakeExportJob): Promise<void> {
     if (!job.exportStartedAt) return
-    const exportKey = job.exportStartedAt.getTime()
+    const exportKey = String(job.exportStartedAt)
     if (this.syncErrorWriteFailed) this.exportsWithUnrecordedSyncErrors.add(exportKey)
     if (this.exportsWithUnrecordedSyncErrors.has(exportKey)) {
       log.warn({ jobId: job.id }, 'Skipped resolving PCC sync errors: some were not recorded')

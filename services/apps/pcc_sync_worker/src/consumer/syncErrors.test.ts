@@ -8,6 +8,10 @@ import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const test = withQx(base)
 
+test.beforeEach(async ({ qx }) => {
+  await qx.result(`TRUNCATE integration."snowflakeExportJobs"`)
+})
+
 const PLATFORM = 'pcc'
 const EXPORT_STARTED_AT = new Date('2026-11-16T01:00:00.000Z')
 const BEFORE_EXPORT = new Date('2026-11-15T01:05:00.000Z')
@@ -70,6 +74,18 @@ describe('resolveSyncErrorsNotReportedByExport', () => {
 
     expect(resolved).toBe(1)
     expect(await unresolvedProjectIds(qx)).toEqual(['pcc-still-broken'])
+  })
+
+  test('accepts the export start as the database returns it', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed')
+    await insertSyncError(qx, 'pcc-fixed', BEFORE_EXPORT)
+    const job = await qx.selectOne(
+      `SELECT "exportStartedAt" FROM integration."snowflakeExportJobs"`,
+    )
+
+    const resolved = await resolveSyncErrorsNotReportedByExport(qx, PLATFORM, job.exportStartedAt)
+
+    expect(resolved).toBe(1)
   })
 
   test('resolves errors that have no project id', async ({ qx }) => {
