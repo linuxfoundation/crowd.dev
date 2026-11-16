@@ -21,18 +21,21 @@ const h = vi.hoisted(() => ({
     getNpmPurlsForChangedNames: vi.fn(),
     getNpmPurlsScannedSince: vi.fn(),
     getUnscannedNpmPurls: vi.fn(),
-    insertDailyDownloads: vi.fn(),
+    getNewestDownloadDate: vi.fn(),
     logAuditFieldChanges: vi.fn(),
     markDailyDownloadsProcessed: vi.fn(),
     markLast30dHistoryBackfilled: vi.fn(),
     markLast30dProcessed: vi.fn(),
     markNpmPackageScanned: vi.fn(),
     setNpmChangesLastSeq: vi.fn(),
+    upsertDailyDownloads: vi.fn(),
     upsertLast30dDownload: vi.fn(),
   },
   fetch: {
+    fetchBulkDailyRange: vi.fn(),
     fetchBulkPointRange: vi.fn(),
     fetchDailyRange: vi.fn(),
+    fetchLastPublishedDay: vi.fn(),
     fetchPointRange: vi.fn(),
   },
 }))
@@ -56,6 +59,7 @@ vi.mock('../downloadsThrottle', async (importOriginal) => ({
 
 const MIN = 60_000
 const CUTOFF = '2026-11-12T00:00:00.000Z'
+const UPPER = '2026-11-11'
 
 const rateLimited: FetchError = {
   kind: FetchErrorKind.RATE_LIMIT,
@@ -74,6 +78,16 @@ const dailyOk = {
 
 function candidate(name: string) {
   return { id: `id-${name}`, purl: `pkg:npm/${name}`, name, firstReleaseAt: '2026-11-01' }
+}
+
+// Scoped packages take one request each, while two or more unscoped packages share a bulk request.
+function scopedCandidate(name: string) {
+  return {
+    id: `id-${name}`,
+    purl: `pkg:npm/%40scope/${name}`,
+    name: `@scope/${name}`,
+    firstReleaseAt: '2026-11-01',
+  }
 }
 
 async function loadActivities() {
@@ -102,7 +116,8 @@ beforeEach(() => {
     fn.mockReset()
   }
   h.dal.getMissingDownloadDates.mockResolvedValue(['2026-11-10', '2026-11-11'])
-  h.dal.insertDailyDownloads.mockResolvedValue([])
+  h.dal.upsertDailyDownloads.mockResolvedValue({ inserted: 0, overwritten: 0 })
+  h.dal.getNewestDownloadDate.mockResolvedValue(null)
   h.dal.upsertLast30dDownload.mockResolvedValue([])
   h.dal.getExistingLast30dEndDates.mockResolvedValue([])
 })
@@ -118,7 +133,7 @@ describe('backfillDailyLane', () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
     h.fetch.fetchDailyRange.mockResolvedValueOnce(rateLimited).mockResolvedValueOnce(dailyOk)
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 2 * MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 2 * MIN)
 
     expect(error).toBeUndefined()
     expect(value).toMatchObject({ fetched: 1 })
@@ -129,7 +144,7 @@ describe('backfillDailyLane', () => {
       '2026-11-10',
       '2026-11-11',
     ])
-    expect(h.dal.insertDailyDownloads).toHaveBeenCalledTimes(1)
+    expect(h.dal.upsertDailyDownloads).toHaveBeenCalledTimes(1)
     expect(h.dal.markDailyDownloadsProcessed).toHaveBeenCalledWith(
       expect.anything(),
       'pkg:npm/foo',
@@ -139,10 +154,13 @@ describe('backfillDailyLane', () => {
 
   it('heartbeats before each fetch', async () => {
     const { backfillDailyLane } = await loadActivities()
-    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo'), candidate('bar')])
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([
+      scopedCandidate('foo'),
+      scopedCandidate('bar'),
+    ])
     h.fetch.fetchDailyRange.mockResolvedValue(dailyOk)
 
-    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), MIN)
+    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), MIN)
 
     expect(error).toBeUndefined()
     expect(h.fetch.fetchDailyRange).toHaveBeenCalledTimes(2)
@@ -151,19 +169,22 @@ describe('backfillDailyLane', () => {
 
   it('returns blocked on a long block, keeping finished packages and leaving the rest due', async () => {
     const { backfillDailyLane } = await loadActivities()
-    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo'), candidate('bar')])
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([
+      scopedCandidate('foo'),
+      scopedCandidate('bar'),
+    ])
     h.fetch.fetchDailyRange.mockImplementation(async (name: string) =>
-      name === 'foo' ? dailyOk : rateLimited,
+      name === '@scope/foo' ? dailyOk : rateLimited,
     )
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 30 * MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 30 * MIN)
 
     expect(error).toBeUndefined()
     expect(value).toEqual({ fetched: 2, blocked: true })
     expect(h.dal.markDailyDownloadsProcessed).toHaveBeenCalledTimes(1)
     expect(h.dal.markDailyDownloadsProcessed).toHaveBeenCalledWith(
       expect.anything(),
-      'pkg:npm/foo',
+      'pkg:npm/%40scope/foo',
       { status: 'success' },
     )
   })
@@ -177,7 +198,7 @@ describe('backfillDailyLane', () => {
       message: 'gone not found',
     })
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), MIN)
 
     expect(error).toBeUndefined()
     expect(value).toMatchObject({ fetched: 1 })
@@ -198,7 +219,7 @@ describe('backfillDailyLane', () => {
       message: 'HTTP 503',
     })
 
-    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), MIN)
+    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), MIN)
 
     expect(String(error)).toMatch(/Failed to fetch daily downloads for foo/)
   })
@@ -284,7 +305,7 @@ describe('shared limiter', () => {
       return { count: 7, start: '2026-10-02', end: '2026-11-01' }
     })
 
-    const daily = settle(backfillDailyLane(CUTOFF, 20, 0, 1), 0)
+    const daily = settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 0)
     const latest = settle(refreshLatestLast30dLane(CUTOFF, 128, 0, 1), 0)
     await vi.advanceTimersByTimeAsync(10_000)
     const [d, l] = await Promise.all([daily, latest])
@@ -307,11 +328,11 @@ describe('partial progress during a block', () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('bar')])
     h.fetch.fetchDailyRange.mockResolvedValueOnce(dailyOk).mockResolvedValue(rateLimited)
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 30 * MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 30 * MIN)
 
     expect(error).toBeUndefined()
     expect(value).toEqual({ fetched: 1, blocked: true })
-    expect(h.dal.insertDailyDownloads).toHaveBeenCalledTimes(1)
+    expect(h.dal.upsertDailyDownloads).toHaveBeenCalledTimes(1)
     expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
   })
 
@@ -351,13 +372,13 @@ describe('lane time budget', () => {
   it('daily lane returns its progress as a normal result once 20 minutes have passed', async () => {
     const { backfillDailyLane } = await loadActivities()
     const names = Array.from({ length: 30 }, (_, i) => `pkg${i}`)
-    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue(names.map((n) => candidate(n)))
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue(names.map((n) => scopedCandidate(n)))
     h.fetch.fetchDailyRange.mockImplementation(async () => {
       await new Promise((resolve) => setTimeout(resolve, 2 * MIN))
       return dailyOk
     })
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 30, 0, 1), 40 * MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 30, 0, 1, UPPER), 40 * MIN)
 
     expect(error).toBeUndefined()
     expect(value).toEqual({ fetched: 30 })
@@ -367,7 +388,7 @@ describe('lane time budget', () => {
     expect(h.dal.markDailyDownloadsProcessed).toHaveBeenCalledTimes(fetched)
     expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalledWith(
       expect.anything(),
-      'pkg:npm/pkg29',
+      'pkg:npm/%40scope/pkg29',
       expect.anything(),
     )
   })
@@ -403,7 +424,7 @@ describe('cancellation', () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
     h.fetch.fetchDailyRange.mockResolvedValue(dailyOk)
 
-    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), MIN)
+    const { error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), MIN)
 
     expect(error).toBeDefined()
     expect(h.fetch.fetchDailyRange).not.toHaveBeenCalled()
@@ -419,7 +440,7 @@ describe('lane deadline during a long block', () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([candidate('foo')])
     h.fetch.fetchDailyRange.mockResolvedValue(rateLimited)
 
-    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1), 30 * MIN)
+    const { value, error } = await settle(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 30 * MIN)
 
     expect(error).toBeUndefined()
     expect(value).toEqual({ fetched: 1, blocked: true })
@@ -481,11 +502,11 @@ describe('lane deadline while another flow succeeds', () => {
     h.fetch.fetchDailyRange.mockResolvedValue(rateLimited)
     const timer = succeedElsewhere()
 
-    const outcome = await settleWithin(backfillDailyLane(CUTOFF, 20, 0, 1), 42 * MIN)
+    const outcome = await settleWithin(backfillDailyLane(CUTOFF, 20, 0, 1, UPPER), 42 * MIN)
     clearInterval(timer)
 
     expect(outcome).toEqual({ done: true, value: { fetched: 1 } })
-    expect(h.dal.insertDailyDownloads).not.toHaveBeenCalled()
+    expect(h.dal.upsertDailyDownloads).not.toHaveBeenCalled()
     expect(h.dal.markDailyDownloadsProcessed).not.toHaveBeenCalled()
   })
 

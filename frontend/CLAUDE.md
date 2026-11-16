@@ -41,6 +41,7 @@ still applies here, including its "no comments" rule, and commits follow
 - `pnpm run lint` — must pass with 0 warnings.
 - `pnpm run lint:cycles` — must pass; break new circular imports instead of
   adding them to `cycles-allowlist.json`.
+- `pnpm run test` — must pass.
 - `pnpm run build:localhost` — must succeed.
 - The legacy-file list (`.eslint/legacy-files.json`) only shrinks, never
   grows.

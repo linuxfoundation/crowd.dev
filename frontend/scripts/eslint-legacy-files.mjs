@@ -18,7 +18,6 @@ const VUE = { glob: 'src/**/*.vue', ext: '.vue', plugin: 'vue' };
 const RULES = {
   'vue/component-api-style': { ...VUE, config: ['error', ['script-setup']] },
   'vue/block-lang': { ...VUE, config: ['error', { script: { lang: 'ts' } }] },
-  'vue/prefer-define-options': { ...VUE, config: 'error' },
   '@typescript-eslint/no-explicit-any': {
     glob: 'src/**/*.{ts,vue}',
     ext: '.ts,.vue',

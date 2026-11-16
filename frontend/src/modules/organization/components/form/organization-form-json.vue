@@ -16,22 +16,19 @@
   <el-input v-else disabled />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: null,
-  },
-  type: {
-    type: String,
-    default: null,
-  },
-  filterValue: {
-    type: Function,
-    default: null,
-  },
+type JsonValue = Record<string, string | number>;
+
+const props = withDefaults(defineProps<{
+  modelValue?: JsonValue | null;
+  type?: string | null;
+  filterValue?:((value: JsonValue) => JsonValue) | null;
+}>(), {
+  modelValue: null,
+  type: null,
+  filterValue: null,
 });
 
 const filteredValue = computed(() => {

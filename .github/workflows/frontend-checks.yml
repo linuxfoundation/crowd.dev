@@ -39,6 +39,9 @@ jobs:
       - name: Check circular imports
         run: pnpm --filter frontend run lint:cycles
 
+      - name: Unit tests
+        run: pnpm --filter frontend run test
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10

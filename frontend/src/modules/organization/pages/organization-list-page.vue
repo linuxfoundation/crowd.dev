@@ -109,6 +109,7 @@ import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue
 import { queryKeys } from '@/shared/queries/keys';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import { analytics } from '@/utils/segment';
 import { useQuery } from '@tanstack/vue-query';
 import { storeToRefs } from 'pinia';
 import {
@@ -252,6 +253,6 @@ watch(
 );
 
 onMounted(() => {
-  (window as unknown as Window & { analytics: { page: (name: string) => void } }).analytics.page('Organization');
+  analytics.page('Organization');
 });
 </script>

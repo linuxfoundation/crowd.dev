@@ -112,6 +112,7 @@ import useMemberIdentities from '@/shared/modules/identities/config/useMemberIde
 import memberOrder from '@/shared/modules/identities/config/identitiesOrder/member';
 import { lfIdentities } from '@/config/identities';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import { analytics } from '@/utils/segment';
 
 defineOptions({
   name: 'AppMemberListEmails',
@@ -168,7 +169,7 @@ const getPlatformLabel = (platforms: string[]) => platforms
   }).join(', ');
 
 const trackEmailClick = () => {
-  window.analytics.track('Click Member Contact', {
+  analytics.track('Click Member Contact', {
     channel: 'Email',
   });
 };

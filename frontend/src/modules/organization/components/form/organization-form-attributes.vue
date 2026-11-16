@@ -37,7 +37,6 @@
             v-else-if="attribute.type === AttributeType.JSON"
             v-model="model[attribute.name]"
             :type="attribute.type"
-            :filter-value="attribute.filterValue"
           />
           <el-input
             v-else
@@ -56,34 +55,27 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 import { AttributeType } from '@/modules/organization/types/Attributes';
 import enrichmentAttributes from '@/modules/organization/config/enrichment';
+import type { Organization } from '../../types/Organization';
 import AppOrganizationFormItem from './organization-form-item.vue';
 import AppOrganizationFormJson from './organization-form-json.vue';
 
-const props = defineProps({
-  showHeader: {
-    type: Boolean,
-    default: true,
-  },
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
-  organization: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({
+  name: 'AppOrganizationFormAttributes',
+});
+
+const props = withDefaults(defineProps<{
+  showHeader?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped enrichment values. revisit: per-attribute value types
+  modelValue: Record<string, any>;
+  organization: Organization;
+}>(), {
+  showHeader: true,
 });
 
 const model = computed(() => props.modelValue);
 const visibleAttributes = computed(() => enrichmentAttributes.filter((a) => a.showInForm));
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationFormAttributes',
-};
 </script>

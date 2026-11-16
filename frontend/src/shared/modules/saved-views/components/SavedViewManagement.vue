@@ -69,6 +69,7 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import { analytics } from '@/utils/segment';
 
 defineOptions({
   name: 'LfSavedViewsManagement',
@@ -113,7 +114,7 @@ const onListChange = () => {
       }),
     ),
   ).then(() => {
-    window.analytics.track('Custom views rearanged');
+    analytics.track('Custom views rearanged');
     emit('reload');
   });
 };
@@ -144,7 +145,7 @@ const remove = (view: SavedView) => {
 
       SavedViewsService.delete(view.id)
         .then(() => {
-          window.analytics.track('Custom view deleted', {
+          analytics.track('Custom view deleted', {
             placement: view.placement,
             name: view.name,
           });
