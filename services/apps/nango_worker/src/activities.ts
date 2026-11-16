@@ -1,33 +1,3 @@
-import {
-  analyzeGithubIntegration,
-  canCreateGithubConnection,
-  createGithubConnection,
-  deleteConnection,
-  invalidateGithubTokenConnectionIdsCache,
-  linkNangoMappingToRepo,
-  logInfo,
-  mapGithubRepoToRepositories,
-  processNangoWebhook,
-  removeGithubConnection,
-  setGithubConnection,
-  startNangoSync,
-  unmapGithubRepo,
-  updateGitIntegrationWithRepo,
-} from './activities/nangoActivities'
+import { processNangoWebhook } from './activities/nangoActivities'
 
-export {
-  analyzeGithubIntegration,
-  createGithubConnection,
-  deleteConnection,
-  invalidateGithubTokenConnectionIdsCache,
-  linkNangoMappingToRepo,
-  processNangoWebhook,
-  removeGithubConnection,
-  setGithubConnection,
-  startNangoSync,
-  mapGithubRepoToRepositories,
-  unmapGithubRepo,
-  canCreateGithubConnection,
-  updateGitIntegrationWithRepo,
-  logInfo,
-}
+export { processNangoWebhook }
