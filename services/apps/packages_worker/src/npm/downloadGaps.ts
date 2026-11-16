@@ -1,32 +1,34 @@
 export const NPM_EARLIEST = '2015-01-10'
-const MAX_CHUNK_DAYS = 540
+const MAX_RANGE_DAYS = 540
+// npm caps a bulk query at 128 unscoped packages and 365 days.
+export const BULK_MAX_NAMES = 128
+export const BULK_MAX_SPAN_DAYS = 365
 
-// Group a sorted list of YYYY-MM-DD strings into contiguous windows capped at maxDays.
-export function computeChunks(
-  missingDates: string[],
-  maxDays: number = MAX_CHUNK_DAYS,
+export function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+export function daysBetween(start: string, end: string): string[] {
+  const out: string[] = []
+  for (let d = start; d <= end; d = addDays(d, 1)) out.push(d)
+  return out
+}
+
+// Cover sorted YYYY-MM-DD dates with as few ranges as possible, each spanning at most maxDays.
+// Stored days inside a range are refetched, which costs less than another request.
+export function coverDates(
+  dates: string[],
+  maxDays: number = MAX_RANGE_DAYS,
 ): Array<{ start: string; end: string }> {
-  if (missingDates.length === 0) return []
-
-  const windows: Array<{ start: string; end: string }> = []
-  let winStart = missingDates[0]
-  let winEnd = missingDates[0]
-  let winSize = 1
-
-  for (let i = 1; i < missingDates.length; i++) {
-    const isConsecutive = daysDiff(missingDates[i - 1], missingDates[i]) === 1
-    if (isConsecutive && winSize < maxDays) {
-      winEnd = missingDates[i]
-      winSize++
-    } else {
-      windows.push({ start: winStart, end: winEnd })
-      winStart = missingDates[i]
-      winEnd = missingDates[i]
-      winSize = 1
-    }
+  const ranges: Array<{ start: string; end: string }> = []
+  for (const day of dates) {
+    const last = ranges[ranges.length - 1]
+    if (last && daysDiff(last.start, day) < maxDays) last.end = day
+    else ranges.push({ start: day, end: day })
   }
-  windows.push({ start: winStart, end: winEnd })
-  return windows
+  return ranges
 }
 
 function daysDiff(a: string, b: string): number {
