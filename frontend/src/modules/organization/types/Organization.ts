@@ -18,6 +18,8 @@ export enum OrganizationSource {
   TNC = 'tnc',
   MEETINGS = 'meetings',
   COMMITTEES = 'committees',
+  LUMA = 'luma',
+  SCHED = 'sched',
 }
 
 export enum OrganizationIdentityType {
