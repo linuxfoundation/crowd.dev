@@ -85,7 +85,7 @@ function rows(start: string, end: string, count = 5) {
   return days(start, end).map((day) => ({ day, downloads: count }))
 }
 
-function scoped(name: string, firstReleaseAt = '2020-01-01') {
+function scoped(name: string, firstReleaseAt: string | null = '2020-01-01') {
   return {
     id: `id-${name}`,
     purl: `pkg:npm/%40scope/${name}`,
@@ -94,7 +94,7 @@ function scoped(name: string, firstReleaseAt = '2020-01-01') {
   }
 }
 
-function unscoped(name: string, firstReleaseAt = '2020-01-01') {
+function unscoped(name: string, firstReleaseAt: string | null = '2020-01-01') {
   return { id: `id-${name}`, purl: `pkg:npm/${name}`, name, firstReleaseAt }
 }
 
@@ -222,6 +222,58 @@ describe('backfillDailyLane: published-day bound', () => {
     expect(h.dal.getNewestDownloadDate).toHaveBeenCalledWith(expect.anything(), 'id-a', UPPER)
     expect(h.fetch.fetchDailyRange).toHaveBeenCalledTimes(1)
     for (const call of h.fetch.fetchDailyRange.mock.calls) expect(call[2] <= UPPER).toBe(true)
+  })
+})
+
+describe('backfillDailyLane: unknown first release', () => {
+  const FLOOR = addDays(UPPER, -364)
+
+  beforeEach(() => {
+    h.dal.getMissingDownloadDates.mockImplementation(
+      async (_qx: unknown, _id: string, lower: string, upper: string) => days(lower, upper),
+    )
+  })
+
+  it('fetches one bulk span for a scoped package (regression)', async () => {
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([scoped('a', null)])
+
+    const { error } = await settle(activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER), MIN)
+
+    expect(error).toBeUndefined()
+    expect(h.fetch.fetchDailyRange.mock.calls.map((c) => c.slice(0, 3))).toEqual([
+      ['@scope/a', FLOOR, UPPER],
+    ])
+    expect(markedWith('pkg:npm/%40scope/a')).toEqual([{ status: 'success' }])
+  })
+
+  it('keeps unscoped packages in the bulk request', async () => {
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([
+      unscoped('a', null),
+      unscoped('b', null),
+    ])
+
+    const { error } = await settle(activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER), MIN)
+
+    expect(error).toBeUndefined()
+    expect(h.fetch.fetchBulkDailyRange.mock.calls.map((c) => c.slice(0, 3))).toEqual([
+      [['a', 'b'], FLOOR, UPPER],
+    ])
+    expect(h.fetch.fetchDailyRange).not.toHaveBeenCalled()
+  })
+
+  it('repairs from refetchFrom even when it is older than one bulk span', async () => {
+    const refetchFrom = addDays(FLOOR, -30)
+    h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([scoped('a', null)])
+
+    const { error } = await settle(
+      activities.backfillDailyLane(CUTOFF, 128, 0, 1, UPPER, refetchFrom),
+      MIN,
+    )
+
+    expect(error).toBeUndefined()
+    expect(h.fetch.fetchDailyRange.mock.calls.map((c) => c.slice(0, 3))).toEqual([
+      ['@scope/a', refetchFrom, UPPER],
+    ])
   })
 })
 

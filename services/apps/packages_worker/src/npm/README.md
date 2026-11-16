@@ -64,6 +64,8 @@ round, up to 50 rounds per run). Per package it fetches the _missing_ days
 between the first release (clamped to `NPM_EARLIEST`) and the bound, plus the 7
 days ending at the newest stored day, and upserts them: a different nonzero
 count overwrites the stored one, so a day stored too early gets corrected.
+Until the registry ingest records a package's first release, the start is 365
+days before the bound, and a later pass fills the older days.
 
 Unscoped packages run every day and share bulk requests (up to 128 names, the
 last 365 days); older gaps and scoped (`@scope/...`) packages take one request
