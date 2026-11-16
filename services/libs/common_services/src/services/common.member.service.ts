@@ -13,7 +13,6 @@ import {
   Error404,
   Error409,
   calculateReach,
-  getEarliestValidDate,
   getLongestDateRange,
   getMemberOrganizationSourceRank,
   isSameMemberIdentity,
@@ -82,6 +81,26 @@ export interface IAffiliationRequest {
   segmentId: string
   timestamp: string
   affiliationEmailDomain?: string
+}
+
+// Integrations stamp activities without a date at 1970-01-01 (e.g. Slack channel members), which is
+// never a real join date, so a date this close to the epoch never wins
+const JOINED_AT_PLACEHOLDER_UNTIL = Date.UTC(1970, 0, 6)
+
+export function getEarliestMemberJoinedAt(current: Date, incoming: Date): Date {
+  const isPlaceholder = (date: Date) =>
+    Number.isNaN(date.getTime()) || date.getTime() < JOINED_AT_PLACEHOLDER_UNTIL
+
+  if (Number.isNaN(incoming.getTime())) {
+    return current
+  }
+  if (isPlaceholder(current)) {
+    return incoming
+  }
+  if (isPlaceholder(incoming)) {
+    return current
+  }
+  return incoming.getTime() < current.getTime() ? incoming : current
 }
 
 // the experiences from the best-ranked source; more than one is a tie
@@ -683,7 +702,8 @@ export class CommonMemberService extends LoggerBase {
    */
   public static membersMerge(originalObject, toMergeObject) {
     return mergeObjects(originalObject, toMergeObject, {
-      joinedAt: (oldDate, newDate) => getEarliestValidDate(oldDate, newDate),
+      joinedAt: (oldDate, newDate) =>
+        getEarliestMemberJoinedAt(new Date(oldDate), new Date(newDate)),
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       displayName: (oldValue, _newValue) => oldValue,
       reach: (oldReach, newReach) => calculateReach(oldReach, newReach),

@@ -5,6 +5,7 @@ export {
   currentTimestamp,
   getChangedNpmPurls,
   getLaneCount,
+  getNpmLastPublishedDay,
   getUnscannedNpmBatch,
   ingestNpmPackageBatch,
   pollNpmChanges,
