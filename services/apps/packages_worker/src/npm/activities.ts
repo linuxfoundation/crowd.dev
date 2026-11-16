@@ -322,6 +322,18 @@ function latestDay(...days: Array<string | null | undefined>): string {
   return days.reduce<string>((max, d) => (d && d > max ? d : max), '')
 }
 
+// Older days of a package without a first release are fetched by a later pass, once the
+// registry ingest records the date.
+function dailyLowerBound(
+  firstReleaseAt: string | null,
+  upperBound: string,
+  refetchFrom?: string,
+): string {
+  const firstDay = firstReleaseAt?.slice(0, 10)
+  if (refetchFrom) return latestDay(NPM_EARLIEST, firstDay, refetchFrom)
+  return latestDay(NPM_EARLIEST, firstDay ?? addDays(upperBound, 1 - BULK_MAX_SPAN_DAYS))
+}
+
 async function dailyNeeds(
   qx: QueryExecutor,
   packageId: string,
@@ -365,7 +377,7 @@ export async function backfillDailyLane(
   const plans: DailyPlan[] = []
   for (const pkg of candidates) {
     beat()
-    const lower = latestDay(NPM_EARLIEST, pkg.firstReleaseAt?.slice(0, 10), refetchFrom)
+    const lower = dailyLowerBound(pkg.firstReleaseAt, upperBound, refetchFrom)
     const needed = await dailyNeeds(qx, pkg.id, lower, upperBound, !!refetchFrom)
     plans.push({ pkg, needed, settled: false })
   }
