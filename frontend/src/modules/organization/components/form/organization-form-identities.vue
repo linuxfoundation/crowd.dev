@@ -37,8 +37,8 @@
                   props.showUnmerge && Object.entries(identitiesForm).length > 1
                 "
                 :disabled="
-                  !staticModel[ii]?.valye
-                    || staticModel[ii]?.valye === model[ii].valye
+                  !staticModel?.[ii]?.value
+                    || staticModel?.[ii]?.value === model[ii].value
                 "
                 content="Not possible to unmerge an unsaved identity"
                 placement="top"
@@ -49,13 +49,13 @@
                     size="medium"
                     class="block w-8 !h-8 p-0"
                     :disabled="
-                      !staticModel[ii]?.valye
-                        || staticModel[ii]?.valye !== model[ii].valye
+                      !staticModel?.[ii]?.value
+                        || staticModel?.[ii]?.value !== model[ii].value
                     "
                     @click="
                       emit('unmerge', {
                         platform: key,
-                        valye: staticModel[ii]?.value,
+                        value: staticModel?.[ii]?.value,
                       })
                     "
                   >
@@ -80,31 +80,32 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed, ref, watch, reactive,
 } from 'vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import { lfIdentities } from '@/config/identities';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Platform } from '@/shared/modules/platform/types/Platform';
+import type { Organization, OrganizationIdentity } from '../../types/Organization';
 import { OrganizationIdentityType } from '../../types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
-  record: {
-    type: Object,
-    default: () => {},
-  },
-  showUnmerge: {
-    type: Boolean,
-    default: false,
-  },
+defineOptions({
+  name: 'AppOrganizationFormIdentities',
 });
 
-const emit = defineEmits(['update:modelValue', 'unmerge']);
+const props = withDefaults(defineProps<{
+  modelValue: Organization;
+  record: Organization | null;
+  showUnmerge?: boolean;
+}>(), {
+  showUnmerge: false,
+});
+
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void;
+  (e: 'unmerge', value: { platform: string; value?: string }): void;
+}>();
 
 // TODO: move this to identities config
 const identitiesForm = {
@@ -122,7 +123,7 @@ const identitiesForm = {
   },
 };
 
-const model = ref([]);
+const model = ref<OrganizationIdentity[]>([]);
 
 watch(
   props.modelValue,
@@ -132,7 +133,7 @@ watch(
       const platforms = [
         ...new Set(organization.identities.map((i) => i.platform)),
       ];
-      const noIdentity = Object.keys(identitiesForm)
+      const noIdentity = (Object.keys(identitiesForm) as Platform[])
         .filter((platform) => !platforms.includes(platform))
         .map((platform) => reactive({
           value: '',
@@ -167,23 +168,15 @@ watch(
   { deep: true },
 );
 
-function editingDisabled(platform) {
+function editingDisabled(platform: string) {
   return model.value.filter((i) => i.platform === platform).length < 2;
 }
 
-const removeUsername = (index) => {
+const removeUsername = (index: number) => {
   if (model.value.length > 1) {
     model.value.splice(index, 1);
-  } else if (model.value.length > 0) {
-    model.value[0] = '';
   }
 };
 
-const staticModel = computed(() => props.record.identities);
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationFormIdentities',
-};
+const staticModel = computed(() => props.record?.identities);
 </script>

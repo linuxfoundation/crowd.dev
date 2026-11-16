@@ -13,6 +13,7 @@ export interface ContributorAttribute {
   stackoverflow?: AttributeValue;
   discourse?: AttributeValue;
   credly?: AttributeValue;
+  enrichment?: AttributeValue;
 }
 
 export interface ContributorMaintainerRole {

@@ -14,7 +14,6 @@ export enum EventType {
 
 export enum PageEventKey {
   OVERVIEW = 'Overview',
-  PROJECT_GROUPS = 'Project groups',
   MEMBERS = 'Contributors',
   ORGANIZATIONS = 'Organizations',
   ACTIVITIES = 'Activities',

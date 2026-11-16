@@ -131,7 +131,7 @@
               <el-divider class="!mb-6 !mt-8 !border-gray-200" />
               <app-organization-form-attributes
                 v-model="formModel"
-                :organization="record"
+                :organization="record!"
               />
             </div>
           </el-form>
@@ -144,7 +144,7 @@
   </app-page-wrapper>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   computed, h, onMounted, onUnmounted, ref, watch,
 } from 'vue';
@@ -152,6 +152,8 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import isEqual from 'lodash/isEqual';
 import useVuelidate from '@vuelidate/core';
 import { integer, required } from '@vuelidate/validators';
+import type { AxiosError } from 'axios';
+import type { FormInstance } from 'element-plus';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
 import AppOrganizationFormIdentities from '@/modules/organization/components/form/organization-form-identities.vue';
 import AppOrganizationFormDetails from '@/modules/organization/components/form/organization-form-details.vue';
@@ -170,13 +172,18 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import AppLfSubProjectsListDropdown from '@/modules/admin/modules/projects/components/lf-sub-projects-list-dropdown.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { SubProject } from '@/modules/lf/segments/types/Segments';
+import type { Organization } from '@/modules/organization/types/Organization';
 import { useOrganizationStore } from '../store/pinia';
 
-const props = defineProps({
-  id: {
-    type: String,
-    default: null,
-  },
+defineOptions({
+  name: 'OrganizationFormPage',
+});
+
+const props = withDefaults(defineProps<{
+  id?: string | null;
+}>(), {
+  id: null,
 });
 const LoaderIcon = h(
   'i',
@@ -231,9 +238,9 @@ const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 const organizationsStore = useOrganizationStore();
 
 const selectedSegments = computed(() => {
-  let subproject;
+  let subproject: SubProject | undefined;
 
-  const project = selectedProjectGroup.value.projects.find((p) => p.subprojects.some((sp) => {
+  const project = selectedProjectGroup.value!.projects!.find((p) => p.subprojects.some((sp) => {
     if (sp.id === route.query.subprojectId) {
       subproject = sp;
       return true;
@@ -248,14 +255,15 @@ const selectedSegments = computed(() => {
   };
 });
 
-function getInitialModel(record) {
-  const source = {
+// shortcut: the model holds only FORM_FIELDS. revisit: when the form children narrow modelValue
+function getInitialModel(record?: Organization | null): Organization {
+  const source: Record<string, unknown> = {
     ...(record || {}),
     name: record ? record.name : '',
     displayName: record ? record.displayName || record.name : '',
     identities: record ? [...record.identities] : [],
   };
-  const model = {};
+  const model: Record<string, unknown> = {};
 
   FORM_FIELDS.forEach((key) => {
     const value = key === 'emails' ? source.emails || [] : source[key];
@@ -268,9 +276,9 @@ function getInitialModel(record) {
   return JSON.parse(JSON.stringify(model));
 }
 
-const record = ref(null);
-const formRef = ref(null);
-const formModel = ref(getInitialModel());
+const record = ref<Organization | null>(null);
+const formRef = ref<FormInstance | null>(null);
+const formModel = ref<Organization>(getInitialModel());
 
 const isPageLoading = ref(true);
 const isFormSubmitting = ref(false);
@@ -297,7 +305,7 @@ const segments = computed(() => {
       : [];
   }
 
-  return record.value.segments?.map((s) => s.id) || [];
+  return record.value!.segments || [];
 });
 
 const hasFormChanged = computed(() => {
@@ -319,11 +327,13 @@ const shouldShowAttributes = computed(() => enrichmentAttributes.some((a) => {
     return false;
   }
 
+  const values = record.value as Record<string, unknown> | null;
+
   if (a.type === AttributeType.ARRAY) {
-    return !!record.value?.[a.name]?.length;
+    return !!(values?.[a.name] as unknown[] | undefined)?.length;
   }
 
-  return !!record.value?.[a.name];
+  return !!values?.[a.name];
 }));
 
 // Prevent lost data on route change
@@ -348,7 +358,8 @@ onMounted(async () => {
     const segments = segmentId || projecGroup ? [segmentId || projecGroup] : null;
 
     try {
-      record.value = await OrganizationService.find(id, segments);
+      // shortcut: keeps main's throw when the URL has no segment. revisit: if the page gets a route
+      record.value = await OrganizationService.find(id as string, segments as string[]);
     } catch (error) {
       Errors.handle(error);
       router.push({ name: 'organization' });
@@ -362,7 +373,7 @@ onMounted(async () => {
 });
 
 // Prevent window reload when form has changes
-const preventWindowReload = (e) => {
+const preventWindowReload = (e: BeforeUnloadEvent) => {
   if (hasFormChanged.value) {
     e.preventDefault();
     e.returnValue = '';
@@ -384,7 +395,7 @@ watch(wasFormSubmittedSuccessfully, (isFormSubmittedSuccessfully) => {
       return router.push({
         name: 'organizationView',
         params: {
-          id: record.value.id,
+          id: record.value!.id,
         },
         query: {
           segmentId: segmentId || projectGroup,
@@ -406,10 +417,11 @@ function onReset() {
 function onCancel() {
   const { segmentId, projectGroup } = route.query;
 
+  // shortcut: throws in create mode (no record), as on main. revisit: if the page gets a route
   router.push({
     name: 'organizationView',
     params: {
-      id: record.value.id,
+      id: record.value!.id,
     },
     query: {
       segmentId: segmentId || projectGroup,
@@ -420,6 +432,7 @@ function onCancel() {
 async function onSubmit() {
   isFormSubmitting.value = true;
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omits keys via rest sibling
   const { emails, ...rest } = formModel.value;
 
   const name = isEditPage.value === false ? formModel.value.displayName : undefined;
@@ -435,6 +448,7 @@ async function onSubmit() {
     },
   };
 
+  // shortcut: payload isn't narrowed by isEditPage; the calls assert it. revisit: K-04 (CM-1713)
   const payload = isEditPage.value
     ? {
       id: props.id,
@@ -457,10 +471,11 @@ async function onSubmit() {
     });
 
     try {
-      await OrganizationService.update(payload.id, payload.values);
+      await OrganizationService.update(payload.id!, payload.values as Partial<Organization>);
       ToastStore.success('Company successfully saved');
     } catch (error) {
-      if (error.response.status === 409) {
+      // shortcut: keeps main's throw on a response-less error. revisit: when error paths are reworked
+      if ((error as AxiosError<string>).response!.status === 409) {
         ToastStore.error(
           h(
             'div',
@@ -473,7 +488,7 @@ async function onSubmit() {
                 {
                   class: 'c-btn c-btn--tiny c-btn--secondary-gray !h-6 !w-fit',
                   onClick: () => {
-                    organizationsStore.addToMergeOrganizations(payload.id, error.response.data);
+                    organizationsStore.addToMergeOrganizations(payload.id!, (error as AxiosError<string>).response!.data);
                     ToastStore.closeAll();
                   },
                 },
@@ -500,7 +515,7 @@ async function onSubmit() {
 
     // Create
     try {
-      await OrganizationService.create(payload);
+      await OrganizationService.create(payload as Partial<Organization>);
 
       ToastStore.success('Company successfully saved');
     } catch (error) {
@@ -512,19 +527,13 @@ async function onSubmit() {
   wasFormSubmittedSuccessfully.value = true;
 }
 
-const onChange = ({ subprojectId }) => {
+const onChange = ({ subprojectId }: { subprojectId: string }) => {
   router.replace({
     name: 'organizationCreate',
     query: {
       subprojectId,
     },
   });
-};
-</script>
-
-<script>
-export default {
-  name: 'OrganizationFormPage',
 };
 </script>
 
