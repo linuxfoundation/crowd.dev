@@ -1,6 +1,5 @@
 {
   "vue/component-api-style": [],
   "vue/block-lang": [],
-  "vue/prefer-define-options": [],
   "@typescript-eslint/no-explicit-any": []
 }
